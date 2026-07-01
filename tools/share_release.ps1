@@ -326,6 +326,7 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav"); Name = "voice/stackchan_spark_thinking.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"); Name = "voice/stackchan_spark_safety.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
+  @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_ACCEPTANCE.md"); Name = "RELEASE_ACCEPTANCE.md" },
@@ -486,6 +487,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
+    <div class="item"><a href="ARRIVAL_DAY_RUNBOOK.md">Arrival-Day Runbook</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
     <div class="item"><a href="RELEASE_ACCEPTANCE.md">Release Acceptance Checklist</a></div>
     <div class="item"><a href="release_acceptance.json">Acceptance JSON</a></div>
@@ -501,6 +503,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
   </div>
 
   <h2>Device Arrival Quickstart</h2>
+  <p>Bench operator runbook: <a href="ARRIVAL_DAY_RUNBOOK.md">ARRIVAL_DAY_RUNBOOK.md</a></p>
   <p>After downloading and extracting the release ZIP, run this from inside the extracted folder:</p>
   <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3 -Operator &quot;Your Name&quot; -DeviceId STACKCHAN-001</code></pre>
   <p>This verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with runnable <code>RUN_*.cmd</code> files.</p>

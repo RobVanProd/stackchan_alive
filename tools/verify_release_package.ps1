@@ -87,6 +87,7 @@ function Assert-Bytes {
 
 $requiredFiles = @(
   "DEPENDENCIES.md",
+  "ARRIVAL_DAY_RUNBOOK.md",
   "GITHUB_ACTIONS_STATUS.md",
   "READINESS_REPORT.md",
   "github_actions_status.json",
@@ -185,6 +186,13 @@ $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -R
 foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
+  }
+}
+
+$arrivalRunbookText = Get-Content -LiteralPath (Join-PackagePath "ARRIVAL_DAY_RUNBOOK.md") -Raw
+foreach ($pattern in @("Stackchan Arrival-Day Runbook", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "production voice-source provenance", "GitHub Actions")) {
+  if ($arrivalRunbookText -notmatch [regex]::Escape($pattern)) {
+    throw "ARRIVAL_DAY_RUNBOOK.md missing required bench guidance: $pattern"
   }
 }
 
