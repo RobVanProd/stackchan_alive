@@ -16,7 +16,7 @@ From an extracted release package:
 .\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared
 ```
 
-This serves the release ZIP, preview image, expression sheet, video, quickstart, release notes, readiness report, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
+This serves the release ZIP, ZIP SHA256 sidecar, preview image, expression sheet, video, quickstart, release notes, readiness report, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
 The public URL is also saved as `output\share\<version>\PUBLIC_URL.txt`, and the share folder includes `STOP_SHARING.cmd` to stop the local server and tunnel.
 Before sending the URL, verify the handoff page and public assets:
 

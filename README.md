@@ -77,7 +77,7 @@ Audit the published GitHub release assets:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-Stage a local handoff page for the ZIP, preview image, expression sheet, and video, optionally with a Cloudflare tunnel:
+Stage a local handoff page for the ZIP, ZIP SHA256 sidecar, preview image, expression sheet, and video, optionally with a Cloudflare tunnel:
 
 ```powershell
 .\tools\share_release.cmd -Version <version>

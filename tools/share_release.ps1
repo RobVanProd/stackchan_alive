@@ -223,6 +223,12 @@ foreach ($file in $files) {
   Copy-Item -LiteralPath $file.Source -Destination $destination
 }
 
+$sharedZipName = "stackchan_alive_$Version.zip"
+$sharedZipPath = Join-Path $shareRoot $sharedZipName
+Assert-File $sharedZipPath
+$sharedZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sharedZipPath).Hash.ToLowerInvariant()
+"$sharedZipHash  $sharedZipName" | Set-Content -Path (Join-Path $shareRoot "$sharedZipName.sha256") -Encoding ASCII
+
 $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
 $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
@@ -266,6 +272,7 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="READINESS_REPORT.md">Readiness Report</a></div>
     <div class="item"><a href="readiness_report.json">Readiness JSON</a></div>
+    <div class="item"><a href="stackchan_alive_$Version.zip.sha256">ZIP SHA256</a></div>
     <div class="item"><a href="SHA256SUMS.txt">SHA256 Checksums</a></div>
   </div>
 

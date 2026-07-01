@@ -89,7 +89,7 @@ Audit an existing GitHub release after publication:
 
 The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
 
-Stage a local handoff page with direct links to the ZIP, image, expression sheet, video, GIF, release notes, readiness report, and checksums:
+Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, release notes, readiness report, and checksums:
 
 ```powershell
 .\tools\share_release.cmd -Version <version>
@@ -99,7 +99,7 @@ If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for rem
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
 From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes.
-Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending the URL; it checks the handoff page plus the preview PNG, expression sheet, MP4, GIF, readiness report, readiness JSON, and ZIP over HTTP.
+Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending the URL; it checks the handoff page plus the preview PNG, expression sheet, MP4, GIF, readiness report, readiness JSON, ZIP, ZIP SHA256 sidecar, and package checksums over HTTP.
 Run `output/share/<version>/STOP_SHARING.cmd` or `tools/stop_share.cmd -Version <version>` to stop the local server and tunnel.
 
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.

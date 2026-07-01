@@ -193,6 +193,7 @@ if ([string]::IsNullOrWhiteSpace($Url)) {
 $expectedFiles = @(
   @{ Path = "index.html"; MinBytes = 500; Type = "text/html" },
   @{ Path = "stackchan_alive_$Version.zip"; MinBytes = 1000000; Type = "application" },
+  @{ Path = "stackchan_alive_$Version.zip.sha256"; MinBytes = 80; Type = "" },
   @{ Path = "stackchan_alive_preview.png"; MinBytes = 1000; Type = "image/png" },
   @{ Path = "stackchan_alive_expression_sheet.png"; MinBytes = 2000; Type = "image/png" },
   @{ Path = "stackchan_alive_preview.mp4"; MinBytes = 1000; Type = "video/mp4" },
@@ -208,15 +209,28 @@ foreach ($file in $expectedFiles) {
   Assert-File (Join-Path $shareRootPath $file.Path) $file.MinBytes
 }
 
+$zipName = "stackchan_alive_$Version.zip"
+$zipHashPath = Join-Path $shareRootPath "$zipName.sha256"
+$zipHashText = (Get-Content -LiteralPath $zipHashPath -Raw).Trim()
+if ($zipHashText -notmatch "^([a-f0-9]{64})  $([regex]::Escape($zipName))$") {
+  throw "Invalid ZIP SHA256 sidecar format: $zipHashText"
+}
+
+$expectedZipHash = $Matches[1]
+$actualZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $shareRootPath $zipName)).Hash.ToLowerInvariant()
+if ($actualZipHash -ne $expectedZipHash) {
+  throw "ZIP SHA256 sidecar mismatch for $zipName"
+}
+
 $indexText = Get-Content -LiteralPath (Join-Path $shareRootPath "index.html") -Raw
-foreach ($pattern in @($Version, "Hardware validation is still pending", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip")) {
+foreach ($pattern in @($Version, "Hardware validation is still pending", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
   if ($indexText -notmatch [regex]::Escape($pattern)) {
     throw "index.html missing expected share guidance: $pattern"
   }
 }
 
 $probes = @()
-foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt") }) {
+foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt") }) {
   $path = if ($file.Path -eq "index.html") { "/" } else { $file.Path }
   $probe = Invoke-UrlProbe -TargetUrl (Join-Url $Url $path) -TimeoutSeconds $TimeoutSeconds
   Assert-HttpOk -Probe $probe -ExpectedType $file.Type -Path $path
