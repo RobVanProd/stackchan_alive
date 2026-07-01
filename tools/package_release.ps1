@@ -19,8 +19,16 @@ if (-not $SkipBuild) {
 }
 
 $dirtyFiles = @(git status --porcelain)
-if ($dirtyFiles.Count -gt 0 -and -not $AllowDirty) {
-  throw "Refusing to package a dirty worktree. Commit or discard changes first, or pass -AllowDirty for local diagnostic packages."
+$generatedMediaDirtyFiles = @(
+  $dirtyFiles | Where-Object { $_ -match "^\s*M docs/media/stackchan_alive_preview\.(gif|mp4|png)$" }
+)
+$sourceDirtyFiles = @(
+  $dirtyFiles | Where-Object { $_ -notmatch "^\s*M docs/media/stackchan_alive_preview\.(gif|mp4|png)$" }
+)
+
+if ($sourceDirtyFiles.Count -gt 0 -and -not $AllowDirty) {
+  $dirtyList = ($sourceDirtyFiles -join [Environment]::NewLine)
+  throw "Refusing to package a dirty source worktree. Commit or discard changes first, or pass -AllowDirty for local diagnostic packages. Dirty files:$([Environment]::NewLine)$dirtyList"
 }
 
 $commit = (git rev-parse HEAD).Trim()
@@ -157,8 +165,9 @@ $manifest = [ordered]@{
   includedEnvironments = @("stackchan", "stackchan_servo_calibration")
   servoDefault = "display-only build disables servos; calibration build enables servos"
   status = "device-ready prerelease; hardware validation pending"
-  dirty = ($dirtyFiles.Count -gt 0)
-  dirtyFiles = @($dirtyFiles)
+  dirty = ($sourceDirtyFiles.Count -gt 0)
+  dirtyFiles = @($sourceDirtyFiles)
+  generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
   dependencyReport = "DEPENDENCIES.md"
   provenanceFiles = @(
     "provenance/platformio.ini",

@@ -9,7 +9,7 @@ This project can produce a pre-device review release now and a hardware-validate
 ```
 
 The package is written under `output/release/<version>/` and includes firmware binaries, preview media, readiness docs, dependency provenance, copied build inputs, and SHA256 checksums.
-The package command refuses a dirty worktree by default so release contents match the manifest commit.
+The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 
 Verify the package before sharing it:
 

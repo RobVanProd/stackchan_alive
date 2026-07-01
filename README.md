@@ -42,7 +42,7 @@ Create an auditable prerelease package:
 ```
 
 The package includes firmware binaries, preview media, docs, checksums, dependency provenance, and copied build inputs.
-By default the package command refuses to run from a dirty worktree so the manifest commit matches the contents.
+By default the package command refuses to run from a dirty source worktree so the manifest commit matches the code and configuration; regenerated preview media is treated as a release artifact.
 
 Verify the package before sharing or publishing:
 
