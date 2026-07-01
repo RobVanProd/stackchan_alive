@@ -447,6 +447,69 @@ $manifest = [ordered]@{
 
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "release_manifest.json") -Encoding UTF8
 
+$readinessReport = [ordered]@{
+  schema = "stackchan.readiness-report.v1"
+  version = $Version
+  commit = $commit
+  generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  status = "device-ready-prerelease"
+  consumerRollout = "blocked-pending-hardware-validation"
+  noHardwareProof = @(
+    [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
+    [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
+    [ordered]@{ gate = "preview-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_preview.mp4, media/stackchan_alive_preview.gif" },
+    [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
+    [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
+    [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
+    [ordered]@{ gate = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd and tools/start_hardware_evidence.cmd" },
+    [ordered]@{ gate = "servo-risk-acknowledgement-required"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" }
+  )
+  hardwareGates = @(
+    [ordered]@{ gate = "display-only-flash"; status = "pending-device"; requiredEvidence = "display-only serial log, real photo/video, 10-minute idle observation" },
+    [ordered]@{ gate = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
+    [ordered]@{ gate = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat markers" },
+    [ordered]@{ gate = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
+    [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" }
+  )
+  promotionRule = "Do not mark consumer-ready or non-prerelease until all hardware gates pass with evidence."
+  nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+}
+
+$readinessReport | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "readiness_report.json") -Encoding UTF8
+
+@"
+# Readiness Report
+
+Release: $Version
+Commit: $commit
+Status: device-ready prerelease
+Consumer rollout: blocked pending hardware validation
+
+## Proven Without Hardware
+
+- Release package is generated with a clean manifest: ``release_manifest.json``.
+- Display-only and servo-calibration firmware binaries are present under ``firmware/``.
+- Preview image, animation, video, and expression QA sheet are present under ``media/``.
+- Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
+- Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
+- Arrival-day helpers are included under ``tools/``.
+- Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
+
+## Pending Device Evidence
+
+- Display-only flash, visible procedural face, and 10-minute idle run.
+- Supervised servo calibration, yaw classification, and calibration values.
+- 30-minute mixed idle/listen/think/speak soak.
+- USB power-cycle recovery.
+- Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
+
+Do not mark this release consumer-ready or non-prerelease until every pending device gate has explicit evidence.
+
+Recommended arrival command from the extracted package:
+
+    $($readinessReport.nextOperatorCommand)
+"@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8
+
 @"
 # Stackchan Alive $Version
 
@@ -454,7 +517,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 

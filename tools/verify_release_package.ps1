@@ -87,10 +87,12 @@ function Assert-Bytes {
 
 $requiredFiles = @(
   "DEPENDENCIES.md",
+  "READINESS_REPORT.md",
   "dependency_lock.json",
   "QUICKSTART.md",
   "RELEASE_NOTES.md",
   "SHA256SUMS.txt",
+  "readiness_report.json",
   "release_manifest.json",
   "docs/DEVICE_BRINGUP.md",
   "docs/PRODUCTION_READINESS.md",
@@ -391,6 +393,43 @@ if ($releaseNotes -notmatch [regex]::Escape($ExpectedCommit)) {
 }
 if ($releaseNotes -notmatch "Hardware validation is still required") {
   throw "RELEASE_NOTES.md must state that hardware validation is still required"
+}
+if ($releaseNotes -notmatch "READINESS_REPORT.md") {
+  throw "RELEASE_NOTES.md missing readiness report reference"
+}
+
+$readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "verify_hardware_evidence.cmd", "Do not mark this release consumer-ready")) {
+  if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
+    throw "READINESS_REPORT.md missing expected text: $pattern"
+  }
+}
+
+$readinessJson = Get-Content -LiteralPath (Join-PackagePath "readiness_report.json") -Raw | ConvertFrom-Json
+if ($readinessJson.schema -ne "stackchan.readiness-report.v1") {
+  throw "readiness_report.json schema mismatch: $($readinessJson.schema)"
+}
+if ($readinessJson.version -ne $Version) {
+  throw "readiness_report.json version mismatch: expected $Version, got $($readinessJson.version)"
+}
+if ($readinessJson.commit -ne $ExpectedCommit) {
+  throw "readiness_report.json commit mismatch: expected $ExpectedCommit, got $($readinessJson.commit)"
+}
+if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
+  throw "readiness_report.json must keep consumer rollout blocked until hardware validation"
+}
+foreach ($gate in @($readinessJson.noHardwareProof)) {
+  if ($gate.status -ne "pass") {
+    throw "readiness_report.json has non-passing no-hardware gate: $($gate.gate)"
+  }
+}
+foreach ($gate in @($readinessJson.hardwareGates)) {
+  if ($gate.status -ne "pending-device") {
+    throw "readiness_report.json hardware gate must remain pending-device before promotion: $($gate.gate)"
+  }
+}
+if (@($readinessJson.hardwareGates).Count -lt 5) {
+  throw "readiness_report.json is missing required hardware gates"
 }
 
 $hashPath = Join-PackagePath "SHA256SUMS.txt"
