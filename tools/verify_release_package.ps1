@@ -212,9 +212,16 @@ foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device
 }
 
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
-foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar")) {
+foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_published_release.ps1 missing required published ZIP sidecar verification logic: $pattern"
+  }
+}
+
+$publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
+foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber")) {
+  if ($publisherText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/publish_release.ps1 missing required finalized Actions status publish logic: $pattern"
   }
 }
 

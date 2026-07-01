@@ -33,6 +33,61 @@ function Invoke-Checked {
   }
 }
 
+function Update-ReleaseArchive {
+  param(
+    [string]$PackageRoot,
+    [string]$ZipPath,
+    [string]$Version
+  )
+
+  $hashLines = Get-ChildItem -LiteralPath $PackageRoot -File -Recurse |
+    Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
+    Sort-Object FullName |
+    ForEach-Object {
+      $relative = $_.FullName.Substring($PackageRoot.Length + 1).Replace("\", "/")
+      $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName
+      "$($hash.Hash.ToLowerInvariant())  $relative"
+    }
+
+  $hashLines | Set-Content -Path (Join-Path $PackageRoot "SHA256SUMS.txt") -Encoding ASCII
+
+  if (Test-Path -LiteralPath $ZipPath) {
+    Remove-Item -LiteralPath $ZipPath -Force
+  }
+  Compress-Archive -Path (Join-Path $PackageRoot "*") -DestinationPath $ZipPath
+
+  $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ZipPath).Hash.ToLowerInvariant()
+  "$zipHash  stackchan_alive_$Version.zip" | Set-Content -Path "$ZipPath.sha256" -Encoding ASCII
+}
+
+function Export-ActionsStatusWithRetry {
+  param(
+    [string]$Repo,
+    [string]$Version,
+    [string]$Commit,
+    [string]$OutputDir
+  )
+
+  $exportScript = Join-Path $PSScriptRoot "export_github_actions_status.ps1"
+  if (-not (Test-Path -LiteralPath $exportScript)) {
+    throw "Missing Actions status exporter: $exportScript"
+  }
+
+  $deadline = (Get-Date).AddSeconds(60)
+  $lastOutput = ""
+  do {
+    $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $exportScript -Repo $Repo -Version $Version -Commit $Commit -OutputDir $OutputDir 2>&1
+    $exitCode = $LASTEXITCODE
+    $lastOutput = ($output | Out-String)
+    if ($exitCode -eq 0) {
+      return
+    }
+    Start-Sleep -Seconds 5
+  } while ((Get-Date) -lt $deadline)
+
+  throw "Unable to export GitHub Actions status for $Commit. Last output:$([Environment]::NewLine)$lastOutput"
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
 }
@@ -168,6 +223,21 @@ if ($DryRun) {
   Write-Host "Release dry run passed:"
   Write-Host "https://github.com/$Repo/releases/tag/$Version"
   exit 0
+}
+
+Export-ActionsStatusWithRetry -Repo $Repo -Version $Version -Commit $tagCommit -OutputDir $packageRoot
+Update-ReleaseArchive -PackageRoot $packageRoot -ZipPath $zipPath -Version $Version
+
+& (Join-Path $PSScriptRoot "verify_release_package.ps1") @verifyArgs
+
+Invoke-Checked "Upload finalized release evidence $Version" {
+  gh release upload $Version `
+    $zipPath `
+    $zipSidecarPath `
+    (Join-Path $packageRoot "GITHUB_ACTIONS_STATUS.md") `
+    (Join-Path $packageRoot "github_actions_status.json") `
+    --repo $Repo `
+    --clobber
 }
 
 $publishedVerifyArgs = @{
