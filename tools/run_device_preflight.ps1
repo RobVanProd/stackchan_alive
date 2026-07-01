@@ -160,6 +160,63 @@ function Assert-FlashHelperSafety {
   Assert-TextContains $displayDryRun.Text "Dry run: platformio device monitor -e stackchan --baud 115200 --port COM_TEST"
 }
 
+function Assert-ReleaseFlashHelperSafety {
+  param(
+    [string]$ZipPath,
+    [switch]$AllowDirtyPackage
+  )
+
+  $flashScript = Join-Path $PSScriptRoot "flash_release_firmware.ps1"
+  $dirtyPackageArg = @()
+  if ($AllowDirtyPackage) {
+    $dirtyPackageArg += "-AllowDirtyPackage"
+  }
+
+  $blockedArgs = @(
+    $flashScript,
+    "-PackageZip", $ZipPath,
+    "-Firmware", "servo_calibration",
+    "-DryRun"
+  )
+  $blockedServo = Invoke-ToolText ($blockedArgs + $dirtyPackageArg)
+  if ($blockedServo.ExitCode -eq 0) {
+    throw "Servo calibration package dry-run succeeded without -ConfirmServoRisk"
+  }
+  Assert-TextContains $blockedServo.Text "without -ConfirmServoRisk"
+
+  $displayArgs = @(
+    $flashScript,
+    "-PackageZip", $ZipPath,
+    "-Firmware", "display_only",
+    "-DryRun",
+    "-Monitor",
+    "-Port", "COM_TEST"
+  )
+  $displayDryRun = Invoke-ToolText ($displayArgs + $dirtyPackageArg)
+  if ($displayDryRun.ExitCode -ne 0) {
+    throw "Display package dry-run failed unexpectedly:$([Environment]::NewLine)$($displayDryRun.Text)"
+  }
+  Assert-TextContains $displayDryRun.Text "Release package verified:"
+  Assert-TextContains $displayDryRun.Text "Dry run: python -m esptool --chip esp32s3"
+  Assert-TextContains $displayDryRun.Text "write_flash -z --flash_mode dio --flash_freq 80m --flash_size 16MB"
+  Assert-TextContains $displayDryRun.Text "Dry run: platformio device monitor --baud 115200 --port COM_TEST"
+
+  $servoArgs = @(
+    $flashScript,
+    "-PackageZip", $ZipPath,
+    "-Firmware", "servo_calibration",
+    "-ConfirmServoRisk",
+    "-DryRun",
+    "-Port", "COM_TEST"
+  )
+  $servoDryRun = Invoke-ToolText ($servoArgs + $dirtyPackageArg)
+  if ($servoDryRun.ExitCode -ne 0) {
+    throw "Servo package dry-run failed unexpectedly:$([Environment]::NewLine)$($servoDryRun.Text)"
+  }
+  Assert-TextContains $servoDryRun.Text "Release package verified:"
+  Assert-TextContains $servoDryRun.Text "Dry run: python -m esptool --chip esp32s3"
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -202,7 +259,16 @@ Invoke-Step "Build display-only and servo-calibration firmware" {
 
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   Invoke-Step "Verify release package" {
-    & (Join-Path $PSScriptRoot "verify_release_package.ps1") -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit
+    $verifyScript = Join-Path $PSScriptRoot "verify_release_package.ps1"
+    if ($AllowDirty) {
+      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit -AllowDirtyPackage
+    } else {
+      & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit
+    }
+  }
+
+  Invoke-Step "Check release binary flash helper" {
+    Assert-ReleaseFlashHelperSafety $PackageZip -AllowDirtyPackage:$AllowDirty
   }
 }
 

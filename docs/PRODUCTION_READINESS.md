@@ -10,6 +10,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Release packages include dependency provenance and copied build inputs.
 - Release packages are verified before publication in GitHub Actions.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
+- Release packages include a binary flasher that writes the exact packaged display-only or servo-calibration firmware.
 - Release packages include a manual GitHub publish helper that verifies the uploaded ZIP when GitHub Actions cannot run.
 - Published release assets can be audited against the local package by size, SHA256 digest, and downloaded-ZIP verification.
 - A local release handoff page can serve the ZIP, preview image, and preview video, with optional Cloudflare tunnel exposure.

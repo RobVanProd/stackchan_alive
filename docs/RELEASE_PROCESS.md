@@ -8,9 +8,9 @@ This project can produce a pre-device review release now and a hardware-validate
 .\tools\package_release.cmd -Version v0.1.0-device-ready
 ```
 
-The package is written under `output/release/<version>/` and includes firmware binaries, preview media, readiness docs, dependency provenance, copied build inputs, and SHA256 checksums.
+The package is written under `output/release/<version>/` and includes firmware binaries, preview media, readiness docs, dependency provenance, copied build inputs, flash helpers, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
-Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`.
+Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
 
 Before flashing or publishing, run the no-hardware preflight:
 
@@ -25,6 +25,12 @@ Verify the package before sharing it:
 ```powershell
 .\tools\verify_release_package.cmd -Version v0.1.0-device-ready -ZipPath output\release\stackchan_alive_v0.1.0-device-ready.zip
 .\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip
+```
+
+Dry-run the release-binary flasher before connecting hardware:
+
+```powershell
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Firmware display_only -DryRun -Monitor -Port COM3
 ```
 
 Create a hardware evidence packet when testing a physical device:

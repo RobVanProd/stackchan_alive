@@ -12,6 +12,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
 - [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, copied build inputs, and checksums.
 - [ ] `tools/verify_release_package.ps1` passes for the release ZIP.
+- [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
 - [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
 - [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`.
 
@@ -20,7 +21,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 Command:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan -Monitor
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor
 ```
 
 Pass criteria:
@@ -35,7 +36,7 @@ Pass criteria:
 Command:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan_servo_calibration -ConfirmServoRisk -Monitor
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor
 ```
 
 Pass criteria:

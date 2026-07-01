@@ -14,17 +14,16 @@ Use this when the Stack-chan hardware arrives.
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
 
-4. Build once with servos disabled:
+4. Check the exact release-binary flash command without touching the device:
 
 ```powershell
-pio run
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware display_only -DryRun -Monitor -Port COM3
 ```
 
-5. Flash the display-only build first:
+5. Flash the display-only binary from the verified release package first:
 
 ```powershell
-pio run --target upload
-pio device monitor --baud 115200
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware display_only -Monitor -Port COM3
 ```
 
 Expected result: the CoreS3 display shows the procedural face and serial logs include dry-run servo mode.
@@ -40,20 +39,22 @@ Servos are disabled by default in `platformio.ini`:
 Use the default display-only environment first:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan -Monitor
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware display_only -Monitor -Port COM3
 ```
 
 Check the servo upload command without touching the device:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan_servo_calibration -ConfirmServoRisk -DryRun -Monitor
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware servo_calibration -ConfirmServoRisk -DryRun -Monitor -Port COM3
 ```
 
 Only use the servo calibration environment after the display-only build runs and the body is on a clear surface:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan_servo_calibration -ConfirmServoRisk -Monitor
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3
 ```
+
+For development builds from source, use `tools/flash_device.cmd`; for release evidence, use `tools/flash_release_firmware.cmd` so the tested device matches the verified package.
 
 The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.
 

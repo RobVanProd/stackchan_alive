@@ -59,6 +59,12 @@ Verify the package before sharing or publishing, or include it in the preflight:
 .\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip
 ```
 
+Flash the exact display-only firmware binary from a verified release package:
+
+```powershell
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Firmware display_only -Monitor
+```
+
 Publish a verified prerelease manually when GitHub Actions is unavailable:
 
 ```powershell
