@@ -118,6 +118,8 @@ $releaseTools = @(
   "tools/verify_hardware_evidence.ps1",
   "tools/verify_published_release.cmd",
   "tools/verify_published_release.ps1",
+  "tools/verify_architecture.cmd",
+  "tools/verify_architecture.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1"
 )
@@ -133,6 +135,7 @@ Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
+Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 
 function Invoke-CapturedText {
   param(
@@ -409,6 +412,8 @@ $manifest = [ordered]@{
     "tools/verify_hardware_evidence.ps1",
     "tools/verify_published_release.cmd",
     "tools/verify_published_release.ps1",
+    "tools/verify_architecture.cmd",
+    "tools/verify_architecture.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1"
   )
@@ -416,7 +421,8 @@ $manifest = [ordered]@{
     "provenance/platformio.ini",
     "provenance/requirements-preview.txt",
     "provenance/firmware.yml",
-    "provenance/release.yml"
+    "provenance/release.yml",
+    "provenance/src/main.cpp"
   )
 }
 

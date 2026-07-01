@@ -129,10 +129,13 @@ $requiredFiles = @(
   "tools/verify_hardware_evidence.ps1",
   "tools/verify_published_release.cmd",
   "tools/verify_published_release.ps1",
+  "tools/verify_architecture.cmd",
+  "tools/verify_architecture.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "provenance/firmware.yml",
   "provenance/platformio.ini",
+  "provenance/src/main.cpp",
   "provenance/release.yml",
   "provenance/requirements-preview.txt"
 )
