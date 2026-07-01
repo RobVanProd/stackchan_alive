@@ -120,6 +120,51 @@ function Assert-TextContains {
   }
 }
 
+function Write-SyntheticAcceptanceArtifacts {
+  param(
+    [string]$EvidenceRoot,
+    [string]$ReleaseTag,
+    [string]$Commit
+  )
+
+  @(
+    "# Release Acceptance",
+    "",
+    "Current decision: test-ready for device arrival.",
+    "",
+    "Consumer rollout decision: blocked pending hardware validation.",
+    "",
+    "## Still Required Before Consumer Rollout",
+    "- Display-only flash",
+    "- Servo calibration",
+    "- Mixed-mode soak",
+    "- Power-cycle recovery",
+    "- Hardware evidence verification"
+  ) | Set-Content -Path (Join-Path $EvidenceRoot "RELEASE_ACCEPTANCE.md") -Encoding UTF8
+
+  $acceptance = [ordered]@{
+    schema = "stackchan.release-acceptance.v1"
+    version = $ReleaseTag
+    commit = $Commit
+    currentDecision = "test-ready-for-device-arrival"
+    consumerRolloutDecision = "blocked-pending-hardware-validation"
+    noHardwareAcceptance = @(
+      [ordered]@{ requirement = "clean-release-package"; status = "pass" },
+      [ordered]@{ requirement = "dependency-provenance-present"; status = "pass" },
+      [ordered]@{ requirement = "voice-review-samples-present"; status = "pass" },
+      [ordered]@{ requirement = "servo-risk-gated"; status = "pass" }
+    )
+    hardwareAcceptanceRequired = @(
+      [ordered]@{ requirement = "display-only-flash"; status = "pending-hardware" },
+      [ordered]@{ requirement = "servo-calibration"; status = "pending-hardware" },
+      [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-hardware" },
+      [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-hardware" },
+      [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-hardware" }
+    )
+  }
+  $acceptance | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $EvidenceRoot "release_acceptance.json") -Encoding UTF8
+}
+
 function Assert-FlashHelperSafety {
   $flashScript = Join-Path $PSScriptRoot "flash_device.ps1"
 
@@ -233,6 +278,8 @@ function Assert-HardwareEvidenceMediaGate {
     "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
+    $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+    Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
 
     $observations = @(
       "# Hardware Test Observations",
@@ -299,7 +346,7 @@ function Assert-HardwareEvidenceMediaGate {
     )
 
     $metadata = [ordered]@{
-      releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+      releaseTag = $releaseTag
       commit = $ExpectedCommit
       createdUtc = "2026-07-01T00:00:00Z"
       deviceId = "SELFTEST"
@@ -313,6 +360,8 @@ function Assert-HardwareEvidenceMediaGate {
       )
       requiredRecords = @(
         "CHECKLIST.md",
+        "RELEASE_ACCEPTANCE.md",
+        "release_acceptance.json",
         "OBSERVATIONS.md",
         "calibration/calibration.yaml"
       )
@@ -350,6 +399,8 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
+    $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+    Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
 
     $observations = @(
       "# Hardware Test Observations",
@@ -412,7 +463,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     Copy-Item -LiteralPath "docs/media/stackchan_alive_preview.png" -Destination (Join-Path $photosDir "evidence.png")
 
     $metadata = [ordered]@{
-      releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+      releaseTag = $releaseTag
       commit = $ExpectedCommit
       createdUtc = "2026-07-01T00:00:00Z"
       deviceId = "SELFTEST"
@@ -426,6 +477,8 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       )
       requiredRecords = @(
         "CHECKLIST.md",
+        "RELEASE_ACCEPTANCE.md",
+        "release_acceptance.json",
         "OBSERVATIONS.md",
         "calibration/calibration.yaml"
       )
