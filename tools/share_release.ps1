@@ -310,6 +310,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "release_acceptance.json"); Name = "release_acceptance.json" },
   @{ Source = (Join-Path $packageRoot "GITHUB_ACTIONS_STATUS.md"); Name = "GITHUB_ACTIONS_STATUS.md" },
   @{ Source = (Join-Path $packageRoot "github_actions_status.json"); Name = "github_actions_status.json" },
+  @{ Source = (Join-Path $packageRoot "DEPENDENCIES.md"); Name = "DEPENDENCIES.md" },
+  @{ Source = (Join-Path $packageRoot "dependency_lock.json"); Name = "dependency_lock.json" },
   @{ Source = (Join-Path $packageRoot "READINESS_REPORT.md"); Name = "READINESS_REPORT.md" },
   @{ Source = (Join-Path $packageRoot "readiness_report.json"); Name = "readiness_report.json" },
   @{ Source = (Join-Path $packageRoot "SHA256SUMS.txt"); Name = "SHA256SUMS.txt" }
@@ -337,6 +339,7 @@ $sharedZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sharedZipPath).Ha
 
 $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
 $readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
+$dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
 $actionsStatusScript = Join-Path $packageRoot "tools/export_github_actions_status.ps1"
 if ((Get-Command "gh" -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $actionsStatusScript)) {
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $actionsStatusScript -Version $Version -Commit $manifest.commit -OutputDir $shareRoot
@@ -349,6 +352,11 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $passedGateCount = @($readiness.noHardwareProof | Where-Object { $_.status -eq "pass" }).Count
 $pendingGateCount = @($readiness.hardwareGates | Where-Object { $_.status -match "pending" }).Count
 $consumerRollout = [string]$readiness.consumerRollout
+$declaredDependencyCount = @($dependencyLock.declaredLibDeps).Count
+$directGitMissingRefCount = @($dependencyLock.dependencyAudit.directGitDepsMissingRef).Count
+$duplicateDependencyCount = @($dependencyLock.dependencyAudit.duplicateResolvedPackages).Count
+$unpinnedUpstreamGitCount = @($dependencyLock.dependencyAudit.unpinnedGitRequirements).Count
+$gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWithoutSha).Count
 
 @"
 <!doctype html>
@@ -387,6 +395,17 @@ $consumerRollout = [string]$readiness.consumerRollout
     <span class="pill pending">GitHub Actions: $($actionsStatus.status)</span>
   </div>
   <p><strong>GitHub Actions:</strong> $($actionsStatus.interpretation)</p>
+
+  <h2>Dependency Provenance</h2>
+  <p>The release ZIP includes copied build inputs, dependency provenance, and a machine-readable dependency lock. Direct Git dependencies are required to be pinned, and resolved Git packages must carry SHA evidence.</p>
+  <div class="status">
+    <span class="pill pass">Declared library deps: $declaredDependencyCount</span>
+    <span class="pill pass">Direct Git deps missing refs: $directGitMissingRefCount</span>
+    <span class="pill pass">Resolved Git deps without SHA: $gitResolvedWithoutShaCount</span>
+    <span class="pill pending">Duplicate resolved packages for review: $duplicateDependencyCount</span>
+    <span class="pill pending">Upstream unpinned Git declarations: $unpinnedUpstreamGitCount</span>
+  </div>
+  <p>The duplicate and upstream-unpinned entries are the known transitive <code>SCServo</code> declarations from <code>stackchan-arduino</code>; this project also declares <code>SCServo#ee6ee4a</code> directly.</p>
 
   <h2>Preview</h2>
   <p><img src="stackchan_alive_preview.png" alt="Stackchan Alive preview image"></p>
@@ -436,6 +455,8 @@ $consumerRollout = [string]$readiness.consumerRollout
     <div class="item"><a href="release_acceptance.json">Acceptance JSON</a></div>
     <div class="item"><a href="GITHUB_ACTIONS_STATUS.md">GitHub Actions Status</a></div>
     <div class="item"><a href="github_actions_status.json">Actions Status JSON</a></div>
+    <div class="item"><a href="DEPENDENCIES.md">Dependency Provenance</a></div>
+    <div class="item"><a href="dependency_lock.json">Dependency Lock JSON</a></div>
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="READINESS_REPORT.md">Readiness Report</a></div>
     <div class="item"><a href="readiness_report.json">Readiness JSON</a></div>
