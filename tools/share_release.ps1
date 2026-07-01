@@ -172,6 +172,28 @@ function Wait-PublicUrlReady {
   return (Test-PublicUrlReady -TargetUrl $TargetUrl)
 }
 
+function Find-CloudflarePublicUrl {
+  param([string[]]$LogPaths)
+
+  foreach ($logPath in $LogPaths) {
+    if (-not (Test-Path -LiteralPath $logPath)) {
+      continue
+    }
+
+    $logText = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrWhiteSpace($logText)) {
+      continue
+    }
+
+    $match = [regex]::Match($logText, "https://[-A-Za-z0-9]+\.trycloudflare\.com")
+    if ($match.Success) {
+      return $match.Value
+    }
+  }
+
+  return $null
+}
+
 function Write-StopHelper {
   param([int[]]$ProcessIds)
 
@@ -554,21 +576,16 @@ if ($CloudflareTunnel) {
   $publicUrlReady = $false
   $deadline = (Get-Date).AddSeconds($TunnelWaitSeconds)
   while ((Get-Date) -lt $deadline -and [string]::IsNullOrWhiteSpace($publicUrl)) {
-    foreach ($logPath in @($cloudflaredOutLog, $cloudflaredErrLog)) {
-      if (-not (Test-Path -LiteralPath $logPath)) {
-        continue
-      }
-
-      $logText = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
-      if ($logText -match "https://[-A-Za-z0-9]+\.trycloudflare\.com") {
-        $publicUrl = $Matches[0]
-        break
-      }
-    }
+    $publicUrl = Find-CloudflarePublicUrl -LogPaths @($cloudflaredOutLog, $cloudflaredErrLog)
 
     if ([string]::IsNullOrWhiteSpace($publicUrl)) {
       Start-Sleep -Milliseconds 500
     }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($publicUrl)) {
+    Start-Sleep -Seconds 2
+    $publicUrl = Find-CloudflarePublicUrl -LogPaths @($cloudflaredOutLog, $cloudflaredErrLog)
   }
 
   if ([string]::IsNullOrWhiteSpace($publicUrl)) {
