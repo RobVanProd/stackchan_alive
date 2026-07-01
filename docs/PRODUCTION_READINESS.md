@@ -7,7 +7,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Firmware builds for `m5stack-cores3`.
 - Display-only and servo-calibration firmware variants are separate PlatformIO environments.
 - Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
-- Release packages include dependency provenance and copied build inputs.
+- Release packages include dependency provenance, a machine-readable dependency lock, and copied build inputs.
 - Release packages are verified before publication in GitHub Actions.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
 - Release packages include a binary flasher that writes the exact packaged display-only or servo-calibration firmware.

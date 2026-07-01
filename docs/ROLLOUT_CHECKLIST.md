@@ -10,7 +10,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 - [ ] `pio test -e stackchan --without-uploading --without-testing` passes.
 - [ ] `tools/run_device_preflight.ps1` passes.
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
-- [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, copied build inputs, and checksums.
+- [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, `dependency_lock.json`, copied build inputs, and checksums.
 - [ ] `tools/verify_release_package.ps1` passes for the release ZIP.
 - [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
 - [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.

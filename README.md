@@ -49,7 +49,7 @@ Create an auditable prerelease package:
 .\tools\package_release.cmd -Version v0.1.2-device-ready
 ```
 
-The package includes firmware binaries, preview media, docs, checksums, dependency provenance, and copied build inputs.
+The package includes firmware binaries, preview media, docs, checksums, dependency provenance, a machine-readable dependency lock, and copied build inputs.
 By default the package command refuses to run from a dirty source worktree so the manifest commit matches the code and configuration; regenerated preview media is treated as a release artifact.
 
 Verify the package before sharing or publishing, or include it in the preflight:

@@ -87,6 +87,7 @@ function Assert-Bytes {
 
 $requiredFiles = @(
   "DEPENDENCIES.md",
+  "dependency_lock.json",
   "RELEASE_NOTES.md",
   "SHA256SUMS.txt",
   "release_manifest.json",
@@ -180,6 +181,10 @@ if ($manifest.dependencyReport -ne "DEPENDENCIES.md") {
   throw "Manifest dependencyReport mismatch: $($manifest.dependencyReport)"
 }
 
+if ($manifest.dependencyLock -ne "dependency_lock.json") {
+  throw "Manifest dependencyLock mismatch: $($manifest.dependencyLock)"
+}
+
 foreach ($file in @($manifest.includedTools)) {
   Assert-File $file
 }
@@ -204,6 +209,104 @@ foreach ($pattern in $dependencyPatterns) {
   if ($dependenciesText -notmatch [regex]::Escape($pattern)) {
     throw "DEPENDENCIES.md missing expected text: $pattern"
   }
+}
+
+$dependencyLockPath = Join-PackagePath "dependency_lock.json"
+$dependencyLock = Get-Content -LiteralPath $dependencyLockPath -Raw | ConvertFrom-Json
+
+if ($dependencyLock.schema -ne "stackchan.dependency-lock.v1") {
+  throw "dependency_lock.json schema mismatch: $($dependencyLock.schema)"
+}
+
+if ($dependencyLock.version -ne $Version) {
+  throw "dependency_lock.json version mismatch: expected $Version, got $($dependencyLock.version)"
+}
+
+if ($dependencyLock.commit -ne $ExpectedCommit) {
+  throw "dependency_lock.json commit mismatch: expected $ExpectedCommit, got $($dependencyLock.commit)"
+}
+
+if ($dependencyLock.platformioCore -notmatch "PlatformIO Core, version 6\.1\.19") {
+  throw "dependency_lock.json has unexpected PlatformIO version: $($dependencyLock.platformioCore)"
+}
+
+$expectedPreviewRequirements = @(
+  "pillow==12.2.0",
+  "imageio==2.37.3",
+  "imageio-ffmpeg==0.6.0"
+)
+$actualPreviewRequirements = @($dependencyLock.previewRequirements)
+foreach ($requirement in $expectedPreviewRequirements) {
+  if ($actualPreviewRequirements -notcontains $requirement) {
+    throw "dependency_lock.json missing preview requirement: $requirement"
+  }
+}
+
+foreach ($requirement in $actualPreviewRequirements) {
+  if ($requirement -notmatch "^[A-Za-z0-9_.-]+==[A-Za-z0-9_.-]+$") {
+    throw "dependency_lock.json has non-exact preview requirement: $requirement"
+  }
+}
+
+$expectedDeclaredLibDeps = @(
+  "https://github.com/stack-chan/stackchan-arduino.git#b7b98f5",
+  "bblanchon/ArduinoJson@7.4.3",
+  "robotis-git/Dynamixel2Arduino@0.7.0",
+  "madhephaestus/ESP32Servo@0.13.0",
+  "M5Stack/M5Unified@0.2.17",
+  "M5GFX@0.2.24",
+  "https://github.com/mongonta0716/SCServo.git#ee6ee4a",
+  "arminjo/ServoEasing@3.1.0",
+  "tobozo/YAMLDuino@1.5.0"
+)
+$actualDeclaredLibDeps = @($dependencyLock.declaredLibDeps)
+foreach ($dep in $expectedDeclaredLibDeps) {
+  if ($actualDeclaredLibDeps -notcontains $dep) {
+    throw "dependency_lock.json missing declared lib dependency: $dep"
+  }
+}
+
+foreach ($dep in $actualDeclaredLibDeps) {
+  if ($dep -notmatch "(@|#)[A-Za-z0-9_.-]+$") {
+    throw "dependency_lock.json has unpinned declared lib dependency: $dep"
+  }
+}
+
+function Assert-LockedPackage {
+  param(
+    [object[]]$Packages,
+    [string]$Name,
+    [string]$VersionPattern
+  )
+
+  $matches = @($Packages | Where-Object { $_.name -eq $Name -and $_.version -match $VersionPattern })
+  if ($matches.Count -eq 0) {
+    throw "dependency_lock.json missing locked package $Name matching $VersionPattern"
+  }
+}
+
+foreach ($envName in @("stackchan", "stackchan_servo_calibration")) {
+  $envLock = $dependencyLock.environments.$envName
+  if ($null -eq $envLock) {
+    throw "dependency_lock.json missing environment: $envName"
+  }
+  if ($envLock.board -ne "m5stack-cores3") {
+    throw "dependency_lock.json board mismatch for $envName`: $($envLock.board)"
+  }
+  if ($envLock.framework -ne "arduino") {
+    throw "dependency_lock.json framework mismatch for $envName`: $($envLock.framework)"
+  }
+  if ($envLock.platform -ne "espressif32@7.0.1") {
+    throw "dependency_lock.json platform mismatch for $envName`: $($envLock.platform)"
+  }
+
+  $packages = @($envLock.resolvedPackages)
+  Assert-LockedPackage $packages "espressif32" "^7\.0\.1$"
+  Assert-LockedPackage $packages "framework-arduinoespressif32" "^3\.20017\.241212\+sha\.dcc1105b$"
+  Assert-LockedPackage $packages "tool-esptoolpy" "^2\.41100\.0$"
+  Assert-LockedPackage $packages "toolchain-xtensa-esp32s3" "^8\.4\.0\+2021r2-patch5$"
+  Assert-LockedPackage $packages "stackchan-arduino" "sha\.b7b98f5$"
+  Assert-LockedPackage $packages "SCServo" "sha\.ee6ee4a$"
 }
 
 $releaseNotes = Get-Content -LiteralPath (Join-PackagePath "RELEASE_NOTES.md") -Raw

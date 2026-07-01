@@ -145,10 +145,70 @@ function Invoke-CapturedText {
   }
 }
 
+function Get-DeclaredLibDeps {
+  $platformioLines = Get-Content -LiteralPath "platformio.ini"
+  $libDeps = @()
+  $insideLibDeps = $false
+
+  foreach ($line in $platformioLines) {
+    if ($line -match "^\s*lib_deps\s*=") {
+      $insideLibDeps = $true
+      continue
+    }
+
+    if ($insideLibDeps) {
+      if ($line -match "^\s*\S+\s*=" -or $line -match "^\[.+\]") {
+        $insideLibDeps = $false
+      } elseif ($line -match "^\s+(.+?)\s*$") {
+        $dep = $Matches[1].Trim()
+        if (-not [string]::IsNullOrWhiteSpace($dep) -and -not $dep.StartsWith('$')) {
+          $libDeps += $dep
+        }
+      }
+    }
+  }
+
+  return @($libDeps)
+}
+
+function Convert-PioPackageList {
+  param([string]$Text)
+
+  $entries = @()
+  foreach ($line in ($Text -split "`r?`n")) {
+    $clean = ($line -replace "^[^A-Za-z0-9]+", "").Trim()
+    if ($clean -match "^Platform\s+(.+?)\s+@\s+([^\s]+)\s+\(required:\s*(.+)\)$") {
+      $entries += [ordered]@{
+        kind = "platform"
+        name = $Matches[1]
+        version = $Matches[2]
+        required = $Matches[3]
+      }
+    } elseif ($clean -match "^(.+?)\s+@\s+([^\s]+)\s+\(required:\s*(.+)\)$") {
+      $entries += [ordered]@{
+        kind = "package"
+        name = $Matches[1]
+        version = $Matches[2]
+        required = $Matches[3]
+      }
+    }
+  }
+
+  return @($entries)
+}
+
 $platformioVersion = Invoke-CapturedText { platformio --version }
 $displayDeps = Invoke-CapturedText { platformio pkg list -e stackchan }
 $servoDeps = Invoke-CapturedText { platformio pkg list -e stackchan_servo_calibration }
 $previewRequirements = (Get-Content -LiteralPath "requirements-preview.txt" -Raw).TrimEnd()
+$previewRequirementEntries = @(
+  Get-Content -LiteralPath "requirements-preview.txt" |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and -not $_.StartsWith("#") }
+)
+$declaredLibDeps = Get-DeclaredLibDeps
+$displayResolvedPackages = Convert-PioPackageList $displayDeps
+$servoResolvedPackages = Convert-PioPackageList $servoDeps
 
 @"
 # Dependency Provenance
@@ -184,6 +244,31 @@ $servoDeps
 ``````
 "@ | Set-Content -Path (Join-Path $outDir "DEPENDENCIES.md") -Encoding UTF8
 
+$dependencyLock = [ordered]@{
+  schema = "stackchan.dependency-lock.v1"
+  version = $Version
+  commit = $commit
+  generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  platformioCore = $platformioVersion
+  previewRequirements = @($previewRequirementEntries)
+  declaredLibDeps = @($declaredLibDeps)
+  environments = [ordered]@{
+    stackchan = [ordered]@{
+      board = "m5stack-cores3"
+      framework = "arduino"
+      platform = "espressif32@7.0.1"
+      resolvedPackages = @($displayResolvedPackages)
+    }
+    stackchan_servo_calibration = [ordered]@{
+      board = "m5stack-cores3"
+      framework = "arduino"
+      platform = "espressif32@7.0.1"
+      resolvedPackages = @($servoResolvedPackages)
+    }
+  }
+}
+$dependencyLock | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "dependency_lock.json") -Encoding UTF8
+
 $manifest = [ordered]@{
   version = $Version
   commit = $commit
@@ -198,6 +283,7 @@ $manifest = [ordered]@{
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
   dependencyReport = "DEPENDENCIES.md"
+  dependencyLock = "dependency_lock.json"
   includedTools = @(
     "tools/flash_device.cmd",
     "tools/flash_device.ps1",
@@ -235,7 +321,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 
