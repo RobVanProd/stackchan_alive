@@ -5,6 +5,8 @@ param(
   [switch]$CloudflareTunnel,
   [switch]$DownloadCloudflared,
   [int]$TunnelWaitSeconds = 30,
+  [int]$PublicUrlReadyWaitSeconds = 120,
+  [int]$PublicUrlReadyPollSeconds = 2,
   [switch]$StopAfterUrl,
   [switch]$NoServe
 )
@@ -58,6 +60,7 @@ function Write-ShareStatus {
   param(
     [string]$Status,
     [string]$PublicUrl = "",
+    [bool]$PublicUrlReady = $false,
     [int[]]$ProcessIds = @()
   )
 
@@ -68,6 +71,7 @@ function Write-ShareStatus {
     updatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     localUrl = "http://$BindAddress`:$Port/"
     publicUrl = $PublicUrl
+    publicUrlReady = $PublicUrlReady
     processIds = @($ProcessIds)
     shareRoot = $shareRoot
   }
@@ -76,6 +80,96 @@ function Write-ShareStatus {
   if (-not [string]::IsNullOrWhiteSpace($PublicUrl)) {
     $PublicUrl | Set-Content -Path (Join-Path $shareRoot "PUBLIC_URL.txt") -Encoding ASCII
   }
+}
+
+function Test-PublicUrlReady {
+  param([string]$TargetUrl)
+
+  if ([string]::IsNullOrWhiteSpace($TargetUrl)) {
+    return $false
+  }
+
+  $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+  if ($null -ne $curl) {
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+      $head = & $curl.Source -L -I --max-time 10 --silent --show-error $TargetUrl 2>&1
+      $curlExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $oldErrorActionPreference
+    }
+
+    if ($curlExitCode -eq 0 -and (($head | Out-String) -match "HTTP/\S+\s+200\s")) {
+      return $true
+    }
+
+    if ($curlExitCode -ne 0 -and ($head | Out-String) -match "Could not resolve host") {
+      try {
+        $uri = [System.Uri]$TargetUrl
+        if ($uri.Scheme -eq "https" -and $uri.Host -match "\.trycloudflare\.com$") {
+          $resolvedAddress = Resolve-DnsName $uri.Host -Server 1.1.1.1 -Type A -ErrorAction Stop |
+            Select-Object -First 1 -ExpandProperty IPAddress
+          if (-not [string]::IsNullOrWhiteSpace($resolvedAddress)) {
+            $resolveArg = "$($uri.Host):443:$resolvedAddress"
+            $oldErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+              $head = & $curl.Source -L -I --resolve $resolveArg --max-time 10 --silent --show-error $TargetUrl 2>&1
+              $curlExitCode = $LASTEXITCODE
+            } finally {
+              $ErrorActionPreference = $oldErrorActionPreference
+            }
+
+            if ($curlExitCode -eq 0 -and (($head | Out-String) -match "HTTP/\S+\s+200\s")) {
+              return $true
+            }
+          }
+        }
+      } catch {
+      }
+    }
+  }
+
+  try {
+    $response = Invoke-WebRequest -Uri $TargetUrl -Method Get -TimeoutSec 10 -UseBasicParsing
+    return ([int]$response.StatusCode -eq 200)
+  } catch {
+    return $false
+  }
+}
+
+function Wait-LocalUrlReady {
+  param([string]$TargetUrl)
+
+  $deadline = (Get-Date).AddSeconds(15)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-PublicUrlReady -TargetUrl $TargetUrl) {
+      return $true
+    }
+
+    Start-Sleep -Milliseconds 500
+  }
+
+  return (Test-PublicUrlReady -TargetUrl $TargetUrl)
+}
+
+function Wait-PublicUrlReady {
+  param([string]$TargetUrl)
+
+  $readyWaitSeconds = [Math]::Max(0, $PublicUrlReadyWaitSeconds)
+  $pollSeconds = [Math]::Max(1, $PublicUrlReadyPollSeconds)
+  $deadline = (Get-Date).AddSeconds($readyWaitSeconds)
+
+  while ((Get-Date) -lt $deadline) {
+    if (Test-PublicUrlReady -TargetUrl $TargetUrl) {
+      return $true
+    }
+
+    Start-Sleep -Seconds $pollSeconds
+  }
+
+  return (Test-PublicUrlReady -TargetUrl $TargetUrl)
 }
 
 function Write-StopHelper {
@@ -392,6 +486,12 @@ $server.Id | Set-Content -Path (Join-Path $shareRoot "server.pid") -Encoding ASC
 Write-StopHelper -ProcessIds @($server.Id)
 Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
 Write-Host "Started local server PID $($server.Id)"
+$localUrl = "http://$BindAddress`:$Port/"
+Write-Host "Waiting for local share page to answer..."
+if (-not (Wait-LocalUrlReady -TargetUrl $localUrl)) {
+  Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+  throw "Local share page did not answer before the readiness timeout: $localUrl"
+}
 
 if ($CloudflareTunnel) {
   $cloudflaredOutLog = Join-Path $shareRoot "cloudflared.stdout.log"
@@ -407,6 +507,7 @@ if ($CloudflareTunnel) {
   Write-Host "Waiting up to $TunnelWaitSeconds seconds for the public tunnel URL..."
 
   $publicUrl = $null
+  $publicUrlReady = $false
   $deadline = (Get-Date).AddSeconds($TunnelWaitSeconds)
   while ((Get-Date) -lt $deadline -and [string]::IsNullOrWhiteSpace($publicUrl)) {
     foreach ($logPath in @($cloudflaredOutLog, $cloudflaredErrLog)) {
@@ -432,16 +533,26 @@ if ($CloudflareTunnel) {
     Write-Host "Cloudflared stdout log: $cloudflaredOutLog"
     Write-Host "Cloudflared stderr log: $cloudflaredErrLog"
   } else {
-    Write-ShareStatus -Status "tunnel-ready" -PublicUrl $publicUrl -ProcessIds @($server.Id, $tunnel.Id)
     Write-Host "Public tunnel URL:"
     Write-Host $publicUrl
+    Write-Host "Waiting up to $PublicUrlReadyWaitSeconds seconds for the public tunnel page to answer..."
+    $publicUrlReady = Wait-PublicUrlReady -TargetUrl $publicUrl
+    if ($publicUrlReady) {
+      Write-ShareStatus -Status "tunnel-ready" -PublicUrl $publicUrl -PublicUrlReady $true -ProcessIds @($server.Id, $tunnel.Id)
+      Write-Host "Public tunnel page is ready."
+    } else {
+      Write-ShareStatus -Status "tunnel-url-pending" -PublicUrl $publicUrl -PublicUrlReady $false -ProcessIds @($server.Id, $tunnel.Id)
+      Write-Warning "Cloudflare tunnel URL was found, but the public page did not answer before the readiness timeout."
+      Write-Host "Cloudflared stdout log: $cloudflaredOutLog"
+      Write-Host "Cloudflared stderr log: $cloudflaredErrLog"
+    }
   }
 
   if ($StopAfterUrl) {
     $stopIds = @($server.Id, $tunnel.Id)
     Stop-Process -Id $stopIds -Force -ErrorAction SilentlyContinue
     Wait-Process -Id $stopIds -Timeout 5 -ErrorAction SilentlyContinue
-    Write-ShareStatus -Status "stopped-after-url" -PublicUrl $publicUrl -ProcessIds @($stopIds)
+    Write-ShareStatus -Status "stopped-after-url" -PublicUrl $publicUrl -PublicUrlReady $publicUrlReady -ProcessIds @($stopIds)
     Write-Host "Stopped sharing processes after tunnel check."
     exit 0
   }

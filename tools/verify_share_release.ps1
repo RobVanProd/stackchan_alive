@@ -3,7 +3,9 @@ param(
   [string]$ShareRoot = "",
   [string]$Url = "",
   [switch]$RequirePublicUrl,
-  [int]$TimeoutSeconds = 20
+  [int]$TimeoutSeconds = 20,
+  [int]$ProbeRetries = 20,
+  [int]$ProbeDelaySeconds = 3
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,11 +41,15 @@ function Join-Url {
 function Invoke-UrlProbe {
   param(
     [string]$TargetUrl,
-    [int]$TimeoutSeconds
+    [int]$TimeoutSeconds,
+    [int]$ProbeRetries,
+    [int]$ProbeDelaySeconds
   )
 
+  $maxAttempts = [Math]::Max(1, $ProbeRetries)
+  $delaySeconds = [Math]::Max(0, $ProbeDelaySeconds)
   $lastError = ""
-  for ($attempt = 1; $attempt -le 6; $attempt++) {
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
     if ($null -ne $curl) {
       $curlArgs = @("-L", "-I", "--max-time", $TimeoutSeconds, "--silent", "--show-error", $TargetUrl)
@@ -112,12 +118,12 @@ function Invoke-UrlProbe {
       $lastError = $_.Exception.Message
     }
 
-    if ($attempt -lt 6) {
-      Start-Sleep -Seconds 2
+    if ($attempt -lt $maxAttempts -and $delaySeconds -gt 0) {
+      Start-Sleep -Seconds $delaySeconds
     }
   }
 
-  throw "Share URL probe failed after retries for $TargetUrl. Last error: $lastError"
+  throw "Share URL probe failed after $maxAttempts retries for $TargetUrl. Last error: $lastError"
 }
 
 function Assert-HttpOk {
@@ -240,7 +246,7 @@ foreach ($pattern in @($Version, "Hardware validation is still pending", "No-har
 $probes = @()
 foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt") }) {
   $path = if ($file.Path -eq "index.html") { "/" } else { $file.Path }
-  $probe = Invoke-UrlProbe -TargetUrl (Join-Url $Url $path) -TimeoutSeconds $TimeoutSeconds
+  $probe = Invoke-UrlProbe -TargetUrl (Join-Url $Url $path) -TimeoutSeconds $TimeoutSeconds -ProbeRetries $ProbeRetries -ProbeDelaySeconds $ProbeDelaySeconds
   Assert-HttpOk -Probe $probe -ExpectedType $file.Type -Path $path
   $probes += [pscustomobject]$probe
 }

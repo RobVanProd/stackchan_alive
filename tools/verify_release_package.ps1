@@ -177,16 +177,16 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "publicUrlReady")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
-    throw "tools/share_release.ps1 missing required ZIP hash sidecar logic: $pattern"
+    throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
 }
 
 $shareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_share_release.ps1") -Raw
-foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk")) {
+foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk", "ProbeRetries", "ProbeDelaySeconds")) {
   if ($shareVerifierText -notmatch [regex]::Escape($pattern)) {
-    throw "tools/verify_share_release.ps1 missing required remote checksum verification logic: $pattern"
+    throw "tools/verify_share_release.ps1 missing required remote verification logic: $pattern"
   }
 }
 
