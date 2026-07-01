@@ -313,6 +313,8 @@ $readme = @(
   "",
   "Promotion verification expects OBSERVATIONS.md to record passing values: Result = pass/ok/success, reset/heat/brownout/stall/jitter observed = no, procedural face and dry-run servo log observed = yes, yaw classification = angle/velocity/disabled, soak Duration >= 30 minutes, and USB power-cycle recovery = pass/ok/success.",
   "",
+  "Promotion verification also expects serial logs to include firmware markers: display-only boot ``mode=display_only``, servo-calibration boot ``mode=servo_calibration``, display readiness, servo dry-run or hardware-enable line, and soak heartbeat ``[heartbeat] stackchan_alive ... uptime_ms=...``.",
+  "",
   "Promotion verification also requires at least one valid media file under photos/: .png, .jpg, .jpeg, .gif, .mp4, .mov, or .webm. Text placeholders, header-only files, tiny files, and images without plausible dimensions do not count as photo/video evidence.",
   "",
   "## Suggested Commands",

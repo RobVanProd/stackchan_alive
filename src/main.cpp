@@ -26,6 +26,27 @@ ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
 
+const __FlashStringHelper* firmwareMode() {
+#if STACKCHAN_ENABLE_SERVOS
+  return F("servo_calibration");
+#else
+  return F("display_only");
+#endif
+}
+
+void printBootMarker() {
+  Serial.print(F("[boot] stackchan_alive mode="));
+  Serial.print(firmwareMode());
+  Serial.println(F(" serial=v1"));
+}
+
+void printHeartbeat() {
+  Serial.print(F("[heartbeat] stackchan_alive mode="));
+  Serial.print(firmwareMode());
+  Serial.print(F(" uptime_ms="));
+  Serial.println(millis());
+}
+
 void publishFrame(const RobotFrame& frame) {
   if (gFrameQueue != nullptr) {
     xQueueOverwrite(gFrameQueue, &frame);
@@ -85,6 +106,7 @@ void setup() {
   M5.Log.setLogLevel(m5::log_target_serial, ESP_LOG_INFO);
   M5.Log.setEnableColor(m5::log_target_serial, false);
   delay(200);
+  printBootMarker();
   randomSeed(esp_random());
 
   gFrameQueue = xQueueCreate(1, sizeof(RobotFrame));
@@ -112,6 +134,12 @@ void setup() {
 
 void loop() {
   M5.update();
+  static uint32_t lastHeartbeatMs = 0;
+  const uint32_t nowMs = millis();
+  if (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 10000) {
+    lastHeartbeatMs = nowMs;
+    printHeartbeat();
+  }
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
 #endif

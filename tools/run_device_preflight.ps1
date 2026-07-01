@@ -273,10 +273,25 @@ function Assert-HardwareEvidenceMediaGate {
       "yaw_max_deg: 30"
     ) | Set-Content -Path (Join-Path $calibrationDir "calibration.yaml") -Encoding UTF8
 
-    $logText = "synthetic serial log line for verifier negative-test coverage. " * 4
-    $logText | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
-    $logText | Set-Content -Path (Join-Path $logsDir "servo_calibration_serial.log") -Encoding UTF8
-    $logText | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
+    @(
+      "[boot] stackchan_alive mode=display_only serial=v1",
+      "[display] M5 display renderer ready",
+      "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
+      "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
+      "synthetic display log line for verifier negative-test coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
+    @(
+      "[boot] stackchan_alive mode=servo_calibration serial=v1",
+      "[display] M5 display renderer ready",
+      "[servo] enabling StackchanSERVO hardware output",
+      "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=10000",
+      "synthetic servo log line for verifier negative-test coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "servo_calibration_serial.log") -Encoding UTF8
+    @(
+      "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
+      "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
+      "synthetic soak log line for verifier negative-test coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
 
     [System.IO.File]::WriteAllBytes(
       (Join-Path $photosDir "header_only.png"),

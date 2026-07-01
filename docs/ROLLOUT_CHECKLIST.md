@@ -4,6 +4,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 
 When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pass`, reset/heat/brownout/stall/jitter observed fields as `no`, `Procedural face visible: yes`, `Dry-run servo log observed: yes`, `Yaw classification: angle`, `velocity`, or `disabled`, soak `Duration` of at least `30 minutes`, and `USB power-cycle recovery: pass`.
 Promotion evidence must include at least one real photo or video under `photos/`: `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp4`, `.mov`, or `.webm`. Text placeholders do not count.
+Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
 
 ## Build Evidence
 
