@@ -124,6 +124,8 @@ $requiredFiles = @(
   "media/voice/stackchan_spark_greeting.wav",
   "media/voice/stackchan_spark_thinking.wav",
   "media/voice/stackchan_spark_safety.wav",
+  "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
+  "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
   "media/voice/VOICE_SAMPLES.md",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
@@ -289,6 +291,8 @@ Assert-File "media/stackchan_alive_preview.mp4" 1000
 Assert-File "media/voice/stackchan_spark_greeting.wav" 1000
 Assert-File "media/voice/stackchan_spark_thinking.wav" 1000
 Assert-File "media/voice/stackchan_spark_safety.wav" 1000
+Assert-File "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" 1000
+Assert-File "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" 1000
 Assert-File "media/voice/VOICE_SAMPLES.md" 100
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
@@ -298,6 +302,8 @@ Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x7
 Assert-Bytes "media/voice/stackchan_spark_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 
 & (Join-PackagePath "tools/verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
 
@@ -391,6 +397,8 @@ $expectedMediaArtifacts = @(
   "media/voice/stackchan_spark_greeting.wav",
   "media/voice/stackchan_spark_thinking.wav",
   "media/voice/stackchan_spark_safety.wav",
+  "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
+  "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
   "media/voice/VOICE_SAMPLES.md"
 )
 $actualMediaArtifacts = @($manifest.mediaArtifacts)

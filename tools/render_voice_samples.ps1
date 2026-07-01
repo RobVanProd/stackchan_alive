@@ -256,13 +256,51 @@ def stackchan_spark_synth(rate, samples):
         out[-1 - i] *= ramp
     return out
 
+def lowpass(samples, amount):
+    out = []
+    state = 0.0
+    for sample in samples:
+        state += amount * (sample - state)
+        out.append(state)
+    return out
+
+def audition_warm_slow(rate, samples):
+    slowed = resample_linear(samples, 1.10)
+    rounded = lowpass(slowed, 0.34)
+    out = []
+    for i, sample in enumerate(rounded):
+        t = i / rate
+        motion = 0.96 + 0.04 * math.sin(2.0 * math.pi * 5.1 * t)
+        out.append(math.tanh(sample * 1.18) * motion)
+    return out
+
+def audition_bright_robot(rate, samples):
+    held = sample_hold(samples, rate, 8200.0)
+    delay = max(1, int(rate * 0.0038))
+    comb = [0.0] * delay
+    out = [0.0] * len(held)
+    prev = 0.0
+    for i, sample in enumerate(held):
+        t = i / rate
+        edge = sample - 0.44 * prev
+        prev = sample
+        carrier = 0.76 + 0.20 * math.sin(2.0 * math.pi * 58.0 * t) + 0.06 * math.sin(2.0 * math.pi * 116.0 * t)
+        resonant = edge + 0.42 * comb[i % delay]
+        comb[i % delay] = resonant
+        out[i] = round(math.tanh(resonant * 2.05) * carrier * 46.0) / 46.0
+    return out
+
 for name in sorted(os.listdir(source_dir)):
     if not name.endswith("-source.wav"):
         continue
     slug = name[:-len("-source.wav")]
     rate, samples = read_wav(os.path.join(source_dir, name))
+    processed = stackchan_spark_synth(rate, samples)
     out_path = os.path.join(out_dir, f"stackchan_spark_{slug}.wav")
-    write_wav(out_path, rate, stackchan_spark_synth(rate, samples))
+    write_wav(out_path, rate, processed)
+    if slug == "greeting":
+        write_wav(os.path.join(out_dir, "stackchan_spark_audition_warm_slow_greeting.wav"), rate, audition_warm_slow(rate, processed))
+        write_wav(os.path.join(out_dir, "stackchan_spark_audition_bright_robot_greeting.wav"), rate, audition_bright_robot(rate, processed))
 "@ | Set-Content -Path $effectScript -Encoding UTF8
 
   & $pythonPath $effectScript $tempDir $outputPath
@@ -293,6 +331,10 @@ Generated source:
 
 Samples:
 $sampleList
+
+Audition variants:
+- ``stackchan_spark_audition_warm_slow_greeting.wav``: warmer, slightly slower review pass for small-speaker intelligibility
+- ``stackchan_spark_audition_bright_robot_greeting.wav``: brighter, more synthetic review pass with stronger ring/comb edge
 
 Rollout note: these WAVs are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
 "@ | Set-Content -Path (Join-Path $outputPath "VOICE_SAMPLES.md") -Encoding UTF8

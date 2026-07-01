@@ -325,6 +325,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav"); Name = "voice/stackchan_spark_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav"); Name = "voice/stackchan_spark_thinking.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"); Name = "voice/stackchan_spark_safety.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav"); Name = "voice/stackchan_spark_audition_warm_slow_greeting.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav"); Name = "voice/stackchan_spark_audition_bright_robot_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
@@ -458,6 +460,20 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
       <p class="transcript"><strong>Transcript:</strong> Small problem found. I can help fix it. Safety first.</p>
       <p><a href="voice/stackchan_spark_safety.wav">Download WAV</a></p>
     </div>
+    <div class="item">
+      <strong>Audition: Warm Slow</strong>
+      <audio src="voice/stackchan_spark_audition_warm_slow_greeting.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Warmer and slightly slower for small-speaker intelligibility checks.</p>
+      <p><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>Audition: Bright Robot</strong>
+      <audio src="voice/stackchan_spark_audition_bright_robot_greeting.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Brighter and more synthetic for stronger robot character checks.</p>
+      <p><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Download WAV</a></p>
+    </div>
   </div>
   <h3>Voice Review Checklist</h3>
   <ul class="checklist">
@@ -485,6 +501,8 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <div class="item"><a href="stackchan_alive_preview.mp4">Preview MP4</a></div>
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
+    <div class="item"><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Warm Slow Voice Audition</a></div>
+    <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
     <div class="item"><a href="ARRIVAL_DAY_RUNBOOK.md">Arrival-Day Runbook</a></div>

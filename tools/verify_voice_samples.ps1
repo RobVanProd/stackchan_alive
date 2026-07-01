@@ -105,7 +105,9 @@ function Read-StackchanWavInfo {
 $expected = @(
   [pscustomobject]@{ file = "stackchan_spark_greeting.wav"; minDuration = 4.8; maxDuration = 7.1 },
   [pscustomobject]@{ file = "stackchan_spark_thinking.wav"; minDuration = 6.4; maxDuration = 9.2 },
-  [pscustomobject]@{ file = "stackchan_spark_safety.wav"; minDuration = 6.4; maxDuration = 9.2 }
+  [pscustomobject]@{ file = "stackchan_spark_safety.wav"; minDuration = 6.4; maxDuration = 9.2 },
+  [pscustomobject]@{ file = "stackchan_spark_audition_warm_slow_greeting.wav"; minDuration = 5.4; maxDuration = 8.1 },
+  [pscustomobject]@{ file = "stackchan_spark_audition_bright_robot_greeting.wav"; minDuration = 4.8; maxDuration = 7.1 }
 )
 
 $results = @()
@@ -146,6 +148,9 @@ foreach ($pattern in @(
   "sample-hold texture",
   "comb-filter resonance",
   "tiny synthetic chirps",
+  "Audition variants",
+  "warmer, slightly slower",
+  "brighter, more synthetic",
   "not a Johnny 5 clone",
   "not trained from soundboard clips"
 )) {

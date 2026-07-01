@@ -111,6 +111,8 @@ $voiceMediaFiles = @(
   "docs/media/voice/stackchan_spark_greeting.wav",
   "docs/media/voice/stackchan_spark_thinking.wav",
   "docs/media/voice/stackchan_spark_safety.wav",
+  "docs/media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
+  "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
   "docs/media/voice/VOICE_SAMPLES.md"
 )
 
@@ -466,6 +468,8 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_greeting.wav",
     "media/voice/stackchan_spark_thinking.wav",
     "media/voice/stackchan_spark_safety.wav",
+    "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
+    "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
     "media/voice/VOICE_SAMPLES.md"
   )
   includedTools = @(
@@ -561,7 +565,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
     [ordered]@{ gate = "preview-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_preview.mp4, media/stackchan_alive_preview.gif" },
-    [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
+    [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
@@ -599,7 +603,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
     [ordered]@{ requirement = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
-    [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
+    [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
@@ -634,7 +638,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Checksums present: ``SHA256SUMS.txt``
 - [x] GitHub Actions status report present: ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``
 - [x] Visual review media present: preview image, expression sheet, and preview video
-- [x] Voice review samples present: Stackchan Spark greeting, thinking, and safety WAVs
+- [x] Voice review samples present: Stackchan Spark greeting, thinking, safety, warm-slow audition, and bright-robot audition WAVs
 - [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
@@ -669,7 +673,7 @@ Consumer rollout: blocked pending hardware validation
 - Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
-- Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; current WAVs remain prototype review samples until a licensed or owned production source is recorded.
+- Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 

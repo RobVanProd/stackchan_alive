@@ -206,6 +206,8 @@ if (-not $releaseExists) {
       (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav") `
       (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav") `
       (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav") `
       (Join-Path $stageDir "firmware-display-only.bin") `
       (Join-Path $stageDir "firmware-servo-calibration.bin") `
       (Join-Path $stageDir "bootloader.bin") `

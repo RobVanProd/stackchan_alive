@@ -13,4 +13,8 @@ Samples:
 - `stackchan_spark_thinking.wav`: Thinking - "Input received. I am thinking now. Curiosity level rising."
 - `stackchan_spark_safety.wav`: Safety - "Small problem found. I can help fix it. Safety first."
 
+Audition variants:
+- `stackchan_spark_audition_warm_slow_greeting.wav`: warmer, slightly slower review pass for small-speaker intelligibility
+- `stackchan_spark_audition_bright_robot_greeting.wav`: brighter, more synthetic review pass with stronger ring/comb edge
+
 Rollout note: these WAVs are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
