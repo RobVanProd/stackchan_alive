@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include <cmath>
 #include <cstring>
 
 #include "face/ExpressionMapper.hpp"
@@ -184,6 +185,58 @@ void test_face_animator_uses_mode_authored_pose_keys() {
   TEST_ASSERT_NOT_EQUAL(concern.leftCorners.tl, concern.rightCorners.tl);
 }
 
+void test_face_animator_autonomic_layer_adds_life_over_time() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Idle;
+  frame.emotion.focus = 0.45f;
+  frame.emotion.arousal = 0.35f;
+  frame.face.eyeOpen = 0.85f;
+
+  float minEyeOpen = 2.0f;
+  float maxEyeWidthScale = 0.0f;
+  float minBreathY = 100.0f;
+  float maxBreathY = -100.0f;
+
+  for (uint32_t t = 0; t <= 10000; t += 33) {
+    const FaceTargets face = animator.composeFrame(frame, t);
+    const FaceAutonomicTelemetry& telemetry = animator.autonomicTelemetry();
+    minEyeOpen = min(minEyeOpen, face.eyeOpen);
+    maxEyeWidthScale = max(maxEyeWidthScale, face.eyeWidthScale);
+    minBreathY = min(minBreathY, telemetry.breathY);
+    maxBreathY = max(maxBreathY, telemetry.breathY);
+  }
+
+  const FaceAutonomicTelemetry& telemetry = animator.autonomicTelemetry();
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2, telemetry.blinkCount);
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2, telemetry.saccadeCount);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.65f, minEyeOpen);
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.02f, maxEyeWidthScale);
+  TEST_ASSERT_GREATER_THAN_FLOAT(2.0f, maxBreathY - minBreathY);
+}
+
+void test_face_animator_reduced_motion_dampens_autonomic_offsets() {
+  FaceAnimator fullMotion;
+  FaceAnimator reducedMotion;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Idle;
+  frame.emotion.focus = 0.45f;
+  frame.emotion.arousal = 0.35f;
+  frame.face.eyeOpen = 0.85f;
+  reducedMotion.setReducedMotion(true);
+
+  float fullMaxOffset = 0.0f;
+  float reducedMaxOffset = 0.0f;
+  for (uint32_t t = 0; t <= 6000; t += 33) {
+    const FaceTargets fullFace = fullMotion.composeFrame(frame, t);
+    const FaceTargets reducedFace = reducedMotion.composeFrame(frame, t);
+    fullMaxOffset = max(fullMaxOffset, fabsf(fullFace.faceY));
+    reducedMaxOffset = max(reducedMaxOffset, fabsf(reducedFace.faceY));
+  }
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(reducedMaxOffset * 2.0f, fullMaxOffset);
+}
+
 void test_robot_frame_carries_character_mode_for_renderer() {
   RobotFrame frame = makeNeutralFrame();
   frame.mode = CharacterMode::Listen;
@@ -328,6 +381,8 @@ int main() {
   RUN_TEST(test_face_animator_outback_overshoots_then_settles);
   RUN_TEST(test_face_animator_smooths_channels_with_independent_timing);
   RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
+  RUN_TEST(test_face_animator_autonomic_layer_adds_life_over_time);
+  RUN_TEST(test_face_animator_reduced_motion_dampens_autonomic_offsets);
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);

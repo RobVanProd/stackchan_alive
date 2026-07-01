@@ -3,8 +3,6 @@
 #include "face/EyeGeometry.hpp"
 #include "face/FaceAnimator.hpp"
 #include "face/MouthGeometry.hpp"
-#include "motion/Blink.hpp"
-#include "motion/Saccade.hpp"
 #include "persona/StateMatrix.hpp"
 
 namespace stackchan {
@@ -27,11 +25,9 @@ class ProceduralFace {
  private:
   IDisplay* display_ = nullptr;
   FaceAnimator animator_;
-  BlinkGenerator blink_;
-  SaccadeGenerator saccade_;
 
-  EyeGeometry makeEye(const RobotFrame& frame, bool rightEye, float blinkRatio, float aliveYOffset) const;
-  MouthGeometry makeMouth(const RobotFrame& frame, float aliveYOffset) const;
+  EyeGeometry makeEye(const RobotFrame& frame, bool rightEye) const;
+  MouthGeometry makeMouth(const RobotFrame& frame) const;
 };
 
 }  // namespace stackchan

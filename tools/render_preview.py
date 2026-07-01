@@ -35,6 +35,7 @@ def qbez(p0: float, p1: float, p2: float, u: float) -> float:
 def target_with_defaults(target: dict[str, float]) -> dict[str, float]:
     defaults = {
         "eye_open": 0.85,
+        "eye_width_scale": 1.0,
         "squint": 0.0,
         "eye_smile": 0.15,
         "pupil_x": 0.0,
@@ -60,6 +61,84 @@ def target_with_defaults(target: dict[str, float]) -> dict[str, float]:
         "right_br": 0.0,
     }
     return {**defaults, **target}
+
+
+def ease_in_quad(x: float) -> float:
+    x = clamp(x, 0.0, 1.0)
+    return x * x
+
+
+def ease_out_back(x: float) -> float:
+    x = clamp(x, 0.0, 1.0)
+    c1 = 1.70158
+    c3 = c1 + 1.0
+    u = x - 1.0
+    return 1.0 + c3 * u * u * u + c1 * u * u
+
+
+def blink_open_at(t: float) -> float:
+    # Phase C preview blink FSM: fast close, short hold, slower overshooting open.
+    for start, close_s, hold_s, open_s in ((1.50, 0.07, 0.04, 0.18), (5.42, 0.08, 0.04, 0.20), (7.72, 0.07, 0.04, 0.16)):
+        local = t - start
+        if local < 0.0:
+            continue
+        if local < close_s:
+            return 1.0 - ease_in_quad(local / close_s)
+        if local < close_s + hold_s:
+            return 0.0
+        if local < close_s + hold_s + open_s:
+            return clamp(ease_out_back((local - close_s - hold_s) / open_s), 0.0, 1.05)
+    return 1.0
+
+
+def saccade_at(t: float) -> tuple[float, float]:
+    # Snap to a slight overshoot, then settle over 80 ms. Holds are deliberately uneven.
+    events = [
+        (0.72, 0.10, -0.03),
+        (2.36, -0.16, 0.08),
+        (4.84, 0.54, -0.22),
+        (6.92, -0.10, 0.04),
+        (8.68, 0.18, -0.02),
+    ]
+    last_x, last_y = 0.0, 0.0
+    for index, (start, target_x, target_y) in enumerate(events):
+        if t < start:
+            break
+        prev_x, prev_y = last_x, last_y
+        next_start = events[index + 1][0] if index + 1 < len(events) else 999.0
+        if t < min(start + 0.08, next_start):
+            p = ease_out_back((t - start) / 0.08)
+            over_x = target_x + (target_x - prev_x) * 0.15
+            over_y = target_y + (target_y - prev_y) * 0.15
+            return (over_x + (target_x - over_x) * p, over_y + (target_y - over_y) * p)
+        last_x, last_y = target_x, target_y
+    return last_x, last_y
+
+
+def phase_c_idle_targets(t: float) -> dict[str, float]:
+    target = target_with_defaults({
+        "eye_open": 0.84,
+        "eye_smile": 0.12,
+        "pupil_scale": 1.0,
+        "brow_tilt": 0.12,
+        "mouth_smile": 0.24,
+        "mouth_width_delta": 5.0,
+        "left_tr": 0.04,
+        "right_tl": 0.07,
+    })
+    blink = blink_open_at(t)
+    gaze_x, gaze_y = saccade_at(t)
+    breath_y = math.sin(2.0 * math.pi * 0.20 * t) * 1.5
+    target["eye_open"] = clamp(target["eye_open"] * blink, 0.02, 1.08)
+    target["eye_width_scale"] = 1.0 + (1.0 - clamp(blink, 0.0, 1.0)) * 0.15
+    target["pupil_x"] += gaze_x
+    target["pupil_y"] += gaze_y
+    target["face_x"] += gaze_x * 4.0
+    target["face_y"] += breath_y + gaze_y * 3.0
+    if 9.10 <= t <= 9.85:
+        pulse = math.sin(((t - 9.10) / 0.75) * math.pi)
+        target["brow_tilt"] += pulse * 0.18
+    return target
 
 
 def face_targets(t: float) -> dict[str, float]:
@@ -116,7 +195,7 @@ def rounded_rect(draw: ImageDraw.ImageDraw, xy: tuple[int, int, int, int], radiu
 
 def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, float], right: bool) -> None:
     target = target_with_defaults(target)
-    width = 70 - target["squint"] * 10
+    width = (70 - target["squint"] * 10) * target["eye_width_scale"]
     height = 56
     cx += target["face_x"]
     cy += target["face_y"]
@@ -218,6 +297,17 @@ def render_frame(t: float) -> Image.Image:
     draw_eye(draw, 106, 104 + alive_y, target, False)
     draw_eye(draw, 214, 104 + alive_y, target, True)
     target = {**target, "mouth_y": 172 + alive_y}
+    draw_mouth(draw, target)
+    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
+
+
+def render_idle_frame(t: float) -> Image.Image:
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    draw = ImageDraw.Draw(img)
+    target = phase_c_idle_targets(t)
+    draw_eye(draw, 106, 104, target, False)
+    draw_eye(draw, 214, 104, target, True)
     draw_mouth(draw, target)
     draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
@@ -374,6 +464,8 @@ def main() -> None:
     imageio.mimsave(OUT / "stackchan_alive_preview.gif", frames, fps=fps)
     idle_frames = [render_frame(i / fps) for i in range(fps * 10)]
     imageio.mimsave(FACE_ARTIFACTS / "phase_a_idle_10s.gif", idle_frames, fps=fps)
+    phase_c_idle_frames = [render_idle_frame(i / fps) for i in range(fps * 10)]
+    imageio.mimsave(FACE_ARTIFACTS / "phase_c_idle_10s.gif", phase_c_idle_frames, fps=fps)
 
     try:
       imageio.mimsave(OUT / "stackchan_alive_preview.mp4", frames, fps=fps, quality=8)

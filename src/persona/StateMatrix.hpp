@@ -45,6 +45,7 @@ struct FaceTargets {
   };
 
   float eyeOpen = 0.85f;
+  float eyeWidthScale = 1.0f;
   float squint = 0.0f;
   float eyeSmile = 0.15f;
   float pupilX = 0.0f;
