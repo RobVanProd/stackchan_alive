@@ -12,6 +12,7 @@ Thumbs.db
 # Dependencies and build output
 node_modules/
 .pio/
+output/
 dist/
 build/
 out/

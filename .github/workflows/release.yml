@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tooling
+        run: python -m pip install --upgrade pip platformio -r requirements-preview.txt
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Build unit-test firmware
+        run: pio test --without-uploading --without-testing
+
+      - name: Render preview media
+        run: python tools/render_preview.py
+
+      - name: Package release
+        shell: pwsh
+        run: ./tools/package_release.ps1 -Version "${{ github.ref_name }}" -SkipBuild
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $pkg = Get-ChildItem output/release/${{ github.ref_name }}/*.zip | Select-Object -First 1
+          gh release create "${{ github.ref_name }}" `
+            $pkg.FullName `
+            docs/media/stackchan_alive_preview.png `
+            docs/media/stackchan_alive_preview.mp4 `
+            docs/media/stackchan_alive_preview.gif `
+            .pio/build/stackchan/firmware.bin `
+            .pio/build/stackchan/bootloader.bin `
+            .pio/build/stackchan/partitions.bin `
+            --repo "${{ github.repository }}" `
+            --title "Stackchan Alive ${{ github.ref_name }}" `
+            --notes-file "output/release/${{ github.ref_name }}/RELEASE_NOTES.md" `
+            --prerelease

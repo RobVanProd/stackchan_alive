@@ -37,3 +37,5 @@ Outputs are written to `docs/media/`.
 ## Readiness
 
 See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the current proof level and the hardware gates required before consumer rollout.
+
+Release packaging is documented in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
