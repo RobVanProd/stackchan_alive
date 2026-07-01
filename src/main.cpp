@@ -77,7 +77,7 @@ void IntentTask(void* pv) {
 
 }  // namespace
 
-#ifndef PIO_UNIT_TESTING
+#if !defined(PIO_UNIT_TESTING) && !defined(UNIT_TEST)
 void setup() {
   auto cfg = M5.config();
   cfg.serial_baudrate = 115200;

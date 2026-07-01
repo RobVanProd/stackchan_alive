@@ -8,6 +8,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Display-only and servo-calibration firmware variants are separate PlatformIO environments.
 - Dependencies are pinned in `platformio.ini`.
 - GitHub Actions builds firmware on push and pull request.
+- Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.
 - Servo output is disabled by default until hardware calibration.
 - Display rendering uses the M5 display backend, not a stub.

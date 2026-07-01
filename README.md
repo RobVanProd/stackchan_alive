@@ -28,6 +28,13 @@ pio run -e stackchan
 pio run -e stackchan_servo_calibration
 ```
 
+Run host logic tests and embedded test-firmware compile checks:
+
+```powershell
+pio test -e native_logic
+pio test -e stackchan --without-uploading --without-testing
+```
+
 ## Preview Media
 
 Generate a hardware-free preview image, GIF, and MP4:

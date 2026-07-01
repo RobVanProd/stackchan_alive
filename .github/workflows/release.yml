@@ -24,6 +24,9 @@ jobs:
       - name: Build firmware
         run: pio run -e stackchan -e stackchan_servo_calibration
 
+      - name: Run native logic tests
+        run: pio test -e native_logic
+
       - name: Build unit-test firmware
         run: pio test -e stackchan --without-uploading --without-testing
 
