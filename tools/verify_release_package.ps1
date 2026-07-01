@@ -160,6 +160,13 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
   }
 }
 
+$shareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_share_release.ps1") -Raw
+foreach ($pattern in @("SHA256SUMS.txt", "Invoke-UrlProbe", "Assert-HttpOk")) {
+  if ($shareVerifierText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/verify_share_release.ps1 missing required remote checksum verification logic: $pattern"
+  }
+}
+
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "media/stackchan_alive_preview.png" 1000
