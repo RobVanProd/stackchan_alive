@@ -61,10 +61,13 @@ void FaceAnimator::reset(const FaceTargets& face, uint32_t nowMs) {
   current_ = face;
   lastMs_ = nowMs;
   initialized_ = true;
+  hasPreviousMode_ = false;
   blink_ = BlinkState {};
   saccade_ = SaccadeState {};
   fidget_ = FidgetState {};
+  gesture_ = GestureState {};
   telemetry_ = FaceAutonomicTelemetry {};
+  gestureTelemetry_ = FaceGestureTelemetry {};
 }
 
 void FaceAnimator::setReducedMotion(bool enabled) {
@@ -72,15 +75,22 @@ void FaceAnimator::setReducedMotion(bool enabled) {
 }
 
 FaceTargets FaceAnimator::composeFrame(const RobotFrame& frame, uint32_t nowMs) {
+  if (!initialized_) {
+    FaceTargets initial = samplePose(frame, nowMs);
+    applyAutonomic(initial, frame, nowMs);
+    applyReactive(initial, frame, nowMs);
+    reset(initial, nowMs);
+    hasPreviousMode_ = true;
+    gesture_.from = frame.mode;
+    gesture_.to = frame.mode;
+    return current_;
+  }
+
+  updateTransition(frame, nowMs);
   FaceTargets target = samplePose(frame, nowMs);
   applyAutonomic(target, frame, nowMs);
   applyGesture(target, frame, nowMs);
   applyReactive(target, frame, nowMs);
-
-  if (!initialized_) {
-    reset(target, nowMs);
-    return current_;
-  }
 
   return smoothToward(target, nowMs);
 }
@@ -246,10 +256,75 @@ void FaceAnimator::applyAutonomic(FaceTargets& face, const RobotFrame& frame, ui
   telemetry_.saccadeCount = saccade_.count;
 }
 
-void FaceAnimator::applyGesture(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) const {
-  (void)face;
+void FaceAnimator::applyGesture(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) {
   (void)frame;
-  (void)nowMs;
+  gestureTelemetry_.active = gesture_.active;
+  gestureTelemetry_.from = gesture_.from;
+  gestureTelemetry_.to = gesture_.to;
+  gestureTelemetry_.durationMs = gesture_.durationMs;
+
+  if (!gesture_.active) {
+    gestureTelemetry_.elapsedMs = 0;
+    return;
+  }
+
+  const uint32_t elapsedMs = nowMs - gesture_.startMs;
+  gestureTelemetry_.elapsedMs = elapsedMs;
+  const float p = clampValue(static_cast<float>(elapsedMs) / gesture_.durationMs, 0.0f, 1.0f);
+
+  if (gesture_.from == CharacterMode::Idle && (gesture_.to == CharacterMode::Listen || gesture_.to == CharacterMode::Attend)) {
+    const float pop = applyEase(Ease::OutBack, clampValue((static_cast<float>(elapsedMs) - 80.0f) / 270.0f, 0.0f, 1.0f));
+    face.eyeOpen = clampValue(face.eyeOpen + pop * 0.16f, 0.02f, 1.12f);
+    face.faceY -= pop * 2.0f;
+    face.browTilt += pop * 0.20f;
+    face.pupilX = clampValue(face.pupilX * 0.55f - pop * 0.03f, -1.0f, 1.0f);
+  } else if (gesture_.to == CharacterMode::Think) {
+    const float eyes = applyEase(Ease::OutBack, clampValue(static_cast<float>(elapsedMs) / 220.0f, 0.0f, 1.0f));
+    const float brows = applyEase(Ease::OutQuad, clampValue((static_cast<float>(elapsedMs) - 120.0f) / 260.0f, 0.0f, 1.0f));
+    const float mouth = applyEase(Ease::InOutCubic, clampValue((static_cast<float>(elapsedMs) - 220.0f) / 240.0f, 0.0f, 1.0f));
+    face.pupilX = clampValue(-0.45f * eyes, -1.0f, 1.0f);
+    face.pupilY = clampValue(-0.38f * eyes, -1.0f, 1.0f);
+    face.leftCorners.tr = clampValue(face.leftCorners.tr + 0.16f * brows, 0.0f, 1.0f);
+    face.browTilt += 0.10f * brows;
+    face.mouthWidthDelta -= 4.0f * mouth;
+  } else if (gesture_.from == CharacterMode::Think && gesture_.to == CharacterMode::Speak) {
+    const float center = applyEase(Ease::OutBack, clampValue(static_cast<float>(elapsedMs) / 120.0f, 0.0f, 1.0f));
+    const float preOpen = elapsedMs < 60 ? applyEase(Ease::InQuad, static_cast<float>(elapsedMs) / 60.0f) : 1.0f;
+    face.pupilX = face.pupilX * (1.0f - center);
+    face.pupilY = face.pupilY * (1.0f - center);
+    if (elapsedMs < 160) {
+      face.mouthOpen = clampValue(max(face.mouthOpen, 0.18f * preOpen), 0.0f, 1.0f);
+      face.mouthSmile -= 0.10f * preOpen;
+    }
+  } else if (gesture_.to == CharacterMode::React) {
+    const float anticipation = p < 0.18f ? applyEase(Ease::InQuad, p / 0.18f) : 1.0f;
+    const float pop = applyEase(Ease::OutBack, clampValue((p - 0.18f) / 0.82f, 0.0f, 1.0f));
+    face.eyeOpen = clampValue(face.eyeOpen - 0.10f * anticipation + 0.12f * pop, 0.02f, 1.12f);
+    face.mouthSmile = clampValue(face.mouthSmile - 0.12f * anticipation + 0.18f * pop, -1.0f, 1.0f);
+    face.eyeSmile = clampValue(face.eyeSmile + 0.16f * pop, 0.0f, 1.0f);
+  } else if (gesture_.to == CharacterMode::Error) {
+    const float creep = applyEase(Ease::InOutCubic, p);
+    face.faceY += 2.0f * creep;
+    face.browTilt -= 0.16f * creep;
+    face.mouthSmile -= 0.12f * creep;
+  } else if (gesture_.to == CharacterMode::Sleep) {
+    const float droop = applyEase(Ease::InOutCubic, clampValue(static_cast<float>(elapsedMs) / 1000.0f, 0.0f, 1.0f));
+    const float fight = elapsedMs > 1000 ? applyEase(Ease::InOutCubic, clampValue((static_cast<float>(elapsedMs) - 1000.0f) / 1500.0f, 0.0f, 1.0f)) : 0.0f;
+    const float close = elapsedMs > 2500 ? applyEase(Ease::InQuad, clampValue((static_cast<float>(elapsedMs) - 2500.0f) / 900.0f, 0.0f, 1.0f)) : 0.0f;
+    face.pupilY = clampValue(face.pupilY + 0.22f * droop, -1.0f, 1.0f);
+    face.browTilt -= 0.10f * droop;
+    face.eyeOpen = clampValue(face.eyeOpen - 0.14f * fight - 0.18f * close, 0.02f, 1.08f);
+    face.faceY += 2.0f * droop;
+  } else if (gesture_.from == CharacterMode::Sleep) {
+    const float wake = applyEase(Ease::OutBack, p);
+    face.eyeOpen = clampValue(face.eyeOpen + 0.38f * wake, 0.02f, 1.20f);
+    face.browTilt += 0.24f * wake;
+    face.faceY -= 3.0f * wake;
+  }
+
+  if (p >= 1.0f) {
+    gesture_.active = false;
+  }
 }
 
 void FaceAnimator::applyReactive(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) const {
@@ -288,6 +363,48 @@ FaceTargets FaceAnimator::smoothToward(const FaceTargets& target, uint32_t nowMs
   current_.rightCorners.bl = smoothChannel(current_.rightCorners.bl, target.rightCorners.bl, dtMs, 60.0f);
   current_.rightCorners.br = smoothChannel(current_.rightCorners.br, target.rightCorners.br, dtMs, 60.0f);
   return current_;
+}
+
+void FaceAnimator::updateTransition(const RobotFrame& frame, uint32_t nowMs) {
+  if (!hasPreviousMode_) {
+    hasPreviousMode_ = true;
+    gesture_.from = frame.mode;
+    gesture_.to = frame.mode;
+    return;
+  }
+
+  if (frame.mode != gesture_.to) {
+    startGesture(gesture_.to, frame.mode, nowMs);
+  }
+}
+
+void FaceAnimator::startGesture(CharacterMode from, CharacterMode to, uint32_t nowMs) {
+  gesture_.from = from;
+  gesture_.to = to;
+  gesture_.startMs = nowMs;
+  gesture_.durationMs = gestureDuration(from, to);
+  gesture_.active = true;
+  blink_.nextMs = nowMs;
+  blink_.queuedBlinks = from == CharacterMode::Sleep ? 1 : blink_.queuedBlinks;
+}
+
+uint32_t FaceAnimator::gestureDuration(CharacterMode from, CharacterMode to) const {
+  if (from == CharacterMode::Sleep) {
+    return 650;
+  }
+  if (to == CharacterMode::Sleep) {
+    return 3400;
+  }
+  if (to == CharacterMode::Error) {
+    return 600;
+  }
+  if (from == CharacterMode::Think && to == CharacterMode::Speak) {
+    return 320;
+  }
+  if (to == CharacterMode::React) {
+    return 420;
+  }
+  return 500;
 }
 
 float FaceAnimator::updateBlink(const RobotFrame& frame, uint32_t nowMs) {

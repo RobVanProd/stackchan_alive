@@ -25,6 +25,14 @@ struct FaceAutonomicTelemetry {
   uint32_t saccadeCount = 0;
 };
 
+struct FaceGestureTelemetry {
+  bool active = false;
+  CharacterMode from = CharacterMode::Idle;
+  CharacterMode to = CharacterMode::Idle;
+  uint32_t elapsedMs = 0;
+  uint32_t durationMs = 0;
+};
+
 class FaceAnimator {
  public:
   FaceTargets composeFrame(const RobotFrame& frame, uint32_t nowMs);
@@ -32,6 +40,9 @@ class FaceAnimator {
   void setReducedMotion(bool enabled);
   const FaceAutonomicTelemetry& autonomicTelemetry() const {
     return telemetry_;
+  }
+  const FaceGestureTelemetry& gestureTelemetry() const {
+    return gestureTelemetry_;
   }
 
  private:
@@ -75,7 +86,16 @@ class FaceAnimator {
     bool active = false;
   };
 
+  struct GestureState {
+    CharacterMode from = CharacterMode::Idle;
+    CharacterMode to = CharacterMode::Idle;
+    uint32_t startMs = 0;
+    uint32_t durationMs = 0;
+    bool active = false;
+  };
+
   bool initialized_ = false;
+  bool hasPreviousMode_ = false;
   uint32_t lastMs_ = 0;
   uint32_t rng_ = 0x51A7C0DEu;
   bool reducedMotion_ = false;
@@ -83,13 +103,18 @@ class FaceAnimator {
   BlinkState blink_;
   SaccadeState saccade_;
   FidgetState fidget_;
+  GestureState gesture_;
   FaceAutonomicTelemetry telemetry_;
+  FaceGestureTelemetry gestureTelemetry_;
 
   FaceTargets samplePose(const RobotFrame& frame, uint32_t nowMs) const;
   void applyAutonomic(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs);
-  void applyGesture(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) const;
+  void applyGesture(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs);
   void applyReactive(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) const;
   FaceTargets smoothToward(const FaceTargets& target, uint32_t nowMs);
+  void updateTransition(const RobotFrame& frame, uint32_t nowMs);
+  void startGesture(CharacterMode from, CharacterMode to, uint32_t nowMs);
+  uint32_t gestureDuration(CharacterMode from, CharacterMode to) const;
   float updateBlink(const RobotFrame& frame, uint32_t nowMs);
   void scheduleBlink(const RobotFrame& frame, uint32_t nowMs, uint32_t minDelayMs = 0);
   void startBlink(const RobotFrame& frame, uint32_t nowMs);

@@ -237,6 +237,66 @@ void test_face_animator_reduced_motion_dampens_autonomic_offsets() {
   TEST_ASSERT_GREATER_THAN_FLOAT(reducedMaxOffset * 2.0f, fullMaxOffset);
 }
 
+void test_face_animator_starts_listen_transition_with_blink_and_pop() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Idle;
+  frame.face.eyeOpen = 0.85f;
+  animator.composeFrame(frame, 0);
+
+  frame.mode = CharacterMode::Listen;
+  const FaceTargets first = animator.composeFrame(frame, 100);
+  const FaceGestureTelemetry& firstGesture = animator.gestureTelemetry();
+  TEST_ASSERT_TRUE(firstGesture.active);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(firstGesture.from));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(firstGesture.to));
+  TEST_ASSERT_EQUAL_UINT32(500, firstGesture.durationMs);
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(1, animator.autonomicTelemetry().blinkCount);
+
+  const FaceTargets later = animator.composeFrame(frame, 420);
+  TEST_ASSERT_GREATER_THAN_FLOAT(first.browTilt, later.browTilt);
+  TEST_ASSERT_LESS_THAN_FLOAT(first.faceY, later.faceY);
+}
+
+void test_face_animator_think_to_speak_centers_gaze_before_mouth_settles() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Think;
+  frame.face.eyeOpen = 0.85f;
+  const FaceTargets think = animator.composeFrame(frame, 0);
+
+  frame.mode = CharacterMode::Speak;
+  const FaceTargets early = animator.composeFrame(frame, 150);
+  const FaceGestureTelemetry& gesture = animator.gestureTelemetry();
+  TEST_ASSERT_TRUE(gesture.active);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Think), static_cast<int>(gesture.from));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(gesture.to));
+  TEST_ASSERT_EQUAL_UINT32(320, gesture.durationMs);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, early.mouthOpen);
+
+  const FaceTargets later = animator.composeFrame(frame, 260);
+  TEST_ASSERT_LESS_THAN_FLOAT(fabsf(think.pupilX), fabsf(later.pupilX));
+  TEST_ASSERT_LESS_THAN_FLOAT(fabsf(think.pupilY), fabsf(later.pupilY));
+}
+
+void test_face_animator_sleep_wake_transition_uses_longer_startle_clip() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Sleep;
+  frame.face.eyeOpen = 0.85f;
+  const FaceTargets sleep = animator.composeFrame(frame, 0);
+
+  frame.mode = CharacterMode::Idle;
+  const FaceTargets wake = animator.composeFrame(frame, 500);
+  const FaceGestureTelemetry& gesture = animator.gestureTelemetry();
+  TEST_ASSERT_TRUE(gesture.active);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep), static_cast<int>(gesture.from));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(gesture.to));
+  TEST_ASSERT_EQUAL_UINT32(650, gesture.durationMs);
+  TEST_ASSERT_GREATER_THAN_FLOAT(sleep.eyeOpen, wake.eyeOpen);
+  TEST_ASSERT_LESS_THAN_FLOAT(sleep.faceY, wake.faceY);
+}
+
 void test_robot_frame_carries_character_mode_for_renderer() {
   RobotFrame frame = makeNeutralFrame();
   frame.mode = CharacterMode::Listen;
@@ -383,6 +443,9 @@ int main() {
   RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
   RUN_TEST(test_face_animator_autonomic_layer_adds_life_over_time);
   RUN_TEST(test_face_animator_reduced_motion_dampens_autonomic_offsets);
+  RUN_TEST(test_face_animator_starts_listen_transition_with_blink_and_pop);
+  RUN_TEST(test_face_animator_think_to_speak_centers_gaze_before_mouth_settles);
+  RUN_TEST(test_face_animator_sleep_wake_transition_uses_longer_startle_clip);
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);

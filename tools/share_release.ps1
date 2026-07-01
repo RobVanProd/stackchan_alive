@@ -327,6 +327,9 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_a_unlabeled_expression_sheet.png"); Name = "artifacts/face/phase_a_unlabeled_expression_sheet.png" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_b_unlabeled_expression_sheet.png"); Name = "artifacts/face/phase_b_unlabeled_expression_sheet.png" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_c_idle_10s.gif"); Name = "artifacts/face/phase_c_idle_10s.gif" },
+  @{ Source = (Join-Path $packageRoot "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png"); Name = "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png" },
+  @{ Source = (Join-Path $packageRoot "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png"); Name = "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png" },
+  @{ Source = (Join-Path $packageRoot "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png"); Name = "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav"); Name = "voice/stackchan_spark_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav"); Name = "voice/stackchan_spark_thinking.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"); Name = "voice/stackchan_spark_safety.wav" },
@@ -511,6 +514,12 @@ $promotionGateItems
   <p>Phase C adds the autonomic blink state machine with squash, saccade jumps with settle, breathing offset, gaze staging, reduced-motion damping, and idle fidget hooks inside the face animator. The idle GIF is the gate artifact for checking that no two seconds are static.</p>
   <p><img src="artifacts/face/phase_c_idle_10s.gif" alt="Phase C idle 10 second GIF"></p>
 
+  <h2>Face Phase D Artifacts</h2>
+  <p>Phase D adds transition choreography clips with visible anticipation, channel lag, staggered channel arrival, and state-specific timing. These filmstrips are generated at one frame per 50 ms and checked by <code>tools/verify_face_phase_d.ps1</code> for blink anticipation, Think-to-Speak mouth pre-open, and the staged Sleep droop.</p>
+  <p><img src="artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png" alt="Phase D Idle to Listen filmstrip"></p>
+  <p><img src="artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png" alt="Phase D Think to Speak filmstrip"></p>
+  <p><img src="artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" alt="Phase D Idle to Sleep filmstrip"></p>
+
   <h2>Voice Samples</h2>
   <p>Prototype Stackchan Spark Synth v3 audition samples. These use a lightweight source with phrase-level micro-prosody, syllable gating, a speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, ring modulation, comb resonance, and tiny synthetic chirps. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
   <div class="grid">
@@ -586,6 +595,9 @@ $promotionGateItems
     <div class="item"><a href="artifacts/face/phase_a_unlabeled_expression_sheet.png">Face Phase A Unlabeled Sheet</a></div>
     <div class="item"><a href="artifacts/face/phase_b_unlabeled_expression_sheet.png">Face Phase B Unlabeled Sheet</a></div>
     <div class="item"><a href="artifacts/face/phase_c_idle_10s.gif">Face Phase C Idle GIF</a></div>
+    <div class="item"><a href="artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png">Face Phase D Idle to Listen Filmstrip</a></div>
+    <div class="item"><a href="artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png">Face Phase D Think to Speak Filmstrip</a></div>
+    <div class="item"><a href="artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png">Face Phase D Idle to Sleep Filmstrip</a></div>
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Warm Slow Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
