@@ -21,9 +21,9 @@ The target sound is an original "Stackchan Spark" voice:
 
 - pitch: medium robot, friendly, not childlike
 - cadence: measured and rhythmic, with short pauses before important words
-- texture: clean TTS core with light vocoder/ring-mod color
+- texture: clear speech core plus audible formant-like robot mask, not just a plain desktop voice with filters
 - dynamics: expressive but compressed enough for small speakers
-- artifacts: intentional light bitcrush, tiny pitch steps, and short chirps
+- artifacts: intentional light bitcrush, tiny pitch steps, syllable gating, and short chirps
 - intelligibility: speech must remain clear before effects are added
 
 Do not hide poor TTS quality under heavy effects. Start with clear speech, then add a small amount of robot character.
@@ -69,6 +69,7 @@ Prefer a tiny formant-capable source before considering larger model training:
 
 - eSpeak-NG is the preferred lightweight audition source for the classic synthetic/formant character.
 - Piper remains a good future neural base if a licensed/owned voice is needed, but it still needs the Stackchan Spark Synth DSP to avoid a generic assistant sound.
+- The current built-in Stackchan Spark Synth v3 pass adds a speech-envelope electromechanical mask and formant-like resonators so the fallback Windows source reads less like an unmodified system voice.
 - `tools/setup_voice_tools.cmd` checks for eSpeak-NG and SoX. Use `.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples` on a Windows dev box to install eSpeak-NG with winget, render the formant-source samples, and run voice QA. If Windows Installer is busy or the MSI fails, reboot or clear stale installer processes and retry; `-ContinueOnInstallFailure` records a machine-readable failure without masking it.
 - The built-in renderer remains deterministic and does not require SoX; SoX is optional for external audition experiments.
 

@@ -4,8 +4,8 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 
 Generated source:
 - Source mode: fallback source via `Windows SpeechSynthesizer Microsoft David Desktop`; install eSpeak-NG or pass `-Engine espeak` to use a formant source
-- Stackchan Spark Synth v2 DSP: phrase-level micro-prosody, staccato amplitude shaping, lowered-pitch resample, sample-hold texture, high-pass formant emphasis, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
-- Tuning: source speech rate `-1` where supported, pitch/cadence resample factor `1.16`, ring modulation `36`/`72` Hz, sample-hold target `14500` Hz
+- Stackchan Spark Synth v3 DSP: phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
+- Tuning: source speech rate `-2` where supported, pitch/cadence resample factor `1.12`, synthetic mask base pitch `104` Hz, mask mix `0.48`, ring modulation `44`/`88` Hz, sample-hold target `11800` Hz
 - Renderer: `tools/render_voice_samples.ps1`
 
 Samples:

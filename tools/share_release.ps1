@@ -420,6 +420,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <span class="pill pending">Hardware gates pending: $pendingGateCount</span>
     <span class="pill pending">Consumer rollout: $consumerRollout</span>
     <span class="pill pending">GitHub Actions: $($actionsStatus.status)</span>
+    <span class="pill pending">Speaker audio evidence: pending device</span>
   </div>
   <p><strong>GitHub Actions:</strong> $($actionsStatus.interpretation)</p>
 
@@ -440,7 +441,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
   <p><video src="stackchan_alive_preview.mp4" controls loop muted playsinline></video></p>
 
   <h2>Voice Samples</h2>
-  <p>Prototype Stackchan Spark Synth v2 audition samples. These use a lightweight source with phrase-level micro-prosody, sample-hold texture, ring modulation, comb resonance, and tiny synthetic chirps. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
+  <p>Prototype Stackchan Spark Synth v3 audition samples. These use a lightweight source with phrase-level micro-prosody, syllable gating, a speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, ring modulation, comb resonance, and tiny synthetic chirps. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
   <div class="grid">
     <div class="item">
       <strong>Greeting</strong>
@@ -486,12 +487,21 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
 
   <h2>Voice Source Gate</h2>
   <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
-  <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v2 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
+  <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v3 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
   <div class="status">
     <span class="pill pending">Voice source: pending production source</span>
     <span class="pill pending">Rollout gate: licensed or owned production voice required</span>
     <span class="pill pending">Speaker evidence: pending device</span>
   </div>
+
+  <h2>Hardware Audio Evidence</h2>
+  <p>When the device arrives, the evidence packet now includes <code>AUDIO_REVIEW.md</code> and an <code>audio/</code> folder. Record at least one real-device speaker sample and mark the audio review fields with concrete pass/fail values before running promotion checks.</p>
+  <ul class="checklist">
+    <li>Save a real speaker recording under <code>audio/</code>; supported evidence includes WAV, MP3, M4A, AAC, MP4, MOV, or WEBM.</li>
+    <li>Complete <code>AUDIO_REVIEW.md</code> with the sample played, selected voice direction, and recording filename.</li>
+    <li>Promotion requires intelligible audio, no clipping or distortion, adequate normal-distance volume, and no playback dropout or excessive delay.</li>
+    <li>Generated source WAVs alone do not count as target-speaker evidence.</li>
+  </ul>
 
   <h2>Downloads</h2>
   <div class="grid">
@@ -530,7 +540,8 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <li>Run <code>RUN_DISPLAY_ONLY.cmd</code> and confirm the face appears with dry-run servo logs.</li>
     <li>Run <code>RUN_SERVO_CALIBRATION.cmd</code> only after the body is clear and supervised.</li>
     <li>Run <code>RUN_SOAK_MONITOR.cmd</code> for the 30-minute mixed-mode soak.</li>
-    <li>Run <code>RUN_PROGRESS_CHECK.cmd</code> during testing to list missing logs, observation fields, media, calibration updates, and unchecked gates.</li>
+    <li>Complete <code>AUDIO_REVIEW.md</code> and save a real-device speaker recording under <code>audio/</code>.</li>
+    <li>Run <code>RUN_PROGRESS_CHECK.cmd</code> during testing to list missing logs, observation fields, audio evidence, media, calibration updates, and unchecked gates.</li>
     <li>Run <code>RUN_EVIDENCE_VERIFY.cmd</code> only when the progress check is clean and the packet is ready for promotion review.</li>
     <li>Run <code>RUN_CONSUMER_PROMOTION_CHECK.cmd</code> only after evidence verification passes and production voice-source provenance plus GitHub Actions status are ready.</li>
   </ol>

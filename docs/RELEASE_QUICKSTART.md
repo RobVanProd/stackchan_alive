@@ -67,6 +67,14 @@ During bring-up, run:
 
 This lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
 
+Before promotion review, complete the audio evidence record generated in the packet:
+
+```powershell
+notepad .\AUDIO_REVIEW.md
+```
+
+Save at least one real-device speaker recording under `audio\`. The strict verifier accepts `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`, but generated source WAVs alone do not count as target-speaker evidence.
+
 ## Promotion Evidence
 
 Before calling the release consumer-ready, save:
@@ -75,6 +83,8 @@ Before calling the release consumer-ready, save:
 - Servo-calibration serial log.
 - 30-minute soak log.
 - Photos or video of the display and motion behavior.
+- Completed `AUDIO_REVIEW.md`.
+- Real-device speaker recording saved under `audio\`.
 - Calibration changes in `data\calibration.yaml`.
 
 Then run:

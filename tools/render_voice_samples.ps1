@@ -13,11 +13,13 @@ Set-Location $repoRoot
 $outputPath = Join-Path $repoRoot $OutputDir
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 
-$speechRate = -1
-$robotPitchCadenceFactor = 1.16
-$ringModBaseHz = 36.0
-$ringModHarmonicHz = 72.0
-$sampleHoldHz = 14500.0
+$speechRate = -2
+$robotPitchCadenceFactor = 1.12
+$ringModBaseHz = 44.0
+$ringModHarmonicHz = 88.0
+$sampleHoldHz = 11800.0
+$robotBasePitchHz = 104.0
+$syntheticMaskMix = 0.48
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-voice-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -165,6 +167,76 @@ def sample_hold(samples, rate, hold_hz):
         held.append(current)
     return held
 
+def envelope_follow(samples, rate):
+    attack = math.exp(-1.0 / max(1.0, rate * 0.004))
+    release = math.exp(-1.0 / max(1.0, rate * 0.050))
+    env = []
+    state = 0.0
+    for sample in samples:
+        target = abs(sample)
+        coeff = attack if target > state else release
+        state = coeff * state + (1.0 - coeff) * target
+        env.append(min(1.0, state * 3.8))
+    return env
+
+def syllable_gate(rate, samples):
+    env = envelope_follow(samples, rate)
+    window = max(1, int(rate * 0.082))
+    out = []
+    for i, sample in enumerate(samples):
+        segment = (i // window) % 5
+        t = (i % window) / max(1, window)
+        punch = 0.78 + 0.22 * math.sin(math.pi * min(1.0, t * 1.4))
+        if segment in (1, 4):
+            punch *= 0.88
+        if env[i] < 0.030:
+            punch *= 0.70
+        out.append(sample * punch)
+    return out
+
+def formant_resonator(samples, rate, freq, radius):
+    omega = 2.0 * math.pi * freq / rate
+    coeff = 2.0 * radius * math.cos(omega)
+    radius_sq = radius * radius
+    y1 = 0.0
+    y2 = 0.0
+    out = []
+    for sample in samples:
+        y = sample + coeff * y1 - radius_sq * y2
+        out.append(y * (1.0 - radius))
+        y2 = y1
+        y1 = y
+    return out
+
+def add_electromechanical_mask(rate, samples):
+    env = envelope_follow(samples, rate)
+    mask_seed = []
+    stepped_pitch = $robotBasePitchHz
+    step_len = max(1, int(rate * 0.075))
+    phase = 0.0
+    for i, amp in enumerate(env):
+        if i % step_len == 0:
+            step = ((i // step_len) % 6) - 2
+            stepped_pitch = $robotBasePitchHz * (2.0 ** (step / 24.0))
+        t = i / rate
+        pitch = stepped_pitch + 2.4 * math.sin(2.0 * math.pi * 3.2 * t)
+        phase = (phase + pitch / rate) % 1.0
+        square = 1.0 if phase < 0.52 else -1.0
+        saw = (phase * 2.0) - 1.0
+        undertone = math.sin(2.0 * math.pi * 52.0 * t)
+        mask_seed.append(amp * (0.34 * square + 0.20 * saw + 0.08 * undertone))
+
+    f1 = formant_resonator(mask_seed, rate, 760.0, 0.970)
+    f2 = formant_resonator(mask_seed, rate, 1420.0, 0.965)
+    f3 = formant_resonator(mask_seed, rate, 2380.0, 0.955)
+    out = []
+    for i, sample in enumerate(samples):
+        t = i / rate
+        ticker = 0.86 + 0.14 * (1.0 if math.sin(2.0 * math.pi * 18.0 * t) > 0.0 else -1.0)
+        synthetic = (0.54 * f1[i] + 0.34 * f2[i] + 0.18 * f3[i]) * ticker
+        out.append(sample * (1.0 - $syntheticMaskMix) + synthetic * $syntheticMaskMix)
+    return out
+
 def phrase_micro_prosody(rate, samples):
     window = max(1, int(rate * 0.11))
     shaped = []
@@ -215,7 +287,9 @@ def stackchan_spark_synth(rate, samples):
     samples = remove_dc(samples)
     samples = resample_linear(samples, $robotPitchCadenceFactor)
     samples = phrase_micro_prosody(rate, samples)
+    samples = syllable_gate(rate, samples)
     samples = sample_hold(samples, rate, $sampleHoldHz)
+    samples = add_electromechanical_mask(rate, samples)
 
     delay_a = max(1, int(rate * 0.0045))
     delay_b = max(1, int(rate * 0.0095))
@@ -325,8 +399,8 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 
 Generated source:
 - Source mode: $sourceMode
-- Stackchan Spark Synth v2 DSP: phrase-level micro-prosody, staccato amplitude shaping, lowered-pitch resample, sample-hold texture, high-pass formant emphasis, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
-- Tuning: source speech rate ``$speechRate`` where supported, pitch/cadence resample factor ``$robotPitchCadenceFactor``, ring modulation ``$ringModBaseHz``/``$ringModHarmonicHz`` Hz, sample-hold target ``$sampleHoldHz`` Hz
+- Stackchan Spark Synth v3 DSP: phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
+- Tuning: source speech rate ``$speechRate`` where supported, pitch/cadence resample factor ``$robotPitchCadenceFactor``, synthetic mask base pitch ``$robotBasePitchHz`` Hz, mask mix ``$syntheticMaskMix``, ring modulation ``$ringModBaseHz``/``$ringModHarmonicHz`` Hz, sample-hold target ``$sampleHoldHz`` Hz
 - Renderer: ``tools/render_voice_samples.ps1``
 
 Samples:

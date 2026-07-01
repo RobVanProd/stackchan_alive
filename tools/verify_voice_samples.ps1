@@ -140,11 +140,13 @@ if (-not (Test-Path -LiteralPath $notesPath)) {
 
 $notes = Get-Content -LiteralPath $notesPath -Raw
 foreach ($pattern in @(
-  "Stackchan Spark Synth v2",
+  "Stackchan Spark Synth v3",
   "eSpeak-NG",
   "formant source",
   "phrase-level micro-prosody",
-  "staccato amplitude shaping",
+  "syllable gating",
+  "speech-envelope electromechanical mask",
+  "formant-like resonators",
   "sample-hold texture",
   "comb-filter resonance",
   "tiny synthetic chirps",
