@@ -15,6 +15,12 @@ Use this when the Stack-chan hardware arrives.
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
 It also creates runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 
+Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
+
+```powershell
+.\tools\prepare_device_arrival.cmd -ReleaseTag v0.1.4-device-ready -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Port COM3
+```
+
 4. Check the exact release-binary flash command without touching the device:
 
 ```powershell

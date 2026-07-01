@@ -3,7 +3,8 @@ param(
   [string]$PackageZip = "",
   [string]$Port = "",
   [string]$Operator = "",
-  [string]$DeviceId = ""
+  [string]$DeviceId = "",
+  [switch]$AllowDirtyPackage
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,6 +68,9 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     "-ExpectedCommit",
     $commit
   )
+  if ($AllowDirtyPackage) {
+    $verifyArgs += "-AllowDirtyPackage"
+  }
   $verifyOutput = & powershell.exe @verifyArgs 2>&1
   $verifyExitCode = $LASTEXITCODE
   $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
@@ -153,6 +157,9 @@ $soakLog = Quote-PowerShellArgument (Join-Path $logsDir "soak_serial.log")
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
 $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) -ZipPath $(Quote-PowerShellArgument $packageFlashZip) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+if ($AllowDirtyPackage) {
+  $verifyCommand += " -AllowDirtyPackage"
+}
 $evidenceVerifyCommand = "& '.\tools\verify_hardware_evidence.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $soakCommand = "platformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
 
@@ -262,4 +269,4 @@ New-Item -ItemType File -Force -Path (Join-Path $logsDir ".gitkeep") | Out-Null
 New-Item -ItemType File -Force -Path (Join-Path $photosDir ".gitkeep") | Out-Null
 
 Write-Host "Hardware evidence packet:"
-Write-Host $outDir
+Write-Output $outDir

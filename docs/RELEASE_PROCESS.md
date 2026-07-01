@@ -42,6 +42,12 @@ Create a hardware evidence packet when testing a physical device:
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
 The packet also includes generated `RUN_*.cmd` files for display flashing, servo calibration flashing, soak logging, package verification, and final evidence verification.
 
+To prepare the release for arrival-day testing in one no-hardware-safe step:
+
+```powershell
+.\tools\prepare_device_arrival.cmd -ReleaseTag v0.1.0-device-ready -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Port COM3
+```
+
 Before promoting a prerelease, verify the completed hardware evidence packet:
 
 ```powershell
