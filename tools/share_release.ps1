@@ -447,6 +447,14 @@ $consumerRollout = [string]$readiness.consumerRollout
   <p>After downloading and extracting the release ZIP, run this from inside the extracted folder:</p>
   <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3 -Operator &quot;Your Name&quot; -DeviceId STACKCHAN-001</code></pre>
   <p>This verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with runnable <code>RUN_*.cmd</code> files.</p>
+  <h3>Arrival-Day Evidence Loop</h3>
+  <ol>
+    <li>Run <code>RUN_DISPLAY_ONLY.cmd</code> and confirm the face appears with dry-run servo logs.</li>
+    <li>Run <code>RUN_SERVO_CALIBRATION.cmd</code> only after the body is clear and supervised.</li>
+    <li>Run <code>RUN_SOAK_MONITOR.cmd</code> for the 30-minute mixed-mode soak.</li>
+    <li>Run <code>RUN_PROGRESS_CHECK.cmd</code> during testing to list missing logs, observation fields, media, calibration updates, and unchecked gates.</li>
+    <li>Run <code>RUN_EVIDENCE_VERIFY.cmd</code> only when the progress check is clean and the packet is ready for promotion review.</li>
+  </ol>
   <p>Use display-only firmware first. Servo calibration requires the explicit <code>-ConfirmServoRisk</code> command generated in the evidence packet and a supervised clear work area.</p>
 </main>
 </body>
