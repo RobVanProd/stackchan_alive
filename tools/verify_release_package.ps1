@@ -136,6 +136,8 @@ $requiredFiles = @(
   "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/verify_voice_samples.cmd",
+  "tools/verify_voice_samples.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/check_hardware_evidence_progress.cmd",
@@ -279,6 +281,8 @@ Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x7
 Assert-Bytes "media/voice/stackchan_spark_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+
+& (Join-PackagePath "tools/verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
 
 & (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
 

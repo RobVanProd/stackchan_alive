@@ -146,6 +146,8 @@ $releaseTools = @(
   "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/verify_voice_samples.cmd",
+  "tools/verify_voice_samples.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/check_hardware_evidence_progress.cmd",

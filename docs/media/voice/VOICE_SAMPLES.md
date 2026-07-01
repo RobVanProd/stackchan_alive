@@ -3,9 +3,9 @@
 These are prototype audition samples for the original Stackchan Spark voice direction. They are not a Johnny 5 clone, are not trained from soundboard clips, and do not use RVC character models.
 
 Generated source:
-- Local Windows SpeechSynthesizer voice: `Microsoft David Desktop`
-- Deterministic robot effect chain: measured source cadence, lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
-- Tuning: SpeechSynthesizer rate `-1` with pitch/cadence resample factor `1.2` for a slightly slower, lower robot read
+- Source mode: fallback source via `Windows SpeechSynthesizer Microsoft David Desktop`; install eSpeak-NG or pass `-Engine espeak` to use a formant source
+- Stackchan Spark Synth v2 DSP: phrase-level micro-prosody, staccato amplitude shaping, lowered-pitch resample, sample-hold texture, high-pass formant emphasis, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
+- Tuning: source speech rate `-1` where supported, pitch/cadence resample factor `1.16`, ring modulation `36`/`72` Hz, sample-hold target `14500` Hz
 - Renderer: `tools/render_voice_samples.ps1`
 
 Samples:

@@ -18,10 +18,13 @@ voice:
   cadence: measured_slightly_slow_rhythmic
   texture:
     clean_tts_core: required
-    vocoder_color: light
-    ring_mod: subtle
-    bitcrush: subtle
-    chirps: short_optional
+    formant_source_preferred: espeak_ng_or_owned_lightweight_tts
+    vocoder_color: medium_light
+    ring_mod: audible_but_subtle
+    bitcrush: mild_sample_hold_texture
+    comb_resonance: short_robotic
+    micro_prosody: staccato_phrase_pulses
+    chirps: short_signature_optional
   intelligibility: primary
 personality:
   traits:

@@ -5,7 +5,7 @@ prototype_samples:
   status: review-only
   source: local Windows SpeechSynthesizer voice
   renderer: tools/render_voice_samples.ps1
-  effect_chain: measured cadence, lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, short echo
+  effect_chain: Stackchan Spark Synth v2 with optional eSpeak formant source, phrase-level micro-prosody, staccato shaping, lowered-pitch resample, sample-hold texture, formant emphasis, light ring modulation, comb resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
   allowed_use:
     - internal voice direction review
     - device-audio audition

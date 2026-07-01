@@ -27,6 +27,12 @@ Verify the package before sharing it:
 .\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
 ```
 
+Voice review samples are verified as part of the package gate. To check only the generated Stackchan Spark Synth WAVs and notes:
+
+```powershell
+.\tools\verify_voice_samples.cmd
+```
+
 The package verifier rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence. Known upstream transitive declarations, such as the current `stackchan-arduino` `SCServo` Git dependency, must be recorded in `dependency_lock.json` instead of being hidden in console output.
 
 Dry-run the release-binary flasher before connecting hardware:

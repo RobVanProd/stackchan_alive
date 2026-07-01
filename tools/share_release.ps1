@@ -415,7 +415,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
   <p><video src="stackchan_alive_preview.mp4" controls loop muted playsinline></video></p>
 
   <h2>Voice Samples</h2>
-  <p>Prototype Stackchan Spark audition samples. These are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
+  <p>Prototype Stackchan Spark Synth v2 audition samples. These use a lightweight source with phrase-level micro-prosody, sample-hold texture, ring modulation, comb resonance, and tiny synthetic chirps. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
   <div class="grid">
     <div class="item">
       <strong>Greeting</strong>
@@ -440,6 +440,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
   <ul class="checklist">
     <li>Clear enough to understand through a small device speaker.</li>
     <li>Robot-like without sounding like a direct movie-character clone.</li>
+    <li>Prefer eSpeak-NG or an owned lightweight TTS source for formant character when available.</li>
     <li>Friendly, curious, and concise enough for repeated device use.</li>
     <li>Worth moving into a licensed or owned production voice source before consumer rollout.</li>
   </ul>
