@@ -29,10 +29,10 @@ From a source checkout, pass the release version:
 From inside the extracted release folder:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3
+.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
-Replace `COM3` with the device serial port.
+Replace `COM3`, `Your Name`, and `STACKCHAN-001` with the device serial port, operator name, and physical device identifier.
 
 This command verifies the package, dry-runs the display-only flash command, and creates an evidence packet under `output\hardware-evidence\`.
 

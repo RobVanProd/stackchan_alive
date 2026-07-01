@@ -91,7 +91,7 @@ From an extracted release package, `.\tools\share_release.cmd -CloudflareTunnel 
 Start a device-arrival evidence packet:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 When `-PackageZip` is provided, the evidence packet copies the ZIP and writes `logs/package_verify.log`. The hardware evidence verifier requires that package proof by default before promotion.
@@ -100,13 +100,13 @@ The packet also writes `RUN_*.cmd` files for the exact flash, soak, package veri
 To run the package verification, display-flash dry-run, and evidence packet creation in one no-hardware-safe step:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 If you only have the extracted release ZIP, run the same helper from inside the extracted folder:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3
+.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 Release ZIPs include `QUICKSTART.md` at the package root with the arrival-day operator flow.

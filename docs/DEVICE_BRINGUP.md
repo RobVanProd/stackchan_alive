@@ -9,7 +9,7 @@ Use this when the Stack-chan hardware arrives.
 3. Start an evidence packet for the release under test from the source checkout:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
@@ -18,13 +18,13 @@ It also creates runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `R
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 If you only have the extracted release ZIP, run the same helper from inside the extracted folder:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3
+.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 4. Check the exact release-binary flash command without touching the device:

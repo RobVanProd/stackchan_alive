@@ -36,7 +36,7 @@ Dry-run the release-binary flasher before connecting hardware:
 Create a hardware evidence packet when testing a physical device:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
@@ -45,13 +45,13 @@ The packet also includes generated `RUN_*.cmd` files for display flashing, servo
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 If you only have an extracted release ZIP, run the same helper from inside the extracted package folder:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3
+.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
 Before promoting a prerelease, verify the completed hardware evidence packet:

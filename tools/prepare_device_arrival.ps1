@@ -5,6 +5,7 @@ param(
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
+  [switch]$AllowIncompleteMetadata,
   [switch]$AllowDirtyPackage
 )
 
@@ -111,6 +112,16 @@ if ([string]::IsNullOrWhiteSpace($commit)) {
   throw "Could not determine release commit from git or package manifest."
 }
 
+if (-not $AllowIncompleteMetadata) {
+  $missingMetadata = @()
+  if ([string]::IsNullOrWhiteSpace($Port)) { $missingMetadata += "-Port" }
+  if ([string]::IsNullOrWhiteSpace($Operator)) { $missingMetadata += "-Operator" }
+  if ([string]::IsNullOrWhiteSpace($DeviceId)) { $missingMetadata += "-DeviceId" }
+  if ($missingMetadata.Count -gt 0) {
+    throw "Missing hardware evidence metadata: $($missingMetadata -join ', '). Pass these values for promotion-ready evidence, or use -AllowIncompleteMetadata for diagnostic-only packets."
+  }
+}
+
 Write-Host "Preparing Stackchan device-arrival packet"
 Write-Host "Release: $ReleaseTag"
 Write-Host "Commit:  $commit"
@@ -160,17 +171,21 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
 Write-Host ""
 Write-Host "==> Create hardware evidence packet"
 $evidenceScript = Join-Path $PSScriptRoot "start_hardware_evidence.ps1"
+$metadataArgs = @{}
+if ($AllowIncompleteMetadata) {
+  $metadataArgs["AllowIncompleteMetadata"] = $true
+}
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip -Port $Port -Operator $Operator -DeviceId $DeviceId -AllowDirtyPackage
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip -Port $Port -Operator $Operator -DeviceId $DeviceId -AllowDirtyPackage @metadataArgs
   } else {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip -Port $Port -Operator $Operator -DeviceId $DeviceId
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageZip $PackageZip -Port $Port -Operator $Operator -DeviceId $DeviceId @metadataArgs
   }
 } else {
   if ($AllowDirtyPackage) {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot -Port $Port -Operator $Operator -DeviceId $DeviceId -AllowDirtyPackage
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot -Port $Port -Operator $Operator -DeviceId $DeviceId -AllowDirtyPackage @metadataArgs
   } else {
-    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot -Port $Port -Operator $Operator -DeviceId $DeviceId
+    $evidenceOutput = & $evidenceScript -ReleaseTag $ReleaseTag -PackageRoot $PackageRoot -Port $Port -Operator $Operator -DeviceId $DeviceId @metadataArgs
   }
 }
 $evidenceOutput | Write-Host

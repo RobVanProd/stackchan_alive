@@ -5,6 +5,7 @@ param(
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
+  [switch]$AllowIncompleteMetadata,
   [switch]$AllowDirtyPackage
 )
 
@@ -77,6 +78,16 @@ if ([string]::IsNullOrWhiteSpace($commit)) {
 }
 if ([string]::IsNullOrWhiteSpace($commit)) {
   throw "Could not determine release commit from git or package manifest."
+}
+
+if (-not $AllowIncompleteMetadata) {
+  $missingMetadata = @()
+  if ([string]::IsNullOrWhiteSpace($Port)) { $missingMetadata += "-Port" }
+  if ([string]::IsNullOrWhiteSpace($Operator)) { $missingMetadata += "-Operator" }
+  if ([string]::IsNullOrWhiteSpace($DeviceId)) { $missingMetadata += "-DeviceId" }
+  if ($missingMetadata.Count -gt 0) {
+    throw "Missing hardware evidence metadata: $($missingMetadata -join ', '). Pass these values for promotion-ready evidence, or use -AllowIncompleteMetadata for diagnostic-only packets."
+  }
 }
 
 $branch = Invoke-GitText @("rev-parse", "--abbrev-ref", "HEAD")

@@ -184,7 +184,7 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
   <h2>Device Arrival Quickstart</h2>
   <p>After downloading and extracting the release ZIP, run this from inside the extracted folder:</p>
-  <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3</code></pre>
+  <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3 -Operator &quot;Your Name&quot; -DeviceId STACKCHAN-001</code></pre>
   <p>This verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with runnable <code>RUN_*.cmd</code> files.</p>
   <p>Use display-only firmware first. Servo calibration requires the explicit <code>-ConfirmServoRisk</code> command generated in the evidence packet and a supervised clear work area.</p>
 </main>
