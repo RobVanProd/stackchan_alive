@@ -8,6 +8,8 @@ struct MouthGeometry {
   float width = 64.0f;
   float smile = 0.0f;
   float open = 0.0f;
+  float cornerL = 0.0f;
+  float cornerR = 0.0f;
 };
 
 }  // namespace stackchan

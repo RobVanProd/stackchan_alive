@@ -27,6 +27,41 @@ def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
+def qbez(p0: float, p1: float, p2: float, u: float) -> float:
+    a = 1.0 - u
+    return a * a * p0 + 2 * a * u * p1 + u * u * p2
+
+
+def target_with_defaults(target: dict[str, float]) -> dict[str, float]:
+    defaults = {
+        "eye_open": 0.85,
+        "squint": 0.0,
+        "eye_smile": 0.15,
+        "pupil_x": 0.0,
+        "pupil_y": 0.0,
+        "pupil_scale": 1.0,
+        "brow_tilt": 0.0,
+        "mouth_smile": 0.15,
+        "mouth_open": 0.0,
+        "mouth_width_delta": 0.0,
+        "mouth_corner_l": 0.0,
+        "mouth_corner_r": 0.0,
+        "upper_lid_tilt": 0.0,
+        "lower_lid_tilt": 0.0,
+        "face_x": 0.0,
+        "face_y": 0.0,
+        "left_tl": 0.0,
+        "left_tr": 0.0,
+        "left_bl": 0.0,
+        "left_br": 0.0,
+        "right_tl": 0.0,
+        "right_tr": 0.0,
+        "right_bl": 0.0,
+        "right_br": 0.0,
+    }
+    return {**defaults, **target}
+
+
 def face_targets(t: float) -> dict[str, float]:
     # Preview the same style of continuous parameters used by the firmware.
     mode = int(t / 1.25) % 4
@@ -55,16 +90,24 @@ def face_targets(t: float) -> dict[str, float]:
     elif 3.09 <= blink_phase < 3.24:
         blink = (blink_phase - 3.09) / 0.15
 
-    return {
+    target = {
         "eye_open": clamp(0.72 + arousal * 0.3, 0.15, 1.0) * blink,
         "squint": clamp(max(0.0, -valence) * 0.5, 0.0, 1.0),
         "eye_smile": clamp(max(0.0, valence) * 0.55, 0.0, 1.0),
         "pupil_x": math.sin(t * 1.8) * (1.0 - focus) * 0.5,
         "pupil_y": pupil_y + math.sin(t * 1.2) * 0.08,
+        "pupil_scale": 0.85 + arousal * 0.30,
         "brow_tilt": clamp(valence * 0.30 + arousal * 0.15, -1.0, 1.0),
         "mouth_smile": clamp(valence * 0.75, -1.0, 1.0),
         "mouth_open": mouth_open,
     }
+    if mode == 1:
+        target.update({"right_br": 0.08, "mouth_width_delta": -2, "pupil_scale": 1.05})
+    elif mode == 2:
+        target.update({"left_tr": 0.30, "mouth_width_delta": -8, "upper_lid_tilt": 0.08})
+    elif mode == 3:
+        target.update({"mouth_width_delta": 4, "pupil_scale": 1.08})
+    return target_with_defaults(target)
 
 
 def rounded_rect(draw: ImageDraw.ImageDraw, xy: tuple[int, int, int, int], radius: int, fill: tuple[int, int, int]) -> None:
@@ -72,33 +115,56 @@ def rounded_rect(draw: ImageDraw.ImageDraw, xy: tuple[int, int, int, int], radiu
 
 
 def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, float], right: bool) -> None:
+    target = target_with_defaults(target)
     width = 70 - target["squint"] * 10
     height = 56
+    cx += target["face_x"]
+    cy += target["face_y"]
     x0 = int(cx - width / 2)
     y0 = int(cy - height / 2)
     x1 = int(cx + width / 2)
     y1 = int(cy + height / 2)
     rounded_rect(draw, (x0, y0, x1, y1), min(18, int(height / 2)), EYE)
 
+    prefix = "right" if right else "left"
+    cuts = {
+        "tl": int(clamp(target[f"{prefix}_tl"], 0.0, 1.0) * height * 0.5),
+        "tr": int(clamp(target[f"{prefix}_tr"], 0.0, 1.0) * height * 0.5),
+        "bl": int(clamp(target[f"{prefix}_bl"], 0.0, 1.0) * height * 0.5),
+        "br": int(clamp(target[f"{prefix}_br"], 0.0, 1.0) * height * 0.5),
+    }
+    if cuts["tl"] >= 2:
+        draw.polygon([(x0, y0), (x0 + cuts["tl"], y0), (x0, y0 + cuts["tl"])], fill=BG)
+    if cuts["tr"] >= 2:
+        draw.polygon([(x1, y0), (x1 - cuts["tr"], y0), (x1, y0 + cuts["tr"])], fill=BG)
+    if cuts["bl"] >= 2:
+        draw.polygon([(x0, y1), (x0 + cuts["bl"], y1), (x0, y1 - cuts["bl"])], fill=BG)
+    if cuts["br"] >= 2:
+        draw.polygon([(x1, y1), (x1 - cuts["br"], y1), (x1, y1 - cuts["br"])], fill=BG)
+
     px = int(cx + target["pupil_x"] * width * 0.22)
     py = int(cy + target["pupil_y"] * height * 0.18)
-    rx = max(4, int(width / 10))
-    ry = max(4, int(height / 5))
+    rx = max(4, int(width / 10 * target["pupil_scale"]))
+    ry = max(4, int(height / 5 * target["pupil_scale"]))
     draw.ellipse((px - rx, py - ry, px + rx, py + ry), fill=PUPIL)
-    draw.ellipse((px - rx, py - ry, px - rx // 3, py - ry // 3), fill=EYE)
+    draw.ellipse((px - rx - int(target["pupil_x"]), py - ry - int(target["pupil_y"]), px - rx // 3, py - ry // 3), fill=EYE)
 
     upper_coverage = int((1.0 - clamp(target["eye_open"], 0.0, 1.0)) * height)
     if upper_coverage > 0:
-        draw.rectangle((x0, y0, x1, y0 + upper_coverage), fill=BG)
+        tilt = int(clamp(target["upper_lid_tilt"], -1.0, 1.0) * 15)
+        edge_l = int(clamp(y0 + upper_coverage + tilt, y0, y1))
+        edge_r = int(clamp(y0 + upper_coverage - tilt, y0, y1))
+        draw.polygon([(x0, y0), (x1, y0), (x1, edge_r), (x0, edge_l)], fill=BG)
         if upper_coverage < height - 2:
-            lid_y = y0 + upper_coverage
-            draw.line((x0 + 4, lid_y, x1 - 4, lid_y), fill=ACCENT, width=1)
+            draw.line((x0 + 4, edge_l, x1 - 4, edge_r), fill=ACCENT, width=1)
 
     lower_coverage = int(target["eye_smile"] * 10)
     if lower_coverage > 0:
-        lid_y = y1 - lower_coverage
-        draw.rectangle((x0, lid_y, x1, y1), fill=BG)
-        draw.line((x0 + 4, lid_y, x1 - 4, lid_y), fill=ACCENT, width=1)
+        tilt = int(clamp(target["lower_lid_tilt"], -1.0, 1.0) * 8)
+        edge_l = int(clamp(y1 - lower_coverage + tilt, y0, y1))
+        edge_r = int(clamp(y1 - lower_coverage - tilt, y0, y1))
+        draw.polygon([(x0, edge_l), (x1, edge_r), (x1, y1), (x0, y1)], fill=BG)
+        draw.line((x0 + 4, edge_l, x1 - 4, edge_r), fill=ACCENT, width=1)
 
     if abs(target["brow_tilt"]) > 0.03 or target["squint"] > 0.05:
         brow_y = int(cy - height * 0.72)
@@ -115,20 +181,31 @@ def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, 
 
 
 def draw_mouth(draw: ImageDraw.ImageDraw, target: dict[str, float]) -> None:
-    cx, cy, width = 160, target.get("mouth_y", 172), 64
+    target = target_with_defaults(target)
+    cx, cy, width = 160 + target["face_x"], target.get("mouth_y", 172) + target["face_y"], 64 + target["mouth_width_delta"]
     smile = target["mouth_smile"]
     curve = int((1 if smile >= 0 else -1) * (abs(smile) ** 0.6) * 22)
     open_px = int(target["mouth_open"] * 18)
+    left_y = cy + target["mouth_corner_l"]
+    right_y = cy + target["mouth_corner_r"]
     if open_px > 3:
-        draw.ellipse((cx - width // 4, cy - open_px // 2, cx + width // 4, cy + open_px), fill=MOUTH)
-        draw.ellipse((cx - width // 6, cy - open_px // 4, cx + width // 6, cy + open_px // 2), fill=BG)
+        top_ctrl_y = cy - max(2, open_px // 3)
+        bottom_ctrl_y = cy + curve + open_px
+        top = []
+        bottom = []
+        for i in range(19):
+            u = i / 18
+            x = qbez(cx - width / 2, cx, cx + width / 2, u)
+            top.append((int(x), int(qbez(left_y, top_ctrl_y, right_y, u))))
+            bottom.append((int(x), int(qbez(left_y + open_px / 2, bottom_ctrl_y, right_y + open_px / 2, u))))
+        draw.polygon(top + list(reversed(bottom)), fill=MOUTH)
         return
 
     points = []
     for i in range(33):
         u = i / 32
-        x = (1 - u) ** 2 * (cx - width // 2) + 2 * (1 - u) * u * cx + u**2 * (cx + width // 2)
-        y = (1 - u) ** 2 * cy + 2 * (1 - u) * u * (cy + curve) + u**2 * cy
+        x = qbez(cx - width // 2, cx, cx + width // 2, u)
+        y = qbez(left_y, cy + curve, right_y, u)
         points.append((int(x), int(y)))
     draw.line(points, fill=MOUTH, width=3)
 
@@ -165,61 +242,107 @@ def render_expression_sheet(*, show_labels: bool = True, show_brand: bool = True
             "eye_open": 0.84,
             "squint": 0.0,
             "eye_smile": 0.12,
+            "pupil_scale": 1.0,
             "pupil_x": 0.0,
             "pupil_y": 0.0,
             "brow_tilt": 0.16,
             "mouth_smile": 0.26,
+            "mouth_width_delta": 5.0,
             "mouth_open": 0.0,
+            "left_tr": 0.04,
+            "right_tl": 0.07,
         }),
         ("Listen", {
             "eye_open": 0.92,
             "squint": 0.0,
             "eye_smile": 0.08,
+            "pupil_scale": 1.08,
             "pupil_x": -0.05,
             "pupil_y": 0.0,
             "brow_tilt": 0.12,
             "mouth_smile": 0.10,
+            "mouth_width_delta": -1.0,
             "mouth_open": 0.0,
+            "right_br": 0.08,
+            "left_bl": 0.04,
         }),
         ("Think", {
-            "eye_open": 0.80,
+            "eye_open": 0.78,
             "squint": 0.05,
             "eye_smile": 0.04,
+            "pupil_scale": 0.95,
             "pupil_x": 0.10,
             "pupil_y": -0.20,
             "brow_tilt": 0.10,
             "mouth_smile": 0.15,
+            "mouth_width_delta": -6.0,
+            "mouth_corner_l": -1.0,
+            "mouth_corner_r": 1.0,
             "mouth_open": 0.0,
+            "left_tr": 0.30,
+            "right_br": 0.06,
+            "upper_lid_tilt": 0.08,
         }),
         ("Happy", {
             "eye_open": 0.88,
             "squint": 0.0,
             "eye_smile": 0.44,
+            "pupil_scale": 1.15,
             "pupil_x": 0.0,
             "pupil_y": 0.02,
             "brow_tilt": 0.28,
             "mouth_smile": 0.62,
+            "mouth_width_delta": 17.0,
+            "mouth_corner_l": 2.0,
+            "mouth_corner_r": 1.0,
             "mouth_open": 0.0,
+            "left_bl": 0.16,
+            "left_br": 0.26,
+            "right_bl": 0.12,
+            "right_br": 0.20,
+            "lower_lid_tilt": -0.08,
         }),
         ("Concern", {
             "eye_open": 0.76,
             "squint": 0.32,
             "eye_smile": 0.0,
+            "pupil_scale": 0.88,
             "pupil_x": 0.0,
             "pupil_y": 0.05,
             "brow_tilt": -0.32,
             "mouth_smile": -0.52,
+            "mouth_width_delta": -10.0,
+            "mouth_corner_l": -3.0,
+            "mouth_corner_r": 1.0,
             "mouth_open": 0.0,
+            "left_tl": 0.35,
+            "right_tl": 0.50,
+            "left_br": 0.06,
+            "right_bl": 0.10,
+            "upper_lid_tilt": -0.15,
+            "lower_lid_tilt": 0.08,
+            "face_y": 2.0,
         }),
         ("Sleep", {
-            "eye_open": 0.15,
+            "eye_open": 0.28,
             "squint": 0.0,
-            "eye_smile": 0.0,
+            "eye_smile": 0.08,
+            "pupil_scale": 0.90,
             "pupil_x": 0.0,
             "pupil_y": 0.0,
-            "brow_tilt": 0.0,
-            "mouth_smile": 0.0,
+            "brow_tilt": -0.16,
+            "mouth_smile": -0.06,
+            "mouth_width_delta": -14.0,
+            "mouth_corner_l": -3.0,
+            "mouth_corner_r": 3.0,
             "mouth_open": 0.0,
+            "left_tr": 0.06,
+            "left_bl": 0.12,
+            "right_tl": 0.14,
+            "right_br": 0.28,
+            "upper_lid_tilt": 0.06,
+            "lower_lid_tilt": -0.04,
+            "face_y": 3.0,
         }),
     ]
 
@@ -243,6 +366,7 @@ def main() -> None:
     still.save(OUT / "stackchan_alive_preview.png")
     render_expression_sheet().save(OUT / "stackchan_alive_expression_sheet.png")
     render_expression_sheet(show_labels=False, show_brand=False).save(FACE_ARTIFACTS / "phase_a_unlabeled_expression_sheet.png")
+    render_expression_sheet(show_labels=False, show_brand=False).save(FACE_ARTIFACTS / "phase_b_unlabeled_expression_sheet.png")
     render_filmstrip(2.85, 14, 0.05).save(FACE_ARTIFACTS / "phase_a_blink_filmstrip_50ms.png")
 
     fps = 30

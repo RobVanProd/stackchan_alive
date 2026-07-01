@@ -23,6 +23,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   RobotFrame frame;
   frame.seq = ++seq_;
   frame.timestampMs = nowMs;
+  frame.mode = mode_;
   frame.emotion = emotion_.profile();
   frame.motion = motionForMode(nowMs);
   frame.face = expression_.map(frame.emotion, mode_);

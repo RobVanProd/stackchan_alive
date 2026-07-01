@@ -16,6 +16,11 @@ int32_t roundToInt(float value) {
   return static_cast<int32_t>(value + (value >= 0.0f ? 0.5f : -0.5f));
 }
 
+float qbez(float p0, float p1, float p2, float u) {
+  const float a = 1.0f - u;
+  return a * a * p0 + 2.0f * a * u * p1 + u * u * p2;
+}
+
 }  // namespace
 
 namespace stackchan {
@@ -85,27 +90,52 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
 
   canvas_->fillRoundRect(x, y, w, h, radius, kEye);
 
-  const int32_t pupilRx = max<int32_t>(4, w / 10);
-  const int32_t pupilRy = max<int32_t>(4, h / 5);
+  const int32_t cutTL = constrain(roundToInt(eye.cornerTL * eye.height * 0.5f), 0, h / 2);
+  const int32_t cutTR = constrain(roundToInt(eye.cornerTR * eye.height * 0.5f), 0, h / 2);
+  const int32_t cutBL = constrain(roundToInt(eye.cornerBL * eye.height * 0.5f), 0, h / 2);
+  const int32_t cutBR = constrain(roundToInt(eye.cornerBR * eye.height * 0.5f), 0, h / 2);
+  if (cutTL >= 2) {
+    canvas_->fillTriangle(x, y, x + cutTL, y, x, y + cutTL, kBg);
+  }
+  if (cutTR >= 2) {
+    canvas_->fillTriangle(x + w, y, x + w - cutTR, y, x + w, y + cutTR, kBg);
+  }
+  if (cutBL >= 2) {
+    canvas_->fillTriangle(x, y + h, x + cutBL, y + h, x, y + h - cutBL, kBg);
+  }
+  if (cutBR >= 2) {
+    canvas_->fillTriangle(x + w, y + h, x + w - cutBR, y + h, x + w, y + h - cutBR, kBg);
+  }
+
+  const int32_t pupilRx = max<int32_t>(4, roundToInt(static_cast<float>(w) * 0.10f * eye.pupilScale));
+  const int32_t pupilRy = max<int32_t>(4, roundToInt(static_cast<float>(h) * 0.20f * eye.pupilScale));
   const int32_t pupilX = roundToInt(eye.cx + eye.pupilX * eye.width * 0.22f);
   const int32_t pupilY = roundToInt(eye.cy + eye.pupilY * eye.height * 0.18f);
   canvas_->fillEllipse(pupilX, pupilY, pupilRx, pupilRy, kPupil);
-  canvas_->fillCircle(pupilX - pupilRx / 2, pupilY - pupilRy / 2, max<int32_t>(1, pupilRx / 3), kEye);
+  const int32_t highlightX = pupilX - pupilRx / 2 - roundToInt(eye.pupilX);
+  const int32_t highlightY = pupilY - pupilRy / 2 - roundToInt(eye.pupilY);
+  canvas_->fillCircle(highlightX, highlightY, max<int32_t>(1, pupilRx / 3), kEye);
 
   const int32_t upperCoverage = constrain(roundToInt(eye.upperLid), 0, h);
   if (upperCoverage > 0) {
-    canvas_->fillRect(x, y, w, upperCoverage, kBg);
+    const int32_t tilt = roundToInt(constrain(eye.upperLidTilt, -1.0f, 1.0f) * 15.0f);
+    const int32_t edgeL = constrain(y + upperCoverage + tilt, y, y + h);
+    const int32_t edgeR = constrain(y + upperCoverage - tilt, y, y + h);
+    canvas_->fillTriangle(x, y, x + w, y, x, edgeL, kBg);
+    canvas_->fillTriangle(x + w, y, x + w, edgeR, x, edgeL, kBg);
     if (upperCoverage < h - 2) {
-      const int32_t lidY = y + upperCoverage;
-      canvas_->drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
+      canvas_->drawLine(x + 4, edgeL, x + w - 4, edgeR, kAccent);
     }
   }
 
   const int32_t lowerCoverage = constrain(roundToInt(eye.lowerLid), 0, h - upperCoverage);
   if (lowerCoverage > 0) {
-    const int32_t lidY = y + h - lowerCoverage;
-    canvas_->fillRect(x, lidY, w, lowerCoverage, kBg);
-    canvas_->drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
+    const int32_t tilt = roundToInt(constrain(eye.lowerLidTilt, -1.0f, 1.0f) * 8.0f);
+    const int32_t edgeL = constrain(y + h - lowerCoverage + tilt, y, y + h);
+    const int32_t edgeR = constrain(y + h - lowerCoverage - tilt, y, y + h);
+    canvas_->fillTriangle(x, y + h, x + w, y + h, x, edgeL, kBg);
+    canvas_->fillTriangle(x + w, y + h, x + w, edgeR, x, edgeL, kBg);
+    canvas_->drawLine(x + 4, edgeL, x + w - 4, edgeR, kAccent);
   }
 
   if (fabsf(eye.browTilt) > 0.03f || eye.squint > 0.05f) {
@@ -136,15 +166,34 @@ void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
   const float smileSign = mouth.smile < 0.0f ? -1.0f : 1.0f;
   const int32_t curve = roundToInt(smileSign * smileMagnitude * 22.0f);
   const int32_t open = roundToInt(mouth.open * 18.0f);
+  const int32_t leftY = cy + roundToInt(mouth.cornerL);
+  const int32_t rightY = cy + roundToInt(mouth.cornerR);
 
   if (open > 3) {
-    canvas_->fillEllipse(cx, cy + open / 3, half / 2, open, kMouth);
-    canvas_->fillEllipse(cx, cy + open / 4, half / 3, max<int32_t>(2, open / 2), kBg);
+    const int32_t topCtrlY = cy - max<int32_t>(2, open / 3);
+    const int32_t bottomCtrlY = cy + curve + open;
+    int32_t prevTopX = cx - half;
+    int32_t prevTopY = leftY;
+    int32_t prevBottomX = cx - half;
+    int32_t prevBottomY = leftY + max<int32_t>(2, open / 2);
+    for (int i = 1; i <= 18; ++i) {
+      const float u = static_cast<float>(i) / 18.0f;
+      const int32_t topX = roundToInt(qbez(cx - half, cx, cx + half, u));
+      const int32_t topY = roundToInt(qbez(leftY, topCtrlY, rightY, u));
+      const int32_t bottomX = topX;
+      const int32_t bottomY = roundToInt(qbez(leftY + open / 2, bottomCtrlY, rightY + open / 2, u));
+      canvas_->fillTriangle(prevTopX, prevTopY, prevBottomX, prevBottomY, topX, topY, kMouth);
+      canvas_->fillTriangle(topX, topY, prevBottomX, prevBottomY, bottomX, bottomY, kMouth);
+      prevTopX = topX;
+      prevTopY = topY;
+      prevBottomX = bottomX;
+      prevBottomY = bottomY;
+    }
     return;
   }
 
-  canvas_->drawBezier(cx - half, cy, cx, cy + curve, cx + half, cy, kMouth);
-  canvas_->drawBezier(cx - half, cy + 1, cx, cy + curve + 1, cx + half, cy + 1, kMouth);
+  canvas_->drawBezier(cx - half, leftY, cx, cy + curve, cx + half, rightY, kMouth);
+  canvas_->drawBezier(cx - half, leftY + 1, cx, cy + curve + 1, cx + half, rightY + 1, kMouth);
 }
 
 void DisplayAdapter::flush() {

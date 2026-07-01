@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 
-#include "persona/IntentEngine.hpp"
-
 namespace stackchan {
 
 FaceTargets ExpressionMapper::map(const EmotionalProfile& emotion, CharacterMode mode) const {

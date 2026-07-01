@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 
-#include "persona/IntentEngine.hpp"
 #include "persona/StateMatrix.hpp"
 
 namespace stackchan {

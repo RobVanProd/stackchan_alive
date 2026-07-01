@@ -164,6 +164,32 @@ void test_face_animator_smooths_channels_with_independent_timing() {
   TEST_ASSERT_GREATER_THAN_FLOAT(firstStep.mouthOpen, firstStep.eyeOpen - 0.2f);
 }
 
+void test_face_animator_uses_mode_authored_pose_keys() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Think;
+  frame.emotion.arousal = 0.4f;
+  frame.face.eyeOpen = 0.85f;
+
+  FaceTargets think = animator.composeFrame(frame, 0);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, think.leftCorners.tr);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.10f, think.pupilY);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.0f, think.mouthWidthDelta);
+
+  frame.mode = CharacterMode::Error;
+  animator.reset(frame.face, 100);
+  FaceTargets concern = animator.composeFrame(frame, 100);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.30f, concern.rightCorners.tl);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.0f, concern.browTilt);
+  TEST_ASSERT_NOT_EQUAL(concern.leftCorners.tl, concern.rightCorners.tl);
+}
+
+void test_robot_frame_carries_character_mode_for_renderer() {
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Listen;
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(frame.mode));
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -301,6 +327,8 @@ int main() {
   RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);
   RUN_TEST(test_face_animator_outback_overshoots_then_settles);
   RUN_TEST(test_face_animator_smooths_channels_with_independent_timing);
+  RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
+  RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

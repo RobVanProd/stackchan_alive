@@ -109,7 +109,8 @@ foreach ($file in $mediaFiles) {
 $faceArtifactFiles = @(
   "artifacts/face/phase_a_idle_10s.gif",
   "artifacts/face/phase_a_blink_filmstrip_50ms.png",
-  "artifacts/face/phase_a_unlabeled_expression_sheet.png"
+  "artifacts/face/phase_a_unlabeled_expression_sheet.png",
+  "artifacts/face/phase_b_unlabeled_expression_sheet.png"
 )
 
 foreach ($file in $faceArtifactFiles) {
@@ -194,6 +195,8 @@ $releaseTools = @(
   "tools/verify_preview_media.ps1",
   "tools/verify_face_phase_a.cmd",
   "tools/verify_face_phase_a.ps1",
+  "tools/verify_face_phase_b.cmd",
+  "tools/verify_face_phase_b.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
@@ -485,6 +488,7 @@ $manifest = [ordered]@{
     "artifacts/face/phase_a_idle_10s.gif",
     "artifacts/face/phase_a_blink_filmstrip_50ms.png",
     "artifacts/face/phase_a_unlabeled_expression_sheet.png",
+    "artifacts/face/phase_b_unlabeled_expression_sheet.png",
     "media/voice/stackchan_spark_greeting.wav",
     "media/voice/stackchan_spark_thinking.wav",
     "media/voice/stackchan_spark_safety.wav",
@@ -530,6 +534,8 @@ $manifest = [ordered]@{
     "tools/verify_preview_media.ps1",
     "tools/verify_face_phase_a.cmd",
     "tools/verify_face_phase_a.ps1",
+    "tools/verify_face_phase_b.cmd",
+    "tools/verify_face_phase_b.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1",
     "tools/verify_share_release.cmd",

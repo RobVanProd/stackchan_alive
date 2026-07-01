@@ -207,6 +207,7 @@ $expectedFiles = @(
   @{ Path = "artifacts/face/phase_a_idle_10s.gif"; MinBytes = 100000; Type = "image/gif" },
   @{ Path = "artifacts/face/phase_a_blink_filmstrip_50ms.png"; MinBytes = 1000; Type = "image/png" },
   @{ Path = "artifacts/face/phase_a_unlabeled_expression_sheet.png"; MinBytes = 1000; Type = "image/png" },
+  @{ Path = "artifacts/face/phase_b_unlabeled_expression_sheet.png"; MinBytes = 1000; Type = "image/png" },
   @{ Path = "voice/stackchan_spark_greeting.wav"; MinBytes = 1000; Type = "audio/" },
   @{ Path = "voice/stackchan_spark_thinking.wav"; MinBytes = 1000; Type = "audio/" },
   @{ Path = "voice/stackchan_spark_safety.wav"; MinBytes = 1000; Type = "audio/" },
@@ -267,6 +268,12 @@ foreach ($pattern in @("Face Phase A Artifacts", "double-buffered M5Canvas", "fr
   }
 }
 
+foreach ($pattern in @("Face Phase B Artifacts", "procedural eye-corner cuts", "angled lids", "two-curve open mouth", "authored L0 pose keys", "phase_b_unlabeled_expression_sheet.png")) {
+  if ($indexText -notmatch [regex]::Escape($pattern)) {
+    throw "index.html missing expected Phase B face guidance: $pattern"
+  }
+}
+
 if ($hasPreflightReport) {
   foreach ($pattern in @("Preflight: pass", "preflight_report.md", "preflight_report.json")) {
     if ($indexText -notmatch [regex]::Escape($pattern)) {
@@ -276,7 +283,7 @@ if ($hasPreflightReport) {
 }
 
 $probes = @()
-$probedPaths = @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "artifacts/face/phase_a_idle_10s.gif", "artifacts/face/phase_a_blink_filmstrip_50ms.png", "artifacts/face/phase_a_unlabeled_expression_sheet.png", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "ARRIVAL_DAY_RUNBOOK.md", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "DEPENDENCIES.md", "dependency_lock.json", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt")
+$probedPaths = @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "artifacts/face/phase_a_idle_10s.gif", "artifacts/face/phase_a_blink_filmstrip_50ms.png", "artifacts/face/phase_a_unlabeled_expression_sheet.png", "artifacts/face/phase_b_unlabeled_expression_sheet.png", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "ARRIVAL_DAY_RUNBOOK.md", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "DEPENDENCIES.md", "dependency_lock.json", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt")
 if ($hasPreflightReport) {
   $probedPaths += @("preflight_report.md", "preflight_report.json")
 }

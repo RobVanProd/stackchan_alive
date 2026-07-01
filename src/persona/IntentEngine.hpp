@@ -6,18 +6,6 @@
 
 namespace stackchan {
 
-enum class CharacterMode : uint8_t {
-  Boot,
-  Idle,
-  Attend,
-  Listen,
-  Think,
-  Speak,
-  React,
-  Sleep,
-  Error,
-};
-
 class IntentEngine {
  public:
   void begin();
