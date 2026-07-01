@@ -642,7 +642,7 @@ foreach ($requirement in @("clean-release-package", "dependency-provenance-prese
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
   }
 }
-foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mode-soak", "hardware-evidence-verification", "production-voice-source")) {
+foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mode-soak", "target-speaker-audio-evidence", "hardware-evidence-verification", "production-voice-source")) {
   $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing pending hardware requirement: $requirement"
@@ -650,7 +650,7 @@ foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mod
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -706,13 +706,17 @@ $voiceSourceNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $
 if ($voiceSourceNoHardwareGate.Count -ne 1) {
   throw "readiness_report.json missing passed voice-source provenance template gate"
 }
+$speakerAudioGate = @($readinessJson.hardwareGates | Where-Object { $_.gate -eq "target-speaker-audio-evidence" -and $_.status -eq "pending-device" })
+if ($speakerAudioGate.Count -ne 1) {
+  throw "readiness_report.json missing pending target-speaker-audio-evidence gate"
+}
 foreach ($gate in @($readinessJson.hardwareGates)) {
   $allowedStatus = if ($gate.gate -eq "production-voice-source") { "pending-before-consumer-rollout" } else { "pending-device" }
   if ($gate.status -ne $allowedStatus) {
     throw "readiness_report.json hardware gate must remain pending-device before promotion: $($gate.gate)"
   }
 }
-if (@($readinessJson.hardwareGates).Count -lt 6) {
+if (@($readinessJson.hardwareGates).Count -lt 7) {
   throw "readiness_report.json is missing required hardware gates"
 }
 

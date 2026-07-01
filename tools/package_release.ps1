@@ -579,8 +579,9 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ gate = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat markers" },
     [ordered]@{ gate = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
+    [ordered]@{ gate = "target-speaker-audio-evidence"; status = "pending-device"; requiredEvidence = "completed AUDIO_REVIEW.md plus a real-device speaker recording under audio/" },
     [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
-    [ordered]@{ gate = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md, licensed or owned production source, and target speaker audio/video evidence" }
+    [ordered]@{ gate = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md plus licensed or owned production source" }
   )
   promotionRule = "Do not mark consumer-ready or non-prerelease until all hardware gates pass with evidence."
   nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
@@ -614,8 +615,9 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat markers" },
     [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
+    [ordered]@{ requirement = "target-speaker-audio-evidence"; status = "pending-device"; requiredEvidence = "completed AUDIO_REVIEW.md plus a real-device speaker recording under audio/" },
     [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
-    [ordered]@{ requirement = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md, licensed or owned production voice source, and real-device speaker check" }
+    [ordered]@{ requirement = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md plus licensed or owned production voice source" }
   )
   promotionRule = "Keep prerelease status until every hardwareAcceptanceRequired item is pass with evidence."
 }
@@ -651,8 +653,9 @@ Consumer rollout: blocked pending hardware validation
 - [ ] Supervised servo calibration with yaw classification and calibration values
 - [ ] 30-minute mixed idle/listen/think/speak soak with heartbeat markers
 - [ ] USB power-cycle recovery marked pass
+- [ ] Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``
 - [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
-- [ ] Completed voice-source provenance, licensed or owned production voice source, and real-device speaker check
+- [ ] Completed voice-source provenance with a licensed or owned production voice source
 
 Machine-readable checklist: ``release_acceptance.json``
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
@@ -683,8 +686,9 @@ Consumer rollout: blocked pending hardware validation
 - Supervised servo calibration, yaw classification, and calibration values.
 - 30-minute mixed idle/listen/think/speak soak.
 - USB power-cycle recovery.
+- Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
 - Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
-- Completed voice-source provenance with licensed or owned production source and target speaker evidence.
+- Completed voice-source provenance with licensed or owned production source.
 
 Do not mark this release consumer-ready or non-prerelease until every pending device gate has explicit evidence.
 
@@ -709,7 +713,8 @@ Hardware validation is still required before consumer rollout:
 3. Yaw classification and calibration.
 4. 30-minute mixed idle/listen/speak soak.
 5. USB power-cycle recovery test.
-6. Licensed or owned production voice source and real-device speaker check.
+6. Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
+7. Licensed or owned production voice source.
 
 See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8
