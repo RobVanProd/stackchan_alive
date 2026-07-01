@@ -2,6 +2,7 @@ param(
   [string]$PackageZip = "",
   [string]$Version = "",
   [string]$ExpectedCommit = "",
+  [string]$ReportDir = "",
   [switch]$AllowDirty
 )
 
@@ -11,6 +12,79 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
+$script:PreflightStepResults = @()
+$script:PreflightReportWritten = $false
+
+function Write-PreflightReport {
+  param(
+    [ValidateSet("pass", "fail")]
+    [string]$Status,
+    [string]$ErrorMessage = ""
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ReportDir)) {
+    $reportVersion = if ([string]::IsNullOrWhiteSpace($Version)) { "commit-$($ExpectedCommit.Substring(0, [Math]::Min(12, $ExpectedCommit.Length)))" } else { $Version }
+    $ReportDir = Join-Path $repoRoot "output/preflight/$reportVersion"
+  }
+
+  New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
+  $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  $report = [ordered]@{
+    schema = "stackchan.preflight-report.v1"
+    version = $Version
+    commit = $ExpectedCommit
+    status = $Status
+    generatedUtc = $generatedUtc
+    packageZip = $PackageZip
+    allowDirty = [bool]$AllowDirty
+    error = $ErrorMessage
+    steps = @($script:PreflightStepResults)
+  }
+
+  $report | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ReportDir "preflight_report.json") -Encoding UTF8
+
+  $lines = @(
+    "# Stackchan Device Preflight Report",
+    "",
+    "- Version: $Version",
+    "- Commit: $ExpectedCommit",
+    "- Status: $Status",
+    "- Generated UTC: $generatedUtc",
+    "- Package ZIP: $PackageZip",
+    "- Allow dirty source: $([bool]$AllowDirty)",
+    ""
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($ErrorMessage)) {
+    $lines += @(
+      "## Failure",
+      "",
+      $ErrorMessage,
+      ""
+    )
+  }
+
+  $lines += @(
+    "## Steps",
+    ""
+  )
+
+  foreach ($step in @($script:PreflightStepResults)) {
+    $duration = if ($null -ne $step.durationSeconds) { "$($step.durationSeconds)s" } else { "" }
+    $lines += "- $($step.status): $($step.name) $duration".TrimEnd()
+  }
+
+  $lines += @(
+    "",
+    "## Rollout Note",
+    "",
+    "This preflight proves the no-hardware gates for the named commit and package. Consumer rollout still requires real-device display, servo, soak, speaker-audio evidence, completed production voice-source provenance, and unblocked GitHub Actions."
+  )
+
+  $lines | Set-Content -Path (Join-Path $ReportDir "preflight_report.md") -Encoding UTF8
+  $script:PreflightReportWritten = $true
+}
+
 function Invoke-Step {
   param(
     [string]$Name,
@@ -19,9 +93,32 @@ function Invoke-Step {
 
   Write-Host ""
   Write-Host "==> $Name"
-  & $Command
-  if ($LASTEXITCODE -ne 0) {
-    throw "Step failed: $Name"
+  $startedUtc = (Get-Date).ToUniversalTime()
+  try {
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+      throw "Step failed: $Name"
+    }
+    $endedUtc = (Get-Date).ToUniversalTime()
+    $script:PreflightStepResults += [ordered]@{
+      name = $Name
+      status = "pass"
+      startedUtc = $startedUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+      endedUtc = $endedUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+      durationSeconds = [Math]::Round(($endedUtc - $startedUtc).TotalSeconds, 3)
+    }
+  } catch {
+    $endedUtc = (Get-Date).ToUniversalTime()
+    $script:PreflightStepResults += [ordered]@{
+      name = $Name
+      status = "fail"
+      startedUtc = $startedUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+      endedUtc = $endedUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+      durationSeconds = [Math]::Round(($endedUtc - $startedUtc).TotalSeconds, 3)
+      error = $_.Exception.Message
+    }
+    Write-PreflightReport -Status "fail" -ErrorMessage $_.Exception.Message
+    throw
   }
 }
 
@@ -554,6 +651,11 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and [string]::IsNullOrWhiteS
   }
 }
 
+if ([string]::IsNullOrWhiteSpace($ReportDir)) {
+  $reportVersion = if ([string]::IsNullOrWhiteSpace($Version)) { "commit-$($ExpectedCommit.Substring(0, [Math]::Min(12, $ExpectedCommit.Length)))" } else { $Version }
+  $ReportDir = Join-Path $repoRoot "output/preflight/$reportVersion"
+}
+
 Invoke-Step "Check required commands" {
   Assert-Command git
   Get-StackchanPlatformioCommand | Out-Null
@@ -614,3 +716,6 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
 
 Write-Host ""
 Write-Host "Device preflight passed for commit $ExpectedCommit"
+Write-PreflightReport -Status "pass"
+Write-Host "Preflight report:"
+Write-Host $ReportDir

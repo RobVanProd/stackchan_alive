@@ -226,6 +226,14 @@ $expectedFiles = @(
   @{ Path = "SHA256SUMS.txt"; MinBytes = 100; Type = "" }
 )
 
+$hasPreflightReport = (Test-Path -LiteralPath (Join-Path $shareRootPath "preflight_report.md")) -and (Test-Path -LiteralPath (Join-Path $shareRootPath "preflight_report.json"))
+if ($hasPreflightReport) {
+  $expectedFiles += @(
+    @{ Path = "preflight_report.md"; MinBytes = 100; Type = "" },
+    @{ Path = "preflight_report.json"; MinBytes = 100; Type = "" }
+  )
+}
+
 foreach ($file in $expectedFiles) {
   Assert-File (Join-Path $shareRootPath $file.Path) $file.MinBytes
 }
@@ -244,14 +252,26 @@ if ($actualZipHash -ne $expectedZipHash) {
 }
 
 $indexText = Get-Content -LiteralPath (Join-Path $shareRootPath "index.html") -Raw
-foreach ($pattern in @($Version, "Hardware validation is still pending", "No-hardware gates passed", "Hardware gates pending", "Consumer rollout", "GitHub Actions", "Speaker audio evidence", "Dependency Provenance", "Declared library deps", "Direct Git deps missing refs", "Resolved Git deps without SHA", "SCServo#ee6ee4a", "DEPENDENCIES.md", "dependency_lock.json", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "Voice Samples", "Stackchan Spark Synth v3", "micro-prosody", "syllable gating", "electromechanical mask", "formant-like resonators", "sample-hold texture", "comb resonance", "eSpeak-NG", "setup_voice_tools.cmd", "RenderEspeakSamples", "Voice Review Checklist", "Voice Source Gate", "pending production source", "licensed or owned production voice required", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "audio/", "real-device speaker sample", "Generated source WAVs alone do not count", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "ARRIVAL_DAY_RUNBOOK.md", "Transcript:", "Hello. I am Stackchan, and I am awake.", "Input received. I am thinking now. Curiosity level rising.", "Small problem found. I can help fix it. Safety first.", "Audition: Warm Slow", "Audition: Bright Robot", "Warmer and slightly slower", "Brighter and more synthetic", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "Arrival-Day Evidence Loop", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
+foreach ($pattern in @($Version, "Hardware validation is still pending", "No-hardware gates passed", "Hardware gates pending", "Consumer rollout", "GitHub Actions", "Speaker audio evidence", "Preflight Evidence", "No-hardware device preflight", "Dependency Provenance", "Declared library deps", "Direct Git deps missing refs", "Resolved Git deps without SHA", "SCServo#ee6ee4a", "DEPENDENCIES.md", "dependency_lock.json", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "Voice Samples", "Stackchan Spark Synth v3", "micro-prosody", "syllable gating", "electromechanical mask", "formant-like resonators", "sample-hold texture", "comb resonance", "eSpeak-NG", "setup_voice_tools.cmd", "RenderEspeakSamples", "Voice Review Checklist", "Voice Source Gate", "pending production source", "licensed or owned production voice required", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "audio/", "real-device speaker sample", "Generated source WAVs alone do not count", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "ARRIVAL_DAY_RUNBOOK.md", "Transcript:", "Hello. I am Stackchan, and I am awake.", "Input received. I am thinking now. Curiosity level rising.", "Small problem found. I can help fix it. Safety first.", "Audition: Warm Slow", "Audition: Bright Robot", "Warmer and slightly slower", "Brighter and more synthetic", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "Arrival-Day Evidence Loop", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
   if ($indexText -notmatch [regex]::Escape($pattern)) {
     throw "index.html missing expected share guidance: $pattern"
   }
 }
 
+if ($hasPreflightReport) {
+  foreach ($pattern in @("Preflight: pass", "preflight_report.md", "preflight_report.json")) {
+    if ($indexText -notmatch [regex]::Escape($pattern)) {
+      throw "index.html missing expected attached preflight guidance: $pattern"
+    }
+  }
+}
+
 $probes = @()
-foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "ARRIVAL_DAY_RUNBOOK.md", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "DEPENDENCIES.md", "dependency_lock.json", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt") }) {
+$probedPaths = @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "ARRIVAL_DAY_RUNBOOK.md", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "DEPENDENCIES.md", "dependency_lock.json", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt")
+if ($hasPreflightReport) {
+  $probedPaths += @("preflight_report.md", "preflight_report.json")
+}
+foreach ($file in $expectedFiles | Where-Object { $_.Path -in $probedPaths }) {
   $path = if ($file.Path -eq "index.html") { "/" } else { $file.Path }
   $probe = Invoke-UrlProbe -TargetUrl (Join-Url $Url $path) -TimeoutSeconds $TimeoutSeconds -ProbeRetries $ProbeRetries -ProbeDelaySeconds $ProbeDelaySeconds
   Assert-HttpOk -Probe $probe -ExpectedType $file.Type -Path $path

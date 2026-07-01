@@ -358,15 +358,52 @@ foreach ($file in $files) {
   Copy-Item -LiteralPath $file.Source -Destination $destination
 }
 
+$manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
+$readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
+$dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
+
+$preflightRoot = Join-Path $repoRoot "output/preflight/$Version"
+$preflightReportMarkdown = Join-Path $preflightRoot "preflight_report.md"
+$preflightReportJson = Join-Path $preflightRoot "preflight_report.json"
+$preflightReportAvailable = (Test-Path -LiteralPath $preflightReportMarkdown) -and (Test-Path -LiteralPath $preflightReportJson)
+$preflightStatus = "pending"
+$preflightStatusPillClass = "pending"
+$preflightSection = @"
+  <h2>Preflight Evidence</h2>
+  <p>No-hardware device preflight has not been attached to this share yet. Run <code>.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_$Version.zip -Version $Version -ExpectedCommit $($manifest.commit)</code>, then re-run this share command to publish the pass/fail report.</p>
+"@
+$preflightDownloadItems = ""
+
+if ($preflightReportAvailable) {
+  Copy-Item -LiteralPath $preflightReportMarkdown -Destination (Join-Path $shareRoot "preflight_report.md")
+  Copy-Item -LiteralPath $preflightReportJson -Destination (Join-Path $shareRoot "preflight_report.json")
+  $preflightReport = Get-Content -LiteralPath $preflightReportJson -Raw | ConvertFrom-Json
+  $preflightStatus = [string]$preflightReport.status
+  $preflightStatusPillClass = if ($preflightStatus -eq "pass") { "pass" } else { "pending" }
+  $preflightPassedSteps = @($preflightReport.steps | Where-Object { $_.status -eq "pass" }).Count
+  $preflightFailedSteps = @($preflightReport.steps | Where-Object { $_.status -eq "fail" }).Count
+  $preflightSection = @"
+  <h2>Preflight Evidence</h2>
+  <p>No-hardware device preflight report for this package is attached. It covers required commands, dependency pins, flash-helper safety gates, architecture boundaries, preview media, hardware-evidence verifier gates, native tests, embedded test firmware compile, firmware builds, release package verification, and release flash-helper checks.</p>
+  <div class="status">
+    <span class="pill $preflightStatusPillClass">Preflight: $preflightStatus</span>
+    <span class="pill pass">Passed steps: $preflightPassedSteps</span>
+    <span class="pill pending">Failed steps: $preflightFailedSteps</span>
+  </div>
+  <p><a href="preflight_report.md">Read preflight report</a> or <a href="preflight_report.json">download preflight JSON</a>.</p>
+"@
+  $preflightDownloadItems = @"
+    <div class="item"><a href="preflight_report.md">Preflight Report</a></div>
+    <div class="item"><a href="preflight_report.json">Preflight JSON</a></div>
+"@
+}
+
 $sharedZipName = "stackchan_alive_$Version.zip"
 $sharedZipPath = Join-Path $shareRoot $sharedZipName
 Assert-File $sharedZipPath
 $sharedZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sharedZipPath).Hash.ToLowerInvariant()
 "$sharedZipHash  $sharedZipName" | Set-Content -Path (Join-Path $shareRoot "$sharedZipName.sha256") -Encoding ASCII
 
-$manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
-$readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
-$dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
 $actionsStatusScript = Join-Path $packageRoot "tools/export_github_actions_status.ps1"
 if ((Get-Command "gh" -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $actionsStatusScript)) {
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $actionsStatusScript -Version $Version -Commit $manifest.commit -OutputDir $shareRoot
@@ -420,9 +457,12 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <span class="pill pending">Hardware gates pending: $pendingGateCount</span>
     <span class="pill pending">Consumer rollout: $consumerRollout</span>
     <span class="pill pending">GitHub Actions: $($actionsStatus.status)</span>
+    <span class="pill $preflightStatusPillClass">Preflight: $preflightStatus</span>
     <span class="pill pending">Speaker audio evidence: pending device</span>
   </div>
   <p><strong>GitHub Actions:</strong> $($actionsStatus.interpretation)</p>
+
+$preflightSection
 
   <h2>Dependency Provenance</h2>
   <p>The release ZIP includes copied build inputs, dependency provenance, and a machine-readable dependency lock. Direct Git dependencies are required to be pinned, and resolved Git packages must carry SHA evidence.</p>
@@ -526,6 +566,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="READINESS_REPORT.md">Readiness Report</a></div>
     <div class="item"><a href="readiness_report.json">Readiness JSON</a></div>
+$preflightDownloadItems
     <div class="item"><a href="stackchan_alive_$Version.zip.sha256">ZIP SHA256</a></div>
     <div class="item"><a href="SHA256SUMS.txt">SHA256 Checksums</a></div>
   </div>
