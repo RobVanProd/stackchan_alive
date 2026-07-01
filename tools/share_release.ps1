@@ -124,6 +124,36 @@ function Get-CloudflaredPath {
   return $item.FullName
 }
 
+function Get-PythonPath {
+  $candidatePaths = @()
+  $candidatePaths += @(Get-Command "python" -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+
+  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $candidatePaths += Join-Path $env:USERPROFILE ".platformio/penv/Scripts/python.exe"
+    $candidatePaths += Join-Path $env:USERPROFILE ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe"
+  }
+
+  foreach ($path in @($candidatePaths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+    if (-not (Test-Path -LiteralPath $path)) {
+      continue
+    }
+    if ($path -match "\\WindowsApps\\python\.exe$") {
+      continue
+    }
+
+    try {
+      $probe = & $path -c "import sys; print(sys.executable)" 2>$null
+      if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($probe | Out-String).Trim())) {
+        return (Resolve-Path $path).Path
+      }
+    } catch {
+      continue
+    }
+  }
+
+  throw "Required Python runtime is not available. Install Python 3, install PlatformIO, or add python.exe to PATH."
+}
+
 $rootManifest = Get-ReleaseManifest $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -242,7 +272,7 @@ if ($NoServe) {
   exit 0
 }
 
-Assert-Command "python"
+$pythonPath = Get-PythonPath
 if ($CloudflareTunnel) {
   $cloudflaredPath = Get-CloudflaredPath
 }
@@ -259,7 +289,7 @@ $serverArgs = @(
 $serverOutLog = Join-Path $shareRoot "server.stdout.log"
 $serverErrLog = Join-Path $shareRoot "server.stderr.log"
 Remove-Item -LiteralPath $serverOutLog, $serverErrLog -Force -ErrorAction SilentlyContinue
-$server = Start-Process -FilePath "python" -ArgumentList $serverArgs -WindowStyle Hidden -RedirectStandardOutput $serverOutLog -RedirectStandardError $serverErrLog -PassThru
+$server = Start-Process -FilePath $pythonPath -ArgumentList $serverArgs -WindowStyle Hidden -RedirectStandardOutput $serverOutLog -RedirectStandardError $serverErrLog -PassThru
 $server.Id | Set-Content -Path (Join-Path $shareRoot "server.pid") -Encoding ASCII
 Write-StopHelper -ProcessIds @($server.Id)
 Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
