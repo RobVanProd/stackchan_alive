@@ -102,7 +102,9 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/RELEASE_QUICKSTART.md" -Destination (Join-Path $outDir "QUICKSTART.md")
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/VOICE_PERSONALITY.md" -Destination $docsDir
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
+Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 
 $releaseTools = @(
   "tools/flash_device.cmd",
@@ -406,6 +408,8 @@ $manifest = [ordered]@{
   dependencyLock = "dependency_lock.json"
   readinessReport = "READINESS_REPORT.md"
   readinessReportJson = "readiness_report.json"
+  voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
+  voicePersona = "data/voice_persona.yaml"
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",

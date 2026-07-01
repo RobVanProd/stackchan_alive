@@ -99,7 +99,9 @@ $requiredFiles = @(
   "docs/README.md",
   "docs/RELEASE_PROCESS.md",
   "docs/ROLLOUT_CHECKLIST.md",
+  "docs/VOICE_PERSONALITY.md",
   "data/calibration.yaml",
+  "data/voice_persona.yaml",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -241,6 +243,14 @@ if ($manifest.readinessReport -ne "READINESS_REPORT.md") {
 
 if ($manifest.readinessReportJson -ne "readiness_report.json") {
   throw "Manifest readinessReportJson mismatch: $($manifest.readinessReportJson)"
+}
+
+if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
+  throw "Manifest voicePersonalityGuide mismatch: $($manifest.voicePersonalityGuide)"
+}
+
+if ($manifest.voicePersona -ne "data/voice_persona.yaml") {
+  throw "Manifest voicePersona mismatch: $($manifest.voicePersona)"
 }
 
 $expectedMediaArtifacts = @(
@@ -444,6 +454,20 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 }
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
+}
+
+$voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
+foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "Acceptance Criteria")) {
+  if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
+    throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
+  }
+}
+
+$voicePersona = Get-Content -LiteralPath (Join-PackagePath "data/voice_persona.yaml") -Raw
+foreach ($pattern in @("schema: stackchan.voice-persona.v1", "profile_id: stackchan_spark", "cloning named character or actor voices", "training from soundboard clips", "licensed_or_owned_voice_source")) {
+  if ($voicePersona -notmatch [regex]::Escape($pattern)) {
+    throw "voice_persona.yaml missing expected voice policy: $pattern"
+  }
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
