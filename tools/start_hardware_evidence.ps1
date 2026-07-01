@@ -11,6 +11,11 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+function Quote-PowerShellArgument {
+  param([string]$Value)
+  return "'" + ($Value -replace "'", "''") + "'"
+}
+
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
   $ReleaseTag = (git describe --tags --always --dirty).Trim()
 }
@@ -130,24 +135,65 @@ $observations = @(
 $observations | Set-Content -Path (Join-Path $outDir "OBSERVATIONS.md") -Encoding UTF8
 
 $portArg = ""
+$monitorPortArg = ""
 if (-not [string]::IsNullOrWhiteSpace($Port)) {
-  $portArg = " -Port $Port"
+  $portArg = " -Port $(Quote-PowerShellArgument $Port)"
+  $monitorPortArg = " --port $(Quote-PowerShellArgument $Port)"
 }
 
 $packageFlashZip = "<path-to-release-zip>"
 if ($packageInfo) {
   $packageFlashZip = Join-Path $packageDir ([System.IO.Path]::GetFileName($packageInfo["sourcePath"]))
 }
-$packageFlashArg = " -PackageZip `"$packageFlashZip`""
+$packageFlashArg = " -PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
 
-$displayCommand = ".\tools\flash_release_firmware.ps1$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath `"$logsDir\display_only_serial.log`""
-$servoCommand = ".\tools\flash_release_firmware.ps1$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath `"$logsDir\servo_calibration_serial.log`""
-$verifyCommand = ".\tools\verify_release_package.ps1 -Version $ReleaseTag -ZipPath `"$packageFlashZip`" -ExpectedCommit $commit"
+$displayLog = Quote-PowerShellArgument (Join-Path $logsDir "display_only_serial.log")
+$servoLog = Quote-PowerShellArgument (Join-Path $logsDir "servo_calibration_serial.log")
+$soakLog = Quote-PowerShellArgument (Join-Path $logsDir "soak_serial.log")
+$displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
+$servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
+$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) -ZipPath $(Quote-PowerShellArgument $packageFlashZip) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+$evidenceVerifyCommand = "& '.\tools\verify_hardware_evidence.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
+$soakCommand = "platformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
+
+$commandFiles = [ordered]@{
+  "RUN_DISPLAY_ONLY.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $displayCommand }`""
+  )
+  "RUN_SERVO_CALIBRATION.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $servoCommand }`""
+  )
+  "RUN_SOAK_MONITOR.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $soakCommand }`""
+  )
+  "RUN_PACKAGE_VERIFY.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $verifyCommand }`""
+  )
+  "RUN_EVIDENCE_VERIFY.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $evidenceVerifyCommand }`""
+  )
+}
+
+foreach ($commandFile in $commandFiles.GetEnumerator()) {
+  $commandFile.Value | Set-Content -Path (Join-Path $outDir $commandFile.Key) -Encoding ASCII
+}
 
 $readme = @(
   "# Stackchan Hardware Evidence Packet",
   "",
   "Use this folder as the record for one device bring-up session. Complete CHECKLIST.md and OBSERVATIONS.md, save serial logs under logs/, and place photos or short videos under photos/.",
+  "",
+  "The runnable command files in this folder are generated for this release, port, package, and evidence path.",
   "",
   "## Suggested Commands",
   "",
@@ -155,19 +201,33 @@ $readme = @(
   "",
   "    $displayCommand",
   "",
+  "    .\RUN_DISPLAY_ONLY.cmd",
+  "",
   "Servo calibration flash:",
   "",
   "    $servoCommand",
+  "",
+  "    .\RUN_SERVO_CALIBRATION.cmd",
+  "",
+  "Soak monitor log:",
+  "",
+  "    $soakCommand",
+  "",
+  "    .\RUN_SOAK_MONITOR.cmd",
   "",
   "Before promotion, verify the release ZIP:",
   "",
   "    $verifyCommand",
   "",
+  "    .\RUN_PACKAGE_VERIFY.cmd",
+  "",
   "The packet creation command automatically writes ``logs/package_verify.log`` when ``-PackageZip`` is provided.",
   "",
   "Before marking a release hardware-validated, verify this evidence packet:",
   "",
-  "    .\tools\verify_hardware_evidence.ps1 -EvidenceRoot `"$outDir`"",
+  "    $evidenceVerifyCommand",
+  "",
+  "    .\RUN_EVIDENCE_VERIFY.cmd",
   "",
   "Do not promote this release until every gate in CHECKLIST.md has explicit evidence."
 )
@@ -186,7 +246,12 @@ $metadata = [ordered]@{
   requiredRecords = @(
     "CHECKLIST.md",
     "OBSERVATIONS.md",
-    "calibration/calibration.yaml"
+    "calibration/calibration.yaml",
+    "RUN_DISPLAY_ONLY.cmd",
+    "RUN_SERVO_CALIBRATION.cmd",
+    "RUN_SOAK_MONITOR.cmd",
+    "RUN_PACKAGE_VERIFY.cmd",
+    "RUN_EVIDENCE_VERIFY.cmd"
   )
   promotionVerifier = "tools/verify_hardware_evidence.ps1"
 }

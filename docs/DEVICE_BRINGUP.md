@@ -13,6 +13,7 @@ Use this when the Stack-chan hardware arrives.
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
+It also creates runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 
 4. Check the exact release-binary flash command without touching the device:
 
@@ -59,6 +60,7 @@ For development builds from source, use `tools/flash_device.cmd`; for release ev
 The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.
 
 Save serial logs, photos, and calibration notes into the evidence packet created during preflight.
+When using the generated `RUN_*.cmd` files, display, servo, and soak serial output is written directly under the packet's `logs/` folder.
 
 ## First Hardware Tests
 

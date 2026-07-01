@@ -40,6 +40,7 @@ Create a hardware evidence packet when testing a physical device:
 ```
 
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
+The packet also includes generated `RUN_*.cmd` files for display flashing, servo calibration flashing, soak logging, package verification, and final evidence verification.
 
 Before promoting a prerelease, verify the completed hardware evidence packet:
 
