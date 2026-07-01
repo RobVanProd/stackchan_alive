@@ -87,7 +87,7 @@ Audit an existing GitHub release after publication:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
+The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
 
 Stage a local handoff page with direct links to the ZIP, image, video, GIF, release notes, and checksums:
 

@@ -32,6 +32,37 @@ function Get-Sha256 {
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
 }
 
+function Resolve-RemoteTagCommit {
+  param(
+    [string]$Repo,
+    [string]$TagName
+  )
+
+  $refJson = gh api "repos/$Repo/git/ref/tags/$TagName" | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $null -eq $refJson) {
+    throw "Unable to resolve remote tag $TagName in $Repo"
+  }
+
+  if ($refJson.object.type -eq "commit") {
+    return ([string]$refJson.object.sha).ToLowerInvariant()
+  }
+
+  if ($refJson.object.type -ne "tag") {
+    throw "Remote tag $TagName points to unsupported object type: $($refJson.object.type)"
+  }
+
+  $tagJson = gh api "repos/$Repo/git/tags/$($refJson.object.sha)" | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $null -eq $tagJson) {
+    throw "Unable to peel annotated remote tag $TagName in $Repo"
+  }
+
+  if ($tagJson.object.type -ne "commit") {
+    throw "Annotated remote tag $TagName points to unsupported object type: $($tagJson.object.type)"
+  }
+
+  return ([string]$tagJson.object.sha).ToLowerInvariant()
+}
+
 function Assert-Asset {
   param(
     [object[]]$Assets,
@@ -96,6 +127,11 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($release.tagName -ne $Version) {
   throw "Release tag mismatch: expected $Version, got $($release.tagName)"
+}
+
+$remoteTagCommit = Resolve-RemoteTagCommit -Repo $Repo -TagName $Version
+if ($remoteTagCommit -ne $ExpectedCommit.ToLowerInvariant()) {
+  throw "Remote tag commit mismatch for $Version`: expected $ExpectedCommit, got $remoteTagCommit"
 }
 
 if (-not $release.isPrerelease -and -not $AllowNonPrerelease) {
