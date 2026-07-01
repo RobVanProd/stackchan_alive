@@ -2,6 +2,8 @@
 
 Use this as the arrival-day test record. Do not promote a release from prerelease until every gate has explicit evidence.
 
+When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pass`, reset/heat/brownout/stall/jitter observed fields as `no`, `Procedural face visible: yes`, `Dry-run servo log observed: yes`, `Yaw classification: angle`, `velocity`, or `disabled`, soak `Duration` of at least `30 minutes`, and `USB power-cycle recovery: pass`.
+
 ## Build Evidence
 
 - [ ] `pio run -e stackchan` passes.

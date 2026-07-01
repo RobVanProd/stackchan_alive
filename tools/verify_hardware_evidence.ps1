@@ -61,6 +61,112 @@ function Assert-NoBlankObservation {
   }
 }
 
+function Get-ObservationValues {
+  param(
+    [string]$Text,
+    [string]$Field
+  )
+
+  $escaped = [regex]::Escape($Field)
+  $matches = [regex]::Matches($Text, "(?m)^-\s+$escaped\s*:\s*(.*?)\s*$")
+  return @($matches | ForEach-Object { $_.Groups[1].Value.Trim() })
+}
+
+function Assert-ObservationValue {
+  param(
+    [string]$Text,
+    [string]$Field,
+    [string]$RequiredPattern,
+    [string]$FailurePattern = ""
+  )
+
+  $values = Get-ObservationValues $Text $Field
+  if ($values.Count -eq 0) {
+    throw "OBSERVATIONS.md missing field: $Field"
+  }
+
+  foreach ($value in $values) {
+    if (-not [string]::IsNullOrWhiteSpace($FailurePattern) -and $value -match $FailurePattern) {
+      throw "OBSERVATIONS.md records failing value for $Field`: $value"
+    }
+    if ($value -notmatch $RequiredPattern) {
+      throw "OBSERVATIONS.md has invalid value for $Field`: $value"
+    }
+  }
+}
+
+function Assert-ObservationDoesNotMatch {
+  param(
+    [string]$Text,
+    [string]$Field,
+    [string]$FailurePattern
+  )
+
+  foreach ($value in (Get-ObservationValues $Text $Field)) {
+    if ($value -match $FailurePattern) {
+      throw "OBSERVATIONS.md records failing value for $Field`: $value"
+    }
+  }
+}
+
+function Convert-DurationMinutes {
+  param([string]$Value)
+
+  $trimmed = $Value.Trim()
+  $timeSpan = [TimeSpan]::Zero
+  if ([TimeSpan]::TryParse($trimmed, [ref]$timeSpan)) {
+    return $timeSpan.TotalMinutes
+  }
+
+  if ($trimmed -match "(?i)(\d+(?:\.\d+)?)\s*(hours|hour|hrs|hr|h)\b") {
+    return [double]$Matches[1] * 60.0
+  }
+
+  if ($trimmed -match "(?i)(\d+(?:\.\d+)?)\s*(minutes|minute|mins|min|m)\b") {
+    return [double]$Matches[1]
+  }
+
+  if ($trimmed -match "^\d+(?:\.\d+)?$") {
+    return [double]$trimmed
+  }
+
+  throw "Could not parse duration minutes from OBSERVATIONS.md value: $Value"
+}
+
+function Assert-MinimumObservationDuration {
+  param(
+    [string]$Text,
+    [string]$Field,
+    [double]$MinimumMinutes
+  )
+
+  $values = Get-ObservationValues $Text $Field
+  if ($values.Count -eq 0) {
+    throw "OBSERVATIONS.md missing field: $Field"
+  }
+
+  foreach ($value in $values) {
+    $minutes = Convert-DurationMinutes $value
+    if ($minutes -lt $MinimumMinutes) {
+      throw "OBSERVATIONS.md $Field is below $MinimumMinutes minutes: $value"
+    }
+  }
+}
+
+function Get-YamlNumber {
+  param(
+    [string]$Text,
+    [string]$Field
+  )
+
+  $escaped = [regex]::Escape($Field)
+  if ($Text -notmatch "(?m)^\s*$escaped\s*:\s*(-?\d+(?:\.\d+)?)\b") {
+    throw "calibration/calibration.yaml missing numeric $Field"
+  }
+
+  return [double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
 $requiredFiles = @(
   "README.md",
   "CHECKLIST.md",
@@ -161,6 +267,25 @@ foreach ($field in $requiredObservationFields) {
 if ($observations -notmatch "Yaw classification:\s*(angle|velocity|disabled)") {
   throw "OBSERVATIONS.md must classify yaw as angle, velocity, or disabled"
 }
+if ($observations -match "Yaw classification:\s*angle\s*/\s*velocity\s*/\s*disabled") {
+  throw "OBSERVATIONS.md still contains the yaw classification placeholder"
+}
+
+$passPattern = "(?i)\b(pass|passed|success|succeeded|ok|clean)\b"
+$yesPattern = "(?i)\b(yes|true|visible|observed|confirmed|present)\b"
+$noPattern = "(?i)\b(no|none|false|not observed|absent)\b"
+$failurePattern = "(?i)\b(fail|failed|failure|reset loop|brownout|overheat|overheated|unsafe|uncontrolled|stall|stalled|jitter|jittered|blocked)\b"
+$motionFailurePattern = "(?i)\b(fail|failed|failure|unsafe|out of range|brownout|overheat|overheated)\b"
+
+Assert-ObservationValue $observations "Result" $passPattern $failurePattern
+Assert-ObservationValue $observations "Reset loop observed" $noPattern
+Assert-ObservationValue $observations "Procedural face visible" $yesPattern "(?i)\b(no|false|not visible|missing|blank)\b"
+Assert-ObservationValue $observations "Dry-run servo log observed" $yesPattern "(?i)\b(no|false|missing|absent|not observed)\b"
+Assert-ObservationDoesNotMatch $observations "Pitch behavior" $motionFailurePattern
+Assert-ObservationValue $observations "Heat or brownout observed" $noPattern
+Assert-MinimumObservationDuration $observations "Duration" 30
+Assert-ObservationValue $observations "Reset, stall, jitter, or heat observed" $noPattern
+Assert-ObservationValue $observations "USB power-cycle recovery" $passPattern "(?i)\b(fail|failed|no|false|did not|not recovered)\b"
 
 $calibration = Get-Content -LiteralPath (Join-EvidencePath "calibration/calibration.yaml") -Raw
 if ($calibration -match "Hardware truth test values go here") {
@@ -175,6 +300,19 @@ foreach ($pattern in @("pitch_min_deg:", "pitch_max_deg:", "yaw_mode:", "yaw_min
 
 if ($calibration -notmatch "yaw_mode:\s*(angle|velocity|disabled)") {
   throw "calibration/calibration.yaml yaw_mode must be angle, velocity, or disabled"
+}
+
+$pitchMin = Get-YamlNumber $calibration "pitch_min_deg"
+$pitchMax = Get-YamlNumber $calibration "pitch_max_deg"
+$yawMin = Get-YamlNumber $calibration "yaw_min_deg"
+$yawMax = Get-YamlNumber $calibration "yaw_max_deg"
+
+if ($pitchMin -ge $pitchMax) {
+  throw "calibration/calibration.yaml pitch_min_deg must be less than pitch_max_deg"
+}
+
+if ($yawMin -ge $yawMax) {
+  throw "calibration/calibration.yaml yaw_min_deg must be less than yaw_max_deg"
 }
 
 if (-not $AllowMissingMedia) {
