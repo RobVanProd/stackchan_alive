@@ -10,6 +10,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Release packages include dependency provenance and copied build inputs.
 - Release packages are verified before publication in GitHub Actions.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
+- Hardware evidence packets can be verified before release promotion.
 - Release packaging refuses dirty source worktrees by default.
 - GitHub Actions builds firmware on push and pull request.
 - Native host tests execute mood, spring, and expression logic without hardware.

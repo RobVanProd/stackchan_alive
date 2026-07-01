@@ -55,6 +55,7 @@ Pass criteria:
 
 Only after all checks pass:
 
+- [ ] `tools/verify_hardware_evidence.ps1` passes for the completed evidence packet.
 - [ ] Create a hardware-validated release tag.
 - [ ] Mark GitHub release as non-prerelease.
 - [ ] Attach updated release notes with test evidence.

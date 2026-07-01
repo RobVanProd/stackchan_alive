@@ -56,6 +56,12 @@ Start a device-arrival evidence packet:
 .\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.2-device-ready -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Port COM3
 ```
 
+Verify the completed hardware evidence before promotion:
+
+```powershell
+.\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
+```
+
 ## Preview Media
 
 Generate a hardware-free preview image, GIF, and MP4:

@@ -24,6 +24,12 @@ Create a hardware evidence packet when testing a physical device:
 .\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.0-device-ready -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Port COM3
 ```
 
+Before promoting a prerelease, verify the completed hardware evidence packet:
+
+```powershell
+.\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
+```
+
 ## GitHub Release
 
 For validated releases, push a tag:

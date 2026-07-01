@@ -110,6 +110,8 @@ $requiredFiles = @(
   "tools/flash_device.ps1",
   "tools/start_hardware_evidence.cmd",
   "tools/start_hardware_evidence.ps1",
+  "tools/verify_hardware_evidence.cmd",
+  "tools/verify_hardware_evidence.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "provenance/firmware.yml",

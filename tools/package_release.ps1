@@ -99,6 +99,8 @@ $releaseTools = @(
   "tools/flash_device.ps1",
   "tools/start_hardware_evidence.cmd",
   "tools/start_hardware_evidence.ps1",
+  "tools/verify_hardware_evidence.cmd",
+  "tools/verify_hardware_evidence.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1"
 )
@@ -191,6 +193,8 @@ $manifest = [ordered]@{
     "tools/flash_device.ps1",
     "tools/start_hardware_evidence.cmd",
     "tools/start_hardware_evidence.ps1",
+    "tools/verify_hardware_evidence.cmd",
+    "tools/verify_hardware_evidence.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1"
   )
@@ -211,7 +215,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``. Flashing, evidence capture, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``. Flashing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 

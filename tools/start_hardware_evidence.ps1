@@ -129,6 +129,10 @@ $readme = @(
   "",
   "    $verifyCommand",
   "",
+  "Before marking a release hardware-validated, verify this evidence packet:",
+  "",
+  "    .\tools\verify_hardware_evidence.ps1 -EvidenceRoot `"$outDir`"",
+  "",
   "Do not promote this release until every gate in CHECKLIST.md has explicit evidence."
 )
 $readme | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
@@ -152,6 +156,7 @@ $metadata = [ordered]@{
     "OBSERVATIONS.md",
     "calibration/calibration.yaml"
   )
+  promotionVerifier = "tools/verify_hardware_evidence.ps1"
 }
 
 $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $outDir "metadata.json") -Encoding UTF8
