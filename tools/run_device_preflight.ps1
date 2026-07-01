@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 function Invoke-Step {
   param(
@@ -219,6 +220,108 @@ function Assert-ReleaseFlashHelperSafety {
   Assert-TextContains $servoDryRun.Text "--chip esp32s3"
 }
 
+function Assert-HardwareEvidenceMediaGate {
+  $evidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-evidence-media-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $logsDir = Join-Path $evidenceRoot "logs"
+  $photosDir = Join-Path $evidenceRoot "photos"
+  $calibrationDir = Join-Path $evidenceRoot "calibration"
+
+  New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir | Out-Null
+
+  try {
+    "ready" | Set-Content -Path (Join-Path $evidenceRoot "README.md") -Encoding UTF8
+    "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
+    "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
+    "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
+
+    $observations = @(
+      "# Hardware Test Observations",
+      "",
+      "## Display-Only Flash",
+      "- Start UTC: 2026-07-01T00:00:00Z",
+      "- End UTC: 2026-07-01T00:10:00Z",
+      "- Command: synthetic",
+      "- Result: pass",
+      "- Reset loop observed: no",
+      "- Procedural face visible: yes",
+      "- Dry-run servo log observed: yes",
+      "",
+      "## Servo Calibration Flash",
+      "- Start UTC: 2026-07-01T00:10:00Z",
+      "- End UTC: 2026-07-01T00:20:00Z",
+      "- Command: synthetic",
+      "- Result: pass",
+      "- Pitch behavior: inside safe range",
+      "- Yaw classification: disabled",
+      "- Heat or brownout observed: no",
+      "- Calibration changes: recorded",
+      "",
+      "## Soak Test",
+      "- Start UTC: 2026-07-01T00:20:00Z",
+      "- End UTC: 2026-07-01T00:50:00Z",
+      "- Duration: 30 minutes",
+      "- Reset, stall, jitter, or heat observed: no",
+      "- USB power-cycle recovery: pass"
+    )
+    $observations | Set-Content -Path (Join-Path $evidenceRoot "OBSERVATIONS.md") -Encoding UTF8
+
+    @(
+      "pitch_min_deg: -15",
+      "pitch_max_deg: 15",
+      "yaw_mode: disabled",
+      "yaw_min_deg: -30",
+      "yaw_max_deg: 30"
+    ) | Set-Content -Path (Join-Path $calibrationDir "calibration.yaml") -Encoding UTF8
+
+    $logText = "synthetic serial log line for verifier negative-test coverage. " * 4
+    $logText | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
+    $logText | Set-Content -Path (Join-Path $logsDir "servo_calibration_serial.log") -Encoding UTF8
+    $logText | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
+
+    [System.IO.File]::WriteAllBytes(
+      (Join-Path $photosDir "header_only.png"),
+      [byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+    )
+
+    $metadata = [ordered]@{
+      releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+      commit = $ExpectedCommit
+      createdUtc = "2026-07-01T00:00:00Z"
+      deviceId = "SELFTEST"
+      port = "COM_TEST"
+      operator = "preflight"
+      package = $null
+      requiredLogs = @(
+        "logs/display_only_serial.log",
+        "logs/servo_calibration_serial.log",
+        "logs/soak_serial.log"
+      )
+      requiredRecords = @(
+        "CHECKLIST.md",
+        "OBSERVATIONS.md",
+        "calibration/calibration.yaml"
+      )
+    }
+    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $evidenceRoot "metadata.json") -Encoding UTF8
+
+    $verifyHardwareEvidence = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "verify_hardware_evidence.ps1"),
+      "-EvidenceRoot", $evidenceRoot,
+      "-AllowMissingPackage"
+    )
+
+    if ($verifyHardwareEvidence.ExitCode -eq 0) {
+      throw "Hardware evidence verifier accepted a header-only media file."
+    }
+    Assert-TextContains $verifyHardwareEvidence.Text "too small to be credible"
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $evidenceRoot) {
+      Remove-Item -LiteralPath $evidenceRoot -Recurse -Force
+    }
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -234,7 +337,8 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and [string]::IsNullOrWhiteS
 
 Invoke-Step "Check required commands" {
   Assert-Command git
-  Assert-Command platformio
+  Get-StackchanPlatformioCommand | Out-Null
+  Add-StackchanNativeCompilerToPath | Out-Null
 }
 
 Invoke-Step "Check source tree and dependency pins" {
@@ -254,16 +358,20 @@ Invoke-Step "Check preview media quality" {
   & (Join-Path $PSScriptRoot "verify_preview_media.ps1")
 }
 
+Invoke-Step "Check hardware evidence media gate" {
+  Assert-HardwareEvidenceMediaGate
+}
+
 Invoke-Step "Run native logic tests" {
-  platformio test -e native_logic
+  Invoke-StackchanPlatformio test -e native_logic
 }
 
 Invoke-Step "Compile embedded test firmware" {
-  platformio test -e stackchan --without-uploading --without-testing
+  Invoke-StackchanPlatformio test -e stackchan --without-uploading --without-testing
 }
 
 Invoke-Step "Build display-only and servo-calibration firmware" {
-  platformio run -e stackchan -e stackchan_servo_calibration
+  Invoke-StackchanPlatformio run -e stackchan -e stackchan_servo_calibration
 }
 
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {

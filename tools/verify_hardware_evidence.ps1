@@ -187,6 +187,96 @@ function Test-BytesAtOffset {
   return $true
 }
 
+function Get-BigEndianUInt16 {
+  param(
+    [byte[]]$Bytes,
+    [int]$Offset
+  )
+
+  if ($Bytes.Length -lt ($Offset + 2)) {
+    throw "Not enough bytes to read UInt16 at offset $Offset"
+  }
+
+  return (($Bytes[$Offset] -shl 8) -bor $Bytes[$Offset + 1])
+}
+
+function Get-BigEndianUInt32 {
+  param(
+    [byte[]]$Bytes,
+    [int]$Offset
+  )
+
+  if ($Bytes.Length -lt ($Offset + 4)) {
+    throw "Not enough bytes to read UInt32 at offset $Offset"
+  }
+
+  return (($Bytes[$Offset] -shl 24) -bor ($Bytes[$Offset + 1] -shl 16) -bor ($Bytes[$Offset + 2] -shl 8) -bor $Bytes[$Offset + 3])
+}
+
+function Get-LittleEndianUInt16 {
+  param(
+    [byte[]]$Bytes,
+    [int]$Offset
+  )
+
+  if ($Bytes.Length -lt ($Offset + 2)) {
+    throw "Not enough bytes to read UInt16 at offset $Offset"
+  }
+
+  return ($Bytes[$Offset] -bor ($Bytes[$Offset + 1] -shl 8))
+}
+
+function Get-JpegDimensions {
+  param([byte[]]$Bytes)
+
+  if (-not (Test-BytesAtOffset -Bytes $Bytes -Expected ([byte[]](0xff, 0xd8, 0xff)))) {
+    return $null
+  }
+
+  $offset = 2
+  while ($offset -lt ($Bytes.Length - 9)) {
+    while ($offset -lt $Bytes.Length -and $Bytes[$offset] -ne 0xff) {
+      $offset++
+    }
+    while ($offset -lt $Bytes.Length -and $Bytes[$offset] -eq 0xff) {
+      $offset++
+    }
+    if ($offset -ge $Bytes.Length) {
+      break
+    }
+
+    $marker = $Bytes[$offset]
+    $offset++
+
+    if ($marker -eq 0xd9 -or $marker -eq 0xda) {
+      break
+    }
+    if ($offset + 2 -gt $Bytes.Length) {
+      break
+    }
+
+    $segmentLength = Get-BigEndianUInt16 $Bytes $offset
+    if ($segmentLength -lt 2 -or ($offset + $segmentLength) -gt $Bytes.Length) {
+      break
+    }
+
+    $sofMarkers = @(0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf)
+    if ($sofMarkers -contains $marker) {
+      if ($segmentLength -lt 7) {
+        return $null
+      }
+      return [pscustomobject]@{
+        Width = Get-BigEndianUInt16 $Bytes ($offset + 5)
+        Height = Get-BigEndianUInt16 $Bytes ($offset + 3)
+      }
+    }
+
+    $offset += $segmentLength
+  }
+
+  return $null
+}
+
 function Test-MediaEvidenceFile {
   param([System.IO.FileInfo]$File)
 
@@ -195,7 +285,16 @@ function Test-MediaEvidenceFile {
     return $false
   }
 
-  $bytesToRead = [Math]::Min([int64]64, $File.Length)
+  $minimumBytes = 512
+  if (@(".mp4", ".mov", ".webm") -contains $extension) {
+    $minimumBytes = 8192
+  }
+
+  if ($File.Length -lt $minimumBytes) {
+    throw "Media evidence file is too small to be credible: $($File.Name) ($($File.Length) bytes)"
+  }
+
+  $bytesToRead = [Math]::Min([int64]$File.Length, [int64]1048576)
   if ($bytesToRead -lt 4) {
     return $false
   }
@@ -213,25 +312,43 @@ function Test-MediaEvidenceFile {
 
   switch ($extension) {
     ".png" {
-      return Test-BytesAtOffset $bytes ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+      if (-not (Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)))) {
+        return $false
+      }
+      if ($bytes.Length -lt 24) {
+        return $false
+      }
+      $width = Get-BigEndianUInt32 $bytes 16
+      $height = Get-BigEndianUInt32 $bytes 20
+      return ($width -ge 32 -and $height -ge 32)
     }
     ".jpg" {
-      return Test-BytesAtOffset $bytes ([byte[]](0xff, 0xd8, 0xff))
+      $dimensions = Get-JpegDimensions $bytes
+      return ($null -ne $dimensions -and $dimensions.Width -ge 32 -and $dimensions.Height -ge 32)
     }
     ".jpeg" {
-      return Test-BytesAtOffset $bytes ([byte[]](0xff, 0xd8, 0xff))
+      $dimensions = Get-JpegDimensions $bytes
+      return ($null -ne $dimensions -and $dimensions.Width -ge 32 -and $dimensions.Height -ge 32)
     }
     ".gif" {
-      return Test-BytesAtOffset $bytes ([byte[]](0x47, 0x49, 0x46, 0x38))
+      if (-not (Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x47, 0x49, 0x46, 0x38)))) {
+        return $false
+      }
+      if ($bytes.Length -lt 10) {
+        return $false
+      }
+      $width = Get-LittleEndianUInt16 $bytes 6
+      $height = Get-LittleEndianUInt16 $bytes 8
+      return ($width -ge 32 -and $height -ge 32)
     }
     ".mp4" {
-      return Test-BytesAtOffset $bytes ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x66, 0x74, 0x79, 0x70)) -Offset 4
     }
     ".mov" {
-      return Test-BytesAtOffset $bytes ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x66, 0x74, 0x79, 0x70)) -Offset 4
     }
     ".webm" {
-      return Test-BytesAtOffset $bytes ([byte[]](0x1a, 0x45, 0xdf, 0xa3))
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x1a, 0x45, 0xdf, 0xa3))
     }
   }
 

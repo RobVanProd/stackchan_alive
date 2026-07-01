@@ -17,6 +17,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 function Assert-File {
   param([string]$Path)
@@ -60,28 +61,7 @@ function Get-PythonCandidates {
 }
 
 function Get-PlatformioCoreDir {
-  if (-not [string]::IsNullOrWhiteSpace($env:PLATFORMIO_CORE_DIR)) {
-    return $env:PLATFORMIO_CORE_DIR
-  }
-
-  if (-not (Get-Command "platformio" -ErrorAction SilentlyContinue)) {
-    return ""
-  }
-
-  try {
-    $info = & platformio system info 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      foreach ($line in $info) {
-        if ($line -match "PlatformIO Core Directory\s+(.+)$") {
-          return $Matches[1].Trim()
-        }
-      }
-    }
-  } catch {
-    return ""
-  }
-
-  return ""
+  return Get-StackchanPlatformioCoreDir
 }
 
 function Get-EsptoolScripts {
@@ -254,7 +234,7 @@ try {
     if ($DryRun) {
       Write-Host "Dry run: platformio $(Format-Command $monitorArgs)"
     } else {
-      platformio @monitorArgs
+      Invoke-StackchanPlatformio @monitorArgs
       if ($LASTEXITCODE -ne 0) {
         throw "PlatformIO monitor failed with exit code $LASTEXITCODE"
       }

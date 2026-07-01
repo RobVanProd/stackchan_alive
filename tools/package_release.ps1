@@ -8,13 +8,14 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
 }
 
 if (-not $SkipBuild) {
-  platformio run -e stackchan -e stackchan_servo_calibration
+  Invoke-StackchanPlatformio run -e stackchan -e stackchan_servo_calibration
   python tools/render_preview.py
 }
 
@@ -102,6 +103,7 @@ $releaseTools = @(
   "tools/flash_device.ps1",
   "tools/flash_release_firmware.cmd",
   "tools/flash_release_firmware.ps1",
+  "tools/platformio_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -287,9 +289,9 @@ function Get-DependencyAudit {
   }
 }
 
-$platformioVersion = Invoke-CapturedText { platformio --version }
-$displayDeps = Invoke-CapturedText { platformio pkg list -e stackchan }
-$servoDeps = Invoke-CapturedText { platformio pkg list -e stackchan_servo_calibration }
+$platformioVersion = Invoke-CapturedText { Invoke-StackchanPlatformio --version }
+$displayDeps = Invoke-CapturedText { Invoke-StackchanPlatformio pkg list -e stackchan }
+$servoDeps = Invoke-CapturedText { Invoke-StackchanPlatformio pkg list -e stackchan_servo_calibration }
 $previewRequirements = (Get-Content -LiteralPath "requirements-preview.txt" -Raw).TrimEnd()
 $previewRequirementEntries = @(
   Get-Content -LiteralPath "requirements-preview.txt" |
@@ -398,6 +400,7 @@ $manifest = [ordered]@{
     "tools/flash_device.ps1",
     "tools/flash_release_firmware.cmd",
     "tools/flash_release_firmware.ps1",
+    "tools/platformio_resolver.ps1",
     "tools/publish_release.cmd",
     "tools/publish_release.ps1",
     "tools/prepare_device_arrival.cmd",

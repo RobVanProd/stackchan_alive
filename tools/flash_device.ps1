@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 
 if ($Environment -eq "stackchan_servo_calibration") {
   Write-Warning "Servo calibration firmware enables motor output. Keep the body clear and powered safely."
@@ -27,7 +28,7 @@ if (-not [string]::IsNullOrWhiteSpace($Port)) {
 if ($DryRun) {
   Write-Host "Dry run: platformio $($args -join ' ')"
 } else {
-  platformio @args
+  Invoke-StackchanPlatformio @args
 }
 
 if ($Monitor) {
@@ -38,6 +39,6 @@ if ($Monitor) {
   if ($DryRun) {
     Write-Host "Dry run: platformio $($monitorArgs -join ' ')"
   } else {
-    platformio @monitorArgs
+    Invoke-StackchanPlatformio @monitorArgs
   }
 }
