@@ -32,7 +32,8 @@ $displayFirmwareDir = Join-Path $firmwareDir "display_only"
 $servoFirmwareDir = Join-Path $firmwareDir "servo_calibration"
 $mediaDir = Join-Path $outDir "media"
 $docsDir = Join-Path $outDir "docs"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir | Out-Null
+$provenanceDir = Join-Path $outDir "provenance"
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir, $provenanceDir | Out-Null
 
 function Copy-FirmwareSet {
   param(
@@ -78,6 +79,68 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 
+Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
+Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
+Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
+Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
+
+function Invoke-CapturedText {
+  param(
+    [scriptblock]$Command
+  )
+
+  $oldEncoding = $env:PYTHONIOENCODING
+  $env:PYTHONIOENCODING = "utf-8"
+  try {
+    $output = & $Command 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "Command failed while generating dependency provenance: $($output | Out-String)"
+    }
+    return ($output | Out-String).TrimEnd()
+  } finally {
+    $env:PYTHONIOENCODING = $oldEncoding
+  }
+}
+
+$platformioVersion = Invoke-CapturedText { platformio --version }
+$displayDeps = Invoke-CapturedText { platformio pkg list -e stackchan }
+$servoDeps = Invoke-CapturedText { platformio pkg list -e stackchan_servo_calibration }
+$previewRequirements = (Get-Content -LiteralPath "requirements-preview.txt" -Raw).TrimEnd()
+
+@"
+# Dependency Provenance
+
+Version: $Version
+Commit: $commit
+Generated UTC: $((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))
+
+This report records the dependency state used to generate this prerelease package. The source configuration files are copied under ``provenance/``.
+
+## Tooling
+
+``````text
+$platformioVersion
+``````
+
+## Preview Python Requirements
+
+``````text
+$previewRequirements
+``````
+
+## PlatformIO Dependencies: stackchan
+
+``````text
+$displayDeps
+``````
+
+## PlatformIO Dependencies: stackchan_servo_calibration
+
+``````text
+$servoDeps
+``````
+"@ | Set-Content -Path (Join-Path $outDir "DEPENDENCIES.md") -Encoding UTF8
+
 $manifest = [ordered]@{
   version = $Version
   commit = $commit
@@ -88,6 +151,13 @@ $manifest = [ordered]@{
   includedEnvironments = @("stackchan", "stackchan_servo_calibration")
   servoDefault = "display-only build disables servos; calibration build enables servos"
   status = "device-ready prerelease; hardware validation pending"
+  dependencyReport = "DEPENDENCIES.md"
+  provenanceFiles = @(
+    "provenance/platformio.ini",
+    "provenance/requirements-preview.txt",
+    "provenance/firmware.yml",
+    "provenance/release.yml"
+  )
 }
 
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "release_manifest.json") -Encoding UTF8
@@ -97,7 +167,9 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "rele
 
 Commit: $commit
 
-This is a device-ready prerelease package. It is built and compile-checked, includes preview media, and keeps servo output disabled by default.
+This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media, and keeps servo output disabled by default.
+
+Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``.
 
 Hardware validation is still required before consumer rollout:
 
@@ -107,7 +179,7 @@ Hardware validation is still required before consumer rollout:
 4. 30-minute mixed idle/listen/speak soak.
 5. USB power-cycle recovery test.
 
-See `docs/DEVICE_BRINGUP.md` and `docs/PRODUCTION_READINESS.md`.
+See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8
 
 $hashLines = Get-ChildItem -LiteralPath $outDir -File -Recurse |

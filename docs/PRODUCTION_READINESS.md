@@ -6,7 +6,8 @@ Current status: device-ready scaffold, not hardware-certified.
 
 - Firmware builds for `m5stack-cores3`.
 - Display-only and servo-calibration firmware variants are separate PlatformIO environments.
-- Dependencies are pinned in `platformio.ini`.
+- Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
+- Release packages include dependency provenance and copied build inputs.
 - GitHub Actions builds firmware on push and pull request.
 - Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.

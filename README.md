@@ -35,6 +35,14 @@ pio test -e native_logic
 pio test -e stackchan --without-uploading --without-testing
 ```
 
+Create an auditable prerelease package:
+
+```powershell
+.\tools\package_release.cmd -Version v0.1.2-device-ready
+```
+
+The package includes firmware binaries, preview media, docs, checksums, dependency provenance, and copied build inputs.
+
 ## Preview Media
 
 Generate a hardware-free preview image, GIF, and MP4:

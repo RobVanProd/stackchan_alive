@@ -9,7 +9,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 - [ ] `pio test -e native_logic` passes.
 - [ ] `pio test -e stackchan --without-uploading --without-testing` passes.
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
-- [ ] Release package ZIP contains firmware, media, docs, manifest, and checksums.
+- [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, copied build inputs, and checksums.
 
 ## Display-Only Flash
 
