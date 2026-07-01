@@ -97,8 +97,15 @@ if ($AllowDirtyPackage) {
 
 $releaseExists = $false
 if (-not $DryRun) {
-  $null = gh release view $Version --repo $Repo 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $null = gh release view $Version --repo $Repo 2>$null
+    $releaseViewExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  if ($releaseViewExitCode -eq 0) {
     $releaseExists = $true
   }
 }
