@@ -59,6 +59,12 @@ Verify the package before sharing or publishing, or include it in the preflight:
 .\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip
 ```
 
+Publish a verified prerelease manually when GitHub Actions is unavailable:
+
+```powershell
+.\tools\publish_release.cmd -Version v0.1.2-device-ready -CreateTag -PushTag
+```
+
 Start a device-arrival evidence packet:
 
 ```powershell

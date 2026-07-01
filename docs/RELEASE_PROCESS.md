@@ -52,6 +52,14 @@ git push origin v0.1.0-device-ready
 
 The release workflow builds both firmware variants, runs native logic tests, compile-checks the embedded test firmware, renders preview media, creates and verifies an auditable package, and attaches the package plus individual preview and firmware files to a GitHub release.
 
+If GitHub Actions cannot run, publish the already verified package with the manual release helper:
+
+```powershell
+.\tools\publish_release.cmd -Version v0.1.0-device-ready -CreateTag -PushTag
+```
+
+The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP, and verifies that remote copy against the tag commit.
+
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.
 
 The hardware rollout checklist lives in `docs/ROLLOUT_CHECKLIST.md`.
