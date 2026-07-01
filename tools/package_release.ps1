@@ -13,7 +13,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 
 if (-not $SkipBuild) {
-  platformio run
+  platformio run -e stackchan -e stackchan_servo_calibration
   python tools/render_preview.py
 }
 
@@ -28,23 +28,36 @@ if (Test-Path -LiteralPath $outDir) {
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 $firmwareDir = Join-Path $outDir "firmware"
+$displayFirmwareDir = Join-Path $firmwareDir "display_only"
+$servoFirmwareDir = Join-Path $firmwareDir "servo_calibration"
 $mediaDir = Join-Path $outDir "media"
 $docsDir = Join-Path $outDir "docs"
-New-Item -ItemType Directory -Force -Path $firmwareDir, $mediaDir, $docsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir | Out-Null
 
-$firmwareFiles = @(
-  ".pio/build/stackchan/firmware.bin",
-  ".pio/build/stackchan/firmware.elf",
-  ".pio/build/stackchan/bootloader.bin",
-  ".pio/build/stackchan/partitions.bin"
-)
+function Copy-FirmwareSet {
+  param(
+    [string]$BuildDir,
+    [string]$Destination
+  )
 
-foreach ($file in $firmwareFiles) {
-  if (-not (Test-Path -LiteralPath $file)) {
-    throw "Missing build artifact: $file"
+  $firmwareFiles = @(
+    "firmware.bin",
+    "firmware.elf",
+    "bootloader.bin",
+    "partitions.bin"
+  )
+
+  foreach ($file in $firmwareFiles) {
+    $source = Join-Path $BuildDir $file
+    if (-not (Test-Path -LiteralPath $source)) {
+      throw "Missing build artifact: $source"
+    }
+    Copy-Item -LiteralPath $source -Destination $Destination
   }
-  Copy-Item -LiteralPath $file -Destination $firmwareDir
 }
+
+Copy-FirmwareSet -BuildDir ".pio/build/stackchan" -Destination $displayFirmwareDir
+Copy-FirmwareSet -BuildDir ".pio/build/stackchan_servo_calibration" -Destination $servoFirmwareDir
 
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
@@ -63,6 +76,7 @@ Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 
 $manifest = [ordered]@{
   version = $Version
@@ -70,8 +84,9 @@ $manifest = [ordered]@{
   shortCommit = $shortCommit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   board = "m5stack-cores3"
-  platformioEnvironment = "stackchan"
-  servoDefault = "disabled; STACKCHAN_ENABLE_SERVOS=0"
+  defaultEnvironment = "stackchan"
+  includedEnvironments = @("stackchan", "stackchan_servo_calibration")
+  servoDefault = "display-only build disables servos; calibration build enables servos"
   status = "device-ready prerelease; hardware validation pending"
 }
 

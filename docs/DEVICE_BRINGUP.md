@@ -29,10 +29,16 @@ Servos are disabled by default in `platformio.ini`:
 -D STACKCHAN_ENABLE_SERVOS=0
 ```
 
-Only change this to `1` after the display-only build runs and the body is on a clear surface:
+Use the default display-only environment first:
 
-```ini
--D STACKCHAN_ENABLE_SERVOS=1
+```powershell
+.\tools\flash_device.cmd -Environment stackchan -Monitor
+```
+
+Only use the servo calibration environment after the display-only build runs and the body is on a clear surface:
+
+```powershell
+.\tools\flash_device.cmd -Environment stackchan_servo_calibration -Monitor
 ```
 
 The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.

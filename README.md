@@ -21,7 +21,12 @@ This project is set up for PlatformIO:
 pio run
 ```
 
-Servos are disabled by default with `STACKCHAN_ENABLE_SERVOS=0`. The display should run first; only enable servos after following [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md).
+Servos are disabled by default with `STACKCHAN_ENABLE_SERVOS=0`. The display should run first; only use `stackchan_servo_calibration` after following [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md).
+
+```powershell
+pio run -e stackchan
+pio run -e stackchan_servo_calibration
+```
 
 ## Preview Media
 
@@ -39,3 +44,4 @@ Outputs are written to `docs/media/`.
 See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the current proof level and the hardware gates required before consumer rollout.
 
 Release packaging is documented in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
+Hardware rollout tracking is in [docs/ROLLOUT_CHECKLIST.md](docs/ROLLOUT_CHECKLIST.md).

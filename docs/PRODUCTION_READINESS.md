@@ -5,6 +5,7 @@ Current status: device-ready scaffold, not hardware-certified.
 ## Proven Now
 
 - Firmware builds for `m5stack-cores3`.
+- Display-only and servo-calibration firmware variants are separate PlatformIO environments.
 - Dependencies are pinned in `platformio.ini`.
 - GitHub Actions builds firmware on push and pull request.
 - Motion and face tasks read the same latest frame snapshot.

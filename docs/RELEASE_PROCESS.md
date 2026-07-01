@@ -22,3 +22,5 @@ git push origin v0.1.0-device-ready
 The release workflow builds firmware, compile-checks the test firmware, renders preview media, creates a package, and attaches the package plus individual preview and firmware files to a GitHub release.
 
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.
+
+The hardware rollout checklist lives in `docs/ROLLOUT_CHECKLIST.md`.
