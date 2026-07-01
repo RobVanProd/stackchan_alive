@@ -6,10 +6,10 @@ Use this when the Stack-chan hardware arrives.
 
 1. Confirm battery is charged or USB-C power is stable.
 2. Keep the body clear; do not force the yaw or pitch axes while powered.
-3. Start an evidence packet for the release under test:
+3. Start an evidence packet for the release under test from the source checkout:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.4-device-ready -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Port COM3
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
@@ -18,19 +18,25 @@ It also creates runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `R
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag v0.1.4-device-ready -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Port COM3
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+```
+
+If you only have the extracted release ZIP, run the same helper from inside the extracted folder:
+
+```powershell
+.\tools\prepare_device_arrival.cmd -Port COM3
 ```
 
 4. Check the exact release-binary flash command without touching the device:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware display_only -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -DryRun -Monitor -Port COM3
 ```
 
 5. Flash the display-only binary from the verified release package first:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware display_only -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor -Port COM3
 ```
 
 Expected result: the CoreS3 display shows the procedural face and serial logs include dry-run servo mode.
@@ -46,19 +52,19 @@ Servos are disabled by default in `platformio.ini`:
 Use the default display-only environment first:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware display_only -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor -Port COM3
 ```
 
 Check the servo upload command without touching the device:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware servo_calibration -ConfirmServoRisk -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -DryRun -Monitor -Port COM3
 ```
 
 Only use the servo calibration environment after the display-only build runs and the body is on a clear surface:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3
 ```
 
 For development builds from source, use `tools/flash_device.cmd`; for release evidence, use `tools/flash_release_firmware.cmd` so the tested device matches the verified package.

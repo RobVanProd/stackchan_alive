@@ -46,7 +46,7 @@ The preflight checks tool availability, dependency pins, flash-helper safety gat
 Create an auditable prerelease package:
 
 ```powershell
-.\tools\package_release.cmd -Version v0.1.2-device-ready
+.\tools\package_release.cmd -Version <version>
 ```
 
 The package includes firmware binaries, preview media, docs, checksums, dependency provenance, a machine-readable dependency lock, and copied build inputs.
@@ -55,33 +55,33 @@ By default the package command refuses to run from a dirty source worktree so th
 Verify the package before sharing or publishing, or include it in the preflight:
 
 ```powershell
-.\tools\verify_release_package.cmd -Version v0.1.2-device-ready -ZipPath output\release\stackchan_alive_v0.1.2-device-ready.zip
-.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip
+.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
+.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
 ```
 
 Flash the exact display-only firmware binary from a verified release package:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Firmware display_only -Monitor
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor
 ```
 
 Publish a verified prerelease manually when GitHub Actions is unavailable:
 
 ```powershell
-.\tools\publish_release.cmd -Version v0.1.2-device-ready -CreateTag -PushTag
+.\tools\publish_release.cmd -Version <version> -CreateTag -PushTag
 ```
 
 Audit the published GitHub release assets:
 
 ```powershell
-.\tools\verify_published_release.cmd -Version v0.1.2-device-ready
+.\tools\verify_published_release.cmd -Version <version>
 ```
 
 Stage a local handoff page for the ZIP, image, and video, optionally with a Cloudflare tunnel:
 
 ```powershell
-.\tools\share_release.cmd -Version v0.1.2-device-ready
-.\tools\share_release.cmd -Version v0.1.2-device-ready -CloudflareTunnel
+.\tools\share_release.cmd -Version <version>
+.\tools\share_release.cmd -Version <version> -CloudflareTunnel
 ```
 
 When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL.
@@ -89,7 +89,7 @@ When `cloudflared` is available, the tunnel command prints the public `trycloudf
 Start a device-arrival evidence packet:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.2-device-ready -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Port COM3
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
 ```
 
 When `-PackageZip` is provided, the evidence packet copies the ZIP and writes `logs/package_verify.log`. The hardware evidence verifier requires that package proof by default before promotion.
@@ -98,7 +98,13 @@ The packet also writes `RUN_*.cmd` files for the exact flash, soak, package veri
 To run the package verification, display-flash dry-run, and evidence packet creation in one no-hardware-safe step:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag v0.1.2-device-ready -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Port COM3
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+```
+
+If you only have the extracted release ZIP, run the same helper from inside the extracted folder:
+
+```powershell
+.\tools\prepare_device_arrival.cmd -Port COM3
 ```
 
 Verify the completed hardware evidence before promotion:

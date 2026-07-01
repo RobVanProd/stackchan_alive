@@ -14,7 +14,8 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 - [ ] `tools/verify_release_package.ps1` passes for the release ZIP.
 - [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
 - [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
-- [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`.
+- [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`, or records a verified extracted package root.
+- [ ] If testing from an extracted release package, `tools/prepare_device_arrival.ps1 -Port <COM>` passes from inside that package root.
 
 ## Display-Only Flash
 

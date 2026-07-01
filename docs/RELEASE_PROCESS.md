@@ -5,7 +5,7 @@ This project can produce a pre-device review release now and a hardware-validate
 ## Local Package
 
 ```powershell
-.\tools\package_release.cmd -Version v0.1.0-device-ready
+.\tools\package_release.cmd -Version <version>
 ```
 
 The package is written under `output/release/<version>/` and includes firmware binaries, preview media, readiness docs, dependency provenance, a machine-readable dependency lock, copied build inputs, flash helpers, and SHA256 checksums.
@@ -23,20 +23,20 @@ The preflight also checks that servo-calibration flashing is blocked unless `-Co
 Verify the package before sharing it:
 
 ```powershell
-.\tools\verify_release_package.cmd -Version v0.1.0-device-ready -ZipPath output\release\stackchan_alive_v0.1.0-device-ready.zip
-.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip
+.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
+.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
 ```
 
 Dry-run the release-binary flasher before connecting hardware:
 
 ```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Firmware display_only -DryRun -Monitor -Port COM3
+.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -DryRun -Monitor -Port COM3
 ```
 
 Create a hardware evidence packet when testing a physical device:
 
 ```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.0-device-ready -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Port COM3
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
 ```
 
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
@@ -45,7 +45,13 @@ The packet also includes generated `RUN_*.cmd` files for display flashing, servo
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
 ```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag v0.1.0-device-ready -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Port COM3
+.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3
+```
+
+If you only have an extracted release ZIP, run the same helper from inside the extracted package folder:
+
+```powershell
+.\tools\prepare_device_arrival.cmd -Port COM3
 ```
 
 Before promoting a prerelease, verify the completed hardware evidence packet:
@@ -59,8 +65,8 @@ Before promoting a prerelease, verify the completed hardware evidence packet:
 For validated releases, push a tag:
 
 ```powershell
-git tag v0.1.0-device-ready
-git push origin v0.1.0-device-ready
+git tag <version>
+git push origin <version>
 ```
 
 The release workflow builds both firmware variants, runs native logic tests, compile-checks the embedded test firmware, renders preview media, creates and verifies an auditable package, and attaches the package plus individual preview and firmware files to a GitHub release.
@@ -68,7 +74,7 @@ The release workflow builds both firmware variants, runs native logic tests, com
 If GitHub Actions cannot run, publish the already verified package with the manual release helper:
 
 ```powershell
-.\tools\publish_release.cmd -Version v0.1.0-device-ready -CreateTag -PushTag
+.\tools\publish_release.cmd -Version <version> -CreateTag -PushTag
 ```
 
 The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP, and verifies that remote copy against the tag commit.
@@ -76,7 +82,7 @@ The manual helper verifies the local ZIP, uploads the same assets as the workflo
 Audit an existing GitHub release after publication:
 
 ```powershell
-.\tools\verify_published_release.cmd -Version v0.1.0-device-ready
+.\tools\verify_published_release.cmd -Version <version>
 ```
 
 The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
@@ -84,7 +90,7 @@ The published-release verifier checks the uploaded asset set, compares asset siz
 Stage a local handoff page with direct links to the ZIP, image, video, GIF, release notes, and checksums:
 
 ```powershell
-.\tools\share_release.cmd -Version v0.1.0-device-ready
+.\tools\share_release.cmd -Version <version>
 ```
 
 If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.

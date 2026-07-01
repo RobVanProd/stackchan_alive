@@ -97,6 +97,12 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="SHA256SUMS.txt">SHA256 Checksums</a></div>
   </div>
+
+  <h2>Device Arrival Quickstart</h2>
+  <p>After downloading and extracting the release ZIP, run this from inside the extracted folder:</p>
+  <pre><code>.\tools\prepare_device_arrival.cmd -Port COM3</code></pre>
+  <p>This verifies the package, dry-runs the display-only flash command, and creates a hardware evidence packet with runnable <code>RUN_*.cmd</code> files.</p>
+  <p>Use display-only firmware first. Servo calibration requires the explicit <code>-ConfirmServoRisk</code> command generated in the evidence packet and a supervised clear work area.</p>
 </main>
 </body>
 </html>
