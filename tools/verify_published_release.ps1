@@ -3,6 +3,7 @@ param(
   [string]$Repo = "",
   [string]$PackageRoot = "",
   [string]$ZipPath = "",
+  [string]$ZipSidecarPath = "",
   [string]$ExpectedCommit = "",
   [switch]$AllowNonPrerelease
 )
@@ -117,8 +118,13 @@ if ([string]::IsNullOrWhiteSpace($ZipPath)) {
   $ZipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
 }
 
+if ([string]::IsNullOrWhiteSpace($ZipSidecarPath)) {
+  $ZipSidecarPath = "$ZipPath.sha256"
+}
+
 Assert-File $PackageRoot
 Assert-File $ZipPath
+Assert-File $ZipSidecarPath
 
 $release = gh release view $Version --repo $Repo --json url,isPrerelease,assets,tagName,targetCommitish | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) {
@@ -141,6 +147,7 @@ if (-not $release.isPrerelease -and -not $AllowNonPrerelease) {
 $assets = @($release.assets)
 $expectedAssets = @{
   "stackchan_alive_$Version.zip" = $ZipPath
+  "stackchan_alive_$Version.zip.sha256" = $ZipSidecarPath
   "stackchan_alive_preview.png" = (Join-Path $PackageRoot "media/stackchan_alive_preview.png")
   "stackchan_alive_expression_sheet.png" = (Join-Path $PackageRoot "media/stackchan_alive_expression_sheet.png")
   "stackchan_alive_preview.mp4" = (Join-Path $PackageRoot "media/stackchan_alive_preview.mp4")
@@ -163,7 +170,23 @@ if ($LASTEXITCODE -ne 0) {
   throw "Failed to download published ZIP for $Version"
 }
 
+gh release download $Version --repo $Repo --pattern "stackchan_alive_$Version.zip.sha256" --dir $remoteDir --clobber
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to download published ZIP SHA256 sidecar for $Version"
+}
+
 $remoteZip = Join-Path $remoteDir "stackchan_alive_$Version.zip"
+$remoteZipSidecar = Join-Path $remoteDir "stackchan_alive_$Version.zip.sha256"
+$remoteZipHashText = (Get-Content -LiteralPath $remoteZipSidecar -Raw).Trim()
+if ($remoteZipHashText -notmatch "^([a-f0-9]{64})  stackchan_alive_$([regex]::Escape($Version))\.zip$") {
+  throw "Invalid published ZIP SHA256 sidecar format: $remoteZipHashText"
+}
+
+$remoteZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $remoteZip).Hash.ToLowerInvariant()
+if ($remoteZipHash -ne $Matches[1]) {
+  throw "Published ZIP SHA256 sidecar does not match downloaded ZIP"
+}
+
 & (Join-Path $PSScriptRoot "verify_release_package.ps1") -Version $Version -ZipPath $remoteZip -ExpectedCommit $ExpectedCommit
 
 Write-Host "Published release verified:"

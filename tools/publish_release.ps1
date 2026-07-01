@@ -49,6 +49,7 @@ if ([string]::IsNullOrWhiteSpace($Repo)) {
 
 $packageRoot = Join-Path $repoRoot "output/release/$Version"
 $zipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
+$zipSidecarPath = "$zipPath.sha256"
 
 if (-not (Test-Path -LiteralPath $packageRoot)) {
   throw "Missing package directory: $packageRoot. Run tools/package_release.ps1 first."
@@ -56,6 +57,11 @@ if (-not (Test-Path -LiteralPath $packageRoot)) {
 
 if (-not (Test-Path -LiteralPath $zipPath)) {
   throw "Missing release ZIP: $zipPath. Run tools/package_release.ps1 first."
+}
+
+if (-not (Test-Path -LiteralPath $zipSidecarPath)) {
+  $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+  "$zipHash  $(Split-Path -Leaf $zipPath)" | Set-Content -Path $zipSidecarPath -Encoding ASCII
 }
 
 $tagCommit = ""
@@ -132,11 +138,12 @@ if (-not $releaseExists) {
   Copy-Item -LiteralPath $partitions -Destination (Join-Path $stageDir "partitions.bin")
 
   if ($DryRun) {
-    Write-Host "Dry run: gh release create $Version with package, preview media, and firmware assets staged in $stageDir"
+    Write-Host "Dry run: gh release create $Version with package, ZIP SHA256 sidecar, preview media, and firmware assets staged in $stageDir"
   } else {
     Invoke-Checked "Create GitHub release $Version" {
     gh release create $Version `
       $zipPath `
+      $zipSidecarPath `
       (Join-Path $packageRoot "media/stackchan_alive_preview.png") `
       (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png") `
       (Join-Path $packageRoot "media/stackchan_alive_preview.mp4") `
@@ -165,6 +172,7 @@ $publishedVerifyArgs = @{
   Repo = $Repo
   PackageRoot = $packageRoot
   ZipPath = $zipPath
+  ZipSidecarPath = $zipSidecarPath
   ExpectedCommit = $tagCommit
 }
 & (Join-Path $PSScriptRoot "verify_published_release.ps1") @publishedVerifyArgs

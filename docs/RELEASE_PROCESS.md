@@ -71,7 +71,7 @@ git tag <version>
 git push origin <version>
 ```
 
-The release workflow builds both firmware variants, runs native logic tests, compile-checks the embedded test firmware, renders preview media, creates and verifies an auditable package, and attaches the package plus individual preview, expression-sheet, and firmware files to a GitHub release.
+The release workflow builds both firmware variants, runs native logic tests, compile-checks the embedded test firmware, renders preview media, creates and verifies an auditable package, and attaches the package, ZIP SHA256 sidecar, individual preview media, expression-sheet, and firmware files to a GitHub release.
 
 If GitHub Actions cannot run, publish the already verified package with the manual release helper:
 
@@ -79,7 +79,7 @@ If GitHub Actions cannot run, publish the already verified package with the manu
 .\tools\publish_release.cmd -Version <version> -CreateTag -PushTag
 ```
 
-The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP, and verifies that remote copy against the tag commit.
+The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.
 
 Audit an existing GitHub release after publication:
 
@@ -87,7 +87,7 @@ Audit an existing GitHub release after publication:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
+The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP plus ZIP SHA256 sidecar, validates the sidecar against the downloaded ZIP, and runs the package verifier on that downloaded copy.
 
 Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, release notes, readiness report, and checksums:
 

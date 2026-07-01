@@ -174,6 +174,13 @@ foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "I
   }
 }
 
+$publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
+foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar")) {
+  if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/verify_published_release.ps1 missing required published ZIP sidecar verification logic: $pattern"
+  }
+}
+
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "media/stackchan_alive_preview.png" 1000

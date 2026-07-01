@@ -553,7 +553,11 @@ if (Test-Path -LiteralPath $zipPath) {
   Remove-Item -LiteralPath $zipPath -Force
 }
 Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath
+$zipSidecarPath = "$zipPath.sha256"
+$zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+"$zipHash  $(Split-Path -Leaf $zipPath)" | Set-Content -Path $zipSidecarPath -Encoding ASCII
 
 Write-Host "Release package:"
 Write-Host $outDir
 Write-Host $zipPath
+Write-Host $zipSidecarPath
