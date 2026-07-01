@@ -167,6 +167,77 @@ function Get-YamlNumber {
   return [double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
+function Test-BytesAtOffset {
+  param(
+    [byte[]]$Bytes,
+    [byte[]]$Expected,
+    [int]$Offset = 0
+  )
+
+  if ($Bytes.Length -lt ($Offset + $Expected.Length)) {
+    return $false
+  }
+
+  for ($i = 0; $i -lt $Expected.Length; $i++) {
+    if ($Bytes[$Offset + $i] -ne $Expected[$i]) {
+      return $false
+    }
+  }
+
+  return $true
+}
+
+function Test-MediaEvidenceFile {
+  param([System.IO.FileInfo]$File)
+
+  $extension = $File.Extension.ToLowerInvariant()
+  if (@(".png", ".jpg", ".jpeg", ".gif", ".mp4", ".mov", ".webm") -notcontains $extension) {
+    return $false
+  }
+
+  $bytesToRead = [Math]::Min([int64]64, $File.Length)
+  if ($bytesToRead -lt 4) {
+    return $false
+  }
+
+  $stream = [System.IO.File]::OpenRead($File.FullName)
+  try {
+    $bytes = New-Object byte[] ([int]$bytesToRead)
+    $read = $stream.Read($bytes, 0, $bytes.Length)
+    if ($read -lt $bytes.Length) {
+      return $false
+    }
+  } finally {
+    $stream.Dispose()
+  }
+
+  switch ($extension) {
+    ".png" {
+      return Test-BytesAtOffset $bytes ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    }
+    ".jpg" {
+      return Test-BytesAtOffset $bytes ([byte[]](0xff, 0xd8, 0xff))
+    }
+    ".jpeg" {
+      return Test-BytesAtOffset $bytes ([byte[]](0xff, 0xd8, 0xff))
+    }
+    ".gif" {
+      return Test-BytesAtOffset $bytes ([byte[]](0x47, 0x49, 0x46, 0x38))
+    }
+    ".mp4" {
+      return Test-BytesAtOffset $bytes ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+    }
+    ".mov" {
+      return Test-BytesAtOffset $bytes ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+    }
+    ".webm" {
+      return Test-BytesAtOffset $bytes ([byte[]](0x1a, 0x45, 0xdf, 0xa3))
+    }
+  }
+
+  return $false
+}
+
 $requiredFiles = @(
   "README.md",
   "CHECKLIST.md",
@@ -316,11 +387,18 @@ if ($yawMin -ge $yawMax) {
 }
 
 if (-not $AllowMissingMedia) {
-  $mediaFiles = Get-ChildItem -LiteralPath (Join-EvidencePath "photos") -File -ErrorAction SilentlyContinue |
+  $mediaFiles = @(
+    Get-ChildItem -LiteralPath (Join-EvidencePath "photos") -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -ne ".gitkeep" -and $_.Length -gt 0 }
+  )
 
-  if ($null -eq $mediaFiles -or @($mediaFiles).Count -lt 1) {
+  if ($mediaFiles.Count -lt 1) {
     throw "No non-empty photo or video evidence found under photos/"
+  }
+
+  $validMediaFiles = @($mediaFiles | Where-Object { Test-MediaEvidenceFile $_ })
+  if ($validMediaFiles.Count -lt 1) {
+    throw "No supported photo or video evidence found under photos/. Add a valid .png, .jpg, .jpeg, .gif, .mp4, .mov, or .webm file."
   }
 }
 

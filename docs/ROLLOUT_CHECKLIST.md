@@ -3,6 +3,7 @@
 Use this as the arrival-day test record. Do not promote a release from prerelease until every gate has explicit evidence.
 
 When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pass`, reset/heat/brownout/stall/jitter observed fields as `no`, `Procedural face visible: yes`, `Dry-run servo log observed: yes`, `Yaw classification: angle`, `velocity`, or `disabled`, soak `Duration` of at least `30 minutes`, and `USB power-cycle recovery: pass`.
+Promotion evidence must include at least one real photo or video under `photos/`: `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp4`, `.mov`, or `.webm`. Text placeholders do not count.
 
 ## Build Evidence
 
@@ -55,6 +56,7 @@ Pass criteria:
 - [ ] 30-minute mixed idle/listen/think/speak run.
 - [ ] USB power-cycle recovery test.
 - [ ] Serial logs saved.
+- [ ] Photo or video evidence saved under `photos/`.
 - [ ] Firmware version and release tag recorded.
 
 ## Promotion Gate
