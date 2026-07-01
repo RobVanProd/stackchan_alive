@@ -421,6 +421,12 @@ $directGitMissingRefCount = @($dependencyLock.dependencyAudit.directGitDepsMissi
 $duplicateDependencyCount = @($dependencyLock.dependencyAudit.duplicateResolvedPackages).Count
 $unpinnedUpstreamGitCount = @($dependencyLock.dependencyAudit.unpinnedGitRequirements).Count
 $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWithoutSha).Count
+$promotionGateItems = (@($readiness.hardwareGates) | ForEach-Object {
+  $gateName = [System.Net.WebUtility]::HtmlEncode([string]$_.gate)
+  $gateStatus = [System.Net.WebUtility]::HtmlEncode([string]$_.status)
+  $gateEvidence = [System.Net.WebUtility]::HtmlEncode([string]$_.requiredEvidence)
+  "    <li><strong>$gateName</strong> <code>$gateStatus</code>: $gateEvidence</li>"
+}) -join [Environment]::NewLine
 
 @"
 <!doctype html>
@@ -463,6 +469,12 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
   <p><strong>GitHub Actions:</strong> $($actionsStatus.interpretation)</p>
 
 $preflightSection
+
+  <h2>Pending Promotion Gates</h2>
+  <p>These gates come directly from <code>readiness_report.json</code>. Do not mark this release consumer-ready until each item has explicit real-device evidence.</p>
+  <ul class="checklist">
+$promotionGateItems
+  </ul>
 
   <h2>Dependency Provenance</h2>
   <p>The release ZIP includes copied build inputs, dependency provenance, and a machine-readable dependency lock. Direct Git dependencies are required to be pinned, and resolved Git packages must carry SHA evidence.</p>
