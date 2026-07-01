@@ -35,6 +35,12 @@ pio test -e native_logic
 pio test -e stackchan --without-uploading --without-testing
 ```
 
+Run the no-hardware device preflight before flashing or handing off a package:
+
+```powershell
+.\tools\run_device_preflight.cmd
+```
+
 Create an auditable prerelease package:
 
 ```powershell
@@ -44,10 +50,11 @@ Create an auditable prerelease package:
 The package includes firmware binaries, preview media, docs, checksums, dependency provenance, and copied build inputs.
 By default the package command refuses to run from a dirty source worktree so the manifest commit matches the code and configuration; regenerated preview media is treated as a release artifact.
 
-Verify the package before sharing or publishing:
+Verify the package before sharing or publishing, or include it in the preflight:
 
 ```powershell
 .\tools\verify_release_package.cmd -Version v0.1.2-device-ready -ZipPath output\release\stackchan_alive_v0.1.2-device-ready.zip
+.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip
 ```
 
 Start a device-arrival evidence packet:

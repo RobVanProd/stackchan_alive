@@ -108,6 +108,8 @@ $requiredFiles = @(
   "media/stackchan_alive_preview.png",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
+  "tools/run_device_preflight.cmd",
+  "tools/run_device_preflight.ps1",
   "tools/start_hardware_evidence.cmd",
   "tools/start_hardware_evidence.ps1",
   "tools/verify_hardware_evidence.cmd",

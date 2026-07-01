@@ -8,6 +8,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 - [ ] `pio run -e stackchan_servo_calibration` passes.
 - [ ] `pio test -e native_logic` passes.
 - [ ] `pio test -e stackchan --without-uploading --without-testing` passes.
+- [ ] `tools/run_device_preflight.ps1` passes.
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
 - [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, copied build inputs, and checksums.
 - [ ] `tools/verify_release_package.ps1` passes for the release ZIP.

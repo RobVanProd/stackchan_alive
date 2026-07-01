@@ -12,10 +12,17 @@ The package is written under `output/release/<version>/` and includes firmware b
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`.
 
+Before flashing or publishing, run the no-hardware preflight:
+
+```powershell
+.\tools\run_device_preflight.cmd
+```
+
 Verify the package before sharing it:
 
 ```powershell
 .\tools\verify_release_package.cmd -Version v0.1.0-device-ready -ZipPath output\release\stackchan_alive_v0.1.0-device-ready.zip
+.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip
 ```
 
 Create a hardware evidence packet when testing a physical device:

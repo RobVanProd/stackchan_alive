@@ -97,6 +97,8 @@ Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 $releaseTools = @(
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
+  "tools/run_device_preflight.cmd",
+  "tools/run_device_preflight.ps1",
   "tools/start_hardware_evidence.cmd",
   "tools/start_hardware_evidence.ps1",
   "tools/verify_hardware_evidence.cmd",
@@ -191,6 +193,8 @@ $manifest = [ordered]@{
   includedTools = @(
     "tools/flash_device.cmd",
     "tools/flash_device.ps1",
+    "tools/run_device_preflight.cmd",
+    "tools/run_device_preflight.ps1",
     "tools/start_hardware_evidence.cmd",
     "tools/start_hardware_evidence.ps1",
     "tools/verify_hardware_evidence.cmd",
@@ -215,7 +219,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``. Flashing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``. Preflight, flashing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 
