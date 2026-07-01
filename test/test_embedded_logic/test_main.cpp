@@ -4,6 +4,7 @@
 #include "motion/Spring.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/IntentEngine.hpp"
+#include "persona/SpeechPlanner.hpp"
 
 using namespace stackchan;
 
@@ -35,11 +36,21 @@ void test_positive_valence_smiles() {
   TEST_ASSERT_GREATER_THAN(0.0f, face.mouthSmile);
 }
 
+void test_speech_planner_boot_line_is_available() {
+  SpeechPlanner planner;
+  EmotionalProfile emotion;
+
+  const SpeechCue cue = planner.plan(CharacterMode::Boot, emotion);
+  TEST_ASSERT_TRUE(cue.shouldSpeak());
+  TEST_ASSERT_EQUAL_STRING("Hello. I am Stackchan, and I am awake.", cue.text);
+}
+
 void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_moves_toward_target);
   RUN_TEST(test_wake_word_increases_arousal);
   RUN_TEST(test_positive_valence_smiles);
+  RUN_TEST(test_speech_planner_boot_line_is_available);
   UNITY_END();
 }
 

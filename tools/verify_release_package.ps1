@@ -147,6 +147,8 @@ $requiredFiles = @(
   "provenance/firmware.yml",
   "provenance/platformio.ini",
   "provenance/src/main.cpp",
+  "provenance/src/persona/SpeechPlanner.hpp",
+  "provenance/src/persona/SpeechPlanner.cpp",
   "provenance/release.yml",
   "provenance/requirements-preview.txt"
 )

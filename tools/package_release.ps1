@@ -453,7 +453,9 @@ $manifest = [ordered]@{
     "provenance/requirements-preview.txt",
     "provenance/firmware.yml",
     "provenance/release.yml",
-    "provenance/src/main.cpp"
+    "provenance/src/main.cpp",
+    "provenance/src/persona/SpeechPlanner.hpp",
+    "provenance/src/persona/SpeechPlanner.cpp"
   )
 }
 

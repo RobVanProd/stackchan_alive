@@ -1,10 +1,13 @@
 #include <unity.h>
 
+#include <cstring>
+
 #include "face/ExpressionMapper.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/IntentEngine.hpp"
+#include "persona/SpeechPlanner.hpp"
 
 using namespace stackchan;
 
@@ -203,6 +206,65 @@ void test_disabled_yaw_commands_zero_velocity() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, actuator.lastYawVelocity);
 }
 
+bool containsText(const char* haystack, const char* needle) {
+  return strstr(haystack, needle) != nullptr;
+}
+
+void test_speech_planner_uses_original_stackchan_lines() {
+  SpeechPlanner planner;
+  EmotionalProfile emotion;
+
+  const SpeechCue boot = planner.plan(CharacterMode::Boot, emotion);
+  TEST_ASSERT_TRUE(boot.shouldSpeak());
+  TEST_ASSERT_EQUAL(SpeechIntent::Boot, boot.intent);
+  TEST_ASSERT_EQUAL_STRING("Hello. I am Stackchan, and I am awake.", boot.text);
+
+  const SpeechCue think = planner.plan(CharacterMode::Think, emotion);
+  TEST_ASSERT_TRUE(think.shouldSpeak());
+  TEST_ASSERT_EQUAL(SpeechIntent::Think, think.intent);
+  TEST_ASSERT_EQUAL_STRING("Input received. I am thinking now.", think.text);
+}
+
+void test_speech_planner_keeps_idle_quiet_until_emotion_moves() {
+  SpeechPlanner planner;
+  EmotionalProfile emotion;
+
+  SpeechCue cue = planner.plan(CharacterMode::Idle, emotion);
+  TEST_ASSERT_FALSE(cue.shouldSpeak());
+
+  emotion.arousal = 0.80f;
+  cue = planner.plan(CharacterMode::Idle, emotion);
+  TEST_ASSERT_TRUE(cue.shouldSpeak());
+  TEST_ASSERT_EQUAL(SpeechIntent::Idle, cue.intent);
+  TEST_ASSERT_EQUAL_STRING("Curiosity level rising.", cue.text);
+}
+
+void test_speech_planner_avoids_character_clone_markers() {
+  SpeechPlanner planner;
+  EmotionalProfile emotion;
+  emotion.valence = 0.80f;
+  emotion.arousal = 0.80f;
+  emotion.focus = 0.80f;
+
+  const CharacterMode modes[] = {
+      CharacterMode::Boot,  CharacterMode::Idle,  CharacterMode::Attend,
+      CharacterMode::Listen, CharacterMode::Think, CharacterMode::Speak,
+      CharacterMode::React, CharacterMode::Sleep, CharacterMode::Error,
+  };
+
+  for (const CharacterMode mode : modes) {
+    const SpeechCue cue = planner.plan(mode, emotion);
+    if (!cue.shouldSpeak()) {
+      continue;
+    }
+
+    TEST_ASSERT_FALSE(containsText(cue.text, "Johnny"));
+    TEST_ASSERT_FALSE(containsText(cue.text, "Short Circuit"));
+    TEST_ASSERT_FALSE(containsText(cue.text, "Number 5"));
+    TEST_ASSERT_FALSE(containsText(cue.text, "No disassemble"));
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -215,5 +277,8 @@ int main() {
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);
+  RUN_TEST(test_speech_planner_uses_original_stackchan_lines);
+  RUN_TEST(test_speech_planner_keeps_idle_quiet_until_emotion_moves);
+  RUN_TEST(test_speech_planner_avoids_character_clone_markers);
   return UNITY_END();
 }
