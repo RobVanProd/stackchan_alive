@@ -8,7 +8,7 @@ This project can produce a pre-device review release now and a hardware-validate
 .\tools\package_release.cmd -Version <version>
 ```
 
-The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the voice/personality profile, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, a manifest that names the readiness/media/voice artifacts, and SHA256 checksums.
+The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the voice/personality profile, voice-source provenance template, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, a manifest that names the readiness/media/voice artifacts, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
 
@@ -89,7 +89,7 @@ Audit an existing GitHub release after publication:
 
 The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP plus ZIP SHA256 sidecar, validates the sidecar against the downloaded ZIP, and runs the package verifier on that downloaded copy.
 
-Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, release notes, readiness report, and checksums:
+Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, voice samples, voice-source provenance gate, release notes, readiness report, and checksums:
 
 ```powershell
 .\tools\share_release.cmd -Version <version>
@@ -99,7 +99,7 @@ If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for rem
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
 From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes.
-Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending the URL; it checks the handoff page plus the preview PNG, expression sheet, MP4, GIF, readiness report, readiness JSON, ZIP, ZIP SHA256 sidecar, and package checksums over HTTP.
+Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending the URL; it checks the handoff page plus the preview PNG, expression sheet, MP4, GIF, voice samples, voice-source provenance files, readiness report, readiness JSON, ZIP, ZIP SHA256 sidecar, and package checksums over HTTP.
 Run `output/share/<version>/STOP_SHARING.cmd` or `tools/stop_share.cmd -Version <version>` to stop the local server and tunnel.
 
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.

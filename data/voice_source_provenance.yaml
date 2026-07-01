@@ -1,0 +1,33 @@
+schema: stackchan.voice-source-provenance.v1
+status: pending-production-source
+profile_id: stackchan_spark
+prototype_samples:
+  status: review-only
+  source: local Windows SpeechSynthesizer voice
+  renderer: tools/render_voice_samples.ps1
+  effect_chain: measured cadence, lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, short echo
+  allowed_use:
+    - internal voice direction review
+    - device-audio audition
+  not_approved_for:
+    - consumer rollout
+    - production voice-source approval
+production_source:
+  provider: TBD
+  owner_or_consent_contact: TBD
+  license_or_consent_evidence: required-before-consumer-rollout
+  commercial_device_use: required-before-consumer-rollout
+  generated_prompt_distribution: required-before-consumer-rollout
+  model_training_or_finetuning: required-before-use
+forbidden_sources_attested:
+  - soundboard clips
+  - named character or actor voice clones
+  - RVC character models
+  - copyrighted movie quotes or catchphrases
+required_rollout_evidence:
+  - licensed_or_owned_production_voice_source
+  - completed_voice_source_provenance_template
+  - target_speaker_audio_check
+  - real_device_audio_video_evidence
+  - hardware_evidence_verification_pass
+rollout_gate: blocked-pending-licensed-or-owned-production-voice-source

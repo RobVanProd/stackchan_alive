@@ -128,8 +128,10 @@ Copy-Item -LiteralPath "docs/RELEASE_QUICKSTART.md" -Destination (Join-Path $out
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_PERSONALITY.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -Destination $docsDir
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
+Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 
 $releaseTools = @(
   "tools/flash_device.cmd",
@@ -445,6 +447,8 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   voicePersona = "data/voice_persona.yaml"
+  voiceSourceProvenanceTemplate = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
+  voiceSourceProvenance = "data/voice_source_provenance.yaml"
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
@@ -545,6 +549,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
     [ordered]@{ gate = "preview-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_preview.mp4, media/stackchan_alive_preview.gif" },
     [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
+    [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
@@ -557,7 +562,8 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ gate = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat markers" },
     [ordered]@{ gate = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
-    [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" }
+    [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
+    [ordered]@{ gate = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md, licensed or owned production source, and target speaker audio/video evidence" }
   )
   promotionRule = "Do not mark consumer-ready or non-prerelease until all hardware gates pass with evidence."
   nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
@@ -581,6 +587,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
+    [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
     [ordered]@{ requirement = "share-page-verifiable"; status = "pass"; evidence = "tools/share_release.cmd and tools/verify_share_release.cmd" }
@@ -591,7 +598,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat markers" },
     [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
     [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
-    [ordered]@{ requirement = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "licensed or owned production voice source plus real-device speaker check" }
+    [ordered]@{ requirement = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md, licensed or owned production voice source, and real-device speaker check" }
   )
   promotionRule = "Keep prerelease status until every hardwareAcceptanceRequired item is pass with evidence."
 }
@@ -615,6 +622,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] GitHub Actions status report present: ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``
 - [x] Visual review media present: preview image, expression sheet, and preview video
 - [x] Voice review samples present: Stackchan Spark greeting, thinking, and safety WAVs
+- [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
 - [x] Servo risk gated by explicit ``-ConfirmServoRisk``
@@ -627,7 +635,7 @@ Consumer rollout: blocked pending hardware validation
 - [ ] 30-minute mixed idle/listen/think/speak soak with heartbeat markers
 - [ ] USB power-cycle recovery marked pass
 - [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
-- [ ] Licensed or owned production voice source plus real-device speaker check
+- [ ] Completed voice-source provenance, licensed or owned production voice source, and real-device speaker check
 
 Machine-readable checklist: ``release_acceptance.json``
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
@@ -648,6 +656,7 @@ Consumer rollout: blocked pending hardware validation
 - Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
+- Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; current WAVs remain prototype review samples until a licensed or owned production source is recorded.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
@@ -658,6 +667,7 @@ Consumer rollout: blocked pending hardware validation
 - 30-minute mixed idle/listen/think/speak soak.
 - USB power-cycle recovery.
 - Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
+- Completed voice-source provenance with licensed or owned production source and target speaker evidence.
 
 Do not mark this release consumer-ready or non-prerelease until every pending device gate has explicit evidence.
 
@@ -673,7 +683,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 
@@ -682,6 +692,7 @@ Hardware validation is still required before consumer rollout:
 3. Yaw classification and calibration.
 4. 30-minute mixed idle/listen/speak soak.
 5. USB power-cycle recovery test.
+6. Licensed or owned production voice source and real-device speaker check.
 
 See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8

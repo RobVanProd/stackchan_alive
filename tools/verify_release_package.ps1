@@ -104,8 +104,10 @@ $requiredFiles = @(
   "docs/RELEASE_PROCESS.md",
   "docs/ROLLOUT_CHECKLIST.md",
   "docs/VOICE_PERSONALITY.md",
+  "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md",
   "data/calibration.yaml",
   "data/voice_persona.yaml",
+  "data/voice_source_provenance.yaml",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -179,7 +181,7 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "publicUrlReady", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "Dependency Provenance", "dependency_lock.json")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "publicUrlReady", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
@@ -332,6 +334,14 @@ if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
 
 if ($manifest.voicePersona -ne "data/voice_persona.yaml") {
   throw "Manifest voicePersona mismatch: $($manifest.voicePersona)"
+}
+
+if ($manifest.voiceSourceProvenanceTemplate -ne "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md") {
+  throw "Manifest voiceSourceProvenanceTemplate mismatch: $($manifest.voiceSourceProvenanceTemplate)"
+}
+
+if ($manifest.voiceSourceProvenance -ne "data/voice_source_provenance.yaml") {
+  throw "Manifest voiceSourceProvenance mismatch: $($manifest.voiceSourceProvenance)"
 }
 
 $expectedMediaArtifacts = @(
@@ -555,6 +565,20 @@ foreach ($pattern in @("schema: stackchan.voice-persona.v1", "profile_id: stackc
   }
 }
 
+$voiceSourceTemplate = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md") -Raw
+foreach ($pattern in @("Voice Source Provenance Template", "pending production voice source", "No soundboard clips", "No named character", "No RVC character model", "Commercial/device use allowed", "real-device audio/video evidence")) {
+  if ($voiceSourceTemplate -notmatch [regex]::Escape($pattern)) {
+    throw "VOICE_SOURCE_PROVENANCE_TEMPLATE.md missing expected provenance guidance: $pattern"
+  }
+}
+
+$voiceSourceProvenance = Get-Content -LiteralPath (Join-PackagePath "data/voice_source_provenance.yaml") -Raw
+foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: pending-production-source", "review-only", "required-before-consumer-rollout", "soundboard clips", "RVC character models", "hardware_evidence_verification_pass", "blocked-pending-licensed-or-owned-production-voice-source")) {
+  if ($voiceSourceProvenance -notmatch [regex]::Escape($pattern)) {
+    throw "voice_source_provenance.yaml missing expected policy: $pattern"
+  }
+}
+
 $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.json") -Raw | ConvertFrom-Json
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
   throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
@@ -565,7 +589,7 @@ if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
 if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "servo-risk-gated", "share-page-verifiable")) {
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "servo-risk-gated", "share-page-verifiable")) {
   $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
@@ -579,7 +603,7 @@ foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mod
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -607,7 +631,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "gith
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "verify_hardware_evidence.cmd", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "verify_hardware_evidence.cmd", "Voice source provenance", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -631,12 +655,17 @@ foreach ($gate in @($readinessJson.noHardwareProof)) {
     throw "readiness_report.json has non-passing no-hardware gate: $($gate.gate)"
   }
 }
+$voiceSourceNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-provenance-template-present" -and $_.status -eq "pass" })
+if ($voiceSourceNoHardwareGate.Count -ne 1) {
+  throw "readiness_report.json missing passed voice-source provenance template gate"
+}
 foreach ($gate in @($readinessJson.hardwareGates)) {
-  if ($gate.status -ne "pending-device") {
+  $allowedStatus = if ($gate.gate -eq "production-voice-source") { "pending-before-consumer-rollout" } else { "pending-device" }
+  if ($gate.status -ne $allowedStatus) {
     throw "readiness_report.json hardware gate must remain pending-device before promotion: $($gate.gate)"
   }
 }
-if (@($readinessJson.hardwareGates).Count -lt 5) {
+if (@($readinessJson.hardwareGates).Count -lt 6) {
   throw "readiness_report.json is missing required hardware gates"
 }
 

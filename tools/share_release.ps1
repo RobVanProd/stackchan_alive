@@ -312,6 +312,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "github_actions_status.json"); Name = "github_actions_status.json" },
   @{ Source = (Join-Path $packageRoot "DEPENDENCIES.md"); Name = "DEPENDENCIES.md" },
   @{ Source = (Join-Path $packageRoot "dependency_lock.json"); Name = "dependency_lock.json" },
+  @{ Source = (Join-Path $packageRoot "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"); Name = "VOICE_SOURCE_PROVENANCE_TEMPLATE.md" },
+  @{ Source = (Join-Path $packageRoot "data/voice_source_provenance.yaml"); Name = "voice_source_provenance.yaml" },
   @{ Source = (Join-Path $packageRoot "READINESS_REPORT.md"); Name = "READINESS_REPORT.md" },
   @{ Source = (Join-Path $packageRoot "readiness_report.json"); Name = "readiness_report.json" },
   @{ Source = (Join-Path $packageRoot "SHA256SUMS.txt"); Name = "SHA256SUMS.txt" }
@@ -442,6 +444,14 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <li>Worth moving into a licensed or owned production voice source before consumer rollout.</li>
   </ul>
 
+  <h2>Voice Source Gate</h2>
+  <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
+  <div class="status">
+    <span class="pill pending">Voice source: pending production source</span>
+    <span class="pill pending">Rollout gate: licensed or owned production voice required</span>
+    <span class="pill pending">Speaker evidence: pending device</span>
+  </div>
+
   <h2>Downloads</h2>
   <div class="grid">
     <div class="item"><a href="stackchan_alive_$Version.zip">Release ZIP</a></div>
@@ -450,6 +460,8 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <div class="item"><a href="stackchan_alive_preview.mp4">Preview MP4</a></div>
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
+    <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
+    <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
     <div class="item"><a href="RELEASE_ACCEPTANCE.md">Release Acceptance Checklist</a></div>
     <div class="item"><a href="release_acceptance.json">Acceptance JSON</a></div>

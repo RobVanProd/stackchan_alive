@@ -6,4 +6,5 @@
 - `RELEASE_QUICKSTART.md`: root quickstart copied into release packages.
 - `ROLLOUT_CHECKLIST.md`: arrival-day record to complete before promotion.
 - `VOICE_PERSONALITY.md`: original robot TTS/personality target and voice-source guardrails.
+- `VOICE_SOURCE_PROVENANCE_TEMPLATE.md`: production TTS source license/consent evidence template.
 - `stackchan_procedural_runtime_design.pdf`: source design document from Google Drive.
