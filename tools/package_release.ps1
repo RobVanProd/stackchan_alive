@@ -435,6 +435,8 @@ $manifest = [ordered]@{
   dependencyLock = "dependency_lock.json"
   readinessReport = "READINESS_REPORT.md"
   readinessReportJson = "readiness_report.json"
+  acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
+  acceptanceChecklistJson = "release_acceptance.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   voicePersona = "data/voice_persona.yaml"
   mediaArtifacts = @(
@@ -522,6 +524,70 @@ $readinessReport = [ordered]@{
 }
 
 $readinessReport | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "readiness_report.json") -Encoding UTF8
+
+$acceptanceChecklist = [ordered]@{
+  schema = "stackchan.release-acceptance.v1"
+  version = $Version
+  commit = $commit
+  generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  releaseClass = "device-ready-prerelease"
+  currentDecision = "test-ready-for-device-arrival"
+  consumerRolloutDecision = "blocked-pending-hardware-validation"
+  noHardwareAcceptance = @(
+    [ordered]@{ requirement = "clean-release-package"; status = "pass"; evidence = "release_manifest.json" },
+    [ordered]@{ requirement = "firmware-artifacts-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
+    [ordered]@{ requirement = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
+    [ordered]@{ requirement = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
+    [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
+    [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
+    [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/verify_hardware_evidence.cmd" },
+    [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
+    [ordered]@{ requirement = "share-page-verifiable"; status = "pass"; evidence = "tools/share_release.cmd and tools/verify_share_release.cmd" }
+  )
+  hardwareAcceptanceRequired = @(
+    [ordered]@{ requirement = "display-only-flash"; status = "pending-device"; requiredEvidence = "display-only serial log, real photo/video, 10-minute idle observation" },
+    [ordered]@{ requirement = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
+    [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat markers" },
+    [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
+    [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
+    [ordered]@{ requirement = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "licensed or owned production voice source plus real-device speaker check" }
+  )
+  promotionRule = "Keep prerelease status until every hardwareAcceptanceRequired item is pass with evidence."
+}
+
+$acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "release_acceptance.json") -Encoding UTF8
+
+@"
+# Release Acceptance Checklist
+
+Release: $Version
+Commit: $commit
+Decision: test-ready for device arrival
+Consumer rollout: blocked pending hardware validation
+
+## Accepted Without Hardware
+
+- [x] Clean release package: ``release_manifest.json``
+- [x] Firmware artifacts present: ``firmware/display_only`` and ``firmware/servo_calibration``
+- [x] Dependency provenance present: ``DEPENDENCIES.md`` and ``dependency_lock.json``
+- [x] Checksums present: ``SHA256SUMS.txt``
+- [x] Visual review media present: preview image, expression sheet, and preview video
+- [x] Voice review samples present: Stackchan Spark greeting, thinking, and safety WAVs
+- [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
+- [x] Servo risk gated by explicit ``-ConfirmServoRisk``
+- [x] Share page can be verified by ``tools/verify_share_release.cmd``
+
+## Still Required Before Consumer Rollout
+
+- [ ] Display-only flash with serial log, real photo/video, and 10-minute idle observation
+- [ ] Supervised servo calibration with yaw classification and calibration values
+- [ ] 30-minute mixed idle/listen/think/speak soak with heartbeat markers
+- [ ] USB power-cycle recovery marked pass
+- [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
+- [ ] Licensed or owned production voice source plus real-device speaker check
+
+Machine-readable checklist: ``release_acceptance.json``
+"@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
 
 @"
 # Readiness Report

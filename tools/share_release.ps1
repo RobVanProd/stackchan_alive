@@ -212,6 +212,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
+  @{ Source = (Join-Path $packageRoot "RELEASE_ACCEPTANCE.md"); Name = "RELEASE_ACCEPTANCE.md" },
+  @{ Source = (Join-Path $packageRoot "release_acceptance.json"); Name = "release_acceptance.json" },
   @{ Source = (Join-Path $packageRoot "READINESS_REPORT.md"); Name = "READINESS_REPORT.md" },
   @{ Source = (Join-Path $packageRoot "readiness_report.json"); Name = "readiness_report.json" },
   @{ Source = (Join-Path $packageRoot "SHA256SUMS.txt"); Name = "SHA256SUMS.txt" }
@@ -324,6 +326,8 @@ $consumerRollout = [string]$readiness.consumerRollout
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
+    <div class="item"><a href="RELEASE_ACCEPTANCE.md">Release Acceptance Checklist</a></div>
+    <div class="item"><a href="release_acceptance.json">Acceptance JSON</a></div>
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="READINESS_REPORT.md">Readiness Report</a></div>
     <div class="item"><a href="readiness_report.json">Readiness JSON</a></div>

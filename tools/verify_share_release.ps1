@@ -203,6 +203,8 @@ $expectedFiles = @(
   @{ Path = "voice/stackchan_spark_safety.wav"; MinBytes = 1000; Type = "audio/" },
   @{ Path = "voice/VOICE_SAMPLES.md"; MinBytes = 100; Type = "" },
   @{ Path = "QUICKSTART.md"; MinBytes = 100; Type = "" },
+  @{ Path = "RELEASE_ACCEPTANCE.md"; MinBytes = 100; Type = "" },
+  @{ Path = "release_acceptance.json"; MinBytes = 100; Type = "" },
   @{ Path = "RELEASE_NOTES.md"; MinBytes = 100; Type = "" },
   @{ Path = "READINESS_REPORT.md"; MinBytes = 100; Type = "" },
   @{ Path = "readiness_report.json"; MinBytes = 100; Type = "" },
@@ -227,14 +229,14 @@ if ($actualZipHash -ne $expectedZipHash) {
 }
 
 $indexText = Get-Content -LiteralPath (Join-Path $shareRootPath "index.html") -Raw
-foreach ($pattern in @($Version, "Hardware validation is still pending", "No-hardware gates passed", "Hardware gates pending", "Consumer rollout", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "Voice Samples", "Voice Review Checklist", "Transcript:", "Hello. I am Stackchan, and I am awake.", "Input received. I am thinking now. Curiosity level rising.", "Small problem found. I can help fix it. Safety first.", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
+foreach ($pattern in @($Version, "Hardware validation is still pending", "No-hardware gates passed", "Hardware gates pending", "Consumer rollout", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "Voice Samples", "Voice Review Checklist", "Transcript:", "Hello. I am Stackchan, and I am awake.", "Input received. I am thinking now. Curiosity level rising.", "Small problem found. I can help fix it. Safety first.", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
   if ($indexText -notmatch [regex]::Escape($pattern)) {
     throw "index.html missing expected share guidance: $pattern"
   }
 }
 
 $probes = @()
-foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt") }) {
+foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt") }) {
   $path = if ($file.Path -eq "index.html") { "/" } else { $file.Path }
   $probe = Invoke-UrlProbe -TargetUrl (Join-Url $Url $path) -TimeoutSeconds $TimeoutSeconds
   Assert-HttpOk -Probe $probe -ExpectedType $file.Type -Path $path

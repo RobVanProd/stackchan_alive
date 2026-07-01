@@ -90,8 +90,10 @@ $requiredFiles = @(
   "READINESS_REPORT.md",
   "dependency_lock.json",
   "QUICKSTART.md",
+  "RELEASE_ACCEPTANCE.md",
   "RELEASE_NOTES.md",
   "SHA256SUMS.txt",
+  "release_acceptance.json",
   "readiness_report.json",
   "release_manifest.json",
   "docs/DEVICE_BRINGUP.md",
@@ -265,6 +267,14 @@ if ($manifest.readinessReport -ne "READINESS_REPORT.md") {
 
 if ($manifest.readinessReportJson -ne "readiness_report.json") {
   throw "Manifest readinessReportJson mismatch: $($manifest.readinessReportJson)"
+}
+
+if ($manifest.acceptanceChecklist -ne "RELEASE_ACCEPTANCE.md") {
+  throw "Manifest acceptanceChecklist mismatch: $($manifest.acceptanceChecklist)"
+}
+
+if ($manifest.acceptanceChecklistJson -ne "release_acceptance.json") {
+  throw "Manifest acceptanceChecklistJson mismatch: $($manifest.acceptanceChecklistJson)"
 }
 
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
@@ -493,6 +503,36 @@ $voicePersona = Get-Content -LiteralPath (Join-PackagePath "data/voice_persona.y
 foreach ($pattern in @("schema: stackchan.voice-persona.v1", "profile_id: stackchan_spark", "cloning named character or actor voices", "training from soundboard clips", "licensed_or_owned_voice_source")) {
   if ($voicePersona -notmatch [regex]::Escape($pattern)) {
     throw "voice_persona.yaml missing expected voice policy: $pattern"
+  }
+}
+
+$acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.json") -Raw | ConvertFrom-Json
+if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
+  throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
+}
+if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
+  throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
+}
+if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
+  throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
+}
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "servo-risk-gated", "share-page-verifiable")) {
+  $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
+  if ($match.Count -ne 1) {
+    throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
+  }
+}
+foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mode-soak", "hardware-evidence-verification", "production-voice-source")) {
+  $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
+  if ($match.Count -ne 1) {
+    throw "release_acceptance.json missing pending hardware requirement: $requirement"
+  }
+}
+
+$acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Licensed or owned production voice source")) {
+  if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
+    throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
 }
 
