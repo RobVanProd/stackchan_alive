@@ -269,9 +269,10 @@ function Assert-HardwareEvidenceMediaGate {
   $evidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-evidence-media-gate-" + [System.Guid]::NewGuid().ToString("N"))
   $logsDir = Join-Path $evidenceRoot "logs"
   $photosDir = Join-Path $evidenceRoot "photos"
+  $audioDir = Join-Path $evidenceRoot "audio"
   $calibrationDir = Join-Path $evidenceRoot "calibration"
 
-  New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir | Out-Null
 
   try {
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "README.md") -Encoding UTF8
@@ -311,6 +312,23 @@ function Assert-HardwareEvidenceMediaGate {
       "- USB power-cycle recovery: pass"
     )
     $observations | Set-Content -Path (Join-Path $evidenceRoot "OBSERVATIONS.md") -Encoding UTF8
+
+    @(
+      "# Stackchan Audio Review",
+      "",
+      "## Speaker Playback",
+      "- Start UTC: 2026-07-01T00:50:00Z",
+      "- End UTC: 2026-07-01T00:51:00Z",
+      "- Sample played: synthetic greeting",
+      "- Voice variant: stackchan_spark_greeting",
+      "- Speaker recording file: audio/speaker.wav",
+      "- Intelligible through device speaker: yes",
+      "- Clipping or distortion observed: no",
+      "- Volume adequate at normal listening distance: yes",
+      "- Delay or playback dropout observed: no",
+      "- Selected voice direction: synthetic preflight fixture"
+    ) | Set-Content -Path (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Encoding UTF8
+    Copy-Item -LiteralPath "docs/media/voice/stackchan_spark_greeting.wav" -Destination (Join-Path $audioDir "speaker.wav")
 
     @(
       "pitch_min_deg: -15",
@@ -363,6 +381,7 @@ function Assert-HardwareEvidenceMediaGate {
         "RELEASE_ACCEPTANCE.md",
         "release_acceptance.json",
         "OBSERVATIONS.md",
+        "AUDIO_REVIEW.md",
         "calibration/calibration.yaml"
       )
     }
@@ -390,9 +409,10 @@ function Assert-HardwareEvidenceSerialMarkerGate {
   $evidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-evidence-serial-gate-" + [System.Guid]::NewGuid().ToString("N"))
   $logsDir = Join-Path $evidenceRoot "logs"
   $photosDir = Join-Path $evidenceRoot "photos"
+  $audioDir = Join-Path $evidenceRoot "audio"
   $calibrationDir = Join-Path $evidenceRoot "calibration"
 
-  New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir | Out-Null
 
   try {
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "README.md") -Encoding UTF8
@@ -432,6 +452,23 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       "- USB power-cycle recovery: pass"
     )
     $observations | Set-Content -Path (Join-Path $evidenceRoot "OBSERVATIONS.md") -Encoding UTF8
+
+    @(
+      "# Stackchan Audio Review",
+      "",
+      "## Speaker Playback",
+      "- Start UTC: 2026-07-01T00:50:00Z",
+      "- End UTC: 2026-07-01T00:51:00Z",
+      "- Sample played: synthetic greeting",
+      "- Voice variant: stackchan_spark_greeting",
+      "- Speaker recording file: audio/speaker.wav",
+      "- Intelligible through device speaker: yes",
+      "- Clipping or distortion observed: no",
+      "- Volume adequate at normal listening distance: yes",
+      "- Delay or playback dropout observed: no",
+      "- Selected voice direction: synthetic preflight fixture"
+    ) | Set-Content -Path (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Encoding UTF8
+    Copy-Item -LiteralPath "docs/media/voice/stackchan_spark_greeting.wav" -Destination (Join-Path $audioDir "speaker.wav")
 
     @(
       "pitch_min_deg: -15",
@@ -480,6 +517,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
         "RELEASE_ACCEPTANCE.md",
         "release_acceptance.json",
         "OBSERVATIONS.md",
+        "AUDIO_REVIEW.md",
         "calibration/calibration.yaml"
       )
     }
