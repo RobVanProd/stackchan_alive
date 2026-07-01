@@ -7,7 +7,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Firmware builds for `m5stack-cores3`.
 - Display-only and servo-calibration firmware variants are separate PlatformIO environments.
 - Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
-- Release packages include dependency provenance, a machine-readable dependency lock, and copied build inputs.
+- Release packages include dependency provenance, a machine-readable dependency lock, copied build inputs, and a dependency audit that flags duplicate resolved package names or upstream Git requirements that were not directly pinned by this project.
 - Release packages can be verified locally before publication, and published release assets can be re-audited after upload.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
 - Release packages include a binary flasher that writes the exact packaged display-only or servo-calibration firmware.
@@ -16,6 +16,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - A local release handoff page can serve the ZIP, preview image, and preview video, with optional Cloudflare tunnel exposure.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, tests, builds, and an optional release ZIP before device flashing.
+- Release package verification rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence.
 - Release packaging refuses dirty source worktrees by default.
 - GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status must allow jobs to start before they can be used as rollout evidence.
 - Native host tests execute mood, spring, and expression logic without hardware.

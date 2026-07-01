@@ -8,7 +8,7 @@ This project can produce a pre-device review release now and a hardware-validate
 .\tools\package_release.cmd -Version <version>
 ```
 
-The package is written under `output/release/<version>/` and includes firmware binaries, preview media, a root `QUICKSTART.md`, readiness docs, dependency provenance, a machine-readable dependency lock, copied build inputs, flash helpers, and SHA256 checksums.
+The package is written under `output/release/<version>/` and includes firmware binaries, preview media, a root `QUICKSTART.md`, readiness docs, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
 
@@ -26,6 +26,8 @@ Verify the package before sharing it:
 .\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
 .\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
 ```
+
+The package verifier rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence. Known upstream transitive declarations, such as the current `stackchan-arduino` `SCServo` Git dependency, must be recorded in `dependency_lock.json` instead of being hidden in console output.
 
 Dry-run the release-binary flasher before connecting hardware:
 

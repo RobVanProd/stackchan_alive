@@ -202,6 +202,84 @@ function Convert-PioPackageList {
   return @($entries)
 }
 
+function Test-GitRequirement {
+  param([string]$Value)
+  return $Value -match "(?i)(git\+|\.git($|[#@\s])|github\.com/.+\.git)"
+}
+
+function Test-PinnedGitRequirement {
+  param([string]$Value)
+  if (-not (Test-GitRequirement $Value)) {
+    return $true
+  }
+  return $Value -match "#[A-Za-z0-9_.-]+$"
+}
+
+function Get-DependencyAudit {
+  param(
+    [string[]]$DeclaredLibDeps,
+    [object[]]$DisplayResolvedPackages,
+    [object[]]$ServoResolvedPackages
+  )
+
+  $directGitDepsMissingRef = @(
+    $DeclaredLibDeps |
+      Where-Object { (Test-GitRequirement $_) -and -not (Test-PinnedGitRequirement $_) }
+  )
+
+  $allResolved = @()
+  foreach ($entry in $DisplayResolvedPackages) {
+    $allResolved += [pscustomobject][ordered]@{
+      environment = "stackchan"
+      kind = $entry.kind
+      name = $entry.name
+      version = $entry.version
+      required = $entry.required
+    }
+  }
+  foreach ($entry in $ServoResolvedPackages) {
+    $allResolved += [pscustomobject][ordered]@{
+      environment = "stackchan_servo_calibration"
+      kind = $entry.kind
+      name = $entry.name
+      version = $entry.version
+      required = $entry.required
+    }
+  }
+
+  $duplicateResolvedPackages = @()
+  foreach ($envGroup in ($allResolved | Group-Object environment)) {
+    foreach ($nameGroup in ($envGroup.Group | Group-Object name)) {
+      if ($nameGroup.Count -gt 1) {
+        $duplicateResolvedPackages += [pscustomobject][ordered]@{
+          environment = $envGroup.Name
+          name = $nameGroup.Name
+          count = $nameGroup.Count
+          entries = @($nameGroup.Group)
+        }
+      }
+    }
+  }
+
+  $unpinnedGitRequirements = @(
+    $allResolved |
+      Where-Object { (Test-GitRequirement $_.required) -and -not (Test-PinnedGitRequirement $_.required) }
+  )
+
+  $gitResolvedWithoutSha = @(
+    $allResolved |
+      Where-Object { (Test-GitRequirement $_.required) -and $_.version -notmatch "sha\.[0-9a-fA-F]+" }
+  )
+
+  return [ordered]@{
+    policy = "Direct Git dependencies must include a ref; resolved Git dependencies must record a SHA. Known upstream transitive Git declarations are recorded for review."
+    directGitDepsMissingRef = @($directGitDepsMissingRef)
+    duplicateResolvedPackages = @($duplicateResolvedPackages)
+    unpinnedGitRequirements = @($unpinnedGitRequirements)
+    gitResolvedWithoutSha = @($gitResolvedWithoutSha)
+  }
+}
+
 $platformioVersion = Invoke-CapturedText { platformio --version }
 $displayDeps = Invoke-CapturedText { platformio pkg list -e stackchan }
 $servoDeps = Invoke-CapturedText { platformio pkg list -e stackchan_servo_calibration }
@@ -214,6 +292,10 @@ $previewRequirementEntries = @(
 $declaredLibDeps = Get-DeclaredLibDeps
 $displayResolvedPackages = Convert-PioPackageList $displayDeps
 $servoResolvedPackages = Convert-PioPackageList $servoDeps
+$dependencyAudit = Get-DependencyAudit `
+  -DeclaredLibDeps $declaredLibDeps `
+  -DisplayResolvedPackages $displayResolvedPackages `
+  -ServoResolvedPackages $servoResolvedPackages
 
 @"
 # Dependency Provenance
@@ -247,6 +329,20 @@ $displayDeps
 ``````text
 $servoDeps
 ``````
+
+## Dependency Audit
+
+Policy: $($dependencyAudit.policy)
+
+Direct Git dependencies missing refs: $(@($dependencyAudit.directGitDepsMissingRef).Count)
+
+Duplicate resolved package names: $(@($dependencyAudit.duplicateResolvedPackages).Count)
+
+Unpinned upstream Git requirements: $(@($dependencyAudit.unpinnedGitRequirements).Count)
+
+Resolved Git packages without SHA evidence: $(@($dependencyAudit.gitResolvedWithoutSha).Count)
+
+The current upstream ``stackchan-arduino`` manifest declares ``SCServo`` through an unpinned Git URL. This project also declares ``SCServo#ee6ee4a`` directly, and the release verifier requires every resolved Git package to record a SHA in ``dependency_lock.json``.
 "@ | Set-Content -Path (Join-Path $outDir "DEPENDENCIES.md") -Encoding UTF8
 
 $dependencyLock = [ordered]@{
@@ -271,6 +367,7 @@ $dependencyLock = [ordered]@{
       resolvedPackages = @($servoResolvedPackages)
     }
   }
+  dependencyAudit = $dependencyAudit
 }
 $dependencyLock | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "dependency_lock.json") -Encoding UTF8
 

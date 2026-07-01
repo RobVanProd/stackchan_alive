@@ -213,7 +213,11 @@ $dependencyPatterns = @(
   "stackchan-arduino",
   "b7b98f5",
   "SCServo",
-  "ee6ee4a"
+  "ee6ee4a",
+  "Dependency Audit",
+  "Direct Git dependencies missing refs",
+  "Unpinned upstream Git requirements",
+  "Resolved Git packages without SHA evidence"
 )
 
 foreach ($pattern in $dependencyPatterns) {
@@ -296,6 +300,14 @@ function Assert-LockedPackage {
   }
 }
 
+function ConvertTo-Array {
+  param([object]$Value)
+  if ($null -eq $Value) {
+    return @()
+  }
+  return @($Value)
+}
+
 foreach ($envName in @("stackchan", "stackchan_servo_calibration")) {
   $envLock = $dependencyLock.environments.$envName
   if ($null -eq $envLock) {
@@ -318,6 +330,43 @@ foreach ($envName in @("stackchan", "stackchan_servo_calibration")) {
   Assert-LockedPackage $packages "toolchain-xtensa-esp32s3" "^8\.4\.0\+2021r2-patch5$"
   Assert-LockedPackage $packages "stackchan-arduino" "sha\.b7b98f5$"
   Assert-LockedPackage $packages "SCServo" "sha\.ee6ee4a$"
+}
+
+$dependencyAudit = $dependencyLock.dependencyAudit
+if ($null -eq $dependencyAudit) {
+  throw "dependency_lock.json missing dependencyAudit"
+}
+
+if ([string]::IsNullOrWhiteSpace([string]$dependencyAudit.policy)) {
+  throw "dependency_lock.json dependencyAudit missing policy"
+}
+
+$directGitDepsMissingRef = ConvertTo-Array $dependencyAudit.directGitDepsMissingRef
+if ($directGitDepsMissingRef.Count -gt 0) {
+  throw "dependency_lock.json has direct Git dependencies without refs: $($directGitDepsMissingRef -join ', ')"
+}
+
+$gitResolvedWithoutSha = ConvertTo-Array $dependencyAudit.gitResolvedWithoutSha
+if ($gitResolvedWithoutSha.Count -gt 0) {
+  $badNames = ($gitResolvedWithoutSha | ForEach-Object { "$($_.environment)/$($_.name)" }) -join ", "
+  throw "dependency_lock.json has resolved Git dependencies without SHA evidence: $badNames"
+}
+
+$duplicateResolvedPackages = ConvertTo-Array $dependencyAudit.duplicateResolvedPackages
+foreach ($duplicate in $duplicateResolvedPackages) {
+  if ($duplicate.name -ne "SCServo") {
+    throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
+  }
+}
+
+$unpinnedGitRequirements = ConvertTo-Array $dependencyAudit.unpinnedGitRequirements
+foreach ($requirement in $unpinnedGitRequirements) {
+  if ($requirement.name -ne "SCServo") {
+    throw "dependency_lock.json has unexpected unpinned upstream Git requirement: $($requirement.environment)/$($requirement.name)"
+  }
+  if ($requirement.version -notmatch "sha\.ee6ee4a$") {
+    throw "dependency_lock.json SCServo upstream Git requirement resolved to unexpected version: $($requirement.version)"
+  }
 }
 
 $releaseNotes = Get-Content -LiteralPath (Join-PackagePath "RELEASE_NOTES.md") -Raw
