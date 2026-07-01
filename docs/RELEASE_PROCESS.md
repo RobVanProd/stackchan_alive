@@ -8,7 +8,7 @@ This project can produce a pre-device review release now and a hardware-validate
 .\tools\package_release.cmd -Version <version>
 ```
 
-The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the voice/personality profile, voice-source provenance template, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, a manifest that names the readiness/media/voice artifacts, and SHA256 checksums.
+The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the voice/personality profile, voice-source provenance template, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, promotion verifiers, a manifest that names the readiness/media/voice artifacts, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
 
@@ -42,7 +42,7 @@ Create a hardware evidence packet when testing a physical device:
 ```
 
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
-The packet also includes generated `RUN_*.cmd` files for display flashing, servo calibration flashing, soak logging, package verification, and final evidence verification.
+The packet also includes generated `RUN_*.cmd` files for display flashing, servo calibration flashing, soak logging, package verification, final evidence verification, and the full consumer-promotion gate.
 
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
@@ -61,6 +61,14 @@ Before promoting a prerelease, verify the completed hardware evidence packet:
 ```powershell
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
 ```
+
+Then run the full consumer-promotion gate, which composes package verification, hardware evidence verification, GitHub Actions status, and production voice-source provenance:
+
+```powershell
+.\tools\verify_consumer_promotion.cmd -Version <version> -PackageZip output\release\stackchan_alive_<version>.zip -EvidenceRoot output\hardware-evidence\<packet-folder>
+```
+
+The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. The `-AllowExternalAccountCiBlock` switch exists only for an explicit account-billing outage exception and should not be used silently.
 
 ## GitHub Release
 

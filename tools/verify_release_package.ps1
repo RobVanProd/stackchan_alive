@@ -150,6 +150,8 @@ $requiredFiles = @(
   "tools/stop_share.ps1",
   "tools/verify_hardware_evidence.cmd",
   "tools/verify_hardware_evidence.ps1",
+  "tools/verify_consumer_promotion.cmd",
+  "tools/verify_consumer_promotion.ps1",
   "tools/verify_published_release.cmd",
   "tools/verify_published_release.ps1",
   "tools/verify_architecture.cmd",
@@ -181,7 +183,7 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "publicUrlReady", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "publicUrlReady", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
@@ -202,7 +204,7 @@ foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1")) {
+foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
   }
@@ -219,6 +221,13 @@ $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify
 foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
+  }
+}
+
+$consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
+foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Consumer promotion gate verified")) {
+  if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/verify_consumer_promotion.ps1 missing promotion gate logic: $pattern"
   }
 }
 

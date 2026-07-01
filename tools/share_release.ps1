@@ -487,6 +487,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
     <li>Run <code>RUN_SOAK_MONITOR.cmd</code> for the 30-minute mixed-mode soak.</li>
     <li>Run <code>RUN_PROGRESS_CHECK.cmd</code> during testing to list missing logs, observation fields, media, calibration updates, and unchecked gates.</li>
     <li>Run <code>RUN_EVIDENCE_VERIFY.cmd</code> only when the progress check is clean and the packet is ready for promotion review.</li>
+    <li>Run <code>RUN_CONSUMER_PROMOTION_CHECK.cmd</code> only after evidence verification passes and production voice-source provenance plus GitHub Actions status are ready.</li>
   </ol>
   <p>Use display-only firmware first. Servo calibration requires the explicit <code>-ConfirmServoRisk</code> command generated in the evidence packet and a supervised clear work area.</p>
 </main>

@@ -304,6 +304,13 @@ if ($AllowDirtyPackage) {
 }
 $progressCommand = "& '.\tools\check_hardware_evidence_progress.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $evidenceVerifyCommand = "& '.\tools\verify_hardware_evidence.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
+$promotionPackageArg = "-PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
+if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
+  $promotionPackageArg = "-PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
+} elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $promotionPackageArg = "-PackageRoot $(Quote-PowerShellArgument $PackageRoot)"
+}
+$consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $promotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 $platformioResolver = Quote-PowerShellArgument (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 $soakCommand = ". $platformioResolver; Invoke-StackchanPlatformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
 
@@ -337,6 +344,11 @@ $commandFiles = [ordered]@{
     "@echo off",
     "cd /d `"$repoRoot`"",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $evidenceVerifyCommand }`""
+  )
+  "RUN_CONSUMER_PROMOTION_CHECK.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $consumerPromotionCommand }`""
   )
 }
 
@@ -399,6 +411,12 @@ $readme = @(
   "",
   "    .\RUN_EVIDENCE_VERIFY.cmd",
   "",
+  "After the strict evidence check passes, run the full consumer promotion gate. This also requires successful GitHub Actions status and completed production voice-source provenance:",
+  "",
+  "    $consumerPromotionCommand",
+  "",
+  "    .\RUN_CONSUMER_PROMOTION_CHECK.cmd",
+  "",
   "Do not promote this release until every gate in CHECKLIST.md has explicit evidence."
 )
 $readme | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
@@ -424,9 +442,11 @@ $metadata = [ordered]@{
     "RUN_SOAK_MONITOR.cmd",
     "RUN_PACKAGE_VERIFY.cmd",
     "RUN_PROGRESS_CHECK.cmd",
-    "RUN_EVIDENCE_VERIFY.cmd"
+    "RUN_EVIDENCE_VERIFY.cmd",
+    "RUN_CONSUMER_PROMOTION_CHECK.cmd"
   )
-  promotionVerifier = "tools/verify_hardware_evidence.ps1"
+  promotionVerifier = "tools/verify_consumer_promotion.ps1"
+  hardwareEvidenceVerifier = "tools/verify_hardware_evidence.ps1"
 }
 
 $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $outDir "metadata.json") -Encoding UTF8

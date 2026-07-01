@@ -15,11 +15,13 @@ Current status: device-ready scaffold, not hardware-certified.
 - Published release assets can be audited against the local package by size, SHA256 digest, and downloaded-ZIP verification.
 - A local release handoff page can serve the ZIP, preview image, expression sheet, and preview video, with optional Cloudflare tunnel exposure.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
+- Consumer promotion is guarded by `tools/verify_consumer_promotion.ps1`, which composes package verification, hardware evidence verification, GitHub Actions status, and production voice-source provenance.
 - Hardware evidence verification rejects completed observation records that report reset loops, missing face display, missing dry-run servo log, missing firmware boot/heartbeat serial markers, heat/brownout, short soak duration, failed power-cycle recovery, invalid calibration ranges, placeholder-only media evidence, header-only media files, or implausibly small media files.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, preview media, hardware evidence verifier gates, tests, builds, and an optional release ZIP before device flashing.
 - Release package verification rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence.
 - Release packaging refuses dirty source worktrees by default.
 - GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status must allow jobs to start before they can be used as rollout evidence.
+- Production voice-source provenance is explicitly tracked; current generated WAVs are review samples until `data/voice_source_provenance.yaml` is completed with licensed or owned source evidence.
 - Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.
 - Servo output is disabled by default until hardware calibration.
@@ -46,5 +48,7 @@ Do not call this consumer-ready until the physical device passes:
 5. Recovery test after USB power cycle.
 6. Documented firmware version and calibration values.
 7. Hardware evidence packet with the tested release ZIP and successful `logs/package_verify.log`.
+8. Completed production voice-source provenance and real-device speaker evidence.
+9. `tools/verify_consumer_promotion.ps1` passes for the release package and evidence packet.
 
 Until those are done, this repository is production-shaped and test-ready, but not field-proven.
