@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
+. (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
@@ -16,7 +17,11 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 if (-not $SkipBuild) {
   Invoke-StackchanPlatformio run -e stackchan -e stackchan_servo_calibration
-  python tools/render_preview.py
+  $previewPython = Get-StackchanPreviewPython
+  & $previewPython tools/render_preview.py
+  if ($LASTEXITCODE -ne 0) {
+    throw "Preview media generation failed with exit code $LASTEXITCODE"
+  }
 }
 
 $dirtyFiles = @(git status --porcelain)
@@ -104,6 +109,7 @@ $releaseTools = @(
   "tools/flash_release_firmware.cmd",
   "tools/flash_release_firmware.ps1",
   "tools/platformio_resolver.ps1",
+  "tools/preview_python_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -401,6 +407,7 @@ $manifest = [ordered]@{
     "tools/flash_release_firmware.cmd",
     "tools/flash_release_firmware.ps1",
     "tools/platformio_resolver.ps1",
+    "tools/preview_python_resolver.ps1",
     "tools/publish_release.cmd",
     "tools/publish_release.ps1",
     "tools/prepare_device_arrival.cmd",

@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 
 if ([string]::IsNullOrWhiteSpace($MediaRoot)) {
   if (Test-Path -LiteralPath "media") {
@@ -23,49 +24,7 @@ if (-not (Test-Path -LiteralPath $MediaRoot)) {
 
 $mediaRootPath = (Resolve-Path $MediaRoot).Path
 
-function Get-PythonCandidates {
-  $candidates = @()
-  $candidates += @(Get-Command "python" -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
-
-  if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    $pythonRoots = Join-Path $env:LOCALAPPDATA "Programs/Python"
-    if (Test-Path -LiteralPath $pythonRoots) {
-      $candidates += @(
-        Get-ChildItem -LiteralPath $pythonRoots -Directory -Filter "Python*" -ErrorAction SilentlyContinue |
-          Sort-Object Name -Descending |
-          ForEach-Object { Join-Path $_.FullName "python.exe" }
-      )
-    }
-  }
-
-  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-    $candidates += Join-Path $env:USERPROFILE ".platformio/penv/Scripts/python.exe"
-    $candidates += Join-Path $env:USERPROFILE ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe"
-  }
-
-  return @($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-}
-
-function Get-PreviewPython {
-  foreach ($path in Get-PythonCandidates) {
-    if (-not (Test-Path -LiteralPath $path) -or $path -match "\\WindowsApps\\python\.exe$") {
-      continue
-    }
-
-    try {
-      $probe = & $path -c "import PIL, imageio, imageio_ffmpeg; print('preview-media-ok')" 2>$null
-      if ($LASTEXITCODE -eq 0 -and (($probe | Out-String) -match "preview-media-ok")) {
-        return (Resolve-Path $path).Path
-      }
-    } catch {
-      continue
-    }
-  }
-
-  throw "No usable Python runtime with pillow, imageio, and imageio-ffmpeg found. Run: python -m pip install -r requirements-preview.txt"
-}
-
-$pythonPath = Get-PreviewPython
+$pythonPath = Get-StackchanPreviewPython
 $pythonScript = @'
 from __future__ import annotations
 

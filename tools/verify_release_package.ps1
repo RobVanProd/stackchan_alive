@@ -114,6 +114,7 @@ $requiredFiles = @(
   "tools/flash_release_firmware.cmd",
   "tools/flash_release_firmware.ps1",
   "tools/platformio_resolver.ps1",
+  "tools/preview_python_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
   "tools/prepare_device_arrival.cmd",
