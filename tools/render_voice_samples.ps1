@@ -42,7 +42,7 @@ try {
     $synth.SelectVoice($voiceNames[0])
   }
   $selectedVoice = $synth.Voice.Name
-  $synth.Rate = 2
+  $synth.Rate = 1
   $synth.Volume = 100
 
   foreach ($sample in $samples) {
@@ -94,7 +94,23 @@ def write_wav(path, rate, samples):
         wav.setframerate(rate)
         wav.writeframes(bytes(pcm))
 
+def resample_linear(samples, factor):
+    if factor <= 0:
+        raise RuntimeError("Resample factor must be positive")
+    if not samples:
+        return []
+    out_len = max(1, int(round(len(samples) * factor)))
+    out = []
+    for i in range(out_len):
+        source = i / factor
+        left = int(source)
+        right = min(left + 1, len(samples) - 1)
+        frac = source - left
+        out.append(samples[left] * (1.0 - frac) + samples[right] * frac)
+    return out
+
 def robotize(rate, samples):
+    samples = resample_linear(samples, 1.08)
     delay_a = max(1, int(rate * 0.055))
     delay_b = max(1, int(rate * 0.095))
     out = [0.0] * (len(samples) + delay_b + 1)
@@ -144,7 +160,7 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 
 Generated source:
 - Local Windows SpeechSynthesizer voice: ``$selectedVoice``
-- Deterministic robot effect chain: high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
+- Deterministic robot effect chain: slightly slower source cadence, small lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
 - Renderer: ``tools/render_voice_samples.ps1``
 
 Samples:

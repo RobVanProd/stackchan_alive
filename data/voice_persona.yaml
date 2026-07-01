@@ -13,9 +13,9 @@ inspiration:
     - training from RVC character models
     - using copyrighted movie quotes as catchphrases
 voice:
-  pitch: medium_high
+  pitch: medium_robot
   age_read: ageless_robot
-  cadence: alert_rhythmic
+  cadence: measured_rhythmic
   texture:
     clean_tts_core: required
     vocoder_color: light

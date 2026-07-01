@@ -19,8 +19,8 @@ Use the reference to guide adjectives and behavior, not timbre theft:
 
 The target sound is an original "Stackchan Spark" voice:
 
-- pitch: medium-high, friendly, not childlike
-- cadence: alert and rhythmic, with short pauses before important words
+- pitch: medium robot, friendly, not childlike
+- cadence: measured and rhythmic, with short pauses before important words
 - texture: clean TTS core with light vocoder/ring-mod color
 - dynamics: expressive but compressed enough for small speakers
 - artifacts: intentional light bitcrush, tiny pitch steps, and short chirps
