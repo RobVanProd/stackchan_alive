@@ -12,6 +12,8 @@ Use this when the Stack-chan hardware arrives.
 .\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.4-device-ready -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Port COM3
 ```
 
+This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
+
 4. Build once with servos disabled:
 
 ```powershell

@@ -65,6 +65,8 @@ Start a device-arrival evidence packet:
 .\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.2-device-ready -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Port COM3
 ```
 
+When `-PackageZip` is provided, the evidence packet copies the ZIP and writes `logs/package_verify.log`. The hardware evidence verifier requires that package proof by default before promotion.
+
 Verify the completed hardware evidence before promotion:
 
 ```powershell

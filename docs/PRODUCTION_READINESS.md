@@ -10,7 +10,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Release packages include dependency provenance and copied build inputs.
 - Release packages are verified before publication in GitHub Actions.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
-- Hardware evidence packets can be verified before release promotion.
+- Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, tests, builds, and an optional release ZIP before device flashing.
 - Release packaging refuses dirty source worktrees by default.
 - GitHub Actions builds firmware on push and pull request.
@@ -39,5 +39,6 @@ Do not call this consumer-ready until the physical device passes:
 4. 30-minute mixed idle/listen/speak soak.
 5. Recovery test after USB power cycle.
 6. Documented firmware version and calibration values.
+7. Hardware evidence packet with the tested release ZIP and successful `logs/package_verify.log`.
 
 Until those are done, this repository is production-shaped and test-ready, but not field-proven.

@@ -33,6 +33,8 @@ Create a hardware evidence packet when testing a physical device:
 .\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.0-device-ready -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Port COM3
 ```
 
+Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
+
 Before promoting a prerelease, verify the completed hardware evidence packet:
 
 ```powershell

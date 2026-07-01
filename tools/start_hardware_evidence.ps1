@@ -29,6 +29,11 @@ $packageDir = Join-Path $outDir "package"
 New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
+$requiredLogs = @(
+  "logs/display_only_serial.log",
+  "logs/servo_calibration_serial.log",
+  "logs/soak_serial.log"
+)
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if (-not (Test-Path -LiteralPath $PackageZip)) {
     throw "Missing package ZIP: $PackageZip"
@@ -42,6 +47,28 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     sha256 = $packageHash.Hash.ToLowerInvariant()
     sizeBytes = $packageItem.Length
   }
+
+  $packageVerifyLog = Join-Path $logsDir "package_verify.log"
+  $verifyArgs = @(
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version",
+    $ReleaseTag,
+    "-ZipPath",
+    $packageItem.FullName,
+    "-ExpectedCommit",
+    $commit
+  )
+  $verifyOutput = & powershell.exe @verifyArgs 2>&1
+  $verifyExitCode = $LASTEXITCODE
+  $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
+  if ($verifyExitCode -ne 0) {
+    throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
+  }
+  $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 }
 
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination (Join-Path $outDir "CHECKLIST.md")
@@ -96,6 +123,7 @@ $observations = @(
   "- Display serial log: logs/display_only_serial.log",
   "- Servo serial log: logs/servo_calibration_serial.log",
   "- Soak serial log: logs/soak_serial.log",
+  "- Package verification log: logs/package_verify.log",
   "- Photos/videos: photos/",
   "- Calibration record: calibration/calibration.yaml"
 )
@@ -129,6 +157,8 @@ $readme = @(
   "",
   "    $verifyCommand",
   "",
+  "The packet creation command automatically writes ``logs/package_verify.log`` when ``-PackageZip`` is provided.",
+  "",
   "Before marking a release hardware-validated, verify this evidence packet:",
   "",
   "    .\tools\verify_hardware_evidence.ps1 -EvidenceRoot `"$outDir`"",
@@ -146,11 +176,7 @@ $metadata = [ordered]@{
   deviceId = $DeviceId
   port = $Port
   package = $packageInfo
-  requiredLogs = @(
-    "logs/display_only_serial.log",
-    "logs/servo_calibration_serial.log",
-    "logs/soak_serial.log"
-  )
+  requiredLogs = $requiredLogs
   requiredRecords = @(
     "CHECKLIST.md",
     "OBSERVATIONS.md",

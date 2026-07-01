@@ -1,6 +1,7 @@
 param(
   [string]$EvidenceRoot,
   [int64]$MinLogBytes = 128,
+  [switch]$AllowMissingPackage,
   [switch]$AllowMissingMedia
 )
 
@@ -91,14 +92,22 @@ if ($metadata.commit -notmatch "^[0-9a-f]{40}$") {
 }
 
 foreach ($logPath in @($metadata.requiredLogs)) {
-  Assert-File $logPath $MinLogBytes
+  if ($logPath -eq "logs/package_verify.log") {
+    Assert-File $logPath
+  } else {
+    Assert-File $logPath $MinLogBytes
+  }
 }
 
 foreach ($recordPath in @($metadata.requiredRecords)) {
   Assert-File $recordPath
 }
 
-if ($null -ne $metadata.package) {
+if ($null -eq $metadata.package) {
+  if (-not $AllowMissingPackage) {
+    throw "metadata.json missing package proof. Recreate the packet with -PackageZip or pass -AllowMissingPackage for diagnostic-only evidence."
+  }
+} else {
   $copiedPackage = [string]$metadata.package.copiedFile
   Assert-File $copiedPackage 100000
 
@@ -106,6 +115,12 @@ if ($null -ne $metadata.package) {
   $actualPackageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $copiedPath).Hash.ToLowerInvariant()
   if ($actualPackageHash -ne [string]$metadata.package.sha256) {
     throw "Copied package hash does not match metadata"
+  }
+
+  Assert-File "logs/package_verify.log"
+  $packageVerifyLog = Get-Content -LiteralPath (Join-EvidencePath "logs/package_verify.log") -Raw
+  if ($packageVerifyLog -notmatch "Release package verified:") {
+    throw "logs/package_verify.log does not show a successful release package verification"
   }
 }
 
