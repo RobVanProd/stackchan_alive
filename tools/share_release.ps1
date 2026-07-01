@@ -128,6 +128,17 @@ function Get-PythonPath {
   $candidatePaths = @()
   $candidatePaths += @(Get-Command "python" -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
 
+  if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $pythonRoots = Join-Path $env:LOCALAPPDATA "Programs/Python"
+    if (Test-Path -LiteralPath $pythonRoots) {
+      $candidatePaths += @(
+        Get-ChildItem -LiteralPath $pythonRoots -Directory -Filter "Python*" -ErrorAction SilentlyContinue |
+          Sort-Object Name -Descending |
+          ForEach-Object { Join-Path $_.FullName "python.exe" }
+      )
+    }
+  }
+
   if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
     $candidatePaths += Join-Path $env:USERPROFILE ".platformio/penv/Scripts/python.exe"
     $candidatePaths += Join-Path $env:USERPROFILE ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe"

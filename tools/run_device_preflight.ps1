@@ -197,7 +197,8 @@ function Assert-ReleaseFlashHelperSafety {
     throw "Display package dry-run failed unexpectedly:$([Environment]::NewLine)$($displayDryRun.Text)"
   }
   Assert-TextContains $displayDryRun.Text "Release package verified:"
-  Assert-TextContains $displayDryRun.Text "Dry run: python -m esptool --chip esp32s3"
+  Assert-TextContains $displayDryRun.Text "Dry run:"
+  Assert-TextContains $displayDryRun.Text "--chip esp32s3"
   Assert-TextContains $displayDryRun.Text "write_flash -z --flash_mode dio --flash_freq 80m --flash_size 16MB"
   Assert-TextContains $displayDryRun.Text "Dry run: platformio device monitor --baud 115200 --port COM_TEST"
 
@@ -214,7 +215,8 @@ function Assert-ReleaseFlashHelperSafety {
     throw "Servo package dry-run failed unexpectedly:$([Environment]::NewLine)$($servoDryRun.Text)"
   }
   Assert-TextContains $servoDryRun.Text "Release package verified:"
-  Assert-TextContains $servoDryRun.Text "Dry run: python -m esptool --chip esp32s3"
+  Assert-TextContains $servoDryRun.Text "Dry run:"
+  Assert-TextContains $servoDryRun.Text "--chip esp32s3"
 }
 
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
@@ -233,7 +235,6 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip) -and [string]::IsNullOrWhiteS
 Invoke-Step "Check required commands" {
   Assert-Command git
   Assert-Command platformio
-  Assert-Command python
 }
 
 Invoke-Step "Check source tree and dependency pins" {
