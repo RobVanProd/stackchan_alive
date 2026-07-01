@@ -140,6 +140,8 @@ $releaseTools = @(
   "tools/preview_python_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
+  "tools/export_github_actions_status.cmd",
+  "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -435,6 +437,8 @@ $manifest = [ordered]@{
   dependencyLock = "dependency_lock.json"
   readinessReport = "READINESS_REPORT.md"
   readinessReportJson = "readiness_report.json"
+  ciStatusReport = "GITHUB_ACTIONS_STATUS.md"
+  ciStatusReportJson = "github_actions_status.json"
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
@@ -458,6 +462,8 @@ $manifest = [ordered]@{
     "tools/preview_python_resolver.ps1",
     "tools/publish_release.cmd",
     "tools/publish_release.ps1",
+    "tools/export_github_actions_status.cmd",
+    "tools/export_github_actions_status.ps1",
     "tools/prepare_device_arrival.cmd",
     "tools/prepare_device_arrival.ps1",
     "tools/run_device_preflight.cmd",
@@ -494,6 +500,35 @@ $manifest = [ordered]@{
 
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "release_manifest.json") -Encoding UTF8
 
+$ciStatus = [ordered]@{
+  schema = "stackchan.github-actions-status.v1"
+  version = $Version
+  commit = $commit
+  repo = "RobVanProd/stackchan_alive"
+  generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  status = "post-push-check-required"
+  interpretation = "This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run tools/export_github_actions_status.cmd to replace this placeholder with the observed GitHub Actions result."
+  workflows = @()
+}
+$ciStatus | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "github_actions_status.json") -Encoding UTF8
+
+@"
+# GitHub Actions Status
+
+Release: $Version
+Commit: $commit
+Repository: RobVanProd/stackchan_alive
+Status: post-push-check-required
+
+This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run:
+
+    .\tools\export_github_actions_status.cmd -Version $Version -Commit $commit -OutputDir .
+
+If GitHub reports that jobs did not start because of account billing or spending limits, keep the exported report with the release evidence and use local release verification plus device preflight as the available technical evidence until the account issue is fixed.
+
+Machine-readable status: ``github_actions_status.json``
+"@ | Set-Content -Path (Join-Path $outDir "GITHUB_ACTIONS_STATUS.md") -Encoding UTF8
+
 $readinessReport = [ordered]@{
   schema = "stackchan.readiness-report.v1"
   version = $Version
@@ -509,6 +544,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
+    [ordered]@{ gate = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ gate = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd and tools/start_hardware_evidence.cmd" },
     [ordered]@{ gate = "servo-risk-acknowledgement-required"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" }
   )
@@ -538,6 +574,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "firmware-artifacts-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
     [ordered]@{ requirement = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ requirement = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
+    [ordered]@{ requirement = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/verify_hardware_evidence.cmd" },
@@ -571,6 +608,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Firmware artifacts present: ``firmware/display_only`` and ``firmware/servo_calibration``
 - [x] Dependency provenance present: ``DEPENDENCIES.md`` and ``dependency_lock.json``
 - [x] Checksums present: ``SHA256SUMS.txt``
+- [x] GitHub Actions status report present: ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``
 - [x] Visual review media present: preview image, expression sheet, and preview video
 - [x] Voice review samples present: Stackchan Spark greeting, thinking, and safety WAVs
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
@@ -604,6 +642,7 @@ Consumer rollout: blocked pending hardware validation
 - Preview image, animation, video, and expression QA sheet are present under ``media/``.
 - Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
+- GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
 - Arrival-day helpers are included under ``tools/``.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
@@ -629,7 +668,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 

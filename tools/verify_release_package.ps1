@@ -87,7 +87,9 @@ function Assert-Bytes {
 
 $requiredFiles = @(
   "DEPENDENCIES.md",
+  "GITHUB_ACTIONS_STATUS.md",
   "READINESS_REPORT.md",
+  "github_actions_status.json",
   "dependency_lock.json",
   "QUICKSTART.md",
   "RELEASE_ACCEPTANCE.md",
@@ -128,6 +130,8 @@ $requiredFiles = @(
   "tools/preview_python_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
+  "tools/export_github_actions_status.cmd",
+  "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -214,6 +218,13 @@ foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 si
   }
 }
 
+$actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
+foreach ($pattern in @("stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "payments have failed", "spending limit", "runnerId", "stepCount")) {
+  if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
+  }
+}
+
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "media/stackchan_alive_preview.png" 1000
@@ -281,6 +292,14 @@ if ($manifest.readinessReport -ne "READINESS_REPORT.md") {
 
 if ($manifest.readinessReportJson -ne "readiness_report.json") {
   throw "Manifest readinessReportJson mismatch: $($manifest.readinessReportJson)"
+}
+
+if ($manifest.ciStatusReport -ne "GITHUB_ACTIONS_STATUS.md") {
+  throw "Manifest ciStatusReport mismatch: $($manifest.ciStatusReport)"
+}
+
+if ($manifest.ciStatusReportJson -ne "github_actions_status.json") {
+  throw "Manifest ciStatusReportJson mismatch: $($manifest.ciStatusReportJson)"
 }
 
 if ($manifest.acceptanceChecklist -ne "RELEASE_ACCEPTANCE.md") {
@@ -550,8 +569,29 @@ foreach ($pattern in @("test-ready for device arrival", "blocked pending hardwar
   }
 }
 
+$actionsStatus = Get-Content -LiteralPath (Join-PackagePath "github_actions_status.json") -Raw | ConvertFrom-Json
+if ($actionsStatus.schema -ne "stackchan.github-actions-status.v1") {
+  throw "github_actions_status.json schema mismatch: $($actionsStatus.schema)"
+}
+if ($actionsStatus.version -ne $Version) {
+  throw "github_actions_status.json version mismatch: expected $Version, got $($actionsStatus.version)"
+}
+if ($actionsStatus.commit -ne $ExpectedCommit) {
+  throw "github_actions_status.json commit mismatch: expected $ExpectedCommit, got $($actionsStatus.commit)"
+}
+if (@("post-push-check-required", "external-account-billing-or-spending-limit", "success") -notcontains $actionsStatus.status) {
+  throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
+}
+
+$actionsStatusText = Get-Content -LiteralPath (Join-PackagePath "GITHUB_ACTIONS_STATUS.md") -Raw
+foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "github_actions_status.json")) {
+  if ($actionsStatusText -notmatch [regex]::Escape($pattern)) {
+    throw "GITHUB_ACTIONS_STATUS.md missing expected status text: $pattern"
+  }
+}
+
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "verify_hardware_evidence.cmd", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "verify_hardware_evidence.cmd", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
