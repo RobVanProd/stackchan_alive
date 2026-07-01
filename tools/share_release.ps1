@@ -206,6 +206,10 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png"); Name = "stackchan_alive_expression_sheet.png" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.mp4"); Name = "stackchan_alive_preview.mp4" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.gif"); Name = "stackchan_alive_preview.gif" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav"); Name = "voice/stackchan_spark_greeting.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav"); Name = "voice/stackchan_spark_thinking.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"); Name = "voice/stackchan_spark_safety.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
   @{ Source = (Join-Path $packageRoot "READINESS_REPORT.md"); Name = "READINESS_REPORT.md" },
@@ -219,6 +223,10 @@ foreach ($file in $files) {
   $sourcePath = (Resolve-Path $file.Source).Path
   if ((Test-Path -LiteralPath $destination) -and ((Resolve-Path $destination).Path -eq $sourcePath)) {
     continue
+  }
+  $destinationParent = Split-Path -Parent $destination
+  if (-not (Test-Path -LiteralPath $destinationParent)) {
+    New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
   }
   Copy-Item -LiteralPath $file.Source -Destination $destination
 }
@@ -244,6 +252,7 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     body { margin: 0; padding: 32px; line-height: 1.45; }
     main { max-width: 960px; margin: 0 auto; }
     img, video { max-width: 100%; border: 1px solid #7775; }
+    audio { width: 100%; margin-top: 8px; }
     code { background: #7772; padding: 2px 5px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
     .item { border: 1px solid #7775; padding: 16px; }
@@ -261,6 +270,26 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   <p><img src="stackchan_alive_expression_sheet.png" alt="Stackchan Alive expression sheet"></p>
   <p><video src="stackchan_alive_preview.mp4" controls loop muted playsinline></video></p>
 
+  <h2>Voice Samples</h2>
+  <p>Prototype Stackchan Spark audition samples. These are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
+  <div class="grid">
+    <div class="item">
+      <strong>Greeting</strong>
+      <audio src="voice/stackchan_spark_greeting.wav" controls preload="metadata"></audio>
+      <p><a href="voice/stackchan_spark_greeting.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>Thinking</strong>
+      <audio src="voice/stackchan_spark_thinking.wav" controls preload="metadata"></audio>
+      <p><a href="voice/stackchan_spark_thinking.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>Safety</strong>
+      <audio src="voice/stackchan_spark_safety.wav" controls preload="metadata"></audio>
+      <p><a href="voice/stackchan_spark_safety.wav">Download WAV</a></p>
+    </div>
+  </div>
+
   <h2>Downloads</h2>
   <div class="grid">
     <div class="item"><a href="stackchan_alive_$Version.zip">Release ZIP</a></div>
@@ -268,6 +297,7 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     <div class="item"><a href="stackchan_alive_expression_sheet.png">Expression Sheet PNG</a></div>
     <div class="item"><a href="stackchan_alive_preview.mp4">Preview MP4</a></div>
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
+    <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="READINESS_REPORT.md">Readiness Report</a></div>

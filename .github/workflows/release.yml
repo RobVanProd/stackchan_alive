@@ -33,6 +33,10 @@ jobs:
       - name: Render preview media
         run: python tools/render_preview.py
 
+      - name: Render voice samples
+        shell: cmd
+        run: tools\render_voice_samples.cmd
+
       - name: Package release
         shell: pwsh
         run: ./tools/package_release.ps1 -Version "${{ github.ref_name }}" -SkipBuild
@@ -60,6 +64,9 @@ jobs:
             docs/media/stackchan_alive_expression_sheet.png `
             docs/media/stackchan_alive_preview.mp4 `
             docs/media/stackchan_alive_preview.gif `
+            docs/media/voice/stackchan_spark_greeting.wav `
+            docs/media/voice/stackchan_spark_thinking.wav `
+            docs/media/voice/stackchan_spark_safety.wav `
             output/release/firmware-display-only.bin `
             output/release/firmware-servo-calibration.bin `
             output/release/bootloader.bin `

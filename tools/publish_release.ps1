@@ -138,7 +138,7 @@ if (-not $releaseExists) {
   Copy-Item -LiteralPath $partitions -Destination (Join-Path $stageDir "partitions.bin")
 
   if ($DryRun) {
-    Write-Host "Dry run: gh release create $Version with package, ZIP SHA256 sidecar, preview media, and firmware assets staged in $stageDir"
+    Write-Host "Dry run: gh release create $Version with package, ZIP SHA256 sidecar, preview media, voice samples, and firmware assets staged in $stageDir"
   } else {
     Invoke-Checked "Create GitHub release $Version" {
     gh release create $Version `
@@ -148,6 +148,9 @@ if (-not $releaseExists) {
       (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png") `
       (Join-Path $packageRoot "media/stackchan_alive_preview.mp4") `
       (Join-Path $packageRoot "media/stackchan_alive_preview.gif") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav") `
       (Join-Path $stageDir "firmware-display-only.bin") `
       (Join-Path $stageDir "firmware-servo-calibration.bin") `
       (Join-Path $stageDir "bootloader.bin") `

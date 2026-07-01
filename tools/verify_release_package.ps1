@@ -114,6 +114,10 @@ $requiredFiles = @(
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
+  "media/voice/stackchan_spark_greeting.wav",
+  "media/voice/stackchan_spark_thinking.wav",
+  "media/voice/stackchan_spark_safety.wav",
+  "media/voice/VOICE_SAMPLES.md",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
   "tools/flash_release_firmware.cmd",
@@ -122,6 +126,8 @@ $requiredFiles = @(
   "tools/preview_python_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
+  "tools/render_voice_samples.cmd",
+  "tools/render_voice_samples.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -191,11 +197,18 @@ Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
 Assert-File "media/stackchan_alive_preview.mp4" 1000
+Assert-File "media/voice/stackchan_spark_greeting.wav" 1000
+Assert-File "media/voice/stackchan_spark_thinking.wav" 1000
+Assert-File "media/voice/stackchan_spark_safety.wav" 1000
+Assert-File "media/voice/VOICE_SAMPLES.md" 100
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+Assert-Bytes "media/voice/stackchan_spark_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 
 & (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
 
@@ -259,7 +272,11 @@ $expectedMediaArtifacts = @(
   "media/stackchan_alive_preview.png",
   "media/stackchan_alive_expression_sheet.png",
   "media/stackchan_alive_preview.mp4",
-  "media/stackchan_alive_preview.gif"
+  "media/stackchan_alive_preview.gif",
+  "media/voice/stackchan_spark_greeting.wav",
+  "media/voice/stackchan_spark_thinking.wav",
+  "media/voice/stackchan_spark_safety.wav",
+  "media/voice/VOICE_SAMPLES.md"
 )
 $actualMediaArtifacts = @($manifest.mediaArtifacts)
 foreach ($file in $expectedMediaArtifacts) {

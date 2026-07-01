@@ -139,7 +139,7 @@ The generator also writes `stackchan_alive_expression_sheet.png`, a six-pose vis
 
 See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the current proof level and the hardware gates required before consumer rollout.
 
-Voice and personality direction is defined in [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md), with the machine-readable profile in [data/voice_persona.yaml](data/voice_persona.yaml).
+Voice and personality direction is defined in [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md), with the machine-readable profile in [data/voice_persona.yaml](data/voice_persona.yaml). Prototype audition samples are generated under `docs/media/voice/` with `tools/render_voice_samples.cmd`.
 
 Release packaging is documented in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
 Hardware rollout tracking is in [docs/ROLLOUT_CHECKLIST.md](docs/ROLLOUT_CHECKLIST.md).

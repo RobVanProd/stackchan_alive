@@ -89,11 +89,36 @@ $mediaFiles = @(
   "docs/media/stackchan_alive_preview.gif"
 )
 
+$windowsPowerShell = Join-Path $env:SystemRoot "System32/WindowsPowerShell/v1.0/powershell.exe"
+if (-not (Test-Path -LiteralPath $windowsPowerShell)) {
+  $windowsPowerShell = "powershell.exe"
+}
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "render_voice_samples.ps1")
+if ($LASTEXITCODE -ne 0) {
+  throw "Voice sample rendering failed."
+}
+
 foreach ($file in $mediaFiles) {
   if (-not (Test-Path -LiteralPath $file)) {
     throw "Missing preview artifact: $file"
   }
   Copy-Item -LiteralPath $file -Destination $mediaDir
+}
+
+$voiceMediaDir = Join-Path $mediaDir "voice"
+New-Item -ItemType Directory -Force -Path $voiceMediaDir | Out-Null
+$voiceMediaFiles = @(
+  "docs/media/voice/stackchan_spark_greeting.wav",
+  "docs/media/voice/stackchan_spark_thinking.wav",
+  "docs/media/voice/stackchan_spark_safety.wav",
+  "docs/media/voice/VOICE_SAMPLES.md"
+)
+
+foreach ($file in $voiceMediaFiles) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing voice artifact: $file"
+  }
+  Copy-Item -LiteralPath $file -Destination $voiceMediaDir
 }
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
@@ -115,6 +140,8 @@ $releaseTools = @(
   "tools/preview_python_resolver.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
+  "tools/render_voice_samples.cmd",
+  "tools/render_voice_samples.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -414,7 +441,11 @@ $manifest = [ordered]@{
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
     "media/stackchan_alive_preview.mp4",
-    "media/stackchan_alive_preview.gif"
+    "media/stackchan_alive_preview.gif",
+    "media/voice/stackchan_spark_greeting.wav",
+    "media/voice/stackchan_spark_thinking.wav",
+    "media/voice/stackchan_spark_safety.wav",
+    "media/voice/VOICE_SAMPLES.md"
   )
   includedTools = @(
     "tools/flash_device.cmd",
@@ -472,6 +503,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
     [ordered]@{ gate = "preview-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_preview.mp4, media/stackchan_alive_preview.gif" },
+    [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
