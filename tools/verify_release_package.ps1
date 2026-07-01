@@ -123,6 +123,8 @@ $requiredFiles = @(
   "tools/share_release.ps1",
   "tools/start_hardware_evidence.cmd",
   "tools/start_hardware_evidence.ps1",
+  "tools/stop_share.cmd",
+  "tools/stop_share.ps1",
   "tools/verify_hardware_evidence.cmd",
   "tools/verify_hardware_evidence.ps1",
   "tools/verify_published_release.cmd",
@@ -140,7 +142,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "DownloadCloudflared", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "DownloadCloudflared", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }

@@ -54,6 +54,45 @@ function Invoke-GitText {
   return ($output | Out-String).Trim()
 }
 
+function Write-ShareStatus {
+  param(
+    [string]$Status,
+    [string]$PublicUrl = "",
+    [int[]]$ProcessIds = @()
+  )
+
+  $statusObject = [ordered]@{
+    version = $Version
+    status = $Status
+    generatedUtc = $generatedUtc
+    updatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    localUrl = "http://$BindAddress`:$Port/"
+    publicUrl = $PublicUrl
+    processIds = @($ProcessIds)
+    shareRoot = $shareRoot
+  }
+
+  $statusObject | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $shareRoot "share_status.json") -Encoding UTF8
+  if (-not [string]::IsNullOrWhiteSpace($PublicUrl)) {
+    $PublicUrl | Set-Content -Path (Join-Path $shareRoot "PUBLIC_URL.txt") -Encoding ASCII
+  }
+}
+
+function Write-StopHelper {
+  param([int[]]$ProcessIds)
+
+  $stopScript = Join-Path $PSScriptRoot "stop_share.ps1"
+  $stopCommand = "& '$stopScript' -ShareRoot '$shareRoot'"
+  @(
+    "@echo off",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"$stopCommand`""
+  ) | Set-Content -Path (Join-Path $shareRoot "STOP_SHARING.cmd") -Encoding ASCII
+
+  if ($ProcessIds.Count -gt 0) {
+    "Stop-Process -Id $($ProcessIds -join ',')" | Set-Content -Path (Join-Path $shareRoot "STOP_SHARING.ps1.txt") -Encoding ASCII
+  }
+}
+
 function Get-CloudflaredPath {
   $command = Get-Command "cloudflared" -ErrorAction SilentlyContinue
   if ($null -ne $command) {
@@ -192,6 +231,8 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 </html>
 "@ | Set-Content -Path (Join-Path $shareRoot "index.html") -Encoding UTF8
 
+Write-ShareStatus -Status "prepared"
+
 Write-Host "Release share folder:"
 Write-Host $shareRoot
 Write-Host "Local URL:"
@@ -220,6 +261,8 @@ $serverErrLog = Join-Path $shareRoot "server.stderr.log"
 Remove-Item -LiteralPath $serverOutLog, $serverErrLog -Force -ErrorAction SilentlyContinue
 $server = Start-Process -FilePath "python" -ArgumentList $serverArgs -WindowStyle Hidden -RedirectStandardOutput $serverOutLog -RedirectStandardError $serverErrLog -PassThru
 $server.Id | Set-Content -Path (Join-Path $shareRoot "server.pid") -Encoding ASCII
+Write-StopHelper -ProcessIds @($server.Id)
+Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
 Write-Host "Started local server PID $($server.Id)"
 
 if ($CloudflareTunnel) {
@@ -230,6 +273,8 @@ if ($CloudflareTunnel) {
   $tunnelArgs = @("tunnel", "--url", "http://$BindAddress`:$Port")
   $tunnel = Start-Process -FilePath $cloudflaredPath -ArgumentList $tunnelArgs -WindowStyle Hidden -RedirectStandardOutput $cloudflaredOutLog -RedirectStandardError $cloudflaredErrLog -PassThru
   $tunnel.Id | Set-Content -Path (Join-Path $shareRoot "cloudflared.pid") -Encoding ASCII
+  Write-StopHelper -ProcessIds @($server.Id, $tunnel.Id)
+  Write-ShareStatus -Status "tunnel-starting" -ProcessIds @($server.Id, $tunnel.Id)
   Write-Host "Started cloudflared PID $($tunnel.Id)"
   Write-Host "Waiting up to $TunnelWaitSeconds seconds for the public tunnel URL..."
 
@@ -254,10 +299,12 @@ if ($CloudflareTunnel) {
   }
 
   if ([string]::IsNullOrWhiteSpace($publicUrl)) {
+    Write-ShareStatus -Status "tunnel-url-pending" -ProcessIds @($server.Id, $tunnel.Id)
     Write-Warning "Cloudflare tunnel started, but no public URL was found yet."
     Write-Host "Cloudflared stdout log: $cloudflaredOutLog"
     Write-Host "Cloudflared stderr log: $cloudflaredErrLog"
   } else {
+    Write-ShareStatus -Status "tunnel-ready" -PublicUrl $publicUrl -ProcessIds @($server.Id, $tunnel.Id)
     Write-Host "Public tunnel URL:"
     Write-Host $publicUrl
   }
@@ -266,6 +313,7 @@ if ($CloudflareTunnel) {
     $stopIds = @($server.Id, $tunnel.Id)
     Stop-Process -Id $stopIds -Force -ErrorAction SilentlyContinue
     Wait-Process -Id $stopIds -Timeout 5 -ErrorAction SilentlyContinue
+    Write-ShareStatus -Status "stopped-after-url" -PublicUrl $publicUrl -ProcessIds @($stopIds)
     Write-Host "Stopped sharing processes after tunnel check."
     exit 0
   }
