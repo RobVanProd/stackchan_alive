@@ -20,6 +20,8 @@ $ringModHarmonicHz = 88.0
 $sampleHoldHz = 11800.0
 $robotBasePitchHz = 104.0
 $syntheticMaskMix = 0.48
+$brightRobotVocoderMix = 0.105
+$brightRobotEarconMix = 0.020
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-voice-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -283,6 +285,71 @@ def add_spark_chirps(rate, samples):
                 out[pos + i] += 0.030 * env * math.sin(2.0 * math.pi * sweep * t)
     return out
 
+def add_phrase_earcons(rate, samples, mix):
+    out = list(samples)
+    block = max(1, int(rate * 0.022))
+    energies = []
+    for start in range(0, len(samples), block):
+        chunk = samples[start:start + block]
+        energies.append(math.sqrt(sum(s * s for s in chunk) / max(1, len(chunk))))
+
+    note_sets = [
+        (784.0, 1174.7),   # G5 + D6
+        (659.3, 987.8),    # E5 + B5
+        (587.3, 880.0),    # D5 + A5
+        (523.3, 784.0),    # C5 + G5
+    ]
+    added = 0
+    last_pos = -999999
+    for idx in range(2, len(energies)):
+        onset = energies[idx] > 0.028 and energies[idx - 1] < 0.012 and energies[idx - 2] < 0.014
+        if not onset:
+            continue
+        pos = max(0, idx * block - int(rate * 0.035))
+        if pos - last_pos < int(rate * 0.55):
+            continue
+        last_pos = pos
+        freqs = note_sets[added % len(note_sets)]
+        added += 1
+        length = min(int(rate * 0.070), len(out) - pos)
+        for i in range(length):
+            u = i / max(1, length)
+            env = math.sin(math.pi * u)
+            t = i / rate
+            gliss = 1.0 + 0.018 * math.sin(math.pi * u)
+            tone = (
+                0.62 * math.sin(2.0 * math.pi * freqs[0] * gliss * t)
+                + 0.38 * math.sin(2.0 * math.pi * freqs[1] * gliss * t)
+            )
+            out[pos + i] += mix * env * tone
+
+        if added >= 5:
+            break
+    return out
+
+def add_light_vocoder_harmony(rate, samples, mix):
+    env = envelope_follow(samples, rate)
+    out = []
+    phase_root = 0.0
+    phase_fifth = 0.0
+    phase_fourth = 0.0
+    note_roots = [220.0, 246.94, 261.63, 293.66, 329.63, 293.66]
+    step_len = max(1, int(rate * 0.115))
+    for i, sample in enumerate(samples):
+        root = note_roots[(i // step_len) % len(note_roots)]
+        wobble = 1.0 + 0.006 * math.sin(2.0 * math.pi * 3.7 * (i / rate))
+        phase_root = (phase_root + root * wobble / rate) % 1.0
+        phase_fifth = (phase_fifth + root * 1.5 * wobble / rate) % 1.0
+        phase_fourth = (phase_fourth + root * (4.0 / 3.0) * wobble / rate) % 1.0
+        synth = (
+            0.46 * math.sin(2.0 * math.pi * phase_root)
+            + 0.34 * math.sin(2.0 * math.pi * phase_fifth)
+            + 0.20 * math.sin(2.0 * math.pi * phase_fourth)
+        )
+        gate = min(1.0, max(0.0, (env[i] - 0.018) * 9.0))
+        out.append(sample * (1.0 - mix * gate) + synth * env[i] * mix * gate)
+    return out
+
 def stackchan_spark_synth(rate, samples):
     samples = remove_dc(samples)
     samples = resample_linear(samples, $robotPitchCadenceFactor)
@@ -349,19 +416,21 @@ def audition_warm_slow(rate, samples):
     return out
 
 def audition_bright_robot(rate, samples):
-    held = sample_hold(samples, rate, 8200.0)
-    delay = max(1, int(rate * 0.0038))
+    held = sample_hold(samples, rate, 9400.0)
+    delay = max(1, int(rate * 0.0035))
     comb = [0.0] * delay
     out = [0.0] * len(held)
     prev = 0.0
     for i, sample in enumerate(held):
         t = i / rate
-        edge = sample - 0.44 * prev
+        edge = sample - 0.38 * prev
         prev = sample
-        carrier = 0.76 + 0.20 * math.sin(2.0 * math.pi * 58.0 * t) + 0.06 * math.sin(2.0 * math.pi * 116.0 * t)
-        resonant = edge + 0.42 * comb[i % delay]
+        carrier = 0.78 + 0.16 * math.sin(2.0 * math.pi * 58.0 * t) + 0.045 * math.sin(2.0 * math.pi * 116.0 * t)
+        resonant = edge + 0.36 * comb[i % delay]
         comb[i % delay] = resonant
-        out[i] = round(math.tanh(resonant * 2.05) * carrier * 46.0) / 46.0
+        out[i] = round(math.tanh(resonant * 1.86) * carrier * 56.0) / 56.0
+    out = add_light_vocoder_harmony(rate, out, $brightRobotVocoderMix)
+    out = add_phrase_earcons(rate, out, $brightRobotEarconMix)
     return out
 
 for name in sorted(os.listdir(source_dir)):
@@ -399,8 +468,8 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 
 Generated source:
 - Source mode: $sourceMode
-- Stackchan Spark Synth v3 DSP: phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
-- Tuning: source speech rate ``$speechRate`` where supported, pitch/cadence resample factor ``$robotPitchCadenceFactor``, synthetic mask base pitch ``$robotBasePitchHz`` Hz, mask mix ``$syntheticMaskMix``, ring modulation ``$ringModBaseHz``/``$ringModHarmonicHz`` Hz, sample-hold target ``$sampleHoldHz`` Hz
+- Stackchan Spark Synth v4 DSP: phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, tiny synthetic chirps, and a lightly blended musical vocoder/harmony layer on the Bright Robot audition
+- Tuning: source speech rate ``$speechRate`` where supported, pitch/cadence resample factor ``$robotPitchCadenceFactor``, synthetic mask base pitch ``$robotBasePitchHz`` Hz, mask mix ``$syntheticMaskMix``, ring modulation ``$ringModBaseHz``/``$ringModHarmonicHz`` Hz, sample-hold target ``$sampleHoldHz`` Hz, bright vocoder mix ``$brightRobotVocoderMix``, bright earcon mix ``$brightRobotEarconMix``
 - Renderer: ``tools/render_voice_samples.ps1``
 
 Samples:
@@ -408,7 +477,7 @@ $sampleList
 
 Audition variants:
 - ``stackchan_spark_audition_warm_slow_greeting.wav``: warmer, slightly slower review pass for small-speaker intelligibility
-- ``stackchan_spark_audition_bright_robot_greeting.wav``: brighter, more synthetic review pass with stronger ring/comb edge
+- ``stackchan_spark_audition_bright_robot_greeting.wav``: brighter synthetic review pass with slightly reduced static, light musical vocoder blend, and phrase-timed chirp/boop accents
 
 Rollout note: these WAVs are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
 "@ | Set-Content -Path (Join-Path $outputPath "VOICE_SAMPLES.md") -Encoding UTF8

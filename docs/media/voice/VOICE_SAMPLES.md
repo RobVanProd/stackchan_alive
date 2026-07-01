@@ -4,8 +4,8 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 
 Generated source:
 - Source mode: fallback source via `Windows SpeechSynthesizer Microsoft David Desktop`; install eSpeak-NG or pass `-Engine espeak` to use a formant source
-- Stackchan Spark Synth v3 DSP: phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
-- Tuning: source speech rate `-2` where supported, pitch/cadence resample factor `1.12`, synthetic mask base pitch `104` Hz, mask mix `0.48`, ring modulation `44`/`88` Hz, sample-hold target `11800` Hz
+- Stackchan Spark Synth v4 DSP: phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb-filter resonance, subtle bit-depth reduction, soft saturation, short echo, tiny synthetic chirps, and a lightly blended musical vocoder/harmony layer on the Bright Robot audition
+- Tuning: source speech rate `-2` where supported, pitch/cadence resample factor `1.12`, synthetic mask base pitch `104` Hz, mask mix `0.48`, ring modulation `44`/`88` Hz, sample-hold target `11800` Hz, bright vocoder mix `0.105`, bright earcon mix `0.02`
 - Renderer: `tools/render_voice_samples.ps1`
 
 Samples:
@@ -15,6 +15,6 @@ Samples:
 
 Audition variants:
 - `stackchan_spark_audition_warm_slow_greeting.wav`: warmer, slightly slower review pass for small-speaker intelligibility
-- `stackchan_spark_audition_bright_robot_greeting.wav`: brighter, more synthetic review pass with stronger ring/comb edge
+- `stackchan_spark_audition_bright_robot_greeting.wav`: brighter synthetic review pass with slightly reduced static, light musical vocoder blend, and phrase-timed chirp/boop accents
 
 Rollout note: these WAVs are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.

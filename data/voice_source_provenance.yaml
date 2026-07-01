@@ -5,7 +5,7 @@ prototype_samples:
   status: review-only
   source: local Windows SpeechSynthesizer voice
   renderer: tools/render_voice_samples.ps1
-  effect_chain: Stackchan Spark Synth v3 with optional eSpeak formant source, phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb resonance, subtle bit-depth reduction, soft saturation, short echo, and tiny synthetic chirps
+  effect_chain: Stackchan Spark Synth v4 with optional eSpeak formant source, phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb resonance, subtle bit-depth reduction, soft saturation, short echo, tiny synthetic chirps, and a lightly blended musical vocoder plus phrase-timed chirp/boop accents for the Bright Robot audition
   allowed_use:
     - internal voice direction review
     - device-audio audition

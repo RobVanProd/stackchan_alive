@@ -78,7 +78,7 @@ if ($InstallSox -and -not $beforeSox.found) {
       tool = "SoX"
       packageId = "ChrisBagwell.SoX"
       error = $_.Exception.Message
-      note = "SoX is optional; Stackchan Spark Synth v3 does not require it."
+      note = "SoX is optional; Stackchan Spark Synth v4 does not require it."
     }
     if (-not $ContinueOnInstallFailure) {
       throw
@@ -95,7 +95,7 @@ $status = [ordered]@{
   espeak = $afterEspeak
   sox = $afterSox
   recommendedSource = if ($afterEspeak.found) { "render_voice_samples.ps1 -Engine espeak" } else { "install eSpeak-NG, then render_voice_samples.ps1 -Engine espeak" }
-  optionalPostProcessing = if ($afterSox.found) { "SoX available for external audition experiments" } else { "SoX not required; Stackchan Spark Synth v3 DSP is built into render_voice_samples.ps1" }
+  optionalPostProcessing = if ($afterSox.found) { "SoX available for external audition experiments" } else { "SoX not required; Stackchan Spark Synth v4 DSP is built into render_voice_samples.ps1" }
   installFailures = @($installFailures)
 }
 

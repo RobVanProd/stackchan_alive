@@ -521,7 +521,7 @@ $promotionGateItems
   <p><img src="artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" alt="Phase D Idle to Sleep filmstrip"></p>
 
   <h2>Voice Samples</h2>
-  <p>Prototype Stackchan Spark Synth v3 audition samples. These use a lightweight source with phrase-level micro-prosody, syllable gating, a speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, ring modulation, comb resonance, and tiny synthetic chirps. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
+  <p>Prototype Stackchan Spark Synth v4 audition samples. These use a lightweight source with phrase-level micro-prosody, syllable gating, a speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, ring modulation, comb resonance, tiny synthetic chirps, and a light musical vocoder/earcon blend on the Bright Robot pass. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
   <div class="grid">
     <div class="item">
       <strong>Greeting</strong>
@@ -552,7 +552,7 @@ $promotionGateItems
       <strong>Audition: Bright Robot</strong>
       <audio src="voice/stackchan_spark_audition_bright_robot_greeting.wav" controls preload="metadata"></audio>
       <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Brighter and more synthetic for stronger robot character checks.</p>
+      <p>Brighter synthetic pass with slightly reduced static, a light musical vocoder blend, and phrase-timed chirp/boop accents.</p>
       <p><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Download WAV</a></p>
     </div>
   </div>
@@ -567,7 +567,7 @@ $promotionGateItems
 
   <h2>Voice Source Gate</h2>
   <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
-  <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v3 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
+  <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v4 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
   <div class="status">
     <span class="pill pending">Voice source: pending production source</span>
     <span class="pill pending">Rollout gate: licensed or owned production voice required</span>

@@ -69,7 +69,7 @@ Prefer a tiny formant-capable source before considering larger model training:
 
 - eSpeak-NG is the preferred lightweight audition source for the classic synthetic/formant character.
 - Piper remains a good future neural base if a licensed/owned voice is needed, but it still needs the Stackchan Spark Synth DSP to avoid a generic assistant sound.
-- The current built-in Stackchan Spark Synth v3 pass adds a speech-envelope electromechanical mask and formant-like resonators so the fallback Windows source reads less like an unmodified system voice.
+- The current built-in Stackchan Spark Synth v4 pass adds a speech-envelope electromechanical mask, formant-like resonators, a slightly softened Bright Robot static layer, and a light musical vocoder/earcon blend so the fallback Windows source reads less like an unmodified system voice.
 - `tools/setup_voice_tools.cmd` checks for eSpeak-NG and SoX. Use `.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples` on a Windows dev box to install eSpeak-NG with winget, render the formant-source samples, and run voice QA. If Windows Installer is busy or the MSI fails, reboot or clear stale installer processes and retry; `-ContinueOnInstallFailure` records a machine-readable failure without masking it.
 - The built-in renderer remains deterministic and does not require SoX; SoX is optional for external audition experiments.
 
