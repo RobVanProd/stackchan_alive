@@ -250,6 +250,10 @@ Invoke-Step "Check runtime architecture boundaries" {
   & (Join-Path $PSScriptRoot "verify_architecture.ps1")
 }
 
+Invoke-Step "Check preview media quality" {
+  & (Join-Path $PSScriptRoot "verify_preview_media.ps1")
+}
+
 Invoke-Step "Run native logic tests" {
   platformio test -e native_logic
 }

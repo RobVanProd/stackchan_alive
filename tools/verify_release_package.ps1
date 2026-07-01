@@ -131,6 +131,8 @@ $requiredFiles = @(
   "tools/verify_published_release.ps1",
   "tools/verify_architecture.cmd",
   "tools/verify_architecture.ps1",
+  "tools/verify_preview_media.cmd",
+  "tools/verify_preview_media.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "provenance/firmware.yml",
@@ -160,6 +162,8 @@ Assert-File "media/stackchan_alive_preview.mp4" 1000
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+
+& (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
 
 $manifestPath = Join-PackagePath "release_manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json

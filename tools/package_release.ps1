@@ -120,6 +120,8 @@ $releaseTools = @(
   "tools/verify_published_release.ps1",
   "tools/verify_architecture.cmd",
   "tools/verify_architecture.ps1",
+  "tools/verify_preview_media.cmd",
+  "tools/verify_preview_media.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1"
 )
@@ -414,6 +416,8 @@ $manifest = [ordered]@{
     "tools/verify_published_release.ps1",
     "tools/verify_architecture.cmd",
     "tools/verify_architecture.ps1",
+    "tools/verify_preview_media.cmd",
+    "tools/verify_preview_media.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1"
   )
