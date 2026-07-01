@@ -14,6 +14,7 @@ class DisplayAdapter final : public IDisplay {
 
  private:
   uint32_t frameCount_ = 0;
+  bool begun_ = false;
 };
 
 }  // namespace stackchan

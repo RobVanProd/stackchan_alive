@@ -5,28 +5,48 @@
 namespace stackchan {
 
 bool StackChanServoAdapter::begin() {
-  Serial.println(F("[servo] adapter ready; hardware mapping pending calibration"));
+#if STACKCHAN_ENABLE_SERVOS && STACKCHAN_HAS_SERVO_LIBRARY
+  Serial.println(F("[servo] enabling StackchanSERVO hardware output"));
+  servo_.begin(1, 90, 0, 2, 90, 0, ServoType::M5_SCS, &M5.In_I2C);
+  enabled_ = true;
+#else
+  enabled_ = false;
+  Serial.println(F("[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration"));
+#endif
   return true;
 }
 
 void StackChanServoAdapter::writePitchDeg(float pitchDeg) {
   lastPitchDeg_ = pitchDeg;
-  // TODO: after hardware truth test, map this to the selected non-blocking pitch write.
+#if STACKCHAN_ENABLE_SERVOS && STACKCHAN_HAS_SERVO_LIBRARY
+  if (enabled_) {
+    servo_.moveY(static_cast<int>(90.0f + pitchDeg), 0, false);
+  }
+#endif
 }
 
 void StackChanServoAdapter::writeYawAngleDeg(float yawDeg) {
   lastYawDeg_ = yawDeg;
   lastYawVel_ = 0.0f;
-  // TODO: only enable absolute yaw after confirming feedback position behavior.
+#if STACKCHAN_ENABLE_SERVOS && STACKCHAN_HAS_SERVO_LIBRARY
+  if (enabled_) {
+    servo_.moveX(static_cast<int>(90.0f + yawDeg), 0);
+  }
+#endif
 }
 
 void StackChanServoAdapter::writeYawVelocity(float yawVel) {
   lastYawVel_ = yawVel;
-  // TODO: use this path for continuous-rotation yaw hardware.
+  // Continuous-yaw output stays disabled until hardware feedback behavior is measured.
 }
 
 void StackChanServoAdapter::stop() {
   lastYawVel_ = 0.0f;
+#if STACKCHAN_ENABLE_SERVOS && STACKCHAN_HAS_SERVO_LIBRARY
+  if (enabled_) {
+    servo_.moveY(90, 0, false);
+  }
+#endif
 }
 
 }  // namespace stackchan

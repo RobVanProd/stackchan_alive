@@ -21,4 +21,19 @@ This project is set up for PlatformIO:
 pio run
 ```
 
-PlatformIO is not installed in this environment yet.
+Servos are disabled by default with `STACKCHAN_ENABLE_SERVOS=0`. The display should run first; only enable servos after following [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md).
+
+## Preview Media
+
+Generate a hardware-free preview image, GIF, and MP4:
+
+```powershell
+python -m pip install -r requirements-preview.txt
+python tools/render_preview.py
+```
+
+Outputs are written to `docs/media/`.
+
+## Readiness
+
+See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the current proof level and the hardware gates required before consumer rollout.

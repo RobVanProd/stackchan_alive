@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <M5Unified.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -33,7 +34,7 @@ void publishFrame(const RobotFrame& frame) {
 
 RobotFrame readLatestFrame(const RobotFrame& fallback) {
   RobotFrame incoming;
-  if (gFrameQueue != nullptr && xQueueReceive(gFrameQueue, &incoming, 0) == pdTRUE) {
+  if (gFrameQueue != nullptr && xQueuePeek(gFrameQueue, &incoming, 0) == pdTRUE) {
     return incoming;
   }
   return fallback;
@@ -76,12 +77,22 @@ void IntentTask(void* pv) {
 
 }  // namespace
 
+#ifndef PIO_UNIT_TESTING
 void setup() {
-  Serial.begin(115200);
+  auto cfg = M5.config();
+  cfg.serial_baudrate = 115200;
+  M5.begin(cfg);
+  M5.Log.setLogLevel(m5::log_target_serial, ESP_LOG_INFO);
+  M5.Log.setEnableColor(m5::log_target_serial, false);
   delay(200);
   randomSeed(esp_random());
 
   gFrameQueue = xQueueCreate(1, sizeof(RobotFrame));
+  if (gFrameQueue == nullptr) {
+    Serial.println(F("[fatal] frame queue allocation failed"));
+    abort();
+  }
+
   gSensors.begin();
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay);
@@ -89,11 +100,18 @@ void setup() {
 
   publishFrame(makeNeutralFrame());
 
-  xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, nullptr, 1);
-  xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, nullptr, 1);
-  xTaskCreatePinnedToCore(IntentTask, "IntentTask", 4096, nullptr, 2, nullptr, 1);
+  BaseType_t ok = xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, nullptr, 1);
+  ok &= xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, nullptr, 1);
+  ok &= xTaskCreatePinnedToCore(IntentTask, "IntentTask", 4096, nullptr, 2, nullptr, 1);
+
+  if (ok != pdPASS) {
+    Serial.println(F("[fatal] task creation failed"));
+    abort();
+  }
 }
 
 void loop() {
+  M5.update();
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
+#endif

@@ -28,6 +28,10 @@ class StackChanServoAdapter final : public IActuator {
   }
 
  private:
+#if STACKCHAN_HAS_SERVO_LIBRARY
+  StackchanSERVO servo_;
+#endif
+  bool enabled_ = false;
   float lastPitchDeg_ = 0.0f;
   float lastYawDeg_ = 0.0f;
   float lastYawVel_ = 0.0f;
