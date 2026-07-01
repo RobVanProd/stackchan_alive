@@ -55,6 +55,14 @@ if (-not (Test-Path -LiteralPath $ShareRoot)) {
 }
 
 $shareRootPath = (Resolve-Path $ShareRoot).Path
+$statusPath = Join-Path $shareRootPath "share_status.json"
+$status = $null
+if (Test-Path -LiteralPath $statusPath) {
+  $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+} else {
+  $status = [pscustomobject]@{}
+}
+
 $pidFiles = @(
   (Join-Path $shareRootPath "server.pid"),
   (Join-Path $shareRootPath "cloudflared.pid")
@@ -73,25 +81,51 @@ foreach ($pidFile in $pidFiles) {
   }
 }
 
-if ($ids.Count -gt 0) {
-  Stop-Process -Id $ids -Force -ErrorAction SilentlyContinue
-  Wait-Process -Id $ids -Timeout 5 -ErrorAction SilentlyContinue
+if ($null -ne $status -and $null -ne $status.processIds) {
+  foreach ($rawId in @($status.processIds)) {
+    $id = 0
+    if ([int]::TryParse([string]$rawId, [ref]$id)) {
+      $ids += $id
+    }
+  }
 }
 
-$statusPath = Join-Path $shareRootPath "share_status.json"
-if (Test-Path -LiteralPath $statusPath) {
-  $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
-} else {
-  $status = [pscustomobject]@{}
+$ids = @($ids | Where-Object { $_ -gt 0 } | Select-Object -Unique)
+$stoppedIds = @()
+$stillRunningIds = @()
+
+foreach ($id in $ids) {
+  $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+  if ($null -eq $process) {
+    continue
+  }
+
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+    if ($null -eq (Get-Process -Id $id -ErrorAction SilentlyContinue)) {
+      $stoppedIds += $id
+      break
+    }
+  }
+
+  if ($null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue)) {
+    $stillRunningIds += $id
+  }
 }
 
 $status | Add-Member -NotePropertyName "stoppedUtc" -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")) -Force
-$status | Add-Member -NotePropertyName "stoppedProcessIds" -NotePropertyValue @($ids) -Force
+$status | Add-Member -NotePropertyName "stoppedProcessIds" -NotePropertyValue @($stoppedIds) -Force
+$status | Add-Member -NotePropertyName "stillRunningProcessIds" -NotePropertyValue @($stillRunningIds) -Force
 $status | ConvertTo-Json -Depth 5 | Set-Content -Path $statusPath -Encoding UTF8
 
 Write-Host "Stopped share processes:"
-if ($ids.Count -gt 0) {
-  Write-Host ($ids -join ", ")
+if ($stoppedIds.Count -gt 0) {
+  Write-Host ($stoppedIds -join ", ")
 } else {
   Write-Host "none"
+}
+
+if ($stillRunningIds.Count -gt 0) {
+  throw "Unable to stop share processes: $($stillRunningIds -join ', ')"
 }

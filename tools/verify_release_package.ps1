@@ -184,6 +184,13 @@ foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "I
   }
 }
 
+$shareStopText = Get-Content -LiteralPath (Join-PackagePath "tools/stop_share.ps1") -Raw
+foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "Unable to stop share processes")) {
+  if ($shareStopText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/stop_share.ps1 missing robust share cleanup logic: $pattern"
+  }
+}
+
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
 foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
