@@ -337,6 +337,119 @@ function Assert-HardwareEvidenceMediaGate {
   }
 }
 
+function Assert-HardwareEvidenceSerialMarkerGate {
+  $evidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-evidence-serial-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $logsDir = Join-Path $evidenceRoot "logs"
+  $photosDir = Join-Path $evidenceRoot "photos"
+  $calibrationDir = Join-Path $evidenceRoot "calibration"
+
+  New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir | Out-Null
+
+  try {
+    "ready" | Set-Content -Path (Join-Path $evidenceRoot "README.md") -Encoding UTF8
+    "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
+    "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
+    "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
+
+    $observations = @(
+      "# Hardware Test Observations",
+      "",
+      "## Display-Only Flash",
+      "- Start UTC: 2026-07-01T00:00:00Z",
+      "- End UTC: 2026-07-01T00:10:00Z",
+      "- Command: synthetic",
+      "- Result: pass",
+      "- Reset loop observed: no",
+      "- Procedural face visible: yes",
+      "- Dry-run servo log observed: yes",
+      "",
+      "## Servo Calibration Flash",
+      "- Start UTC: 2026-07-01T00:10:00Z",
+      "- End UTC: 2026-07-01T00:20:00Z",
+      "- Command: synthetic",
+      "- Result: pass",
+      "- Pitch behavior: inside safe range",
+      "- Yaw classification: disabled",
+      "- Heat or brownout observed: no",
+      "- Calibration changes: recorded",
+      "",
+      "## Soak Test",
+      "- Start UTC: 2026-07-01T00:20:00Z",
+      "- End UTC: 2026-07-01T00:50:00Z",
+      "- Duration: 30 minutes",
+      "- Reset, stall, jitter, or heat observed: no",
+      "- USB power-cycle recovery: pass"
+    )
+    $observations | Set-Content -Path (Join-Path $evidenceRoot "OBSERVATIONS.md") -Encoding UTF8
+
+    @(
+      "pitch_min_deg: -15",
+      "pitch_max_deg: 15",
+      "yaw_mode: disabled",
+      "yaw_min_deg: -30",
+      "yaw_max_deg: 30"
+    ) | Set-Content -Path (Join-Path $calibrationDir "calibration.yaml") -Encoding UTF8
+
+    @(
+      "[display] M5 display renderer ready",
+      "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
+      "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
+      "synthetic display log missing boot marker for verifier negative-test coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
+    @(
+      "[boot] stackchan_alive mode=servo_calibration serial=v1",
+      "[display] M5 display renderer ready",
+      "[servo] enabling StackchanSERVO hardware output",
+      "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=10000",
+      "synthetic servo log line for verifier negative-test coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "servo_calibration_serial.log") -Encoding UTF8
+    @(
+      "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
+      "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
+      "synthetic soak log line for verifier negative-test coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
+
+    Copy-Item -LiteralPath "docs/media/stackchan_alive_preview.png" -Destination (Join-Path $photosDir "evidence.png")
+
+    $metadata = [ordered]@{
+      releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+      commit = $ExpectedCommit
+      createdUtc = "2026-07-01T00:00:00Z"
+      deviceId = "SELFTEST"
+      port = "COM_TEST"
+      operator = "preflight"
+      package = $null
+      requiredLogs = @(
+        "logs/display_only_serial.log",
+        "logs/servo_calibration_serial.log",
+        "logs/soak_serial.log"
+      )
+      requiredRecords = @(
+        "CHECKLIST.md",
+        "OBSERVATIONS.md",
+        "calibration/calibration.yaml"
+      )
+    }
+    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $evidenceRoot "metadata.json") -Encoding UTF8
+
+    $verifyHardwareEvidence = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "verify_hardware_evidence.ps1"),
+      "-EvidenceRoot", $evidenceRoot,
+      "-AllowMissingPackage"
+    )
+
+    if ($verifyHardwareEvidence.ExitCode -eq 0) {
+      throw "Hardware evidence verifier accepted logs without the display boot marker."
+    }
+    Assert-TextContains $verifyHardwareEvidence.Text "display-only boot marker"
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $evidenceRoot) {
+      Remove-Item -LiteralPath $evidenceRoot -Recurse -Force
+    }
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -375,6 +488,10 @@ Invoke-Step "Check preview media quality" {
 
 Invoke-Step "Check hardware evidence media gate" {
   Assert-HardwareEvidenceMediaGate
+}
+
+Invoke-Step "Check hardware evidence serial marker gate" {
+  Assert-HardwareEvidenceSerialMarkerGate
 }
 
 Invoke-Step "Run native logic tests" {

@@ -16,7 +16,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - A local release handoff page can serve the ZIP, preview image, and preview video, with optional Cloudflare tunnel exposure.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
 - Hardware evidence verification rejects completed observation records that report reset loops, missing face display, missing dry-run servo log, missing firmware boot/heartbeat serial markers, heat/brownout, short soak duration, failed power-cycle recovery, invalid calibration ranges, placeholder-only media evidence, header-only media files, or implausibly small media files.
-- No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, tests, builds, and an optional release ZIP before device flashing.
+- No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, preview media, hardware evidence verifier gates, tests, builds, and an optional release ZIP before device flashing.
 - Release package verification rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence.
 - Release packaging refuses dirty source worktrees by default.
 - GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status must allow jobs to start before they can be used as rollout evidence.
