@@ -138,6 +138,7 @@ if (-not $releaseExists) {
     gh release create $Version `
       $zipPath `
       (Join-Path $packageRoot "media/stackchan_alive_preview.png") `
+      (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png") `
       (Join-Path $packageRoot "media/stackchan_alive_preview.mp4") `
       (Join-Path $packageRoot "media/stackchan_alive_preview.gif") `
       (Join-Path $stageDir "firmware-display-only.bin") `

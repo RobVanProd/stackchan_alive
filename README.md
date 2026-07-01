@@ -49,7 +49,7 @@ Create an auditable prerelease package:
 .\tools\package_release.cmd -Version <version>
 ```
 
-The package includes firmware binaries, preview media, docs, checksums, dependency provenance, a machine-readable dependency lock, and copied build inputs.
+The package includes firmware binaries, preview media, an expression QA sheet, docs, checksums, dependency provenance, a machine-readable dependency lock, and copied build inputs.
 By default the package command refuses to run from a dirty source worktree so the manifest commit matches the code and configuration; regenerated preview media is treated as a release artifact.
 
 Verify the package before sharing or publishing, or include it in the preflight:
@@ -77,7 +77,7 @@ Audit the published GitHub release assets:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-Stage a local handoff page for the ZIP, image, and video, optionally with a Cloudflare tunnel:
+Stage a local handoff page for the ZIP, preview image, expression sheet, and video, optionally with a Cloudflare tunnel:
 
 ```powershell
 .\tools\share_release.cmd -Version <version>
@@ -133,6 +133,7 @@ python tools/render_preview.py
 ```
 
 Outputs are written to `docs/media/`.
+The generator also writes `stackchan_alive_expression_sheet.png`, a six-pose visual QA sheet for idle, listen, think, happy, concern, and sleep expressions.
 
 ## Readiness
 

@@ -203,6 +203,7 @@ Assert-File $zipPath
 $files = @(
   @{ Source = $zipPath; Name = "stackchan_alive_$Version.zip" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.png"); Name = "stackchan_alive_preview.png" },
+  @{ Source = (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png"); Name = "stackchan_alive_expression_sheet.png" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.mp4"); Name = "stackchan_alive_preview.mp4" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.gif"); Name = "stackchan_alive_preview.gif" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
@@ -249,12 +250,14 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
   <h2>Preview</h2>
   <p><img src="stackchan_alive_preview.png" alt="Stackchan Alive preview image"></p>
+  <p><img src="stackchan_alive_expression_sheet.png" alt="Stackchan Alive expression sheet"></p>
   <p><video src="stackchan_alive_preview.mp4" controls loop muted playsinline></video></p>
 
   <h2>Downloads</h2>
   <div class="grid">
     <div class="item"><a href="stackchan_alive_$Version.zip">Release ZIP</a></div>
     <div class="item"><a href="stackchan_alive_preview.png">Preview PNG</a></div>
+    <div class="item"><a href="stackchan_alive_expression_sheet.png">Expression Sheet PNG</a></div>
     <div class="item"><a href="stackchan_alive_preview.mp4">Preview MP4</a></div>
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>

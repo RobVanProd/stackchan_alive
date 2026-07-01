@@ -194,6 +194,7 @@ $expectedFiles = @(
   @{ Path = "index.html"; MinBytes = 500; Type = "text/html" },
   @{ Path = "stackchan_alive_$Version.zip"; MinBytes = 1000000; Type = "application" },
   @{ Path = "stackchan_alive_preview.png"; MinBytes = 1000; Type = "image/png" },
+  @{ Path = "stackchan_alive_expression_sheet.png"; MinBytes = 2000; Type = "image/png" },
   @{ Path = "stackchan_alive_preview.mp4"; MinBytes = 1000; Type = "video/mp4" },
   @{ Path = "stackchan_alive_preview.gif"; MinBytes = 1000; Type = "image/gif" },
   @{ Path = "QUICKSTART.md"; MinBytes = 100; Type = "" },
@@ -206,14 +207,14 @@ foreach ($file in $expectedFiles) {
 }
 
 $indexText = Get-Content -LiteralPath (Join-Path $shareRootPath "index.html") -Raw
-foreach ($pattern in @($Version, "Hardware validation is still pending", "stackchan_alive_preview.png", "stackchan_alive_preview.mp4", "stackchan_alive_$Version.zip")) {
+foreach ($pattern in @($Version, "Hardware validation is still pending", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_$Version.zip")) {
   if ($indexText -notmatch [regex]::Escape($pattern)) {
     throw "index.html missing expected share guidance: $pattern"
   }
 }
 
 $probes = @()
-foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_preview.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif") }) {
+foreach ($file in $expectedFiles | Where-Object { $_.Path -in @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif") }) {
   $path = if ($file.Path -eq "index.html") { "/" } else { $file.Path }
   $probe = Invoke-UrlProbe -TargetUrl (Join-Url $Url $path) -TimeoutSeconds $TimeoutSeconds
   Assert-HttpOk -Probe $probe -ExpectedType $file.Type -Path $path

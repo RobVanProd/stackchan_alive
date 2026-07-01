@@ -142,6 +142,7 @@ $assets = @($release.assets)
 $expectedAssets = @{
   "stackchan_alive_$Version.zip" = $ZipPath
   "stackchan_alive_preview.png" = (Join-Path $PackageRoot "media/stackchan_alive_preview.png")
+  "stackchan_alive_expression_sheet.png" = (Join-Path $PackageRoot "media/stackchan_alive_expression_sheet.png")
   "stackchan_alive_preview.mp4" = (Join-Path $PackageRoot "media/stackchan_alive_preview.mp4")
   "stackchan_alive_preview.gif" = (Join-Path $PackageRoot "media/stackchan_alive_preview.gif")
   "firmware-display-only.bin" = (Join-Path $PackageRoot "firmware/display_only/firmware.bin")

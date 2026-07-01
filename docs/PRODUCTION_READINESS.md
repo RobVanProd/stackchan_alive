@@ -13,7 +13,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Release packages include a binary flasher that writes the exact packaged display-only or servo-calibration firmware.
 - Release packages include a manual GitHub publish helper that verifies the uploaded ZIP when GitHub Actions cannot run.
 - Published release assets can be audited against the local package by size, SHA256 digest, and downloaded-ZIP verification.
-- A local release handoff page can serve the ZIP, preview image, and preview video, with optional Cloudflare tunnel exposure.
+- A local release handoff page can serve the ZIP, preview image, expression sheet, and preview video, with optional Cloudflare tunnel exposure.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
 - Hardware evidence verification rejects completed observation records that report reset loops, missing face display, missing dry-run servo log, missing firmware boot/heartbeat serial markers, heat/brownout, short soak duration, failed power-cycle recovery, invalid calibration ranges, placeholder-only media evidence, header-only media files, or implausibly small media files.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, preview media, hardware evidence verifier gates, tests, builds, and an optional release ZIP before device flashing.

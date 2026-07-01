@@ -106,6 +106,7 @@ $requiredFiles = @(
   "firmware/servo_calibration/firmware.bin",
   "firmware/servo_calibration/firmware.elf",
   "firmware/servo_calibration/partitions.bin",
+  "media/stackchan_alive_expression_sheet.png",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
@@ -160,10 +161,12 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "media/stackchan_alive_preview.png" 1000
+Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
 Assert-File "media/stackchan_alive_preview.mp4" 1000
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
 

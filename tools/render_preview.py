@@ -101,7 +101,8 @@ def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, 
     if abs(target["brow_tilt"]) > 0.03 or target["squint"] > 0.05:
         brow_y = int(cy - height * 0.72)
         brow_half = max(16, int(width / 4))
-        tilt = clamp(target["brow_tilt"] + target["squint"] * 0.35, -1.0, 1.0) * 9
+        squint_tilt = 0.0 if target["brow_tilt"] < 0.0 else target["squint"] * 0.35
+        tilt = clamp(target["brow_tilt"] + squint_tilt, -1.0, 1.0) * 9
         inner_y = brow_y + int(tilt)
         outer_y = brow_y - int(tilt)
         x_left = int(cx - brow_half)
@@ -143,9 +144,93 @@ def render_frame(t: float) -> Image.Image:
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
 
 
+def render_pose(label: str, target: dict[str, float]) -> Image.Image:
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    draw = ImageDraw.Draw(img)
+    draw_eye(draw, 106, 104, target, False)
+    draw_eye(draw, 214, 104, target, True)
+    draw_mouth(draw, target)
+    draw.text((12, 14), label, fill=ACCENT, anchor="lm")
+    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    return img
+
+
+def render_expression_sheet() -> Image.Image:
+    poses = [
+        ("Idle", {
+            "eye_open": 0.84,
+            "squint": 0.0,
+            "eye_smile": 0.12,
+            "pupil_x": 0.0,
+            "pupil_y": 0.0,
+            "brow_tilt": 0.16,
+            "mouth_smile": 0.26,
+            "mouth_open": 0.0,
+        }),
+        ("Listen", {
+            "eye_open": 0.92,
+            "squint": 0.0,
+            "eye_smile": 0.08,
+            "pupil_x": -0.05,
+            "pupil_y": 0.0,
+            "brow_tilt": 0.12,
+            "mouth_smile": 0.10,
+            "mouth_open": 0.0,
+        }),
+        ("Think", {
+            "eye_open": 0.80,
+            "squint": 0.05,
+            "eye_smile": 0.04,
+            "pupil_x": 0.10,
+            "pupil_y": -0.20,
+            "brow_tilt": 0.10,
+            "mouth_smile": 0.15,
+            "mouth_open": 0.0,
+        }),
+        ("Happy", {
+            "eye_open": 0.88,
+            "squint": 0.0,
+            "eye_smile": 0.44,
+            "pupil_x": 0.0,
+            "pupil_y": 0.02,
+            "brow_tilt": 0.28,
+            "mouth_smile": 0.62,
+            "mouth_open": 0.0,
+        }),
+        ("Concern", {
+            "eye_open": 0.76,
+            "squint": 0.32,
+            "eye_smile": 0.0,
+            "pupil_x": 0.0,
+            "pupil_y": 0.05,
+            "brow_tilt": -0.32,
+            "mouth_smile": -0.52,
+            "mouth_open": 0.0,
+        }),
+        ("Sleep", {
+            "eye_open": 0.15,
+            "squint": 0.0,
+            "eye_smile": 0.0,
+            "pupil_x": 0.0,
+            "pupil_y": 0.0,
+            "brow_tilt": 0.0,
+            "mouth_smile": 0.0,
+            "mouth_open": 0.0,
+        }),
+    ]
+
+    sheet = Image.new("RGB", (WIDTH * 3, HEIGHT * 2), BG)
+    for index, (label, target) in enumerate(poses):
+        x = (index % 3) * WIDTH
+        y = (index // 3) * HEIGHT
+        sheet.paste(render_pose(label, target), (x, y))
+    return sheet
+
+
 def main() -> None:
     still = render_frame(2.7)
     still.save(OUT / "stackchan_alive_preview.png")
+    render_expression_sheet().save(OUT / "stackchan_alive_expression_sheet.png")
 
     fps = 30
     frames = [render_frame(i / fps) for i in range(fps * 6)]

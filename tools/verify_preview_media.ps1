@@ -38,6 +38,7 @@ from PIL import Image, ImageStat
 
 media_root = Path(sys.argv[1])
 expected_size = (640, 480)
+expected_sheet_size = (960, 480)
 
 
 def fail(message: str) -> None:
@@ -83,9 +84,9 @@ def image_stats(image: Image.Image) -> dict[str, object]:
     }
 
 
-def assert_nonblank(stats: dict[str, object], label: str) -> None:
-    if stats["size"] != expected_size:
-        fail(f"{label} has wrong dimensions: {stats['size']}, expected {expected_size}")
+def assert_nonblank(stats: dict[str, object], label: str, size: tuple[int, int] = expected_size) -> None:
+    if stats["size"] != size:
+        fail(f"{label} has wrong dimensions: {stats['size']}, expected {size}")
     if stats["unique_colors"] < 8:
         fail(f"{label} has too few colors to be credible preview media: {stats['unique_colors']}")
     if stats["visible_ratio"] < 0.02:
@@ -93,12 +94,17 @@ def assert_nonblank(stats: dict[str, object], label: str) -> None:
 
 
 png = require_file("stackchan_alive_preview.png", 1000)
+sheet = require_file("stackchan_alive_expression_sheet.png", 2000)
 gif = require_file("stackchan_alive_preview.gif", 1000)
 mp4 = require_file("stackchan_alive_preview.mp4", 1000)
 
 with Image.open(png) as im:
     png_stats = image_stats(im)
     assert_nonblank(png_stats, "PNG preview")
+
+with Image.open(sheet) as im:
+    sheet_stats = image_stats(im)
+    assert_nonblank(sheet_stats, "Expression sheet", expected_sheet_size)
 
 gif_reader = imageio.get_reader(gif)
 try:
@@ -150,6 +156,11 @@ print(json.dumps({
         "size": png_stats["size"],
         "uniqueColors": png_stats["unique_colors"],
         "visibleRatio": round(float(png_stats["visible_ratio"]), 4),
+    },
+    "expressionSheet": {
+        "size": sheet_stats["size"],
+        "uniqueColors": sheet_stats["unique_colors"],
+        "visibleRatio": round(float(sheet_stats["visible_ratio"]), 4),
     },
     "gif": {
         "framesChecked": gif_count,

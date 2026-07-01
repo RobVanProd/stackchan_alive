@@ -36,10 +36,10 @@ function Assert-Command {
 function Assert-CleanSourceTree {
   $dirtyFiles = @(git status --porcelain)
   $generatedMediaDirtyFiles = @(
-    $dirtyFiles | Where-Object { $_ -match "^\s*M docs/media/stackchan_alive_preview\.(gif|mp4|png)$" }
+    $dirtyFiles | Where-Object { $_ -match "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|expression_sheet\.png)$" }
   )
   $sourceDirtyFiles = @(
-    $dirtyFiles | Where-Object { $_ -notmatch "^\s*M docs/media/stackchan_alive_preview\.(gif|mp4|png)$" }
+    $dirtyFiles | Where-Object { $_ -notmatch "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|expression_sheet\.png)$" }
   )
 
   if ($sourceDirtyFiles.Count -gt 0 -and -not $AllowDirty) {

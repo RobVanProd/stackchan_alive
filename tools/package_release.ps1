@@ -26,10 +26,10 @@ if (-not $SkipBuild) {
 
 $dirtyFiles = @(git status --porcelain)
 $generatedMediaDirtyFiles = @(
-  $dirtyFiles | Where-Object { $_ -match "^\s*M docs/media/stackchan_alive_preview\.(gif|mp4|png)$" }
+  $dirtyFiles | Where-Object { $_ -match "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|expression_sheet\.png)$" }
 )
 $sourceDirtyFiles = @(
-  $dirtyFiles | Where-Object { $_ -notmatch "^\s*M docs/media/stackchan_alive_preview\.(gif|mp4|png)$" }
+  $dirtyFiles | Where-Object { $_ -notmatch "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|expression_sheet\.png)$" }
 )
 
 if ($sourceDirtyFiles.Count -gt 0 -and -not $AllowDirty) {
@@ -84,6 +84,7 @@ Copy-FirmwareSet -BuildDir ".pio/build/stackchan_servo_calibration" -Destination
 
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
+  "docs/media/stackchan_alive_expression_sheet.png",
   "docs/media/stackchan_alive_preview.mp4",
   "docs/media/stackchan_alive_preview.gif"
 )
@@ -451,7 +452,7 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "rele
 
 Commit: $commit
 
-This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media, and keeps servo output disabled by default.
+This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
 Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
 

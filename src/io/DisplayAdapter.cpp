@@ -77,7 +77,8 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
   if (fabsf(eye.browTilt) > 0.03f || eye.squint > 0.05f) {
     const int32_t browY = roundToInt(eye.cy - eye.height * 0.72f);
     const int32_t browHalf = max<int32_t>(16, w / 4);
-    const float tilt = constrain(eye.browTilt + eye.squint * 0.35f, -1.0f, 1.0f) * 9.0f;
+    const float squintTilt = eye.browTilt < 0.0f ? 0.0f : eye.squint * 0.35f;
+    const float tilt = constrain(eye.browTilt + squintTilt, -1.0f, 1.0f) * 9.0f;
     const int32_t innerY = browY + roundToInt(tilt);
     const int32_t outerY = browY - roundToInt(tilt);
     const int32_t x1 = roundToInt(eye.cx - browHalf);
