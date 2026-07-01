@@ -60,6 +60,14 @@ If GitHub Actions cannot run, publish the already verified package with the manu
 
 The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP, and verifies that remote copy against the tag commit.
 
+Audit an existing GitHub release after publication:
+
+```powershell
+.\tools\verify_published_release.cmd -Version v0.1.0-device-ready
+```
+
+The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
+
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.
 
 The hardware rollout checklist lives in `docs/ROLLOUT_CHECKLIST.md`.

@@ -116,6 +116,8 @@ $requiredFiles = @(
   "tools/start_hardware_evidence.ps1",
   "tools/verify_hardware_evidence.cmd",
   "tools/verify_hardware_evidence.ps1",
+  "tools/verify_published_release.cmd",
+  "tools/verify_published_release.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "provenance/firmware.yml",

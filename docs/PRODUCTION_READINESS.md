@@ -11,6 +11,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Release packages are verified before publication in GitHub Actions.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
 - Release packages include a manual GitHub publish helper that verifies the uploaded ZIP when GitHub Actions cannot run.
+- Published release assets can be audited against the local package by size, SHA256 digest, and downloaded-ZIP verification.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, tests, builds, and an optional release ZIP before device flashing.
 - Release packaging refuses dirty source worktrees by default.

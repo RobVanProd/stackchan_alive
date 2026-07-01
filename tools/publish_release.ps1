@@ -152,27 +152,21 @@ if (-not $releaseExists) {
   }
 }
 
-$remoteDir = Join-Path $repoRoot "output/release/remote-$Version"
-New-Item -ItemType Directory -Force -Path $remoteDir | Out-Null
-
 if ($DryRun) {
-  Write-Host "Dry run: would download and verify stackchan_alive_$Version.zip from https://github.com/$Repo/releases/tag/$Version"
+  Write-Host "Dry run: would verify published assets and downloaded ZIP from https://github.com/$Repo/releases/tag/$Version"
   Write-Host "Release dry run passed:"
   Write-Host "https://github.com/$Repo/releases/tag/$Version"
   exit 0
 }
 
-Invoke-Checked "Download GitHub release ZIP $Version" {
-  gh release download $Version --repo $Repo --pattern "stackchan_alive_$Version.zip" --dir $remoteDir --clobber
-}
-
-$remoteZip = Join-Path $remoteDir "stackchan_alive_$Version.zip"
-$remoteVerifyArgs = @{
+$publishedVerifyArgs = @{
   Version = $Version
-  ZipPath = $remoteZip
+  Repo = $Repo
+  PackageRoot = $packageRoot
+  ZipPath = $zipPath
   ExpectedCommit = $tagCommit
 }
-& (Join-Path $PSScriptRoot "verify_release_package.ps1") @remoteVerifyArgs
+& (Join-Path $PSScriptRoot "verify_published_release.ps1") @publishedVerifyArgs
 
 Write-Host "Release published and verified:"
 Write-Host "https://github.com/$Repo/releases/tag/$Version"

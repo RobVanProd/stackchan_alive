@@ -65,6 +65,12 @@ Publish a verified prerelease manually when GitHub Actions is unavailable:
 .\tools\publish_release.cmd -Version v0.1.2-device-ready -CreateTag -PushTag
 ```
 
+Audit the published GitHub release assets:
+
+```powershell
+.\tools\verify_published_release.cmd -Version v0.1.2-device-ready
+```
+
 Start a device-arrival evidence packet:
 
 ```powershell
