@@ -1,0 +1,11 @@
+# Placeholder for tunable expression profiles.
+neutral:
+  eye_open: 0.85
+  eye_smile: 0.15
+  mouth_smile: 0.15
+listen:
+  focus: 0.90
+  pitch_bias_deg: -4.0
+think:
+  pupil_y: -0.20
+  yaw_bias_deg: 18.0

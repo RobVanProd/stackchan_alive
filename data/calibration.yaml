@@ -1,0 +1,7 @@
+# Hardware truth test values go here after bring-up.
+servos:
+  pitch_min_deg: -20
+  pitch_max_deg: 20
+  yaw_mode: angle # angle, velocity, or disabled
+  yaw_min_deg: -45
+  yaw_max_deg: 45
