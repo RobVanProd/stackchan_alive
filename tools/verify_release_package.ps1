@@ -112,6 +112,8 @@ $requiredFiles = @(
   "tools/publish_release.ps1",
   "tools/run_device_preflight.cmd",
   "tools/run_device_preflight.ps1",
+  "tools/share_release.cmd",
+  "tools/share_release.ps1",
   "tools/start_hardware_evidence.cmd",
   "tools/start_hardware_evidence.ps1",
   "tools/verify_hardware_evidence.cmd",

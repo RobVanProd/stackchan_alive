@@ -71,6 +71,13 @@ Audit the published GitHub release assets:
 .\tools\verify_published_release.cmd -Version v0.1.2-device-ready
 ```
 
+Stage a local handoff page for the ZIP, image, and video, optionally with a Cloudflare tunnel:
+
+```powershell
+.\tools\share_release.cmd -Version v0.1.2-device-ready
+.\tools\share_release.cmd -Version v0.1.2-device-ready -CloudflareTunnel
+```
+
 Start a device-arrival evidence packet:
 
 ```powershell

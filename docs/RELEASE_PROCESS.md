@@ -68,6 +68,14 @@ Audit an existing GitHub release after publication:
 
 The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, downloads the GitHub ZIP, and runs the package verifier on that downloaded copy.
 
+Stage a local handoff page with direct links to the ZIP, image, video, GIF, release notes, and checksums:
+
+```powershell
+.\tools\share_release.cmd -Version v0.1.0-device-ready
+```
+
+If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.
+
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.
 
 The hardware rollout checklist lives in `docs/ROLLOUT_CHECKLIST.md`.
