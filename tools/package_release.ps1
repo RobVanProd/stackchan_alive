@@ -47,7 +47,8 @@ $servoFirmwareDir = Join-Path $firmwareDir "servo_calibration"
 $mediaDir = Join-Path $outDir "media"
 $docsDir = Join-Path $outDir "docs"
 $provenanceDir = Join-Path $outDir "provenance"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir, $provenanceDir | Out-Null
+$toolsDir = Join-Path $outDir "tools"
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir, $provenanceDir, $toolsDir | Out-Null
 
 function Copy-FirmwareSet {
   param(
@@ -92,6 +93,22 @@ Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
+
+$releaseTools = @(
+  "tools/flash_device.cmd",
+  "tools/flash_device.ps1",
+  "tools/start_hardware_evidence.cmd",
+  "tools/start_hardware_evidence.ps1",
+  "tools/verify_release_package.cmd",
+  "tools/verify_release_package.ps1"
+)
+
+foreach ($file in $releaseTools) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing release tool: $file"
+  }
+  Copy-Item -LiteralPath $file -Destination $toolsDir
+}
 
 Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
@@ -169,6 +186,14 @@ $manifest = [ordered]@{
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
   dependencyReport = "DEPENDENCIES.md"
+  includedTools = @(
+    "tools/flash_device.cmd",
+    "tools/flash_device.ps1",
+    "tools/start_hardware_evidence.cmd",
+    "tools/start_hardware_evidence.ps1",
+    "tools/verify_release_package.cmd",
+    "tools/verify_release_package.ps1"
+  )
   provenanceFiles = @(
     "provenance/platformio.ini",
     "provenance/requirements-preview.txt",
@@ -186,7 +211,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md``, with copied build inputs under ``provenance/``. Flashing, evidence capture, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 

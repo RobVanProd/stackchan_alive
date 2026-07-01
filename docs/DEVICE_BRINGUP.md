@@ -6,13 +6,19 @@ Use this when the Stack-chan hardware arrives.
 
 1. Confirm battery is charged or USB-C power is stable.
 2. Keep the body clear; do not force the yaw or pitch axes while powered.
-3. Build once with servos disabled:
+3. Start an evidence packet for the release under test:
+
+```powershell
+.\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.4-device-ready -PackageZip output\release\stackchan_alive_v0.1.4-device-ready.zip -Port COM3
+```
+
+4. Build once with servos disabled:
 
 ```powershell
 pio run
 ```
 
-4. Flash the display-only build first:
+5. Flash the display-only build first:
 
 ```powershell
 pio run --target upload
@@ -42,6 +48,8 @@ Only use the servo calibration environment after the display-only build runs and
 ```
 
 The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.
+
+Save serial logs, photos, and calibration notes into the evidence packet created during preflight.
 
 ## First Hardware Tests
 

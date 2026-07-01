@@ -50,6 +50,12 @@ Verify the package before sharing or publishing:
 .\tools\verify_release_package.cmd -Version v0.1.2-device-ready -ZipPath output\release\stackchan_alive_v0.1.2-device-ready.zip
 ```
 
+Start a device-arrival evidence packet:
+
+```powershell
+.\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.2-device-ready -PackageZip output\release\stackchan_alive_v0.1.2-device-ready.zip -Port COM3
+```
+
 ## Preview Media
 
 Generate a hardware-free preview image, GIF, and MP4:

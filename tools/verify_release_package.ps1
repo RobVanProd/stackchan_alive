@@ -106,6 +106,12 @@ $requiredFiles = @(
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
+  "tools/flash_device.cmd",
+  "tools/flash_device.ps1",
+  "tools/start_hardware_evidence.cmd",
+  "tools/start_hardware_evidence.ps1",
+  "tools/verify_release_package.cmd",
+  "tools/verify_release_package.ps1",
   "provenance/firmware.yml",
   "provenance/platformio.ini",
   "provenance/release.yml",
@@ -160,6 +166,10 @@ if ($manifest.dirty -and -not $AllowDirtyPackage) {
 
 if ($manifest.dependencyReport -ne "DEPENDENCIES.md") {
   throw "Manifest dependencyReport mismatch: $($manifest.dependencyReport)"
+}
+
+foreach ($file in @($manifest.includedTools)) {
+  Assert-File $file
 }
 
 foreach ($file in @($manifest.provenanceFiles)) {

@@ -11,6 +11,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
 - [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, copied build inputs, and checksums.
 - [ ] `tools/verify_release_package.ps1` passes for the release ZIP.
+- [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
 
 ## Display-Only Flash
 

@@ -10,11 +10,18 @@ This project can produce a pre-device review release now and a hardware-validate
 
 The package is written under `output/release/<version>/` and includes firmware binaries, preview media, readiness docs, dependency provenance, copied build inputs, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
+Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`.
 
 Verify the package before sharing it:
 
 ```powershell
 .\tools\verify_release_package.cmd -Version v0.1.0-device-ready -ZipPath output\release\stackchan_alive_v0.1.0-device-ready.zip
+```
+
+Create a hardware evidence packet when testing a physical device:
+
+```powershell
+.\tools\start_hardware_evidence.cmd -ReleaseTag v0.1.0-device-ready -PackageZip output\release\stackchan_alive_v0.1.0-device-ready.zip -Port COM3
 ```
 
 ## GitHub Release
