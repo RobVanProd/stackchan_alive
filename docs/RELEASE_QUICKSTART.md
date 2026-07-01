@@ -18,6 +18,11 @@ From an extracted release package:
 
 This serves the release ZIP, preview image, video, quickstart, release notes, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
 The public URL is also saved as `output\share\<version>\PUBLIC_URL.txt`, and the share folder includes `STOP_SHARING.cmd` to stop the local server and tunnel.
+Before sending the URL, verify the handoff page and public assets:
+
+```powershell
+.\tools\verify_share_release.cmd -RequirePublicUrl
+```
 
 From a source checkout, pass the release version:
 

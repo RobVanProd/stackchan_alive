@@ -131,7 +131,9 @@ $releaseTools = @(
   "tools/verify_preview_media.cmd",
   "tools/verify_preview_media.ps1",
   "tools/verify_release_package.cmd",
-  "tools/verify_release_package.ps1"
+  "tools/verify_release_package.ps1",
+  "tools/verify_share_release.cmd",
+  "tools/verify_share_release.ps1"
 )
 
 foreach ($file in $releaseTools) {
@@ -429,7 +431,9 @@ $manifest = [ordered]@{
     "tools/verify_preview_media.cmd",
     "tools/verify_preview_media.ps1",
     "tools/verify_release_package.cmd",
-    "tools/verify_release_package.ps1"
+    "tools/verify_release_package.ps1",
+    "tools/verify_share_release.cmd",
+    "tools/verify_share_release.ps1"
   )
   provenanceFiles = @(
     "provenance/platformio.ini",

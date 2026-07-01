@@ -99,6 +99,7 @@ If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for rem
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
 From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes.
+Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending the URL; it checks the handoff page plus the preview PNG, MP4, GIF, and ZIP over HTTP.
 Run `output/share/<version>/STOP_SHARING.cmd` or `tools/stop_share.cmd -Version <version>` to stop the local server and tunnel.
 
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.

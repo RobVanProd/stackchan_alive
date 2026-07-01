@@ -88,6 +88,11 @@ Stage a local handoff page for the ZIP, image, and video, optionally with a Clou
 When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL and writes it to `output\share\<version>\PUBLIC_URL.txt`. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
 From an extracted release package, `.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared` infers the release version from `release_manifest.json`.
 The share folder also includes `share_status.json` and `STOP_SHARING.cmd` for stopping the local server and tunnel.
+Verify the active local or Cloudflare share before sending it:
+
+```powershell
+.\tools\verify_share_release.cmd -Version <version> -RequirePublicUrl
+```
 
 Start a device-arrival evidence packet:
 
