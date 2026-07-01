@@ -48,6 +48,7 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.png"); Name = "stackchan_alive_preview.png" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.mp4"); Name = "stackchan_alive_preview.mp4" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.gif"); Name = "stackchan_alive_preview.gif" },
+  @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
   @{ Source = (Join-Path $packageRoot "SHA256SUMS.txt"); Name = "SHA256SUMS.txt" }
 )
@@ -94,6 +95,7 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     <div class="item"><a href="stackchan_alive_preview.png">Preview PNG</a></div>
     <div class="item"><a href="stackchan_alive_preview.mp4">Preview MP4</a></div>
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
+    <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
     <div class="item"><a href="SHA256SUMS.txt">SHA256 Checksums</a></div>
   </div>

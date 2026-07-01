@@ -107,6 +107,8 @@ If you only have the extracted release ZIP, run the same helper from inside the 
 .\tools\prepare_device_arrival.cmd -Port COM3
 ```
 
+Release ZIPs include `QUICKSTART.md` at the package root with the arrival-day operator flow.
+
 Verify the completed hardware evidence before promotion:
 
 ```powershell

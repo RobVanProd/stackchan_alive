@@ -92,6 +92,7 @@ foreach ($file in $mediaFiles) {
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/RELEASE_QUICKSTART.md" -Destination (Join-Path $outDir "QUICKSTART.md")
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir

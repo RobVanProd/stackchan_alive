@@ -88,6 +88,7 @@ function Assert-Bytes {
 $requiredFiles = @(
   "DEPENDENCIES.md",
   "dependency_lock.json",
+  "QUICKSTART.md",
   "RELEASE_NOTES.md",
   "SHA256SUMS.txt",
   "release_manifest.json",
@@ -136,6 +137,13 @@ $requiredFiles = @(
 
 foreach ($file in $requiredFiles) {
   Assert-File $file
+}
+
+$quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
+foreach ($pattern in @("prepare_device_arrival.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "-ConfirmServoRisk", "Hardware validation is still required")) {
+  if ($quickstartText -notmatch [regex]::Escape($pattern)) {
+    throw "QUICKSTART.md missing required guidance: $pattern"
+  }
 }
 
 Assert-File "firmware/display_only/firmware.bin" 100000
