@@ -120,6 +120,22 @@ void test_sleep_mode_closes_eyes_and_mouth() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, face.mouthOpen);
 }
 
+void test_expression_mapper_sets_brow_tilt_direction() {
+  ExpressionMapper mapper;
+  EmotionalProfile emotion;
+  emotion.valence = -0.8f;
+  emotion.arousal = 0.1f;
+
+  FaceTargets worried = mapper.map(emotion, CharacterMode::Think);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.0f, worried.browTilt);
+
+  emotion.valence = 0.4f;
+  emotion.arousal = 0.8f;
+
+  FaceTargets focused = mapper.map(emotion, CharacterMode::Idle);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, focused.browTilt);
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -195,6 +211,7 @@ int main() {
   RUN_TEST(test_mood_decay_returns_toward_baseline);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
+  RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

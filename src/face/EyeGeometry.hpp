@@ -11,6 +11,7 @@ struct EyeGeometry {
   float lowerLid = 0.0f;
   float pupilX = 0.0f;
   float pupilY = 0.0f;
+  float browTilt = 0.0f;
   float squint = 0.0f;
   float smile = 0.0f;
 };

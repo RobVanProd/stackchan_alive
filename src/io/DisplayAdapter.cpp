@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <M5Unified.h>
+#include <math.h>
 
 namespace {
 
@@ -25,7 +26,6 @@ bool DisplayAdapter::begin() {
   M5.Display.fillScreen(kBg);
   M5.Display.setTextColor(kAccent, kBg);
   M5.Display.setTextDatum(middle_center);
-  M5.Display.drawString("Stackchan Alive", 160, 220);
   begun_ = true;
   Serial.println(F("[display] M5 display renderer ready"));
   return true;
@@ -58,17 +58,34 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
   M5.Display.fillEllipse(pupilX, pupilY, pupilRx, pupilRy, kPupil);
   M5.Display.fillCircle(pupilX - pupilRx / 2, pupilY - pupilRy / 2, max<int32_t>(1, pupilRx / 3), kEye);
 
-  if (eye.smile > 0.05f) {
-    const int32_t lidY = roundToInt(eye.cy + eye.height * 0.34f - eye.smile * 6.0f);
-    M5.Display.fillRect(x, lidY, w, max<int32_t>(2, roundToInt(eye.smile * 12.0f)), kBg);
-    M5.Display.drawArc(roundToInt(eye.cx), lidY, w / 3, w / 3 + 2, 10, 170, kAccent);
+  const int32_t upperCoverage = constrain(roundToInt(eye.upperLid), 0, h);
+  if (upperCoverage > 0) {
+    M5.Display.fillRect(x, y, w, upperCoverage, kBg);
+    if (upperCoverage < h - 2) {
+      const int32_t lidY = y + upperCoverage;
+      M5.Display.drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
+    }
   }
 
-  if (eye.squint > 0.05f) {
-    const int32_t browY = roundToInt(eye.cy - eye.height * 0.78f);
-    const int32_t tilt = roundToInt((rightEye ? -1.0f : 1.0f) * eye.squint * 10.0f);
-    M5.Display.drawLine(x + 4, browY + tilt, x + w - 4, browY - tilt, kAccent);
-    M5.Display.drawLine(x + 4, browY + tilt + 1, x + w - 4, browY - tilt + 1, kAccent);
+  const int32_t lowerCoverage = constrain(roundToInt(eye.lowerLid), 0, h - upperCoverage);
+  if (lowerCoverage > 0) {
+    const int32_t lidY = y + h - lowerCoverage;
+    M5.Display.fillRect(x, lidY, w, lowerCoverage, kBg);
+    M5.Display.drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
+  }
+
+  if (fabsf(eye.browTilt) > 0.03f || eye.squint > 0.05f) {
+    const int32_t browY = roundToInt(eye.cy - eye.height * 0.72f);
+    const int32_t browHalf = max<int32_t>(16, w / 4);
+    const float tilt = constrain(eye.browTilt + eye.squint * 0.35f, -1.0f, 1.0f) * 9.0f;
+    const int32_t innerY = browY + roundToInt(tilt);
+    const int32_t outerY = browY - roundToInt(tilt);
+    const int32_t x1 = roundToInt(eye.cx - browHalf);
+    const int32_t x2 = roundToInt(eye.cx + browHalf);
+    const int32_t y1 = rightEye ? innerY : outerY;
+    const int32_t y2 = rightEye ? outerY : innerY;
+    M5.Display.drawLine(x1, y1, x2, y2, kEye);
+    M5.Display.drawLine(x1, y1 + 1, x2, y2 + 1, kEye);
   }
 }
 
@@ -80,7 +97,9 @@ void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
   const int32_t cx = roundToInt(mouth.cx);
   const int32_t cy = roundToInt(mouth.cy);
   const int32_t half = roundToInt(mouth.width * 0.5f);
-  const int32_t curve = roundToInt(mouth.smile * 26.0f);
+  const float smileMagnitude = powf(fabsf(mouth.smile), 0.6f);
+  const float smileSign = mouth.smile < 0.0f ? -1.0f : 1.0f;
+  const int32_t curve = roundToInt(smileSign * smileMagnitude * 22.0f);
   const int32_t open = roundToInt(mouth.open * 18.0f);
 
   if (open > 3) {
@@ -97,6 +116,9 @@ void DisplayAdapter::flush() {
   if (!begun_) {
     return;
   }
+  M5.Display.setTextColor(kAccent, kBg);
+  M5.Display.setTextDatum(middle_center);
+  M5.Display.drawString("Stackchan Alive", 160, 220);
   M5.Display.waitDisplay();
   frameCount_++;
 }

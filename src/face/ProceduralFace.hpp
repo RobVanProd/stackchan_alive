@@ -28,8 +28,8 @@ class ProceduralFace {
   BlinkGenerator blink_;
   SaccadeGenerator saccade_;
 
-  EyeGeometry makeEye(const RobotFrame& frame, bool rightEye, float blinkRatio) const;
-  MouthGeometry makeMouth(const RobotFrame& frame) const;
+  EyeGeometry makeEye(const RobotFrame& frame, bool rightEye, float blinkRatio, float aliveYOffset) const;
+  MouthGeometry makeMouth(const RobotFrame& frame, float aliveYOffset) const;
 };
 
 }  // namespace stackchan

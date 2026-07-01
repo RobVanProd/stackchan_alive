@@ -59,6 +59,7 @@ def face_targets(t: float) -> dict[str, float]:
         "eye_smile": clamp(max(0.0, valence) * 0.55, 0.0, 1.0),
         "pupil_x": math.sin(t * 1.8) * (1.0 - focus) * 0.5,
         "pupil_y": pupil_y + math.sin(t * 1.2) * 0.08,
+        "brow_tilt": clamp(valence * 0.30 + arousal * 0.15, -1.0, 1.0),
         "mouth_smile": clamp(valence * 0.75, -1.0, 1.0),
         "mouth_open": mouth_open,
     }
@@ -70,7 +71,7 @@ def rounded_rect(draw: ImageDraw.ImageDraw, xy: tuple[int, int, int, int], radiu
 
 def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, float], right: bool) -> None:
     width = 70 - target["squint"] * 10
-    height = max(6, 56 * target["eye_open"])
+    height = 56
     x0 = int(cx - width / 2)
     y0 = int(cy - height / 2)
     x1 = int(cx + width / 2)
@@ -84,20 +85,36 @@ def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, 
     draw.ellipse((px - rx, py - ry, px + rx, py + ry), fill=PUPIL)
     draw.ellipse((px - rx, py - ry, px - rx // 3, py - ry // 3), fill=EYE)
 
-    if target["eye_smile"] > 0.05:
-        lid_y = int(cy + height * 0.34 - target["eye_smile"] * 6)
-        draw.rectangle((x0, lid_y, x1, lid_y + max(2, int(target["eye_smile"] * 12))), fill=BG)
-        draw.arc((int(cx - width / 3), lid_y - 12, int(cx + width / 3), lid_y + 12), 10, 170, fill=ACCENT, width=2)
+    upper_coverage = int((1.0 - clamp(target["eye_open"], 0.0, 1.0)) * height)
+    if upper_coverage > 0:
+        draw.rectangle((x0, y0, x1, y0 + upper_coverage), fill=BG)
+        if upper_coverage < height - 2:
+            lid_y = y0 + upper_coverage
+            draw.line((x0 + 4, lid_y, x1 - 4, lid_y), fill=ACCENT, width=1)
 
-    if target["squint"] > 0.05:
-        brow_y = int(cy - height * 0.78)
-        tilt = int(((-1 if right else 1) * target["squint"] * 10))
-        draw.line((x0 + 4, brow_y + tilt, x1 - 4, brow_y - tilt), fill=ACCENT, width=2)
+    lower_coverage = int(target["eye_smile"] * 10)
+    if lower_coverage > 0:
+        lid_y = y1 - lower_coverage
+        draw.rectangle((x0, lid_y, x1, y1), fill=BG)
+        draw.line((x0 + 4, lid_y, x1 - 4, lid_y), fill=ACCENT, width=1)
+
+    if abs(target["brow_tilt"]) > 0.03 or target["squint"] > 0.05:
+        brow_y = int(cy - height * 0.72)
+        brow_half = max(16, int(width / 4))
+        tilt = clamp(target["brow_tilt"] + target["squint"] * 0.35, -1.0, 1.0) * 9
+        inner_y = brow_y + int(tilt)
+        outer_y = brow_y - int(tilt)
+        x_left = int(cx - brow_half)
+        x_right = int(cx + brow_half)
+        y_left = inner_y if right else outer_y
+        y_right = outer_y if right else inner_y
+        draw.line((x_left, y_left, x_right, y_right), fill=EYE, width=2)
 
 
 def draw_mouth(draw: ImageDraw.ImageDraw, target: dict[str, float]) -> None:
-    cx, cy, width = 160, 172, 64
-    curve = int(target["mouth_smile"] * 26)
+    cx, cy, width = 160, target.get("mouth_y", 172), 64
+    smile = target["mouth_smile"]
+    curve = int((1 if smile >= 0 else -1) * (abs(smile) ** 0.6) * 22)
     open_px = int(target["mouth_open"] * 18)
     if open_px > 3:
         draw.ellipse((cx - width // 4, cy - open_px // 2, cx + width // 4, cy + open_px), fill=MOUTH)
@@ -117,8 +134,10 @@ def render_frame(t: float) -> Image.Image:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
     target = face_targets(t)
-    draw_eye(draw, 106, 104, target, False)
-    draw_eye(draw, 214, 104, target, True)
+    alive_y = math.sin(t * 2.0) * 2
+    draw_eye(draw, 106, 104 + alive_y, target, False)
+    draw_eye(draw, 214, 104 + alive_y, target, True)
+    target = {**target, "mouth_y": 172 + alive_y}
     draw_mouth(draw, target)
     draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
