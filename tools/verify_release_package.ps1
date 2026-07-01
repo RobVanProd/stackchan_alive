@@ -134,6 +134,8 @@ $requiredFiles = @(
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
   "tools/export_github_actions_status.ps1",
+  "tools/setup_voice_tools.cmd",
+  "tools/setup_voice_tools.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
   "tools/verify_voice_samples.cmd",
@@ -260,6 +262,13 @@ $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/e
 foreach ($pattern in @("stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
+  }
+}
+
+$voiceToolsSetupText = Get-Content -LiteralPath (Join-PackagePath "tools/setup_voice_tools.ps1") -Raw
+foreach ($pattern in @("eSpeak-NG.eSpeak-NG", "ChrisBagwell.SoX", "ContinueOnInstallFailure", "RenderEspeakSamples", "render_voice_samples.ps1", "-Engine espeak", "verify_voice_samples.ps1", "stackchan.voice-tools-status.v1", "installFailures")) {
+  if ($voiceToolsSetupText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/setup_voice_tools.ps1 missing required lightweight voice setup logic: $pattern"
   }
 }
 

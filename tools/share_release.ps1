@@ -447,6 +447,7 @@ $gitResolvedWithoutShaCount = @($dependencyLock.dependencyAudit.gitResolvedWitho
 
   <h2>Voice Source Gate</h2>
   <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
+  <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v2 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
   <div class="status">
     <span class="pill pending">Voice source: pending production source</span>
     <span class="pill pending">Rollout gate: licensed or owned production voice required</span>

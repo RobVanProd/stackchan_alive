@@ -63,6 +63,15 @@ Use these as seed material for tests, prompts, and future recording sessions:
 4. Tune effects before training a custom model, because a strong effect chain may avoid model training entirely.
 5. If training is still useful, train toward the Stackchan Spark profile, not toward any named character.
 
+## Lightweight Engine Direction
+
+Prefer a tiny formant-capable source before considering larger model training:
+
+- eSpeak-NG is the preferred lightweight audition source for the classic synthetic/formant character.
+- Piper remains a good future neural base if a licensed/owned voice is needed, but it still needs the Stackchan Spark Synth DSP to avoid a generic assistant sound.
+- `tools/setup_voice_tools.cmd` checks for eSpeak-NG and SoX. Use `.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples` on a Windows dev box to install eSpeak-NG with winget, render the formant-source samples, and run voice QA. If Windows Installer is busy or the MSI fails, reboot or clear stale installer processes and retry; `-ContinueOnInstallFailure` records a machine-readable failure without masking it.
+- The built-in renderer remains deterministic and does not require SoX; SoX is optional for external audition experiments.
+
 ## Runtime Direction
 
 Initial firmware should treat speech as an output adapter, similar to display and motion:

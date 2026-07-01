@@ -33,6 +33,14 @@ Voice review samples are verified as part of the package gate. To check only the
 .\tools\verify_voice_samples.cmd
 ```
 
+To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
+
+```powershell
+.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples
+```
+
+If Windows Installer is busy or eSpeak-NG's MSI fails, rerun with `-ContinueOnInstallFailure` to capture a machine-readable setup status without changing the current review WAVs.
+
 The package verifier rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence. Known upstream transitive declarations, such as the current `stackchan-arduino` `SCServo` Git dependency, must be recorded in `dependency_lock.json` instead of being hidden in console output.
 
 Dry-run the release-binary flasher before connecting hardware:

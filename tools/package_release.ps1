@@ -144,6 +144,8 @@ $releaseTools = @(
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
   "tools/export_github_actions_status.ps1",
+  "tools/setup_voice_tools.cmd",
+  "tools/setup_voice_tools.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
   "tools/verify_voice_samples.cmd",
