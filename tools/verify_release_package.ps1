@@ -109,6 +109,8 @@ $requiredFiles = @(
   "data/calibration.yaml",
   "data/voice_persona.yaml",
   "data/voice_source_provenance.yaml",
+  "data/voice_rvc_base.yaml",
+  "data/voice_rvc_base_metadata.json",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -188,6 +190,8 @@ $requiredFiles = @(
   "tools/verify_face_phase_d.ps1",
   "tools/verify_face_phase_e.cmd",
   "tools/verify_face_phase_e.ps1",
+  "tools/verify_rvc_voice_base.cmd",
+  "tools/verify_rvc_voice_base.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
@@ -220,7 +224,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "RUN_PACKAGE_VERIFY.cmd"
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
@@ -433,6 +437,14 @@ if ($manifest.voiceSourceProvenanceTemplate -ne "docs/VOICE_SOURCE_PROVENANCE_TE
 
 if ($manifest.voiceSourceProvenance -ne "data/voice_source_provenance.yaml") {
   throw "Manifest voiceSourceProvenance mismatch: $($manifest.voiceSourceProvenance)"
+}
+
+if ($manifest.voiceRvcBase -ne "data/voice_rvc_base.yaml") {
+  throw "Manifest voiceRvcBase mismatch: $($manifest.voiceRvcBase)"
+}
+
+if ($manifest.voiceRvcBaseMetadata -ne "data/voice_rvc_base_metadata.json") {
+  throw "Manifest voiceRvcBaseMetadata mismatch: $($manifest.voiceRvcBaseMetadata)"
 }
 
 $expectedMediaArtifacts = @(
@@ -676,11 +688,13 @@ foreach ($pattern in @("Voice Source Provenance Template", "pending production v
 }
 
 $voiceSourceProvenance = Get-Content -LiteralPath (Join-PackagePath "data/voice_source_provenance.yaml") -Raw
-foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: pending-production-source", "review-only", "required-before-consumer-rollout", "soundboard clips", "RVC character models", "hardware_evidence_verification_pass", "blocked-pending-licensed-or-owned-production-voice-source")) {
+foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: pending-production-source", "review-only", "required-before-consumer-rollout", "soundboard clips", "RVC character models", "rvc_candidate_base", "candidate-pending-rights-review", "voice_rvc_base.yaml", "hardware_evidence_verification_pass", "blocked-pending-licensed-or-owned-production-voice-source")) {
   if ($voiceSourceProvenance -notmatch [regex]::Escape($pattern)) {
     throw "voice_source_provenance.yaml missing expected policy: $pattern"
   }
 }
+
+& (Join-PackagePath "tools/verify_rvc_voice_base.ps1") -ManifestPath (Join-PackagePath "data/voice_rvc_base.yaml") -MetadataPath (Join-PackagePath "data/voice_rvc_base_metadata.json")
 
 $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.json") -Raw | ConvertFrom-Json
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {

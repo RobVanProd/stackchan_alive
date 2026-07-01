@@ -12,6 +12,29 @@ prototype_samples:
   not_approved_for:
     - consumer rollout
     - production voice-source approval
+rvc_candidate_base:
+  status: candidate-pending-rights-review
+  manifest: data/voice_rvc_base.yaml
+  metadata: data/voice_rvc_base_metadata.json
+  provider: Weights.gg
+  drive_file_id: 1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb
+  weights_model_id: clyaxlb9b000eoiqywl68wcrc
+  title: joh
+  author: triceratops
+  archive_sha256: CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE
+  allowed_use:
+    - internal voice-conversion audition
+    - device-speaker character check after local conversion
+  not_approved_for:
+    - consumer rollout
+    - production voice-source approval
+    - bundled release distribution
+  required_before_consumer_rollout:
+    - rights_owner_or_consent_contact
+    - license_or_consent_evidence
+    - training_source_attestation
+    - commercial_device_use_allowed
+    - generated_prompt_distribution_allowed
 production_source:
   provider: TBD
   owner_or_consent_contact: TBD

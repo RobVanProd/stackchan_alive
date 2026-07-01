@@ -349,6 +349,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "dependency_lock.json"); Name = "dependency_lock.json" },
   @{ Source = (Join-Path $packageRoot "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"); Name = "VOICE_SOURCE_PROVENANCE_TEMPLATE.md" },
   @{ Source = (Join-Path $packageRoot "data/voice_source_provenance.yaml"); Name = "voice_source_provenance.yaml" },
+  @{ Source = (Join-Path $packageRoot "data/voice_rvc_base.yaml"); Name = "voice_rvc_base.yaml" },
+  @{ Source = (Join-Path $packageRoot "data/voice_rvc_base_metadata.json"); Name = "voice_rvc_base_metadata.json" },
   @{ Source = (Join-Path $packageRoot "READINESS_REPORT.md"); Name = "READINESS_REPORT.md" },
   @{ Source = (Join-Path $packageRoot "readiness_report.json"); Name = "readiness_report.json" },
   @{ Source = (Join-Path $packageRoot "SHA256SUMS.txt"); Name = "SHA256SUMS.txt" }
@@ -582,6 +584,21 @@ $promotionGateItems
     <span class="pill pending">Speaker evidence: pending device</span>
   </div>
 
+  <h2>RVC Candidate Base</h2>
+  <p>The selected audition base is the Drive/Weights.gg RVC archive <code>stackchan voice - Weights.gg Model.zip</code>. It is tracked as <code>candidate-pending-rights-review</code> for internal voice-conversion auditions only; it is not bundled in the release ZIP and is not consumer-approved.</p>
+  <p>Checked by <code>tools/verify_rvc_voice_base.ps1</code> for manifest markers and, when the local archive is present, ZIP size, SHA256, entries, and embedded metadata.</p>
+  <ul class="checklist">
+    <li>Drive file ID: <code>1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb</code></li>
+    <li>Weights.gg model: <code>clyaxlb9b000eoiqywl68wcrc</code>; title <code>joh</code>; author metadata <code>triceratops</code>.</li>
+    <li>ZIP SHA256: <code>CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE</code></li>
+    <li>Consumer rollout remains blocked until license, consent, training-source, commercial-device-use, and generated-prompt distribution evidence are recorded.</li>
+  </ul>
+  <div class="status">
+    <span class="pill pending">RVC base: candidate-pending-rights-review</span>
+    <span class="pill pending">Rights review: pending</span>
+    <span class="pill pending">Model ZIP: not bundled</span>
+  </div>
+
   <h2>Hardware Audio Evidence</h2>
   <p>When the device arrives, the evidence packet now includes <code>AUDIO_REVIEW.md</code> and an <code>audio/</code> folder. Record at least one real-device speaker sample and mark the audio review fields with concrete pass/fail values before running promotion checks.</p>
   <ul class="checklist">
@@ -613,6 +630,8 @@ $promotionGateItems
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
+    <div class="item"><a href="voice_rvc_base.yaml">RVC Candidate Base YAML</a></div>
+    <div class="item"><a href="voice_rvc_base_metadata.json">RVC Candidate Metadata JSON</a></div>
     <div class="item"><a href="ARRIVAL_DAY_RUNBOOK.md">Arrival-Day Runbook</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
     <div class="item"><a href="RELEASE_ACCEPTANCE.md">Release Acceptance Checklist</a></div>

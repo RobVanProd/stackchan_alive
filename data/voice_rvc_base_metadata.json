@@ -1,0 +1,53 @@
+{
+  "title": "joh",
+  "author": {
+    "name": "triceratops",
+    "discordUserId": null
+  },
+  "md5": "d78aa32e820924834ea6fcf0cfb64127",
+  "uploadedAt": "2024-07-07T02:25:28.895Z",
+  "weightsLink": "https://www.weights.gg/models/clyaxlb9b000eoiqywl68wcrc",
+  "id": "clyaxlb9b000eoiqywl68wcrc",
+  "type": "v2",
+  "description": "joh",
+  "files": [
+    {
+      "name": "model.index",
+      "size": 99428699,
+      "md5": "88c03d56d4f4cb440b19607f24fd83df"
+    },
+    {
+      "name": "model.pth",
+      "size": 57577722,
+      "md5": "d78aa32e820924834ea6fcf0cfb64127"
+    }
+  ],
+  "torchMetadata": {
+    "config": {
+      "spec_channels": 1025,
+      "segment_size": 32,
+      "inter_channels": 192,
+      "hidden_channels": 192,
+      "filter_channels": 768,
+      "n_heads": 2,
+      "n_layers": 6,
+      "kernel_size": 3,
+      "p_dropout": 0,
+      "resblock": "1",
+      "upsample_rates": [12, 10, 2, 2],
+      "upsample_initial_channel": 512,
+      "spk_embed_dim": 109,
+      "gin_channels": 256,
+      "sr": 48000
+    },
+    "f0": 1,
+    "version": "v2",
+    "epochs": 80,
+    "step": 1920,
+    "creation_date": "2024-07-07T02:24:56.717324",
+    "model_hash": "77ff0ba1dad6d12030028f8e0c24adc68280b41196aa38ba72173cebb52009fd"
+  },
+  "url": "https://models.weights.gg/cly75npwt0p29jxx6l607xdit.zip",
+  "epochs": 80,
+  "originalFileList": ["model.index", "model.pth"]
+}

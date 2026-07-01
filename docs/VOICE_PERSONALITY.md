@@ -73,6 +73,12 @@ Prefer a tiny formant-capable source before considering larger model training:
 - `tools/setup_voice_tools.cmd` checks for eSpeak-NG and SoX. Use `.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples` on a Windows dev box to install eSpeak-NG with winget, render the formant-source samples, and run voice QA. If Windows Installer is busy or the MSI fails, reboot or clear stale installer processes and retry; `-ContinueOnInstallFailure` records a machine-readable failure without masking it.
 - The built-in renderer remains deterministic and does not require SoX; SoX is optional for external audition experiments.
 
+## RVC Candidate Base
+
+The selected audition base is recorded in `data/voice_rvc_base.yaml` as an RVC conversion candidate from the Drive file `stackchan voice - Weights.gg Model.zip` / Weights.gg model `clyaxlb9b000eoiqywl68wcrc`. It is useful for checking whether this voice direction feels closer to the desired bright synthetic robot character.
+
+This is not a production approval. The model title is `joh`, the author metadata is `triceratops`, and the current record does not include license, consent, training-source, or commercial-device-use evidence. Keep it behind the review gate until the rights owner and permitted uses are verified, then pair any generated audition with the Stackchan Spark Synth DSP and real-device speaker evidence.
+
 ## Runtime Direction
 
 Initial firmware should treat speech as an output adapter, similar to display and motion:

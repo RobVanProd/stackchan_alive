@@ -156,6 +156,8 @@ Copy-Item -LiteralPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -Destination $
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
+Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
+Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
 
 $releaseTools = @(
   "tools/flash_device.cmd",
@@ -209,6 +211,8 @@ $releaseTools = @(
   "tools/verify_face_phase_d.ps1",
   "tools/verify_face_phase_e.cmd",
   "tools/verify_face_phase_e.ps1",
+  "tools/verify_rvc_voice_base.cmd",
+  "tools/verify_rvc_voice_base.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
@@ -492,6 +496,8 @@ $manifest = [ordered]@{
   voicePersona = "data/voice_persona.yaml"
   voiceSourceProvenanceTemplate = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
   voiceSourceProvenance = "data/voice_source_provenance.yaml"
+  voiceRvcBase = "data/voice_rvc_base.yaml"
+  voiceRvcBaseMetadata = "data/voice_rvc_base_metadata.json"
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
@@ -560,6 +566,8 @@ $manifest = [ordered]@{
     "tools/verify_face_phase_d.ps1",
     "tools/verify_face_phase_e.cmd",
     "tools/verify_face_phase_e.ps1",
+    "tools/verify_rvc_voice_base.cmd",
+    "tools/verify_rvc_voice_base.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1",
     "tools/verify_share_release.cmd",

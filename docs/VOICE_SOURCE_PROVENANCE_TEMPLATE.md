@@ -7,8 +7,24 @@ This template records the final production voice source for Stackchan Spark. The
 - Status: pending production voice source
 - Prototype renderer: `tools/render_voice_samples.ps1`
 - Prototype source: local Windows SpeechSynthesizer voice plus deterministic robot effect chain
+- RVC candidate base: review-only candidate recorded in `data/voice_rvc_base.yaml`; not approved for bundled release distribution or consumer rollout without rights evidence
 - Prototype use: voice direction review and device-audio audition only
 - Consumer rollout: blocked until the production source and real-device speaker check are recorded
+
+## RVC Candidate Review Record
+
+- Candidate model name or title:
+- Provider:
+- Model ID or URL:
+- Archive SHA256:
+- Rights owner or consent contact:
+- License, consent, or terms evidence path:
+- Training-source attestation path:
+- Commercial/device use allowed:
+- Distribution of converted prompts allowed:
+- Reviewer:
+- Review date:
+- Decision:
 
 ## Production Source Record
 
