@@ -42,6 +42,13 @@ Create an auditable prerelease package:
 ```
 
 The package includes firmware binaries, preview media, docs, checksums, dependency provenance, and copied build inputs.
+By default the package command refuses to run from a dirty worktree so the manifest commit matches the contents.
+
+Verify the package before sharing or publishing:
+
+```powershell
+.\tools\verify_release_package.cmd -Version v0.1.2-device-ready -ZipPath output\release\stackchan_alive_v0.1.2-device-ready.zip
+```
 
 ## Preview Media
 

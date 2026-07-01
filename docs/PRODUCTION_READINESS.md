@@ -8,6 +8,8 @@ Current status: device-ready scaffold, not hardware-certified.
 - Display-only and servo-calibration firmware variants are separate PlatformIO environments.
 - Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
 - Release packages include dependency provenance and copied build inputs.
+- Release packages are verified before publication in GitHub Actions.
+- Release packaging refuses dirty worktrees by default.
 - GitHub Actions builds firmware on push and pull request.
 - Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.

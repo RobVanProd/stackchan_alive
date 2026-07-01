@@ -37,6 +37,10 @@ jobs:
         shell: pwsh
         run: ./tools/package_release.ps1 -Version "${{ github.ref_name }}" -SkipBuild
 
+      - name: Verify release package
+        shell: pwsh
+        run: ./tools/verify_release_package.ps1 -Version "${{ github.ref_name }}" -ZipPath "output/release/stackchan_alive_${{ github.ref_name }}.zip" -ExpectedCommit "${{ github.sha }}"
+
       - name: Create GitHub release
         shell: pwsh
         env:

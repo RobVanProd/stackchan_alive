@@ -1,6 +1,7 @@
 param(
   [string]$Version,
-  [switch]$SkipBuild
+  [switch]$SkipBuild,
+  [switch]$AllowDirty
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,11 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 if (-not $SkipBuild) {
   platformio run -e stackchan -e stackchan_servo_calibration
   python tools/render_preview.py
+}
+
+$dirtyFiles = @(git status --porcelain)
+if ($dirtyFiles.Count -gt 0 -and -not $AllowDirty) {
+  throw "Refusing to package a dirty worktree. Commit or discard changes first, or pass -AllowDirty for local diagnostic packages."
 }
 
 $commit = (git rev-parse HEAD).Trim()
@@ -151,6 +157,8 @@ $manifest = [ordered]@{
   includedEnvironments = @("stackchan", "stackchan_servo_calibration")
   servoDefault = "display-only build disables servos; calibration build enables servos"
   status = "device-ready prerelease; hardware validation pending"
+  dirty = ($dirtyFiles.Count -gt 0)
+  dirtyFiles = @($dirtyFiles)
   dependencyReport = "DEPENDENCIES.md"
   provenanceFiles = @(
     "provenance/platformio.ini",
