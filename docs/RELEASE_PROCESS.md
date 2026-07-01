@@ -18,6 +18,8 @@ Before flashing or publishing, run the no-hardware preflight:
 .\tools\run_device_preflight.cmd
 ```
 
+The preflight also checks that servo-calibration flashing is blocked unless `-ConfirmServoRisk` is present and that dry-run upload commands render correctly.
+
 Verify the package before sharing it:
 
 ```powershell

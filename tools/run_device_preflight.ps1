@@ -91,6 +91,75 @@ function Assert-DependencyPins {
   }
 }
 
+function Invoke-ToolText {
+  param([string[]]$Arguments)
+
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File @Arguments 2>&1
+    $exitCode = $LASTEXITCODE
+    return [ordered]@{
+      ExitCode = $exitCode
+      Text = ($output | Out-String)
+    }
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+}
+
+function Assert-TextContains {
+  param(
+    [string]$Text,
+    [string]$Expected
+  )
+
+  if ($Text -notmatch [regex]::Escape($Expected)) {
+    throw "Expected command output to contain '$Expected'. Output:$([Environment]::NewLine)$Text"
+  }
+}
+
+function Assert-FlashHelperSafety {
+  $flashScript = Join-Path $PSScriptRoot "flash_device.ps1"
+
+  $blockedServo = Invoke-ToolText @(
+    $flashScript,
+    "-Environment", "stackchan_servo_calibration",
+    "-DryRun"
+  )
+  if ($blockedServo.ExitCode -eq 0) {
+    throw "Servo calibration dry-run succeeded without -ConfirmServoRisk"
+  }
+  Assert-TextContains $blockedServo.Text "without -ConfirmServoRisk"
+
+  $servoDryRun = Invoke-ToolText @(
+    $flashScript,
+    "-Environment", "stackchan_servo_calibration",
+    "-ConfirmServoRisk",
+    "-DryRun",
+    "-Monitor",
+    "-Port", "COM_TEST"
+  )
+  if ($servoDryRun.ExitCode -ne 0) {
+    throw "Servo calibration dry-run failed unexpectedly:$([Environment]::NewLine)$($servoDryRun.Text)"
+  }
+  Assert-TextContains $servoDryRun.Text "Dry run: platformio run -e stackchan_servo_calibration --target upload --upload-port COM_TEST"
+  Assert-TextContains $servoDryRun.Text "Dry run: platformio device monitor -e stackchan_servo_calibration --baud 115200 --port COM_TEST"
+
+  $displayDryRun = Invoke-ToolText @(
+    $flashScript,
+    "-Environment", "stackchan",
+    "-DryRun",
+    "-Monitor",
+    "-Port", "COM_TEST"
+  )
+  if ($displayDryRun.ExitCode -ne 0) {
+    throw "Display-only dry-run failed unexpectedly:$([Environment]::NewLine)$($displayDryRun.Text)"
+  }
+  Assert-TextContains $displayDryRun.Text "Dry run: platformio run -e stackchan --target upload --upload-port COM_TEST"
+  Assert-TextContains $displayDryRun.Text "Dry run: platformio device monitor -e stackchan --baud 115200 --port COM_TEST"
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -113,6 +182,10 @@ Invoke-Step "Check required commands" {
 Invoke-Step "Check source tree and dependency pins" {
   Assert-CleanSourceTree
   Assert-DependencyPins
+}
+
+Invoke-Step "Check flash helper safety gates" {
+  Assert-FlashHelperSafety
 }
 
 Invoke-Step "Run native logic tests" {
