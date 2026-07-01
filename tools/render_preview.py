@@ -10,6 +10,8 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "media"
 OUT.mkdir(parents=True, exist_ok=True)
+FACE_ARTIFACTS = ROOT / "artifacts" / "face"
+FACE_ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
 WIDTH = 320
 HEIGHT = 240
@@ -144,18 +146,20 @@ def render_frame(t: float) -> Image.Image:
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
 
 
-def render_pose(label: str, target: dict[str, float]) -> Image.Image:
+def render_pose(label: str, target: dict[str, float], *, show_label: bool = True, show_brand: bool = True) -> Image.Image:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
     draw_eye(draw, 106, 104, target, False)
     draw_eye(draw, 214, 104, target, True)
     draw_mouth(draw, target)
-    draw.text((12, 14), label, fill=ACCENT, anchor="lm")
-    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    if show_label:
+        draw.text((12, 14), label, fill=ACCENT, anchor="lm")
+    if show_brand:
+        draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
     return img
 
 
-def render_expression_sheet() -> Image.Image:
+def render_expression_sheet(*, show_labels: bool = True, show_brand: bool = True) -> Image.Image:
     poses = [
         ("Idle", {
             "eye_open": 0.84,
@@ -223,18 +227,29 @@ def render_expression_sheet() -> Image.Image:
     for index, (label, target) in enumerate(poses):
         x = (index % 3) * WIDTH
         y = (index // 3) * HEIGHT
-        sheet.paste(render_pose(label, target), (x, y))
+        sheet.paste(render_pose(label, target, show_label=show_labels, show_brand=show_brand), (x, y))
     return sheet
+
+
+def render_filmstrip(start_t: float, frames: int, step_s: float) -> Image.Image:
+    strip = Image.new("RGB", (WIDTH * frames, HEIGHT), BG)
+    for index in range(frames):
+        strip.paste(render_frame(start_t + index * step_s).resize((WIDTH, HEIGHT), Image.Resampling.NEAREST), (index * WIDTH, 0))
+    return strip
 
 
 def main() -> None:
     still = render_frame(2.7)
     still.save(OUT / "stackchan_alive_preview.png")
     render_expression_sheet().save(OUT / "stackchan_alive_expression_sheet.png")
+    render_expression_sheet(show_labels=False, show_brand=False).save(FACE_ARTIFACTS / "phase_a_unlabeled_expression_sheet.png")
+    render_filmstrip(2.85, 14, 0.05).save(FACE_ARTIFACTS / "phase_a_blink_filmstrip_50ms.png")
 
     fps = 30
     frames = [render_frame(i / fps) for i in range(fps * 6)]
     imageio.mimsave(OUT / "stackchan_alive_preview.gif", frames, fps=fps)
+    idle_frames = [render_frame(i / fps) for i in range(fps * 10)]
+    imageio.mimsave(FACE_ARTIFACTS / "phase_a_idle_10s.gif", idle_frames, fps=fps)
 
     try:
       imageio.mimsave(OUT / "stackchan_alive_preview.mp4", frames, fps=fps, quality=8)

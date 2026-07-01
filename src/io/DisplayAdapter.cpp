@@ -20,14 +20,47 @@ int32_t roundToInt(float value) {
 
 namespace stackchan {
 
+namespace detail {
+class FaceCanvas final : public M5Canvas {
+ public:
+  FaceCanvas() : M5Canvas(&M5.Display) {}
+};
+}  // namespace detail
+
+DisplayAdapter::DisplayAdapter() = default;
+
+DisplayAdapter::~DisplayAdapter() {
+  delete canvas_;
+}
+
 bool DisplayAdapter::begin() {
   M5.Display.setRotation(1);
   M5.Display.setBrightness(180);
   M5.Display.fillScreen(kBg);
   M5.Display.setTextColor(kAccent, kBg);
   M5.Display.setTextDatum(middle_center);
+
+  if (canvas_ == nullptr) {
+    canvas_ = new detail::FaceCanvas();
+  }
+  if (canvas_ == nullptr) {
+    Serial.println(F("[display] M5 canvas allocation failed"));
+    return false;
+  }
+  canvas_->setColorDepth(16);
+  canvas_->setPsram(true);
+  if (canvas_->createSprite(320, 240) == nullptr) {
+    Serial.println(F("[display] M5 canvas sprite allocation failed"));
+    return false;
+  }
+  canvas_->setTextColor(kAccent, kBg);
+  canvas_->setTextDatum(middle_center);
+  canvas_->fillSprite(kBg);
+  canvas_->pushSprite(0, 0);
+
   begun_ = true;
-  Serial.println(F("[display] M5 display renderer ready"));
+  lastTelemetryMs_ = millis();
+  Serial.println(F("[display] M5 display renderer ready canvas=double-buffered"));
   return true;
 }
 
@@ -35,7 +68,8 @@ void DisplayAdapter::clear() {
   if (!begun_) {
     return;
   }
-  M5.Display.fillScreen(kBg);
+  frameStartUs_ = micros();
+  canvas_->fillSprite(kBg);
 }
 
 void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
@@ -49,29 +83,29 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
   const int32_t h = max<int32_t>(4, roundToInt(eye.height));
   const int32_t radius = min<int32_t>(18, h / 2);
 
-  M5.Display.fillRoundRect(x, y, w, h, radius, kEye);
+  canvas_->fillRoundRect(x, y, w, h, radius, kEye);
 
   const int32_t pupilRx = max<int32_t>(4, w / 10);
   const int32_t pupilRy = max<int32_t>(4, h / 5);
   const int32_t pupilX = roundToInt(eye.cx + eye.pupilX * eye.width * 0.22f);
   const int32_t pupilY = roundToInt(eye.cy + eye.pupilY * eye.height * 0.18f);
-  M5.Display.fillEllipse(pupilX, pupilY, pupilRx, pupilRy, kPupil);
-  M5.Display.fillCircle(pupilX - pupilRx / 2, pupilY - pupilRy / 2, max<int32_t>(1, pupilRx / 3), kEye);
+  canvas_->fillEllipse(pupilX, pupilY, pupilRx, pupilRy, kPupil);
+  canvas_->fillCircle(pupilX - pupilRx / 2, pupilY - pupilRy / 2, max<int32_t>(1, pupilRx / 3), kEye);
 
   const int32_t upperCoverage = constrain(roundToInt(eye.upperLid), 0, h);
   if (upperCoverage > 0) {
-    M5.Display.fillRect(x, y, w, upperCoverage, kBg);
+    canvas_->fillRect(x, y, w, upperCoverage, kBg);
     if (upperCoverage < h - 2) {
       const int32_t lidY = y + upperCoverage;
-      M5.Display.drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
+      canvas_->drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
     }
   }
 
   const int32_t lowerCoverage = constrain(roundToInt(eye.lowerLid), 0, h - upperCoverage);
   if (lowerCoverage > 0) {
     const int32_t lidY = y + h - lowerCoverage;
-    M5.Display.fillRect(x, lidY, w, lowerCoverage, kBg);
-    M5.Display.drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
+    canvas_->fillRect(x, lidY, w, lowerCoverage, kBg);
+    canvas_->drawLine(x + 4, lidY, x + w - 4, lidY, kAccent);
   }
 
   if (fabsf(eye.browTilt) > 0.03f || eye.squint > 0.05f) {
@@ -85,8 +119,8 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
     const int32_t x2 = roundToInt(eye.cx + browHalf);
     const int32_t y1 = rightEye ? innerY : outerY;
     const int32_t y2 = rightEye ? outerY : innerY;
-    M5.Display.drawLine(x1, y1, x2, y2, kEye);
-    M5.Display.drawLine(x1, y1 + 1, x2, y2 + 1, kEye);
+    canvas_->drawLine(x1, y1, x2, y2, kEye);
+    canvas_->drawLine(x1, y1 + 1, x2, y2 + 1, kEye);
   }
 }
 
@@ -104,24 +138,45 @@ void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
   const int32_t open = roundToInt(mouth.open * 18.0f);
 
   if (open > 3) {
-    M5.Display.fillEllipse(cx, cy + open / 3, half / 2, open, kMouth);
-    M5.Display.fillEllipse(cx, cy + open / 4, half / 3, max<int32_t>(2, open / 2), kBg);
+    canvas_->fillEllipse(cx, cy + open / 3, half / 2, open, kMouth);
+    canvas_->fillEllipse(cx, cy + open / 4, half / 3, max<int32_t>(2, open / 2), kBg);
     return;
   }
 
-  M5.Display.drawBezier(cx - half, cy, cx, cy + curve, cx + half, cy, kMouth);
-  M5.Display.drawBezier(cx - half, cy + 1, cx, cy + curve + 1, cx + half, cy + 1, kMouth);
+  canvas_->drawBezier(cx - half, cy, cx, cy + curve, cx + half, cy, kMouth);
+  canvas_->drawBezier(cx - half, cy + 1, cx, cy + curve + 1, cx + half, cy + 1, kMouth);
 }
 
 void DisplayAdapter::flush() {
   if (!begun_) {
     return;
   }
-  M5.Display.setTextColor(kAccent, kBg);
-  M5.Display.setTextDatum(middle_center);
-  M5.Display.drawString("Stackchan Alive", 160, 220);
+  canvas_->setTextColor(kAccent, kBg);
+  canvas_->setTextDatum(middle_center);
+  canvas_->drawString("Stackchan Alive", 160, 220);
+  canvas_->pushSprite(0, 0);
   M5.Display.waitDisplay();
   frameCount_++;
+
+  const uint32_t frameUs = micros() - frameStartUs_;
+  avgFrameUs_ = frameCount_ == 1 ? static_cast<float>(frameUs) : (avgFrameUs_ * 0.90f + static_cast<float>(frameUs) * 0.10f);
+  if (frameUs > maxFrameUs_) {
+    maxFrameUs_ = frameUs;
+  }
+
+  const uint32_t nowMs = millis();
+  if (nowMs - lastTelemetryMs_ >= 5000) {
+    lastTelemetryMs_ = nowMs;
+    const float avgMs = avgFrameUs_ / 1000.0f;
+    const float maxMs = static_cast<float>(maxFrameUs_) / 1000.0f;
+    Serial.print(F("[display] frame_ms_avg="));
+    Serial.print(avgMs, 2);
+    Serial.print(F(" frame_ms_max="));
+    Serial.print(maxMs, 2);
+    Serial.print(F(" fps_avg="));
+    Serial.println(avgMs > 0.0f ? 1000.0f / avgMs : 0.0f, 1);
+    maxFrameUs_ = 0;
+  }
 }
 
 }  // namespace stackchan

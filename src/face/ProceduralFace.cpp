@@ -20,11 +20,13 @@ void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {
   saccade_.update(nowMs, frame.emotion);
   const float blinkRatio = blink_.update(nowMs, frame.emotion);
   const float aliveYOffset = sinf(static_cast<float>(nowMs) * 0.002f) * 2.0f;
+  RobotFrame composed = frame;
+  composed.face = animator_.composeFrame(frame, nowMs);
 
   display_->clear();
-  display_->drawEye(makeEye(frame, false, blinkRatio, aliveYOffset), false);
-  display_->drawEye(makeEye(frame, true, blinkRatio, aliveYOffset), true);
-  display_->drawMouth(makeMouth(frame, aliveYOffset));
+  display_->drawEye(makeEye(composed, false, blinkRatio, aliveYOffset), false);
+  display_->drawEye(makeEye(composed, true, blinkRatio, aliveYOffset), true);
+  display_->drawMouth(makeMouth(composed, aliveYOffset));
   display_->flush();
 }
 

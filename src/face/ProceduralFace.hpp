@@ -1,6 +1,7 @@
 #pragma once
 
 #include "face/EyeGeometry.hpp"
+#include "face/FaceAnimator.hpp"
 #include "face/MouthGeometry.hpp"
 #include "motion/Blink.hpp"
 #include "motion/Saccade.hpp"
@@ -25,6 +26,7 @@ class ProceduralFace {
 
  private:
   IDisplay* display_ = nullptr;
+  FaceAnimator animator_;
   BlinkGenerator blink_;
   SaccadeGenerator saccade_;
 

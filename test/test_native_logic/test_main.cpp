@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "face/ExpressionMapper.hpp"
+#include "face/FaceAnimator.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "persona/EmotionModel.hpp"
@@ -137,6 +138,30 @@ void test_expression_mapper_sets_brow_tilt_direction() {
 
   FaceTargets focused = mapper.map(emotion, CharacterMode::Idle);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, focused.browTilt);
+}
+
+void test_face_animator_outback_overshoots_then_settles() {
+  const float mid = applyEase(Ease::OutBack, 0.60f);
+  const float end = applyEase(Ease::OutBack, 1.0f);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, mid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, end);
+}
+
+void test_face_animator_smooths_channels_with_independent_timing() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.face.eyeOpen = 0.2f;
+  frame.face.mouthOpen = 0.0f;
+  animator.composeFrame(frame, 0);
+
+  frame.face.eyeOpen = 1.0f;
+  frame.face.mouthOpen = 1.0f;
+  const FaceTargets firstStep = animator.composeFrame(frame, 40);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.2f, firstStep.eyeOpen);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, firstStep.mouthOpen);
+  TEST_ASSERT_GREATER_THAN_FLOAT(firstStep.mouthOpen, firstStep.eyeOpen - 0.2f);
 }
 
 void test_actuation_clamps_pitch_and_yaw_angle() {
@@ -274,6 +299,8 @@ int main() {
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
   RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);
+  RUN_TEST(test_face_animator_outback_overshoots_then_settles);
+  RUN_TEST(test_face_animator_smooths_channels_with_independent_timing);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

@@ -51,11 +51,12 @@ $firmwareDir = Join-Path $outDir "firmware"
 $displayFirmwareDir = Join-Path $firmwareDir "display_only"
 $servoFirmwareDir = Join-Path $firmwareDir "servo_calibration"
 $mediaDir = Join-Path $outDir "media"
+$faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
 $dataDir = Join-Path $outDir "data"
 $provenanceDir = Join-Path $outDir "provenance"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir, $dataDir, $provenanceDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $provenanceDir, $toolsDir | Out-Null
 
 function Copy-FirmwareSet {
   param(
@@ -105,6 +106,19 @@ foreach ($file in $mediaFiles) {
   Copy-Item -LiteralPath $file -Destination $mediaDir
 }
 
+$faceArtifactFiles = @(
+  "artifacts/face/phase_a_idle_10s.gif",
+  "artifacts/face/phase_a_blink_filmstrip_50ms.png",
+  "artifacts/face/phase_a_unlabeled_expression_sheet.png"
+)
+
+foreach ($file in $faceArtifactFiles) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing Phase A face artifact: $file"
+  }
+  Copy-Item -LiteralPath $file -Destination $faceArtifactDir
+}
+
 $voiceMediaDir = Join-Path $mediaDir "voice"
 New-Item -ItemType Directory -Force -Path $voiceMediaDir | Out-Null
 $voiceMediaFiles = @(
@@ -143,6 +157,7 @@ $releaseTools = @(
   "tools/flash_release_firmware.ps1",
   "tools/platformio_resolver.ps1",
   "tools/preview_python_resolver.ps1",
+  "tools/render_preview.py",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
@@ -177,6 +192,8 @@ $releaseTools = @(
   "tools/verify_architecture.ps1",
   "tools/verify_preview_media.cmd",
   "tools/verify_preview_media.ps1",
+  "tools/verify_face_phase_a.cmd",
+  "tools/verify_face_phase_a.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
@@ -465,6 +482,9 @@ $manifest = [ordered]@{
     "media/stackchan_alive_expression_sheet.png",
     "media/stackchan_alive_preview.mp4",
     "media/stackchan_alive_preview.gif",
+    "artifacts/face/phase_a_idle_10s.gif",
+    "artifacts/face/phase_a_blink_filmstrip_50ms.png",
+    "artifacts/face/phase_a_unlabeled_expression_sheet.png",
     "media/voice/stackchan_spark_greeting.wav",
     "media/voice/stackchan_spark_thinking.wav",
     "media/voice/stackchan_spark_safety.wav",
@@ -479,6 +499,7 @@ $manifest = [ordered]@{
     "tools/flash_release_firmware.ps1",
     "tools/platformio_resolver.ps1",
     "tools/preview_python_resolver.ps1",
+    "tools/render_preview.py",
     "tools/publish_release.cmd",
     "tools/publish_release.ps1",
     "tools/export_github_actions_status.cmd",
@@ -507,6 +528,8 @@ $manifest = [ordered]@{
     "tools/verify_architecture.ps1",
     "tools/verify_preview_media.cmd",
     "tools/verify_preview_media.ps1",
+    "tools/verify_face_phase_a.cmd",
+    "tools/verify_face_phase_a.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1",
     "tools/verify_share_release.cmd",
