@@ -46,9 +46,10 @@ $displayFirmwareDir = Join-Path $firmwareDir "display_only"
 $servoFirmwareDir = Join-Path $firmwareDir "servo_calibration"
 $mediaDir = Join-Path $outDir "media"
 $docsDir = Join-Path $outDir "docs"
+$dataDir = Join-Path $outDir "data"
 $provenanceDir = Join-Path $outDir "provenance"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir, $provenanceDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $docsDir, $dataDir, $provenanceDir, $toolsDir | Out-Null
 
 function Copy-FirmwareSet {
   param(
@@ -93,6 +94,7 @@ Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
+Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
 
 $releaseTools = @(
   "tools/flash_device.cmd",

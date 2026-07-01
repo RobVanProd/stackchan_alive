@@ -96,6 +96,7 @@ $requiredFiles = @(
   "docs/README.md",
   "docs/RELEASE_PROCESS.md",
   "docs/ROLLOUT_CHECKLIST.md",
+  "data/calibration.yaml",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -349,7 +350,7 @@ foreach ($line in $hashLines) {
 
 $packagedFiles = Get-ChildItem -LiteralPath $packageRootPath -File -Recurse |
   ForEach-Object { $_.FullName.Substring($packageRootPath.Length + 1).Replace("\", "/") } |
-  Where-Object { $_ -ne "SHA256SUMS.txt" }
+  Where-Object { $_ -ne "SHA256SUMS.txt" -and $_ -notlike "output/*" }
 
 foreach ($file in $packagedFiles) {
   if (-not $seen.ContainsKey($file)) {

@@ -108,13 +108,20 @@ if ($null -eq $metadata.package) {
     throw "metadata.json missing package proof. Recreate the packet with -PackageZip or pass -AllowMissingPackage for diagnostic-only evidence."
   }
 } else {
-  $copiedPackage = [string]$metadata.package.copiedFile
-  Assert-File $copiedPackage 100000
+  if ($metadata.package.packageRoot) {
+    $sourcePath = [string]$metadata.package.sourcePath
+    if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path -LiteralPath $sourcePath)) {
+      throw "metadata packageRoot sourcePath is missing or no longer exists"
+    }
+  } else {
+    $copiedPackage = [string]$metadata.package.copiedFile
+    Assert-File $copiedPackage 100000
 
-  $copiedPath = Join-EvidencePath $copiedPackage
-  $actualPackageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $copiedPath).Hash.ToLowerInvariant()
-  if ($actualPackageHash -ne [string]$metadata.package.sha256) {
-    throw "Copied package hash does not match metadata"
+    $copiedPath = Join-EvidencePath $copiedPackage
+    $actualPackageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $copiedPath).Hash.ToLowerInvariant()
+    if ($actualPackageHash -ne [string]$metadata.package.sha256) {
+      throw "Copied package hash does not match metadata"
+    }
   }
 
   Assert-File "logs/package_verify.log"

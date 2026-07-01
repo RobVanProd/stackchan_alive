@@ -1,6 +1,7 @@
 param(
   [string]$ReleaseTag = "",
   [string]$PackageZip = "",
+  [string]$PackageRoot = "",
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
@@ -12,17 +13,76 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+function Invoke-GitText {
+  param([string[]]$Arguments)
+
+  try {
+    $output = & git @Arguments 2>$null
+  } catch {
+    return ""
+  }
+  if ($LASTEXITCODE -ne 0) {
+    return ""
+  }
+  return ($output | Out-String).Trim()
+}
+
+function Get-ReleaseManifest {
+  param([string]$RootPath)
+
+  $manifestPath = Join-Path $RootPath "release_manifest.json"
+  if (-not (Test-Path -LiteralPath $manifestPath)) {
+    return $null
+  }
+
+  return Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+}
+
 function Quote-PowerShellArgument {
   param([string]$Value)
   return "'" + ($Value -replace "'", "''") + "'"
 }
 
+$rootManifest = Get-ReleaseManifest $repoRoot
+
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
-  $ReleaseTag = (git describe --tags --always --dirty).Trim()
+  if ($null -ne $rootManifest) {
+    $ReleaseTag = [string]$rootManifest.version
+  } else {
+    $ReleaseTag = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+  }
 }
 
-$commit = (git rev-parse HEAD).Trim()
-$branch = (git rev-parse --abbrev-ref HEAD).Trim()
+if ([string]::IsNullOrWhiteSpace($PackageRoot) -and [string]::IsNullOrWhiteSpace($PackageZip) -and $null -ne $rootManifest) {
+  $PackageRoot = $repoRoot
+}
+
+$packageRootManifest = $null
+if (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  if (-not (Test-Path -LiteralPath $PackageRoot)) {
+    throw "Missing package root: $PackageRoot"
+  }
+  $PackageRoot = (Resolve-Path $PackageRoot).Path
+  $packageRootManifest = Get-ReleaseManifest $PackageRoot
+}
+
+$commit = ""
+if ($null -ne $rootManifest) {
+  $commit = [string]$rootManifest.commit
+} elseif ($null -ne $packageRootManifest) {
+  $commit = [string]$packageRootManifest.commit
+}
+if ([string]::IsNullOrWhiteSpace($commit)) {
+  $commit = Invoke-GitText @("rev-parse", "HEAD")
+}
+if ([string]::IsNullOrWhiteSpace($commit)) {
+  throw "Could not determine release commit from git or package manifest."
+}
+
+$branch = Invoke-GitText @("rev-parse", "--abbrev-ref", "HEAD")
+if ([string]::IsNullOrWhiteSpace($branch)) {
+  $branch = "release-package"
+}
 $createdUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $safeTag = $ReleaseTag -replace '[^A-Za-z0-9_.-]', '_'
@@ -65,6 +125,37 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     $ReleaseTag,
     "-ZipPath",
     $packageItem.FullName,
+    "-ExpectedCommit",
+    $commit
+  )
+  if ($AllowDirtyPackage) {
+    $verifyArgs += "-AllowDirtyPackage"
+  }
+  $verifyOutput = & powershell.exe @verifyArgs 2>&1
+  $verifyExitCode = $LASTEXITCODE
+  $verifyOutput | Set-Content -Path $packageVerifyLog -Encoding UTF8
+  if ($verifyExitCode -ne 0) {
+    throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
+  }
+  $requiredLogs = @("logs/package_verify.log") + $requiredLogs
+} elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $packageRootItem = Get-Item -LiteralPath $PackageRoot
+  $packageInfo = [ordered]@{
+    sourcePath = $packageRootItem.FullName
+    packageRoot = $true
+  }
+
+  $packageVerifyLog = Join-Path $logsDir "package_verify.log"
+  $verifyArgs = @(
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+    "-Version",
+    $ReleaseTag,
+    "-PackageRoot",
+    $packageRootItem.FullName,
     "-ExpectedCommit",
     $commit
   )
@@ -145,18 +236,23 @@ if (-not [string]::IsNullOrWhiteSpace($Port)) {
   $monitorPortArg = " --port $(Quote-PowerShellArgument $Port)"
 }
 
-$packageFlashZip = "<path-to-release-zip>"
-if ($packageInfo) {
+$packageFlashArg = " -PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
+$verifyPackageArg = "-ZipPath $(Quote-PowerShellArgument '<path-to-release-zip>')"
+if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
   $packageFlashZip = Join-Path $packageDir ([System.IO.Path]::GetFileName($packageInfo["sourcePath"]))
+  $packageFlashArg = " -PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
+  $verifyPackageArg = "-ZipPath $(Quote-PowerShellArgument $packageFlashZip)"
+} elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $packageFlashArg = " -PackageRoot $(Quote-PowerShellArgument $PackageRoot) -Version $(Quote-PowerShellArgument $ReleaseTag) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+  $verifyPackageArg = "-PackageRoot $(Quote-PowerShellArgument $PackageRoot)"
 }
-$packageFlashArg = " -PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
 
 $displayLog = Quote-PowerShellArgument (Join-Path $logsDir "display_only_serial.log")
 $servoLog = Quote-PowerShellArgument (Join-Path $logsDir "servo_calibration_serial.log")
 $soakLog = Quote-PowerShellArgument (Join-Path $logsDir "soak_serial.log")
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
-$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) -ZipPath $(Quote-PowerShellArgument $packageFlashZip) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+$verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
 }
