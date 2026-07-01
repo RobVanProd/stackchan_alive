@@ -214,6 +214,33 @@ if ($manifest.dependencyLock -ne "dependency_lock.json") {
   throw "Manifest dependencyLock mismatch: $($manifest.dependencyLock)"
 }
 
+if ($manifest.readinessReport -ne "READINESS_REPORT.md") {
+  throw "Manifest readinessReport mismatch: $($manifest.readinessReport)"
+}
+
+if ($manifest.readinessReportJson -ne "readiness_report.json") {
+  throw "Manifest readinessReportJson mismatch: $($manifest.readinessReportJson)"
+}
+
+$expectedMediaArtifacts = @(
+  "media/stackchan_alive_preview.png",
+  "media/stackchan_alive_expression_sheet.png",
+  "media/stackchan_alive_preview.mp4",
+  "media/stackchan_alive_preview.gif"
+)
+$actualMediaArtifacts = @($manifest.mediaArtifacts)
+foreach ($file in $expectedMediaArtifacts) {
+  if ($actualMediaArtifacts -notcontains $file) {
+    throw "Manifest mediaArtifacts missing expected file: $file"
+  }
+}
+foreach ($file in $actualMediaArtifacts) {
+  if ($expectedMediaArtifacts -notcontains $file) {
+    throw "Manifest mediaArtifacts contains unexpected file: $file"
+  }
+  Assert-File $file
+}
+
 foreach ($file in @($manifest.includedTools)) {
   Assert-File $file
 }

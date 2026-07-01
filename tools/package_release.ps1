@@ -404,6 +404,14 @@ $manifest = [ordered]@{
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
   dependencyReport = "DEPENDENCIES.md"
   dependencyLock = "dependency_lock.json"
+  readinessReport = "READINESS_REPORT.md"
+  readinessReportJson = "readiness_report.json"
+  mediaArtifacts = @(
+    "media/stackchan_alive_preview.png",
+    "media/stackchan_alive_expression_sheet.png",
+    "media/stackchan_alive_preview.mp4",
+    "media/stackchan_alive_preview.gif"
+  )
   includedTools = @(
     "tools/flash_device.cmd",
     "tools/flash_device.ps1",
