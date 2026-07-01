@@ -144,6 +144,8 @@ $releaseTools = @(
   "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/check_hardware_evidence_progress.cmd",
+  "tools/check_hardware_evidence_progress.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -464,6 +466,8 @@ $manifest = [ordered]@{
     "tools/publish_release.ps1",
     "tools/export_github_actions_status.cmd",
     "tools/export_github_actions_status.ps1",
+    "tools/check_hardware_evidence_progress.cmd",
+    "tools/check_hardware_evidence_progress.ps1",
     "tools/prepare_device_arrival.cmd",
     "tools/prepare_device_arrival.ps1",
     "tools/run_device_preflight.cmd",
@@ -545,7 +549,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
     [ordered]@{ gate = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
-    [ordered]@{ gate = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd and tools/start_hardware_evidence.cmd" },
+    [ordered]@{ gate = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, and tools/check_hardware_evidence_progress.cmd" },
     [ordered]@{ gate = "servo-risk-acknowledgement-required"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" }
   )
   hardwareGates = @(
@@ -577,7 +581,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav" },
-    [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/verify_hardware_evidence.cmd" },
+    [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
     [ordered]@{ requirement = "share-page-verifiable"; status = "pass"; evidence = "tools/share_release.cmd and tools/verify_share_release.cmd" }
   )
@@ -612,6 +616,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Visual review media present: preview image, expression sheet, and preview video
 - [x] Voice review samples present: Stackchan Spark greeting, thinking, and safety WAVs
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
+- [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
 - [x] Servo risk gated by explicit ``-ConfirmServoRisk``
 - [x] Share page can be verified by ``tools/verify_share_release.cmd``
 
@@ -643,7 +648,7 @@ Consumer rollout: blocked pending hardware validation
 - Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
-- Arrival-day helpers are included under ``tools/``.
+- Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
 ## Pending Device Evidence
@@ -668,7 +673,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 

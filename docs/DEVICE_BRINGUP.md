@@ -13,7 +13,7 @@ Use this when the Stack-chan hardware arrives.
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
-It also creates runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
+It also creates runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
@@ -73,6 +73,7 @@ The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, m
 
 Save serial logs, photos, and calibration notes into the evidence packet created during preflight.
 When using the generated `RUN_*.cmd` files, display, servo, and soak serial output is written directly under the packet's `logs/` folder.
+Run `RUN_PROGRESS_CHECK.cmd` during testing to list missing fields, logs, serial markers, checklist items, media evidence, and calibration placeholders before the strict promotion verifier is run.
 
 ## First Hardware Tests
 

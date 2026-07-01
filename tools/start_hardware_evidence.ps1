@@ -302,6 +302,7 @@ $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerS
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
 }
+$progressCommand = "& '.\tools\check_hardware_evidence_progress.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $evidenceVerifyCommand = "& '.\tools\verify_hardware_evidence.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $platformioResolver = Quote-PowerShellArgument (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 $soakCommand = ". $platformioResolver; Invoke-StackchanPlatformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
@@ -326,6 +327,11 @@ $commandFiles = [ordered]@{
     "@echo off",
     "cd /d `"$repoRoot`"",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $verifyCommand }`""
+  )
+  "RUN_PROGRESS_CHECK.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $progressCommand }`""
   )
   "RUN_EVIDENCE_VERIFY.cmd" = @(
     "@echo off",
@@ -383,6 +389,12 @@ $readme = @(
   "",
   "Before marking a release hardware-validated, verify this evidence packet:",
   "",
+  "    $progressCommand",
+  "",
+  "    .\RUN_PROGRESS_CHECK.cmd",
+  "",
+  "Use the progress check during testing to list missing fields, logs, markers, media, and checklist items. It is advisory; the strict promotion check is still required:",
+  "",
   "    $evidenceVerifyCommand",
   "",
   "    .\RUN_EVIDENCE_VERIFY.cmd",
@@ -411,6 +423,7 @@ $metadata = [ordered]@{
     "RUN_SERVO_CALIBRATION.cmd",
     "RUN_SOAK_MONITOR.cmd",
     "RUN_PACKAGE_VERIFY.cmd",
+    "RUN_PROGRESS_CHECK.cmd",
     "RUN_EVIDENCE_VERIFY.cmd"
   )
   promotionVerifier = "tools/verify_hardware_evidence.ps1"

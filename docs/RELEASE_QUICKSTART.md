@@ -59,6 +59,14 @@ Only after display-only firmware boots cleanly and the body is on a clear surfac
 
 The servo command includes `-ConfirmServoRisk` because it can move the physical body.
 
+During bring-up, run:
+
+```powershell
+.\RUN_PROGRESS_CHECK.cmd
+```
+
+This lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
+
 ## Promotion Evidence
 
 Before calling the release consumer-ready, save:

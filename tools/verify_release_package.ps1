@@ -134,6 +134,8 @@ $requiredFiles = @(
   "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/check_hardware_evidence_progress.cmd",
+  "tools/check_hardware_evidence_progress.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -170,7 +172,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -198,9 +200,16 @@ foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot")) {
+foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
+  }
+}
+
+$hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
+foreach ($pattern in @("OBSERVATIONS.md has blank field", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "RUN_EVIDENCE_VERIFY.cmd")) {
+  if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
   }
 }
 

@@ -19,6 +19,7 @@ Serial logs must include firmware markers: display-only boot `mode=display_only`
 - [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
 - [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
 - [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`, or records a verified extracted package root.
+- [ ] `RUN_PROGRESS_CHECK.cmd` has no remaining missing evidence items.
 - [ ] If testing from an extracted release package, `tools/prepare_device_arrival.ps1 -Port <COM> -Operator <name> -DeviceId <id>` passes from inside that package root.
 
 ## Display-Only Flash
