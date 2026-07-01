@@ -42,35 +42,82 @@ function Invoke-UrlProbe {
     [int]$TimeoutSeconds
   )
 
-  $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
-  if ($null -ne $curl) {
-    $head = & $curl.Source -L -I --max-time $TimeoutSeconds --silent --show-error $TargetUrl 2>&1
-    if ($LASTEXITCODE -eq 0) {
-      $lines = @($head -split "`r?`n")
-      $statusLine = @($lines | Where-Object { $_ -match "^HTTP/" } | Select-Object -Last 1)
-      if ($statusLine.Count -eq 0) {
-        throw "No HTTP status line returned for $TargetUrl"
+  $lastError = ""
+  for ($attempt = 1; $attempt -le 6; $attempt++) {
+    $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+    if ($null -ne $curl) {
+      $curlArgs = @("-L", "-I", "--max-time", $TimeoutSeconds, "--silent", "--show-error", $TargetUrl)
+      $oldErrorActionPreference = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      try {
+        $head = & $curl.Source @curlArgs 2>&1
+        $curlExitCode = $LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
       }
 
-      $contentType = @($lines | Where-Object { $_ -match "^content-type:" } | Select-Object -Last 1)
-      $contentLength = @($lines | Where-Object { $_ -match "^content-length:" } | Select-Object -Last 1)
+      if ($curlExitCode -ne 0 -and ($head | Out-String) -match "Could not resolve host") {
+        try {
+          $uri = [System.Uri]$TargetUrl
+          if ($uri.Scheme -eq "https" -and $uri.Host -match "\.trycloudflare\.com$") {
+            $resolvedAddress = Resolve-DnsName $uri.Host -Server 1.1.1.1 -Type A -ErrorAction Stop |
+              Select-Object -First 1 -ExpandProperty IPAddress
+            if (-not [string]::IsNullOrWhiteSpace($resolvedAddress)) {
+              $resolveArg = "$($uri.Host):443:$resolvedAddress"
+              $oldErrorActionPreference = $ErrorActionPreference
+              $ErrorActionPreference = "Continue"
+              try {
+                $head = & $curl.Source -L -I --resolve $resolveArg --max-time $TimeoutSeconds --silent --show-error $TargetUrl 2>&1
+                $curlExitCode = $LASTEXITCODE
+              } finally {
+                $ErrorActionPreference = $oldErrorActionPreference
+              }
+            }
+          }
+        } catch {
+          $lastError = $_.Exception.Message
+        }
+      }
 
+      if ($curlExitCode -eq 0) {
+        $lines = @($head -split "`r?`n")
+        $statusLine = @($lines | Where-Object { $_ -match "^HTTP/" } | Select-Object -Last 1)
+        if ($statusLine.Count -eq 0) {
+          throw "No HTTP status line returned for $TargetUrl"
+        }
+
+        $contentType = @($lines | Where-Object { $_ -match "^content-type:" } | Select-Object -Last 1)
+        $contentLength = @($lines | Where-Object { $_ -match "^content-length:" } | Select-Object -Last 1)
+
+        return [ordered]@{
+          Url = $TargetUrl
+          StatusLine = [string]$statusLine[0]
+          ContentType = if ($contentType.Count -gt 0) { [string]$contentType[0] } else { "" }
+          ContentLength = if ($contentLength.Count -gt 0) { [string]$contentLength[0] } else { "" }
+        }
+      }
+
+      $lastError = "curl.exe failed with exit code $curlExitCode`: $(($head | Out-String).Trim())"
+    }
+
+    try {
+      $response = Invoke-WebRequest -Uri $TargetUrl -Method Get -TimeoutSec $TimeoutSeconds -UseBasicParsing
       return [ordered]@{
         Url = $TargetUrl
-        StatusLine = [string]$statusLine[0]
-        ContentType = if ($contentType.Count -gt 0) { [string]$contentType[0] } else { "" }
-        ContentLength = if ($contentLength.Count -gt 0) { [string]$contentLength[0] } else { "" }
+        StatusLine = "HTTP $([int]$response.StatusCode)"
+        ContentType = [string]$response.Headers["Content-Type"]
+        ContentLength = [string]$response.Headers["Content-Length"]
       }
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+
+    if ($attempt -lt 6) {
+      Start-Sleep -Seconds 2
     }
   }
 
-  $response = Invoke-WebRequest -Uri $TargetUrl -Method Get -TimeoutSec $TimeoutSeconds -UseBasicParsing
-  return [ordered]@{
-    Url = $TargetUrl
-    StatusLine = "HTTP $([int]$response.StatusCode)"
-    ContentType = [string]$response.Headers["Content-Type"]
-    ContentLength = [string]$response.Headers["Content-Length"]
-  }
+  throw "Share URL probe failed after retries for $TargetUrl. Last error: $lastError"
 }
 
 function Assert-HttpOk {
