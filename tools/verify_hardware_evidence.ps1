@@ -374,12 +374,107 @@ function Test-MediaEvidenceFile {
   return $false
 }
 
+function Test-AudioEvidenceFile {
+  param([System.IO.FileInfo]$File)
+
+  $extension = $File.Extension.ToLowerInvariant()
+  if (@(".wav", ".mp3", ".m4a", ".aac", ".mp4", ".mov", ".webm") -notcontains $extension) {
+    return $false
+  }
+
+  if ($File.Length -lt 4096) {
+    throw "Audio evidence file is too small to be credible: $($File.Name) ($($File.Length) bytes)"
+  }
+
+  $bytesToRead = [Math]::Min([int64]$File.Length, [int64]1048576)
+  if ($bytesToRead -lt 12) {
+    return $false
+  }
+
+  $stream = [System.IO.File]::OpenRead($File.FullName)
+  try {
+    $bytes = New-Object byte[] ([int]$bytesToRead)
+    $read = $stream.Read($bytes, 0, $bytes.Length)
+    if ($read -lt $bytes.Length) {
+      return $false
+    }
+  } finally {
+    $stream.Dispose()
+  }
+
+  switch ($extension) {
+    ".wav" {
+      return (
+        (Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x52, 0x49, 0x46, 0x46))) -and
+        (Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x57, 0x41, 0x56, 0x45)) -Offset 8)
+      )
+    }
+    ".mp3" {
+      return (
+        (Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x49, 0x44, 0x33))) -or
+        ($bytes[0] -eq 0xff -and (($bytes[1] -band 0xe0) -eq 0xe0))
+      )
+    }
+    ".m4a" {
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x66, 0x74, 0x79, 0x70)) -Offset 4
+    }
+    ".mp4" {
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x66, 0x74, 0x79, 0x70)) -Offset 4
+    }
+    ".mov" {
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x66, 0x74, 0x79, 0x70)) -Offset 4
+    }
+    ".webm" {
+      return Test-BytesAtOffset -Bytes $bytes -Expected ([byte[]](0x1a, 0x45, 0xdf, 0xa3))
+    }
+    ".aac" {
+      return ($bytes[0] -eq 0xff -and (($bytes[1] -band 0xf0) -eq 0xf0))
+    }
+  }
+
+  return $false
+}
+
+function Resolve-EvidenceRelativeFile {
+  param([string]$Value)
+
+  $clean = $Value.Trim().Trim('"').Trim("'")
+  if ([string]::IsNullOrWhiteSpace($clean)) {
+    throw "Evidence file field is blank"
+  }
+
+  $candidate = if ([System.IO.Path]::IsPathRooted($clean)) {
+    $clean
+  } else {
+    Join-EvidencePath $clean
+  }
+
+  if (-not (Test-Path -LiteralPath $candidate)) {
+    $audioCandidate = Join-EvidencePath (Join-Path "audio" $clean)
+    if (Test-Path -LiteralPath $audioCandidate) {
+      $candidate = $audioCandidate
+    }
+  }
+
+  if (-not (Test-Path -LiteralPath $candidate)) {
+    throw "Referenced evidence file does not exist: $Value"
+  }
+
+  $resolved = (Resolve-Path $candidate).Path
+  if (-not $resolved.StartsWith($evidencePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Referenced evidence file is outside the evidence packet: $resolved"
+  }
+
+  return Get-Item -LiteralPath $resolved
+}
+
 $requiredFiles = @(
   "README.md",
   "CHECKLIST.md",
   "RELEASE_ACCEPTANCE.md",
   "release_acceptance.json",
   "OBSERVATIONS.md",
+  "AUDIO_REVIEW.md",
   "DEVICE_BRINGUP.md",
   "PRODUCTION_READINESS.md",
   "metadata.json",
@@ -543,6 +638,40 @@ Assert-MinimumObservationDuration $observations "Duration" 30
 Assert-ObservationValue $observations "Reset, stall, jitter, or heat observed" $noPattern
 Assert-ObservationValue $observations "USB power-cycle recovery" $passPattern "(?i)\b(fail|failed|no|false|did not|not recovered)\b"
 
+$audioReview = Get-Content -LiteralPath (Join-EvidencePath "AUDIO_REVIEW.md") -Raw
+$requiredAudioFields = @(
+  "Start UTC",
+  "End UTC",
+  "Sample played",
+  "Voice variant",
+  "Speaker recording file",
+  "Intelligible through device speaker",
+  "Clipping or distortion observed",
+  "Volume adequate at normal listening distance",
+  "Delay or playback dropout observed",
+  "Selected voice direction"
+)
+
+foreach ($field in $requiredAudioFields) {
+  Assert-NoBlankObservation $audioReview $field
+}
+
+Assert-ObservationValue $audioReview "Intelligible through device speaker" $yesPattern "(?i)\b(no|false|unintelligible|not intelligible|unclear)\b"
+Assert-ObservationValue $audioReview "Clipping or distortion observed" $noPattern "(?i)\b(yes|true|clipping|distortion|observed)\b"
+Assert-ObservationValue $audioReview "Volume adequate at normal listening distance" $yesPattern "(?i)\b(no|false|too quiet|inaudible|inadequate)\b"
+Assert-ObservationValue $audioReview "Delay or playback dropout observed" $noPattern "(?i)\b(yes|true|delay|dropout|observed)\b"
+
+$speakerRecordingValues = Get-ObservationValues $audioReview "Speaker recording file"
+if ($speakerRecordingValues.Count -lt 1) {
+  throw "AUDIO_REVIEW.md missing speaker recording file"
+}
+foreach ($speakerRecording in $speakerRecordingValues) {
+  $recordingFile = Resolve-EvidenceRelativeFile $speakerRecording
+  if (-not (Test-AudioEvidenceFile $recordingFile)) {
+    throw "Speaker recording file is not a supported audio/video evidence file: $speakerRecording"
+  }
+}
+
 $calibration = Get-Content -LiteralPath (Join-EvidencePath "calibration/calibration.yaml") -Raw
 if ($calibration -match "Hardware truth test values go here") {
   throw "calibration/calibration.yaml still contains placeholder text"
@@ -584,6 +713,20 @@ if (-not $AllowMissingMedia) {
   $validMediaFiles = @($mediaFiles | Where-Object { Test-MediaEvidenceFile $_ })
   if ($validMediaFiles.Count -lt 1) {
     throw "No supported photo or video evidence found under photos/. Add a valid .png, .jpg, .jpeg, .gif, .mp4, .mov, or .webm file."
+  }
+
+  $audioFiles = @(
+    Get-ChildItem -LiteralPath (Join-EvidencePath "audio") -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne ".gitkeep" -and $_.Length -gt 0 }
+  )
+
+  if ($audioFiles.Count -lt 1) {
+    throw "No real-device speaker recording found under audio/"
+  }
+
+  $validAudioFiles = @($audioFiles | Where-Object { Test-AudioEvidenceFile $_ })
+  if ($validAudioFiles.Count -lt 1) {
+    throw "No supported real-device speaker recording found under audio/. Add a valid .wav, .mp3, .m4a, .aac, .mp4, .mov, or .webm file."
   }
 }
 

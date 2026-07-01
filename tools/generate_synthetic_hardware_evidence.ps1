@@ -100,9 +100,10 @@ $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $outDir = Join-Path $repoRoot "$OutputRoot/$safeTag-synthetic-$stamp"
 $logsDir = Join-Path $outDir "logs"
 $photosDir = Join-Path $outDir "photos"
+$audioDir = Join-Path $outDir "audio"
 $calibrationDir = Join-Path $outDir "calibration"
 $packageDir = Join-Path $outDir "package"
-New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir, $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
 $requiredLogs = @(
@@ -256,6 +257,25 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
 ) | Set-Content -Path (Join-Path $outDir "OBSERVATIONS.md") -Encoding UTF8
 
 @(
+  "# Stackchan Audio Review",
+  "",
+  "Synthetic diagnostic packet: yes",
+  "",
+  "## Speaker Playback",
+  "- Start UTC: 2026-07-01T00:55:00Z",
+  "- End UTC: 2026-07-01T00:56:00Z",
+  "- Sample played: synthetic fixture greeting",
+  "- Voice variant: stackchan_spark_greeting",
+  "- Speaker recording file: audio/synthetic_speaker_fixture.wav",
+  "- Intelligible through device speaker: yes",
+  "- Clipping or distortion observed: no",
+  "- Volume adequate at normal listening distance: yes",
+  "- Delay or playback dropout observed: no",
+  "- Selected voice direction: synthetic verifier fixture only",
+  "- Notes: synthetic diagnostic data only; not real speaker evidence"
+) | Set-Content -Path (Join-Path $outDir "AUDIO_REVIEW.md") -Encoding UTF8
+
+@(
   "pitch_min_deg: -15",
   "pitch_max_deg: 15",
   "yaw_mode: disabled",
@@ -294,6 +314,12 @@ if (-not (Test-Path -LiteralPath $mediaSource)) {
 }
 Copy-Item -LiteralPath $mediaSource -Destination (Join-Path $photosDir "synthetic_display_evidence.png")
 
+$audioSource = "docs/media/voice/stackchan_spark_greeting.wav"
+if (-not (Test-Path -LiteralPath $audioSource)) {
+  throw "Missing voice sample for synthetic audio evidence: $audioSource"
+}
+Copy-Item -LiteralPath $audioSource -Destination (Join-Path $audioDir "synthetic_speaker_fixture.wav")
+
 $commandFiles = @{
   "RUN_DISPLAY_ONLY.cmd" = "echo Synthetic diagnostic packet. Do not flash hardware from this fixture."
   "RUN_SERVO_CALIBRATION.cmd" = "echo Synthetic diagnostic packet. Do not move servos from this fixture."
@@ -327,6 +353,7 @@ $metadata = [ordered]@{
     "RELEASE_ACCEPTANCE.md",
     "release_acceptance.json",
     "OBSERVATIONS.md",
+    "AUDIO_REVIEW.md",
     "calibration/calibration.yaml",
     "RUN_DISPLAY_ONLY.cmd",
     "RUN_SERVO_CALIBRATION.cmd",

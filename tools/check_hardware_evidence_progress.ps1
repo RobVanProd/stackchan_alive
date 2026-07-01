@@ -88,6 +88,7 @@ foreach ($file in @(
   "README.md",
   "CHECKLIST.md",
   "OBSERVATIONS.md",
+  "AUDIO_REVIEW.md",
   "metadata.json",
   "RELEASE_ACCEPTANCE.md",
   "release_acceptance.json",
@@ -139,6 +140,38 @@ if (Test-Path -LiteralPath (Join-EvidencePath "OBSERVATIONS.md")) {
   }
 }
 
+if (Test-Path -LiteralPath (Join-EvidencePath "AUDIO_REVIEW.md")) {
+  $audioReview = Get-Content -LiteralPath (Join-EvidencePath "AUDIO_REVIEW.md") -Raw
+  foreach ($field in @(
+    "Start UTC",
+    "End UTC",
+    "Sample played",
+    "Voice variant",
+    "Speaker recording file",
+    "Intelligible through device speaker",
+    "Clipping or distortion observed",
+    "Volume adequate at normal listening distance",
+    "Delay or playback dropout observed",
+    "Selected voice direction"
+  )) {
+    if ($audioReview -match "(?m)^-\s+$([regex]::Escape($field))\s*:\s*$") {
+      Add-Finding "AUDIO_REVIEW.md has blank field: $field"
+    }
+  }
+
+  if ($audioReview -match "(?m)^-\s+Intelligible through device speaker:\s*(?i:yes|true|confirmed)\s*$") {
+    Add-Pass "AUDIO_REVIEW.md marks speaker audio intelligible"
+  } else {
+    Add-Finding "AUDIO_REVIEW.md needs intelligible speaker audio marked yes"
+  }
+
+  if ($audioReview -match "(?m)^-\s+Clipping or distortion observed:\s*(?i:no|none|false|not observed)\s*$") {
+    Add-Pass "AUDIO_REVIEW.md marks clipping/distortion absent"
+  } else {
+    Add-Finding "AUDIO_REVIEW.md needs clipping/distortion marked no"
+  }
+}
+
 Test-RequiredFile "logs/package_verify.log" | Out-Null
 Test-RequiredFile "logs/display_only_serial.log" 128 | Out-Null
 Test-RequiredFile "logs/servo_calibration_serial.log" 128 | Out-Null
@@ -172,6 +205,16 @@ if ($mediaFiles.Count -lt 1) {
   Add-Finding "No photo or video evidence found under photos/"
 } else {
   Add-Pass "Photo/video evidence files present: $($mediaFiles.Count)"
+}
+
+$audioFiles = @(
+  Get-ChildItem -LiteralPath (Join-EvidencePath "audio") -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -ne ".gitkeep" -and $_.Length -gt 0 }
+)
+if ($audioFiles.Count -lt 1) {
+  Add-Finding "No real-device speaker recording found under audio/"
+} else {
+  Add-Pass "Speaker recording files present: $($audioFiles.Count)"
 }
 
 Write-Host "Hardware evidence progress:"

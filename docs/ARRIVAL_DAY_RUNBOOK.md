@@ -33,6 +33,7 @@ Expected evidence:
 - display-only serial log
 - photo or video showing the procedural face
 - observation note that servos stayed in dry-run mode
+- `AUDIO_REVIEW.md` started with the sample you plan to play later
 
 Hard stop if:
 
@@ -76,7 +77,10 @@ Expected evidence:
 - no repeated resets
 - no task stalls
 - face remains responsive
-- audio sample is intelligible if speaker output is tested
+- `AUDIO_REVIEW.md` completed
+- real-device speaker recording saved under `audio/`
+- audio sample is intelligible through the device speaker
+- no clipping, distortion, playback dropout, or excessive delay
 
 ## 5. Progress Check Before Promotion
 
@@ -108,7 +112,7 @@ This still requires:
 
 - successful GitHub Actions status, unless an explicit account-block exception is recorded
 - completed production voice-source provenance
-- real-device speaker evidence
+- completed `AUDIO_REVIEW.md` with real-device speaker evidence
 
 ## Current Release Limits
 

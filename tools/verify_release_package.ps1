@@ -220,28 +220,28 @@ foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1")) {
+foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
   }
 }
 
 $syntheticEvidenceGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/generate_synthetic_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "must not be used as rollout evidence")) {
+foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence")) {
   if ($syntheticEvidenceGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/generate_synthetic_hardware_evidence.ps1 missing synthetic evidence safety logic: $pattern"
   }
 }
 
 $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
-foreach ($pattern in @("OBSERVATIONS.md has blank field", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "RUN_EVIDENCE_VERIFY.cmd")) {
+foreach ($pattern in @("OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
   }
 }
 
 $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "AllowSyntheticEvidence", "diagnosticOnly")) {
+foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "AllowSyntheticEvidence", "diagnosticOnly")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
   }

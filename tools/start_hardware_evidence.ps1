@@ -134,9 +134,10 @@ $outDir = Join-Path $repoRoot "output/hardware-evidence/$safeTag-$stamp"
 
 $logsDir = Join-Path $outDir "logs"
 $photosDir = Join-Path $outDir "photos"
+$audioDir = Join-Path $outDir "audio"
 $calibrationDir = Join-Path $outDir "calibration"
 $packageDir = Join-Path $outDir "package"
-New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $calibrationDir, $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
 $requiredLogs = @(
@@ -275,6 +276,39 @@ $observations = @(
 )
 $observations | Set-Content -Path (Join-Path $outDir "OBSERVATIONS.md") -Encoding UTF8
 
+$audioReview = @(
+  "# Stackchan Audio Review",
+  "",
+  "Release tag: $ReleaseTag",
+  "Commit: $commit",
+  "Device ID: $DeviceId",
+  "Port: $Port",
+  "Operator: $Operator",
+  "",
+  "Record at least one real-device speaker sample under `audio/`. A phone recording is acceptable for bring-up evidence if the file is not edited and the room/device context is clear.",
+  "",
+  "## Speaker Playback",
+  "",
+  "- Start UTC:",
+  "- End UTC:",
+  "- Sample played:",
+  "- Voice variant: stackchan_spark_greeting / stackchan_spark_thinking / stackchan_spark_safety / warm_slow / bright_robot / production",
+  "- Speaker recording file:",
+  "- Intelligible through device speaker: yes/no",
+  "- Clipping or distortion observed: yes/no",
+  "- Volume adequate at normal listening distance: yes/no",
+  "- Delay or playback dropout observed: yes/no",
+  "- Selected voice direction:",
+  "- Notes:",
+  "",
+  "## Promotion Requirements",
+  "",
+  "- Use original Stackchan lines, not movie quotes or named-character catchphrases.",
+  "- Keep current prototype WAVs as review-only until production voice provenance is complete.",
+  "- Consumer promotion requires licensed or owned production voice source evidence plus this target-speaker audio check."
+)
+$audioReview | Set-Content -Path (Join-Path $outDir "AUDIO_REVIEW.md") -Encoding UTF8
+
 $portArg = ""
 $monitorPortArg = ""
 if (-not [string]::IsNullOrWhiteSpace($Port)) {
@@ -367,6 +401,8 @@ $readme = @(
   "",
   "Promotion verification expects OBSERVATIONS.md to record passing values: Result = pass/ok/success, reset/heat/brownout/stall/jitter observed = no, procedural face and dry-run servo log observed = yes, yaw classification = angle/velocity/disabled, soak Duration >= 30 minutes, and USB power-cycle recovery = pass/ok/success.",
   "",
+  "Promotion verification expects AUDIO_REVIEW.md to record a real-device speaker check: intelligible = yes, clipping/distortion = no, volume adequate = yes, delay/dropout = no, and a speaker recording file saved under audio/.",
+  "",
   "Promotion verification also expects serial logs to include firmware markers: display-only boot ``mode=display_only``, servo-calibration boot ``mode=servo_calibration``, display readiness, servo dry-run or hardware-enable line, and soak heartbeat ``[heartbeat] stackchan_alive ... uptime_ms=...``.",
   "",
   "Promotion verification also requires at least one valid media file under photos/: .png, .jpg, .jpeg, .gif, .mp4, .mov, or .webm. Text placeholders, header-only files, tiny files, and images without plausible dimensions do not count as photo/video evidence.",
@@ -436,6 +472,7 @@ $metadata = [ordered]@{
     "RELEASE_ACCEPTANCE.md",
     "release_acceptance.json",
     "OBSERVATIONS.md",
+    "AUDIO_REVIEW.md",
     "calibration/calibration.yaml",
     "RUN_DISPLAY_ONLY.cmd",
     "RUN_SERVO_CALIBRATION.cmd",
@@ -453,6 +490,7 @@ $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $outDir "meta
 
 New-Item -ItemType File -Force -Path (Join-Path $logsDir ".gitkeep") | Out-Null
 New-Item -ItemType File -Force -Path (Join-Path $photosDir ".gitkeep") | Out-Null
+New-Item -ItemType File -Force -Path (Join-Path $audioDir ".gitkeep") | Out-Null
 
 Write-Host "Hardware evidence packet:"
 Write-Output $outDir
