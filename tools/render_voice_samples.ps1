@@ -42,7 +42,7 @@ try {
     $synth.SelectVoice($voiceNames[0])
   }
   $selectedVoice = $synth.Voice.Name
-  $synth.Rate = 1
+  $synth.Rate = 0
   $synth.Volume = 100
 
   foreach ($sample in $samples) {
@@ -110,7 +110,7 @@ def resample_linear(samples, factor):
     return out
 
 def robotize(rate, samples):
-    samples = resample_linear(samples, 1.08)
+    samples = resample_linear(samples, 1.12)
     delay_a = max(1, int(rate * 0.055))
     delay_b = max(1, int(rate * 0.095))
     out = [0.0] * (len(samples) + delay_b + 1)
@@ -160,7 +160,7 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 
 Generated source:
 - Local Windows SpeechSynthesizer voice: ``$selectedVoice``
-- Deterministic robot effect chain: slightly slower source cadence, small lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
+- Deterministic robot effect chain: measured source cadence, lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
 - Renderer: ``tools/render_voice_samples.ps1``
 
 Samples:
