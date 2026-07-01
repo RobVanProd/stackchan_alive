@@ -121,6 +121,7 @@ $requiredFiles = @(
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
+  "media/stackchan_alive_speech_preview.gif",
   "artifacts/face/phase_a_idle_10s.gif",
   "artifacts/face/phase_a_blink_filmstrip_50ms.png",
   "artifacts/face/phase_a_unlabeled_expression_sheet.png",
@@ -129,6 +130,7 @@ $requiredFiles = @(
   "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png",
   "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png",
   "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png",
+  "artifacts/face/phase_e_speech_reactive_6s.gif",
   "media/voice/stackchan_spark_greeting.wav",
   "media/voice/stackchan_spark_thinking.wav",
   "media/voice/stackchan_spark_safety.wav",
@@ -184,6 +186,8 @@ $requiredFiles = @(
   "tools/verify_face_phase_c.ps1",
   "tools/verify_face_phase_d.cmd",
   "tools/verify_face_phase_d.ps1",
+  "tools/verify_face_phase_e.cmd",
+  "tools/verify_face_phase_e.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
@@ -216,14 +220,14 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "RUN_PACKAGE_VERIFY.cmd"
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
 }
 
 $shareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_share_release.ps1") -Raw
-foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk", "ProbeRetries", "ProbeDelaySeconds", "Pending Promotion Gates", "target-speaker-audio-evidence", "Face Phase A", "phase_a_idle_10s.gif", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "Face Phase C", "phase_c_idle_10s.gif", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "Speaker audio evidence")) {
+foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk", "ProbeRetries", "ProbeDelaySeconds", "Pending Promotion Gates", "target-speaker-audio-evidence", "Face Phase A", "phase_a_idle_10s.gif", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "Face Phase C", "phase_c_idle_10s.gif", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "Face Phase E", "phase_e_speech_reactive_6s.gif", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "Speaker audio evidence")) {
   if ($shareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_share_release.ps1 missing required remote verification logic: $pattern"
   }
@@ -305,6 +309,7 @@ Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
 Assert-File "media/stackchan_alive_preview.mp4" 1000
+Assert-File "media/stackchan_alive_speech_preview.gif" 1000
 Assert-File "artifacts/face/phase_a_idle_10s.gif" 100000
 Assert-File "artifacts/face/phase_a_blink_filmstrip_50ms.png" 1000
 Assert-File "artifacts/face/phase_a_unlabeled_expression_sheet.png" 1000
@@ -313,6 +318,7 @@ Assert-File "artifacts/face/phase_c_idle_10s.gif" 100000
 Assert-File "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png" 1000
 Assert-File "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png" 1000
 Assert-File "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" 1000
+Assert-File "artifacts/face/phase_e_speech_reactive_6s.gif" 1000
 Assert-File "media/voice/stackchan_spark_greeting.wav" 1000
 Assert-File "media/voice/stackchan_spark_thinking.wav" 1000
 Assert-File "media/voice/stackchan_spark_safety.wav" 1000
@@ -324,6 +330,7 @@ Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x4
 Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
+Assert-Bytes "media/stackchan_alive_speech_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "artifacts/face/phase_a_idle_10s.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "artifacts/face/phase_a_blink_filmstrip_50ms.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "artifacts/face/phase_a_unlabeled_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
@@ -332,6 +339,7 @@ Assert-Bytes "artifacts/face/phase_c_idle_10s.gif" ([byte[]](0x47, 0x49, 0x46, 0
 Assert-Bytes "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "artifacts/face/phase_e_speech_reactive_6s.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/voice/stackchan_spark_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
@@ -345,6 +353,7 @@ Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([
 & (Join-PackagePath "tools/verify_face_phase_b.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 & (Join-PackagePath "tools/verify_face_phase_c.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 & (Join-PackagePath "tools/verify_face_phase_d.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
+& (Join-PackagePath "tools/verify_face_phase_e.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
 
 $manifestPath = Join-PackagePath "release_manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
@@ -431,6 +440,7 @@ $expectedMediaArtifacts = @(
   "media/stackchan_alive_expression_sheet.png",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.gif",
+  "media/stackchan_alive_speech_preview.gif",
   "artifacts/face/phase_a_idle_10s.gif",
   "artifacts/face/phase_a_blink_filmstrip_50ms.png",
   "artifacts/face/phase_a_unlabeled_expression_sheet.png",
@@ -439,6 +449,7 @@ $expectedMediaArtifacts = @(
   "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png",
   "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png",
   "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png",
+  "artifacts/face/phase_e_speech_reactive_6s.gif",
   "media/voice/stackchan_spark_greeting.wav",
   "media/voice/stackchan_spark_thinking.wav",
   "media/voice/stackchan_spark_safety.wav",

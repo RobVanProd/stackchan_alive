@@ -322,6 +322,7 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png"); Name = "stackchan_alive_expression_sheet.png" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.mp4"); Name = "stackchan_alive_preview.mp4" },
   @{ Source = (Join-Path $packageRoot "media/stackchan_alive_preview.gif"); Name = "stackchan_alive_preview.gif" },
+  @{ Source = (Join-Path $packageRoot "media/stackchan_alive_speech_preview.gif"); Name = "stackchan_alive_speech_preview.gif" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_a_idle_10s.gif"); Name = "artifacts/face/phase_a_idle_10s.gif" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_a_blink_filmstrip_50ms.png"); Name = "artifacts/face/phase_a_blink_filmstrip_50ms.png" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_a_unlabeled_expression_sheet.png"); Name = "artifacts/face/phase_a_unlabeled_expression_sheet.png" },
@@ -330,6 +331,7 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png"); Name = "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png"); Name = "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png" },
   @{ Source = (Join-Path $packageRoot "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png"); Name = "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" },
+  @{ Source = (Join-Path $packageRoot "artifacts/face/phase_e_speech_reactive_6s.gif"); Name = "artifacts/face/phase_e_speech_reactive_6s.gif" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav"); Name = "voice/stackchan_spark_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav"); Name = "voice/stackchan_spark_thinking.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"); Name = "voice/stackchan_spark_safety.wav" },
@@ -499,6 +501,7 @@ $promotionGateItems
   <p><img src="stackchan_alive_preview.png" alt="Stackchan Alive preview image"></p>
   <p><img src="stackchan_alive_expression_sheet.png" alt="Stackchan Alive expression sheet"></p>
   <p><video src="stackchan_alive_preview.mp4" controls loop muted playsinline></video></p>
+  <p><img src="stackchan_alive_speech_preview.gif" alt="Stackchan Alive speech-reactive preview GIF"></p>
 
   <h2>Face Phase A Artifacts</h2>
   <p>Phase A adds the double-buffered M5Canvas render path, frame telemetry, and the small layered animator skeleton with independent smoothing constants. These artifacts are generated procedurally by <code>tools/render_preview.py</code> and checked by <code>tools/verify_face_phase_a.ps1</code>.</p>
@@ -519,6 +522,11 @@ $promotionGateItems
   <p><img src="artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png" alt="Phase D Idle to Listen filmstrip"></p>
   <p><img src="artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png" alt="Phase D Think to Speak filmstrip"></p>
   <p><img src="artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png" alt="Phase D Idle to Sleep filmstrip"></p>
+
+  <h2>Face Phase E Artifacts</h2>
+  <p>Phase E adds the speech envelope sidecar hook, L3 mouth ownership during active speech, viseme-lite width and roundness changes, loud-syllable brow accents, and stale-envelope return-to-rest behavior. The preview GIF uses a fixed synthetic envelope to show mouth motion tracking syllable peaks; final sync and target-speaker proof still require real-device audio evidence.</p>
+  <p><img src="artifacts/face/phase_e_speech_reactive_6s.gif" alt="Phase E speech-reactive mouth GIF"></p>
+  <p>Checked by <code>tools/verify_face_phase_e.ps1</code> for frame dimensions, mouth motion range, visible syllable peaks, and return to rest after speech.</p>
 
   <h2>Voice Samples</h2>
   <p>Prototype Stackchan Spark Synth v4 audition samples. These use a lightweight source with phrase-level micro-prosody, syllable gating, a speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, ring modulation, comb resonance, tiny synthetic chirps, and a light musical vocoder/earcon blend on the Bright Robot pass. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
@@ -590,6 +598,7 @@ $promotionGateItems
     <div class="item"><a href="stackchan_alive_expression_sheet.png">Expression Sheet PNG</a></div>
     <div class="item"><a href="stackchan_alive_preview.mp4">Preview MP4</a></div>
     <div class="item"><a href="stackchan_alive_preview.gif">Preview GIF</a></div>
+    <div class="item"><a href="stackchan_alive_speech_preview.gif">Speech-Reactive Preview GIF</a></div>
     <div class="item"><a href="artifacts/face/phase_a_idle_10s.gif">Face Phase A Idle GIF</a></div>
     <div class="item"><a href="artifacts/face/phase_a_blink_filmstrip_50ms.png">Face Phase A Filmstrip</a></div>
     <div class="item"><a href="artifacts/face/phase_a_unlabeled_expression_sheet.png">Face Phase A Unlabeled Sheet</a></div>
@@ -598,6 +607,7 @@ $promotionGateItems
     <div class="item"><a href="artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png">Face Phase D Idle to Listen Filmstrip</a></div>
     <div class="item"><a href="artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png">Face Phase D Think to Speak Filmstrip</a></div>
     <div class="item"><a href="artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png">Face Phase D Idle to Sleep Filmstrip</a></div>
+    <div class="item"><a href="artifacts/face/phase_e_speech_reactive_6s.gif">Face Phase E Speech GIF</a></div>
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Warm Slow Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>

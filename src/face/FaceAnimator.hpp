@@ -16,6 +16,13 @@ enum class Ease : uint8_t {
 
 float applyEase(Ease ease, float x);
 
+enum class SpeechViseme : uint8_t {
+  Neutral,
+  Ah,
+  Oh,
+  Ee,
+};
+
 struct FaceAutonomicTelemetry {
   float blinkOpen = 1.0f;
   float breathY = 0.0f;
@@ -33,16 +40,28 @@ struct FaceGestureTelemetry {
   uint32_t durationMs = 0;
 };
 
+struct FaceSpeechTelemetry {
+  bool active = false;
+  float envelope = 0.0f;
+  SpeechViseme viseme = SpeechViseme::Neutral;
+  uint32_t ageMs = 0;
+};
+
 class FaceAnimator {
  public:
   FaceTargets composeFrame(const RobotFrame& frame, uint32_t nowMs);
   void reset(const FaceTargets& face, uint32_t nowMs);
   void setReducedMotion(bool enabled);
+  void setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs);
+  void clearSpeechEnvelope(uint32_t nowMs);
   const FaceAutonomicTelemetry& autonomicTelemetry() const {
     return telemetry_;
   }
   const FaceGestureTelemetry& gestureTelemetry() const {
     return gestureTelemetry_;
+  }
+  const FaceSpeechTelemetry& speechTelemetry() const {
+    return speechTelemetry_;
   }
 
  private:
@@ -94,6 +113,15 @@ class FaceAnimator {
     bool active = false;
   };
 
+  struct SpeechState {
+    float envelope = 0.0f;
+    float rollingPeak = 0.12f;
+    SpeechViseme viseme = SpeechViseme::Neutral;
+    uint32_t startMs = 0;
+    uint32_t lastUpdateMs = 0;
+    bool active = false;
+  };
+
   bool initialized_ = false;
   bool hasPreviousMode_ = false;
   uint32_t lastMs_ = 0;
@@ -104,13 +132,15 @@ class FaceAnimator {
   SaccadeState saccade_;
   FidgetState fidget_;
   GestureState gesture_;
+  SpeechState speech_;
   FaceAutonomicTelemetry telemetry_;
   FaceGestureTelemetry gestureTelemetry_;
+  FaceSpeechTelemetry speechTelemetry_;
 
   FaceTargets samplePose(const RobotFrame& frame, uint32_t nowMs) const;
   void applyAutonomic(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs);
   void applyGesture(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs);
-  void applyReactive(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) const;
+  void applyReactive(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs);
   FaceTargets smoothToward(const FaceTargets& target, uint32_t nowMs);
   void updateTransition(const RobotFrame& frame, uint32_t nowMs);
   void startGesture(CharacterMode from, CharacterMode to, uint32_t nowMs);

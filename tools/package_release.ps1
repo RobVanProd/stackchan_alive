@@ -26,10 +26,10 @@ if (-not $SkipBuild) {
 
 $dirtyFiles = @(git status --porcelain)
 $generatedMediaDirtyFiles = @(
-  $dirtyFiles | Where-Object { $_ -match "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|expression_sheet\.png)$" }
+  $dirtyFiles | Where-Object { $_ -match "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|speech_preview\.gif|expression_sheet\.png)$" }
 )
 $sourceDirtyFiles = @(
-  $dirtyFiles | Where-Object { $_ -notmatch "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|expression_sheet\.png)$" }
+  $dirtyFiles | Where-Object { $_ -notmatch "^\s*(M|\?\?) docs/media/stackchan_alive_(preview\.(gif|mp4|png)|speech_preview\.gif|expression_sheet\.png)$" }
 )
 
 if ($sourceDirtyFiles.Count -gt 0 -and -not $AllowDirty) {
@@ -87,7 +87,8 @@ $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
   "docs/media/stackchan_alive_expression_sheet.png",
   "docs/media/stackchan_alive_preview.mp4",
-  "docs/media/stackchan_alive_preview.gif"
+  "docs/media/stackchan_alive_preview.gif",
+  "docs/media/stackchan_alive_speech_preview.gif"
 )
 
 $windowsPowerShell = Join-Path $env:SystemRoot "System32/WindowsPowerShell/v1.0/powershell.exe"
@@ -114,7 +115,8 @@ $faceArtifactFiles = @(
   "artifacts/face/phase_c_idle_10s.gif",
   "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png",
   "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png",
-  "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png"
+  "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png",
+  "artifacts/face/phase_e_speech_reactive_6s.gif"
 )
 
 foreach ($file in $faceArtifactFiles) {
@@ -205,6 +207,8 @@ $releaseTools = @(
   "tools/verify_face_phase_c.ps1",
   "tools/verify_face_phase_d.cmd",
   "tools/verify_face_phase_d.ps1",
+  "tools/verify_face_phase_e.cmd",
+  "tools/verify_face_phase_e.ps1",
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
@@ -493,6 +497,7 @@ $manifest = [ordered]@{
     "media/stackchan_alive_expression_sheet.png",
     "media/stackchan_alive_preview.mp4",
     "media/stackchan_alive_preview.gif",
+    "media/stackchan_alive_speech_preview.gif",
     "artifacts/face/phase_a_idle_10s.gif",
     "artifacts/face/phase_a_blink_filmstrip_50ms.png",
     "artifacts/face/phase_a_unlabeled_expression_sheet.png",
@@ -501,6 +506,7 @@ $manifest = [ordered]@{
     "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png",
     "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png",
     "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png",
+    "artifacts/face/phase_e_speech_reactive_6s.gif",
     "media/voice/stackchan_spark_greeting.wav",
     "media/voice/stackchan_spark_thinking.wav",
     "media/voice/stackchan_spark_safety.wav",
@@ -552,6 +558,8 @@ $manifest = [ordered]@{
     "tools/verify_face_phase_c.ps1",
     "tools/verify_face_phase_d.cmd",
     "tools/verify_face_phase_d.ps1",
+    "tools/verify_face_phase_e.cmd",
+    "tools/verify_face_phase_e.ps1",
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1",
     "tools/verify_share_release.cmd",

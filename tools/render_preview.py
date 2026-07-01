@@ -589,6 +589,69 @@ def render_transition_filmstrip(name: str, duration_s: float, step_s: float = 0.
     return strip
 
 
+def phase_e_speech_envelope(t: float) -> float:
+    # Fixed 50 Hz-style sidecar preview: syllable peaks followed by a clean return to rest.
+    pulses = [
+        (0.18, 0.40), (0.48, 0.78), (0.82, 0.55), (1.16, 0.86),
+        (1.54, 0.52), (1.94, 0.72), (2.30, 0.62), (2.74, 0.88),
+        (3.18, 0.58), (3.56, 0.75), (4.02, 0.64), (4.42, 0.84),
+        (4.82, 0.44),
+    ]
+    value = 0.0
+    for center, amp in pulses:
+        value += amp * math.exp(-((t - center) / 0.085) ** 2)
+    if t > 5.05:
+        value *= max(0.0, 1.0 - (t - 5.05) / 0.35)
+    return clamp(value, 0.0, 1.0)
+
+
+def phase_e_speech_viseme(t: float) -> str:
+    sequence = ["ah", "ee", "ah", "oh", "ee", "ah", "oh", "ah", "ee", "oh", "ah", "ee", "oh"]
+    index = min(len(sequence) - 1, max(0, int((t + 0.05) / 0.38)))
+    return sequence[index]
+
+
+def phase_e_speech_targets(t: float) -> dict[str, float]:
+    target = phase_d_pose("speak")
+    env = phase_e_speech_envelope(t)
+    viseme = phase_e_speech_viseme(t)
+
+    target["mouth_open"] = 0.0 if env < 0.04 else 0.05 + ((env - 0.04) / 0.76) * 0.65
+    target["mouth_open"] = clamp(target["mouth_open"], 0.0, 0.72)
+    if viseme == "oh":
+        target["mouth_width_delta"] -= 10.0
+        target["mouth_smile"] -= 0.06
+        target["mouth_corner_l"] -= 1.5
+        target["mouth_corner_r"] += 1.0
+    elif viseme == "ee":
+        target["mouth_open"] *= 0.72
+        target["mouth_width_delta"] += 12.0
+        target["mouth_smile"] += 0.08
+        target["mouth_corner_l"] += 1.0
+        target["mouth_corner_r"] -= 0.5
+    else:
+        target["mouth_width_delta"] += 2.0
+        target["mouth_smile"] = max(target["mouth_smile"], 0.06)
+
+    if env > 0.55:
+        target["brow_tilt"] += 0.08 * env
+    target["face_y"] += math.sin(2.0 * math.pi * 0.20 * t) * 1.2
+    target["pupil_x"] += math.sin(t * 3.2) * 0.04
+    target["pupil_y"] += math.sin(t * 2.4 + 0.6) * 0.025
+    return target_with_defaults(target)
+
+
+def render_speech_frame(t: float) -> Image.Image:
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    draw = ImageDraw.Draw(img)
+    target = phase_e_speech_targets(t)
+    draw_eye(draw, 106, 104, target, False)
+    draw_eye(draw, 214, 104, target, True)
+    draw_mouth(draw, target)
+    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
+
+
 def main() -> None:
     still = render_frame(2.7)
     still.save(OUT / "stackchan_alive_preview.png")
@@ -607,6 +670,9 @@ def main() -> None:
     imageio.mimsave(FACE_ARTIFACTS / "phase_a_idle_10s.gif", idle_frames, fps=fps)
     phase_c_idle_frames = [render_idle_frame(i / fps) for i in range(fps * 10)]
     imageio.mimsave(FACE_ARTIFACTS / "phase_c_idle_10s.gif", phase_c_idle_frames, fps=fps)
+    phase_e_speech_frames = [render_speech_frame(i / fps) for i in range(fps * 6)]
+    imageio.mimsave(FACE_ARTIFACTS / "phase_e_speech_reactive_6s.gif", phase_e_speech_frames, fps=fps)
+    imageio.mimsave(OUT / "stackchan_alive_speech_preview.gif", phase_e_speech_frames, fps=fps)
 
     try:
       imageio.mimsave(OUT / "stackchan_alive_preview.mp4", frames, fps=fps, quality=8)

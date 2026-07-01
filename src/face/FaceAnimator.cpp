@@ -66,12 +66,38 @@ void FaceAnimator::reset(const FaceTargets& face, uint32_t nowMs) {
   saccade_ = SaccadeState {};
   fidget_ = FidgetState {};
   gesture_ = GestureState {};
+  speech_ = SpeechState {};
   telemetry_ = FaceAutonomicTelemetry {};
   gestureTelemetry_ = FaceGestureTelemetry {};
+  speechTelemetry_ = FaceSpeechTelemetry {};
 }
 
 void FaceAnimator::setReducedMotion(bool enabled) {
   reducedMotion_ = enabled;
+}
+
+void FaceAnimator::setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs) {
+  const float clamped = clamp01(envelope);
+  if (!speech_.active) {
+    speech_.startMs = nowMs;
+    if (blink_.phase == BlinkPhase::Open && blink_.nextMs < nowMs + 300) {
+      // Speech onset blink suppression - keep mouth motion and eye contact readable.
+      blink_.nextMs = nowMs + 300;
+    }
+  }
+  speech_.active = true;
+  speech_.lastUpdateMs = nowMs;
+  speech_.envelope = clamped;
+  speech_.viseme = viseme;
+  speech_.rollingPeak = clampValue(max(clamped, speech_.rollingPeak * 0.94f + clamped * 0.06f), 0.12f, 1.0f);
+}
+
+void FaceAnimator::clearSpeechEnvelope(uint32_t nowMs) {
+  (void)nowMs;
+  speech_.active = false;
+  speech_.envelope = 0.0f;
+  speech_.viseme = SpeechViseme::Neutral;
+  speechTelemetry_ = FaceSpeechTelemetry {};
 }
 
 FaceTargets FaceAnimator::composeFrame(const RobotFrame& frame, uint32_t nowMs) {
@@ -327,10 +353,55 @@ void FaceAnimator::applyGesture(FaceTargets& face, const RobotFrame& frame, uint
   }
 }
 
-void FaceAnimator::applyReactive(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) const {
-  (void)face;
+void FaceAnimator::applyReactive(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) {
   (void)frame;
-  (void)nowMs;
+  if (speech_.active && nowMs - speech_.lastUpdateMs > 160) {
+    speech_.active = false;
+    speech_.envelope = 0.0f;
+    speech_.viseme = SpeechViseme::Neutral;
+  }
+
+  speechTelemetry_.active = speech_.active;
+  speechTelemetry_.envelope = speech_.envelope;
+  speechTelemetry_.viseme = speech_.viseme;
+  speechTelemetry_.ageMs = speech_.active ? nowMs - speech_.lastUpdateMs : 0;
+
+  if (!speech_.active) {
+    return;
+  }
+
+  const float env = speech_.envelope < 0.04f ? 0.0f : clampValue((speech_.envelope - 0.04f) / 0.76f, 0.0f, 1.0f);
+  const float mouthOpen = env <= 0.0f ? 0.0f : 0.05f + env * 0.65f;
+
+  face.mouthOpen = mouthOpen;
+  switch (speech_.viseme) {
+    case SpeechViseme::Oh:
+      face.mouthWidthDelta -= 10.0f;
+      face.mouthSmile = clampValue(face.mouthSmile - 0.06f, -1.0f, 1.0f);
+      face.mouthCornerL -= 1.5f;
+      face.mouthCornerR += 1.0f;
+      break;
+    case SpeechViseme::Ee:
+      face.mouthOpen *= 0.72f;
+      face.mouthWidthDelta += 12.0f;
+      face.mouthSmile = clampValue(face.mouthSmile + 0.08f, -1.0f, 1.0f);
+      face.mouthCornerL += 1.0f;
+      face.mouthCornerR -= 0.5f;
+      break;
+    case SpeechViseme::Ah:
+      face.mouthWidthDelta += 2.0f;
+      face.mouthSmile = clampValue(max(face.mouthSmile, 0.06f), -1.0f, 1.0f);
+      break;
+    case SpeechViseme::Neutral:
+      face.mouthSmile = clampValue(max(face.mouthSmile, 0.04f), -1.0f, 1.0f);
+      break;
+  }
+
+  const float loudThreshold = max(0.52f, speech_.rollingPeak * 0.82f);
+  if (env > loudThreshold) {
+    // Speech brow accent - loud syllables lift the whole face without phoneme alignment.
+    face.browTilt = clampValue(face.browTilt + 0.08f * env, -1.0f, 1.0f);
+  }
 }
 
 FaceTargets FaceAnimator::smoothToward(const FaceTargets& target, uint32_t nowMs) {

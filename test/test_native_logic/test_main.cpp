@@ -297,6 +297,59 @@ void test_face_animator_sleep_wake_transition_uses_longer_startle_clip() {
   TEST_ASSERT_LESS_THAN_FLOAT(sleep.faceY, wake.faceY);
 }
 
+void test_face_animator_speech_envelope_owns_mouth_channel() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Speak;
+  frame.face.eyeOpen = 0.85f;
+  animator.composeFrame(frame, 0);
+
+  animator.setSpeechEnvelope(0.05f, SpeechViseme::Ah, 40);
+  const FaceTargets quiet = animator.composeFrame(frame, 40);
+  animator.setSpeechEnvelope(0.90f, SpeechViseme::Ah, 260);
+  const FaceTargets loud = animator.composeFrame(frame, 260);
+
+  TEST_ASSERT_TRUE(animator.speechTelemetry().active);
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechViseme::Ah), static_cast<int>(animator.speechTelemetry().viseme));
+  TEST_ASSERT_GREATER_THAN_FLOAT(quiet.mouthOpen, loud.mouthOpen);
+  TEST_ASSERT_GREATER_THAN_FLOAT(quiet.browTilt, loud.browTilt);
+}
+
+void test_face_animator_speech_visemes_change_mouth_shape() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Speak;
+  frame.face.eyeOpen = 0.85f;
+  animator.composeFrame(frame, 0);
+
+  animator.setSpeechEnvelope(0.75f, SpeechViseme::Ah, 40);
+  const FaceTargets ah = animator.composeFrame(frame, 40);
+  animator.setSpeechEnvelope(0.75f, SpeechViseme::Oh, 260);
+  const FaceTargets oh = animator.composeFrame(frame, 260);
+  animator.setSpeechEnvelope(0.75f, SpeechViseme::Ee, 520);
+  const FaceTargets ee = animator.composeFrame(frame, 520);
+
+  TEST_ASSERT_LESS_THAN_FLOAT(ah.mouthWidthDelta, oh.mouthWidthDelta);
+  TEST_ASSERT_GREATER_THAN_FLOAT(oh.mouthWidthDelta, ee.mouthWidthDelta);
+  TEST_ASSERT_LESS_THAN_FLOAT(ah.mouthOpen, ee.mouthOpen);
+}
+
+void test_face_animator_speech_sidecar_expires_when_updates_stop() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Speak;
+  frame.face.eyeOpen = 0.85f;
+  animator.composeFrame(frame, 0);
+
+  animator.setSpeechEnvelope(0.85f, SpeechViseme::Ah, 40);
+  const FaceTargets active = animator.composeFrame(frame, 40);
+  frame.mode = CharacterMode::Idle;
+  const FaceTargets expired = animator.composeFrame(frame, 260);
+
+  TEST_ASSERT_FALSE(animator.speechTelemetry().active);
+  TEST_ASSERT_LESS_THAN_FLOAT(active.mouthOpen, expired.mouthOpen);
+}
+
 void test_robot_frame_carries_character_mode_for_renderer() {
   RobotFrame frame = makeNeutralFrame();
   frame.mode = CharacterMode::Listen;
@@ -446,6 +499,9 @@ int main() {
   RUN_TEST(test_face_animator_starts_listen_transition_with_blink_and_pop);
   RUN_TEST(test_face_animator_think_to_speak_centers_gaze_before_mouth_settles);
   RUN_TEST(test_face_animator_sleep_wake_transition_uses_longer_startle_clip);
+  RUN_TEST(test_face_animator_speech_envelope_owns_mouth_channel);
+  RUN_TEST(test_face_animator_speech_visemes_change_mouth_shape);
+  RUN_TEST(test_face_animator_speech_sidecar_expires_when_updates_stop);
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
