@@ -376,6 +376,8 @@ function Test-MediaEvidenceFile {
 $requiredFiles = @(
   "README.md",
   "CHECKLIST.md",
+  "RELEASE_ACCEPTANCE.md",
+  "release_acceptance.json",
   "OBSERVATIONS.md",
   "DEVICE_BRINGUP.md",
   "PRODUCTION_READINESS.md",
@@ -401,6 +403,42 @@ if ($metadata.releaseTag -notmatch "^v\d+\.\d+\.\d+-.+") {
 
 if ($metadata.commit -notmatch "^[0-9a-f]{40}$") {
   throw "metadata commit is not a full Git SHA: $($metadata.commit)"
+}
+
+$acceptance = Get-Content -LiteralPath (Join-EvidencePath "release_acceptance.json") -Raw | ConvertFrom-Json
+if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
+  throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
+}
+if ($acceptance.version -ne $metadata.releaseTag) {
+  throw "release_acceptance.json version mismatch: expected $($metadata.releaseTag), got $($acceptance.version)"
+}
+if ($acceptance.commit -ne $metadata.commit) {
+  throw "release_acceptance.json commit mismatch: expected $($metadata.commit), got $($acceptance.commit)"
+}
+if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
+  throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
+}
+if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
+  throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
+}
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "servo-risk-gated")) {
+  $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
+  if ($match.Count -ne 1) {
+    throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
+  }
+}
+foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "hardware-evidence-verification")) {
+  $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
+  if ($match.Count -ne 1) {
+    throw "release_acceptance.json missing pending hardware requirement: $requirement"
+  }
+}
+
+$acceptanceText = Get-Content -LiteralPath (Join-EvidencePath "RELEASE_ACCEPTANCE.md") -Raw
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Still Required Before Consumer Rollout")) {
+  if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
+    throw "RELEASE_ACCEPTANCE.md missing expected acceptance text: $pattern"
+  }
 }
 
 foreach ($logPath in @($metadata.requiredLogs)) {

@@ -193,6 +193,20 @@ foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "
   }
 }
 
+$hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
+foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot")) {
+  if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
+  }
+}
+
+$hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json")) {
+  if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
+  }
+}
+
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
 foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {

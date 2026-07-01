@@ -45,6 +45,38 @@ function Quote-PowerShellArgument {
   return "'" + ($Value -replace "'", "''") + "'"
 }
 
+function Copy-AcceptanceArtifactsFromRoot {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot
+  )
+
+  foreach ($relativePath in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json")) {
+    $sourcePath = Join-Path $SourceRoot $relativePath
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+      throw "Release package missing acceptance artifact: $relativePath"
+    }
+    Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $DestinationRoot $relativePath)
+  }
+}
+
+function Copy-AcceptanceArtifactsFromZip {
+  param(
+    [string]$ZipPath,
+    [string]$DestinationRoot
+  )
+
+  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-acceptance"
+  $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+  try {
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    Copy-AcceptanceArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
+  } finally {
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 $rootManifest = Get-ReleaseManifest $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
@@ -149,6 +181,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($verifyExitCode -ne 0) {
     throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
   }
+  Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   $packageRootItem = Get-Item -LiteralPath $PackageRoot
@@ -180,6 +213,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($verifyExitCode -ne 0) {
     throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
   }
+  Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 }
 
@@ -311,6 +345,8 @@ $readme = @(
   "",
   "The runnable command files in this folder are generated for this release, port, package, and evidence path.",
   "",
+  "RELEASE_ACCEPTANCE.md and release_acceptance.json record the no-hardware gates that were already accepted and the hardware gates still required before consumer rollout.",
+  "",
   "Promotion verification expects OBSERVATIONS.md to record passing values: Result = pass/ok/success, reset/heat/brownout/stall/jitter observed = no, procedural face and dry-run servo log observed = yes, yaw classification = angle/velocity/disabled, soak Duration >= 30 minutes, and USB power-cycle recovery = pass/ok/success.",
   "",
   "Promotion verification also expects serial logs to include firmware markers: display-only boot ``mode=display_only``, servo-calibration boot ``mode=servo_calibration``, display readiness, servo dry-run or hardware-enable line, and soak heartbeat ``[heartbeat] stackchan_alive ... uptime_ms=...``.",
@@ -367,6 +403,8 @@ $metadata = [ordered]@{
   requiredLogs = $requiredLogs
   requiredRecords = @(
     "CHECKLIST.md",
+    "RELEASE_ACCEPTANCE.md",
+    "release_acceptance.json",
     "OBSERVATIONS.md",
     "calibration/calibration.yaml",
     "RUN_DISPLAY_ONLY.cmd",
