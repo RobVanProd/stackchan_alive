@@ -5,6 +5,7 @@ param(
   [switch]$CloudflareTunnel,
   [switch]$DownloadCloudflared,
   [int]$TunnelWaitSeconds = 30,
+  [switch]$StopAfterUrl,
   [switch]$NoServe
 )
 
@@ -26,6 +27,31 @@ function Assert-File {
   if (-not (Test-Path -LiteralPath $Path)) {
     throw "Missing file: $Path"
   }
+}
+
+function Get-ReleaseManifest {
+  param([string]$RootPath)
+
+  $manifestPath = Join-Path $RootPath "release_manifest.json"
+  if (-not (Test-Path -LiteralPath $manifestPath)) {
+    return $null
+  }
+
+  return Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+}
+
+function Invoke-GitText {
+  param([string[]]$Arguments)
+
+  try {
+    $output = & git @Arguments 2>$null
+  } catch {
+    return ""
+  }
+  if ($LASTEXITCODE -ne 0) {
+    return ""
+  }
+  return ($output | Out-String).Trim()
 }
 
 function Get-CloudflaredPath {
@@ -59,21 +85,40 @@ function Get-CloudflaredPath {
   return $item.FullName
 }
 
+$rootManifest = Get-ReleaseManifest $repoRoot
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (git describe --tags --always --dirty).Trim()
+  if ($null -ne $rootManifest) {
+    $Version = [string]$rootManifest.version
+  } else {
+    $Version = Invoke-GitText @("describe", "--tags", "--always", "--dirty")
+  }
 }
 
-$packageRoot = Join-Path $repoRoot "output/release/$Version"
-$zipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
-
-Assert-File $packageRoot
-Assert-File $zipPath
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  throw "Version is required when it cannot be inferred from git or release_manifest.json."
+}
 
 $shareRoot = Join-Path $repoRoot "output/share/$Version"
 if (Test-Path -LiteralPath $shareRoot) {
   Remove-Item -LiteralPath $shareRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $shareRoot | Out-Null
+
+if ($null -ne $rootManifest) {
+  $packageRoot = $repoRoot
+  $zipPath = Join-Path $shareRoot "stackchan_alive_$Version.zip"
+  $zipItems = Get-ChildItem -LiteralPath $packageRoot -Force |
+    Where-Object { $_.Name -ne "output" } |
+    Select-Object -ExpandProperty FullName
+  Compress-Archive -LiteralPath $zipItems -DestinationPath $zipPath -Force
+} else {
+  $packageRoot = Join-Path $repoRoot "output/release/$Version"
+  $zipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
+}
+
+Assert-File $packageRoot
+Assert-File $zipPath
 
 $files = @(
   @{ Source = $zipPath; Name = "stackchan_alive_$Version.zip" },
@@ -87,7 +132,12 @@ $files = @(
 
 foreach ($file in $files) {
   Assert-File $file.Source
-  Copy-Item -LiteralPath $file.Source -Destination (Join-Path $shareRoot $file.Name)
+  $destination = Join-Path $shareRoot $file.Name
+  $sourcePath = (Resolve-Path $file.Source).Path
+  if ((Test-Path -LiteralPath $destination) -and ((Resolve-Path $destination).Path -eq $sourcePath)) {
+    continue
+  }
+  Copy-Item -LiteralPath $file.Source -Destination $destination
 }
 
 $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
@@ -210,6 +260,14 @@ if ($CloudflareTunnel) {
   } else {
     Write-Host "Public tunnel URL:"
     Write-Host $publicUrl
+  }
+
+  if ($StopAfterUrl) {
+    $stopIds = @($server.Id, $tunnel.Id)
+    Stop-Process -Id $stopIds -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $stopIds -Timeout 5 -ErrorAction SilentlyContinue
+    Write-Host "Stopped sharing processes after tunnel check."
+    exit 0
   }
 }
 

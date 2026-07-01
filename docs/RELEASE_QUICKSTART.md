@@ -10,13 +10,19 @@ Use this from an extracted release package when the device arrives.
 
 ## Remote Review Link
 
-From a source checkout or extracted release package:
+From an extracted release package:
+
+```powershell
+.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared
+```
+
+This serves the release ZIP, preview image, video, quickstart, release notes, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
+
+From a source checkout, pass the release version:
 
 ```powershell
 .\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
 ```
-
-This serves the release ZIP, preview image, video, quickstart, release notes, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
 
 ## Prepare The Arrival Packet
 

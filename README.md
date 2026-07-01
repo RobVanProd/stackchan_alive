@@ -86,6 +86,7 @@ Stage a local handoff page for the ZIP, image, and video, optionally with a Clou
 ```
 
 When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
+From an extracted release package, `.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared` infers the release version from `release_manifest.json`.
 
 Start a device-arrival evidence packet:
 
