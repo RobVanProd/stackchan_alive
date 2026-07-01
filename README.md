@@ -82,9 +82,10 @@ Stage a local handoff page for the ZIP, image, and video, optionally with a Clou
 ```powershell
 .\tools\share_release.cmd -Version <version>
 .\tools\share_release.cmd -Version <version> -CloudflareTunnel
+.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
 ```
 
-When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL.
+When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
 
 Start a device-arrival evidence packet:
 

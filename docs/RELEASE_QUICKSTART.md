@@ -8,6 +8,16 @@ Use this from an extracted release package when the device arrives.
 2. Confirm the body is clear and the servos are not mechanically blocked.
 3. Keep the first run display-only. Servo calibration is a separate, supervised step.
 
+## Remote Review Link
+
+From a source checkout or extracted release package:
+
+```powershell
+.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
+```
+
+This serves the release ZIP, preview image, video, quickstart, release notes, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
+
 ## Prepare The Arrival Packet
 
 From inside the extracted release folder:

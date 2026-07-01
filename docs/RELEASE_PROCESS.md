@@ -94,6 +94,7 @@ Stage a local handoff page with direct links to the ZIP, image, video, GIF, rele
 ```
 
 If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.
+If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL and keeps the local server plus tunnel running in hidden background processes.
 
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.

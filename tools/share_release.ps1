@@ -3,6 +3,7 @@ param(
   [int]$Port = 8787,
   [string]$BindAddress = "127.0.0.1",
   [switch]$CloudflareTunnel,
+  [switch]$DownloadCloudflared,
   [int]$TunnelWaitSeconds = 30,
   [switch]$NoServe
 )
@@ -25,6 +26,37 @@ function Assert-File {
   if (-not (Test-Path -LiteralPath $Path)) {
     throw "Missing file: $Path"
   }
+}
+
+function Get-CloudflaredPath {
+  $command = Get-Command "cloudflared" -ErrorAction SilentlyContinue
+  if ($null -ne $command) {
+    return $command.Source
+  }
+
+  $localPath = Join-Path $repoRoot "output/tools/cloudflared.exe"
+  if (Test-Path -LiteralPath $localPath) {
+    return (Resolve-Path $localPath).Path
+  }
+
+  if (-not $DownloadCloudflared) {
+    throw "Required command is not available on PATH: cloudflared. Re-run with -DownloadCloudflared to place a local copy under output/tools."
+  }
+
+  $toolsDir = Join-Path $repoRoot "output/tools"
+  New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+  $downloadUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+  Write-Host "Downloading cloudflared:"
+  Write-Host $downloadUrl
+  Invoke-WebRequest -Uri $downloadUrl -OutFile $localPath
+
+  $item = Get-Item -LiteralPath $localPath
+  if ($item.Length -lt 1000000) {
+    throw "Downloaded cloudflared is unexpectedly small: $($item.Length) bytes"
+  }
+
+  return $item.FullName
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -121,7 +153,7 @@ if ($NoServe) {
 
 Assert-Command "python"
 if ($CloudflareTunnel) {
-  Assert-Command "cloudflared"
+  $cloudflaredPath = Get-CloudflaredPath
 }
 
 $serverArgs = @(
@@ -133,7 +165,10 @@ $serverArgs = @(
   "--directory",
   $shareRoot
 )
-$server = Start-Process -FilePath "python" -ArgumentList $serverArgs -WindowStyle Hidden -PassThru
+$serverOutLog = Join-Path $shareRoot "server.stdout.log"
+$serverErrLog = Join-Path $shareRoot "server.stderr.log"
+Remove-Item -LiteralPath $serverOutLog, $serverErrLog -Force -ErrorAction SilentlyContinue
+$server = Start-Process -FilePath "python" -ArgumentList $serverArgs -WindowStyle Hidden -RedirectStandardOutput $serverOutLog -RedirectStandardError $serverErrLog -PassThru
 $server.Id | Set-Content -Path (Join-Path $shareRoot "server.pid") -Encoding ASCII
 Write-Host "Started local server PID $($server.Id)"
 
@@ -143,7 +178,7 @@ if ($CloudflareTunnel) {
   Remove-Item -LiteralPath $cloudflaredOutLog, $cloudflaredErrLog -Force -ErrorAction SilentlyContinue
 
   $tunnelArgs = @("tunnel", "--url", "http://$BindAddress`:$Port")
-  $tunnel = Start-Process -FilePath "cloudflared" -ArgumentList $tunnelArgs -WindowStyle Hidden -RedirectStandardOutput $cloudflaredOutLog -RedirectStandardError $cloudflaredErrLog -PassThru
+  $tunnel = Start-Process -FilePath $cloudflaredPath -ArgumentList $tunnelArgs -WindowStyle Hidden -RedirectStandardOutput $cloudflaredOutLog -RedirectStandardError $cloudflaredErrLog -PassThru
   $tunnel.Id | Set-Content -Path (Join-Path $shareRoot "cloudflared.pid") -Encoding ASCII
   Write-Host "Started cloudflared PID $($tunnel.Id)"
   Write-Host "Waiting up to $TunnelWaitSeconds seconds for the public tunnel URL..."
