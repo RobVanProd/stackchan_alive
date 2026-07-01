@@ -136,6 +136,8 @@ $requiredFiles = @(
   "tools/export_github_actions_status.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/generate_synthetic_hardware_evidence.cmd",
+  "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/check_hardware_evidence_progress.cmd",
   "tools/check_hardware_evidence_progress.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -210,6 +212,13 @@ foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "Copy
   }
 }
 
+$syntheticEvidenceGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/generate_synthetic_hardware_evidence.ps1") -Raw
+foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "must not be used as rollout evidence")) {
+  if ($syntheticEvidenceGeneratorText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/generate_synthetic_hardware_evidence.ps1 missing synthetic evidence safety logic: $pattern"
+  }
+}
+
 $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
 foreach ($pattern in @("OBSERVATIONS.md has blank field", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
@@ -218,7 +227,7 @@ foreach ($pattern in @("OBSERVATIONS.md has blank field", "CHECKLIST.md still ha
 }
 
 $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json")) {
+foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "AllowSyntheticEvidence", "diagnosticOnly")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
   }

@@ -2,7 +2,8 @@ param(
   [string]$EvidenceRoot,
   [int64]$MinLogBytes = 128,
   [switch]$AllowMissingPackage,
-  [switch]$AllowMissingMedia
+  [switch]$AllowMissingMedia,
+  [switch]$AllowSyntheticEvidence
 )
 
 $ErrorActionPreference = "Stop"
@@ -390,6 +391,10 @@ foreach ($file in $requiredFiles) {
 }
 
 $metadata = Get-Content -LiteralPath (Join-EvidencePath "metadata.json") -Raw | ConvertFrom-Json
+
+if ($metadata.diagnosticOnly -eq $true -and -not $AllowSyntheticEvidence) {
+  throw "Evidence packet is marked diagnosticOnly. Synthetic evidence cannot be used for promotion without -AllowSyntheticEvidence."
+}
 
 foreach ($field in @("releaseTag", "commit", "createdUtc", "deviceId", "port", "operator")) {
   if ([string]::IsNullOrWhiteSpace([string]$metadata.$field)) {

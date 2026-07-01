@@ -44,6 +44,14 @@ Create a hardware evidence packet when testing a physical device:
 Packet creation copies the tested ZIP and records `logs/package_verify.log`. Promotion evidence must include that successful package-verification transcript unless the verifier is run with `-AllowMissingPackage` for a diagnostic-only packet.
 The packet also includes generated `RUN_*.cmd` files for display flashing, servo calibration flashing, soak logging, package verification, final evidence verification, and the full consumer-promotion gate.
 
+Verifier self-tests can generate an explicit diagnostic-only synthetic packet:
+
+```powershell
+.\tools\generate_synthetic_hardware_evidence.cmd -Version <version> -PackageZip output\release\stackchan_alive_<version>.zip -Verify
+```
+
+Synthetic packets are written under `output/hardware-evidence-diagnostic/` and are rejected by `tools\verify_hardware_evidence.cmd` unless `-AllowSyntheticEvidence` is passed. Do not use them as rollout evidence.
+
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
 ```powershell

@@ -16,6 +16,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - A local release handoff page can serve the ZIP, preview image, expression sheet, and preview video, with optional Cloudflare tunnel exposure.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
 - Consumer promotion is guarded by `tools/verify_consumer_promotion.ps1`, which composes package verification, hardware evidence verification, GitHub Actions status, and production voice-source provenance.
+- Synthetic diagnostic evidence packets can be generated to self-test the verifier, and are rejected by default unless `-AllowSyntheticEvidence` is explicit.
 - Hardware evidence verification rejects completed observation records that report reset loops, missing face display, missing dry-run servo log, missing firmware boot/heartbeat serial markers, heat/brownout, short soak duration, failed power-cycle recovery, invalid calibration ranges, placeholder-only media evidence, header-only media files, or implausibly small media files.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, preview media, hardware evidence verifier gates, tests, builds, and an optional release ZIP before device flashing.
 - Release package verification rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence.
