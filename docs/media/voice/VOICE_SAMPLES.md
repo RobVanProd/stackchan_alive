@@ -5,6 +5,7 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 Generated source:
 - Local Windows SpeechSynthesizer voice: `Microsoft David Desktop`
 - Deterministic robot effect chain: measured source cadence, lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
+- Tuning: SpeechSynthesizer rate `-1` with pitch/cadence resample factor `1.2` for a slightly slower, lower robot read
 - Renderer: `tools/render_voice_samples.ps1`
 
 Samples:

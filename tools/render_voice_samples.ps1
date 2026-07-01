@@ -11,6 +11,11 @@ Set-Location $repoRoot
 $outputPath = Join-Path $repoRoot $OutputDir
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 
+$speechRate = -1
+$robotPitchCadenceFactor = 1.2
+$ringModBaseHz = 39.0
+$ringModHarmonicHz = 78.0
+
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-voice-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
@@ -42,7 +47,7 @@ try {
     $synth.SelectVoice($voiceNames[0])
   }
   $selectedVoice = $synth.Voice.Name
-  $synth.Rate = 0
+  $synth.Rate = $speechRate
   $synth.Volume = 100
 
   foreach ($sample in $samples) {
@@ -55,7 +60,7 @@ try {
 
   $pythonPath = Get-StackchanPreviewPython
   $effectScript = Join-Path $tempDir "stackchan_robotize.py"
-  @'
+  @"
 import math
 import os
 import struct
@@ -110,7 +115,7 @@ def resample_linear(samples, factor):
     return out
 
 def robotize(rate, samples):
-    samples = resample_linear(samples, 1.12)
+    samples = resample_linear(samples, $robotPitchCadenceFactor)
     delay_a = max(1, int(rate * 0.055))
     delay_b = max(1, int(rate * 0.095))
     out = [0.0] * (len(samples) + delay_b + 1)
@@ -120,8 +125,8 @@ def robotize(rate, samples):
         bright = sample - 0.45 * low
         carrier = (
             0.78
-            + 0.17 * math.sin(2.0 * math.pi * 43.0 * i / rate)
-            + 0.05 * math.sin(2.0 * math.pi * 86.0 * i / rate)
+            + 0.17 * math.sin(2.0 * math.pi * $ringModBaseHz * i / rate)
+            + 0.05 * math.sin(2.0 * math.pi * $ringModHarmonicHz * i / rate)
         )
         shaped = math.tanh(bright * 1.45) * carrier
         crushed = round(shaped * 80.0) / 80.0
@@ -142,7 +147,7 @@ for name in sorted(os.listdir(source_dir)):
     rate, samples = read_wav(os.path.join(source_dir, name))
     out_path = os.path.join(out_dir, f"stackchan_spark_{slug}.wav")
     write_wav(out_path, rate, robotize(rate, samples))
-'@ | Set-Content -Path $effectScript -Encoding UTF8
+"@ | Set-Content -Path $effectScript -Encoding UTF8
 
   & $pythonPath $effectScript $tempDir $outputPath
   if ($LASTEXITCODE -ne 0) {
@@ -161,6 +166,7 @@ These are prototype audition samples for the original Stackchan Spark voice dire
 Generated source:
 - Local Windows SpeechSynthesizer voice: ``$selectedVoice``
 - Deterministic robot effect chain: measured source cadence, lowered-pitch resample, high-pass shaping, light ring modulation, subtle bit-depth reduction, soft saturation, and short echo
+- Tuning: SpeechSynthesizer rate ``$speechRate`` with pitch/cadence resample factor ``$robotPitchCadenceFactor`` for a slightly slower, lower robot read
 - Renderer: ``tools/render_voice_samples.ps1``
 
 Samples:
