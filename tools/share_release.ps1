@@ -3,6 +3,7 @@ param(
   [int]$Port = 8787,
   [string]$BindAddress = "127.0.0.1",
   [switch]$CloudflareTunnel,
+  [int]$TunnelWaitSeconds = 30,
   [switch]$NoServe
 )
 
@@ -111,6 +112,9 @@ if ($NoServe) {
 }
 
 Assert-Command "python"
+if ($CloudflareTunnel) {
+  Assert-Command "cloudflared"
+}
 
 $serverArgs = @(
   "-m",
@@ -122,12 +126,53 @@ $serverArgs = @(
   $shareRoot
 )
 $server = Start-Process -FilePath "python" -ArgumentList $serverArgs -WindowStyle Hidden -PassThru
+$server.Id | Set-Content -Path (Join-Path $shareRoot "server.pid") -Encoding ASCII
 Write-Host "Started local server PID $($server.Id)"
 
 if ($CloudflareTunnel) {
-  Assert-Command "cloudflared"
+  $cloudflaredOutLog = Join-Path $shareRoot "cloudflared.stdout.log"
+  $cloudflaredErrLog = Join-Path $shareRoot "cloudflared.stderr.log"
+  Remove-Item -LiteralPath $cloudflaredOutLog, $cloudflaredErrLog -Force -ErrorAction SilentlyContinue
+
   $tunnelArgs = @("tunnel", "--url", "http://$BindAddress`:$Port")
-  $tunnel = Start-Process -FilePath "cloudflared" -ArgumentList $tunnelArgs -WindowStyle Hidden -PassThru
+  $tunnel = Start-Process -FilePath "cloudflared" -ArgumentList $tunnelArgs -WindowStyle Hidden -RedirectStandardOutput $cloudflaredOutLog -RedirectStandardError $cloudflaredErrLog -PassThru
+  $tunnel.Id | Set-Content -Path (Join-Path $shareRoot "cloudflared.pid") -Encoding ASCII
   Write-Host "Started cloudflared PID $($tunnel.Id)"
-  Write-Host "Run cloudflared logs in a visible terminal if you need to copy the public tunnel URL."
+  Write-Host "Waiting up to $TunnelWaitSeconds seconds for the public tunnel URL..."
+
+  $publicUrl = $null
+  $deadline = (Get-Date).AddSeconds($TunnelWaitSeconds)
+  while ((Get-Date) -lt $deadline -and [string]::IsNullOrWhiteSpace($publicUrl)) {
+    foreach ($logPath in @($cloudflaredOutLog, $cloudflaredErrLog)) {
+      if (-not (Test-Path -LiteralPath $logPath)) {
+        continue
+      }
+
+      $logText = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+      if ($logText -match "https://[-A-Za-z0-9]+\.trycloudflare\.com") {
+        $publicUrl = $Matches[0]
+        break
+      }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($publicUrl)) {
+      Start-Sleep -Milliseconds 500
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($publicUrl)) {
+    Write-Warning "Cloudflare tunnel started, but no public URL was found yet."
+    Write-Host "Cloudflared stdout log: $cloudflaredOutLog"
+    Write-Host "Cloudflared stderr log: $cloudflaredErrLog"
+  } else {
+    Write-Host "Public tunnel URL:"
+    Write-Host $publicUrl
+  }
+}
+
+Write-Host "Stop sharing command:"
+if ($CloudflareTunnel) {
+  Write-Host "Stop-Process -Id $($server.Id),$($tunnel.Id)"
+} else {
+  Write-Host "Stop-Process -Id $($server.Id)"
 }

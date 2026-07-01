@@ -84,6 +84,8 @@ Stage a local handoff page for the ZIP, image, and video, optionally with a Clou
 .\tools\share_release.cmd -Version v0.1.2-device-ready -CloudflareTunnel
 ```
 
+When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL.
+
 Start a device-arrival evidence packet:
 
 ```powershell
