@@ -227,7 +227,7 @@ if ($actualZipHash -ne $expectedZipHash) {
 }
 
 $indexText = Get-Content -LiteralPath (Join-Path $shareRootPath "index.html") -Raw
-foreach ($pattern in @($Version, "Hardware validation is still pending", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "Voice Samples", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
+foreach ($pattern in @($Version, "Hardware validation is still pending", "No-hardware gates passed", "Hardware gates pending", "Consumer rollout", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "Voice Samples", "Voice Review Checklist", "Transcript:", "Hello. I am Stackchan, and I am awake.", "Input received. I am thinking now. Curiosity level rising.", "Small problem found. I can help fix it. Safety first.", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_safety.wav", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256")) {
   if ($indexText -notmatch [regex]::Escape($pattern)) {
     throw "index.html missing expected share guidance: $pattern"
   }

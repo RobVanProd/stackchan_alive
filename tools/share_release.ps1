@@ -238,7 +238,11 @@ $sharedZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sharedZipPath).Ha
 "$sharedZipHash  $sharedZipName" | Set-Content -Path (Join-Path $shareRoot "$sharedZipName.sha256") -Encoding ASCII
 
 $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
+$readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
 $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$passedGateCount = @($readiness.noHardwareProof | Where-Object { $_.status -eq "pass" }).Count
+$pendingGateCount = @($readiness.hardwareGates | Where-Object { $_.status -match "pending" }).Count
+$consumerRollout = [string]$readiness.consumerRollout
 
 @"
 <!doctype html>
@@ -256,6 +260,12 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     code { background: #7772; padding: 2px 5px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
     .item { border: 1px solid #7775; padding: 16px; }
+    .status { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .pill { border: 1px solid #7775; padding: 6px 10px; }
+    .pass { border-color: #2ea04399; }
+    .pending { border-color: #d2992299; }
+    .transcript { font-size: 0.95em; margin: 10px 0 0; }
+    .checklist li { margin-bottom: 6px; }
   </style>
 </head>
 <body>
@@ -264,6 +274,11 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   <p>Device-ready prerelease. Hardware validation is still pending.</p>
   <p><strong>Commit:</strong> <code>$($manifest.commit)</code></p>
   <p><strong>Generated UTC:</strong> <code>$generatedUtc</code></p>
+  <div class="status">
+    <span class="pill pass">No-hardware gates passed: $passedGateCount</span>
+    <span class="pill pending">Hardware gates pending: $pendingGateCount</span>
+    <span class="pill pending">Consumer rollout: $consumerRollout</span>
+  </div>
 
   <h2>Preview</h2>
   <p><img src="stackchan_alive_preview.png" alt="Stackchan Alive preview image"></p>
@@ -276,19 +291,29 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     <div class="item">
       <strong>Greeting</strong>
       <audio src="voice/stackchan_spark_greeting.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
       <p><a href="voice/stackchan_spark_greeting.wav">Download WAV</a></p>
     </div>
     <div class="item">
       <strong>Thinking</strong>
       <audio src="voice/stackchan_spark_thinking.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Input received. I am thinking now. Curiosity level rising.</p>
       <p><a href="voice/stackchan_spark_thinking.wav">Download WAV</a></p>
     </div>
     <div class="item">
       <strong>Safety</strong>
       <audio src="voice/stackchan_spark_safety.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Small problem found. I can help fix it. Safety first.</p>
       <p><a href="voice/stackchan_spark_safety.wav">Download WAV</a></p>
     </div>
   </div>
+  <h3>Voice Review Checklist</h3>
+  <ul class="checklist">
+    <li>Clear enough to understand through a small device speaker.</li>
+    <li>Robot-like without sounding like a direct movie-character clone.</li>
+    <li>Friendly, curious, and concise enough for repeated device use.</li>
+    <li>Worth moving into a licensed or owned production voice source before consumer rollout.</li>
+  </ul>
 
   <h2>Downloads</h2>
   <div class="grid">
