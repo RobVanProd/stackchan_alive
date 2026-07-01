@@ -107,7 +107,7 @@ if (-not [string]::IsNullOrWhiteSpace($Port)) {
 }
 
 $displayCommand = ".\tools\flash_device.ps1 -Environment stackchan$portArg -Monitor 2>&1 | Tee-Object -FilePath `"$logsDir\display_only_serial.log`""
-$servoCommand = ".\tools\flash_device.ps1 -Environment stackchan_servo_calibration$portArg -Monitor 2>&1 | Tee-Object -FilePath `"$logsDir\servo_calibration_serial.log`""
+$servoCommand = ".\tools\flash_device.ps1 -Environment stackchan_servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath `"$logsDir\servo_calibration_serial.log`""
 $verifyCommand = ".\tools\verify_release_package.ps1 -Version $ReleaseTag -ZipPath <path-to-release-zip> -ExpectedCommit $commit"
 
 $readme = @(

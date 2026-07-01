@@ -34,7 +34,7 @@ Pass criteria:
 Command:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan_servo_calibration -Monitor
+.\tools\flash_device.cmd -Environment stackchan_servo_calibration -ConfirmServoRisk -Monitor
 ```
 
 Pass criteria:

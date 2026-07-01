@@ -41,10 +41,16 @@ Use the default display-only environment first:
 .\tools\flash_device.cmd -Environment stackchan -Monitor
 ```
 
+Check the servo upload command without touching the device:
+
+```powershell
+.\tools\flash_device.cmd -Environment stackchan_servo_calibration -ConfirmServoRisk -DryRun -Monitor
+```
+
 Only use the servo calibration environment after the display-only build runs and the body is on a clear surface:
 
 ```powershell
-.\tools\flash_device.cmd -Environment stackchan_servo_calibration -Monitor
+.\tools\flash_device.cmd -Environment stackchan_servo_calibration -ConfirmServoRisk -Monitor
 ```
 
 The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.

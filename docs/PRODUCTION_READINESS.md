@@ -17,6 +17,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.
 - Servo output is disabled by default until hardware calibration.
+- Servo-enabled flashing requires an explicit `-ConfirmServoRisk` operator acknowledgment.
 - Display rendering uses the M5 display backend, not a stub.
 - Preview media can be generated without hardware.
 
