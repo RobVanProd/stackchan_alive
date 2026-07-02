@@ -25,6 +25,7 @@ void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {
   display_->drawEye(makeEye(composed, true), true);
   display_->drawMouth(makeMouth(composed));
   display_->flush();
+  printAnimatorTelemetry(composed, nowMs);
 }
 
 EyeGeometry ProceduralFace::makeEye(const RobotFrame& frame, bool rightEye) const {
@@ -62,6 +63,41 @@ MouthGeometry ProceduralFace::makeMouth(const RobotFrame& frame) const {
   mouth.cornerL = frame.face.mouthCornerL;
   mouth.cornerR = frame.face.mouthCornerR;
   return mouth;
+}
+
+void ProceduralFace::printAnimatorTelemetry(const RobotFrame& frame, uint32_t nowMs) {
+  if (lastTelemetryMs_ == 0) {
+    lastTelemetryMs_ = nowMs;
+    return;
+  }
+  if (nowMs - lastTelemetryMs_ < 5000) {
+    return;
+  }
+  lastTelemetryMs_ = nowMs;
+
+  const FaceAutonomicTelemetry& autonomic = animator_.autonomicTelemetry();
+  const FaceGestureTelemetry& gesture = animator_.gestureTelemetry();
+  const FaceSpeechTelemetry& speech = animator_.speechTelemetry();
+  Serial.print(F("[face] mode="));
+  Serial.print(static_cast<int>(frame.mode));
+  Serial.print(F(" blink_count="));
+  Serial.print(autonomic.blinkCount);
+  Serial.print(F(" saccade_count="));
+  Serial.print(autonomic.saccadeCount);
+  Serial.print(F(" blink_open="));
+  Serial.print(autonomic.blinkOpen, 2);
+  Serial.print(F(" breath_y="));
+  Serial.print(autonomic.breathY, 2);
+  Serial.print(F(" gaze_x="));
+  Serial.print(autonomic.gazeX, 2);
+  Serial.print(F(" gaze_y="));
+  Serial.print(autonomic.gazeY, 2);
+  Serial.print(F(" gesture_active="));
+  Serial.print(gesture.active ? 1 : 0);
+  Serial.print(F(" speech_active="));
+  Serial.print(speech.active ? 1 : 0);
+  Serial.print(F(" speech_env="));
+  Serial.println(speech.envelope, 2);
 }
 
 }  // namespace stackchan

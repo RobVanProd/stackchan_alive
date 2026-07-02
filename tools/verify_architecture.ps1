@@ -215,5 +215,9 @@ Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "kFrameBudge
 Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "fps_window" "DisplayAdapter telemetry must report actual frame-window cadence."
 Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "slow_frames" "DisplayAdapter telemetry must report frame-budget misses."
 Assert-FileNotContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "powf\s*\(" "DisplayAdapter render hot path must not call powf."
+Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "\[face\]" "ProceduralFace must emit animator telemetry for real-device evidence."
+Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "blink_count" "Face telemetry must report blink counter."
+Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "saccade_count" "Face telemetry must report saccade counter."
+Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "speech_env" "Face telemetry must report speech envelope state."
 
 Write-Host "Architecture boundaries verified."

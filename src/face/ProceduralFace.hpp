@@ -25,9 +25,11 @@ class ProceduralFace {
  private:
   IDisplay* display_ = nullptr;
   FaceAnimator animator_;
+  uint32_t lastTelemetryMs_ = 0;
 
   EyeGeometry makeEye(const RobotFrame& frame, bool rightEye) const;
   MouthGeometry makeMouth(const RobotFrame& frame) const;
+  void printAnimatorTelemetry(const RobotFrame& frame, uint32_t nowMs);
 };
 
 }  // namespace stackchan

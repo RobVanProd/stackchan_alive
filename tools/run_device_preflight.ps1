@@ -512,6 +512,7 @@ function Assert-HardwareEvidenceMediaGate {
       "[boot] stackchan_alive mode=display_only serial=v1",
       "[display] M5 display renderer ready",
       "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
+      "[face] mode=1 blink_count=3 saccade_count=4 blink_open=1.00 breath_y=0.42 gaze_x=0.08 gaze_y=-0.03 gesture_active=0 speech_active=0 speech_env=0.00",
       "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
       "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
       "synthetic display log line for verifier negative-test coverage."
@@ -526,6 +527,7 @@ function Assert-HardwareEvidenceMediaGate {
     @(
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
       "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
+      "[face] mode=1 blink_count=12 saccade_count=16 blink_open=1.00 breath_y=-0.18 gaze_x=-0.04 gaze_y=0.02 gesture_active=0 speech_active=0 speech_env=0.00",
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
       "synthetic soak log line for verifier negative-test coverage."
     ) | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
@@ -660,6 +662,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     @(
       "[display] M5 display renderer ready",
       "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
+      "[face] mode=1 blink_count=3 saccade_count=4 blink_open=1.00 breath_y=0.42 gaze_x=0.08 gaze_y=-0.03 gesture_active=0 speech_active=0 speech_env=0.00",
       "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
       "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
       "synthetic display log missing boot marker for verifier negative-test coverage."
@@ -674,6 +677,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     @(
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
       "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
+      "[face] mode=1 blink_count=12 saccade_count=16 blink_open=1.00 breath_y=-0.18 gaze_x=-0.04 gaze_y=0.02 gesture_active=0 speech_active=0 speech_env=0.00",
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
       "synthetic soak log line for verifier negative-test coverage."
     ) | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
