@@ -309,6 +309,8 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "",
   "The normal hardware evidence verifier rejects this packet unless `-AllowSyntheticEvidence` is passed.",
   "",
+  "BENCH_STATUS.md is generated for workflow-shape testing only. It does not make this packet real hardware evidence.",
+  "",
   "Release: $Version",
   "Commit: $ExpectedCommit"
 ) | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
@@ -324,6 +326,8 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "",
   "This is a synthetic diagnostic packet. It tests verifier coverage only and must not be used as rollout evidence.",
   "",
+  "Open ``BENCH_STATUS.md`` for the latest synthetic next-action summary. ``RUN_PROGRESS_CHECK.cmd`` refreshes ``BENCH_STATUS.md`` and ``BENCH_STATUS.json``.",
+  "",
   "## Run Order",
   "",
   "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
@@ -334,7 +338,7 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
   "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
   "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-  "9. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "9. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
   "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
   "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
   "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
@@ -354,6 +358,33 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "- Do not promote if ``CHECKLIST.md`` still has unchecked gates or ``RUN_PROGRESS_CHECK.cmd`` reports missing evidence.",
   "- Do not treat generated samples, local previews, or hosted review pages as consumer rollout evidence."
 ) | Set-Content -Path (Join-Path $outDir "NEXT_STEPS.md") -Encoding UTF8
+
+$initialBenchStatus = [ordered]@{
+  schema = "stackchan.bench-status.v1"
+  evidenceRoot = $outDir
+  generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  status = "synthetic-diagnostic-not-for-rollout"
+  nextAction = "Run the progress check to exercise the same bench-status refresh path used by real packets."
+  nextCommand = "RUN_PROGRESS_CHECK.cmd"
+  reason = "Synthetic diagnostic scaffold; not real hardware evidence."
+  findingCount = $null
+  passCount = $null
+  findings = @("Synthetic diagnostic packet cannot be used as rollout evidence.")
+  passes = @()
+}
+$initialBenchStatus | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $outDir "BENCH_STATUS.json") -Encoding UTF8
+@(
+  "# Stackchan Bench Status",
+  "",
+  "- Schema: stackchan.bench-status.v1",
+  "- Generated UTC: $($initialBenchStatus.generatedUtc)",
+  "- Status: synthetic-diagnostic-not-for-rollout",
+  "- Next action: Run the progress check to exercise the same bench-status refresh path used by real packets.",
+  "- Next command: ``RUN_PROGRESS_CHECK.cmd``",
+  "- Reason: Synthetic diagnostic scaffold; not real hardware evidence.",
+  "",
+  "Run ``RUN_PROGRESS_CHECK.cmd`` to refresh this file. Do not use this packet as rollout evidence."
+) | Set-Content -Path (Join-Path $outDir "BENCH_STATUS.md") -Encoding UTF8
 
 @(
   "# Hardware Test Observations",
@@ -502,6 +533,8 @@ $metadata = [ordered]@{
   voiceLeadAudition = $voiceLeadInfo
   requiredLogs = $requiredLogs
   requiredRecords = @(
+    "BENCH_STATUS.md",
+    "BENCH_STATUS.json",
     "NEXT_STEPS.md",
     "CHECKLIST.md",
     "RELEASE_ACCEPTANCE.md",
@@ -524,10 +557,23 @@ $metadata = [ordered]@{
     "RUN_EVIDENCE_VERIFY.cmd",
     "RUN_CONSUMER_PROMOTION_CHECK.cmd"
   )
+  benchStatus = [ordered]@{
+    summary = "BENCH_STATUS.md"
+    report = "BENCH_STATUS.json"
+    refreshCommand = "RUN_PROGRESS_CHECK.cmd"
+  }
   promotionVerifier = "tools/verify_consumer_promotion.ps1"
   hardwareEvidenceVerifier = "tools/verify_hardware_evidence.ps1"
 }
 $metadata | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $outDir "metadata.json") -Encoding UTF8
+
+$progressLog = Join-Path $logsDir "progress_check.log"
+$progressOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "check_hardware_evidence_progress.ps1") -EvidenceRoot $outDir 2>&1
+$progressExitCode = $LASTEXITCODE
+$progressOutput | Set-Content -Path $progressLog -Encoding UTF8
+if ($progressExitCode -notin @(0, 2)) {
+  throw "Synthetic hardware evidence progress check failed unexpectedly with exit code $progressExitCode. See $progressLog"
+}
 
 Write-Host "Synthetic hardware evidence packet:"
 Write-Host $outDir

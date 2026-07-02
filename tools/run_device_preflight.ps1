@@ -533,6 +533,36 @@ function Write-SyntheticNextSteps {
   ) | Set-Content -Path (Join-Path $EvidenceRoot "NEXT_STEPS.md") -Encoding UTF8
 }
 
+function Write-SyntheticBenchStatus {
+  param([string]$EvidenceRoot)
+
+  $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  [ordered]@{
+    schema = "stackchan.bench-status.v1"
+    evidenceRoot = $EvidenceRoot
+    generatedUtc = $generatedUtc
+    status = "synthetic-preflight-fixture"
+    nextAction = "Run verifier gate under test."
+    nextCommand = "RUN_EVIDENCE_VERIFY.cmd"
+    reason = "Synthetic preflight fixture, not real hardware evidence."
+    findingCount = 1
+    passCount = 0
+    findings = @("Synthetic fixture cannot be used as rollout evidence.")
+    passes = @()
+  } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $EvidenceRoot "BENCH_STATUS.json") -Encoding UTF8
+
+  @(
+    "# Stackchan Bench Status",
+    "",
+    "- Schema: stackchan.bench-status.v1",
+    "- Generated UTC: $generatedUtc",
+    "- Status: synthetic-preflight-fixture",
+    "- Next action: Run verifier gate under test.",
+    "- Next command: ``RUN_EVIDENCE_VERIFY.cmd``",
+    "- Reason: Synthetic preflight fixture, not real hardware evidence."
+  ) | Set-Content -Path (Join-Path $EvidenceRoot "BENCH_STATUS.md") -Encoding UTF8
+}
+
 function Assert-FlashHelperSafety {
   $flashScript = Join-Path $PSScriptRoot "flash_device.ps1"
 
@@ -652,6 +682,7 @@ function Assert-HardwareEvidenceMediaGate {
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
     Write-SyntheticNextSteps -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
+    Write-SyntheticBenchStatus -EvidenceRoot $evidenceRoot
 
     $observations = @(
       "# Hardware Test Observations",
@@ -755,6 +786,8 @@ function Assert-HardwareEvidenceMediaGate {
         "logs/soak_serial.log"
       )
       requiredRecords = @(
+        "BENCH_STATUS.md",
+        "BENCH_STATUS.json",
         "NEXT_STEPS.md",
         "CHECKLIST.md",
         "RELEASE_ACCEPTANCE.md",
@@ -767,6 +800,11 @@ function Assert-HardwareEvidenceMediaGate {
         "reference_audio/stackchan_rvc_bright_robot.wav",
         "calibration/calibration.yaml"
       )
+      benchStatus = [ordered]@{
+        summary = "BENCH_STATUS.md"
+        report = "BENCH_STATUS.json"
+        refreshCommand = "RUN_PROGRESS_CHECK.cmd"
+      }
     }
     $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $evidenceRoot "metadata.json") -Encoding UTF8
 
@@ -807,6 +845,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
     Write-SyntheticNextSteps -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
+    Write-SyntheticBenchStatus -EvidenceRoot $evidenceRoot
 
     $observations = @(
       "# Hardware Test Observations",
@@ -906,6 +945,8 @@ function Assert-HardwareEvidenceSerialMarkerGate {
         "logs/soak_serial.log"
       )
       requiredRecords = @(
+        "BENCH_STATUS.md",
+        "BENCH_STATUS.json",
         "NEXT_STEPS.md",
         "CHECKLIST.md",
         "RELEASE_ACCEPTANCE.md",
@@ -918,6 +959,11 @@ function Assert-HardwareEvidenceSerialMarkerGate {
         "reference_audio/stackchan_rvc_bright_robot.wav",
         "calibration/calibration.yaml"
       )
+      benchStatus = [ordered]@{
+        summary = "BENCH_STATUS.md"
+        report = "BENCH_STATUS.json"
+        refreshCommand = "RUN_PROGRESS_CHECK.cmd"
+      }
     }
     $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $evidenceRoot "metadata.json") -Encoding UTF8
 

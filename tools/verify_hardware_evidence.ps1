@@ -470,6 +470,8 @@ function Resolve-EvidenceRelativeFile {
 
 $requiredFiles = @(
   "README.md",
+  "BENCH_STATUS.md",
+  "BENCH_STATUS.json",
   "NEXT_STEPS.md",
   "CHECKLIST.md",
   "RELEASE_ACCEPTANCE.md",
@@ -494,6 +496,23 @@ foreach ($pattern in @("Stackchan Evidence Next Steps", "RUN_PACKAGE_VERIFY.cmd"
 }
 
 $metadata = Get-Content -LiteralPath (Join-EvidencePath "metadata.json") -Raw | ConvertFrom-Json
+
+$benchStatusText = Get-Content -LiteralPath (Join-EvidencePath "BENCH_STATUS.md") -Raw
+foreach ($pattern in @("Stackchan Bench Status", "stackchan.bench-status.v1", "Next action:", "Next command:")) {
+  if ($benchStatusText -notmatch [regex]::Escape($pattern)) {
+    throw "BENCH_STATUS.md missing expected handoff summary: $pattern"
+  }
+}
+
+$benchStatus = Get-Content -LiteralPath (Join-EvidencePath "BENCH_STATUS.json") -Raw | ConvertFrom-Json
+if ($benchStatus.schema -ne "stackchan.bench-status.v1") {
+  throw "BENCH_STATUS.json schema mismatch: $($benchStatus.schema)"
+}
+foreach ($field in @("status", "nextAction", "nextCommand", "generatedUtc")) {
+  if ([string]::IsNullOrWhiteSpace([string]$benchStatus.$field)) {
+    throw "BENCH_STATUS.json missing required field: $field"
+  }
+}
 
 if ($metadata.diagnosticOnly -eq $true -and -not $AllowSyntheticEvidence) {
   throw "Evidence packet is marked diagnosticOnly. Synthetic evidence cannot be used for promotion without -AllowSyntheticEvidence."
