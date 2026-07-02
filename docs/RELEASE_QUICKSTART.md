@@ -19,7 +19,7 @@ From an extracted release package:
 This serves the release ZIP, ZIP SHA256 sidecar, preview image, expression sheet, video, quickstart, release notes, readiness report, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
 Use `-OpenLocal` when you want the helper to open the host-only local page automatically after it proves the server is answering.
 The public URL is saved as `output\share\<version>\PUBLIC_URL.txt` when a tunnel exists. Local-only shares are also valid for same-machine or LAN review: after `verify_share_release.cmd`, the evidence packet records the verified URL in `share\VERIFIED_URL.txt`. The share folder includes `OPEN_LOCAL_SHARE.cmd` for opening the host-only local page plus `STOP_SHARING.cmd` to stop the local server and tunnel.
-After `share_release.cmd -NoServe`, use `.\tools\verify_share_release.cmd -Version <version> -Offline` to check the static folder and ZIP hash without starting a server. Offline mode writes `share_static_verification_report.json`; it does not replace the HTTP verifier when you need hosted-media evidence.
+After `share_release.cmd -NoServe`, use `.\tools\verify_share_release.cmd -Version <version> -Offline` to check the static folder and ZIP hash without starting a server. Offline mode writes `share_static_verification_report.json` with an `offline-static:` URL marker; it does not replace the HTTP verifier when you need hosted-media evidence.
 Before sending the URL, verify the handoff page and public assets:
 
 ```powershell

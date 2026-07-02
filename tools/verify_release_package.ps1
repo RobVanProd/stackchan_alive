@@ -406,7 +406,7 @@ foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd 
     throw "docs/RELEASE_PROCESS.md missing RVC audition process guidance: $pattern"
   }
 }
-foreach ($pattern in @("verify_share_release.cmd -Version <version> -Offline", "share_static_verification_report.json", "not hosted-media evidence")) {
+foreach ($pattern in @("verify_share_release.cmd -Version <version> -Offline", "share_static_verification_report.json", "offline-static:", "not hosted-media evidence")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing offline share verification guidance: $pattern"
   }

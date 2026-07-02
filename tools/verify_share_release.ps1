@@ -453,7 +453,7 @@ if ($Offline) {
   if ([string]::IsNullOrWhiteSpace($ReportPath)) {
     $ReportPath = Join-Path $shareRootPath "share_static_verification_report.json"
   }
-  $offlineUrl = if ([string]::IsNullOrWhiteSpace($Url)) { "offline-static:$shareRootPath" } else { $Url }
+  $offlineUrl = "offline-static:$shareRootPath"
   $reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $offlineUrl -RequiredPublicUrl $false -Probes @() -ShareRootPath $shareRootPath -ShareStatus $status -VerificationMode "offline-static" -StaticFileCount $expectedFiles.Count
 
   Write-Host "Share folder verified offline:"
