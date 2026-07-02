@@ -1295,6 +1295,8 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $rolloutStatus "blocked-or-pending"
     Assert-TextContains $rolloutStatus "production-voice-source"
     Assert-TextContains $rolloutStatus "strict-hardware-evidence"
+    Assert-TextContains $rolloutStatus "voice-gate-status-consistency"
+    Assert-TextContains $rolloutStatus "Evidence metadata voiceGateStatus matches package voice status reports"
     $global:LASTEXITCODE = 0
   } finally {
     $resolvedEvidence = (Resolve-Path $evidenceRoot).Path

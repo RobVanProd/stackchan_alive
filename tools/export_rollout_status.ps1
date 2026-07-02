@@ -64,6 +64,59 @@ function Add-Gate {
     }) | Out-Null
 }
 
+function Get-VoiceGateStatusMismatches {
+  param(
+    [object]$MetadataVoiceGateStatus,
+    [object]$VoiceSourceStatus,
+    [object]$RvcVoiceBaseStatus
+  )
+
+  $mismatches = New-Object System.Collections.Generic.List[string]
+  if ($null -eq $MetadataVoiceGateStatus) {
+    $mismatches.Add("metadata.json missing voiceGateStatus reference") | Out-Null
+    return @($mismatches.ToArray())
+  }
+
+  foreach ($field in @("voiceSourceStatus", "voiceSourceBlockedGateCount", "rvcVoiceBaseStatus", "rvcConsumerApproved", "rvcDistributionApproved")) {
+    if ($null -eq $MetadataVoiceGateStatus.$field -or [string]::IsNullOrWhiteSpace([string]$MetadataVoiceGateStatus.$field)) {
+      $mismatches.Add("metadata voiceGateStatus missing required field: $field") | Out-Null
+    }
+  }
+
+  if ($null -eq $VoiceSourceStatus) {
+    $mismatches.Add("voice_source_status.json is missing from the release package") | Out-Null
+  } else {
+    if ($VoiceSourceStatus.schema -ne "stackchan.voice-source-status.v1") {
+      $mismatches.Add("voice_source_status.json schema mismatch: $($VoiceSourceStatus.schema)") | Out-Null
+    }
+    if ([string]$VoiceSourceStatus.status -ne [string]$MetadataVoiceGateStatus.voiceSourceStatus) {
+      $mismatches.Add("voice_source_status.json status does not match metadata voiceGateStatus") | Out-Null
+    }
+    if ([int]$VoiceSourceStatus.blockedGateCount -ne [int]$MetadataVoiceGateStatus.voiceSourceBlockedGateCount) {
+      $mismatches.Add("voice_source_status.json blockedGateCount does not match metadata voiceGateStatus") | Out-Null
+    }
+  }
+
+  if ($null -eq $RvcVoiceBaseStatus) {
+    $mismatches.Add("rvc_voice_base_status.json is missing from the release package") | Out-Null
+  } else {
+    if ($RvcVoiceBaseStatus.schema -ne "stackchan.rvc-voice-base-status.v1") {
+      $mismatches.Add("rvc_voice_base_status.json schema mismatch: $($RvcVoiceBaseStatus.schema)") | Out-Null
+    }
+    if ([string]$RvcVoiceBaseStatus.status -ne [string]$MetadataVoiceGateStatus.rvcVoiceBaseStatus) {
+      $mismatches.Add("rvc_voice_base_status.json status does not match metadata voiceGateStatus") | Out-Null
+    }
+    if ([bool]$RvcVoiceBaseStatus.consumerApproved -ne [bool]$MetadataVoiceGateStatus.rvcConsumerApproved) {
+      $mismatches.Add("rvc_voice_base_status.json consumerApproved does not match metadata voiceGateStatus") | Out-Null
+    }
+    if ([bool]$RvcVoiceBaseStatus.distributionApproved -ne [bool]$MetadataVoiceGateStatus.rvcDistributionApproved) {
+      $mismatches.Add("rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus") | Out-Null
+    }
+  }
+
+  return @($mismatches.ToArray())
+}
+
 try {
   if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     if (-not (Test-Path -LiteralPath $PackageZip)) {
@@ -194,6 +247,14 @@ try {
       Add-Gate $gates "hosted-media-reference" "review" "No shareVerification metadata in evidence packet" "share"
     }
 
+    $voiceGateMismatches = @(Get-VoiceGateStatusMismatches -MetadataVoiceGateStatus $metadata.voiceGateStatus -VoiceSourceStatus $voice -RvcVoiceBaseStatus $rvcVoiceBase)
+    if ($voiceGateMismatches.Count -eq 0) {
+      Add-Gate $gates "voice-gate-status-consistency" "pass" "Evidence metadata voiceGateStatus matches package voice status reports" "voice"
+    } else {
+      Add-Gate $gates "voice-gate-status-consistency" "blocked" "metadata voiceGateStatus does not match package voice status reports: $($voiceGateMismatches -join '; ')" "voice"
+      $blockers.Add("Evidence voiceGateStatus is not pinned to the package voice status reports: $($voiceGateMismatches -join '; ').") | Out-Null
+    }
+
     $evidenceSummary = [ordered]@{
       root = $evidencePath
       metadata = if ($null -ne $metadata) {
@@ -217,6 +278,7 @@ try {
   } else {
     Add-Gate $gates "hardware-evidence-progress" "pending" "No hardware evidence packet was passed" "hardware"
     Add-Gate $gates "strict-hardware-evidence" "pending" "No hardware evidence packet was passed" "hardware"
+    Add-Gate $gates "voice-gate-status-consistency" "pending" "No hardware evidence packet was passed" "voice"
     $blockers.Add("No hardware evidence packet was passed.") | Out-Null
   }
 
