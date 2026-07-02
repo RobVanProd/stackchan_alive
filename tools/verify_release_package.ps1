@@ -370,14 +370,14 @@ foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
 }
 
 $repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -Raw
-foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audition.cmd -Rvc")) {
+foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing RVC audition discoverability guidance: $pattern"
   }
 }
 
 $releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
-foreach ($pattern in @("open_voice_audition.cmd -Rvc", "verify_tracked_rvc_assets.cmd", "media/voice/rvc/", "browser-friendly RVC review copies")) {
+foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "verify_tracked_rvc_assets.cmd", "media/voice/rvc/", "browser-friendly RVC review copies")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing RVC audition process guidance: $pattern"
   }
@@ -426,7 +426,7 @@ foreach ($pattern in @("eSpeak-NG.eSpeak-NG", "ChrisBagwell.SoX", "ContinueOnIns
 }
 
 $voiceAuditionOpenerText = Get-Content -LiteralPath (Join-PackagePath "tools/open_voice_audition.ps1") -Raw
-foreach ($pattern in @("VOICE_AUDITION.html", "RVC_AUDITION.html", "docs/media/voice", "media/voice", "media/voice/rvc", '$Rvc', "PrintOnly", "Start-Process")) {
+foreach ($pattern in @("VOICE_AUDITION.html", "RVC_AUDITION.html", "VOICE_AUDITION_INDEX.html", "docs/media/voice", "media/voice", "media/voice/rvc", '$Rvc', '$All', "Stackchan combined voice audition page", "PrintOnly", "Start-Process")) {
   if ($voiceAuditionOpenerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/open_voice_audition.ps1 missing required local audition open logic: $pattern"
   }
@@ -857,14 +857,14 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
 }
 
 $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
-foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "Acceptance Criteria")) {
+foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
   }

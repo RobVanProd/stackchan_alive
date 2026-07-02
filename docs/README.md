@@ -9,3 +9,4 @@
 - `VOICE_SOURCE_PROVENANCE_TEMPLATE.md`: production TTS source license/consent evidence template.
 - `stackchan_procedural_runtime_design.pdf`: source design document from Google Drive.
 - `../media/voice/rvc/RVC_AUDITION.html`: checked-in review-only RVC MP3 audition page for the current bright robot direction.
+- Run `../tools/open_voice_audition.cmd -All` from the repo root to generate one local page with both Stackchan Spark and RVC MP3 audition samples.

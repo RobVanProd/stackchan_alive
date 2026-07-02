@@ -45,6 +45,12 @@ To open the checked-in RVC MP3 audition page:
 .\tools\open_voice_audition.cmd -Rvc
 ```
 
+To open one combined local page with both Stackchan Spark and checked-in RVC MP3 audition samples:
+
+```powershell
+.\tools\open_voice_audition.cmd -All
+```
+
 To verify the checked-in RVC MP3-only review bundle without regenerating the full RVC WAV set:
 
 ```powershell

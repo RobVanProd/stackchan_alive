@@ -900,6 +900,7 @@ Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.j
 Voice audition quick check:
 
 - Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
+- Run ``tools/open_voice_audition.cmd -All`` to generate one local page with both Stackchan Spark and RVC MP3 audition samples.
 - Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
 - RVC review copies ``stackchan_rvc_bright_robot.mp3``, ``stackchan_rvc_thinking_neutral.mp3``, and ``stackchan_rvc_safety_neutral.mp3`` are included in ``media/voice/rvc/`` and uploaded as release assets for browser playback. Run ``tools/open_voice_audition.cmd -Rvc`` or open ``media/voice/rvc/RVC_AUDITION.html`` for the local RVC audition page.
 - Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the checked-in RVC MP3 review page without regenerating the full RVC WAV set.
