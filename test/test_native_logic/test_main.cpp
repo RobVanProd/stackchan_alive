@@ -511,6 +511,29 @@ void test_sensor_adapter_parses_reduced_motion_commands() {
   TEST_ASSERT_FALSE(parseBenchControlLine("motion reduced maybe", 4400, &control));
 }
 
+void test_sensor_adapter_parses_motion_stop_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("motion stop", 4500, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_FALSE(control.hasReducedMotion);
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_FALSE(control.motionEnabled);
+  TEST_ASSERT_EQUAL_STRING("motion_stop", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("servos on", 4600, &control));
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_TRUE(control.motionEnabled);
+  TEST_ASSERT_EQUAL_STRING("motion_resume", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("halt", 4700, &control));
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_FALSE(control.motionEnabled);
+  TEST_ASSERT_EQUAL_STRING("motion_stop", control.command);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("motion maybe", 4800, &control));
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -540,6 +563,30 @@ void test_actuation_clamps_pitch_and_yaw_angle() {
   TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(-12.0f, actuator.lastPitchDeg);
   TEST_ASSERT_LESS_OR_EQUAL_FLOAT(30.0f, actuator.lastYawAngleDeg);
   TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(-30.0f, actuator.lastYawAngleDeg);
+}
+
+void test_actuation_disable_stops_and_suppresses_writes_until_resumed() {
+  RobotConfig config;
+  FakeActuator actuator;
+  ActuationEngine engine(config);
+  engine.begin(&actuator);
+
+  RobotFrame target = makeNeutralFrame();
+  target.motion.yawMode = YawMode::Angle;
+  target.motion.pitchDeg = 8.0f;
+  target.motion.yawDeg = 12.0f;
+
+  engine.setEnabled(false);
+  engine.update(target, 10000);
+  TEST_ASSERT_TRUE(actuator.stopped);
+  TEST_ASSERT_EQUAL(0, actuator.pitchWrites);
+  TEST_ASSERT_EQUAL(0, actuator.yawAngleWrites);
+  TEST_ASSERT_EQUAL(0, actuator.yawVelocityWrites);
+
+  engine.setEnabled(true);
+  engine.update(target, 20000);
+  TEST_ASSERT_GREATER_THAN(0, actuator.pitchWrites);
+  TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);
 }
 
 void test_actuation_clamps_yaw_velocity() {
@@ -686,7 +733,9 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
+  RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
+  RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);
   RUN_TEST(test_speech_planner_uses_original_stackchan_lines);

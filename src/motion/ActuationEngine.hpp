@@ -21,6 +21,7 @@ class ActuationEngine {
   explicit ActuationEngine(const RobotConfig& config);
 
   void begin(IActuator* actuator);
+  void setEnabled(bool enabled);
   void update(const RobotFrame& target, uint32_t nowUs);
 
  private:
@@ -29,6 +30,7 @@ class ActuationEngine {
   Spring1D pitch_;
   Spring1D yaw_;
   uint32_t lastUs_ = 0;
+  bool enabled_ = true;
 };
 
 }  // namespace stackchan

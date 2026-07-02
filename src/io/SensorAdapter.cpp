@@ -161,12 +161,16 @@ bool parseOnOff(const char* token, bool* valueOut) {
   }
 
   if (strcmp(token, "on") == 0 || strcmp(token, "1") == 0 || strcmp(token, "true") == 0 ||
-      strcmp(token, "yes") == 0 || strcmp(token, "reduced") == 0) {
+      strcmp(token, "yes") == 0 || strcmp(token, "reduced") == 0 ||
+      strcmp(token, "resume") == 0 || strcmp(token, "enable") == 0 ||
+      strcmp(token, "enabled") == 0) {
     *valueOut = true;
     return true;
   }
   if (strcmp(token, "off") == 0 || strcmp(token, "0") == 0 || strcmp(token, "false") == 0 ||
-      strcmp(token, "no") == 0 || strcmp(token, "full") == 0 || strcmp(token, "normal") == 0) {
+      strcmp(token, "no") == 0 || strcmp(token, "full") == 0 || strcmp(token, "normal") == 0 ||
+      strcmp(token, "stop") == 0 || strcmp(token, "halt") == 0 ||
+      strcmp(token, "disable") == 0 || strcmp(token, "disabled") == 0) {
     *valueOut = false;
     return true;
   }
@@ -183,6 +187,20 @@ bool fillReducedMotion(const char* valueToken, BenchControl* controlOut) {
   parsed.hasReducedMotion = true;
   parsed.reducedMotion = enabled;
   parsed.command = enabled ? "reduced_motion_on" : "reduced_motion_off";
+  *controlOut = parsed;
+  return true;
+}
+
+bool fillMotionEnable(const char* valueToken, BenchControl* controlOut) {
+  bool enabled = true;
+  if (!parseOnOff(valueToken, &enabled)) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasMotionEnable = true;
+  parsed.motionEnabled = enabled;
+  parsed.command = enabled ? "motion_resume" : "motion_stop";
   *controlOut = parsed;
   return true;
 }
@@ -334,6 +352,19 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
        strcmp(second, "reducedmotion") == 0)) {
     return fillReducedMotion(third, controlOut);
   }
+  if ((strcmp(first, "motion") == 0 || strcmp(first, "servo") == 0 || strcmp(first, "servos") == 0) &&
+      second != nullptr &&
+      (strcmp(second, "stop") == 0 || strcmp(second, "off") == 0 || strcmp(second, "disable") == 0 ||
+       strcmp(second, "disabled") == 0 || strcmp(second, "resume") == 0 || strcmp(second, "on") == 0 ||
+       strcmp(second, "enable") == 0 || strcmp(second, "enabled") == 0)) {
+    return fillMotionEnable(second, controlOut);
+  }
+  if (strcmp(first, "stop") == 0 || strcmp(first, "halt") == 0 || strcmp(first, "freeze") == 0) {
+    return fillMotionEnable("off", controlOut);
+  }
+  if (strcmp(first, "resume") == 0) {
+    return fillMotionEnable("on", controlOut);
+  }
 
   if (token == nullptr || isHelpToken(token)) {
     return false;
@@ -367,6 +398,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: event wake|touch|response|speech_end|idle|error [strength]"));
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
+  Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif
 }

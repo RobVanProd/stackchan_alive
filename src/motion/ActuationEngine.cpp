@@ -20,8 +20,18 @@ void ActuationEngine::begin(IActuator* actuator) {
   }
 }
 
+void ActuationEngine::setEnabled(bool enabled) {
+  enabled_ = enabled;
+  if (!enabled_ && actuator_ != nullptr) {
+    actuator_->stop();
+  }
+}
+
 void ActuationEngine::update(const RobotFrame& target, uint32_t nowUs) {
   if (actuator_ == nullptr) {
+    return;
+  }
+  if (!enabled_) {
     return;
   }
 

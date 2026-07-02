@@ -88,6 +88,8 @@ Hard stop if:
 - any motion continues after the command stops
 - the body tips, snags, or heats noticeably
 
+If motion looks unsafe, send `motion stop` or `halt` in the serial monitor before touching the device. The serial log should show `[motion] enabled=0`.
+
 ## 4. Mixed-Mode Soak
 
 ```powershell

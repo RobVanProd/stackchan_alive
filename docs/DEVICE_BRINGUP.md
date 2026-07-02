@@ -93,10 +93,14 @@ reduced on
 reduced off
 motion reduced on
 motion reduced off
+motion stop
+motion resume
 ```
 
 The command logs `[control] command=reduced_motion_on reduced_motion=1` or `[control] command=reduced_motion_off reduced_motion=0`, then the face task applies the change and logs the new `[face] reduced_motion=` state.
 Those reduced-motion command lines count as display bench-control telemetry in the evidence checks, but they do not replace the required photo, video, speaker audio, or strict hardware logs.
+
+During supervised servo tests, send `motion stop`, `servo off`, or `halt` to call the actuator stop hook and suppress further motion writes. Send `motion resume` or `servos on` only after the body is clear and you are ready to continue. The firmware logs `[motion] enabled=0` or `[motion] enabled=1` when the motion task applies the command.
 
 ## Servo Enable Gate
 
@@ -139,7 +143,8 @@ If the packet is handed to someone else, send `BENCH_STATUS.md`, `NEXT_STEPS.md`
 2. Confirm pitch moves gently around center.
 3. Confirm yaw behavior before trusting absolute yaw.
 4. If yaw rotates continuously or hunts, set yaw mode to disabled in the motion target path and continue with display plus pitch only.
-5. Run for 10 minutes and watch for resets, task stalls, jitter, heat, repeated nonzero `slow_frames` in display telemetry, a flat `[face]` line that never increments `blink_count` or `saccade_count`, or steadily falling `heap_min` / stack high-water margins.
+5. If motion looks unsafe, send `motion stop` or `halt` immediately before touching the device.
+6. Run for 10 minutes and watch for resets, task stalls, jitter, heat, repeated nonzero `slow_frames` in display telemetry, a flat `[face]` line that never increments `blink_count` or `saccade_count`, or steadily falling `heap_min` / stack high-water margins.
 
 ## Rollout Criteria
 
