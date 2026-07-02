@@ -348,7 +348,7 @@ foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntr
 }
 
 $releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "Release asset contract verified")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 36", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "Release asset contract verified")) {
   if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
   }

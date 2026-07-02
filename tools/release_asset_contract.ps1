@@ -104,6 +104,7 @@ function Get-ReleaseFinalAssetEntries {
     (Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $PackageRoot -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $FirmwareAssetRoot -FirmwareAssetPathMode $FirmwareAssetPathMode)
     New-ReleaseAssetEntry -Name "GITHUB_ACTIONS_STATUS.md" -Path (Join-Path $PackageRoot "GITHUB_ACTIONS_STATUS.md") -Phase "final"
     New-ReleaseAssetEntry -Name "github_actions_status.json" -Path (Join-Path $PackageRoot "github_actions_status.json") -Phase "final"
+    New-ReleaseAssetEntry -Name "release_assets.json" -Path (Join-Path $PackageRoot "release_assets.json") -Phase "final"
   )
 }
 

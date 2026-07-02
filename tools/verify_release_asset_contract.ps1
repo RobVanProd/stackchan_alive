@@ -82,7 +82,7 @@ $baseEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packa
 $finalEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath
 
 Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 33 -Label "Base"
-Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 35 -Label "Final"
+Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 36 -Label "Final"
 
 $manifestPath = Join-Path $packageRootPath "release_manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath)) {
@@ -160,6 +160,7 @@ foreach ($requiredAssetName in @(
   "stackchan_alive_$Version.zip.sha256",
   "GITHUB_ACTIONS_STATUS.md",
   "github_actions_status.json",
+  "release_assets.json",
   "firmware-display-only.bin",
   "firmware-servo-calibration.bin",
   "bootloader.bin",
