@@ -9,12 +9,16 @@ Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 
 if ([string]::IsNullOrWhiteSpace($MediaRoot)) {
-  if (Test-Path -LiteralPath "media") {
-    $MediaRoot = "media"
-  } elseif (Test-Path -LiteralPath "docs/media") {
-    $MediaRoot = "docs/media"
-  } else {
-    throw "Could not find preview media. Pass -MediaRoot explicitly."
+  $candidates = @("media", "docs/media")
+  foreach ($candidate in $candidates) {
+    $candidatePreview = Join-Path $candidate "stackchan_alive_preview.png"
+    if (Test-Path -LiteralPath $candidatePreview) {
+      $MediaRoot = $candidate
+      break
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($MediaRoot)) {
+    throw "Could not find preview media root containing stackchan_alive_preview.png. Pass -MediaRoot explicitly."
   }
 }
 
