@@ -1516,22 +1516,16 @@ function Assert-SpeechEnvelopeSidecarGate {
     }
     Assert-TextContains $generateResult.Text "Speech envelope sidecar written:"
 
-    $sidecar = Get-Content -LiteralPath $sidecarPath -Raw | ConvertFrom-Json
-    if ([string]$sidecar.schema -ne "stackchan.speech-envelope-sidecar.v1") {
-      throw "Speech sidecar schema mismatch: $($sidecar.schema)"
+    $verifyResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "verify_speech_envelope_sidecar.ps1"),
+      "-Path", $sidecarPath,
+      "-MinFrames", "100",
+      "-MinMaxEnvelope", "0.5"
+    )
+    if ($verifyResult.ExitCode -ne 0) {
+      throw "Speech sidecar verification failed:$([Environment]::NewLine)$($verifyResult.Text)"
     }
-    if ([int]$sidecar.frameMs -ne 20) {
-      throw "Speech sidecar frameMs should default to 20, got $($sidecar.frameMs)"
-    }
-    if ([int]$sidecar.summary.frames -lt 100) {
-      throw "Speech sidecar has too few frames: $($sidecar.summary.frames)"
-    }
-    if ([double]$sidecar.summary.maxEnvelope -lt 0.5) {
-      throw "Speech sidecar max envelope is unexpectedly low: $($sidecar.summary.maxEnvelope)"
-    }
-    if (-not $sidecar.summary.visemes.ah -or -not $sidecar.summary.visemes.ee -or -not $sidecar.summary.visemes.oh) {
-      throw "Speech sidecar did not produce ah/ee/oh viseme variation."
-    }
+    Assert-TextContains $verifyResult.Text "Speech envelope sidecar verified:"
 
     $streamResult = Invoke-ToolText @(
       (Join-Path $PSScriptRoot "send_speech_mouth_demo.ps1"),

@@ -77,6 +77,7 @@ To drive that same mouth path from an actual WAV envelope, generate a sidecar an
 
 ```powershell
 .\tools\generate_speech_envelope_sidecar.cmd -InputWav output\voice_auditions\rvc_base\final\stackchan_rvc_bright_robot.wav -OutputJson output\speech\bright_robot.speech_envelope.json
+.\tools\verify_speech_envelope_sidecar.cmd -Path output\speech\bright_robot.speech_envelope.json
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\speech\bright_robot.speech_envelope.json
 ```
 

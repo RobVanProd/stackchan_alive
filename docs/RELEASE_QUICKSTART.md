@@ -109,6 +109,7 @@ For speech-reactive mouth bench tests from an actual WAV, generate a 50 Hz sidec
 
 ```powershell
 .\tools\generate_speech_envelope_sidecar.cmd -InputWav media\voice\rvc\stackchan_rvc_bright_robot.wav -OutputJson output\bright_robot.speech_envelope.json
+.\tools\verify_speech_envelope_sidecar.cmd -Path output\bright_robot.speech_envelope.json
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
 ```
 
