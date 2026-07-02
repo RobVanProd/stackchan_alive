@@ -10,6 +10,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 . (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
+. (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
@@ -41,6 +42,7 @@ $commit = (git rev-parse HEAD).Trim()
 $shortCommit = (git rev-parse --short HEAD).Trim()
 $outDir = Join-Path $repoRoot "output/release/$Version"
 $zipPath = Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
+$zipSidecarPath = "$zipPath.sha256"
 
 if (Test-Path -LiteralPath $outDir) {
   Remove-Item -LiteralPath $outDir -Recurse -Force
@@ -567,6 +569,7 @@ $manifest = [ordered]@{
   readinessReportJson = "readiness_report.json"
   ciStatusReport = "GITHUB_ACTIONS_STATUS.md"
   ciStatusReportJson = "github_actions_status.json"
+  releaseAssetManifest = "release_assets.json"
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
@@ -925,6 +928,49 @@ Hardware validation is still required before consumer rollout:
 See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8
 
+$packageRootPrefix = $outDir.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+function Get-PackageRelativePath {
+  param([string]$Path)
+
+  $absolutePath = [System.IO.Path]::GetFullPath($Path)
+  if (-not $absolutePath.StartsWith($packageRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return ""
+  }
+  return $absolutePath.Substring($packageRootPrefix.Length).Replace("\", "/")
+}
+
+$releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $outDir -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath
+$allowedAuditEntries = Get-ReleaseAllowedAuditAssetEntries -AuditRoot "output/release-audit/$Version"
+$releaseAssets = @($releaseAssetEntries | ForEach-Object {
+  $relativePath = Get-PackageRelativePath -Path $_.Path
+  [ordered]@{
+    name = $_.Name
+    phase = $_.Phase
+    packagePath = $relativePath
+    external = [string]::IsNullOrWhiteSpace($relativePath)
+  }
+})
+$allowedAuditAssets = @($allowedAuditEntries | ForEach-Object {
+  [ordered]@{
+    name = $_.Name
+    phase = $_.Phase
+  }
+})
+$releaseAssetManifest = [ordered]@{
+  schema = "stackchan.release-assets.v1"
+  version = $Version
+  commit = $commit
+  generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  contract = "tools/release_asset_contract.ps1"
+  releaseAssets = $releaseAssets
+  allowedAuditAssets = $allowedAuditAssets
+  counts = [ordered]@{
+    releaseAssets = @($releaseAssets).Count
+    allowedAuditAssets = @($allowedAuditAssets).Count
+  }
+}
+$releaseAssetManifest | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $outDir "release_assets.json") -Encoding UTF8
+
 $hashLines = Get-ChildItem -LiteralPath $outDir -File -Recurse |
   Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
   Sort-Object FullName |
@@ -940,7 +986,6 @@ if (Test-Path -LiteralPath $zipPath) {
   Remove-Item -LiteralPath $zipPath -Force
 }
 Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath
-$zipSidecarPath = "$zipPath.sha256"
 $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
 "$zipHash  $(Split-Path -Leaf $zipPath)" | Set-Content -Path $zipSidecarPath -Encoding ASCII
 

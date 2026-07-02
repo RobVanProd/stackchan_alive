@@ -92,6 +92,40 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $manifestMediaArtifacts = @($manifest.mediaArtifacts)
 
+$assetManifestPath = Join-Path $packageRootPath "release_assets.json"
+if (-not (Test-Path -LiteralPath $assetManifestPath)) {
+  throw "Missing release asset manifest for contract verification: release_assets.json"
+}
+
+$assetManifest = Get-Content -LiteralPath $assetManifestPath -Raw | ConvertFrom-Json
+if ($assetManifest.schema -ne "stackchan.release-assets.v1") {
+  throw "release_assets.json schema mismatch: $($assetManifest.schema)"
+}
+if ($assetManifest.version -ne $Version) {
+  throw "release_assets.json version mismatch: expected $Version, got $($assetManifest.version)"
+}
+if ($assetManifest.contract -ne "tools/release_asset_contract.ps1") {
+  throw "release_assets.json contract path mismatch: $($assetManifest.contract)"
+}
+
+$manifestAssetNames = @($assetManifest.releaseAssets | ForEach-Object { [string]$_.name })
+foreach ($entry in $finalEntries) {
+  if ($manifestAssetNames -notcontains $entry.Name) {
+    throw "release_assets.json missing release asset contract entry: $($entry.Name)"
+  }
+}
+foreach ($assetName in $manifestAssetNames) {
+  if (@($finalEntries | Where-Object { $_.Name -eq $assetName }).Count -ne 1) {
+    throw "release_assets.json contains unexpected release asset: $assetName"
+  }
+}
+if ([int]$assetManifest.counts.releaseAssets -ne @($finalEntries).Count) {
+  throw "release_assets.json release asset count mismatch: expected $(@($finalEntries).Count), got $($assetManifest.counts.releaseAssets)"
+}
+if ([int]$assetManifest.counts.allowedAuditAssets -ne 2) {
+  throw "release_assets.json allowed audit asset count mismatch: $($assetManifest.counts.allowedAuditAssets)"
+}
+
 foreach ($entry in $finalEntries) {
   $relativePath = Get-PackageRelativePath -Path $entry.Path
   if ([string]::IsNullOrWhiteSpace($relativePath)) {
@@ -107,6 +141,17 @@ foreach ($entry in $finalEntries) {
 
   if ($relativePath -like "media/*" -and $manifestMediaArtifacts -notcontains $relativePath) {
     throw "Release asset contract media file is not declared in release_manifest.json mediaArtifacts: $relativePath"
+  }
+
+  $manifestEntry = @($assetManifest.releaseAssets | Where-Object { $_.name -eq $entry.Name })
+  if ($manifestEntry.Count -ne 1) {
+    throw "release_assets.json expected exactly one entry for $($entry.Name); found $($manifestEntry.Count)"
+  }
+  if ([string]$manifestEntry[0].packagePath -ne $relativePath) {
+    throw "release_assets.json packagePath mismatch for $($entry.Name): expected '$relativePath', got '$($manifestEntry[0].packagePath)'"
+  }
+  if ([bool]$manifestEntry[0].external -ne [string]::IsNullOrWhiteSpace($relativePath)) {
+    throw "release_assets.json external flag mismatch for $($entry.Name)"
   }
 }
 
