@@ -272,6 +272,8 @@ if (-not $releaseExists) {
       (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav") `
       (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav") `
       (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3") `
+      (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3") `
       (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md") `
       (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav") `
