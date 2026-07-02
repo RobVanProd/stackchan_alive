@@ -361,6 +361,45 @@ void test_robot_frame_carries_character_mode_for_renderer() {
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(frame.mode));
 }
 
+void test_robot_frame_carries_speech_cue_for_output_adapters() {
+  RobotFrame frame = makeNeutralFrame();
+  TEST_ASSERT_FALSE(frame.speech.shouldSpeak());
+  TEST_ASSERT_EQUAL_UINT32(0, frame.speechSeq);
+
+  frame.speech = {SpeechIntent::Think, "Input received. I am thinking now.", 150,
+                  SpeechEarcon::Think, 80};
+  frame.speechSeq = 7;
+
+  TEST_ASSERT_TRUE(frame.speech.shouldSpeak());
+  TEST_ASSERT_TRUE(frame.speech.hasEarcon());
+  TEST_ASSERT_EQUAL_UINT32(7, frame.speechSeq);
+}
+
+void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
+  IntentEngine engine;
+  engine.begin();
+
+  RobotEvent event;
+  event.type = EventType::WakeWord;
+  event.strength = 1.0f;
+  engine.applyEvent(event, CharacterMode::Listen);
+
+  const RobotFrame first = engine.update(100);
+  TEST_ASSERT_TRUE(first.speech.shouldSpeak());
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Listen), static_cast<int>(first.speech.intent));
+  TEST_ASSERT_EQUAL_STRING("I am listening with maximum attention.", first.speech.text);
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechEarcon::Confirm), static_cast<int>(first.speech.earcon));
+  TEST_ASSERT_EQUAL_UINT32(1, first.speechSeq);
+
+  const RobotFrame held = engine.update(500);
+  TEST_ASSERT_TRUE(held.speech.shouldSpeak());
+  TEST_ASSERT_EQUAL_UINT32(first.speechSeq, held.speechSeq);
+
+  const RobotFrame expired = engine.update(800);
+  TEST_ASSERT_FALSE(expired.speech.shouldSpeak());
+  TEST_ASSERT_EQUAL_UINT32(0, expired.speechSeq);
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -527,6 +566,8 @@ int main() {
   RUN_TEST(test_face_animator_speech_visemes_change_mouth_shape);
   RUN_TEST(test_face_animator_speech_sidecar_expires_when_updates_stop);
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
+  RUN_TEST(test_robot_frame_carries_speech_cue_for_output_adapters);
+  RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

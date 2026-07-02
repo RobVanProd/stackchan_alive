@@ -30,3 +30,11 @@ inline uint32_t millis() {
 inline uint32_t micros() {
   return 0;
 }
+
+inline long random(long max) {
+  return max > 0 ? max / 2 : 0;
+}
+
+inline long random(long min, long max) {
+  return max > min ? min + ((max - min) / 2) : min;
+}

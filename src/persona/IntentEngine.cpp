@@ -5,12 +5,28 @@
 
 namespace stackchan {
 
+namespace {
+constexpr uint32_t kSpeechCueHoldMs = 650;
+constexpr uint32_t kIdleSpeechCooldownMs = 12000;
+}
+
 void IntentEngine::begin() {
   emotion_.reset();
   mode_ = CharacterMode::Idle;
+  lastSpeechMode_ = mode_;
   seq_ = 0;
+  speechSeq_ = 0;
   lastUpdateMs_ = millis();
+  lastSpeechCueMs_ = 0;
+  activeSpeechUntilMs_ = 0;
+  lastSpeechIntent_ = SpeechIntent::None;
+  activeSpeech_ = SpeechCue {};
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
+}
+
+void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
+  mode_ = mode;
+  emotion_.applyEvent(event);
 }
 
 RobotFrame IntentEngine::update(uint32_t nowMs) {
@@ -19,6 +35,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   const float dt = (nowMs - lastUpdateMs_) * 0.001f;
   lastUpdateMs_ = nowMs;
   emotion_.update(dt);
+  updateSpeechCue(nowMs);
 
   RobotFrame frame;
   frame.seq = ++seq_;
@@ -27,6 +44,10 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   frame.emotion = emotion_.profile();
   frame.motion = motionForMode(nowMs);
   frame.face = expression_.map(frame.emotion, mode_);
+  if (nowMs < activeSpeechUntilMs_ && activeSpeech_.shouldSpeak()) {
+    frame.speech = activeSpeech_;
+    frame.speechSeq = speechSeq_;
+  }
   return frame;
 }
 
@@ -59,6 +80,31 @@ void IntentEngine::injectDemoEvents(uint32_t nowMs) {
 
   emotion_.applyEvent(event);
   nextDemoEventMs_ = nowMs + random(2500, 6000);
+}
+
+void IntentEngine::updateSpeechCue(uint32_t nowMs) {
+  const EmotionalProfile& emotion = emotion_.profile();
+  const SpeechCue cue = speech_.plan(mode_, emotion);
+  const bool modeChanged = mode_ != lastSpeechMode_;
+  const bool cueChanged = cue.intent != lastSpeechIntent_;
+  const bool idleCooldownReady = lastSpeechCueMs_ == 0 || nowMs - lastSpeechCueMs_ >= kIdleSpeechCooldownMs;
+
+  if (cue.shouldSpeak() && (modeChanged || (mode_ == CharacterMode::Idle && cueChanged && idleCooldownReady))) {
+    activateSpeechCue(cue, nowMs);
+  }
+
+  lastSpeechMode_ = mode_;
+  if (nowMs >= activeSpeechUntilMs_) {
+    activeSpeech_ = SpeechCue {};
+  }
+}
+
+void IntentEngine::activateSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
+  activeSpeech_ = cue;
+  activeSpeechUntilMs_ = nowMs + kSpeechCueHoldMs;
+  lastSpeechCueMs_ = nowMs;
+  lastSpeechIntent_ = cue.intent;
+  speechSeq_++;
 }
 
 MotionTargets IntentEngine::motionForMode(uint32_t nowMs) const {

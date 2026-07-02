@@ -92,6 +92,8 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - packaged WAV/MP3 prompts can be used for hardware soak tests
 - hardware evidence should include at least one speaker/audio check before consumer promotion
 
+Current firmware carries `SpeechCue speech` plus `speechSeq` on each `RobotFrame`. `IntentEngine` emits a cue on external/demo mode changes, holds it briefly for output adapters, and keeps the same sequence number during the hold window so host playback can dedupe without polling races.
+
 ## Acceptance Criteria
 
 Before calling the voice production-ready:

@@ -16,6 +16,50 @@ enum class CharacterMode : uint8_t {
   Error,
 };
 
+enum class SpeechIntent : uint8_t {
+  None,
+  Boot,
+  Idle,
+  Attend,
+  Listen,
+  Think,
+  Speak,
+  React,
+  Happy,
+  Concern,
+  Sleep,
+  Error,
+  Safety,
+};
+
+enum class SpeechEarcon : uint8_t {
+  None,
+  Wake,
+  Confirm,
+  Think,
+  Happy,
+  Concern,
+  Sleep,
+  Error,
+  Safety,
+};
+
+struct SpeechCue {
+  SpeechIntent intent = SpeechIntent::None;
+  const char* text = "";
+  uint8_t priority = 0;
+  SpeechEarcon earcon = SpeechEarcon::None;
+  uint16_t earconDelayMs = 0;
+
+  bool shouldSpeak() const {
+    return intent != SpeechIntent::None && text[0] != '\0';
+  }
+
+  bool hasEarcon() const {
+    return earcon != SpeechEarcon::None;
+  }
+};
+
 struct EmotionalProfile {
   float arousal = 0.20f;  // 0.0 calm/sleepy, 1.0 startled/energetic
   float valence = 0.45f;  // -1.0 negative/withdrawn, 1.0 positive/social
@@ -72,6 +116,8 @@ struct RobotFrame {
   EmotionalProfile emotion;
   MotionTargets motion;
   FaceTargets face;
+  SpeechCue speech;
+  uint32_t speechSeq = 0;
 };
 
 inline RobotFrame makeNeutralFrame() {
