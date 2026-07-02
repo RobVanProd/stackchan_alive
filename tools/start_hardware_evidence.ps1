@@ -754,7 +754,7 @@ $readme = @(
   "",
   "Promotion verification expects AUDIO_REVIEW.md to record a real-device speaker check: intelligible = yes, clipping/distortion = no, volume adequate = yes, delay/dropout = no, and a speaker recording file saved under audio/.",
   "",
-  "Promotion verification also expects serial logs to include firmware markers: display-only boot ``mode=display_only``, servo-calibration boot ``mode=servo_calibration``, display readiness, servo dry-run or hardware-enable line, and soak heartbeat ``[heartbeat] stackchan_alive ... uptime_ms=...``.",
+  "Promotion verification also expects serial logs to include firmware markers: display-only boot ``mode=display_only``, servo-calibration boot ``mode=servo_calibration``, display readiness, servo dry-run or hardware-enable line, runtime health telemetry ``[system] heap_free=... stack_face_hwm=...``, and soak heartbeat ``[heartbeat] stackchan_alive ... uptime_ms=...``.",
   "",
   "Promotion verification also requires at least one valid media file under photos/: .png, .jpg, .jpeg, .gif, .mp4, .mov, or .webm. Text placeholders, header-only files, tiny files, and images without plausible dimensions do not count as photo/video evidence.",
   "",

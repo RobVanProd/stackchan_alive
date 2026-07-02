@@ -280,21 +280,21 @@ foreach ($pattern in @("stackchan.hardware-media-manifest.v1", "Test-PhotoEviden
 }
 
 $syntheticEvidenceGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/generate_synthetic_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence", "fps_window=30.0", "frame_budget_us=33333", "slow_frames=0", "blink_count=3", "saccade_count=4", "speech_env=0.00")) {
+foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvidence", "Synthetic hardware evidence packet", "AUDIO_REVIEW.md", "synthetic_speaker_fixture.wav", "must not be used as rollout evidence", "fps_window=30.0", "frame_budget_us=33333", "slow_frames=0", "blink_count=3", "saccade_count=4", "speech_env=0.00", "heap_free=243000", "stack_face_hwm=2800")) {
   if ($syntheticEvidenceGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/generate_synthetic_hardware_evidence.ps1 missing synthetic evidence safety logic: $pattern"
   }
 }
 
 $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
-foreach ($pattern in @("OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "display frame-budget telemetry", "display face animator telemetry", "soak display frame-budget telemetry", "soak face animator telemetry", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
+foreach ($pattern in @("OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "display frame-budget telemetry", "display face animator telemetry", "display runtime health telemetry", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
   }
 }
 
 $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "RVC lead audition reference hash does not match metadata", "shareVerification", "stackchan.share-verification.v1", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "soak display frame-budget telemetry", "soak face animator telemetry", "AllowSyntheticEvidence", "diagnosticOnly")) {
+foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "RVC lead audition reference hash does not match metadata", "shareVerification", "stackchan.share-verification.v1", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "display runtime health telemetry", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "AllowSyntheticEvidence", "diagnosticOnly")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
   }

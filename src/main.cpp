@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Esp.h>
 #include <M5Unified.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -25,6 +26,9 @@ SensorAdapter gSensors;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
+TaskHandle_t gMotionTaskHandle = nullptr;
+TaskHandle_t gFaceTaskHandle = nullptr;
+TaskHandle_t gIntentTaskHandle = nullptr;
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_ENABLE_SERVOS
@@ -45,6 +49,25 @@ void printHeartbeat() {
   Serial.print(firmwareMode());
   Serial.print(F(" uptime_ms="));
   Serial.println(millis());
+}
+
+UBaseType_t stackHighWater(TaskHandle_t handle) {
+  return handle == nullptr ? 0 : uxTaskGetStackHighWaterMark(handle);
+}
+
+void printSystemTelemetry() {
+  Serial.print(F("[system] heap_free="));
+  Serial.print(ESP.getFreeHeap());
+  Serial.print(F(" heap_min="));
+  Serial.print(ESP.getMinFreeHeap());
+  Serial.print(F(" stack_loop_hwm="));
+  Serial.print(uxTaskGetStackHighWaterMark(nullptr));
+  Serial.print(F(" stack_motion_hwm="));
+  Serial.print(stackHighWater(gMotionTaskHandle));
+  Serial.print(F(" stack_face_hwm="));
+  Serial.print(stackHighWater(gFaceTaskHandle));
+  Serial.print(F(" stack_intent_hwm="));
+  Serial.println(stackHighWater(gIntentTaskHandle));
 }
 
 void publishFrame(const RobotFrame& frame) {
@@ -122,9 +145,9 @@ void setup() {
 
   publishFrame(makeNeutralFrame());
 
-  BaseType_t ok = xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, nullptr, 1);
-  ok &= xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, nullptr, 1);
-  ok &= xTaskCreatePinnedToCore(IntentTask, "IntentTask", 4096, nullptr, 2, nullptr, 1);
+  BaseType_t ok = xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, &gMotionTaskHandle, 1);
+  ok &= xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, &gFaceTaskHandle, 1);
+  ok &= xTaskCreatePinnedToCore(IntentTask, "IntentTask", 4096, nullptr, 2, &gIntentTaskHandle, 1);
 
   if (ok != pdPASS) {
     Serial.println(F("[fatal] task creation failed"));
@@ -139,6 +162,7 @@ void loop() {
   if (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 10000) {
     lastHeartbeatMs = nowMs;
     printHeartbeat();
+    printSystemTelemetry();
   }
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

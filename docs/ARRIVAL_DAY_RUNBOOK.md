@@ -82,7 +82,7 @@ Hard stop if:
 
 Expected evidence:
 
-- 30-minute soak log with heartbeat markers
+- 30-minute soak log with heartbeat and `[system]` runtime health markers
 - no repeated resets
 - no task stalls
 - face remains responsive
