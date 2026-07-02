@@ -280,6 +280,13 @@ Copy-Item -LiteralPath $partitions -Destination (Join-Path $stageDir "partitions
 
 $baseReleaseAssetEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
 $baseReleaseAssets = @($baseReleaseAssetEntries | ForEach-Object { $_.Path })
+& (Join-Path $PSScriptRoot "verify_release_asset_contract.ps1") `
+  -Version $Version `
+  -PackageRoot $packageRoot `
+  -ZipPath $zipPath `
+  -ZipSidecarPath $zipSidecarPath `
+  -FirmwareAssetRoot $stageDir `
+  -FirmwareAssetPathMode Stage
 
 if (-not $releaseExists) {
   if ($DryRun) {

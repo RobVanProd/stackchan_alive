@@ -366,7 +366,7 @@ foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntr
 }
 
 $releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 36", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "Release asset contract verified")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 36", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
   if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
   }
@@ -387,14 +387,14 @@ foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.p
 }
 
 $releaseWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/release.yml") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "FirmwareAssetPathMode Stage", "workflow-assets-", '$releaseAssetPaths', '@releaseAssetPaths')) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", '$releaseAssetPaths', '@releaseAssetPaths')) {
   if ($releaseWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/release.yml missing release asset contract upload logic: $pattern"
   }
 }
 
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "Clear-TransientPackageOutput", "output/voice_auditions/VOICE_AUDITION_INDEX.html", '$baseReleaseAssets', '$finalReleaseAssets', '@baseReleaseAssets', '@finalReleaseAssets', "SHA256SUMS.txt", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease")) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "Clear-TransientPackageOutput", "output/voice_auditions/VOICE_AUDITION_INDEX.html", '$baseReleaseAssets', '$finalReleaseAssets', '@baseReleaseAssets', '@finalReleaseAssets', "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "SHA256SUMS.txt", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
     throw "tools/publish_release.ps1 missing required finalized Actions status publish logic: $pattern"
   }

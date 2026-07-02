@@ -3,6 +3,9 @@ param(
   [string]$PackageRoot = "",
   [string]$ZipPath = "",
   [string]$ZipSidecarPath = "",
+  [string]$FirmwareAssetRoot = "",
+  [ValidateSet("Package", "Stage")]
+  [string]$FirmwareAssetPathMode = "Package",
   [switch]$SkipExternalFiles
 )
 
@@ -33,6 +36,16 @@ if (-not (Test-Path -LiteralPath $PackageRoot)) {
 
 $packageRootPath = (Resolve-Path $PackageRoot).Path
 $packageRootPrefix = $packageRootPath.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+$firmwareAssetRootPath = $FirmwareAssetRoot
+if ($FirmwareAssetPathMode -eq "Stage") {
+  if ([string]::IsNullOrWhiteSpace($FirmwareAssetRoot)) {
+    throw "FirmwareAssetRoot is required when FirmwareAssetPathMode is Stage."
+  }
+  if (-not (Test-Path -LiteralPath $FirmwareAssetRoot)) {
+    throw "Missing staged firmware asset root: $FirmwareAssetRoot"
+  }
+  $firmwareAssetRootPath = (Resolve-Path $FirmwareAssetRoot).Path
+}
 
 function Get-PackageRelativePath {
   param([string]$Path)
@@ -78,8 +91,38 @@ function Assert-AssetEntrySet {
   }
 }
 
-$baseEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath
-$finalEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath
+function Get-PackageFirmwareSourcePath {
+  param([string]$Name)
+
+  switch ($Name) {
+    "firmware-display-only.bin" { return (Join-Path $packageRootPath "firmware/display_only/firmware.bin") }
+    "firmware-servo-calibration.bin" { return (Join-Path $packageRootPath "firmware/servo_calibration/firmware.bin") }
+    "bootloader.bin" { return (Join-Path $packageRootPath "firmware/display_only/bootloader.bin") }
+    "partitions.bin" { return (Join-Path $packageRootPath "firmware/display_only/partitions.bin") }
+    default { return "" }
+  }
+}
+
+function Assert-StagedFirmwareMatchesPackage {
+  param([object]$Entry)
+
+  $sourcePath = Get-PackageFirmwareSourcePath -Name ([string]$Entry.Name)
+  if ([string]::IsNullOrWhiteSpace($sourcePath)) {
+    return
+  }
+  if (-not (Test-Path -LiteralPath $sourcePath)) {
+    throw "Missing package firmware source for staged asset $($Entry.Name): $sourcePath"
+  }
+
+  $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourcePath).Hash.ToLowerInvariant()
+  $stagedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath ([string]$Entry.Path)).Hash.ToLowerInvariant()
+  if ($sourceHash -ne $stagedHash) {
+    throw "Staged firmware asset does not match package source for $($Entry.Name)"
+  }
+}
+
+$baseEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
+$finalEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 
 Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 33 -Label "Base"
 Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 36 -Label "Final"
@@ -131,6 +174,9 @@ foreach ($entry in $finalEntries) {
   if ([string]::IsNullOrWhiteSpace($relativePath)) {
     if (-not $SkipExternalFiles -and -not (Test-Path -LiteralPath $entry.Path)) {
       throw "Release asset contract external file is missing for $($entry.Name): $($entry.Path)"
+    }
+    if (-not $SkipExternalFiles -and $FirmwareAssetPathMode -eq "Stage") {
+      Assert-StagedFirmwareMatchesPackage -Entry $entry
     }
     continue
   }

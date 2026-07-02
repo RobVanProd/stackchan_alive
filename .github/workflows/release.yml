@@ -61,7 +61,7 @@ jobs:
           Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
           Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
           Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
-          ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath
+          ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
           $releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
           $releaseAssetPaths = @($releaseAssetEntries | ForEach-Object { $_.Path })
           gh release create "${{ github.ref_name }}" `
