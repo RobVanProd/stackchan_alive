@@ -160,6 +160,8 @@ $requiredFiles = @(
   "tools/platformio_resolver.ps1",
   "tools/preview_python_resolver.ps1",
   "tools/render_preview.py",
+  "tools/audit_published_release.cmd",
+  "tools/audit_published_release.ps1",
   "tools/publish_release.cmd",
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
@@ -317,6 +319,13 @@ foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 si
   }
 }
 
+$publishedAuditText = Get-Content -LiteralPath (Join-PackagePath "tools/audit_published_release.ps1") -Raw
+foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.ps1", "export_github_actions_status.ps1", "export_rollout_status.ps1", "RELEASE_AUDIT.md", "RELEASE_AUDIT.json", "published-release-blocked-or-pending")) {
+  if ($publishedAuditText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/audit_published_release.ps1 missing required published release audit logic: $pattern"
+  }
+}
+
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
 foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
@@ -326,7 +335,7 @@ foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive",
 
 foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
   $publishDocText = Get-Content -LiteralPath (Join-PackagePath $docPath) -Raw
-  foreach ($pattern in @("publish_release.cmd", "-PushCurrentBranch", "-PushTag")) {
+  foreach ($pattern in @("publish_release.cmd", "-PushCurrentBranch", "-PushTag", "audit_published_release.cmd")) {
     if ($publishDocText -notmatch [regex]::Escape($pattern)) {
       throw "$docPath missing safe publish guidance: $pattern"
     }

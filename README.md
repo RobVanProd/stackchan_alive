@@ -77,6 +77,12 @@ Audit the published GitHub release assets:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
+Export a concise post-publish audit that verifies the release, refreshes GitHub Actions status, and summarizes remaining rollout blockers:
+
+```powershell
+.\tools\audit_published_release.cmd -Version <version>
+```
+
 Stage a local handoff page for the ZIP, ZIP SHA256 sidecar, preview image, expression sheet, and video, optionally with a Cloudflare tunnel:
 
 ```powershell

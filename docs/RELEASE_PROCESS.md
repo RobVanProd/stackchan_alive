@@ -120,6 +120,14 @@ Audit an existing GitHub release after publication:
 
 The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP plus ZIP SHA256 sidecar, validates the sidecar against the downloaded ZIP, and runs the package verifier on that downloaded copy.
 
+For a single post-publish operator summary, run:
+
+```powershell
+.\tools\audit_published_release.cmd -Version <version>
+```
+
+The audit wraps the published-release verifier, refreshes GitHub Actions status, exports rollout status without requiring hardware evidence, and writes `RELEASE_AUDIT.md/json` under `output/release-audit/<version>/`.
+
 Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, voice samples, voice-source provenance gate, release notes, readiness report, and checksums:
 
 ```powershell
