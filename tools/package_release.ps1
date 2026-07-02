@@ -247,6 +247,8 @@ $releaseTools = @(
   "tools/verify_voice_samples.ps1",
   "tools/verify_rvc_auditions.cmd",
   "tools/verify_rvc_auditions.ps1",
+  "tools/verify_tracked_rvc_assets.cmd",
+  "tools/verify_tracked_rvc_assets.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/add_hardware_evidence_media.cmd",
@@ -680,6 +682,8 @@ $manifest = [ordered]@{
     "tools/verify_face_phase_e.ps1",
     "tools/verify_rvc_auditions.cmd",
     "tools/verify_rvc_auditions.ps1",
+    "tools/verify_tracked_rvc_assets.cmd",
+    "tools/verify_tracked_rvc_assets.ps1",
     "tools/verify_rvc_voice_base.cmd",
     "tools/verify_rvc_voice_base.ps1",
     "tools/verify_release_package.cmd",
@@ -898,6 +902,7 @@ Voice audition quick check:
 - Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
 - Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
 - RVC review copies ``stackchan_rvc_bright_robot.mp3``, ``stackchan_rvc_thinking_neutral.mp3``, and ``stackchan_rvc_safety_neutral.mp3`` are included in ``media/voice/rvc/`` and uploaded as release assets for browser playback. Run ``tools/open_voice_audition.cmd -Rvc`` or open ``media/voice/rvc/RVC_AUDITION.html`` for the local RVC audition page.
+- Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the checked-in RVC MP3 review page without regenerating the full RVC WAV set.
 - These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
 
 Hardware validation is still required before consumer rollout:

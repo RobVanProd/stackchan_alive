@@ -202,6 +202,8 @@ $requiredFiles = @(
   "tools/verify_voice_samples.ps1",
   "tools/verify_rvc_auditions.cmd",
   "tools/verify_rvc_auditions.ps1",
+  "tools/verify_tracked_rvc_assets.cmd",
+  "tools/verify_tracked_rvc_assets.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/add_hardware_evidence_media.cmd",
@@ -375,7 +377,7 @@ foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audit
 }
 
 $releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
-foreach ($pattern in @("open_voice_audition.cmd -Rvc", "media/voice/rvc/", "browser-friendly RVC review copies")) {
+foreach ($pattern in @("open_voice_audition.cmd -Rvc", "verify_tracked_rvc_assets.cmd", "media/voice/rvc/", "browser-friendly RVC review copies")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing RVC audition process guidance: $pattern"
   }
@@ -427,6 +429,13 @@ $voiceAuditionOpenerText = Get-Content -LiteralPath (Join-PackagePath "tools/ope
 foreach ($pattern in @("VOICE_AUDITION.html", "RVC_AUDITION.html", "docs/media/voice", "media/voice", "media/voice/rvc", '$Rvc', "PrintOnly", "Start-Process")) {
   if ($voiceAuditionOpenerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/open_voice_audition.ps1 missing required local audition open logic: $pattern"
+  }
+}
+
+$trackedRvcVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -Raw
+foreach ($pattern in @("Stackchan RVC MP3 Auditions", "RVC_AUDITION.html", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "source provenance and rights review")) {
+  if ($trackedRvcVerifierText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/verify_tracked_rvc_assets.ps1 missing tracked RVC asset check: $pattern"
   }
 }
 
@@ -505,6 +514,7 @@ Assert-Bytes "media/voice/rvc/stackchan_rvc_safety_neutral.wav" ([byte[]](0x52, 
 
 & (Join-PackagePath "tools/verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
 & (Join-PackagePath "tools/verify_rvc_auditions.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
+& (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 
 & (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
 & (Join-PackagePath "tools/verify_face_phase_a.ps1") -ArtifactsRoot (Join-PackagePath "artifacts/face")
@@ -847,7 +857,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -Rvc", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }

@@ -7,4 +7,6 @@ These are quick browser-friendly review copies of the current RVC voice directio
 - `stackchan_rvc_thinking_neutral.mp3` checks cadence on a longer thinking line.
 - `stackchan_rvc_safety_neutral.mp3` checks clarity on a calm safety line.
 
+Run `tools/verify_tracked_rvc_assets.cmd` from the repository root to verify this MP3-only review bundle without regenerating the full RVC WAV audition set.
+
 Status: review-only candidate samples. Do not treat these as consumer-approved voice assets until source provenance and rights review are complete.

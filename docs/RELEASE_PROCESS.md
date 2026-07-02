@@ -45,6 +45,12 @@ To open the checked-in RVC MP3 audition page:
 .\tools\open_voice_audition.cmd -Rvc
 ```
 
+To verify the checked-in RVC MP3-only review bundle without regenerating the full RVC WAV set:
+
+```powershell
+.\tools\verify_tracked_rvc_assets.cmd
+```
+
 Published prereleases also upload quick MP3 audition files as standalone GitHub release assets, so reviewers can play them without downloading the full ZIP. This includes the Stackchan Spark MP3s plus browser-friendly RVC review copies for the current lead, thinking, and safety lines. The same RVC review copies are also kept in `media/voice/rvc/` for local repository playback.
 
 To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
