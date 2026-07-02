@@ -261,61 +261,65 @@ if ($releaseExists -and -not $AllowExistingRelease) {
   throw "GitHub release already exists for $Version. Pass -AllowExistingRelease to verify the published ZIP."
 }
 
+$stageDir = Join-Path $repoRoot "output/release/manual-publish-$Version"
+if (Test-Path -LiteralPath $stageDir) {
+  Remove-Item -LiteralPath $stageDir -Recurse -Force
+}
+New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+
+$displayFirmware = Join-Path $packageRoot "firmware/display_only/firmware.bin"
+$servoFirmware = Join-Path $packageRoot "firmware/servo_calibration/firmware.bin"
+$bootloader = Join-Path $packageRoot "firmware/display_only/bootloader.bin"
+$partitions = Join-Path $packageRoot "firmware/display_only/partitions.bin"
+
+Copy-Item -LiteralPath $displayFirmware -Destination (Join-Path $stageDir "firmware-display-only.bin")
+Copy-Item -LiteralPath $servoFirmware -Destination (Join-Path $stageDir "firmware-servo-calibration.bin")
+Copy-Item -LiteralPath $bootloader -Destination (Join-Path $stageDir "bootloader.bin")
+Copy-Item -LiteralPath $partitions -Destination (Join-Path $stageDir "partitions.bin")
+
+$baseReleaseAssets = @(
+  $zipPath,
+  $zipSidecarPath,
+  (Join-Path $packageRoot "media/stackchan_alive_preview.png"),
+  (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png"),
+  (Join-Path $packageRoot "media/stackchan_alive_preview.mp4"),
+  (Join-Path $packageRoot "media/stackchan_alive_preview.gif"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3"),
+  (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3"),
+  (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITION.html"),
+  (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"),
+  (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav"),
+  (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"),
+  (Join-Path $stageDir "firmware-display-only.bin"),
+  (Join-Path $stageDir "firmware-servo-calibration.bin"),
+  (Join-Path $stageDir "bootloader.bin"),
+  (Join-Path $stageDir "partitions.bin")
+)
+
 if (-not $releaseExists) {
-  $stageDir = Join-Path $repoRoot "output/release/manual-publish-$Version"
-  if (Test-Path -LiteralPath $stageDir) {
-    Remove-Item -LiteralPath $stageDir -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
-
-  $displayFirmware = Join-Path $packageRoot "firmware/display_only/firmware.bin"
-  $servoFirmware = Join-Path $packageRoot "firmware/servo_calibration/firmware.bin"
-  $bootloader = Join-Path $packageRoot "firmware/display_only/bootloader.bin"
-  $partitions = Join-Path $packageRoot "firmware/display_only/partitions.bin"
-
-  Copy-Item -LiteralPath $displayFirmware -Destination (Join-Path $stageDir "firmware-display-only.bin")
-  Copy-Item -LiteralPath $servoFirmware -Destination (Join-Path $stageDir "firmware-servo-calibration.bin")
-  Copy-Item -LiteralPath $bootloader -Destination (Join-Path $stageDir "bootloader.bin")
-  Copy-Item -LiteralPath $partitions -Destination (Join-Path $stageDir "partitions.bin")
-
   if ($DryRun) {
     Write-Host "Dry run: gh release create $Version with package, ZIP SHA256 sidecar, preview media, voice samples, and firmware assets staged in $stageDir"
   } else {
     Invoke-Checked "Create GitHub release $Version" {
     gh release create $Version `
-      $zipPath `
-      $zipSidecarPath `
-      (Join-Path $packageRoot "media/stackchan_alive_preview.png") `
-      (Join-Path $packageRoot "media/stackchan_alive_expression_sheet.png") `
-      (Join-Path $packageRoot "media/stackchan_alive_preview.mp4") `
-      (Join-Path $packageRoot "media/stackchan_alive_preview.gif") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_greeting.wav") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.wav") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3") `
-      (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3") `
-      (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITION.html") `
-      (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md") `
-      (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav") `
-      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3") `
-      (Join-Path $stageDir "firmware-display-only.bin") `
-      (Join-Path $stageDir "firmware-servo-calibration.bin") `
-      (Join-Path $stageDir "bootloader.bin") `
-      (Join-Path $stageDir "partitions.bin") `
+      @baseReleaseAssets `
       --repo $Repo `
       --title "Stackchan Alive $Version" `
       --notes-file (Join-Path $packageRoot "RELEASE_NOTES.md") `
@@ -336,12 +340,14 @@ Update-ReleaseArchive -PackageRoot $packageRoot -ZipPath $zipPath -Version $Vers
 
 & (Join-Path $PSScriptRoot "verify_release_package.ps1") @verifyArgs
 
+$finalReleaseAssets = @($baseReleaseAssets + @(
+  (Join-Path $packageRoot "GITHUB_ACTIONS_STATUS.md"),
+  (Join-Path $packageRoot "github_actions_status.json")
+))
+
 Invoke-Checked "Upload finalized release evidence $Version" {
   gh release upload $Version `
-    $zipPath `
-    $zipSidecarPath `
-    (Join-Path $packageRoot "GITHUB_ACTIONS_STATUS.md") `
-    (Join-Path $packageRoot "github_actions_status.json") `
+    @finalReleaseAssets `
     --repo $Repo `
     --clobber
 }
