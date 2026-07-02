@@ -71,6 +71,7 @@ Open the newest evidence packet folder and run:
 ```powershell
 .\RUN_PACKAGE_VERIFY.cmd
 .\RUN_DISPLAY_ONLY.cmd
+.\RUN_SPEECH_MOUTH_DEMO.cmd
 ```
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.

@@ -27,6 +27,7 @@ If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd
 ```powershell
 .\RUN_PACKAGE_VERIFY.cmd
 .\RUN_DISPLAY_ONLY.cmd
+.\RUN_SPEECH_MOUTH_DEMO.cmd
 ```
 
 Expected evidence:
@@ -34,6 +35,7 @@ Expected evidence:
 - `logs/package_verify.log`
 - `HOSTED_MEDIA_REFERENCE.md` if a verified share was available
 - display-only serial log
+- `logs/speech_mouth_demo_serial.log` if the speech-mouth demo helper was run
 - photo or video showing the procedural face
 - observation note that servos stayed in dry-run mode
 - `AUDIO_REVIEW.md` started with the sample you plan to play later
