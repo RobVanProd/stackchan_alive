@@ -6,14 +6,19 @@ param(
   [string]$VoiceSourceProvenancePath,
   [string]$VoiceSourceTemplatePath,
   [string]$ExpectedCommit,
-  [switch]$AllowExternalAccountCiBlock,
-  [switch]$AllowMissingMedia
+  [switch]$AllowExternalAccountCiBlock
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+
+foreach ($arg in $args) {
+  if ([string]$arg -ieq "-AllowMissingMedia") {
+    throw "AllowMissingMedia cannot be used for consumer promotion. Consumer promotion requires strict media evidence."
+  }
+}
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
@@ -138,9 +143,6 @@ try {
 
   $verifyEvidence = Join-Path $PSScriptRoot "verify_hardware_evidence.ps1"
   $evidenceArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifyEvidence, "-EvidenceRoot", $EvidenceRoot)
-  if ($AllowMissingMedia) {
-    $evidenceArgs += "-AllowMissingMedia"
-  }
   & powershell.exe @evidenceArgs
   if ($LASTEXITCODE -ne 0) {
     throw "Hardware evidence verification failed."

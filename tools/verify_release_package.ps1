@@ -301,10 +301,13 @@ foreach ($pattern in @("stackchan.release-acceptance.v1", "test-ready-for-device
 }
 
 $consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
-foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Consumer promotion gate verified")) {
+foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
   if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_consumer_promotion.ps1 missing promotion gate logic: $pattern"
   }
+}
+if ($consumerPromotionVerifierText -match "evidenceArgs\s*\+=\s*['`"]-AllowMissingMedia['`"]") {
+  throw "tools/verify_consumer_promotion.ps1 must not forward AllowMissingMedia to hardware evidence verification"
 }
 
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
