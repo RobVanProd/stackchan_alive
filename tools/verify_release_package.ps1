@@ -805,7 +805,7 @@ foreach ($file in @($manifest.provenanceFiles)) {
 $dependenciesText = Get-Content -LiteralPath (Join-PackagePath "DEPENDENCIES.md") -Raw
 $dependencyPatterns = @(
   "PlatformIO Core",
-  "pillow==12.2.0",
+  "pillow==12.3.0",
   "imageio==2.37.3",
   "imageio-ffmpeg==0.6.0",
   "stackchan-arduino",
@@ -844,7 +844,7 @@ if ($dependencyLock.platformioCore -notmatch "PlatformIO Core, version 6\.1\.19"
 }
 
 $expectedPreviewRequirements = @(
-  "pillow==12.2.0",
+  "pillow==12.3.0",
   "imageio==2.37.3",
   "imageio-ffmpeg==0.6.0"
 )
