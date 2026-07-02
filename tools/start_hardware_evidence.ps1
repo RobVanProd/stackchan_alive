@@ -500,10 +500,11 @@ $outDir = Join-Path $repoRoot "output/hardware-evidence/$safeTag-$stamp"
 $logsDir = Join-Path $outDir "logs"
 $photosDir = Join-Path $outDir "photos"
 $audioDir = Join-Path $outDir "audio"
+$speechDir = Join-Path $outDir "speech"
 $referenceAudioDir = Join-Path $outDir "reference_audio"
 $calibrationDir = Join-Path $outDir "calibration"
 $packageDir = Join-Path $outDir "package"
-New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $referenceAudioDir, $calibrationDir, $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $speechDir, $referenceAudioDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
 $voiceLeadInfo = $null
@@ -744,7 +745,15 @@ $soakLog = Quote-PowerShellArgument (Join-Path $logsDir "soak_serial.log")
 $speechDemoLog = Quote-PowerShellArgument (Join-Path $logsDir "speech_mouth_demo_serial.log")
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
-$speechDemoCommand = "& '.\tools\send_speech_mouth_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $speechDemoLog"
+$speechDemoBody = "& '.\tools\send_speech_mouth_demo.ps1'$portArg"
+if ($voiceLeadInfo) {
+  $leadAudioPath = Join-Path $outDir ([string]$voiceLeadInfo.referenceFile -replace "/", "\")
+  $leadSpeechSidecarPath = Join-Path $speechDir "lead_voice.speech_envelope.json"
+  $leadAudioArg = Quote-PowerShellArgument $leadAudioPath
+  $leadSidecarArg = Quote-PowerShellArgument $leadSpeechSidecarPath
+  $speechDemoBody = "& '.\tools\generate_speech_envelope_sidecar.ps1' -InputWav $leadAudioArg -OutputJson $leadSidecarArg; & '.\tools\verify_speech_envelope_sidecar.ps1' -Path $leadSidecarArg -MinFrames 50 -MinMaxEnvelope 0.35; & '.\tools\send_speech_mouth_demo.ps1'$portArg -SidecarPath $leadSidecarArg"
+}
+$speechDemoCommand = "& { $speechDemoBody } 2>&1 | Tee-Object -FilePath $speechDemoLog"
 $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"

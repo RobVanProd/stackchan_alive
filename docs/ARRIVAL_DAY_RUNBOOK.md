@@ -61,6 +61,8 @@ Optional speech-mouth sidecar check from the extracted release folder:
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
 ```
 
+Evidence packets created from a verified package wire `RUN_SPEECH_MOUTH_DEMO.cmd` to the copied lead audition automatically. It generates `speech/lead_voice.speech_envelope.json`, verifies it, then streams that envelope so the mouth check follows the selected RVC review voice instead of the built-in fallback pattern.
+
 ## 3. Supervised Servo Calibration
 
 Only continue after display-only passes and the body is clear.
