@@ -237,6 +237,23 @@ bool fillSafeStop(BenchControl* controlOut) {
   return true;
 }
 
+bool fillSafeResume(BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasReducedMotion = true;
+  parsed.hasMotionEnable = true;
+  parsed.hasDemoEnable = true;
+  parsed.hasSpeech = true;
+  parsed.reducedMotion = false;
+  parsed.motionEnabled = true;
+  parsed.demoEnabled = true;
+  parsed.speech.clear = true;
+  parsed.speech.envelope = 0.0f;
+  parsed.speech.viseme = BenchSpeechViseme::Neutral;
+  parsed.command = "safe_resume";
+  *controlOut = parsed;
+  return true;
+}
+
 bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchControl* controlOut) {
   for (const ModeCommand& command : kModeCommands) {
     if (strcmp(token, command.name) != 0) {
@@ -407,6 +424,14 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       (strcmp(first, "all") == 0 && second != nullptr && strcmp(second, "stop") == 0)) {
     return fillSafeStop(controlOut);
   }
+  if (strcmp(first, "restore") == 0 || strcmp(first, "recover") == 0 || strcmp(first, "normal") == 0 ||
+      strcmp(first, "safe_resume") == 0 || strcmp(first, "saferesume") == 0 ||
+      (strcmp(first, "safe") == 0 && second != nullptr &&
+       (strcmp(second, "resume") == 0 || strcmp(second, "normal") == 0 ||
+        strcmp(second, "restore") == 0)) ||
+      (strcmp(first, "all") == 0 && second != nullptr && strcmp(second, "resume") == 0)) {
+    return fillSafeResume(controlOut);
+  }
 
   if (token == nullptr || isHelpToken(token)) {
     return false;
@@ -442,7 +467,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));
-  Serial.println(F("[control] help: safe stop|panic"));
+  Serial.println(F("[control] help: safe stop|panic; safe resume|restore"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif
 }

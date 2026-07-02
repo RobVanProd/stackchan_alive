@@ -286,7 +286,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PA
 }
 
 $deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
-foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "[motion] enabled=0")) {
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
   if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
@@ -450,7 +450,7 @@ foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub A
 }
 
 $sensorAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SensorAdapter.cpp") -Raw
-foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos off|on", "demo off|on", "safe stop|panic", "fillStatus", "fillMotionEnable", "fillDemoEnable", "fillSafeStop", "wantsStatus", "hasMotionEnable", "motionEnabled", "hasDemoEnable", "demoEnabled", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "motion_stop", "motion_resume", "demo_off", "demo_on", "safe_stop", "parseOnOff", "hasReducedMotion")) {
+foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos off|on", "demo off|on", "safe stop|panic", "safe resume|restore", "fillStatus", "fillMotionEnable", "fillDemoEnable", "fillSafeStop", "fillSafeResume", "wantsStatus", "hasMotionEnable", "motionEnabled", "hasDemoEnable", "demoEnabled", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "motion_stop", "motion_resume", "demo_off", "demo_on", "safe_stop", "safe_resume", "parseOnOff", "hasReducedMotion")) {
   if ($sensorAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/SensorAdapter.cpp missing bench serial command support: $pattern"
   }
