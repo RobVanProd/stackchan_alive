@@ -343,6 +343,9 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav"); Name = "voice/rvc/stackchan_rvc_neutral.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav"); Name = "voice/rvc/stackchan_rvc_warm_slow.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_less_static.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav"); Name = "voice/rvc/stackchan_rvc_spark_boops.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav"); Name = "voice/rvc/stackchan_rvc_high_character.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.wav" },
@@ -609,6 +612,27 @@ $promotionGateItems
       <p><a href="voice/rvc/stackchan_rvc_bright_robot.wav">Download WAV</a></p>
     </div>
     <div class="item">
+      <strong>RVC Bright Robot Less Static</strong>
+      <audio src="voice/rvc/stackchan_rvc_bright_robot_less_static.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Near-final pass: same pitch 2 / index 0.62 / RMS mix 0.72 / protect 0.28 settings, with roughly 8% less static edge.</p>
+      <p><a href="voice/rvc/stackchan_rvc_bright_robot_less_static.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Bright Robot Sweet Vocoder</strong>
+      <audio src="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Near-final pass: same winning RVC settings with a slightly more pleasant fourth/fifth vocoder blend.</p>
+      <p><a href="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Bright Robot Soft Boops</strong>
+      <audio src="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Near-final pass: same winning RVC settings with the beeps and boops tucked lower under the voice.</p>
+      <p><a href="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
       <strong>RVC Spark Boops</strong>
       <audio src="voice/rvc/stackchan_rvc_spark_boops.wav" controls preload="metadata"></audio>
       <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
@@ -696,6 +720,9 @@ $promotionGateItems
     <div class="item"><a href="voice/rvc/stackchan_rvc_neutral.wav">RVC Neutral WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_warm_slow.wav">RVC Warm Slow WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.wav">RVC Bright Robot WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_less_static.wav">RVC Bright Robot Less Static WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav">RVC Bright Robot Sweet Vocoder WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav">RVC Bright Robot Soft Boops WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_spark_boops.wav">RVC Spark Boops WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_high_character.wav">RVC High Character WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">RVC Thinking WAV</a></div>

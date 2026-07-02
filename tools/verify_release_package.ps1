@@ -144,6 +144,9 @@ $requiredFiles = @(
   "media/voice/rvc/stackchan_rvc_neutral.wav",
   "media/voice/rvc/stackchan_rvc_warm_slow.wav",
   "media/voice/rvc/stackchan_rvc_bright_robot.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
   "media/voice/rvc/stackchan_rvc_spark_boops.wav",
   "media/voice/rvc/stackchan_rvc_high_character.wav",
   "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
@@ -236,7 +239,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "RUN_PACKAGE_VERIFY.cmd"
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "RVC_AUDITIONS.md")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "RVC_AUDITIONS.md")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
@@ -346,6 +349,9 @@ Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
 Assert-File "media/voice/rvc/stackchan_rvc_neutral.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_warm_slow.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_bright_robot.wav" 100000
+Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav" 100000
+Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" 100000
+Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_spark_boops.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_high_character.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_thinking_neutral.wav" 100000
@@ -373,6 +379,9 @@ Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([
 Assert-Bytes "media/voice/rvc/stackchan_rvc_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_warm_slow.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_spark_boops.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_high_character.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_thinking_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
@@ -502,6 +511,9 @@ $expectedMediaArtifacts = @(
   "media/voice/rvc/stackchan_rvc_neutral.wav",
   "media/voice/rvc/stackchan_rvc_warm_slow.wav",
   "media/voice/rvc/stackchan_rvc_bright_robot.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
   "media/voice/rvc/stackchan_rvc_spark_boops.wav",
   "media/voice/rvc/stackchan_rvc_high_character.wav",
   "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
