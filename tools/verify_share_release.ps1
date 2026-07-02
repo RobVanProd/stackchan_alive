@@ -2,6 +2,7 @@ param(
   [string]$Version = "",
   [string]$ShareRoot = "",
   [string]$Url = "",
+  [switch]$Offline,
   [switch]$RequirePublicUrl,
   [int]$TimeoutSeconds = 20,
   [int]$ProbeRetries = 20,
@@ -147,7 +148,9 @@ function Write-VerificationReport {
     [bool]$RequiredPublicUrl,
     [object[]]$Probes,
     [string]$ShareRootPath,
-    [object]$ShareStatus
+    [object]$ShareStatus,
+    [string]$VerificationMode = "http",
+    [int]$StaticFileCount = 0
   )
 
   $lanUrls = @()
@@ -160,13 +163,16 @@ function Write-VerificationReport {
     version = $Version
     generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     url = $Url
+    verificationMode = $VerificationMode
     requirePublicUrl = $RequiredPublicUrl
     shareRoot = $ShareRootPath
     bindAddress = if ($null -ne $ShareStatus) { [string]$ShareStatus.bindAddress } else { "" }
     loopbackUrl = if ($null -ne $ShareStatus) { [string]$ShareStatus.loopbackUrl } else { "" }
     lanUrls = @($lanUrls)
+    staticFileCount = $StaticFileCount
+    allStaticFilesPresent = $true
     probeCount = $Probes.Count
-    allHttp200 = (@($Probes | Where-Object { $_.StatusLine -notmatch "\s200\s" }).Count -eq 0)
+    allHttp200 = ($Probes.Count -gt 0 -and @($Probes | Where-Object { $_.StatusLine -notmatch "\s200\s" }).Count -eq 0)
     usedCurlResolveFallback = (@($Probes | Where-Object { $_.Method -eq "curl-resolve" }).Count -gt 0)
     probes = @($Probes)
   }
@@ -186,10 +192,13 @@ function Write-VerificationReport {
     "",
     "- Version: $Version",
     "- URL: $Url",
+    "- Verification mode: $VerificationMode",
     "- Generated UTC: $($reportObject.generatedUtc)",
     "- Public URL required: $RequiredPublicUrl",
     "- Bind address: $($reportObject.bindAddress)",
     "- LAN URL candidates: $(@($reportObject.lanUrls).Count)",
+    "- Static files checked: $StaticFileCount",
+    "- All static files present: $($reportObject.allStaticFilesPresent)",
     "- Probe count: $($reportObject.probeCount)",
     "- All probes HTTP 200: $($reportObject.allHttp200)",
     "- Used curl DNS override fallback: $fallbackText",
@@ -265,11 +274,15 @@ if ([string]::IsNullOrWhiteSpace($Url) -and $null -ne $status -and -not [string]
   $Url = [string]$status.localUrl
 }
 
+if ($Offline -and $RequirePublicUrl) {
+  throw "-Offline cannot be combined with -RequirePublicUrl because no public HTTP URL is probed."
+}
+
 if ($RequirePublicUrl -and $Url -notmatch "^https://[-A-Za-z0-9]+\.trycloudflare\.com/?$") {
   throw "Expected a trycloudflare.com public URL, got: $Url"
 }
 
-if ([string]::IsNullOrWhiteSpace($Url)) {
+if ([string]::IsNullOrWhiteSpace($Url) -and -not $Offline) {
   throw "No share URL found. Pass -Url or start share_release first."
 }
 
@@ -436,6 +449,21 @@ if ($hasPreflightReport) {
   }
 }
 
+if ($Offline) {
+  if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    $ReportPath = Join-Path $shareRootPath "share_static_verification_report.json"
+  }
+  $offlineUrl = if ([string]::IsNullOrWhiteSpace($Url)) { "offline-static:$shareRootPath" } else { $Url }
+  $reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $offlineUrl -RequiredPublicUrl $false -Probes @() -ShareRootPath $shareRootPath -ShareStatus $status -VerificationMode "offline-static" -StaticFileCount $expectedFiles.Count
+
+  Write-Host "Share folder verified offline:"
+  Write-Host $shareRootPath
+  Write-Host "Report:"
+  Write-Host $reportPaths.JsonPath
+  Write-Host "Offline static verification does not create hosted-media evidence; run without -Offline to produce HTTP probe evidence."
+  exit 0
+}
+
 $probes = @()
 $probedPaths = @("index.html", "stackchan_alive_$Version.zip", "stackchan_alive_$Version.zip.sha256", "stackchan_alive_preview.png", "stackchan_alive_expression_sheet.png", "stackchan_alive_preview.mp4", "stackchan_alive_preview.gif", "stackchan_alive_speech_preview.gif", "artifacts/face/phase_a_idle_10s.gif", "artifacts/face/phase_a_blink_filmstrip_50ms.png", "artifacts/face/phase_a_unlabeled_expression_sheet.png", "artifacts/face/phase_b_unlabeled_expression_sheet.png", "artifacts/face/phase_c_idle_10s.gif", "artifacts/face/phase_d_idle_to_listen_filmstrip_50ms.png", "artifacts/face/phase_d_think_to_speak_filmstrip_50ms.png", "artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png", "artifacts/face/phase_e_speech_reactive_6s.gif", "voice/VOICE_AUDITION.html", "voice/stackchan_spark_greeting.wav", "voice/stackchan_spark_thinking.wav", "voice/stackchan_spark_thinking.mp3", "voice/stackchan_spark_safety.wav", "voice/stackchan_spark_audition_warm_slow_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.wav", "voice/stackchan_spark_audition_bright_robot_greeting.mp3", "voice/rvc/README.md", "voice/rvc/RVC_AUDITION.html", "voice/rvc/RVC_AUDITIONS.md", "voice/rvc/RVC_AUDITIONS.json", "voice/rvc/stackchan_rvc_neutral.wav", "voice/rvc/stackchan_rvc_warm_slow.wav", "voice/rvc/stackchan_rvc_bright_robot.wav", "voice/rvc/stackchan_rvc_bright_robot.mp3", "voice/rvc/stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav", "voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav", "voice/rvc/stackchan_rvc_spark_boops.wav", "voice/rvc/stackchan_rvc_high_character.wav", "voice/rvc/stackchan_rvc_thinking_neutral.wav", "voice/rvc/stackchan_rvc_thinking_neutral.mp3", "voice/rvc/stackchan_rvc_safety_neutral.wav", "voice/rvc/stackchan_rvc_safety_neutral.mp3", "ARRIVAL_DAY_RUNBOOK.md", "OPEN_LOCAL_SHARE.cmd", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "DEPENDENCIES.md", "dependency_lock.json", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "voice_rvc_base.yaml", "voice_rvc_base_metadata.json", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "READINESS_REPORT.md", "readiness_report.json", "SHA256SUMS.txt")
 if ($hasPreflightReport) {
@@ -451,7 +479,7 @@ foreach ($file in $expectedFiles | Where-Object { $_.Path -in $probedPaths }) {
 if ([string]::IsNullOrWhiteSpace($ReportPath)) {
   $ReportPath = Join-Path $shareRootPath "share_verification_report.json"
 }
-$reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $Url -RequiredPublicUrl ([bool]$RequirePublicUrl) -Probes $probes -ShareRootPath $shareRootPath -ShareStatus $status
+$reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $Url -RequiredPublicUrl ([bool]$RequirePublicUrl) -Probes $probes -ShareRootPath $shareRootPath -ShareStatus $status -VerificationMode "http" -StaticFileCount $expectedFiles.Count
 
 Write-Host "Share release verified:"
 Write-Host $Url
