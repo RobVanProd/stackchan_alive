@@ -545,6 +545,7 @@ $initialBenchStatus | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $ou
   "[face] mode=1 blink_count=3 saccade_count=4 blink_open=1.00 breath_y=0.42 gaze_x=0.08 gaze_y=-0.03 gesture_active=0 speech_active=0 speech_env=0.00",
   "[control] command=button_a_listen mode=listen event=wake_word strength=1.00 at_ms=2980",
   "[control] command=reduced_motion_on reduced_motion=1 at_ms=3060",
+  "[control] command=safe_stop reduced_motion=1 motion_enabled=0 demo_enabled=0 speech_env=0.00 at_ms=3160",
   "[face] reduced_motion=1",
   "[speech] seq=1 at_ms=3020 intent=listen priority=160 earcon=confirm earcon_delay_ms=0 text=`"I am listening with maximum attention.`"",
   "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",

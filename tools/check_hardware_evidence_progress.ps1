@@ -442,7 +442,7 @@ Test-TextPattern "logs/display_only_serial.log" "\[display\]\s+M5 display render
 Test-TextPattern "logs/display_only_serial.log" "\[servo\]\s+dry-run mode" "display-only servo dry-run marker"
 Test-TextPattern "logs/display_only_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "display frame-budget telemetry"
 Test-TextPattern "logs/display_only_serial.log" "\[face\]\s+mode=\d+\s+blink_count=\d+\s+saccade_count=\d+.*gesture_active=\d+\s+speech_active=\d+\s+speech_env=" "display face animator telemetry"
-Test-TextPattern "logs/display_only_serial.log" "\[control\]\s+command=(mode_listen|event_touch|touch_click_react|button_a_listen|speech_env|reduced_motion_on|reduced_motion_off).*at_ms=\d+" "display bench control telemetry"
+Test-TextPattern "logs/display_only_serial.log" "\[control\]\s+command=(mode_listen|event_touch|touch_click_react|button_a_listen|speech_env|reduced_motion_on|reduced_motion_off|safe_stop).*at_ms=\d+" "display bench control telemetry"
 Test-TextPattern "logs/display_only_serial.log" "\[speech\]\s+seq=\d+\s+at_ms=\d+\s+intent=\w+\s+priority=\d+\s+earcon=\w+\s+earcon_delay_ms=\d+\s+text=" "display speech cue telemetry"
 Test-TextPattern "logs/display_only_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\d+\s+stack_loop_hwm=\d+\s+stack_motion_hwm=\d+\s+stack_face_hwm=\d+\s+stack_intent_hwm=\d+" "display runtime health telemetry"
 Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech\s+[0-9]" "speech mouth demo envelope commands"
