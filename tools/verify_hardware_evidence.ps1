@@ -554,7 +554,7 @@ foreach ($requirement in @("clean-release-package", "dependency-provenance-prese
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
   }
 }
-foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "hardware-evidence-verification")) {
+foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "target-speaker-audio-evidence", "hardware-evidence-verification")) {
   $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing pending hardware requirement: $requirement"
@@ -562,7 +562,7 @@ foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mod
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-EvidencePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Still Required Before Consumer Rollout")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Still Required Before Consumer Rollout", "Speech-mouth demo evidence", "Target-speaker audio evidence")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance text: $pattern"
   }

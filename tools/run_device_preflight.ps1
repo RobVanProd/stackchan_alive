@@ -789,9 +789,11 @@ function Write-SyntheticAcceptanceArtifacts {
     "",
     "## Still Required Before Consumer Rollout",
     "- Display-only flash",
+    "- Speech-mouth demo evidence",
     "- Servo calibration",
     "- Mixed-mode soak",
     "- Power-cycle recovery",
+    "- Target-speaker audio evidence",
     "- Hardware evidence verification"
   ) | Set-Content -Path (Join-Path $EvidenceRoot "RELEASE_ACCEPTANCE.md") -Encoding UTF8
 
@@ -809,9 +811,11 @@ function Write-SyntheticAcceptanceArtifacts {
     )
     hardwareAcceptanceRequired = @(
       [ordered]@{ requirement = "display-only-flash"; status = "pending-hardware" },
+      [ordered]@{ requirement = "speech-mouth-demo-evidence"; status = "pending-hardware" },
       [ordered]@{ requirement = "servo-calibration"; status = "pending-hardware" },
       [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-hardware" },
       [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-hardware" },
+      [ordered]@{ requirement = "target-speaker-audio-evidence"; status = "pending-hardware" },
       [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-hardware" }
     )
   }
