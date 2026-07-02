@@ -370,6 +370,146 @@ function Assert-GitHubActionsStatusExporterGate {
   }
 }
 
+function Write-LocalShareVerificationFixture {
+  param(
+    [string]$ShareRoot,
+    [string]$ReleaseTag,
+    [string]$VerifiedUrl
+  )
+
+  New-Item -ItemType Directory -Force -Path $ShareRoot | Out-Null
+  [ordered]@{
+    schema = "stackchan.share-status.v1"
+    version = $ReleaseTag
+    status = "local-ready"
+    publicUrl = ""
+    publicUrlReady = $false
+    bindAddress = "127.0.0.1"
+    loopbackUrl = $VerifiedUrl
+    localUrl = $VerifiedUrl
+    lanUrls = @()
+  } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $ShareRoot "share_status.json") -Encoding UTF8
+
+  [ordered]@{
+    schema = "stackchan.share-verification.v1"
+    version = $ReleaseTag
+    generatedUtc = "2026-07-02T00:00:00Z"
+    url = $VerifiedUrl
+    requirePublicUrl = $false
+    shareRoot = $ShareRoot
+    bindAddress = "127.0.0.1"
+    loopbackUrl = $VerifiedUrl
+    lanUrls = @()
+    probeCount = 2
+    allHttp200 = $true
+    usedCurlResolveFallback = $false
+    probes = @(
+      [ordered]@{ path = "index.html"; statusLine = "HTTP/1.1 200 OK"; method = "invoke-webrequest" },
+      [ordered]@{ path = "OPEN_LOCAL_SHARE.cmd"; statusLine = "HTTP/1.1 200 OK"; method = "invoke-webrequest" }
+    )
+  } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ShareRoot "share_verification_report.json") -Encoding UTF8
+
+  @(
+    "# Share Verification Report",
+    "",
+    "- Version: $ReleaseTag",
+    "- URL: $VerifiedUrl",
+    "- Public URL required: False",
+    "- Probe count: 2",
+    "- All probes HTTP 200: True",
+    "",
+    "Machine-readable report: ``share_verification_report.json``"
+  ) | Set-Content -Path (Join-Path $ShareRoot "share_verification_report.md") -Encoding UTF8
+}
+
+function Assert-LocalShareEvidenceGate {
+  $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-local-share-evidence-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $shareRoot = Join-Path $fixtureRoot "share"
+  $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-local-share-selftest" } else { $Version }
+  $verifiedUrl = "http://127.0.0.1:8787/"
+  $packetPath = ""
+
+  try {
+    Write-LocalShareVerificationFixture -ShareRoot $shareRoot -ReleaseTag $releaseTag -VerifiedUrl $verifiedUrl
+
+    $startResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "start_hardware_evidence.ps1"),
+      "-ReleaseTag", $releaseTag,
+      "-ShareRoot", $shareRoot,
+      "-Port", "COM_TEST",
+      "-Operator", "preflight",
+      "-DeviceId", "LOCAL-SHARE-SELFTEST"
+    )
+    if ($startResult.ExitCode -ne 0) {
+      throw "Local-share evidence packet generation failed:$([Environment]::NewLine)$($startResult.Text)"
+    }
+
+    $hardwareEvidenceRoot = (Resolve-Path (Join-Path $repoRoot "output/hardware-evidence")).Path
+    $packetPath = @($startResult.Text -split "\r?\n" | ForEach-Object { $_.Trim() } | Where-Object {
+        -not [string]::IsNullOrWhiteSpace($_) -and
+        (Test-Path -LiteralPath $_) -and
+        (Resolve-Path -LiteralPath $_).Path.StartsWith($hardwareEvidenceRoot, [System.StringComparison]::OrdinalIgnoreCase)
+      } | Select-Object -Last 1)
+    if ([string]::IsNullOrWhiteSpace($packetPath)) {
+      throw "Could not find generated local-share evidence packet path in output:$([Environment]::NewLine)$($startResult.Text)"
+    }
+    $packetPath = (Resolve-Path -LiteralPath $packetPath).Path
+
+    $metadata = Get-Content -LiteralPath (Join-Path $packetPath "metadata.json") -Raw | ConvertFrom-Json
+    if ($null -eq $metadata.shareVerification) {
+      throw "Generated evidence metadata did not include shareVerification."
+    }
+    if ([string]$metadata.shareVerification.verifiedUrl -ne $verifiedUrl) {
+      throw "Generated evidence metadata verifiedUrl mismatch: $($metadata.shareVerification.verifiedUrl)"
+    }
+    if ([string]$metadata.shareVerification.publicUrl -ne $verifiedUrl) {
+      throw "Generated evidence metadata compatibility publicUrl mismatch: $($metadata.shareVerification.publicUrl)"
+    }
+    if ([string]$metadata.shareVerification.urlKind -ne "loopback") {
+      throw "Generated evidence metadata urlKind mismatch: $($metadata.shareVerification.urlKind)"
+    }
+    if ([string]$metadata.shareVerification.verifiedUrlFile -ne "share/VERIFIED_URL.txt") {
+      throw "Generated evidence metadata missing verifiedUrlFile."
+    }
+    $requiredRecords = @($metadata.requiredRecords)
+    if ($requiredRecords -notcontains "share/VERIFIED_URL.txt") {
+      throw "Generated evidence requiredRecords did not include share/VERIFIED_URL.txt."
+    }
+    if ($requiredRecords -contains "share/PUBLIC_URL.txt") {
+      throw "Generated local-only evidence should not require share/PUBLIC_URL.txt."
+    }
+
+    $verifiedUrlFile = Join-Path $packetPath "share/VERIFIED_URL.txt"
+    if (-not (Test-Path -LiteralPath $verifiedUrlFile)) {
+      throw "Generated evidence did not write share/VERIFIED_URL.txt."
+    }
+    if ((Get-Content -LiteralPath $verifiedUrlFile -Raw).Trim() -ne $verifiedUrl) {
+      throw "Generated share/VERIFIED_URL.txt did not contain the verified local URL."
+    }
+    if (Test-Path -LiteralPath (Join-Path $packetPath "share/PUBLIC_URL.txt")) {
+      throw "Generated local-only evidence unexpectedly copied share/PUBLIC_URL.txt."
+    }
+
+    $hostedReference = Get-Content -LiteralPath (Join-Path $packetPath "HOSTED_MEDIA_REFERENCE.md") -Raw
+    Assert-TextContains $hostedReference "Verified URL: $verifiedUrl"
+    Assert-TextContains $hostedReference "URL kind: loopback"
+    Assert-TextContains $hostedReference "share/VERIFIED_URL.txt"
+
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (-not [string]::IsNullOrWhiteSpace($packetPath) -and (Test-Path -LiteralPath $packetPath)) {
+      $resolvedPacket = (Resolve-Path -LiteralPath $packetPath).Path
+      $hardwareEvidenceRoot = (Resolve-Path (Join-Path $repoRoot "output/hardware-evidence")).Path
+      if ($resolvedPacket.StartsWith($hardwareEvidenceRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $resolvedPacket -Recurse -Force
+      }
+    }
+    if (Test-Path -LiteralPath $fixtureRoot) {
+      Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    }
+  }
+}
+
 function Write-SyntheticAcceptanceArtifacts {
   param(
     [string]$EvidenceRoot,
@@ -1378,6 +1518,10 @@ Invoke-Step "Check runtime architecture boundaries" {
 
 Invoke-Step "Check GitHub Actions status exporter gates" {
   Assert-GitHubActionsStatusExporterGate
+}
+
+Invoke-Step "Check local share evidence capture" {
+  Assert-LocalShareEvidenceGate
 }
 
 Invoke-Step "Check preview media quality" {

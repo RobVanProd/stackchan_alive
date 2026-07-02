@@ -41,7 +41,7 @@ Run the no-hardware device preflight before flashing or handing off a package:
 .\tools\run_device_preflight.cmd
 ```
 
-The preflight checks tool availability, dependency pins, flash-helper safety gates, tests, and both firmware builds.
+The preflight checks tool availability, dependency pins, flash-helper safety gates, local-share evidence capture, tests, and both firmware builds.
 
 Create an auditable prerelease package:
 
