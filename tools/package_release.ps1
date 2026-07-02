@@ -876,7 +876,7 @@ Consumer rollout: blocked pending hardware validation
 - [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion
 - [ ] Supervised servo calibration with yaw classification and calibration values
 - [ ] 30-minute mixed idle/listen/think/speak soak with heartbeat and runtime health markers
-- [ ] USB power-cycle recovery marked pass
+- [ ] Power-cycle recovery: USB power-cycle observation marked pass
 - [ ] Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``
 - [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
 - [ ] Completed voice-source provenance with a licensed or owned production voice source
@@ -911,7 +911,7 @@ Consumer rollout: blocked pending hardware validation
 - Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion.
 - Supervised servo calibration, yaw classification, and calibration values.
 - 30-minute mixed idle/listen/think/speak soak.
-- USB power-cycle recovery.
+- Power-cycle recovery: USB power-cycle observation marked pass.
 - Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
 - Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
 - Completed voice-source provenance with licensed or owned production source.
@@ -948,7 +948,7 @@ Hardware validation is still required before consumer rollout:
 3. Supervised servo-enable test.
 4. Yaw classification and calibration.
 5. 30-minute mixed idle/listen/speak soak.
-6. USB power-cycle recovery test.
+6. Power-cycle recovery: USB power-cycle observation marked pass.
 7. Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
 8. Licensed or owned production voice source.
 
