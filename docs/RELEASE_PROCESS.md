@@ -90,7 +90,7 @@ Then run the full consumer-promotion gate, which composes package verification, 
 .\tools\verify_consumer_promotion.cmd -Version <version> -PackageZip output\release\stackchan_alive_<version>.zip -EvidenceRoot output\hardware-evidence\<packet-folder>
 ```
 
-The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. The `-AllowExternalAccountCiBlock` switch exists only for an explicit account-billing outage exception and should not be used silently.
+The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. The `-AllowExternalAccountCiBlock` switch exists only for an explicit account-billing outage exception and must be paired with `-ExternalAccountCiExceptionPath docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json` after that JSON is copied, completed, and approved for the exact release commit.
 The GitHub Actions status report records the required workflow set. For normal release promotion, both `Firmware` and `Release` must be present for the matching commit; a missing required workflow is a blocker even if another workflow succeeded.
 
 ## GitHub Release

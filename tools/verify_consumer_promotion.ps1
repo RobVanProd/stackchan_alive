@@ -5,6 +5,7 @@ param(
   [string]$EvidenceRoot,
   [string]$VoiceSourceProvenancePath,
   [string]$VoiceSourceTemplatePath,
+  [string]$ExternalAccountCiExceptionPath,
   [string]$ExpectedCommit,
   [switch]$AllowExternalAccountCiBlock
 )
@@ -108,6 +109,53 @@ function Assert-VoiceStatusReportsReady {
   if ([int]$rvcStatus.blockedGateCount -gt 0) {
     throw "rvc_voice_base_status.json still reports blocked gates: $($rvcStatus.blockedGateCount)"
   }
+}
+
+function Assert-CiExceptionRecord {
+  param(
+    [string]$Path,
+    [string]$ExpectedVersion,
+    [string]$ExpectedCommit,
+    [string]$ExpectedActionsStatus
+  )
+
+  Assert-FilePath $Path 100
+  $record = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+  if ($record.schema -ne "stackchan.ci-account-block-exception.v1") {
+    throw "CI account-block exception schema mismatch: $($record.schema)"
+  }
+  if ([string]$record.version -ne $ExpectedVersion) {
+    throw "CI account-block exception version mismatch: expected $ExpectedVersion, got $($record.version)"
+  }
+  if ([string]$record.commit -ne $ExpectedCommit) {
+    throw "CI account-block exception commit mismatch: expected $ExpectedCommit, got $($record.commit)"
+  }
+  if ([string]$record.githubActionsStatus -ne $ExpectedActionsStatus) {
+    throw "CI account-block exception status mismatch: expected $ExpectedActionsStatus, got $($record.githubActionsStatus)"
+  }
+  foreach ($field in @("approvedBy", "approvedUtc", "reason", "followUpOwner", "followUpDueUtc")) {
+    $value = [string]$record.$field
+    if ([string]::IsNullOrWhiteSpace($value)) {
+      throw "CI account-block exception missing required field: $field"
+    }
+    if ($value -match "(?i)\b(TBD|pending|required-before|required before|not approved)\b") {
+      throw "CI account-block exception field is still a placeholder: $field = $value"
+    }
+  }
+  if (-not [bool]$record.riskAccepted) {
+    throw "CI account-block exception must set riskAccepted to true"
+  }
+  if (-not [bool]$record.localReleaseVerificationPassed) {
+    throw "CI account-block exception must confirm localReleaseVerificationPassed"
+  }
+  if (-not [bool]$record.strictHardwareEvidencePassed) {
+    throw "CI account-block exception must confirm strictHardwareEvidencePassed"
+  }
+  if (-not [bool]$record.productionVoiceSourceReady) {
+    throw "CI account-block exception must confirm productionVoiceSourceReady"
+  }
+
+  return $record
 }
 
 function Assert-VoiceSourceReady {
@@ -214,7 +262,11 @@ try {
     if (-not ($AllowExternalAccountCiBlock -and $externalAccountStatuses -contains $actionsStatus.status)) {
       throw "GitHub Actions status is not promotion-ready: $($actionsStatus.status)"
     }
-    Write-Warning "Allowing external GitHub Actions account/pre-runner block because -AllowExternalAccountCiBlock was passed."
+    if ([string]::IsNullOrWhiteSpace($ExternalAccountCiExceptionPath)) {
+      throw "Pass -ExternalAccountCiExceptionPath with a completed stackchan.ci-account-block-exception.v1 JSON record when using -AllowExternalAccountCiBlock."
+    }
+    $ciException = Assert-CiExceptionRecord -Path $ExternalAccountCiExceptionPath -ExpectedVersion $Version -ExpectedCommit $ExpectedCommit -ExpectedActionsStatus ([string]$actionsStatus.status)
+    Write-Warning "Allowing external GitHub Actions account/pre-runner block because an explicit exception record was provided: $ExternalAccountCiExceptionPath"
   }
 
   if ([string]::IsNullOrWhiteSpace($VoiceSourceProvenancePath)) {
@@ -231,6 +283,9 @@ try {
   Write-Host "Commit: $ExpectedCommit"
   Write-Host "Package: $packageRootPath"
   Write-Host "Evidence: $EvidenceRoot"
+  if ($null -ne $ciException) {
+    Write-Host "CI exception: $ExternalAccountCiExceptionPath"
+  }
 } finally {
   if ($null -ne $cleanupDir) {
     Remove-Item -LiteralPath $cleanupDir -Recurse -Force -ErrorAction SilentlyContinue

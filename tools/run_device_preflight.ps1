@@ -1382,6 +1382,7 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $readme "RUN_PLAY_LEAD_VOICE.cmd"
     Assert-TextContains $readme "real-device speaker recording"
     Assert-TextContains $readme "BENCH_STATUS.md"
+    Assert-TextContains $readme "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json"
 
     $nextSteps = Get-Content -LiteralPath (Join-Path $evidenceRoot "NEXT_STEPS.md") -Raw
     Assert-TextContains $nextSteps "RUN_PACKAGE_VERIFY.cmd"
@@ -1389,6 +1390,15 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $nextSteps "RUN_CONSUMER_PROMOTION_CHECK.cmd"
     Assert-TextContains $nextSteps "Generated source WAVs alone do not count"
     Assert-TextContains $nextSteps "Do not run servo calibration unless the body is clear"
+    Assert-TextContains $nextSteps "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json"
+
+    $ciExceptionTemplate = Get-Content -LiteralPath (Join-Path $evidenceRoot "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json") -Raw | ConvertFrom-Json
+    if ($ciExceptionTemplate.schema -ne "stackchan.ci-account-block-exception.v1") {
+      throw "Arrival packet CI exception template schema mismatch: $($ciExceptionTemplate.schema)"
+    }
+    if ($ciExceptionTemplate.version -ne $Version -or $ciExceptionTemplate.commit -ne $ExpectedCommit) {
+      throw "Arrival packet CI exception template does not pin release version/commit."
+    }
 
     $checklist = Get-Content -LiteralPath (Join-Path $evidenceRoot "CHECKLIST.md") -Raw
     Assert-TextContains $checklist 'Pre-marked no-hardware gates were proven by the matching preflight report'

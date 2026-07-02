@@ -703,6 +703,23 @@ $audioReview = @(
 )
 $audioReview | Set-Content -Path (Join-Path $outDir "AUDIO_REVIEW.md") -Encoding UTF8
 
+$ciExceptionTemplate = [ordered]@{
+  schema = "stackchan.ci-account-block-exception.v1"
+  version = $ReleaseTag
+  commit = $commit
+  githubActionsStatus = "external-account-billing-or-spending-limit"
+  approvedBy = "TBD"
+  approvedUtc = "TBD"
+  reason = "GitHub Actions could not start jobs because of an account billing, spending-limit, or pre-runner allocation outage outside this repository."
+  riskAccepted = $false
+  localReleaseVerificationPassed = $false
+  strictHardwareEvidencePassed = $false
+  productionVoiceSourceReady = $false
+  followUpOwner = "TBD"
+  followUpDueUtc = "TBD"
+}
+$ciExceptionTemplate | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json") -Encoding UTF8
+
 $portArg = ""
 $monitorPortArg = ""
 if (-not [string]::IsNullOrWhiteSpace($Port)) {
@@ -928,6 +945,8 @@ $readme = @(
   "",
   "    .\RUN_CONSUMER_PROMOTION_CHECK.cmd",
   "",
+  "If GitHub Actions is still externally blocked by account billing, spending limits, or pre-runner allocation, do not use ``-AllowExternalAccountCiBlock`` silently. Complete ``CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json`` and pass it with ``-ExternalAccountCiExceptionPath``.",
+  "",
   "Do not promote this release until every gate in CHECKLIST.md has explicit evidence."
 )
 $readme | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
@@ -968,6 +987,7 @@ $requiredRecords = @(
   "release_acceptance.json",
   "OBSERVATIONS.md",
   "AUDIO_REVIEW.md",
+  "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json",
   "calibration/calibration.yaml",
   "RUN_PLAY_LEAD_VOICE.cmd",
   "RUN_DISPLAY_ONLY.cmd",

@@ -137,7 +137,7 @@ Only after strict evidence verification passes:
 
 This still requires:
 
-- successful GitHub Actions status, unless an explicit account-block exception is recorded
+- successful GitHub Actions status, unless an explicit `stackchan.ci-account-block-exception.v1` JSON account-block exception is recorded for the exact release commit
 - completed production voice-source provenance
 - completed `AUDIO_REVIEW.md` with real-device speaker evidence
 

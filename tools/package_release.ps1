@@ -177,6 +177,7 @@ Copy-Item -LiteralPath "docs/RELEASE_PROCESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_PERSONALITY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json" -Destination $docsDir
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
@@ -549,6 +550,7 @@ $manifest = [ordered]@{
   voicePersona = "data/voice_persona.yaml"
   voiceSourceProvenanceTemplate = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
   voiceSourceProvenance = "data/voice_source_provenance.yaml"
+  ciAccountBlockExceptionTemplate = "docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json"
   voiceSourceStatusReport = "VOICE_SOURCE_STATUS.md"
   voiceSourceStatusReportJson = "voice_source_status.json"
   voiceRvcBase = "data/voice_rvc_base.yaml"
