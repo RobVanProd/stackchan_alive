@@ -3,7 +3,8 @@ param(
   [string]$Version = "",
   [string]$Commit = "",
   [string]$OutputDir = "",
-  [string[]]$RequiredWorkflows = @("Firmware", "Release")
+  [string[]]$RequiredWorkflows = @("Firmware", "Release"),
+  [string]$FixtureRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,8 +37,39 @@ if ($RequiredWorkflows.Count -lt 1) {
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
+function Get-FixtureJson {
+  param(
+    [string]$Name
+  )
+
+  $fixturePath = Join-Path $FixtureRoot $Name
+  if (-not (Test-Path -LiteralPath $fixturePath)) {
+    throw "Missing GitHub Actions status fixture: $fixturePath"
+  }
+
+  return (Get-Content -LiteralPath $fixturePath -Raw).Trim()
+}
+
 function Get-GhJson {
   param([string[]]$Arguments)
+
+  if (-not [string]::IsNullOrWhiteSpace($FixtureRoot)) {
+    if ($Arguments.Count -ge 2 -and $Arguments[0] -eq "run" -and $Arguments[1] -eq "list") {
+      return Get-FixtureJson "run_list.json"
+    }
+
+    if ($Arguments.Count -ge 2 -and $Arguments[0] -eq "api") {
+      $apiPath = [string]$Arguments[1]
+      if ($apiPath -match "/actions/runs/(\d+)/attempts/1/jobs$") {
+        return Get-FixtureJson "jobs_$($Matches[1]).json"
+      }
+      if ($apiPath -match "/check-runs/(\d+)/annotations$") {
+        return Get-FixtureJson "annotations_$($Matches[1]).json"
+      }
+    }
+
+    throw "Unsupported GitHub Actions status fixture command: gh $($Arguments -join ' ')"
+  }
 
   $output = & gh @Arguments 2>&1
   if ($LASTEXITCODE -ne 0) {

@@ -217,6 +217,159 @@ function Assert-TextContains {
   }
 }
 
+function Assert-GitHubActionsStatusExporterGate {
+  $fixtureBase = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-actions-status-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $completeFixtureRoot = Join-Path $fixtureBase "complete-required-workflows"
+  $missingFixtureRoot = Join-Path $fixtureBase "missing-required-workflow"
+  $completeOutputRoot = Join-Path $fixtureBase "out-complete"
+  $missingOutputRoot = Join-Path $fixtureBase "out-missing"
+  $fixtureCommit = "0123456789abcdef0123456789abcdef01234567"
+  $fixtureVersion = "v0.0.0-actions-status-selftest"
+
+  function Write-FixtureJson {
+    param(
+      [string]$Root,
+      [string]$Name,
+      [object]$Value
+    )
+
+    New-Item -ItemType Directory -Force -Path $Root | Out-Null
+    $Value | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $Root $Name) -Encoding UTF8
+  }
+
+  function New-FixtureJob {
+    param(
+      [long]$Id,
+      [string]$Name,
+      [string]$Conclusion,
+      [int]$RunnerId,
+      [object[]]$Steps
+    )
+
+    return [ordered]@{
+      id = $Id
+      name = $Name
+      status = "completed"
+      conclusion = $Conclusion
+      labels = @()
+      runner_id = $RunnerId
+      runner_name = ""
+      steps = @($Steps)
+      html_url = "https://example.invalid/jobs/$Id"
+    }
+  }
+
+  try {
+    Write-FixtureJson $completeFixtureRoot "run_list.json" @(
+      [ordered]@{
+        databaseId = 101
+        name = "Firmware"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "failure"
+        createdAt = "2026-07-02T00:00:00Z"
+        url = "https://example.invalid/runs/101"
+        event = "push"
+        displayTitle = "Firmware"
+      },
+      [ordered]@{
+        databaseId = 102
+        name = "Release"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "failure"
+        createdAt = "2026-07-02T00:01:00Z"
+        url = "https://example.invalid/runs/102"
+        event = "push"
+        displayTitle = "Release"
+      }
+    )
+    Write-FixtureJson $completeFixtureRoot "jobs_101.json" ([ordered]@{ jobs = @((New-FixtureJob 201 "build" "failure" 0 @())) })
+    Write-FixtureJson $completeFixtureRoot "jobs_102.json" ([ordered]@{ jobs = @((New-FixtureJob 202 "release" "failure" 0 @())) })
+    foreach ($jobId in @(201, 202)) {
+      Write-FixtureJson $completeFixtureRoot "annotations_$jobId.json" @(
+        [ordered]@{
+          annotation_level = "failure"
+          path = ""
+          message = "The job was not started because payments have failed or the spending limit was reached."
+        }
+      )
+    }
+
+    $completeResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $completeOutputRoot,
+      "-FixtureRoot", $completeFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release"
+    )
+    if ($completeResult.ExitCode -ne 0) {
+      throw "Actions status exporter rejected complete required-workflow billing fixture:$([Environment]::NewLine)$($completeResult.Text)"
+    }
+    $completeStatus = Get-Content -LiteralPath (Join-Path $completeOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($completeStatus.status -ne "external-account-billing-or-spending-limit") {
+      throw "Expected billing fixture status external-account-billing-or-spending-limit, got $($completeStatus.status)"
+    }
+    if (@($completeStatus.missingRequiredWorkflows).Count -ne 0) {
+      throw "Billing fixture unexpectedly reported missing required workflows: $(@($completeStatus.missingRequiredWorkflows) -join ', ')"
+    }
+    foreach ($workflowName in @("Firmware", "Release")) {
+      if (@($completeStatus.requiredWorkflows) -notcontains $workflowName) {
+        throw "Billing fixture missing required workflow contract: $workflowName"
+      }
+    }
+
+    Write-FixtureJson $missingFixtureRoot "run_list.json" @(
+      [ordered]@{
+        databaseId = 301
+        name = "Firmware"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "success"
+        createdAt = "2026-07-02T00:02:00Z"
+        url = "https://example.invalid/runs/301"
+        event = "push"
+        displayTitle = "Firmware"
+      }
+    )
+    Write-FixtureJson $missingFixtureRoot "jobs_301.json" ([ordered]@{ jobs = @((New-FixtureJob 401 "build" "success" 7 @([ordered]@{ name = "Checkout"; conclusion = "success" }))) })
+    Write-FixtureJson $missingFixtureRoot "annotations_401.json" @()
+
+    $missingResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $missingOutputRoot,
+      "-FixtureRoot", $missingFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release"
+    )
+    if ($missingResult.ExitCode -eq 0) {
+      throw "Actions status exporter accepted a fixture missing the required Release workflow."
+    }
+    $missingStatus = Get-Content -LiteralPath (Join-Path $missingOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($missingStatus.status -ne "missing-required-workflow") {
+      throw "Expected missing fixture status missing-required-workflow, got $($missingStatus.status)"
+    }
+    if (@($missingStatus.missingRequiredWorkflows) -notcontains "Release") {
+      throw "Missing fixture did not report Release as missing."
+    }
+    $missingMarkdown = Get-Content -LiteralPath (Join-Path $missingOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
+    Assert-TextContains $missingMarkdown "Missing Required Workflows"
+    Assert-TextContains $missingMarkdown "Release"
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $fixtureBase) {
+      Remove-Item -LiteralPath $fixtureBase -Recurse -Force
+    }
+  }
+}
+
 function Write-SyntheticAcceptanceArtifacts {
   param(
     [string]$EvidenceRoot,
@@ -1017,6 +1170,10 @@ Invoke-Step "Check flash helper safety gates" {
 
 Invoke-Step "Check runtime architecture boundaries" {
   & (Join-Path $PSScriptRoot "verify_architecture.ps1")
+}
+
+Invoke-Step "Check GitHub Actions status exporter gates" {
+  Assert-GitHubActionsStatusExporterGate
 }
 
 Invoke-Step "Check preview media quality" {
