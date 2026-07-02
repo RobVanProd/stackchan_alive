@@ -355,7 +355,7 @@ foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntr
 }
 
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "allowedAssetNames", "Unexpected release asset")) {
+foreach ($pattern in @("release_asset_contract.ps1", "release_assets.json", "stackchan.release-assets.v1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "allowedAssetNames", "Unexpected release asset")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_published_release.ps1 missing required published ZIP sidecar verification logic: $pattern"
   }

@@ -147,6 +147,35 @@ if (-not $release.isPrerelease -and -not $AllowNonPrerelease) {
 
 $assets = @($release.assets)
 $expectedAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $PackageRoot -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath
+
+$releaseAssetManifestPath = Join-Path $PackageRoot "release_assets.json"
+Assert-File $releaseAssetManifestPath
+$releaseAssetManifest = Get-Content -LiteralPath $releaseAssetManifestPath -Raw | ConvertFrom-Json
+if ($releaseAssetManifest.schema -ne "stackchan.release-assets.v1") {
+  throw "release_assets.json schema mismatch: $($releaseAssetManifest.schema)"
+}
+if ($releaseAssetManifest.version -ne $Version) {
+  throw "release_assets.json version mismatch: expected $Version, got $($releaseAssetManifest.version)"
+}
+if ($releaseAssetManifest.contract -ne "tools/release_asset_contract.ps1") {
+  throw "release_assets.json contract path mismatch: $($releaseAssetManifest.contract)"
+}
+if ([int]$releaseAssetManifest.counts.releaseAssets -ne @($expectedAssetEntries).Count) {
+  throw "release_assets.json release asset count mismatch: expected $(@($expectedAssetEntries).Count), got $($releaseAssetManifest.counts.releaseAssets)"
+}
+
+$manifestAssetNames = @($releaseAssetManifest.releaseAssets | ForEach-Object { [string]$_.name })
+foreach ($assetEntry in $expectedAssetEntries) {
+  if ($manifestAssetNames -notcontains $assetEntry.Name) {
+    throw "release_assets.json missing contract asset: $($assetEntry.Name)"
+  }
+}
+foreach ($assetName in $manifestAssetNames) {
+  if (@($expectedAssetEntries | Where-Object { $_.Name -eq $assetName }).Count -ne 1) {
+    throw "release_assets.json contains unexpected contract asset: $assetName"
+  }
+}
+
 foreach ($assetEntry in $expectedAssetEntries) {
   Assert-Asset -Assets $assets -Name $assetEntry.Name -ExpectedPath $assetEntry.Path
 }
@@ -168,11 +197,21 @@ foreach ($assetEntry in $allowedAuditAssetEntries) {
 }
 
 $allowedAssetNames = @{}
-foreach ($assetEntry in $expectedAssetEntries) {
-  $allowedAssetNames[$assetEntry.Name] = $true
+foreach ($assetName in $manifestAssetNames) {
+  $allowedAssetNames[$assetName] = $true
 }
+
+$manifestAuditAssetNames = @($releaseAssetManifest.allowedAuditAssets | ForEach-Object { [string]$_.name })
 foreach ($assetEntry in $allowedAuditAssetEntries) {
-  $allowedAssetNames[$assetEntry.Name] = $true
+  if ($manifestAuditAssetNames -notcontains $assetEntry.Name) {
+    throw "release_assets.json missing allowed audit asset: $($assetEntry.Name)"
+  }
+}
+foreach ($assetName in $manifestAuditAssetNames) {
+  if (@($allowedAuditAssetEntries | Where-Object { $_.Name -eq $assetName }).Count -ne 1) {
+    throw "release_assets.json contains unexpected allowed audit asset: $assetName"
+  }
+  $allowedAssetNames[$assetName] = $true
 }
 
 foreach ($asset in $assets) {
