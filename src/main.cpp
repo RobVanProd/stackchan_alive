@@ -441,6 +441,9 @@ void IntentTask(void* pv) {
       if (control.hasDemoEnable) {
         gIntent.setDemoEnabled(control.demoEnabled, millis());
       }
+      if (control.hasReducedMotion) {
+        gIntent.setReducedMotion(control.reducedMotion);
+      }
       publishSpeechInput(control);
       publishFaceControl(control);
       publishMotionControl(control);

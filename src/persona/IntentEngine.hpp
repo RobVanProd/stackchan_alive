@@ -2,6 +2,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "persona/EmotionModel.hpp"
+#include "persona/IdleLife.hpp"
 #include "persona/SpeechPlanner.hpp"
 #include "persona/StateMatrix.hpp"
 
@@ -12,14 +13,19 @@ class IntentEngine {
   void begin();
   void applyEvent(const RobotEvent& event, CharacterMode mode);
   void setDemoEnabled(bool enabled, uint32_t nowMs);
+  void setReducedMotion(bool enabled);
   bool isDemoEnabled() const {
     return demoEnabled_;
+  }
+  bool isReducedMotion() const {
+    return reducedMotion_;
   }
   RobotFrame update(uint32_t nowMs);
 
  private:
   EmotionModel emotion_;
   ExpressionMapper expression_;
+  IdleLife idleLife_;
   SpeechPlanner speech_;
   CharacterMode mode_ = CharacterMode::Idle;
   CharacterMode lastSpeechMode_ = CharacterMode::Idle;
@@ -30,6 +36,7 @@ class IntentEngine {
   uint32_t lastSpeechCueMs_ = 0;
   uint32_t activeSpeechUntilMs_ = 0;
   bool demoEnabled_ = true;
+  bool reducedMotion_ = false;
   SpeechIntent lastSpeechIntent_ = SpeechIntent::None;
   SpeechCue activeSpeech_;
 
