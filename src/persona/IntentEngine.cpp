@@ -27,6 +27,7 @@ void IntentEngine::begin() {
 void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   mode_ = mode;
   emotion_.applyEvent(event);
+  nextDemoEventMs_ = event.timestampMs + 10000;
 }
 
 RobotFrame IntentEngine::update(uint32_t nowMs) {

@@ -46,6 +46,20 @@ Face animator telemetry should also print about every 5 seconds with `[face]`, `
 Speech cue telemetry should print `[speech]` lines with `seq`, `intent`, `earcon`, `earcon_delay_ms`, and `text` whenever the persona emits a new cue.
 Heartbeat telemetry should include `[system]`, `heap_free`, `heap_min`, and task stack high-water marks for loop, motion, face, and intent tasks.
 
+The firmware also accepts deterministic serial bench controls at `115200` baud. Send one command per line to force a mode/event and verify face transitions plus `[speech]` cue telemetry without waiting for the random demo scheduler:
+
+```text
+mode listen
+mode think
+mode speak
+mode idle
+event touch
+event response
+event speech_end
+```
+
+An optional strength value in `[0.0, 1.0]` may follow the command, for example `mode listen 0.75`. Each accepted command logs `[control] command=... mode=... event=... strength=... at_ms=...` and holds off demo events briefly so the commanded state remains observable.
+
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
 
 ## Servo Enable Gate

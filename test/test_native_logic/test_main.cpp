@@ -5,6 +5,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
+#include "io/SensorAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "persona/EmotionModel.hpp"
@@ -400,6 +401,30 @@ void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
   TEST_ASSERT_EQUAL_UINT32(0, expired.speechSeq);
 }
 
+void test_sensor_adapter_parses_serial_mode_command() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::WakeWord), static_cast<int>(control.event.type));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.75f, control.event.strength);
+  TEST_ASSERT_EQUAL_UINT32(1234, control.event.timestampMs);
+  TEST_ASSERT_EQUAL_STRING("mode_listen", control.command);
+}
+
+void test_sensor_adapter_parses_event_aliases_and_clamps_strength() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("event response-start 2.5", 2000, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(control.event.type));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, control.event.strength);
+  TEST_ASSERT_EQUAL_STRING("event_response", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("touch", 2400, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::React), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::UserTouched), static_cast<int>(control.event.type));
+  TEST_ASSERT_EQUAL_STRING("event_touch", control.command);
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -568,6 +593,8 @@ int main() {
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_robot_frame_carries_speech_cue_for_output_adapters);
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
+  RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
+  RUN_TEST(test_sensor_adapter_parses_event_aliases_and_clamps_strength);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

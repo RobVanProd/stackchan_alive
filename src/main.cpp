@@ -38,6 +38,60 @@ const __FlashStringHelper* firmwareMode() {
 #endif
 }
 
+const __FlashStringHelper* characterModeName(CharacterMode mode) {
+  switch (mode) {
+    case CharacterMode::Boot:
+      return F("boot");
+    case CharacterMode::Idle:
+      return F("idle");
+    case CharacterMode::Attend:
+      return F("attend");
+    case CharacterMode::Listen:
+      return F("listen");
+    case CharacterMode::Think:
+      return F("think");
+    case CharacterMode::Speak:
+      return F("speak");
+    case CharacterMode::React:
+      return F("react");
+    case CharacterMode::Sleep:
+      return F("sleep");
+    case CharacterMode::Error:
+      return F("error");
+  }
+  return F("unknown");
+}
+
+const __FlashStringHelper* eventTypeName(EventType type) {
+  switch (type) {
+    case EventType::Boot:
+      return F("boot");
+    case EventType::FaceDetected:
+      return F("face_detected");
+    case EventType::UserNear:
+      return F("user_near");
+    case EventType::UserTouched:
+      return F("user_touched");
+    case EventType::WakeWord:
+      return F("wake_word");
+    case EventType::UserSpeaking:
+      return F("user_speaking");
+    case EventType::SpeechEnded:
+      return F("speech_ended");
+    case EventType::ThinkingStarted:
+      return F("thinking_started");
+    case EventType::ResponseStarted:
+      return F("response_started");
+    case EventType::ResponseEnded:
+      return F("response_ended");
+    case EventType::IdleTimeout:
+      return F("idle_timeout");
+    case EventType::Error:
+      return F("error");
+  }
+  return F("unknown");
+}
+
 const __FlashStringHelper* speechIntentName(SpeechIntent intent) {
   switch (intent) {
     case SpeechIntent::Boot:
@@ -144,6 +198,19 @@ void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
   Serial.println(F("\""));
 }
 
+void printBenchControl(const BenchControl& control) {
+  Serial.print(F("[control] command="));
+  Serial.print(control.command);
+  Serial.print(F(" mode="));
+  Serial.print(characterModeName(control.mode));
+  Serial.print(F(" event="));
+  Serial.print(eventTypeName(control.event.type));
+  Serial.print(F(" strength="));
+  Serial.print(control.event.strength, 2);
+  Serial.print(F(" at_ms="));
+  Serial.println(control.event.timestampMs);
+}
+
 void publishFrame(const RobotFrame& frame) {
   if (gFrameQueue != nullptr) {
     xQueueOverwrite(gFrameQueue, &frame);
@@ -188,6 +255,12 @@ void IntentTask(void* pv) {
   uint32_t lastSpeechSeq = 0;
 
   while (true) {
+    BenchControl control;
+    while (gSensors.poll(&control)) {
+      gIntent.applyEvent(control.event, control.mode);
+      printBenchControl(control);
+    }
+
     RobotFrame frame = gIntent.update(millis());
     if (frame.speechSeq != 0 && frame.speechSeq != lastSpeechSeq && frame.speech.shouldSpeak()) {
       lastSpeechSeq = frame.speechSeq;
