@@ -83,14 +83,19 @@ Expected evidence:
 - no repeated resets
 - no task stalls
 - face remains responsive
+- `RVC_LEAD_AUDITION.md` reviewed so the exact lead sample and voice settings are known
+- `RUN_PLAY_LEAD_VOICE.cmd` used as the playback aid when routing audio to the target speaker path
 - `AUDIO_REVIEW.md` completed
 - real-device speaker recording saved under `audio/`
 - audio sample is intelligible through the device speaker
 - no clipping, distortion, playback dropout, or excessive delay
 
+The evidence packet copies the current lead RVC audition into `reference_audio/`. For this prerelease direction, the lead is `RVC Bright Robot` with pitch 2, index 0.62, RMS mix 0.72, and protect 0.28. This remains review-only voice evidence; production voice-source provenance is still required before consumer rollout.
+
 Import the speaker recording into the packet. Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` files are stored under `audio/`:
 
 ```powershell
+.\RUN_PLAY_LEAD_VOICE.cmd
 .\RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav
 ```
 

@@ -76,6 +76,8 @@ Import photos, videos, and speaker recordings through the packet helper so the f
 
 Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` recordings land under `audio\` instead of `photos\`.
 
+The evidence packet also includes `RVC_LEAD_AUDITION.md`, `reference_audio\`, and `RUN_PLAY_LEAD_VOICE.cmd`. Use that playback helper for the target speaker check so the recording is tied to the selected `RVC Bright Robot` lead audition and its exact pitch/index/RMS/protect settings.
+
 Before promotion review, complete the audio evidence record generated in the packet:
 
 ```powershell

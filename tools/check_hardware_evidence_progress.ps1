@@ -92,9 +92,31 @@ foreach ($file in @(
   "metadata.json",
   "RELEASE_ACCEPTANCE.md",
   "release_acceptance.json",
+  "RUN_PLAY_LEAD_VOICE.cmd",
   "calibration/calibration.yaml"
 )) {
   [void](Test-RequiredFile $file)
+}
+
+$metadata = $null
+if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
+  $metadata = Get-Content -LiteralPath (Join-EvidencePath "metadata.json") -Raw | ConvertFrom-Json
+  if ($null -ne $metadata.voiceLeadAudition) {
+    [void](Test-RequiredFile "RVC_LEAD_AUDITION.md")
+    [void](Test-RequiredFile ([string]$metadata.voiceLeadAudition.referenceFile) 100000)
+    [void](Test-RequiredFile "reference_audio/RVC_AUDITIONS.md" 500)
+    [void](Test-RequiredFile "reference_audio/RVC_AUDITIONS.json" 500)
+    if (Test-Path -LiteralPath (Join-EvidencePath ([string]$metadata.voiceLeadAudition.referenceFile))) {
+      $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-EvidencePath ([string]$metadata.voiceLeadAudition.referenceFile))).Hash.ToLowerInvariant()
+      if ($leadHash -eq [string]$metadata.voiceLeadAudition.sha256) {
+        Add-Pass "RVC lead audition reference hash matches metadata"
+      } else {
+        Add-Finding "RVC lead audition reference hash does not match metadata"
+      }
+    }
+  } else {
+    Add-Finding "metadata.json missing voiceLeadAudition reference"
+  }
 }
 
 if (Test-Path -LiteralPath (Join-EvidencePath "CHECKLIST.md")) {

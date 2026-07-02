@@ -77,6 +77,104 @@ function Copy-AcceptanceArtifactsFromZip {
   }
 }
 
+function Copy-VoiceLeadArtifactsFromRoot {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot
+  )
+
+  $auditionJsonPath = Join-Path $SourceRoot "media/voice/rvc/RVC_AUDITIONS.json"
+  $auditionMarkdownPath = Join-Path $SourceRoot "media/voice/rvc/RVC_AUDITIONS.md"
+  if (-not (Test-Path -LiteralPath $auditionJsonPath)) {
+    throw "Release package missing RVC audition manifest: media/voice/rvc/RVC_AUDITIONS.json"
+  }
+  if (-not (Test-Path -LiteralPath $auditionMarkdownPath)) {
+    throw "Release package missing RVC audition notes: media/voice/rvc/RVC_AUDITIONS.md"
+  }
+
+  $auditions = Get-Content -LiteralPath $auditionJsonPath -Raw | ConvertFrom-Json
+  if ($null -eq $auditions.leadAudition) {
+    throw "RVC_AUDITIONS.json missing leadAudition metadata."
+  }
+
+  $lead = $auditions.leadAudition
+  $leadFile = [string]$lead.file
+  if ([string]::IsNullOrWhiteSpace($leadFile)) {
+    throw "RVC lead audition file is blank."
+  }
+
+  $leadSourcePath = Join-Path $SourceRoot "media/voice/rvc/$leadFile"
+  if (-not (Test-Path -LiteralPath $leadSourcePath)) {
+    throw "Release package missing RVC lead audition WAV: media/voice/rvc/$leadFile"
+  }
+
+  $referenceDir = Join-Path $DestinationRoot "reference_audio"
+  New-Item -ItemType Directory -Force -Path $referenceDir | Out-Null
+
+  $leadDestinationPath = Join-Path $referenceDir $leadFile
+  Copy-Item -LiteralPath $leadSourcePath -Destination $leadDestinationPath
+  Copy-Item -LiteralPath $auditionJsonPath -Destination (Join-Path $referenceDir "RVC_AUDITIONS.json")
+  Copy-Item -LiteralPath $auditionMarkdownPath -Destination (Join-Path $referenceDir "RVC_AUDITIONS.md")
+
+  $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadDestinationPath).Hash.ToLowerInvariant()
+  $leadTitle = [string]$lead.title
+  $leadTranscript = [string]$lead.transcript
+  $leadRating = [string]$lead.userRating
+  $leadPurpose = [string]$lead.perceptualPurpose
+  $leadPitch = [string]$lead.pitch
+  $leadIndex = [string]$lead.index_rate
+  $leadRms = [string]$lead.rms_mix_rate
+  $leadProtect = [string]$lead.protect
+  $leadRelativePath = "reference_audio/$leadFile"
+
+  @(
+    "# RVC Lead Audition Reference",
+    "",
+    "This file pins the exact review-only RVC voice sample to play during the target speaker check. It is not production voice-source approval.",
+    "",
+    "- Lead audition: $leadTitle",
+    "- Reference WAV: $leadRelativePath",
+    "- SHA256: $leadHash",
+    "- Transcript: $leadTranscript",
+    "- Tuning: pitch $leadPitch, index $leadIndex, RMS mix $leadRms, protect $leadProtect",
+    "- Listening note: $leadRating",
+    "- Perceptual purpose: $leadPurpose",
+    "",
+    "Use ``RUN_PLAY_LEAD_VOICE.cmd`` only as a playback aid. Consumer promotion still requires a real-device speaker recording imported under ``audio/``, completed ``AUDIO_REVIEW.md``, and completed production voice-source provenance."
+  ) | Set-Content -Path (Join-Path $DestinationRoot "RVC_LEAD_AUDITION.md") -Encoding UTF8
+
+  return [ordered]@{
+    title = $leadTitle
+    file = $leadFile
+    referenceFile = $leadRelativePath
+    sha256 = $leadHash
+    transcript = $leadTranscript
+    pitch = $leadPitch
+    index_rate = $leadIndex
+    rms_mix_rate = $leadRms
+    protect = $leadProtect
+    userRating = $leadRating
+    perceptualPurpose = $leadPurpose
+  }
+}
+
+function Copy-VoiceLeadArtifactsFromZip {
+  param(
+    [string]$ZipPath,
+    [string]$DestinationRoot
+  )
+
+  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-voice-lead"
+  $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+  try {
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    return Copy-VoiceLeadArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
+  } finally {
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 $rootManifest = Get-ReleaseManifest $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
@@ -135,11 +233,13 @@ $outDir = Join-Path $repoRoot "output/hardware-evidence/$safeTag-$stamp"
 $logsDir = Join-Path $outDir "logs"
 $photosDir = Join-Path $outDir "photos"
 $audioDir = Join-Path $outDir "audio"
+$referenceAudioDir = Join-Path $outDir "reference_audio"
 $calibrationDir = Join-Path $outDir "calibration"
 $packageDir = Join-Path $outDir "package"
-New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir, $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $referenceAudioDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
+$voiceLeadInfo = $null
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/servo_calibration_serial.log",
@@ -183,6 +283,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
   }
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
+  $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   $packageRootItem = Get-Item -LiteralPath $PackageRoot
@@ -215,6 +316,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
   }
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
+  $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 }
 
@@ -276,6 +378,15 @@ $observations = @(
 )
 $observations | Set-Content -Path (Join-Path $outDir "OBSERVATIONS.md") -Encoding UTF8
 
+$audioSamplePlayed = ""
+$audioVoiceVariant = "stackchan_spark_greeting / stackchan_spark_thinking / stackchan_spark_safety / warm_slow / bright_robot / production"
+$audioSelectedVoiceDirection = ""
+if ($voiceLeadInfo) {
+  $audioSamplePlayed = [string]$voiceLeadInfo.referenceFile
+  $audioVoiceVariant = "$($voiceLeadInfo.title) (pitch $($voiceLeadInfo.pitch), index $($voiceLeadInfo.index_rate), RMS mix $($voiceLeadInfo.rms_mix_rate), protect $($voiceLeadInfo.protect))"
+  $audioSelectedVoiceDirection = "$($voiceLeadInfo.title) lead audition; review-only until production voice-source provenance is complete"
+}
+
 $audioReview = @(
   "# Stackchan Audio Review",
   "",
@@ -285,20 +396,20 @@ $audioReview = @(
   "Port: $Port",
   "Operator: $Operator",
   "",
-  "Record at least one real-device speaker sample under `audio/`. A phone recording is acceptable for bring-up evidence if the file is not edited and the room/device context is clear.",
+  "Record at least one real-device speaker sample under ``audio/``. A phone recording is acceptable for bring-up evidence if the file is not edited and the room/device context is clear.",
   "",
   "## Speaker Playback",
   "",
   "- Start UTC:",
   "- End UTC:",
-  "- Sample played:",
-  "- Voice variant: stackchan_spark_greeting / stackchan_spark_thinking / stackchan_spark_safety / warm_slow / bright_robot / production",
+  "- Sample played: $audioSamplePlayed",
+  "- Voice variant: $audioVoiceVariant",
   "- Speaker recording file:",
   "- Intelligible through device speaker: yes/no",
   "- Clipping or distortion observed: yes/no",
   "- Volume adequate at normal listening distance: yes/no",
   "- Delay or playback dropout observed: yes/no",
-  "- Selected voice direction:",
+  "- Selected voice direction: $audioSelectedVoiceDirection",
   "- Notes:",
   "",
   "## Promotion Requirements",
@@ -348,8 +459,18 @@ if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
 $consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $promotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 $platformioResolver = Quote-PowerShellArgument (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 $soakCommand = ". $platformioResolver; Invoke-StackchanPlatformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
+$playLeadCommand = "Write-Host 'No RVC lead audition reference was copied into this packet.'"
+if ($voiceLeadInfo) {
+  $leadAudioPath = Join-Path $outDir ([string]$voiceLeadInfo.referenceFile -replace "/", "\")
+  $playLeadCommand = "`$player = New-Object System.Media.SoundPlayer $(Quote-PowerShellArgument $leadAudioPath); `$player.PlaySync()"
+}
 
 $commandFiles = [ordered]@{
+  "RUN_PLAY_LEAD_VOICE.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $playLeadCommand }`""
+  )
   "RUN_DISPLAY_ONLY.cmd" = @(
     "@echo off",
     "cd /d `"$repoRoot`"",
@@ -415,6 +536,8 @@ $readme = @(
   "",
   "Use ``RUN_ADD_MEDIA.cmd`` to import phone photos, videos, and target-speaker recordings. It copies files into ``photos/`` or ``audio/``, validates media headers, and records SHA256 hashes in ``media_manifest.json``.",
   "",
+  "The packet includes ``RVC_LEAD_AUDITION.md`` and ``reference_audio/`` with the current lead voice audition copied from the verified release package. Use ``RUN_PLAY_LEAD_VOICE.cmd`` as a playback aid for the speaker check, then record the actual device speaker and import that recording under ``audio/``.",
+  "",
   "## Suggested Commands",
   "",
   "Display-only flash:",
@@ -434,6 +557,12 @@ $readme = @(
   "    $soakCommand",
   "",
   "    .\RUN_SOAK_MONITOR.cmd",
+  "",
+  "Play the lead voice reference for speaker testing:",
+  "",
+  "    $playLeadCommand",
+  "",
+  "    .\RUN_PLAY_LEAD_VOICE.cmd",
   "",
   "Before promotion, verify the release ZIP:",
   "",
@@ -477,6 +606,32 @@ $readme = @(
 )
 $readme | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
 
+$requiredRecords = @(
+  "CHECKLIST.md",
+  "RELEASE_ACCEPTANCE.md",
+  "release_acceptance.json",
+  "OBSERVATIONS.md",
+  "AUDIO_REVIEW.md",
+  "calibration/calibration.yaml",
+  "RUN_PLAY_LEAD_VOICE.cmd",
+  "RUN_DISPLAY_ONLY.cmd",
+  "RUN_SERVO_CALIBRATION.cmd",
+  "RUN_SOAK_MONITOR.cmd",
+  "RUN_PACKAGE_VERIFY.cmd",
+  "RUN_PROGRESS_CHECK.cmd",
+  "RUN_ADD_MEDIA.cmd",
+  "RUN_EVIDENCE_VERIFY.cmd",
+  "RUN_CONSUMER_PROMOTION_CHECK.cmd"
+)
+if ($voiceLeadInfo) {
+  $requiredRecords += @(
+    "RVC_LEAD_AUDITION.md",
+    [string]$voiceLeadInfo.referenceFile,
+    "reference_audio/RVC_AUDITIONS.md",
+    "reference_audio/RVC_AUDITIONS.json"
+  )
+}
+
 $metadata = [ordered]@{
   releaseTag = $ReleaseTag
   commit = $commit
@@ -486,23 +641,9 @@ $metadata = [ordered]@{
   deviceId = $DeviceId
   port = $Port
   package = $packageInfo
+  voiceLeadAudition = $voiceLeadInfo
   requiredLogs = $requiredLogs
-  requiredRecords = @(
-    "CHECKLIST.md",
-    "RELEASE_ACCEPTANCE.md",
-    "release_acceptance.json",
-    "OBSERVATIONS.md",
-    "AUDIO_REVIEW.md",
-    "calibration/calibration.yaml",
-    "RUN_DISPLAY_ONLY.cmd",
-    "RUN_SERVO_CALIBRATION.cmd",
-    "RUN_SOAK_MONITOR.cmd",
-    "RUN_PACKAGE_VERIFY.cmd",
-    "RUN_PROGRESS_CHECK.cmd",
-    "RUN_ADD_MEDIA.cmd",
-    "RUN_EVIDENCE_VERIFY.cmd",
-    "RUN_CONSUMER_PROMOTION_CHECK.cmd"
-  )
+  requiredRecords = $requiredRecords
   promotionVerifier = "tools/verify_consumer_promotion.ps1"
   hardwareEvidenceVerifier = "tools/verify_hardware_evidence.ps1"
 }

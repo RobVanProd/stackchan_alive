@@ -64,6 +64,7 @@ Pass criteria:
 - [ ] USB power-cycle recovery test.
 - [ ] Serial logs saved.
 - [ ] Photo or video evidence saved under `photos/`.
+- [ ] `RVC_LEAD_AUDITION.md` reviewed and `RUN_PLAY_LEAD_VOICE.cmd` used for the selected lead voice speaker check.
 - [ ] Speaker recording saved under `audio/` and `AUDIO_REVIEW.md` marks intelligible audio, no clipping/distortion, adequate volume, and no playback dropout.
 - [ ] Firmware version and release tag recorded.
 

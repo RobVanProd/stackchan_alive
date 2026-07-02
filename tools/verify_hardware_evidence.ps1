@@ -560,6 +560,34 @@ foreach ($recordPath in @($metadata.requiredRecords)) {
   Assert-File $recordPath
 }
 
+if ($null -eq $metadata.voiceLeadAudition) {
+  throw "metadata.json missing voiceLeadAudition reference"
+}
+
+foreach ($field in @("title", "file", "referenceFile", "sha256", "transcript", "pitch", "index_rate", "rms_mix_rate", "protect")) {
+  if ([string]::IsNullOrWhiteSpace([string]$metadata.voiceLeadAudition.$field)) {
+    throw "metadata voiceLeadAudition missing required field: $field"
+  }
+}
+
+Assert-File "RVC_LEAD_AUDITION.md" 200
+Assert-File ([string]$metadata.voiceLeadAudition.referenceFile) 100000
+Assert-File "reference_audio/RVC_AUDITIONS.md" 500
+Assert-File "reference_audio/RVC_AUDITIONS.json" 500
+
+$leadReferencePath = Join-EvidencePath ([string]$metadata.voiceLeadAudition.referenceFile)
+$leadReferenceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadReferencePath).Hash.ToLowerInvariant()
+if ($leadReferenceHash -ne [string]$metadata.voiceLeadAudition.sha256) {
+  throw "RVC lead audition reference hash does not match metadata"
+}
+
+$leadReferenceText = Get-Content -LiteralPath (Join-EvidencePath "RVC_LEAD_AUDITION.md") -Raw
+foreach ($pattern in @("RVC Lead Audition Reference", [string]$metadata.voiceLeadAudition.title, [string]$metadata.voiceLeadAudition.referenceFile, [string]$metadata.voiceLeadAudition.sha256, "not production voice-source approval")) {
+  if ($leadReferenceText -notmatch [regex]::Escape($pattern)) {
+    throw "RVC_LEAD_AUDITION.md missing expected marker: $pattern"
+  }
+}
+
 if ($null -eq $metadata.package) {
   if (-not $AllowMissingPackage) {
     throw "metadata.json missing package proof. Recreate the packet with -PackageZip or pass -AllowMissingPackage for diagnostic-only evidence."
