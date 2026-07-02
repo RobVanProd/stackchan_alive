@@ -11,6 +11,7 @@ constexpr uint32_t kEye = 0xF7FBFF;
 constexpr uint32_t kPupil = 0x111827;
 constexpr uint32_t kAccent = 0x61E4D7;
 constexpr uint32_t kMouth = 0xFF6B8A;
+constexpr uint32_t kFrameBudgetUs = 33333;
 constexpr int kOpenMouthSegments = 12;
 constexpr float kSmilePow06[] = {
   0.000000f, 0.189465f, 0.287175f, 0.366270f, 0.435275f, 0.497634f,
@@ -219,25 +220,39 @@ void DisplayAdapter::flush() {
   canvas_->pushSprite(0, 0);
   M5.Display.waitDisplay();
   frameCount_++;
+  windowFrameCount_++;
 
   const uint32_t frameUs = micros() - frameStartUs_;
   avgFrameUs_ = frameCount_ == 1 ? static_cast<float>(frameUs) : (avgFrameUs_ * 0.90f + static_cast<float>(frameUs) * 0.10f);
   if (frameUs > maxFrameUs_) {
     maxFrameUs_ = frameUs;
   }
+  if (frameUs > kFrameBudgetUs) {
+    slowFrameCount_++;
+  }
 
   const uint32_t nowMs = millis();
   if (nowMs - lastTelemetryMs_ >= 5000) {
+    const uint32_t telemetryElapsedMs = nowMs - lastTelemetryMs_;
     lastTelemetryMs_ = nowMs;
     const float avgMs = avgFrameUs_ / 1000.0f;
     const float maxMs = static_cast<float>(maxFrameUs_) / 1000.0f;
+    const float fpsWindow = telemetryElapsedMs > 0 ? (static_cast<float>(windowFrameCount_) * 1000.0f) / telemetryElapsedMs : 0.0f;
     Serial.print(F("[display] frame_ms_avg="));
     Serial.print(avgMs, 2);
     Serial.print(F(" frame_ms_max="));
     Serial.print(maxMs, 2);
     Serial.print(F(" fps_avg="));
-    Serial.println(avgMs > 0.0f ? 1000.0f / avgMs : 0.0f, 1);
+    Serial.print(avgMs > 0.0f ? 1000.0f / avgMs : 0.0f, 1);
+    Serial.print(F(" fps_window="));
+    Serial.print(fpsWindow, 1);
+    Serial.print(F(" frame_budget_us="));
+    Serial.print(kFrameBudgetUs);
+    Serial.print(F(" slow_frames="));
+    Serial.println(slowFrameCount_);
     maxFrameUs_ = 0;
+    slowFrameCount_ = 0;
+    windowFrameCount_ = 0;
   }
 }
 

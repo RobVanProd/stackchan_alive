@@ -286,6 +286,7 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
 @(
   "[boot] stackchan_alive mode=display_only serial=v1",
   "[display] M5 display renderer ready",
+  "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
   "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
   "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
   "[heartbeat] stackchan_alive mode=display_only uptime_ms=600000",
@@ -303,6 +304,7 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
 
 @(
   "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=1200000",
+  "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
   "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=1800000",
   "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=2100000",
   "synthetic diagnostic soak log: not real hardware evidence"

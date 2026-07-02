@@ -552,9 +552,11 @@ foreach ($logPath in @($metadata.requiredLogs)) {
 Assert-LogContains "logs/display_only_serial.log" "\[boot\]\s+stackchan_alive\s+mode=display_only\s+serial=v1" "display-only boot marker"
 Assert-LogContains "logs/display_only_serial.log" "\[display\]\s+M5 display renderer ready" "display renderer readiness marker"
 Assert-LogContains "logs/display_only_serial.log" "\[servo\]\s+dry-run mode" "display-only servo dry-run marker"
+Assert-LogContains "logs/display_only_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "display frame-budget telemetry"
 Assert-LogContains "logs/servo_calibration_serial.log" "\[boot\]\s+stackchan_alive\s+mode=servo_calibration\s+serial=v1" "servo-calibration boot marker"
 Assert-LogContains "logs/servo_calibration_serial.log" "\[servo\]\s+enabling StackchanSERVO hardware output" "servo hardware-enable marker"
 Assert-LogContains "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=(display_only|servo_calibration)\s+uptime_ms=\d+" "runtime heartbeat marker"
+Assert-LogContains "logs/soak_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "soak display frame-budget telemetry"
 
 foreach ($recordPath in @($metadata.requiredRecords)) {
   Assert-File $recordPath

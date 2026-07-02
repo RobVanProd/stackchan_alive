@@ -22,6 +22,8 @@ class DisplayAdapter final : public IDisplay {
  private:
   detail::FaceCanvas* canvas_ = nullptr;
   uint32_t frameCount_ = 0;
+  uint32_t windowFrameCount_ = 0;
+  uint32_t slowFrameCount_ = 0;
   uint32_t frameStartUs_ = 0;
   uint32_t lastTelemetryMs_ = 0;
   uint32_t maxFrameUs_ = 0;

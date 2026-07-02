@@ -511,6 +511,7 @@ function Assert-HardwareEvidenceMediaGate {
     @(
       "[boot] stackchan_alive mode=display_only serial=v1",
       "[display] M5 display renderer ready",
+      "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
       "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
       "synthetic display log line for verifier negative-test coverage."
@@ -524,6 +525,7 @@ function Assert-HardwareEvidenceMediaGate {
     ) | Set-Content -Path (Join-Path $logsDir "servo_calibration_serial.log") -Encoding UTF8
     @(
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
+      "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
       "synthetic soak log line for verifier negative-test coverage."
     ) | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8
@@ -657,6 +659,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
 
     @(
       "[display] M5 display renderer ready",
+      "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
       "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
       "synthetic display log missing boot marker for verifier negative-test coverage."
@@ -670,6 +673,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     ) | Set-Content -Path (Join-Path $logsDir "servo_calibration_serial.log") -Encoding UTF8
     @(
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
+      "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
       "synthetic soak log line for verifier negative-test coverage."
     ) | Set-Content -Path (Join-Path $logsDir "soak_serial.log") -Encoding UTF8

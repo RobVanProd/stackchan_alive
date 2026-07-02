@@ -40,6 +40,7 @@ If you only have the extracted release ZIP, run the same helper from inside the 
 ```
 
 Expected result: the CoreS3 display shows the procedural face and serial logs include dry-run servo mode.
+Display telemetry should print about every 5 seconds with `frame_ms_avg`, `frame_ms_max`, `fps_window`, `frame_budget_us=33333`, and `slow_frames`.
 
 ## Servo Enable Gate
 
@@ -81,7 +82,7 @@ Run `RUN_PROGRESS_CHECK.cmd` during testing to list missing fields, logs, serial
 2. Confirm pitch moves gently around center.
 3. Confirm yaw behavior before trusting absolute yaw.
 4. If yaw rotates continuously or hunts, set yaw mode to disabled in the motion target path and continue with display plus pitch only.
-5. Run for 10 minutes and watch for resets, task stalls, jitter, or heat.
+5. Run for 10 minutes and watch for resets, task stalls, jitter, heat, or repeated nonzero `slow_frames` in display telemetry.
 
 ## Rollout Criteria
 

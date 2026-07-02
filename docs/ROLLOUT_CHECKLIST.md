@@ -6,7 +6,7 @@ When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pas
 Promotion evidence must include at least one real photo or video under `photos/`: `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp4`, `.mov`, or `.webm`. Text placeholders do not count.
 Promotion evidence must include `AUDIO_REVIEW.md` plus at least one real-device speaker recording under `audio/`: `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`. Text placeholders or generated source WAVs alone do not count as target-speaker evidence.
 Use `RUN_ADD_MEDIA.cmd` from the generated evidence packet to import phone photos, videos, and speaker recordings. It validates file headers, copies files into `photos/` or `audio/`, and records hashes in `media_manifest.json`.
-Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
+Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, display telemetry with `fps_window` plus `slow_frames`, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
 
 ## Build Evidence
 
@@ -40,6 +40,7 @@ Pass criteria:
 - [ ] Device boots without reset loop.
 - [ ] Display shows the procedural face.
 - [ ] Serial log includes dry-run servo mode.
+- [ ] Display telemetry includes `fps_window`, `frame_budget_us=33333`, and no repeated nonzero `slow_frames`.
 - [ ] 10-minute idle run completes without resets.
 
 ## Servo Calibration Flash
@@ -63,6 +64,7 @@ Pass criteria:
 - [ ] 30-minute mixed idle/listen/think/speak run.
 - [ ] USB power-cycle recovery test.
 - [ ] Serial logs saved.
+- [ ] Display telemetry remains near 30 fps cadence with no sustained frame-budget misses.
 - [ ] Photo or video evidence saved under `photos/`.
 - [ ] `RVC_LEAD_AUDITION.md` reviewed and `RUN_PLAY_LEAD_VOICE.cmd` used for the selected lead voice speaker check.
 - [ ] Speaker recording saved under `audio/` and `AUDIO_REVIEW.md` marks intelligible audio, no clipping/distortion, adequate volume, and no playback dropout.

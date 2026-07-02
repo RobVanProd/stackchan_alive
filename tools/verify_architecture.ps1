@@ -211,6 +211,9 @@ Assert-FileContains (Expand-SourcePath "src/face/FaceAnimator.cpp") "smoothingAl
 Assert-FileContains (Expand-SourcePath "src/face/FaceAnimator.cpp") "const float alpha40" "FaceAnimator must cache smoothing alphas for hot-path channels."
 Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "kOpenMouthSegments\s*=\s*12" "DisplayAdapter open-mouth tessellation must stay bounded for device frame time."
 Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "kSmilePow06" "DisplayAdapter must use the smile gain lookup instead of powf in the render hot path."
+Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "kFrameBudgetUs\s*=\s*33333" "DisplayAdapter must keep a 30 fps frame budget marker in telemetry."
+Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "fps_window" "DisplayAdapter telemetry must report actual frame-window cadence."
+Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "slow_frames" "DisplayAdapter telemetry must report frame-budget misses."
 Assert-FileNotContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "powf\s*\(" "DisplayAdapter render hot path must not call powf."
 
 Write-Host "Architecture boundaries verified."

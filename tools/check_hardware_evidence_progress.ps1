@@ -265,9 +265,11 @@ Test-TextPattern "logs/package_verify.log" "Release package verified:" "successf
 Test-TextPattern "logs/display_only_serial.log" "\[boot\]\s+stackchan_alive\s+mode=display_only\s+serial=v1" "display-only boot marker"
 Test-TextPattern "logs/display_only_serial.log" "\[display\]\s+M5 display renderer ready" "display readiness marker"
 Test-TextPattern "logs/display_only_serial.log" "\[servo\]\s+dry-run mode" "display-only servo dry-run marker"
+Test-TextPattern "logs/display_only_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "display frame-budget telemetry"
 Test-TextPattern "logs/servo_calibration_serial.log" "\[boot\]\s+stackchan_alive\s+mode=servo_calibration\s+serial=v1" "servo-calibration boot marker"
 Test-TextPattern "logs/servo_calibration_serial.log" "\[servo\]\s+enabling StackchanSERVO hardware output" "servo hardware-enable marker"
 Test-TextPattern "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=(display_only|servo_calibration)\s+uptime_ms=\d+" "runtime heartbeat marker"
+Test-TextPattern "logs/soak_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "soak display frame-budget telemetry"
 
 if (Test-Path -LiteralPath (Join-EvidencePath "calibration/calibration.yaml")) {
   $calibration = Get-Content -LiteralPath (Join-EvidencePath "calibration/calibration.yaml") -Raw
