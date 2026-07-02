@@ -117,6 +117,71 @@ if os.path.exists(notes_path):
     with open(notes_path, "w", encoding="utf-8") as handle:
         handle.write(notes)
 
+html_path = os.path.join(voice_root, "RVC_AUDITION.html")
+with open(html_path, "w", encoding="utf-8") as handle:
+    handle.write("""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stackchan RVC Voice Audition</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #071113; color: #e8f4f2; }
+    body { margin: 0; padding: 24px; }
+    main { max-width: 820px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
+    p { line-height: 1.5; color: #b7c8c5; }
+    .sample { border: 1px solid #24413f; border-radius: 8px; padding: 16px; margin: 16px 0; background: #0d1b1e; }
+    .sample h2 { margin: 0 0 8px; font-size: 18px; letter-spacing: 0; }
+    audio { width: 100%; margin: 8px 0; }
+    .transcript { color: #f5fffd; }
+    .links a { color: #68e4d4; margin-right: 16px; }
+    .note { border-left: 3px solid #68e4d4; padding-left: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Stackchan RVC Voice Audition</h1>
+    <p class="note">Review-only RVC candidate samples for checking the preferred bright robot direction. These are not consumer-approved voice assets until source provenance and rights review are complete.</p>
+""")
+    sections = [
+        {
+            "title": "RVC Bright Robot",
+            "mp3": "stackchan_rvc_bright_robot.mp3",
+            "wav": "stackchan_rvc_bright_robot.wav",
+            "transcript": "Hello. I am Stackchan, and I am awake.",
+            "note": "Current lead: pitch 2, index 0.62, RMS mix 0.72, protect 0.28.",
+        },
+        {
+            "title": "RVC Thinking",
+            "mp3": "stackchan_rvc_thinking_neutral.mp3",
+            "wav": "stackchan_rvc_thinking_neutral.wav",
+            "transcript": "Input received. I am thinking now. Curiosity level rising.",
+            "note": "Longer phrase for cadence, intelligibility, and timing review.",
+        },
+        {
+            "title": "RVC Safety",
+            "mp3": "stackchan_rvc_safety_neutral.mp3",
+            "wav": "stackchan_rvc_safety_neutral.wav",
+            "transcript": "Small problem found. I can help fix it. Safety first.",
+            "note": "Safety phrase for clarity and calmness review.",
+        },
+    ]
+    for section in sections:
+        handle.write(f"""
+    <section class="sample">
+      <h2>{section["title"]}</h2>
+      <audio src="{section["mp3"]}" controls preload="metadata"></audio>
+      <p class="transcript">{section["transcript"]}</p>
+      <p>{section["note"]}</p>
+      <p class="links"><a href="{section["mp3"]}">MP3</a></p>
+    </section>
+""")
+    handle.write("""  </main>
+</body>
+</html>
+""")
+
 print(json.dumps(targets, indent=2))
 '@ | Set-Content -Path $encoderScript -Encoding UTF8
 
@@ -129,6 +194,7 @@ print(json.dumps(targets, indent=2))
   Get-ChildItem -LiteralPath $voiceRootPath -Filter "*.mp3" |
     Sort-Object Name |
     ForEach-Object { Write-Host $_.FullName }
+  Write-Host (Join-Path $voiceRootPath "RVC_AUDITION.html")
 } finally {
   Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }

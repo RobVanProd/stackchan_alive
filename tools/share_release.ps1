@@ -797,18 +797,22 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3"); Name = "voice/stackchan_spark_thinking.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_AUDITION.html"); Name = "voice/VOICE_AUDITION.html" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITION.html"); Name = "voice/rvc/RVC_AUDITION.html" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"); Name = "voice/rvc/RVC_AUDITIONS.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"); Name = "voice/rvc/RVC_AUDITIONS.json" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav"); Name = "voice/rvc/stackchan_rvc_neutral.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav"); Name = "voice/rvc/stackchan_rvc_warm_slow.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3"); Name = "voice/rvc/stackchan_rvc_bright_robot.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_less_static.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav"); Name = "voice/rvc/stackchan_rvc_spark_boops.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav"); Name = "voice/rvc/stackchan_rvc_high_character.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav"); Name = "voice/rvc/stackchan_rvc_safety_neutral.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"); Name = "voice/rvc/stackchan_rvc_safety_neutral.mp3" },
   @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
@@ -1216,18 +1220,22 @@ $promotionGateItems
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Bright Robot MP3</a></div>
     <div class="item"><a href="voice/stackchan_spark_thinking.mp3">Thinking MP3</a></div>
+    <div class="item"><a href="voice/rvc/RVC_AUDITION.html">RVC Local Audition Page</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITIONS.md">RVC Audition Notes</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITIONS.json">RVC Audition JSON</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_neutral.wav">RVC Neutral WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_warm_slow.wav">RVC Warm Slow WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.wav">RVC Bright Robot WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.mp3">RVC Bright Robot MP3</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_less_static.wav">RVC Bright Robot Less Static WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav">RVC Bright Robot Sweet Vocoder WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav">RVC Bright Robot Soft Boops WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_spark_boops.wav">RVC Spark Boops WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_high_character.wav">RVC High Character WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">RVC Thinking WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.mp3">RVC Thinking MP3</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.wav">RVC Safety WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.mp3">RVC Safety MP3</a></div>
     <div class="item"><a href="VOICE_SOURCE_STATUS.md">Voice Source Status</a></div>
     <div class="item"><a href="voice_source_status.json">Voice Source Status JSON</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>

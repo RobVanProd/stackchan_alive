@@ -156,6 +156,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $voiceRvcFiles = @(
+  "output/voice_auditions/rvc_base/final/RVC_AUDITION.html",
   "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.md",
   "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.json",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_neutral.wav",
@@ -597,6 +598,7 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_thinking.mp3",
     "media/voice/VOICE_SAMPLES.md",
     "media/voice/VOICE_AUDITION.html",
+    "media/voice/rvc/RVC_AUDITION.html",
     "media/voice/rvc/RVC_AUDITIONS.md",
     "media/voice/rvc/RVC_AUDITIONS.json",
     "media/voice/rvc/stackchan_rvc_neutral.wav",
@@ -893,7 +895,7 @@ Voice audition quick check:
 
 - Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
 - Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
-- RVC review copies ``stackchan_rvc_bright_robot.mp3``, ``stackchan_rvc_thinking_neutral.mp3``, and ``stackchan_rvc_safety_neutral.mp3`` are included in ``media/voice/rvc/`` and uploaded as release assets for browser playback.
+- RVC review copies ``stackchan_rvc_bright_robot.mp3``, ``stackchan_rvc_thinking_neutral.mp3``, and ``stackchan_rvc_safety_neutral.mp3`` are included in ``media/voice/rvc/`` and uploaded as release assets for browser playback. Run ``tools/open_voice_audition.cmd -Rvc`` or open ``media/voice/rvc/RVC_AUDITION.html`` for the local RVC audition page.
 - These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
 
 Hardware validation is still required before consumer rollout:

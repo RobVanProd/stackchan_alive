@@ -146,13 +146,21 @@ $expectedMp3s = @(
 
 Assert-File "RVC_AUDITIONS.md" 500
 Assert-File "RVC_AUDITIONS.json" 500
+Assert-File "RVC_AUDITION.html" 1000
 
 $notes = Get-Content -LiteralPath (Join-VoicePath "RVC_AUDITIONS.md") -Raw
 $json = Get-Content -LiteralPath (Join-VoicePath "RVC_AUDITIONS.json") -Raw | ConvertFrom-Json
+$page = Get-Content -LiteralPath (Join-VoicePath "RVC_AUDITION.html") -Raw
 
 foreach ($pattern in @("Stackchan RVC Base Auditions", "Review-only auditions", "not consumer-approved", "Current Lead", "Lead audition", "near-final direction", "pitch 2", "index 0.62", "RMS mix 0.72", "protect 0.28", "RVC Neutral", "RVC Warm Slow", "RVC Bright Robot", "RVC Spark Boops", "RVC High Character")) {
   if ($notes -notmatch [regex]::Escape($pattern)) {
     throw "RVC_AUDITIONS.md missing expected marker: $pattern"
+  }
+}
+
+foreach ($pattern in @("Stackchan RVC Voice Audition", "Review-only RVC candidate samples", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "Hello. I am Stackchan, and I am awake.", "Input received. I am thinking now.", "Small problem found.")) {
+  if ($page -notmatch [regex]::Escape($pattern)) {
+    throw "RVC_AUDITION.html missing expected marker: $pattern"
   }
 }
 

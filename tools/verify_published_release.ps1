@@ -159,6 +159,7 @@ $expectedAssets = @{
   "stackchan_spark_audition_bright_robot_greeting.wav" = (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav")
   "stackchan_spark_audition_bright_robot_greeting.mp3" = (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3")
   "stackchan_spark_thinking.mp3" = (Join-Path $PackageRoot "media/voice/stackchan_spark_thinking.mp3")
+  "RVC_AUDITION.html" = (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITION.html")
   "RVC_AUDITIONS.md" = (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITIONS.md")
   "RVC_AUDITIONS.json" = (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITIONS.json")
   "stackchan_rvc_neutral.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_neutral.wav")
