@@ -408,14 +408,14 @@ foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd 
 }
 
 $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
-foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "payments have failed", "spending limit", "runnerId", "stepCount")) {
+foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "promotionReady", "externalBlock", "nextAction", "nextCommand", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
   }
 }
 
 $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_preflight.ps1") -Raw
-foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
+foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
   }

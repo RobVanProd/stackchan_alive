@@ -200,6 +200,32 @@ if (-not $allRequiredWorkflowsObserved -and $runReports.Count -gt 0) {
   $summaryStatus = "failed-or-incomplete"
 }
 
+$externalBlockStatuses = @("external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation")
+$externalBlock = ($externalBlockStatuses -contains $summaryStatus)
+$promotionReady = ($summaryStatus -eq "success")
+$nextAction = if ($summaryStatus -eq "external-account-billing-or-spending-limit") {
+  "Fix GitHub account billing or spending-limit settings, then rerun the required workflows and export this status again."
+} elseif ($summaryStatus -eq "external-account-ci-pre-runner-allocation") {
+  "Resolve hosted-runner availability or wait for GitHub runner allocation to recover, then rerun the required workflows and export this status again."
+} elseif ($summaryStatus -eq "success") {
+  "Use this report as GitHub Actions evidence for release audit or consumer-promotion checks."
+} elseif ($summaryStatus -eq "missing-required-workflow") {
+  "Trigger every required workflow for this exact commit; the Release workflow normally requires pushing the matching release tag."
+} elseif ($summaryStatus -eq "missing") {
+  "Push the branch or tag, rerun the required workflows for this exact commit, then export this status again."
+} else {
+  "Inspect the matching workflow run logs and annotations, fix the failing build or test, then rerun the required workflows."
+}
+$nextCommand = if ($summaryStatus -eq "failed-or-incomplete" -and $runReports.Count -gt 0) {
+  "gh run view $($runReports[0].runId) --repo $Repo --log"
+} elseif ($summaryStatus -eq "missing-required-workflow" -and $missingRequiredWorkflows -contains "Release") {
+  "git tag $Version; git push origin $Version"
+} elseif ($summaryStatus -eq "success") {
+  ".\tools\audit_published_release.cmd -Version $Version"
+} else {
+  ""
+}
+
 $report = [ordered]@{
   schema = "stackchan.github-actions-status.v1"
   version = $Version
@@ -207,6 +233,10 @@ $report = [ordered]@{
   repo = $Repo
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   status = $summaryStatus
+  promotionReady = $promotionReady
+  externalBlock = $externalBlock
+  nextAction = $nextAction
+  nextCommand = $nextCommand
   interpretation = if ($summaryStatus -eq "external-account-billing-or-spending-limit") {
     "GitHub Actions did not start any job steps because GitHub reported an account billing or spending-limit issue. Treat local release verification and device preflight as the available technical evidence until account billing is fixed and workflows can run."
   } elseif ($summaryStatus -eq "external-account-ci-pre-runner-allocation") {
@@ -262,6 +292,13 @@ Status: $summaryStatus
 Required workflows: $($RequiredWorkflows -join ", ")
 
 $($report.interpretation)
+
+Next action: $($report.nextAction)
+$(
+  if (-not [string]::IsNullOrWhiteSpace($report.nextCommand)) {
+    "Suggested command: ``$($report.nextCommand)``"
+  }
+)
 
 ## Missing Required Workflows
 

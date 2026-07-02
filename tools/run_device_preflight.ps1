@@ -319,6 +319,15 @@ function Assert-GitHubActionsStatusExporterGate {
     if (@($completeStatus.missingRequiredWorkflows).Count -ne 0) {
       throw "Billing fixture unexpectedly reported missing required workflows: $(@($completeStatus.missingRequiredWorkflows) -join ', ')"
     }
+    if ($completeStatus.externalBlock -ne $true) {
+      throw "Billing fixture should mark externalBlock true."
+    }
+    if ($completeStatus.promotionReady -ne $false) {
+      throw "Billing fixture should not be promotion ready."
+    }
+    if ([string]$completeStatus.nextAction -notmatch "billing") {
+      throw "Billing fixture nextAction should mention billing."
+    }
     foreach ($workflowName in @("Firmware", "Release")) {
       if (@($completeStatus.requiredWorkflows) -notcontains $workflowName) {
         throw "Billing fixture missing required workflow contract: $workflowName"
@@ -376,6 +385,12 @@ function Assert-GitHubActionsStatusExporterGate {
     if (@($preRunnerStatus.missingRequiredWorkflows).Count -ne 0) {
       throw "Pre-runner fixture unexpectedly reported missing required workflows: $(@($preRunnerStatus.missingRequiredWorkflows) -join ', ')"
     }
+    if ($preRunnerStatus.externalBlock -ne $true) {
+      throw "Pre-runner fixture should mark externalBlock true."
+    }
+    if ([string]$preRunnerStatus.nextAction -notmatch "runner") {
+      throw "Pre-runner fixture nextAction should mention runner availability."
+    }
     $preRunnerMarkdown = Get-Content -LiteralPath (Join-Path $preRunnerOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
     Assert-TextContains $preRunnerMarkdown "no runner was assigned"
 
@@ -414,6 +429,12 @@ function Assert-GitHubActionsStatusExporterGate {
     }
     if (@($missingStatus.missingRequiredWorkflows) -notcontains "Release") {
       throw "Missing fixture did not report Release as missing."
+    }
+    if ($missingStatus.externalBlock -ne $false) {
+      throw "Missing fixture should not mark externalBlock true."
+    }
+    if ([string]$missingStatus.nextCommand -notmatch "git tag") {
+      throw "Missing fixture nextCommand should suggest pushing the release tag."
     }
     $missingMarkdown = Get-Content -LiteralPath (Join-Path $missingOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
     Assert-TextContains $missingMarkdown "Missing Required Workflows"
