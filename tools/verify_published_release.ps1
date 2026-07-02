@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
 function Assert-Command {
   param([string]$Name)
@@ -145,55 +146,15 @@ if (-not $release.isPrerelease -and -not $AllowNonPrerelease) {
 }
 
 $assets = @($release.assets)
-$expectedAssets = @{
-  "stackchan_alive_$Version.zip" = $ZipPath
-  "stackchan_alive_$Version.zip.sha256" = $ZipSidecarPath
-  "stackchan_alive_preview.png" = (Join-Path $PackageRoot "media/stackchan_alive_preview.png")
-  "stackchan_alive_expression_sheet.png" = (Join-Path $PackageRoot "media/stackchan_alive_expression_sheet.png")
-  "stackchan_alive_preview.mp4" = (Join-Path $PackageRoot "media/stackchan_alive_preview.mp4")
-  "stackchan_alive_preview.gif" = (Join-Path $PackageRoot "media/stackchan_alive_preview.gif")
-  "stackchan_spark_greeting.wav" = (Join-Path $PackageRoot "media/voice/stackchan_spark_greeting.wav")
-  "stackchan_spark_thinking.wav" = (Join-Path $PackageRoot "media/voice/stackchan_spark_thinking.wav")
-  "stackchan_spark_safety.wav" = (Join-Path $PackageRoot "media/voice/stackchan_spark_safety.wav")
-  "stackchan_spark_audition_warm_slow_greeting.wav" = (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav")
-  "stackchan_spark_audition_bright_robot_greeting.wav" = (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav")
-  "stackchan_spark_audition_bright_robot_greeting.mp3" = (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3")
-  "stackchan_spark_thinking.mp3" = (Join-Path $PackageRoot "media/voice/stackchan_spark_thinking.mp3")
-  "RVC_AUDITION.html" = (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITION.html")
-  "RVC_AUDITIONS.md" = (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITIONS.md")
-  "RVC_AUDITIONS.json" = (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITIONS.json")
-  "stackchan_rvc_neutral.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_neutral.wav")
-  "stackchan_rvc_warm_slow.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav")
-  "stackchan_rvc_bright_robot.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav")
-  "stackchan_rvc_bright_robot.mp3" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3")
-  "stackchan_rvc_bright_robot_less_static.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav")
-  "stackchan_rvc_bright_robot_sweet_vocoder.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav")
-  "stackchan_rvc_bright_robot_soft_boops.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav")
-  "stackchan_rvc_spark_boops.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav")
-  "stackchan_rvc_high_character.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_high_character.wav")
-  "stackchan_rvc_thinking_neutral.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav")
-  "stackchan_rvc_thinking_neutral.mp3" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3")
-  "stackchan_rvc_safety_neutral.wav" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav")
-  "stackchan_rvc_safety_neutral.mp3" = (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3")
-  "GITHUB_ACTIONS_STATUS.md" = (Join-Path $PackageRoot "GITHUB_ACTIONS_STATUS.md")
-  "github_actions_status.json" = (Join-Path $PackageRoot "github_actions_status.json")
-  "firmware-display-only.bin" = (Join-Path $PackageRoot "firmware/display_only/firmware.bin")
-  "firmware-servo-calibration.bin" = (Join-Path $PackageRoot "firmware/servo_calibration/firmware.bin")
-  "bootloader.bin" = (Join-Path $PackageRoot "firmware/display_only/bootloader.bin")
-  "partitions.bin" = (Join-Path $PackageRoot "firmware/display_only/partitions.bin")
-}
-
-foreach ($assetName in $expectedAssets.Keys) {
-  Assert-Asset -Assets $assets -Name $assetName -ExpectedPath $expectedAssets[$assetName]
+$expectedAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $PackageRoot -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath
+foreach ($assetEntry in $expectedAssetEntries) {
+  Assert-Asset -Assets $assets -Name $assetEntry.Name -ExpectedPath $assetEntry.Path
 }
 
 $auditRoot = Join-Path $repoRoot "output/release-audit/$Version"
-$allowedAuditAssets = @{
-  "RELEASE_AUDIT.md" = (Join-Path $auditRoot "RELEASE_AUDIT.md")
-  "RELEASE_AUDIT.json" = (Join-Path $auditRoot "RELEASE_AUDIT.json")
-}
-
-foreach ($assetName in $allowedAuditAssets.Keys) {
+$allowedAuditAssetEntries = Get-ReleaseAllowedAuditAssetEntries -AuditRoot $auditRoot
+foreach ($assetEntry in $allowedAuditAssetEntries) {
+  $assetName = $assetEntry.Name
   $auditAsset = @($assets | Where-Object { $_.name -eq $assetName })
   if ($auditAsset.Count -eq 0) {
     continue
@@ -201,17 +162,17 @@ foreach ($assetName in $allowedAuditAssets.Keys) {
   if ($auditAsset.Count -ne 1) {
     throw "Expected at most one release audit asset named $assetName; found $($auditAsset.Count)"
   }
-  if (Test-Path -LiteralPath $allowedAuditAssets[$assetName]) {
-    Assert-Asset -Assets $assets -Name $assetName -ExpectedPath $allowedAuditAssets[$assetName]
+  if (Test-Path -LiteralPath $assetEntry.Path) {
+    Assert-Asset -Assets $assets -Name $assetName -ExpectedPath $assetEntry.Path
   }
 }
 
 $allowedAssetNames = @{}
-foreach ($assetName in $expectedAssets.Keys) {
-  $allowedAssetNames[$assetName] = $true
+foreach ($assetEntry in $expectedAssetEntries) {
+  $allowedAssetNames[$assetEntry.Name] = $true
 }
-foreach ($assetName in $allowedAuditAssets.Keys) {
-  $allowedAssetNames[$assetName] = $true
+foreach ($assetEntry in $allowedAuditAssetEntries) {
+  $allowedAssetNames[$assetEntry.Name] = $true
 }
 
 foreach ($asset in $assets) {
