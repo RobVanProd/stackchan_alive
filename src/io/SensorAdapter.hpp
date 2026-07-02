@@ -21,6 +21,7 @@ struct BenchSpeechEnvelope {
 
 struct BenchControl {
   bool wantsHelp = false;
+  bool wantsStatus = false;
   bool hasEvent = false;
   bool hasSpeech = false;
   bool hasReducedMotion = false;

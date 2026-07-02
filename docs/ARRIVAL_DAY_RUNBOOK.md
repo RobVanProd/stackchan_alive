@@ -47,6 +47,8 @@ Hard stop if:
 - serial output has no boot marker
 - any servo moves during display-only firmware
 
+After the face is visible, send `status` in the serial monitor once. It should immediately print `[heartbeat]` plus `[system]` heap and task stack telemetry; save that line in the display-only serial log.
+
 Import the display photo or video into the packet:
 
 ```powershell

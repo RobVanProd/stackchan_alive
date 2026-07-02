@@ -77,6 +77,14 @@ bool fillHelp(BenchControl* controlOut) {
   return true;
 }
 
+bool fillStatus(BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.wantsStatus = true;
+  parsed.command = "status";
+  *controlOut = parsed;
+  return true;
+}
+
 void normalizeLine(const char* line, char* out, size_t outSize) {
   if (outSize == 0) {
     return;
@@ -288,6 +296,9 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   if (isHelpToken(first)) {
     return fillHelp(controlOut);
   }
+  if (strcmp(first, "status") == 0 || strcmp(first, "telemetry") == 0 || strcmp(first, "health") == 0) {
+    return fillStatus(controlOut);
+  }
 
   char* second = strtok(nullptr, " \t");
   char* third = strtok(nullptr, " \t");
@@ -351,6 +362,7 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
 
 void SensorAdapter::printHelp() const {
 #if defined(ARDUINO_ARCH_ESP32)
+  Serial.println(F("[control] help: status"));
   Serial.println(F("[control] help: mode listen|think|speak|idle|sleep|error [strength]"));
   Serial.println(F("[control] help: event wake|touch|response|speech_end|idle|error [strength]"));
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));

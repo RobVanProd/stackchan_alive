@@ -279,9 +279,16 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
 }
 
 $arrivalRunbookText = Get-Content -LiteralPath (Join-PackagePath "ARRIVAL_DAY_RUNBOOK.md") -Raw
-foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "production voice-source provenance", "GitHub Actions")) {
+foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "production voice-source provenance", "GitHub Actions")) {
   if ($arrivalRunbookText -notmatch [regex]::Escape($pattern)) {
     throw "ARRIVAL_DAY_RUNBOOK.md missing required bench guidance: $pattern"
+  }
+}
+
+$deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "help", "speech clear", "reduced on")) {
+  if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
 }
 
@@ -443,16 +450,16 @@ foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub A
 }
 
 $sensorAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SensorAdapter.cpp") -Raw
-foreach ($pattern in @("reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "parseOnOff", "hasReducedMotion")) {
+foreach ($pattern in @("[control] help: status", "fillStatus", "wantsStatus", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "parseOnOff", "hasReducedMotion")) {
   if ($sensorAdapterText -notmatch [regex]::Escape($pattern)) {
-    throw "provenance/src/io/SensorAdapter.cpp missing reduced-motion serial command support: $pattern"
+    throw "provenance/src/io/SensorAdapter.cpp missing bench serial command support: $pattern"
   }
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "FaceControlInput", "publishFaceControl", "applyFaceControlInput", "gFace.setReducedMotion", "reduced_motion=")) {
+foreach ($pattern in @("gFaceControlQueue", "FaceControlInput", "publishFaceControl", "applyFaceControlInput", "gFace.setReducedMotion", "reduced_motion=", "wantsStatus", "printHeartbeat", "printSystemTelemetry")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
-    throw "provenance/src/main.cpp missing reduced-motion face-control queue support: $pattern"
+    throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
 }
 

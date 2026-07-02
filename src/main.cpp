@@ -382,6 +382,10 @@ void IntentTask(void* pv) {
       if (control.hasEvent) {
         gIntent.applyEvent(control.event, control.mode);
       }
+      if (control.wantsStatus) {
+        printHeartbeat();
+        printSystemTelemetry();
+      }
       publishSpeechInput(control);
       publishFaceControl(control);
       printBenchControl(control);

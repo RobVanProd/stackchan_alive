@@ -418,6 +418,7 @@ void test_sensor_adapter_parses_help_without_event() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("help", 1000, &control));
   TEST_ASSERT_TRUE(control.wantsHelp);
+  TEST_ASSERT_FALSE(control.wantsStatus);
   TEST_ASSERT_FALSE(control.hasEvent);
   TEST_ASSERT_FALSE(control.hasSpeech);
   TEST_ASSERT_EQUAL_STRING("help", control.command);
@@ -425,6 +426,25 @@ void test_sensor_adapter_parses_help_without_event() {
   TEST_ASSERT_TRUE(parseBenchControlLine("?", 1000, &control));
   TEST_ASSERT_TRUE(control.wantsHelp);
   TEST_ASSERT_EQUAL_STRING("help", control.command);
+}
+
+void test_sensor_adapter_parses_status_without_event() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("status", 1100, &control));
+  TEST_ASSERT_FALSE(control.wantsHelp);
+  TEST_ASSERT_TRUE(control.wantsStatus);
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_FALSE(control.hasReducedMotion);
+  TEST_ASSERT_EQUAL_STRING("status", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("health", 1200, &control));
+  TEST_ASSERT_TRUE(control.wantsStatus);
+  TEST_ASSERT_EQUAL_STRING("status", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("telemetry", 1300, &control));
+  TEST_ASSERT_TRUE(control.wantsStatus);
+  TEST_ASSERT_EQUAL_STRING("status", control.command);
 }
 
 void test_sensor_adapter_parses_event_aliases_and_clamps_strength() {
@@ -661,6 +681,7 @@ int main() {
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
+  RUN_TEST(test_sensor_adapter_parses_status_without_event);
   RUN_TEST(test_sensor_adapter_parses_event_aliases_and_clamps_strength);
   RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
