@@ -148,6 +148,62 @@ function Copy-VoiceLeadArtifactsFromZip {
   }
 }
 
+function Copy-VoiceGateStatusFromRoot {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot
+  )
+
+  $statusFiles = @(
+    "VOICE_SOURCE_STATUS.md",
+    "voice_source_status.json",
+    "RVC_VOICE_BASE_STATUS.md",
+    "rvc_voice_base_status.json"
+  )
+
+  foreach ($relativePath in $statusFiles) {
+    $sourcePath = Join-Path $SourceRoot $relativePath
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+      throw "Release package missing voice gate status artifact: $relativePath"
+    }
+    Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $DestinationRoot $relativePath)
+  }
+
+  $voiceSourceStatus = Get-Content -LiteralPath (Join-Path $DestinationRoot "voice_source_status.json") -Raw | ConvertFrom-Json
+  $rvcBaseStatus = Get-Content -LiteralPath (Join-Path $DestinationRoot "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
+
+  return [ordered]@{
+    voiceSourceStatus = [string]$voiceSourceStatus.status
+    voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
+    rvcVoiceBaseStatus = [string]$rvcBaseStatus.status
+    rvcConsumerApproved = [bool]$rvcBaseStatus.consumerApproved
+    rvcDistributionApproved = [bool]$rvcBaseStatus.distributionApproved
+    reports = @(
+      "VOICE_SOURCE_STATUS.md",
+      "voice_source_status.json",
+      "RVC_VOICE_BASE_STATUS.md",
+      "rvc_voice_base_status.json"
+    )
+  }
+}
+
+function Copy-VoiceGateStatusFromZip {
+  param(
+    [string]$ZipPath,
+    [string]$DestinationRoot
+  )
+
+  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-synthetic-voice-gates"
+  $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+  try {
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    return Copy-VoiceGateStatusFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
+  } finally {
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Get-ReleaseManifest {
   param([string]$RootPath)
 
@@ -205,6 +261,7 @@ New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $cali
 
 $packageInfo = $null
 $voiceLeadInfo = $null
+$voiceGateInfo = $null
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/servo_calibration_serial.log",
@@ -250,6 +307,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   }
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
+  $voiceGateInfo = Copy-VoiceGateStatusFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   if (-not (Test-Path -LiteralPath $PackageRoot)) {
@@ -286,6 +344,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   }
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
+  $voiceGateInfo = Copy-VoiceGateStatusFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } else {
   throw "Pass -PackageZip or -PackageRoot, or build a release package for $Version first."
@@ -500,14 +559,31 @@ if (-not (Test-Path -LiteralPath $audioSource)) {
 }
 Copy-Item -LiteralPath $audioSource -Destination (Join-Path $audioDir "synthetic_speaker_fixture.wav")
 
+$verifyPackageCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\verify_release_package.ps1`" -Version $Version -ExpectedCommit $ExpectedCommit"
+$rolloutPackageArg = ""
+if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
+  $packageFileName = [System.IO.Path]::GetFileName([string]$packageInfo["sourcePath"])
+  $packetZip = "%~dp0package\$packageFileName"
+  $verifyPackageCommand += " -ZipPath `"$packetZip`""
+  $rolloutPackageArg = "-PackageZip `"$packetZip`""
+} elseif ($packageInfo -and $packageInfo.Contains("packageRoot")) {
+  $sourceRoot = [string]$packageInfo["sourcePath"]
+  $verifyPackageCommand += " -PackageRoot `"$sourceRoot`""
+  $rolloutPackageArg = "-PackageRoot `"$sourceRoot`""
+}
+if ($AllowDirtyPackage) {
+  $verifyPackageCommand += " -AllowDirtyPackage"
+}
+$rolloutStatusCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\export_rollout_status.ps1`" -Version $Version $rolloutPackageArg -EvidenceRoot `"%~dp0.`" -ExpectedCommit $ExpectedCommit -OutDir `"%~dp0.`""
+
 $commandFiles = @{
   "RUN_PLAY_LEAD_VOICE.cmd" = "echo Synthetic diagnostic packet. Use a real hardware packet for target speaker playback."
   "RUN_DISPLAY_ONLY.cmd" = "echo Synthetic diagnostic packet. Do not flash hardware from this fixture."
   "RUN_SERVO_CALIBRATION.cmd" = "echo Synthetic diagnostic packet. Do not move servos from this fixture."
   "RUN_SOAK_MONITOR.cmd" = "echo Synthetic diagnostic packet. Do not use as a real soak log."
-  "RUN_PACKAGE_VERIFY.cmd" = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\verify_release_package.ps1`" -Version $Version"
+  "RUN_PACKAGE_VERIFY.cmd" = $verifyPackageCommand
   "RUN_PROGRESS_CHECK.cmd" = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\check_hardware_evidence_progress.ps1`" -EvidenceRoot `"%~dp0.`""
-  "RUN_ROLLOUT_STATUS.cmd" = "echo Synthetic diagnostic packet. Rollout status must be exported from real package and evidence inputs."
+  "RUN_ROLLOUT_STATUS.cmd" = $rolloutStatusCommand
   "RUN_ADD_MEDIA.cmd" = "echo Synthetic diagnostic packet already includes fixture media. Add real media only to a real hardware packet."
   "RUN_EVIDENCE_VERIFY.cmd" = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\verify_hardware_evidence.ps1`" -EvidenceRoot `"%~dp0.`" -AllowSyntheticEvidence"
   "RUN_CONSUMER_PROMOTION_CHECK.cmd" = "echo Synthetic diagnostic packet. Consumer promotion must use real hardware evidence."
@@ -531,6 +607,7 @@ $metadata = [ordered]@{
   syntheticEvidence = $true
   package = $packageInfo
   voiceLeadAudition = $voiceLeadInfo
+  voiceGateStatus = $voiceGateInfo
   requiredLogs = $requiredLogs
   requiredRecords = @(
     "BENCH_STATUS.md",
@@ -541,6 +618,10 @@ $metadata = [ordered]@{
     "release_acceptance.json",
     "OBSERVATIONS.md",
     "AUDIO_REVIEW.md",
+    "VOICE_SOURCE_STATUS.md",
+    "voice_source_status.json",
+    "RVC_VOICE_BASE_STATUS.md",
+    "rvc_voice_base_status.json",
     "RVC_LEAD_AUDITION.md",
     "reference_audio/RVC_AUDITIONS.md",
     "reference_audio/RVC_AUDITIONS.json",

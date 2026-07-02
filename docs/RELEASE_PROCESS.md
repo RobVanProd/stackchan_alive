@@ -64,7 +64,7 @@ Verifier self-tests can generate an explicit diagnostic-only synthetic packet:
 .\tools\generate_synthetic_hardware_evidence.cmd -Version <version> -PackageZip output\release\stackchan_alive_<version>.zip -Verify
 ```
 
-Synthetic packets are written under `output/hardware-evidence-diagnostic/`, include `BENCH_STATUS.md/json` to exercise the same handoff path as real packets, and are rejected by `tools\verify_hardware_evidence.cmd` unless `-AllowSyntheticEvidence` is passed. Do not use them as rollout evidence.
+Synthetic packets are written under `output/hardware-evidence-diagnostic/`, include `BENCH_STATUS.md/json`, copied voice-gate reports, and a real `RUN_ROLLOUT_STATUS.cmd` to exercise the same handoff path as real packets. They are rejected by `tools\verify_hardware_evidence.cmd` unless `-AllowSyntheticEvidence` is passed. Do not use them as rollout evidence.
 
 To prepare the release for arrival-day testing in one no-hardware-safe step:
 
