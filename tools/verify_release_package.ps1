@@ -340,7 +340,7 @@ if ($consumerPromotionVerifierText -match "evidenceArgs\s*\+=\s*['`"]-AllowMissi
 }
 
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
-foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
+foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "RELEASE_AUDIT.md", "RELEASE_AUDIT.json", "allowedAssetNames", "Unexpected release asset", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_published_release.ps1 missing required published ZIP sidecar verification logic: $pattern"
   }

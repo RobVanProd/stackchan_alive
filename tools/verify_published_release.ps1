@@ -187,6 +187,39 @@ foreach ($assetName in $expectedAssets.Keys) {
   Assert-Asset -Assets $assets -Name $assetName -ExpectedPath $expectedAssets[$assetName]
 }
 
+$auditRoot = Join-Path $repoRoot "output/release-audit/$Version"
+$allowedAuditAssets = @{
+  "RELEASE_AUDIT.md" = (Join-Path $auditRoot "RELEASE_AUDIT.md")
+  "RELEASE_AUDIT.json" = (Join-Path $auditRoot "RELEASE_AUDIT.json")
+}
+
+foreach ($assetName in $allowedAuditAssets.Keys) {
+  $auditAsset = @($assets | Where-Object { $_.name -eq $assetName })
+  if ($auditAsset.Count -eq 0) {
+    continue
+  }
+  if ($auditAsset.Count -ne 1) {
+    throw "Expected at most one release audit asset named $assetName; found $($auditAsset.Count)"
+  }
+  if (Test-Path -LiteralPath $allowedAuditAssets[$assetName]) {
+    Assert-Asset -Assets $assets -Name $assetName -ExpectedPath $allowedAuditAssets[$assetName]
+  }
+}
+
+$allowedAssetNames = @{}
+foreach ($assetName in $expectedAssets.Keys) {
+  $allowedAssetNames[$assetName] = $true
+}
+foreach ($assetName in $allowedAuditAssets.Keys) {
+  $allowedAssetNames[$assetName] = $true
+}
+
+foreach ($asset in $assets) {
+  if (-not $allowedAssetNames.ContainsKey([string]$asset.name)) {
+    throw "Unexpected release asset: $($asset.name)"
+  }
+}
+
 $remoteDir = Join-Path $repoRoot "output/release/remote-$Version"
 New-Item -ItemType Directory -Force -Path $remoteDir | Out-Null
 
