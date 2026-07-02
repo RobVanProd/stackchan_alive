@@ -5,6 +5,7 @@ param(
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
+  [string]$ShareRoot = "",
   [switch]$AllowIncompleteMetadata,
   [switch]$AllowDirtyPackage
 )
@@ -175,6 +176,101 @@ function Copy-VoiceLeadArtifactsFromZip {
   }
 }
 
+function Copy-ShareVerificationArtifactsFromRoot {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot,
+    [bool]$Required
+  )
+
+  if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
+    return $null
+  }
+
+  if (-not (Test-Path -LiteralPath $SourceRoot)) {
+    if ($Required) {
+      throw "Missing share verification folder: $SourceRoot"
+    }
+    return $null
+  }
+
+  $statusPath = Join-Path $SourceRoot "share_status.json"
+  $verificationJsonPath = Join-Path $SourceRoot "share_verification_report.json"
+  $verificationMarkdownPath = Join-Path $SourceRoot "share_verification_report.md"
+  $publicUrlPath = Join-Path $SourceRoot "PUBLIC_URL.txt"
+
+  foreach ($path in @($statusPath, $verificationJsonPath, $verificationMarkdownPath, $publicUrlPath)) {
+    if (-not (Test-Path -LiteralPath $path)) {
+      if ($Required) {
+        throw "Share verification folder is missing required artifact: $path"
+      }
+      return $null
+    }
+  }
+
+  $shareStatus = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+  $shareVerification = Get-Content -LiteralPath $verificationJsonPath -Raw | ConvertFrom-Json
+  if ($shareStatus.version -ne $ReleaseTag) {
+    throw "share_status.json version mismatch: expected $ReleaseTag, got $($shareStatus.version)"
+  }
+  if ($shareVerification.version -ne $ReleaseTag) {
+    throw "share_verification_report.json version mismatch: expected $ReleaseTag, got $($shareVerification.version)"
+  }
+  if (-not [bool]$shareVerification.allHttp200) {
+    throw "share_verification_report.json does not show all probes HTTP 200."
+  }
+
+  $shareDir = Join-Path $DestinationRoot "share"
+  New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
+  foreach ($path in @($statusPath, $verificationJsonPath, $verificationMarkdownPath, $publicUrlPath)) {
+    Copy-Item -LiteralPath $path -Destination (Join-Path $shareDir ([System.IO.Path]::GetFileName($path)))
+  }
+
+  $publicUrl = [string]$shareStatus.publicUrl
+  if ([string]::IsNullOrWhiteSpace($publicUrl)) {
+    $publicUrl = (Get-Content -LiteralPath $publicUrlPath -Raw).Trim()
+  }
+  $probeCount = [int]$shareVerification.probeCount
+  $fallbackText = if ([bool]$shareVerification.usedCurlResolveFallback) { "yes" } else { "no" }
+
+  @(
+    "# Hosted Media Reference",
+    "",
+    "This packet records the public review page that was verified before hardware testing. Use it to compare the physical device against the exact hosted preview, video, face artifacts, and voice samples for this release.",
+    "",
+    "- Release tag: $ReleaseTag",
+    "- Public URL: $publicUrl",
+    "- Share status: $($shareStatus.status)",
+    "- Public URL ready: $($shareStatus.publicUrlReady)",
+    "- Verification generated UTC: $($shareVerification.generatedUtc)",
+    "- Probe count: $probeCount",
+    "- All probes HTTP 200: $($shareVerification.allHttp200)",
+    "- Used curl DNS override fallback: $fallbackText",
+    "",
+    "Copied artifacts:",
+    "",
+    "- ``share/share_status.json``",
+    "- ``share/share_verification_report.md``",
+    "- ``share/share_verification_report.json``",
+    "- ``share/PUBLIC_URL.txt``",
+    "",
+    "This hosted-media reference is review evidence only. Consumer promotion still requires real-device photo/video, target-speaker recording, strict hardware evidence verification, successful GitHub Actions status, and completed production voice-source provenance."
+  ) | Set-Content -Path (Join-Path $DestinationRoot "HOSTED_MEDIA_REFERENCE.md") -Encoding UTF8
+
+  return [ordered]@{
+    sourceRoot = (Resolve-Path $SourceRoot).Path
+    publicUrl = $publicUrl
+    status = [string]$shareStatus.status
+    publicUrlReady = [bool]$shareStatus.publicUrlReady
+    verificationReport = "share/share_verification_report.json"
+    verificationSummary = "share/share_verification_report.md"
+    hostedMediaReference = "HOSTED_MEDIA_REFERENCE.md"
+    probeCount = $probeCount
+    allHttp200 = [bool]$shareVerification.allHttp200
+    usedCurlResolveFallback = [bool]$shareVerification.usedCurlResolveFallback
+  }
+}
+
 $rootManifest = Get-ReleaseManifest $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
@@ -225,6 +321,11 @@ $branch = Invoke-GitText @("rev-parse", "--abbrev-ref", "HEAD")
 if ([string]::IsNullOrWhiteSpace($branch)) {
   $branch = "release-package"
 }
+$shareRootWasExplicit = -not [string]::IsNullOrWhiteSpace($ShareRoot)
+if (-not $shareRootWasExplicit) {
+  $ShareRoot = Join-Path $repoRoot "output/share/$ReleaseTag"
+}
+
 $createdUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $safeTag = $ReleaseTag -replace '[^A-Za-z0-9_.-]', '_'
@@ -240,6 +341,7 @@ New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $refe
 
 $packageInfo = $null
 $voiceLeadInfo = $null
+$shareVerificationInfo = $null
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/servo_calibration_serial.log",
@@ -320,6 +422,8 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 }
 
+$shareVerificationInfo = Copy-ShareVerificationArtifactsFromRoot -SourceRoot $ShareRoot -DestinationRoot $outDir -Required $shareRootWasExplicit
+
 Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination (Join-Path $outDir "CHECKLIST.md")
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination (Join-Path $outDir "DEVICE_BRINGUP.md")
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $outDir "PRODUCTION_READINESS.md")
@@ -373,6 +477,7 @@ $observations = @(
   "- Servo serial log: logs/servo_calibration_serial.log",
   "- Soak serial log: logs/soak_serial.log",
   "- Package verification log: logs/package_verify.log",
+  "- Hosted media verification: HOSTED_MEDIA_REFERENCE.md",
   "- Photos/videos: photos/",
   "- Calibration record: calibration/calibration.yaml"
 )
@@ -518,6 +623,8 @@ $readme = @(
   "",
   "The packet includes ``RVC_LEAD_AUDITION.md`` and ``reference_audio/`` with the current lead voice audition copied from the verified release package. Use ``RUN_PLAY_LEAD_VOICE.cmd`` as a playback aid for the speaker check, then record the actual device speaker and import that recording under ``audio/``.",
   "",
+  "If present, ``HOSTED_MEDIA_REFERENCE.md`` records the verified Cloudflare/share page for this release. Use it as the remote review reference for the image, video, face GIFs, and voice samples while still collecting real-device evidence locally.",
+  "",
   "## Suggested Commands",
   "",
   "Display-only flash:",
@@ -611,6 +718,15 @@ if ($voiceLeadInfo) {
     "reference_audio/RVC_AUDITIONS.json"
   )
 }
+if ($shareVerificationInfo) {
+  $requiredRecords += @(
+    "HOSTED_MEDIA_REFERENCE.md",
+    "share/share_status.json",
+    "share/share_verification_report.md",
+    "share/share_verification_report.json",
+    "share/PUBLIC_URL.txt"
+  )
+}
 
 $metadata = [ordered]@{
   releaseTag = $ReleaseTag
@@ -622,6 +738,7 @@ $metadata = [ordered]@{
   port = $Port
   package = $packageInfo
   voiceLeadAudition = $voiceLeadInfo
+  shareVerification = $shareVerificationInfo
   requiredLogs = $requiredLogs
   requiredRecords = $requiredRecords
   promotionVerifier = "tools/verify_consumer_promotion.ps1"

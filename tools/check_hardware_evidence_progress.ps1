@@ -117,6 +117,26 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
   } else {
     Add-Finding "metadata.json missing voiceLeadAudition reference"
   }
+  if ($null -ne $metadata.shareVerification) {
+    [void](Test-RequiredFile ([string]$metadata.shareVerification.hostedMediaReference) 200)
+    [void](Test-RequiredFile ([string]$metadata.shareVerification.verificationReport) 500)
+    [void](Test-RequiredFile ([string]$metadata.shareVerification.verificationSummary) 100)
+    [void](Test-RequiredFile "share/share_status.json" 100)
+    [void](Test-RequiredFile "share/PUBLIC_URL.txt" 10)
+    if (Test-Path -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.verificationReport))) {
+      $shareReport = Get-Content -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.verificationReport)) -Raw | ConvertFrom-Json
+      if ($shareReport.schema -eq "stackchan.share-verification.v1" -and
+          $shareReport.version -eq $metadata.releaseTag -and
+          [bool]$shareReport.allHttp200 -and
+          [int]$shareReport.probeCount -eq [int]$metadata.shareVerification.probeCount) {
+        Add-Pass "Hosted media share verification report matches metadata"
+      } else {
+        Add-Finding "Hosted media share verification report is missing a matching schema/version/probe pass"
+      }
+    }
+  } else {
+    Add-Finding "metadata.json has no shareVerification reference; hosted media review page is not pinned in this evidence packet"
+  }
 }
 
 if (Test-Path -LiteralPath (Join-EvidencePath "CHECKLIST.md")) {

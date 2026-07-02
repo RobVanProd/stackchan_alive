@@ -42,6 +42,8 @@ Replace `COM3`, `Your Name`, and `STACKCHAN-001` with the device serial port, op
 
 This command verifies the package, dry-runs the display-only flash command, and creates an evidence packet under `output\hardware-evidence\`.
 
+If a verified share exists under `output\share\<version>\`, the evidence packet copies `HOSTED_MEDIA_REFERENCE.md` and the share verification reports automatically. To pin a specific hosted media reference, pass `-ShareRoot output\share\<version>`.
+
 ## First Device Commands
 
 Open the newest evidence packet folder and run:

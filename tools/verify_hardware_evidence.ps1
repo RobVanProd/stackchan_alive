@@ -560,6 +560,44 @@ foreach ($recordPath in @($metadata.requiredRecords)) {
   Assert-File $recordPath
 }
 
+if ($null -ne $metadata.shareVerification) {
+  foreach ($field in @("publicUrl", "verificationReport", "verificationSummary", "hostedMediaReference", "probeCount", "allHttp200")) {
+    if ([string]::IsNullOrWhiteSpace([string]$metadata.shareVerification.$field)) {
+      throw "metadata shareVerification missing required field: $field"
+    }
+  }
+
+  Assert-File ([string]$metadata.shareVerification.hostedMediaReference) 200
+  Assert-File ([string]$metadata.shareVerification.verificationReport) 500
+  Assert-File ([string]$metadata.shareVerification.verificationSummary) 100
+  Assert-File "share/share_status.json" 100
+  Assert-File "share/PUBLIC_URL.txt" 10
+
+  $shareReport = Get-Content -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.verificationReport)) -Raw | ConvertFrom-Json
+  if ($shareReport.schema -ne "stackchan.share-verification.v1") {
+    throw "share verification report schema mismatch: $($shareReport.schema)"
+  }
+  if ($shareReport.version -ne $metadata.releaseTag) {
+    throw "share verification report version mismatch: expected $($metadata.releaseTag), got $($shareReport.version)"
+  }
+  if ($shareReport.url -ne [string]$metadata.shareVerification.publicUrl) {
+    throw "share verification report URL does not match metadata shareVerification publicUrl"
+  }
+  if (-not [bool]$shareReport.allHttp200) {
+    throw "share verification report does not show all probes HTTP 200"
+  }
+  if ([int]$shareReport.probeCount -ne [int]$metadata.shareVerification.probeCount) {
+    throw "share verification report probeCount does not match metadata"
+  }
+
+  $hostedReferenceText = Get-Content -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.hostedMediaReference)) -Raw
+  foreach ($pattern in @("Hosted Media Reference", [string]$metadata.shareVerification.publicUrl, "All probes HTTP 200", "review evidence only")) {
+    if ($hostedReferenceText -notmatch [regex]::Escape($pattern)) {
+      throw "HOSTED_MEDIA_REFERENCE.md missing expected marker: $pattern"
+    }
+  }
+}
+
 if ($null -eq $metadata.voiceLeadAudition) {
   throw "metadata.json missing voiceLeadAudition reference"
 }

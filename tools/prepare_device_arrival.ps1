@@ -5,6 +5,7 @@ param(
   [string]$Port = "",
   [string]$Operator = "",
   [string]$DeviceId = "",
+  [string]$ShareRoot = "",
   [switch]$AllowIncompleteMetadata,
   [switch]$AllowDirtyPackage
 )
@@ -174,6 +175,9 @@ $evidenceScript = Join-Path $PSScriptRoot "start_hardware_evidence.ps1"
 $metadataArgs = @{}
 if ($AllowIncompleteMetadata) {
   $metadataArgs["AllowIncompleteMetadata"] = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($ShareRoot)) {
+  $metadataArgs["ShareRoot"] = $ShareRoot
 }
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($AllowDirtyPackage) {
