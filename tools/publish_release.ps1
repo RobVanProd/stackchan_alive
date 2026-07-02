@@ -317,6 +317,14 @@ Update-ReleaseArchive -PackageRoot $packageRoot -ZipPath $zipPath -Version $Vers
 
 $finalReleaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
 $finalReleaseAssets = @($finalReleaseAssetEntries | ForEach-Object { $_.Path })
+Write-Host "Verify finalized release asset contract before upload."
+& (Join-Path $PSScriptRoot "verify_release_asset_contract.ps1") `
+  -Version $Version `
+  -PackageRoot $packageRoot `
+  -ZipPath $zipPath `
+  -ZipSidecarPath $zipSidecarPath `
+  -FirmwareAssetRoot $stageDir `
+  -FirmwareAssetPathMode Stage
 
 Invoke-Checked "Upload finalized release evidence $Version" {
   gh release upload $Version `
