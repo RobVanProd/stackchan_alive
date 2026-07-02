@@ -68,7 +68,7 @@ Flash the exact display-only firmware binary from a verified release package:
 Publish a verified prerelease manually when GitHub Actions is unavailable:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -CreateTag -PushTag
+.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
 ```
 
 Audit the published GitHub release assets:

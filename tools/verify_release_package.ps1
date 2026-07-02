@@ -318,9 +318,18 @@ foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 si
 }
 
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
-foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber")) {
+foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
     throw "tools/publish_release.ps1 missing required finalized Actions status publish logic: $pattern"
+  }
+}
+
+foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
+  $publishDocText = Get-Content -LiteralPath (Join-PackagePath $docPath) -Raw
+  foreach ($pattern in @("publish_release.cmd", "-PushCurrentBranch", "-PushTag")) {
+    if ($publishDocText -notmatch [regex]::Escape($pattern)) {
+      throw "$docPath missing safe publish guidance: $pattern"
+    }
   }
 }
 

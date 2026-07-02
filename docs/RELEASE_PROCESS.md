@@ -107,7 +107,7 @@ The release workflow builds both firmware variants, runs native logic tests, com
 If GitHub Actions cannot run, publish the already verified package with the manual release helper:
 
 ```powershell
-.\tools\publish_release.cmd -Version <version> -CreateTag -PushTag
+.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
 ```
 
 The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.

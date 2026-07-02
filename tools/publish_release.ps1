@@ -3,6 +3,7 @@ param(
   [string]$Repo = "",
   [switch]$CreateTag,
   [switch]$PushTag,
+  [switch]$PushCurrentBranch,
   [switch]$AllowExistingRelease,
   [switch]$AllowDirtyPackage,
   [switch]$DryRun
@@ -58,6 +59,65 @@ function Update-ReleaseArchive {
 
   $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ZipPath).Hash.ToLowerInvariant()
   "$zipHash  stackchan_alive_$Version.zip" | Set-Content -Path "$ZipPath.sha256" -Encoding ASCII
+}
+
+function Get-CurrentBranchPublishInfo {
+  $branch = (git branch --show-current).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($branch)) {
+    throw "Unable to resolve current branch. Publish from a named branch so the Firmware workflow can be observed."
+  }
+
+  $upstream = (git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($upstream)) {
+    throw "Current branch '$branch' has no upstream. Set an upstream or push it before publishing."
+  }
+
+  $parts = $upstream -split "/", 2
+  if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[0]) -or [string]::IsNullOrWhiteSpace($parts[1])) {
+    throw "Unable to parse upstream ref '$upstream' for branch '$branch'."
+  }
+
+  return [ordered]@{
+    branch = $branch
+    upstream = $upstream
+    remote = $parts[0]
+    remoteBranch = $parts[1]
+  }
+}
+
+function Assert-CurrentBranchPublishedAtCommit {
+  param(
+    [string]$Commit,
+    [switch]$PushBranch,
+    [switch]$DryRun
+  )
+
+  $branchInfo = Get-CurrentBranchPublishInfo
+  if ($PushBranch) {
+    if ($DryRun) {
+      Write-Host "Dry run: git push $($branchInfo.remote) $($branchInfo.branch):$($branchInfo.remoteBranch)"
+    } else {
+      Invoke-Checked "Push current branch $($branchInfo.branch) to $($branchInfo.upstream)" {
+        git push $branchInfo.remote "$($branchInfo.branch):$($branchInfo.remoteBranch)"
+      }
+    }
+  }
+
+  if ($DryRun) {
+    Write-Host "Dry run: would verify $($branchInfo.upstream) points at $Commit before creating/uploading release assets."
+    return
+  }
+
+  $remoteRef = "refs/heads/$($branchInfo.remoteBranch)"
+  $remoteLine = (git ls-remote $branchInfo.remote $remoteRef | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($remoteLine)) {
+    throw "Unable to resolve remote branch $($branchInfo.upstream). Push the branch before publishing."
+  }
+
+  $remoteCommit = (($remoteLine -split "\s+")[0]).ToLowerInvariant()
+  if ($remoteCommit -ne $Commit.ToLowerInvariant()) {
+    throw "Remote branch $($branchInfo.upstream) points at $remoteCommit, not release commit $Commit. Push the branch first or pass -PushCurrentBranch."
+  }
 }
 
 function Export-ActionsStatusWithRetry {
@@ -136,6 +196,10 @@ if ($LASTEXITCODE -eq 0) {
   Write-Warning "Dry run: using HEAD as expected commit because local tag $Version does not exist."
 } else {
   throw "Missing local tag $Version. Create it first or pass -CreateTag."
+}
+
+if ($PushTag -or $PushCurrentBranch) {
+  Assert-CurrentBranchPublishedAtCommit -Commit $tagCommit -PushBranch:$PushCurrentBranch -DryRun:$DryRun
 }
 
 if ($PushTag) {
