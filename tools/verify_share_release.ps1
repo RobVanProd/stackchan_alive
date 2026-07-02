@@ -5,7 +5,8 @@ param(
   [switch]$RequirePublicUrl,
   [int]$TimeoutSeconds = 20,
   [int]$ProbeRetries = 20,
-  [int]$ProbeDelaySeconds = 3
+  [int]$ProbeDelaySeconds = 3,
+  [string]$ReportPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,9 +50,12 @@ function Invoke-UrlProbe {
   $maxAttempts = [Math]::Max(1, $ProbeRetries)
   $delaySeconds = [Math]::Max(0, $ProbeDelaySeconds)
   $lastError = ""
+  $lastDnsError = ""
   for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
     if ($null -ne $curl) {
+      $method = "curl"
+      $resolvedAddress = ""
       $curlArgs = @("-L", "-I", "--max-time", $TimeoutSeconds, "--silent", "--show-error", $TargetUrl)
       $oldErrorActionPreference = $ErrorActionPreference
       $ErrorActionPreference = "Continue"
@@ -69,6 +73,7 @@ function Invoke-UrlProbe {
             $resolvedAddress = Resolve-DnsName $uri.Host -Server 1.1.1.1 -Type A -ErrorAction Stop |
               Select-Object -First 1 -ExpandProperty IPAddress
             if (-not [string]::IsNullOrWhiteSpace($resolvedAddress)) {
+              $method = "curl-resolve"
               $resolveArg = "$($uri.Host):443:$resolvedAddress"
               $oldErrorActionPreference = $ErrorActionPreference
               $ErrorActionPreference = "Continue"
@@ -81,7 +86,8 @@ function Invoke-UrlProbe {
             }
           }
         } catch {
-          $lastError = $_.Exception.Message
+          $lastDnsError = $_.Exception.Message
+          $lastError = $lastDnsError
         }
       }
 
@@ -100,10 +106,15 @@ function Invoke-UrlProbe {
           StatusLine = [string]$statusLine[0]
           ContentType = if ($contentType.Count -gt 0) { [string]$contentType[0] } else { "" }
           ContentLength = if ($contentLength.Count -gt 0) { [string]$contentLength[0] } else { "" }
+          Method = $method
+          ResolvedAddress = $resolvedAddress
         }
       }
 
       $lastError = "curl.exe failed with exit code $curlExitCode`: $(($head | Out-String).Trim())"
+      if (-not [string]::IsNullOrWhiteSpace($lastDnsError)) {
+        $lastError += " Public DNS fallback error: $lastDnsError"
+      }
     }
 
     try {
@@ -113,6 +124,8 @@ function Invoke-UrlProbe {
         StatusLine = "HTTP $([int]$response.StatusCode)"
         ContentType = [string]$response.Headers["Content-Type"]
         ContentLength = [string]$response.Headers["Content-Length"]
+        Method = "Invoke-WebRequest"
+        ResolvedAddress = ""
       }
     } catch {
       $lastError = $_.Exception.Message
@@ -124,6 +137,59 @@ function Invoke-UrlProbe {
   }
 
   throw "Share URL probe failed after $maxAttempts retries for $TargetUrl. Last error: $lastError"
+}
+
+function Write-VerificationReport {
+  param(
+    [string]$ReportBasePath,
+    [string]$Version,
+    [string]$Url,
+    [bool]$RequiredPublicUrl,
+    [object[]]$Probes,
+    [string]$ShareRootPath
+  )
+
+  $reportObject = [ordered]@{
+    schema = "stackchan.share-verification.v1"
+    version = $Version
+    generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    url = $Url
+    requirePublicUrl = $RequiredPublicUrl
+    shareRoot = $ShareRootPath
+    probeCount = $Probes.Count
+    allHttp200 = (@($Probes | Where-Object { $_.StatusLine -notmatch "\s200\s" }).Count -eq 0)
+    usedCurlResolveFallback = (@($Probes | Where-Object { $_.Method -eq "curl-resolve" }).Count -gt 0)
+    probes = @($Probes)
+  }
+
+  $jsonPath = $ReportBasePath
+  if (-not $jsonPath.EndsWith(".json", [System.StringComparison]::OrdinalIgnoreCase)) {
+    $jsonPath = "$ReportBasePath.json"
+  }
+  $mdPath = [System.IO.Path]::ChangeExtension($jsonPath, ".md")
+
+  $reportObject | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
+
+  $fallbackText = if ($reportObject.usedCurlResolveFallback) { "yes" } else { "no" }
+  $reportFileName = [System.IO.Path]::GetFileName($jsonPath)
+  @(
+    "# Share Verification Report",
+    "",
+    "- Version: $Version",
+    "- URL: $Url",
+    "- Generated UTC: $($reportObject.generatedUtc)",
+    "- Public URL required: $RequiredPublicUrl",
+    "- Probe count: $($reportObject.probeCount)",
+    "- All probes HTTP 200: $($reportObject.allHttp200)",
+    "- Used curl DNS override fallback: $fallbackText",
+    "",
+    "Machine-readable report: ``$reportFileName``"
+  ) | Set-Content -LiteralPath $mdPath -Encoding UTF8
+
+  return [ordered]@{
+    JsonPath = $jsonPath
+    MarkdownPath = $mdPath
+  }
 }
 
 function Assert-HttpOk {
@@ -334,6 +400,13 @@ foreach ($file in $expectedFiles | Where-Object { $_.Path -in $probedPaths }) {
   $probes += [pscustomobject]$probe
 }
 
+if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+  $ReportPath = Join-Path $shareRootPath "share_verification_report.json"
+}
+$reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $Url -RequiredPublicUrl ([bool]$RequirePublicUrl) -Probes $probes -ShareRootPath $shareRootPath
+
 Write-Host "Share release verified:"
 Write-Host $Url
+Write-Host "Report:"
+Write-Host $reportPaths.JsonPath
 $probes | ConvertTo-Json -Depth 4
