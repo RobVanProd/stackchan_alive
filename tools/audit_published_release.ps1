@@ -73,6 +73,55 @@ function Assert-UploadedAuditAsset {
   }
 }
 
+function Write-AuditFiles {
+  param(
+    [object]$Audit,
+    [string]$JsonPath,
+    [string]$MarkdownPath
+  )
+
+  $Audit | ConvertTo-Json -Depth 8 | Set-Content -Path $JsonPath -Encoding UTF8
+
+  $blockerLines = @()
+  foreach ($blocker in @($Audit.rollout.blockers)) {
+    $blockerLines += "- $blocker"
+  }
+  if ($blockerLines.Count -eq 0) {
+    $blockerLines += "- None"
+  }
+
+@"
+# Stackchan Published Release Audit
+
+- Version: $($Audit.version)
+- Commit: $($Audit.commit)
+- Repository: $($Audit.repo)
+- Release: $($Audit.releaseUrl)
+- Status: $($Audit.status)
+- Generated UTC: $($Audit.generatedUtc)
+
+## Verification
+
+- Published release assets: $($Audit.publishedReleaseVerification.status)
+- Release asset count: $($Audit.releaseAssetCount)
+- Audit assets uploaded: $($Audit.auditAssetsUploaded)
+- ZIP SHA256: $($Audit.zipSha256)
+- GitHub Actions: $($Audit.githubActions.status)
+- Rollout status: $($Audit.rollout.status)
+- Consumer ready: $($Audit.rollout.consumerReady)
+
+## Blockers
+
+$($blockerLines -join [Environment]::NewLine)
+
+## Reports
+
+- Actions report: $($Audit.githubActions.report)
+- Rollout report: $($Audit.rollout.report)
+- Machine-readable audit: RELEASE_AUDIT.json
+"@ | Set-Content -Path $MarkdownPath -Encoding UTF8
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $manifestProbe = Join-Path $repoRoot "release_manifest.json"
   if (Test-Path -LiteralPath $manifestProbe) {
@@ -185,6 +234,7 @@ $audit = [ordered]@{
   zipPath = $ZipPath
   zipSha256 = Get-Sha256OrEmpty $ZipPath
   releaseAssetCount = $releaseAssetCount
+  auditAssetsUploaded = $false
   publishedReleaseVerification = [ordered]@{
     status = if ($publishedVerify.exitCode -eq 0) { "pass" } else { "fail" }
     exitCode = $publishedVerify.exitCode
@@ -226,45 +276,7 @@ $audit = [ordered]@{
 
 $auditJsonPath = Join-Path $outPath "RELEASE_AUDIT.json"
 $auditMdPath = Join-Path $outPath "RELEASE_AUDIT.md"
-$audit | ConvertTo-Json -Depth 8 | Set-Content -Path $auditJsonPath -Encoding UTF8
-
-$blockerLines = @()
-foreach ($blocker in @($audit.rollout.blockers)) {
-  $blockerLines += "- $blocker"
-}
-if ($blockerLines.Count -eq 0) {
-  $blockerLines += "- None"
-}
-
-@"
-# Stackchan Published Release Audit
-
-- Version: $Version
-- Commit: $ExpectedCommit
-- Repository: $Repo
-- Release: $releaseUrl
-- Status: $auditStatus
-- Generated UTC: $($audit.generatedUtc)
-
-## Verification
-
-- Published release assets: $($audit.publishedReleaseVerification.status)
-- Release asset count: $releaseAssetCount
-- ZIP SHA256: $($audit.zipSha256)
-- GitHub Actions: $($audit.githubActions.status)
-- Rollout status: $($audit.rollout.status)
-- Consumer ready: $($audit.rollout.consumerReady)
-
-## Blockers
-
-$($blockerLines -join [Environment]::NewLine)
-
-## Reports
-
-- Actions report: $($audit.githubActions.report)
-- Rollout report: $($audit.rollout.report)
-- Machine-readable audit: RELEASE_AUDIT.json
-"@ | Set-Content -Path $auditMdPath -Encoding UTF8
+Write-AuditFiles -Audit $audit -JsonPath $auditJsonPath -MarkdownPath $auditMdPath
 
 if ($UploadToRelease -and $publishedVerify.exitCode -eq 0) {
   & gh release upload $Version `
@@ -284,6 +296,28 @@ if ($UploadToRelease -and $publishedVerify.exitCode -eq 0) {
   $uploadedAssets = @($uploadedRelease.assets)
   Assert-UploadedAuditAsset -Assets $uploadedAssets -Name "RELEASE_AUDIT.md" -Path $auditMdPath
   Assert-UploadedAuditAsset -Assets $uploadedAssets -Name "RELEASE_AUDIT.json" -Path $auditJsonPath
+
+  $audit.releaseAssetCount = $uploadedAssets.Count
+  $audit.auditAssetsUploaded = $true
+  Write-AuditFiles -Audit $audit -JsonPath $auditJsonPath -MarkdownPath $auditMdPath
+
+  & gh release upload $Version `
+    $auditMdPath `
+    $auditJsonPath `
+    --repo $Repo `
+    --clobber
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to upload finalized release audit assets to $Version"
+  }
+
+  $finalReleaseJson = gh release view $Version --repo $Repo --json assets 2>$null
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($finalReleaseJson | Out-String).Trim())) {
+    throw "Unable to verify finalized release audit assets for $Version"
+  }
+  $finalRelease = $finalReleaseJson | ConvertFrom-Json
+  $finalAssets = @($finalRelease.assets)
+  Assert-UploadedAuditAsset -Assets $finalAssets -Name "RELEASE_AUDIT.md" -Path $auditMdPath
+  Assert-UploadedAuditAsset -Assets $finalAssets -Name "RELEASE_AUDIT.json" -Path $auditJsonPath
 }
 
 Write-Host "Published release audit exported:"

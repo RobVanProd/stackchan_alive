@@ -320,7 +320,7 @@ foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 si
 }
 
 $publishedAuditText = Get-Content -LiteralPath (Join-PackagePath "tools/audit_published_release.ps1") -Raw
-foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.ps1", "export_github_actions_status.ps1", "export_rollout_status.ps1", "RELEASE_AUDIT.md", "RELEASE_AUDIT.json", "published-release-blocked-or-pending", "UploadToRelease", "gh release upload", "Assert-UploadedAuditAsset")) {
+foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.ps1", "export_github_actions_status.ps1", "export_rollout_status.ps1", "RELEASE_AUDIT.md", "RELEASE_AUDIT.json", "published-release-blocked-or-pending", "UploadToRelease", "gh release upload", "Assert-UploadedAuditAsset", "auditAssetsUploaded", "Write-AuditFiles")) {
   if ($publishedAuditText -notmatch [regex]::Escape($pattern)) {
     throw "tools/audit_published_release.ps1 missing required published release audit logic: $pattern"
   }
