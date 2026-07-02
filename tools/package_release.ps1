@@ -792,6 +792,7 @@ $readinessReport = [ordered]@{
   )
   hardwareGates = @(
     [ordered]@{ gate = "display-only-flash"; status = "pending-device"; requiredEvidence = "display-only serial log, real photo/video, 10-minute idle observation" },
+    [ordered]@{ gate = "speech-mouth-demo-evidence"; status = "pending-device"; requiredEvidence = "logs/speech_mouth_demo_serial.log with streamed speech envelope commands, speech clear, and completion" },
     [ordered]@{ gate = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ gate = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat and runtime health markers" },
     [ordered]@{ gate = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
@@ -831,6 +832,7 @@ $acceptanceChecklist = [ordered]@{
   )
   hardwareAcceptanceRequired = @(
     [ordered]@{ requirement = "display-only-flash"; status = "pending-device"; requiredEvidence = "display-only serial log, real photo/video, 10-minute idle observation" },
+    [ordered]@{ requirement = "speech-mouth-demo-evidence"; status = "pending-device"; requiredEvidence = "logs/speech_mouth_demo_serial.log with streamed speech envelope commands, speech clear, and completion" },
     [ordered]@{ requirement = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat and runtime health markers" },
     [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
@@ -871,6 +873,7 @@ Consumer rollout: blocked pending hardware validation
 ## Still Required Before Consumer Rollout
 
 - [ ] Display-only flash with serial log, real photo/video, and 10-minute idle observation
+- [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion
 - [ ] Supervised servo calibration with yaw classification and calibration values
 - [ ] 30-minute mixed idle/listen/think/speak soak with heartbeat and runtime health markers
 - [ ] USB power-cycle recovery marked pass
@@ -905,6 +908,7 @@ Consumer rollout: blocked pending hardware validation
 ## Pending Device Evidence
 
 - Display-only flash, visible procedural face, and 10-minute idle run.
+- Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion.
 - Supervised servo calibration, yaw classification, and calibration values.
 - 30-minute mixed idle/listen/think/speak soak.
 - USB power-cycle recovery.
@@ -940,12 +944,13 @@ Voice audition quick check:
 Hardware validation is still required before consumer rollout:
 
 1. Display-only flash and 10-minute idle run.
-2. Supervised servo-enable test.
-3. Yaw classification and calibration.
-4. 30-minute mixed idle/listen/speak soak.
-5. USB power-cycle recovery test.
-6. Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
-7. Licensed or owned production voice source.
+2. Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion.
+3. Supervised servo-enable test.
+4. Yaw classification and calibration.
+5. 30-minute mixed idle/listen/speak soak.
+6. USB power-cycle recovery test.
+7. Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
+8. Licensed or owned production voice source.
 
 See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8
