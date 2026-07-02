@@ -301,7 +301,7 @@ foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench 
 }
 
 $consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
-foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
+foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Assert-VoiceStatusReportsReady", "voice_source_status.json is not production-source-ready", "rvc_voice_base_status.json is not consumer approved", "rvc_voice_base_status.json is not distribution approved", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
   if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_consumer_promotion.ps1 missing promotion gate logic: $pattern"
   }
@@ -353,7 +353,7 @@ foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "local-archive-veri
 }
 
 $rolloutStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rollout_status.ps1") -Raw
-foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "github-actions-required-workflows", "voice_source_status.json", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference")) {
+foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "github-actions-required-workflows", "voice_source_status.json", "rvc_voice_base_status.json", "rvc-voice-base-approval", "RVC voice base is not approved for consumer distribution", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference")) {
   if ($rolloutStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rollout_status.ps1 missing rollout status export logic: $pattern"
   }

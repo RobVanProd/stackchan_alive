@@ -104,6 +104,7 @@ try {
   $readiness = Read-JsonFile (Join-ResolvedPath $packageRootPath "readiness_report.json")
   $actions = Read-JsonFile (Join-ResolvedPath $packageRootPath "github_actions_status.json")
   $voice = Read-JsonFile (Join-ResolvedPath $packageRootPath "voice_source_status.json")
+  $rvcVoiceBase = Read-JsonFile (Join-ResolvedPath $packageRootPath "rvc_voice_base_status.json")
 
   if ($null -ne $manifest) {
     $Version = [string]$manifest.version
@@ -151,6 +152,16 @@ try {
   } else {
     Add-Gate $gates "production-voice-source" "blocked" "Voice source status: $voiceStatus" "voice"
     $blockers.Add("Production voice source is not cleared: $voiceStatus.") | Out-Null
+  }
+
+  if ($null -eq $rvcVoiceBase) {
+    Add-Gate $gates "rvc-voice-base-approval" "blocked" "rvc_voice_base_status.json is missing" "voice"
+    $blockers.Add("RVC voice base approval report is missing.") | Out-Null
+  } elseif ([bool]$rvcVoiceBase.consumerApproved -and [bool]$rvcVoiceBase.distributionApproved -and [int]$rvcVoiceBase.blockedGateCount -eq 0 -and [int]$rvcVoiceBase.failedGateCount -eq 0) {
+    Add-Gate $gates "rvc-voice-base-approval" "pass" "RVC base is consumer and distribution approved" "voice"
+  } else {
+    Add-Gate $gates "rvc-voice-base-approval" "blocked" "RVC base status: $($rvcVoiceBase.status), consumerApproved=$($rvcVoiceBase.consumerApproved), distributionApproved=$($rvcVoiceBase.distributionApproved)" "voice"
+    $blockers.Add("RVC voice base is not approved for consumer distribution.") | Out-Null
   }
 
   $evidenceSummary = $null

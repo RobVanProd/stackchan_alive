@@ -54,6 +54,13 @@ function Assert-FilePath {
   }
 }
 
+function Read-JsonFile {
+  param([string]$Path)
+
+  Assert-FilePath $Path 10
+  return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+}
+
 function Assert-ObjectTextComplete {
   param(
     [object]$Value,
@@ -66,6 +73,40 @@ function Assert-ObjectTextComplete {
   }
   if ($text -match "(?i)\b(TBD|pending|required-before|required before|not approved)\b") {
     throw "Voice source provenance field is not production-ready: $Path = $text"
+  }
+}
+
+function Assert-VoiceStatusReportsReady {
+  param([string]$PackageRootPath)
+
+  $voiceStatusPath = Join-ResolvedPath $PackageRootPath "voice_source_status.json"
+  $voiceStatus = Read-JsonFile $voiceStatusPath
+  if ($voiceStatus.schema -ne "stackchan.voice-source-status.v1") {
+    throw "voice_source_status.json schema mismatch: $($voiceStatus.schema)"
+  }
+  if ($voiceStatus.status -ne "production-source-ready") {
+    throw "voice_source_status.json is not production-source-ready: $($voiceStatus.status)"
+  }
+  if ([int]$voiceStatus.blockedGateCount -ne 0) {
+    throw "voice_source_status.json still reports blocked gates: $($voiceStatus.blockedGateCount)"
+  }
+
+  $rvcStatusPath = Join-ResolvedPath $PackageRootPath "rvc_voice_base_status.json"
+  $rvcStatus = Read-JsonFile $rvcStatusPath
+  if ($rvcStatus.schema -ne "stackchan.rvc-voice-base-status.v1") {
+    throw "rvc_voice_base_status.json schema mismatch: $($rvcStatus.schema)"
+  }
+  if (-not [bool]$rvcStatus.consumerApproved) {
+    throw "rvc_voice_base_status.json is not consumer approved"
+  }
+  if (-not [bool]$rvcStatus.distributionApproved) {
+    throw "rvc_voice_base_status.json is not distribution approved"
+  }
+  if ([int]$rvcStatus.failedGateCount -gt 0) {
+    throw "rvc_voice_base_status.json still reports failed gates: $($rvcStatus.failedGateCount)"
+  }
+  if ([int]$rvcStatus.blockedGateCount -gt 0) {
+    throw "rvc_voice_base_status.json still reports blocked gates: $($rvcStatus.blockedGateCount)"
   }
 }
 
@@ -183,6 +224,7 @@ try {
     $VoiceSourceTemplatePath = Join-ResolvedPath $packageRootPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
   }
   Assert-VoiceSourceReady -YamlPath $VoiceSourceProvenancePath -TemplatePath $VoiceSourceTemplatePath
+  Assert-VoiceStatusReportsReady -PackageRootPath $packageRootPath
 
   Write-Host "Consumer promotion gate verified:"
   Write-Host "Release: $Version"
