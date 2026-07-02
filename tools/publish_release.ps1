@@ -34,12 +34,34 @@ function Invoke-Checked {
   }
 }
 
+function Clear-TransientPackageOutput {
+  param([string]$PackageRoot)
+
+  $transientOutput = Join-Path $PackageRoot "output"
+  if (-not (Test-Path -LiteralPath $transientOutput)) {
+    return
+  }
+
+  $resolvedPackageRoot = (Resolve-Path $PackageRoot).Path
+  $resolvedTransientOutput = (Resolve-Path $transientOutput).Path
+  $expectedPrefix = $resolvedPackageRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $resolvedTransientOutput.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to clean transient package output outside package root: $resolvedTransientOutput"
+  }
+
+  # open_voice_audition.cmd -All writes output/voice_auditions/VOICE_AUDITION_INDEX.html for local review.
+  # Package-local output/ is transient and must not enter the finalized ZIP or SHA256SUMS.txt.
+  Remove-Item -LiteralPath $resolvedTransientOutput -Recurse -Force
+}
+
 function Update-ReleaseArchive {
   param(
     [string]$PackageRoot,
     [string]$ZipPath,
     [string]$Version
   )
+
+  Clear-TransientPackageOutput -PackageRoot $PackageRoot
 
   $hashLines = Get-ChildItem -LiteralPath $PackageRoot -File -Recurse |
     Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
