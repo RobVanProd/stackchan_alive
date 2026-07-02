@@ -95,6 +95,7 @@ motion reduced off
 ```
 
 The command logs `[control] command=reduced_motion_on reduced_motion=1` or `[control] command=reduced_motion_off reduced_motion=0`, then the face task applies the change and logs the new `[face] reduced_motion=` state.
+Those reduced-motion command lines count as display bench-control telemetry in the evidence checks, but they do not replace the required photo, video, speaker audio, or strict hardware logs.
 
 ## Servo Enable Gate
 
