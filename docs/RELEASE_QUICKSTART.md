@@ -69,6 +69,8 @@ Open the newest evidence packet folder and run:
 .\RUN_DISPLAY_ONLY.cmd
 ```
 
+Open `NEXT_STEPS.md` in the evidence packet for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
+
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:
 
 ```powershell

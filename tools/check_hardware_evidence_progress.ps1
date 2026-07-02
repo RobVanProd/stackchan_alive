@@ -86,6 +86,7 @@ function Test-TextPattern {
 
 foreach ($file in @(
   "README.md",
+  "NEXT_STEPS.md",
   "CHECKLIST.md",
   "OBSERVATIONS.md",
   "AUDIO_REVIEW.md",
@@ -274,6 +275,11 @@ Test-TextPattern "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=
 Test-TextPattern "logs/soak_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "soak display frame-budget telemetry"
 Test-TextPattern "logs/soak_serial.log" "\[face\]\s+mode=\d+\s+blink_count=\d+\s+saccade_count=\d+.*gesture_active=\d+\s+speech_active=\d+\s+speech_env=" "soak face animator telemetry"
 Test-TextPattern "logs/soak_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\d+\s+stack_loop_hwm=\d+\s+stack_motion_hwm=\d+\s+stack_face_hwm=\d+\s+stack_intent_hwm=\d+" "soak runtime health telemetry"
+
+Test-TextPattern "NEXT_STEPS.md" "RUN_PACKAGE_VERIFY\.cmd" "package verify run order"
+Test-TextPattern "NEXT_STEPS.md" "RUN_PROGRESS_CHECK\.cmd" "progress check run order"
+Test-TextPattern "NEXT_STEPS.md" "Generated source WAVs alone do not count" "real-device audio warning"
+Test-TextPattern "NEXT_STEPS.md" "RUN_CONSUMER_PROMOTION_CHECK\.cmd" "consumer promotion gate"
 
 if (Test-Path -LiteralPath (Join-EvidencePath "calibration/calibration.yaml")) {
   $calibration = Get-Content -LiteralPath (Join-EvidencePath "calibration/calibration.yaml") -Raw

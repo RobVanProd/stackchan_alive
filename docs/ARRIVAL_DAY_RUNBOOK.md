@@ -106,6 +106,8 @@ Import the speaker recording into the packet. Use `-Type Audio` for phone videos
 
 ## 5. Progress Check Before Promotion
 
+Open `NEXT_STEPS.md` in the evidence packet first. It gives the shortest run order for package verification, display, servo, soak, speaker recording, progress checks, rollout status, and promotion gates.
+
 Run this repeatedly while collecting evidence:
 
 ```powershell

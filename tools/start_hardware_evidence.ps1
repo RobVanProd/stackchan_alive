@@ -741,10 +741,53 @@ foreach ($commandFile in $commandFiles.GetEnumerator()) {
   $commandFile.Value | Set-Content -Path (Join-Path $outDir $commandFile.Key) -Encoding ASCII
 }
 
+$nextSteps = @(
+  "# Stackchan Evidence Next Steps",
+  "",
+  "Release: $ReleaseTag",
+  "Commit: $commit",
+  "Device: $DeviceId",
+  "Port: $Port",
+  "Operator: $Operator",
+  "",
+  "Use this as the short operator path for the packet. The longer README.md explains the details and exact commands.",
+  "",
+  "## Run Order",
+  "",
+  "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
+  "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
+  "3. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+  "4. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+  "5. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+  "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+  "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+  "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+  "9. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+  "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "",
+  "## Gates Still Expected",
+  "",
+  "- Hardware validation remains pending until this packet has real display, servo, soak, calibration, photo/video, and speaker evidence.",
+  "- Production voice-source provenance remains pending until the owned or licensed source record is completed.",
+  "- RVC voice-base evidence remains review-only until consumer and distribution approvals are explicitly recorded.",
+  "- GitHub Actions may still be externally blocked; use ``RUN_ROLLOUT_STATUS.cmd`` for the current CI/account state.",
+  "- Hosted media or synthetic diagnostic packets are review aids only. They do not replace real-device evidence.",
+  "",
+  "## Hard Stops",
+  "",
+  "- Do not run servo calibration unless the body is clear and supervised.",
+  "- Do not mark the audio gate complete without a recording captured from the actual target speaker path.",
+  "- Do not promote if ``CHECKLIST.md`` still has unchecked gates or ``RUN_PROGRESS_CHECK.cmd`` reports missing evidence.",
+  "- Do not treat generated samples, local previews, or hosted review pages as consumer rollout evidence."
+)
+$nextSteps | Set-Content -Path (Join-Path $outDir "NEXT_STEPS.md") -Encoding UTF8
+
 $readme = @(
   "# Stackchan Hardware Evidence Packet",
   "",
-  "Use this folder as the record for one device bring-up session. Complete CHECKLIST.md and OBSERVATIONS.md, save serial logs under logs/, and place real photos or short videos under photos/.",
+  "Use this folder as the record for one device bring-up session. Start with NEXT_STEPS.md for the short run order, then complete CHECKLIST.md and OBSERVATIONS.md, save serial logs under logs/, and place real photos or short videos under photos/.",
   "",
   "The runnable command files in this folder are generated for this release, port, package, and evidence path.",
   "",
@@ -843,6 +886,7 @@ $readme = @(
 $readme | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
 
 $requiredRecords = @(
+  "NEXT_STEPS.md",
   "CHECKLIST.md",
   "RELEASE_ACCEPTANCE.md",
   "release_acceptance.json",

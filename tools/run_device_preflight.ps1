@@ -333,6 +333,53 @@ function Write-SyntheticVoiceLeadArtifacts {
   return $lead
 }
 
+function Write-SyntheticNextSteps {
+  param(
+    [string]$EvidenceRoot,
+    [string]$ReleaseTag,
+    [string]$Commit
+  )
+
+  @(
+    "# Stackchan Evidence Next Steps",
+    "",
+    "Release: $ReleaseTag",
+    "Commit: $Commit",
+    "Device: SELFTEST",
+    "Port: COM_TEST",
+    "Operator: preflight",
+    "",
+    "Synthetic preflight fixture for verifier coverage.",
+    "",
+    "## Run Order",
+    "",
+    "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
+    "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
+    "3. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+    "4. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+    "5. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+    "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+    "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+    "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+    "9. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+    "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+    "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+    "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+    "",
+    "## Gates Still Expected",
+    "",
+    "- Hardware validation remains pending until this packet has real display, servo, soak, calibration, photo/video, and speaker evidence.",
+    "- Production voice-source provenance remains pending until the owned or licensed source record is completed.",
+    "- RVC voice-base evidence remains review-only until consumer and distribution approvals are explicitly recorded.",
+    "",
+    "## Hard Stops",
+    "",
+    "- Do not run servo calibration unless the body is clear and supervised.",
+    "- Do not mark the audio gate complete without a recording captured from the actual target speaker path.",
+    "- Do not promote if ``CHECKLIST.md`` still has unchecked gates or ``RUN_PROGRESS_CHECK.cmd`` reports missing evidence."
+  ) | Set-Content -Path (Join-Path $EvidenceRoot "NEXT_STEPS.md") -Encoding UTF8
+}
+
 function Assert-FlashHelperSafety {
   $flashScript = Join-Path $PSScriptRoot "flash_device.ps1"
 
@@ -451,6 +498,7 @@ function Assert-HardwareEvidenceMediaGate {
     $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
+    Write-SyntheticNextSteps -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
 
     $observations = @(
       "# Hardware Test Observations",
@@ -554,6 +602,7 @@ function Assert-HardwareEvidenceMediaGate {
         "logs/soak_serial.log"
       )
       requiredRecords = @(
+        "NEXT_STEPS.md",
         "CHECKLIST.md",
         "RELEASE_ACCEPTANCE.md",
         "release_acceptance.json",
@@ -604,6 +653,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
+    Write-SyntheticNextSteps -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
 
     $observations = @(
       "# Hardware Test Observations",
@@ -703,6 +753,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
         "logs/soak_serial.log"
       )
       requiredRecords = @(
+        "NEXT_STEPS.md",
         "CHECKLIST.md",
         "RELEASE_ACCEPTANCE.md",
         "release_acceptance.json",
@@ -801,6 +852,7 @@ function Assert-ArrivalPacketScaffoldGate {
   try {
     foreach ($relativePath in @(
       "README.md",
+      "NEXT_STEPS.md",
       "CHECKLIST.md",
       "OBSERVATIONS.md",
       "AUDIO_REVIEW.md",
@@ -861,6 +913,12 @@ function Assert-ArrivalPacketScaffoldGate {
     $readme = Get-Content -LiteralPath (Join-Path $evidenceRoot "README.md") -Raw
     Assert-TextContains $readme "RUN_PLAY_LEAD_VOICE.cmd"
     Assert-TextContains $readme "real-device speaker recording"
+
+    $nextSteps = Get-Content -LiteralPath (Join-Path $evidenceRoot "NEXT_STEPS.md") -Raw
+    Assert-TextContains $nextSteps "RUN_PACKAGE_VERIFY.cmd"
+    Assert-TextContains $nextSteps "RUN_CONSUMER_PROMOTION_CHECK.cmd"
+    Assert-TextContains $nextSteps "Generated source WAVs alone do not count"
+    Assert-TextContains $nextSteps "Do not run servo calibration unless the body is clear"
 
     $checklist = Get-Content -LiteralPath (Join-Path $evidenceRoot "CHECKLIST.md") -Raw
     Assert-TextContains $checklist 'Pre-marked no-hardware gates were proven by the matching preflight report'

@@ -50,6 +50,104 @@ function Copy-AcceptanceArtifactsFromZip {
   }
 }
 
+function Copy-VoiceLeadArtifactsFromRoot {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot
+  )
+
+  $auditionJsonPath = Join-Path $SourceRoot "media/voice/rvc/RVC_AUDITIONS.json"
+  $auditionMarkdownPath = Join-Path $SourceRoot "media/voice/rvc/RVC_AUDITIONS.md"
+  if (-not (Test-Path -LiteralPath $auditionJsonPath)) {
+    throw "Release package missing RVC audition manifest: media/voice/rvc/RVC_AUDITIONS.json"
+  }
+  if (-not (Test-Path -LiteralPath $auditionMarkdownPath)) {
+    throw "Release package missing RVC audition notes: media/voice/rvc/RVC_AUDITIONS.md"
+  }
+
+  $auditions = Get-Content -LiteralPath $auditionJsonPath -Raw | ConvertFrom-Json
+  if ($null -eq $auditions.leadAudition) {
+    throw "RVC_AUDITIONS.json missing leadAudition metadata."
+  }
+
+  $lead = $auditions.leadAudition
+  $leadFile = [string]$lead.file
+  if ([string]::IsNullOrWhiteSpace($leadFile)) {
+    throw "RVC lead audition file is blank."
+  }
+
+  $leadSourcePath = Join-Path $SourceRoot "media/voice/rvc/$leadFile"
+  if (-not (Test-Path -LiteralPath $leadSourcePath)) {
+    throw "Release package missing RVC lead audition WAV: media/voice/rvc/$leadFile"
+  }
+
+  $referenceDir = Join-Path $DestinationRoot "reference_audio"
+  New-Item -ItemType Directory -Force -Path $referenceDir | Out-Null
+
+  $leadDestinationPath = Join-Path $referenceDir $leadFile
+  Copy-Item -LiteralPath $leadSourcePath -Destination $leadDestinationPath
+  Copy-Item -LiteralPath $auditionJsonPath -Destination (Join-Path $referenceDir "RVC_AUDITIONS.json")
+  Copy-Item -LiteralPath $auditionMarkdownPath -Destination (Join-Path $referenceDir "RVC_AUDITIONS.md")
+
+  $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadDestinationPath).Hash.ToLowerInvariant()
+  $leadTitle = [string]$lead.title
+  $leadTranscript = [string]$lead.transcript
+  $leadRating = [string]$lead.userRating
+  $leadPurpose = [string]$lead.perceptualPurpose
+  $leadPitch = [string]$lead.pitch
+  $leadIndex = [string]$lead.index_rate
+  $leadRms = [string]$lead.rms_mix_rate
+  $leadProtect = [string]$lead.protect
+  $leadRelativePath = "reference_audio/$leadFile"
+
+  @(
+    "# RVC Lead Audition Reference",
+    "",
+    "This file pins the exact review-only RVC voice sample to play during the target speaker check. It is not production voice-source approval.",
+    "",
+    "- Lead audition: $leadTitle",
+    "- Reference WAV: $leadRelativePath",
+    "- SHA256: $leadHash",
+    "- Transcript: $leadTranscript",
+    "- Tuning: pitch $leadPitch, index $leadIndex, RMS mix $leadRms, protect $leadProtect",
+    "- Listening note: $leadRating",
+    "- Perceptual purpose: $leadPurpose",
+    "",
+    "Use ``RUN_PLAY_LEAD_VOICE.cmd`` only as a playback aid. Consumer promotion still requires a real-device speaker recording imported under ``audio/``, completed ``AUDIO_REVIEW.md``, and completed production voice-source provenance."
+  ) | Set-Content -Path (Join-Path $DestinationRoot "RVC_LEAD_AUDITION.md") -Encoding UTF8
+
+  return [ordered]@{
+    title = $leadTitle
+    file = $leadFile
+    referenceFile = $leadRelativePath
+    sha256 = $leadHash
+    transcript = $leadTranscript
+    pitch = $leadPitch
+    index_rate = $leadIndex
+    rms_mix_rate = $leadRms
+    protect = $leadProtect
+    userRating = $leadRating
+    perceptualPurpose = $leadPurpose
+  }
+}
+
+function Copy-VoiceLeadArtifactsFromZip {
+  param(
+    [string]$ZipPath,
+    [string]$DestinationRoot
+  )
+
+  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-synthetic-voice-lead"
+  $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+  try {
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    return Copy-VoiceLeadArtifactsFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
+  } finally {
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Get-ReleaseManifest {
   param([string]$RootPath)
 
@@ -106,6 +204,7 @@ $packageDir = Join-Path $outDir "package"
 New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
+$voiceLeadInfo = $null
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/servo_calibration_serial.log",
@@ -150,6 +249,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     throw "Release package verification failed while generating synthetic evidence. See $packageVerifyLog"
   }
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
+  $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   if (-not (Test-Path -LiteralPath $PackageRoot)) {
@@ -185,6 +285,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     throw "Release package verification failed while generating synthetic evidence. See $packageVerifyLog"
   }
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
+  $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } else {
   throw "Pass -PackageZip or -PackageRoot, or build a release package for $Version first."
@@ -211,6 +312,48 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "Release: $Version",
   "Commit: $ExpectedCommit"
 ) | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
+
+@(
+  "# Stackchan Evidence Next Steps",
+  "",
+  "Release: $Version",
+  "Commit: $ExpectedCommit",
+  "Device: SYNTHETIC-NOT-HARDWARE",
+  "Port: COM_SYNTHETIC",
+  "Operator: synthetic-verifier",
+  "",
+  "This is a synthetic diagnostic packet. It tests verifier coverage only and must not be used as rollout evidence.",
+  "",
+  "## Run Order",
+  "",
+  "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
+  "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
+  "3. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+  "4. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+  "5. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+  "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+  "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+  "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+  "9. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+  "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "",
+  "## Gates Still Expected",
+  "",
+  "- Hardware validation remains pending until this packet has real display, servo, soak, calibration, photo/video, and speaker evidence.",
+  "- Production voice-source provenance remains pending until the owned or licensed source record is completed.",
+  "- RVC voice-base evidence remains review-only until consumer and distribution approvals are explicitly recorded.",
+  "- GitHub Actions may still be externally blocked; use ``RUN_ROLLOUT_STATUS.cmd`` for the current CI/account state.",
+  "- Hosted media or synthetic diagnostic packets are review aids only. They do not replace real-device evidence.",
+  "",
+  "## Hard Stops",
+  "",
+  "- Do not run servo calibration unless the body is clear and supervised.",
+  "- Do not mark the audio gate complete without a recording captured from the actual target speaker path.",
+  "- Do not promote if ``CHECKLIST.md`` still has unchecked gates or ``RUN_PROGRESS_CHECK.cmd`` reports missing evidence.",
+  "- Do not treat generated samples, local previews, or hosted review pages as consumer rollout evidence."
+) | Set-Content -Path (Join-Path $outDir "NEXT_STEPS.md") -Encoding UTF8
 
 @(
   "# Hardware Test Observations",
@@ -327,11 +470,14 @@ if (-not (Test-Path -LiteralPath $audioSource)) {
 Copy-Item -LiteralPath $audioSource -Destination (Join-Path $audioDir "synthetic_speaker_fixture.wav")
 
 $commandFiles = @{
+  "RUN_PLAY_LEAD_VOICE.cmd" = "echo Synthetic diagnostic packet. Use a real hardware packet for target speaker playback."
   "RUN_DISPLAY_ONLY.cmd" = "echo Synthetic diagnostic packet. Do not flash hardware from this fixture."
   "RUN_SERVO_CALIBRATION.cmd" = "echo Synthetic diagnostic packet. Do not move servos from this fixture."
   "RUN_SOAK_MONITOR.cmd" = "echo Synthetic diagnostic packet. Do not use as a real soak log."
   "RUN_PACKAGE_VERIFY.cmd" = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\verify_release_package.ps1`" -Version $Version"
   "RUN_PROGRESS_CHECK.cmd" = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\check_hardware_evidence_progress.ps1`" -EvidenceRoot `"%~dp0.`""
+  "RUN_ROLLOUT_STATUS.cmd" = "echo Synthetic diagnostic packet. Rollout status must be exported from real package and evidence inputs."
+  "RUN_ADD_MEDIA.cmd" = "echo Synthetic diagnostic packet already includes fixture media. Add real media only to a real hardware packet."
   "RUN_EVIDENCE_VERIFY.cmd" = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\..\..\tools\verify_hardware_evidence.ps1`" -EvidenceRoot `"%~dp0.`" -AllowSyntheticEvidence"
   "RUN_CONSUMER_PROMOTION_CHECK.cmd" = "echo Synthetic diagnostic packet. Consumer promotion must use real hardware evidence."
 }
@@ -353,19 +499,28 @@ $metadata = [ordered]@{
   diagnosticOnly = $true
   syntheticEvidence = $true
   package = $packageInfo
+  voiceLeadAudition = $voiceLeadInfo
   requiredLogs = $requiredLogs
   requiredRecords = @(
+    "NEXT_STEPS.md",
     "CHECKLIST.md",
     "RELEASE_ACCEPTANCE.md",
     "release_acceptance.json",
     "OBSERVATIONS.md",
     "AUDIO_REVIEW.md",
+    "RVC_LEAD_AUDITION.md",
+    "reference_audio/RVC_AUDITIONS.md",
+    "reference_audio/RVC_AUDITIONS.json",
+    [string]$voiceLeadInfo.referenceFile,
     "calibration/calibration.yaml",
+    "RUN_PLAY_LEAD_VOICE.cmd",
     "RUN_DISPLAY_ONLY.cmd",
     "RUN_SERVO_CALIBRATION.cmd",
     "RUN_SOAK_MONITOR.cmd",
     "RUN_PACKAGE_VERIFY.cmd",
     "RUN_PROGRESS_CHECK.cmd",
+    "RUN_ROLLOUT_STATUS.cmd",
+    "RUN_ADD_MEDIA.cmd",
     "RUN_EVIDENCE_VERIFY.cmd",
     "RUN_CONSUMER_PROMOTION_CHECK.cmd"
   )
