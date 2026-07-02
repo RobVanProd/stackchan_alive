@@ -255,7 +255,7 @@ function Copy-ShareVerificationArtifactsFromRoot {
   $verificationMarkdownPath = Join-Path $SourceRoot "share_verification_report.md"
   $publicUrlPath = Join-Path $SourceRoot "PUBLIC_URL.txt"
 
-  foreach ($path in @($statusPath, $verificationJsonPath, $verificationMarkdownPath, $publicUrlPath)) {
+  foreach ($path in @($statusPath, $verificationJsonPath, $verificationMarkdownPath)) {
     if (-not (Test-Path -LiteralPath $path)) {
       if ($Required) {
         throw "Share verification folder is missing required artifact: $path"
@@ -278,24 +278,60 @@ function Copy-ShareVerificationArtifactsFromRoot {
 
   $shareDir = Join-Path $DestinationRoot "share"
   New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
-  foreach ($path in @($statusPath, $verificationJsonPath, $verificationMarkdownPath, $publicUrlPath)) {
+  foreach ($path in @($statusPath, $verificationJsonPath, $verificationMarkdownPath)) {
     Copy-Item -LiteralPath $path -Destination (Join-Path $shareDir ([System.IO.Path]::GetFileName($path)))
   }
-
-  $publicUrl = [string]$shareStatus.publicUrl
-  if ([string]::IsNullOrWhiteSpace($publicUrl)) {
-    $publicUrl = (Get-Content -LiteralPath $publicUrlPath -Raw).Trim()
+  if (Test-Path -LiteralPath $publicUrlPath) {
+    Copy-Item -LiteralPath $publicUrlPath -Destination (Join-Path $shareDir "PUBLIC_URL.txt")
   }
+
+  $verifiedUrl = [string]$shareStatus.publicUrl
+  if ([string]::IsNullOrWhiteSpace($verifiedUrl) -and (Test-Path -LiteralPath $publicUrlPath)) {
+    $publicUrl = (Get-Content -LiteralPath $publicUrlPath -Raw).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($publicUrl)) {
+      $verifiedUrl = $publicUrl
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($verifiedUrl)) {
+    $verifiedUrl = [string]$shareVerification.url
+  }
+  if ([string]::IsNullOrWhiteSpace($verifiedUrl)) {
+    $verifiedUrl = [string]$shareStatus.localUrl
+  }
+  if ([string]::IsNullOrWhiteSpace($verifiedUrl)) {
+    $verifiedUrl = [string]$shareStatus.loopbackUrl
+  }
+  if ([string]::IsNullOrWhiteSpace($verifiedUrl)) {
+    throw "Share verification artifacts do not include a verified URL."
+  }
+  $urlKind = "local"
+  if ($verifiedUrl -match "^https://[-A-Za-z0-9]+\.trycloudflare\.com/?$") {
+    $urlKind = "public"
+  } elseif ($verifiedUrl -match "^http://(127\.0\.0\.1|localhost)(:\d+)?/") {
+    $urlKind = "loopback"
+  }
+  $verifiedUrl | Set-Content -Path (Join-Path $shareDir "VERIFIED_URL.txt") -Encoding ASCII
+
   $probeCount = [int]$shareVerification.probeCount
   $fallbackText = if ([bool]$shareVerification.usedCurlResolveFallback) { "yes" } else { "no" }
+  $copiedArtifacts = @(
+    "share/share_status.json",
+    "share/share_verification_report.md",
+    "share/share_verification_report.json",
+    "share/VERIFIED_URL.txt"
+  )
+  if (Test-Path -LiteralPath $publicUrlPath) {
+    $copiedArtifacts += "share/PUBLIC_URL.txt"
+  }
 
-  @(
+  $hostedMediaLines = @(
     "# Hosted Media Reference",
     "",
-    "This packet records the public review page that was verified before hardware testing. Use it to compare the physical device against the exact hosted preview, video, face artifacts, and voice samples for this release.",
+    "This packet records the review page that was verified before hardware testing. Use it to compare the physical device against the exact hosted preview, video, face artifacts, and voice samples for this release.",
     "",
     "- Release tag: $ReleaseTag",
-    "- Public URL: $publicUrl",
+    "- Verified URL: $verifiedUrl",
+    "- URL kind: $urlKind",
     "- Share status: $($shareStatus.status)",
     "- Public URL ready: $($shareStatus.publicUrlReady)",
     "- Verification generated UTC: $($shareVerification.generatedUtc)",
@@ -304,23 +340,28 @@ function Copy-ShareVerificationArtifactsFromRoot {
     "- Used curl DNS override fallback: $fallbackText",
     "",
     "Copied artifacts:",
-    "",
-    "- ``share/share_status.json``",
-    "- ``share/share_verification_report.md``",
-    "- ``share/share_verification_report.json``",
-    "- ``share/PUBLIC_URL.txt``",
+    ""
+  )
+  foreach ($artifact in $copiedArtifacts) {
+    $hostedMediaLines += "- ``$artifact``"
+  }
+  $hostedMediaLines += @(
     "",
     "This hosted-media reference is review evidence only. Consumer promotion still requires real-device photo/video, target-speaker recording, strict hardware evidence verification, successful GitHub Actions status, and completed production voice-source provenance."
-  ) | Set-Content -Path (Join-Path $DestinationRoot "HOSTED_MEDIA_REFERENCE.md") -Encoding UTF8
+  )
+  $hostedMediaLines | Set-Content -Path (Join-Path $DestinationRoot "HOSTED_MEDIA_REFERENCE.md") -Encoding UTF8
 
   return [ordered]@{
     sourceRoot = (Resolve-Path $SourceRoot).Path
-    publicUrl = $publicUrl
+    publicUrl = $verifiedUrl
+    verifiedUrl = $verifiedUrl
+    urlKind = $urlKind
     status = [string]$shareStatus.status
     publicUrlReady = [bool]$shareStatus.publicUrlReady
     verificationReport = "share/share_verification_report.json"
     verificationSummary = "share/share_verification_report.md"
     hostedMediaReference = "HOSTED_MEDIA_REFERENCE.md"
+    verifiedUrlFile = "share/VERIFIED_URL.txt"
     probeCount = $probeCount
     allHttp200 = [bool]$shareVerification.allHttp200
     usedCurlResolveFallback = [bool]$shareVerification.usedCurlResolveFallback
@@ -953,7 +994,7 @@ if ($shareVerificationInfo) {
     "share/share_status.json",
     "share/share_verification_report.md",
     "share/share_verification_report.json",
-    "share/PUBLIC_URL.txt"
+    "share/VERIFIED_URL.txt"
   )
 }
 if ($voiceGateInfo) {

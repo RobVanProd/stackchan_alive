@@ -281,7 +281,13 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
     [void](Test-RequiredFile ([string]$metadata.shareVerification.verificationReport) 500)
     [void](Test-RequiredFile ([string]$metadata.shareVerification.verificationSummary) 100)
     [void](Test-RequiredFile "share/share_status.json" 100)
-    [void](Test-RequiredFile "share/PUBLIC_URL.txt" 10)
+    if (-not [string]::IsNullOrWhiteSpace([string]$metadata.shareVerification.verifiedUrlFile)) {
+      [void](Test-RequiredFile ([string]$metadata.shareVerification.verifiedUrlFile) 10)
+    } elseif (Test-Path -LiteralPath (Join-EvidencePath "share/VERIFIED_URL.txt")) {
+      [void](Test-RequiredFile "share/VERIFIED_URL.txt" 10)
+    } else {
+      [void](Test-RequiredFile "share/PUBLIC_URL.txt" 10)
+    }
     if (Test-Path -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.verificationReport))) {
       $shareReport = Get-Content -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.verificationReport)) -Raw | ConvertFrom-Json
       if ($shareReport.schema -eq "stackchan.share-verification.v1" -and

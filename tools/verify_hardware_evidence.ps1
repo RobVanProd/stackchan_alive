@@ -599,12 +599,22 @@ if ($null -ne $metadata.shareVerification) {
       throw "metadata shareVerification missing required field: $field"
     }
   }
+  $verifiedShareUrl = [string]$metadata.shareVerification.verifiedUrl
+  if ([string]::IsNullOrWhiteSpace($verifiedShareUrl)) {
+    $verifiedShareUrl = [string]$metadata.shareVerification.publicUrl
+  }
 
   Assert-File ([string]$metadata.shareVerification.hostedMediaReference) 200
   Assert-File ([string]$metadata.shareVerification.verificationReport) 500
   Assert-File ([string]$metadata.shareVerification.verificationSummary) 100
   Assert-File "share/share_status.json" 100
-  Assert-File "share/PUBLIC_URL.txt" 10
+  if (-not [string]::IsNullOrWhiteSpace([string]$metadata.shareVerification.verifiedUrlFile)) {
+    Assert-File ([string]$metadata.shareVerification.verifiedUrlFile) 10
+  } elseif (Test-Path -LiteralPath (Join-EvidencePath "share/VERIFIED_URL.txt")) {
+    Assert-File "share/VERIFIED_URL.txt" 10
+  } else {
+    Assert-File "share/PUBLIC_URL.txt" 10
+  }
 
   $shareReport = Get-Content -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.verificationReport)) -Raw | ConvertFrom-Json
   if ($shareReport.schema -ne "stackchan.share-verification.v1") {
@@ -613,8 +623,8 @@ if ($null -ne $metadata.shareVerification) {
   if ($shareReport.version -ne $metadata.releaseTag) {
     throw "share verification report version mismatch: expected $($metadata.releaseTag), got $($shareReport.version)"
   }
-  if ($shareReport.url -ne [string]$metadata.shareVerification.publicUrl) {
-    throw "share verification report URL does not match metadata shareVerification publicUrl"
+  if ($shareReport.url -ne $verifiedShareUrl) {
+    throw "share verification report URL does not match metadata shareVerification verified URL"
   }
   if (-not [bool]$shareReport.allHttp200) {
     throw "share verification report does not show all probes HTTP 200"
@@ -624,7 +634,7 @@ if ($null -ne $metadata.shareVerification) {
   }
 
   $hostedReferenceText = Get-Content -LiteralPath (Join-EvidencePath ([string]$metadata.shareVerification.hostedMediaReference)) -Raw
-  foreach ($pattern in @("Hosted Media Reference", [string]$metadata.shareVerification.publicUrl, "All probes HTTP 200", "review evidence only")) {
+  foreach ($pattern in @("Hosted Media Reference", $verifiedShareUrl, "All probes HTTP 200", "review evidence only")) {
     if ($hostedReferenceText -notmatch [regex]::Escape($pattern)) {
       throw "HOSTED_MEDIA_REFERENCE.md missing expected marker: $pattern"
     }

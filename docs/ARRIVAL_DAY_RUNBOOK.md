@@ -20,7 +20,7 @@ From the extracted release folder:
 
 Open the newest folder under `output\hardware-evidence\`. Run every command below from that packet folder unless noted otherwise.
 
-If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd`, the packet also includes `HOSTED_MEDIA_REFERENCE.md` plus `share/` copies of the verified Cloudflare/share page reports. Use that hosted page as the remote review reference for the expected image, video, face GIFs, and voice samples while collecting real-device evidence.
+If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd`, the packet also includes `HOSTED_MEDIA_REFERENCE.md`, `share\VERIFIED_URL.txt`, and `share/` copies of the verified local or Cloudflare share page reports. Use that verified page as the review reference for the expected image, video, face GIFs, and voice samples while collecting real-device evidence.
 
 ## 2. Verify Package And Flash Display-Only
 

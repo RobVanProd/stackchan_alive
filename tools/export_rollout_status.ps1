@@ -265,6 +265,8 @@ try {
           port = [string]$metadata.port
           operator = [string]$metadata.operator
           sharePublicUrl = if ($null -ne $metadata.shareVerification) { [string]$metadata.shareVerification.publicUrl } else { "" }
+          shareVerifiedUrl = if ($null -ne $metadata.shareVerification -and -not [string]::IsNullOrWhiteSpace([string]$metadata.shareVerification.verifiedUrl)) { [string]$metadata.shareVerification.verifiedUrl } elseif ($null -ne $metadata.shareVerification) { [string]$metadata.shareVerification.publicUrl } else { "" }
+          shareUrlKind = if ($null -ne $metadata.shareVerification) { [string]$metadata.shareVerification.urlKind } else { "" }
           leadVoice = if ($null -ne $metadata.voiceLeadAudition) { [string]$metadata.voiceLeadAudition.title } else { "" }
         }
       } else {

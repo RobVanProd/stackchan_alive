@@ -94,7 +94,7 @@ Stage a local handoff page for the ZIP, ZIP SHA256 sidecar, preview image, expre
 ```
 
 Use `-OpenLocal` to open the host-only page on this Windows machine after the readiness probe passes. Use `-Lan` when another device on the same Wi-Fi/LAN needs to open the page; it binds to all interfaces, probes the server through loopback, and prints ranked same-network URL candidates while avoiding common virtual adapters. For this Windows machine, use the printed host-only URL or run `output\share\<version>\OPEN_LOCAL_SHARE.cmd`. The share folder also writes `LAN_TROUBLESHOOTING.md` and `share_probe_report.json` with adapter metadata and host-side reachability probes for each candidate.
-When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL and writes it to `output\share\<version>\PUBLIC_URL.txt`. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
+When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL and writes it to `output\share\<version>\PUBLIC_URL.txt`. Local-only shares are still first-class: `verify_share_release.cmd` records the verified URL in `share_verification_report.json`, and the evidence packet writes `share\VERIFIED_URL.txt` even when no public tunnel exists. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
 From an extracted release package, `.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared` infers the release version from `release_manifest.json`.
 The share folder also includes `share_status.json` with `loopbackUrl`, `localUrl`, `lanUrls`, LAN diagnostics, host probe results, `OPEN_LOCAL_SHARE.cmd`, plus `STOP_SHARING.cmd` for stopping the local server and tunnel. To clean up every share server started by this repo, run `.\tools\stop_share.cmd -All`; it only stops processes that still match share metadata under `output\share`.
 Verify the active local or Cloudflare share before sending it:
@@ -102,6 +102,8 @@ Verify the active local or Cloudflare share before sending it:
 ```powershell
 .\tools\verify_share_release.cmd -Version <version> -RequirePublicUrl
 ```
+
+Omit `-RequirePublicUrl` when the reviewer is on the same machine or LAN and you intentionally want to pin a local verified share.
 
 Start a device-arrival evidence packet:
 
