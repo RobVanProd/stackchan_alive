@@ -190,6 +190,8 @@ $requiredFiles = @(
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
   "tools/export_github_actions_status.ps1",
+  "tools/new_ci_account_block_exception.cmd",
+  "tools/new_ci_account_block_exception.ps1",
   "tools/export_voice_source_status.cmd",
   "tools/export_voice_source_status.ps1",
   "tools/setup_voice_tools.cmd",
@@ -339,6 +341,13 @@ foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench 
   }
 }
 
+$ciExceptionDraftText = Get-Content -LiteralPath (Join-PackagePath "tools/new_ci_account_block_exception.ps1") -Raw
+foreach ($pattern in @("stackchan.ci-account-block-exception.v1", "stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "riskAccepted = `$false", "localReleaseVerificationPassed = `$false", "strictHardwareEvidencePassed = `$false", "productionVoiceSourceReady = `$false", "TBD - accountable approver required", "not an external account block", "sourceActionsStatusPath")) {
+  if ($ciExceptionDraftText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/new_ci_account_block_exception.ps1 missing draft safety logic: $pattern"
+  }
+}
+
 $consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
 foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "ExternalAccountCiExceptionPath", "Assert-CiExceptionRecord", "stackchan.ci-account-block-exception.v1", "riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady", "voice_source_provenance.yaml", "pending-production-source", "Assert-VoiceStatusReportsReady", "voice_source_status.json is not production-source-ready", "rvc_voice_base_status.json is not consumer approved", "rvc_voice_base_status.json is not distribution approved", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
   if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
@@ -420,7 +429,7 @@ foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows"
 }
 
 $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_preflight.ps1") -Raw
-foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
+foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
   }

@@ -447,6 +447,101 @@ function Assert-GitHubActionsStatusExporterGate {
   }
 }
 
+function Assert-CiAccountBlockExceptionDraftGate {
+  $fixtureBase = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-ci-exception-draft-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $externalStatusPath = Join-Path $fixtureBase "github_actions_status_external.json"
+  $successStatusPath = Join-Path $fixtureBase "github_actions_status_success.json"
+  $draftPath = Join-Path $fixtureBase "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json"
+  $fixtureVersion = "v0.0.0-ci-exception-fixture"
+  $fixtureCommit = "0123456789abcdef0123456789abcdef01234567"
+
+  try {
+    New-Item -ItemType Directory -Force -Path $fixtureBase | Out-Null
+
+    [ordered]@{
+      schema = "stackchan.github-actions-status.v1"
+      version = $fixtureVersion
+      commit = $fixtureCommit
+      status = "external-account-ci-pre-runner-allocation"
+      interpretation = "Required GitHub Actions jobs failed before runner allocation; no runner was assigned."
+      externalBlock = $true
+      promotionReady = $false
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path $externalStatusPath -Encoding UTF8
+
+    $draftResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "new_ci_account_block_exception.ps1"),
+      "-ActionsStatusPath", $externalStatusPath,
+      "-OutPath", $draftPath,
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit
+    )
+    if ($draftResult.ExitCode -ne 0) {
+      throw "CI exception draft helper rejected external account fixture:$([Environment]::NewLine)$($draftResult.Text)"
+    }
+    if (-not (Test-Path -LiteralPath $draftPath)) {
+      throw "CI exception draft helper did not write CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json"
+    }
+
+    $draft = Get-Content -LiteralPath $draftPath -Raw | ConvertFrom-Json
+    if ($draft.schema -ne "stackchan.ci-account-block-exception.v1") {
+      throw "CI exception draft schema mismatch: $($draft.schema)"
+    }
+    if ($draft.version -ne $fixtureVersion -or $draft.commit -ne $fixtureCommit) {
+      throw "CI exception draft did not pin version and commit."
+    }
+    if ($draft.githubActionsStatus -ne "external-account-ci-pre-runner-allocation") {
+      throw "CI exception draft used wrong Actions status: $($draft.githubActionsStatus)"
+    }
+    if ($draft.riskAccepted -ne $false) {
+      throw "CI exception draft riskAccepted should remain false."
+    }
+    if ($draft.localReleaseVerificationPassed -ne $false) {
+      throw "CI exception draft localReleaseVerificationPassed should remain false."
+    }
+    if ($draft.strictHardwareEvidencePassed -ne $false) {
+      throw "CI exception draft strictHardwareEvidencePassed should remain false."
+    }
+    if ($draft.productionVoiceSourceReady -ne $false) {
+      throw "CI exception draft productionVoiceSourceReady should remain false."
+    }
+    foreach ($fieldName in @("approvedBy", "approvedUtc", "followUpOwner", "followUpDueUtc")) {
+      if ([string]$draft.PSObject.Properties[$fieldName].Value -notmatch "TBD") {
+        throw "CI exception draft $fieldName should remain a TBD placeholder."
+      }
+    }
+    if ([string]$draft.sourceActionsStatusPath -ne $externalStatusPath) {
+      throw "CI exception draft did not record the source Actions status path."
+    }
+
+    [ordered]@{
+      schema = "stackchan.github-actions-status.v1"
+      version = $fixtureVersion
+      commit = $fixtureCommit
+      status = "success"
+      interpretation = "Required workflows succeeded."
+      externalBlock = $false
+      promotionReady = $true
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path $successStatusPath -Encoding UTF8
+
+    $rejectResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "new_ci_account_block_exception.ps1"),
+      "-ActionsStatusPath", $successStatusPath,
+      "-OutPath", (Join-Path $fixtureBase "SHOULD_NOT_EXIST.json"),
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit
+    )
+    if ($rejectResult.ExitCode -eq 0) {
+      throw "CI exception draft helper accepted a successful Actions status."
+    }
+    Assert-TextContains $rejectResult.Text "not an external account block"
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $fixtureBase) {
+      Remove-Item -LiteralPath $fixtureBase -Recurse -Force
+    }
+  }
+}
+
 function Write-LocalShareVerificationFixture {
   param(
     [string]$ShareRoot,
@@ -1765,6 +1860,10 @@ Invoke-Step "Check runtime architecture boundaries" {
 
 Invoke-Step "Check GitHub Actions status exporter gates" {
   Assert-GitHubActionsStatusExporterGate
+}
+
+Invoke-Step "Check CI account-block exception draft helper" {
+  Assert-CiAccountBlockExceptionDraftGate
 }
 
 Invoke-Step "Check local share evidence capture" {

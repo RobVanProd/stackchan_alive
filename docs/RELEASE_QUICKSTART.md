@@ -157,6 +157,6 @@ After that passes, run the full consumer promotion gate:
 .\RUN_CONSUMER_PROMOTION_CHECK.cmd
 ```
 
-That final gate also requires successful GitHub Actions status and completed production voice-source provenance. If GitHub Actions is still blocked by account billing or spending limits, treat the release as hardware-validated locally but not consumer-promoted until the account issue is resolved or a completed `docs\CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json` copy is passed with `-ExternalAccountCiExceptionPath`.
+That final gate also requires successful GitHub Actions status and completed production voice-source provenance. If GitHub Actions is still blocked by account billing, spending limits, or pre-runner allocation, treat the release as hardware-validated locally but not consumer-promoted until the account issue is resolved or a completed `docs\CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json` copy is passed with `-ExternalAccountCiExceptionPath`. Use `.\tools\new_ci_account_block_exception.cmd -ActionsStatusPath output\release\<version>\github_actions_status.json -OutPath output\ci-exceptions\<version>\CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json` to draft the pinned exception from the observed CI report; it remains unapproved until the owner fills the approval fields and flips each proof boolean after that gate passes.
 
 Hardware validation is still required before promoting this prerelease to a consumer rollout.
