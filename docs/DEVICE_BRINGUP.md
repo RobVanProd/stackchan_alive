@@ -98,12 +98,13 @@ motion resume
 demo off
 demo on
 safe stop
+safe resume
 ```
 
 The reduced-motion command logs `[control] command=reduced_motion_on reduced_motion=1` or `[control] command=reduced_motion_off reduced_motion=0`, then the face task applies the change and logs the new `[face] reduced_motion=` state.
 These runtime command lines count as display bench-control telemetry in the evidence checks, but they do not replace the required photo, video, speaker audio, or strict hardware logs.
 
-If the device needs to be calmed quickly, send `safe stop` or `panic`. This combined command stops motion writes, disables random demo events, enables reduced motion, and clears the speech-mouth envelope in one serial line.
+If the device needs to be calmed quickly, send `safe stop` or `panic`. This combined command stops motion writes, disables random demo events, enables reduced motion, and clears the speech-mouth envelope in one serial line. Send `safe resume` or `restore` after the bench is clear to resume motion, resume demo events, clear reduced motion, and clear any held speech-mouth envelope.
 
 During supervised servo tests, send `motion stop`, `servo off`, or `halt` to call the actuator stop hook and suppress further motion writes. Send `motion resume` or `servos on` only after the body is clear and you are ready to continue. The firmware logs `[motion] enabled=0` or `[motion] enabled=1` when the motion task applies the command.
 
