@@ -231,7 +231,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -259,7 +259,7 @@ foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "I
 }
 
 $shareStopText = Get-Content -LiteralPath (Join-PackagePath "tools/stop_share.ps1") -Raw
-foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "Unable to stop share processes")) {
+foreach ($pattern in @("-All", "output/share", "Test-ShareOwnedProcess", "skippedProcessIds", "stillRunningProcessIds", "processIds", "Stop-Process", "Unable to stop share processes")) {
   if ($shareStopText -notmatch [regex]::Escape($pattern)) {
     throw "tools/stop_share.ps1 missing robust share cleanup logic: $pattern"
   }

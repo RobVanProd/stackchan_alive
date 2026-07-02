@@ -24,6 +24,14 @@ Before sending the URL, verify the handoff page and public assets:
 .\tools\verify_share_release.cmd -RequirePublicUrl
 ```
 
+If old local share servers are occupying ports, run:
+
+```powershell
+.\tools\stop_share.cmd -All
+```
+
+The cleanup command only stops processes recorded under `output\share` that still look like Stackchan share servers.
+
 From a source checkout, pass the release version:
 
 ```powershell
