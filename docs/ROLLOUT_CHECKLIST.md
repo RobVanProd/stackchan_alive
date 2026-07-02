@@ -6,7 +6,7 @@ When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pas
 Promotion evidence must include at least one real photo or video under `photos/`: `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp4`, `.mov`, or `.webm`. Text placeholders do not count.
 Promotion evidence must include `AUDIO_REVIEW.md` plus at least one real-device speaker recording under `audio/`: `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`. Text placeholders or generated source WAVs alone do not count as target-speaker evidence.
 Use `RUN_ADD_MEDIA.cmd` from the generated evidence packet to import phone photos, videos, and speaker recordings. It validates file headers, copies files into `photos/` or `audio/`, and records hashes in `media_manifest.json`.
-Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, display telemetry with `fps_window` plus `slow_frames`, face animator telemetry with `blink_count` plus `saccade_count`, runtime health telemetry with `heap_free` plus task stack high-water marks, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
+Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, display telemetry with `fps_window` plus `slow_frames`, face animator telemetry with `blink_count` plus `saccade_count`, display bench control telemetry `[control] command=...`, runtime health telemetry with `heap_free` plus task stack high-water marks, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
 
 ## Build Evidence
 
