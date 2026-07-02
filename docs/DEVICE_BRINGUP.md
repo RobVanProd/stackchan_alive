@@ -81,7 +81,7 @@ To drive that same mouth path from an actual WAV envelope, generate a sidecar an
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\speech\bright_robot.speech_envelope.json
 ```
 
-The generated evidence packet also includes `RUN_SPEECH_MOUTH_DEMO.cmd`, which captures its output to `logs\speech_mouth_demo_serial.log`.
+The generated evidence packet also includes required `RUN_SPEECH_MOUTH_DEMO.cmd` evidence, which captures streamed envelope commands and any immediate device readback to `logs\speech_mouth_demo_serial.log`.
 
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
 

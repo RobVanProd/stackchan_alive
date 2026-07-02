@@ -35,7 +35,7 @@ Expected evidence:
 - `logs/package_verify.log`
 - `HOSTED_MEDIA_REFERENCE.md` if a verified share was available
 - display-only serial log
-- `logs/speech_mouth_demo_serial.log` if the speech-mouth demo helper was run
+- `logs/speech_mouth_demo_serial.log` from the required speech-mouth demo helper
 - photo or video showing the procedural face
 - observation note that servos stayed in dry-run mode
 - `AUDIO_REVIEW.md` started with the sample you plan to play later

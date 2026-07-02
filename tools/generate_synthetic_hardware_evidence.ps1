@@ -215,6 +215,24 @@ function Get-ReleaseManifest {
   return Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 }
 
+function Get-CompactEvidenceTag {
+  param([string]$Value)
+
+  $safe = $Value -replace '[^A-Za-z0-9_.-]', '_'
+  if ($safe.Length -le 32) {
+    return $safe
+  }
+
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($safe)
+    $hash = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").Substring(0, 8).ToLowerInvariant()
+  } finally {
+    $sha.Dispose()
+  }
+  return $safe.Substring(0, 23) + "-" + $hash
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -249,21 +267,24 @@ if ([string]::IsNullOrWhiteSpace($PackageZip) -and [string]::IsNullOrWhiteSpace(
   }
 }
 
-$safeTag = $Version -replace '[^A-Za-z0-9_.-]', '_'
+$safeTag = Get-CompactEvidenceTag $Version
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $outDir = Join-Path $repoRoot "$OutputRoot/$safeTag-synthetic-$stamp"
 $logsDir = Join-Path $outDir "logs"
 $photosDir = Join-Path $outDir "photos"
 $audioDir = Join-Path $outDir "audio"
+$referenceAudioDir = Join-Path $outDir "reference_audio"
 $calibrationDir = Join-Path $outDir "calibration"
 $packageDir = Join-Path $outDir "package"
-New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $calibrationDir, $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $referenceAudioDir, $calibrationDir, $packageDir | Out-Null
 
 $packageInfo = $null
 $voiceLeadInfo = $null
 $voiceGateInfo = $null
 $requiredLogs = @(
   "logs/display_only_serial.log",
+  "logs/speech_mouth_demo_serial.log",
   "logs/servo_calibration_serial.log",
   "logs/soak_serial.log"
 )
@@ -532,6 +553,23 @@ $initialBenchStatus | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $ou
   "[heartbeat] stackchan_alive mode=display_only uptime_ms=600000",
   "synthetic diagnostic log: not real hardware evidence"
 ) | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
+
+@(
+  "Speech envelope sidecar written: speech\lead_voice.speech_envelope.json (276 frames, max env 1.000)",
+  "Speech envelope sidecar verified:",
+  "speech\lead_voice.speech_envelope.json",
+  "[demo] Loaded sidecar speech\lead_voice.speech_envelope.json with 276 streamed frames.",
+  "[demo] > mode speak 1.0",
+  "[demo] < [control] command=mode_speak mode=speak event=external_command strength=1.00 at_ms=3080",
+  "[demo] > speech 0.620 ah 100",
+  "[demo] < [control] command=speech_env speech_env=0.62 viseme=ah duration_ms=100 at_ms=3100",
+  "[demo] > speech 0.410 ee 100",
+  "[demo] < [control] command=speech_env speech_env=0.41 viseme=ee duration_ms=100 at_ms=3120",
+  "[demo] > speech clear",
+  "[demo] < [control] command=speech_clear speech_env=0.00 viseme=neutral duration_ms=0 at_ms=3140",
+  "[demo] Speech mouth demo complete.",
+  "synthetic diagnostic speech-mouth log: not real hardware evidence"
+) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
 
 @(
   "[boot] stackchan_alive mode=servo_calibration serial=v1",

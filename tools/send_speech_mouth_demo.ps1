@@ -5,6 +5,7 @@ param(
   [int]$InterCommandDelayMs = 0,
   [int]$FrameStride = 1,
   [int]$MaxFrames = 0,
+  [int]$ReadBackMs = 40,
   [switch]$PrintOnly,
   [switch]$NoModeCommand
 )
@@ -32,6 +33,34 @@ function Send-SerialLine {
 
   Write-Host "[demo] > $Line"
   $Serial.WriteLine($Line)
+}
+
+function Read-SerialAvailable {
+  param(
+    [System.IO.Ports.SerialPort]$Serial,
+    [int]$DrainMs
+  )
+
+  if ($DrainMs -le 0 -or -not $Serial.IsOpen) {
+    return
+  }
+
+  $deadline = [DateTime]::UtcNow.AddMilliseconds($DrainMs)
+  do {
+    Start-Sleep -Milliseconds 10
+    try {
+      $text = $Serial.ReadExisting()
+    } catch {
+      return
+    }
+    if (-not [string]::IsNullOrWhiteSpace($text)) {
+      foreach ($line in ($text -split "\r?\n")) {
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+          Write-Host "[demo] < $($line.Trim())"
+        }
+      }
+    }
+  } while ([DateTime]::UtcNow -lt $deadline)
 }
 
 function Format-Envelope {
@@ -111,6 +140,7 @@ Assert-Range -Name "Baud" -Value $Baud -Min 1200 -Max 921600
 Assert-Range -Name "InterCommandDelayMs" -Value $InterCommandDelayMs -Min 0 -Max 1000
 Assert-Range -Name "FrameStride" -Value $FrameStride -Min 1 -Max 10
 Assert-Range -Name "MaxFrames" -Value $MaxFrames -Min 0 -Max 10000
+Assert-Range -Name "ReadBackMs" -Value $ReadBackMs -Min 0 -Max 1000
 
 $sequence = if ([string]::IsNullOrWhiteSpace($SidecarPath)) {
   Get-BuiltInSequence
@@ -148,6 +178,7 @@ try {
   if (-not $NoModeCommand) {
     Send-SerialLine -Serial $serial -Line "mode speak 1.0"
     Start-Sleep -Milliseconds 250
+    Read-SerialAvailable -Serial $serial -DrainMs $ReadBackMs
   }
 
   foreach ($step in $sequence) {
@@ -155,10 +186,12 @@ try {
     Send-SerialLine -Serial $serial -Line $line
     $delayMs = if ($InterCommandDelayMs -gt 0) { $InterCommandDelayMs } else { [int]$step.DelayMs }
     Start-Sleep -Milliseconds ([Math]::Max(1, $delayMs))
+    Read-SerialAvailable -Serial $serial -DrainMs $ReadBackMs
   }
 
   Send-SerialLine -Serial $serial -Line "speech clear"
   Start-Sleep -Milliseconds 120
+  Read-SerialAvailable -Serial $serial -DrainMs $ReadBackMs
   Write-Host "[demo] Speech mouth demo complete."
 } finally {
   if ($serial.IsOpen) {

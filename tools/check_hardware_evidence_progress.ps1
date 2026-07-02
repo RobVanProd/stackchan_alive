@@ -423,6 +423,7 @@ if (Test-Path -LiteralPath (Join-EvidencePath "AUDIO_REVIEW.md")) {
 
 Test-RequiredFile "logs/package_verify.log" | Out-Null
 Test-RequiredFile "logs/display_only_serial.log" 128 | Out-Null
+Test-RequiredFile "logs/speech_mouth_demo_serial.log" 128 | Out-Null
 Test-RequiredFile "logs/servo_calibration_serial.log" 128 | Out-Null
 Test-RequiredFile "logs/soak_serial.log" 128 | Out-Null
 
@@ -435,6 +436,9 @@ Test-TextPattern "logs/display_only_serial.log" "\[face\]\s+mode=\d+\s+blink_cou
 Test-TextPattern "logs/display_only_serial.log" "\[control\]\s+command=(mode_listen|event_touch|touch_click_react|button_a_listen|speech_env|reduced_motion_on|reduced_motion_off).*at_ms=\d+" "display bench control telemetry"
 Test-TextPattern "logs/display_only_serial.log" "\[speech\]\s+seq=\d+\s+at_ms=\d+\s+intent=\w+\s+priority=\d+\s+earcon=\w+\s+earcon_delay_ms=\d+\s+text=" "display speech cue telemetry"
 Test-TextPattern "logs/display_only_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\d+\s+stack_loop_hwm=\d+\s+stack_motion_hwm=\d+\s+stack_face_hwm=\d+\s+stack_intent_hwm=\d+" "display runtime health telemetry"
+Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech\s+[0-9]" "speech mouth demo envelope commands"
+Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech clear" "speech mouth demo clear command"
+Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+Speech mouth demo complete\." "speech mouth demo completion"
 Test-TextPattern "logs/servo_calibration_serial.log" "\[boot\]\s+stackchan_alive\s+mode=servo_calibration\s+serial=v1" "servo-calibration boot marker"
 Test-TextPattern "logs/servo_calibration_serial.log" "\[servo\]\s+enabling StackchanSERVO hardware output" "servo hardware-enable marker"
 Test-TextPattern "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=(display_only|servo_calibration)\s+uptime_ms=\d+" "runtime heartbeat marker"

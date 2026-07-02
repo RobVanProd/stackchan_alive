@@ -513,6 +513,7 @@ $shareVerificationInfo = $null
 $packageVerified = $false
 $requiredLogs = @(
   "logs/display_only_serial.log",
+  "logs/speech_mouth_demo_serial.log",
   "logs/servo_calibration_serial.log",
   "logs/soak_serial.log"
 )
@@ -751,7 +752,7 @@ if ($voiceLeadInfo) {
   $leadSpeechSidecarPath = Join-Path $speechDir "lead_voice.speech_envelope.json"
   $leadAudioArg = Quote-PowerShellArgument $leadAudioPath
   $leadSidecarArg = Quote-PowerShellArgument $leadSpeechSidecarPath
-  $speechDemoBody = "& '.\tools\generate_speech_envelope_sidecar.ps1' -InputWav $leadAudioArg -OutputJson $leadSidecarArg; & '.\tools\verify_speech_envelope_sidecar.ps1' -Path $leadSidecarArg -MinFrames 50 -MinMaxEnvelope 0.35; & '.\tools\send_speech_mouth_demo.ps1'$portArg -SidecarPath $leadSidecarArg"
+  $speechDemoBody = "& '.\tools\generate_speech_envelope_sidecar.ps1' -InputWav $leadAudioArg -OutputJson $leadSidecarArg; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }; & '.\tools\verify_speech_envelope_sidecar.ps1' -Path $leadSidecarArg -MinFrames 50 -MinMaxEnvelope 0.35; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }; & '.\tools\send_speech_mouth_demo.ps1'$portArg -SidecarPath $leadSidecarArg"
 }
 $speechDemoCommand = "& { $speechDemoBody } 2>&1 | Tee-Object -FilePath $speechDemoLog"
 $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"

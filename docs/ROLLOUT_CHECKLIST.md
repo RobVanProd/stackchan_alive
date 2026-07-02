@@ -7,6 +7,7 @@ Promotion evidence must include at least one real photo or video under `photos/`
 Promotion evidence must include `AUDIO_REVIEW.md` plus at least one real-device speaker recording under `audio/`: `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`. Text placeholders or generated source WAVs alone do not count as target-speaker evidence.
 Use `RUN_ADD_MEDIA.cmd` from the generated evidence packet to import phone photos, videos, and speaker recordings. It validates file headers, copies files into `photos/` or `audio/`, and records hashes in `media_manifest.json`.
 Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, display telemetry with `fps_window` plus `slow_frames`, face animator telemetry with `blink_count` plus `saccade_count`, display bench control telemetry `[control] command=...`, runtime health telemetry with `heap_free` plus task stack high-water marks, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
+Speech-mouth evidence must include `logs/speech_mouth_demo_serial.log` with streamed `speech` commands, `speech clear`, and demo completion.
 
 ## Build Evidence
 
@@ -42,6 +43,7 @@ Pass criteria:
 - [ ] Serial log includes dry-run servo mode.
 - [ ] Display telemetry includes `fps_window`, `frame_budget_us=33333`, and no repeated nonzero `slow_frames`.
 - [ ] Face telemetry includes `[face]`, `blink_count`, `saccade_count`, `gesture_active`, `speech_active`, and `speech_env`.
+- [ ] `RUN_SPEECH_MOUTH_DEMO.cmd` writes `logs/speech_mouth_demo_serial.log` with streamed speech-envelope commands and completion.
 - [ ] Speech cue telemetry includes `[speech]`, `seq`, `intent`, `earcon`, `earcon_delay_ms`, and `text`.
 - [ ] System telemetry includes `[system]`, `heap_free`, `heap_min`, `stack_loop_hwm`, `stack_motion_hwm`, `stack_face_hwm`, and `stack_intent_hwm`.
 - [ ] 10-minute idle run completes without resets.

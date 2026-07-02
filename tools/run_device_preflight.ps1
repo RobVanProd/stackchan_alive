@@ -1275,6 +1275,22 @@ function Assert-HardwareEvidenceMediaGate {
       "synthetic display log line for verifier negative-test coverage."
     ) | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
     @(
+      "Speech envelope sidecar written: speech\lead_voice.speech_envelope.json (276 frames, max env 1.000)",
+      "Speech envelope sidecar verified:",
+      "speech\lead_voice.speech_envelope.json",
+      "[demo] Loaded sidecar speech\lead_voice.speech_envelope.json with 276 streamed frames.",
+      "[demo] > mode speak 1.0",
+      "[demo] < [control] command=mode_speak mode=speak event=external_command strength=1.00 at_ms=3080",
+      "[demo] > speech 0.620 ah 100",
+      "[demo] < [control] command=speech_env speech_env=0.62 viseme=ah duration_ms=100 at_ms=3100",
+      "[demo] > speech 0.410 ee 100",
+      "[demo] < [control] command=speech_env speech_env=0.41 viseme=ee duration_ms=100 at_ms=3120",
+      "[demo] > speech clear",
+      "[demo] < [control] command=speech_clear speech_env=0.00 viseme=neutral duration_ms=0 at_ms=3140",
+      "[demo] Speech mouth demo complete.",
+      "synthetic speech-mouth log line for verifier coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
+    @(
       "[boot] stackchan_alive mode=servo_calibration serial=v1",
       "[display] M5 display renderer ready",
       "[servo] enabling StackchanSERVO hardware output",
@@ -1308,6 +1324,7 @@ function Assert-HardwareEvidenceMediaGate {
       voiceGateStatus = $voiceGateStatus
       requiredLogs = @(
         "logs/display_only_serial.log",
+        "logs/speech_mouth_demo_serial.log",
         "logs/servo_calibration_serial.log",
         "logs/soak_serial.log"
       )
@@ -1448,6 +1465,22 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       "synthetic display log missing boot marker for verifier negative-test coverage."
     ) | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
     @(
+      "Speech envelope sidecar written: speech\lead_voice.speech_envelope.json (276 frames, max env 1.000)",
+      "Speech envelope sidecar verified:",
+      "speech\lead_voice.speech_envelope.json",
+      "[demo] Loaded sidecar speech\lead_voice.speech_envelope.json with 276 streamed frames.",
+      "[demo] > mode speak 1.0",
+      "[demo] < [control] command=mode_speak mode=speak event=external_command strength=1.00 at_ms=3080",
+      "[demo] > speech 0.620 ah 100",
+      "[demo] < [control] command=speech_env speech_env=0.62 viseme=ah duration_ms=100 at_ms=3100",
+      "[demo] > speech 0.410 ee 100",
+      "[demo] < [control] command=speech_env speech_env=0.41 viseme=ee duration_ms=100 at_ms=3120",
+      "[demo] > speech clear",
+      "[demo] < [control] command=speech_clear speech_env=0.00 viseme=neutral duration_ms=0 at_ms=3140",
+      "[demo] Speech mouth demo complete.",
+      "synthetic speech-mouth log line for verifier coverage."
+    ) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
+    @(
       "[boot] stackchan_alive mode=servo_calibration serial=v1",
       "[display] M5 display renderer ready",
       "[servo] enabling StackchanSERVO hardware output",
@@ -1478,6 +1511,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       voiceGateStatus = $voiceGateStatus
       requiredLogs = @(
         "logs/display_only_serial.log",
+        "logs/speech_mouth_demo_serial.log",
         "logs/servo_calibration_serial.log",
         "logs/soak_serial.log"
       )
