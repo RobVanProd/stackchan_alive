@@ -414,6 +414,7 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "",
   "- Do not run servo calibration unless the body is clear and supervised.",
   "- Do not mark the audio gate complete without a recording captured from the actual target speaker path.",
+  "- Do not use ``-AllowExternalAccountCiBlock`` from this synthetic packet. ``CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json`` must be completed only in a real evidence packet after each proof gate passes.",
   "- Do not promote if ``CHECKLIST.md`` still has unchecked gates or ``RUN_PROGRESS_CHECK.cmd`` reports missing evidence.",
   "- Do not treat generated samples, local previews, or hosted review pages as consumer rollout evidence."
 ) | Set-Content -Path (Join-Path $outDir "NEXT_STEPS.md") -Encoding UTF8
