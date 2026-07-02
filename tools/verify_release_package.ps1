@@ -96,9 +96,11 @@ $requiredFiles = @(
   "RELEASE_ACCEPTANCE.md",
   "RELEASE_NOTES.md",
   "SHA256SUMS.txt",
+  "VOICE_SOURCE_STATUS.md",
   "release_acceptance.json",
   "readiness_report.json",
   "release_manifest.json",
+  "voice_source_status.json",
   "docs/DEVICE_BRINGUP.md",
   "docs/PRODUCTION_READINESS.md",
   "docs/README.md",
@@ -162,6 +164,8 @@ $requiredFiles = @(
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
   "tools/export_github_actions_status.ps1",
+  "tools/export_voice_source_status.cmd",
+  "tools/export_voice_source_status.ps1",
   "tools/setup_voice_tools.cmd",
   "tools/setup_voice_tools.ps1",
   "tools/render_voice_samples.cmd",
@@ -321,6 +325,13 @@ $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/e
 foreach ($pattern in @("stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
+  }
+}
+
+$voiceSourceStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_voice_source_status.ps1") -Raw
+foreach ($pattern in @("stackchan.voice-source-status.v1", "blocked-pending-production-voice-source", "production-source-ready", "candidate-pending-rights-review", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "FailOnBlocked")) {
+  if ($voiceSourceStatusExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_voice_source_status.ps1 missing required voice-source status logic: $pattern"
   }
 }
 
@@ -484,6 +495,14 @@ if ($manifest.voiceSourceProvenanceTemplate -ne "docs/VOICE_SOURCE_PROVENANCE_TE
 
 if ($manifest.voiceSourceProvenance -ne "data/voice_source_provenance.yaml") {
   throw "Manifest voiceSourceProvenance mismatch: $($manifest.voiceSourceProvenance)"
+}
+
+if ($manifest.voiceSourceStatusReport -ne "VOICE_SOURCE_STATUS.md") {
+  throw "Manifest voiceSourceStatusReport mismatch: $($manifest.voiceSourceStatusReport)"
+}
+
+if ($manifest.voiceSourceStatusReportJson -ne "voice_source_status.json") {
+  throw "Manifest voiceSourceStatusReportJson mismatch: $($manifest.voiceSourceStatusReportJson)"
 }
 
 if ($manifest.voiceRvcBase -ne "data/voice_rvc_base.yaml") {
@@ -753,6 +772,30 @@ foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: 
   }
 }
 
+$voiceSourceStatusMarkdown = Get-Content -LiteralPath (Join-PackagePath "VOICE_SOURCE_STATUS.md") -Raw
+foreach ($pattern in @("Voice Source Status", "blocked-pending-production-voice-source", "production-source-selected", "rvc-candidate-rights-review", "voice_source_status.json")) {
+  if ($voiceSourceStatusMarkdown -notmatch [regex]::Escape($pattern)) {
+    throw "VOICE_SOURCE_STATUS.md missing expected voice-source status text: $pattern"
+  }
+}
+
+$voiceSourceStatusJson = Get-Content -LiteralPath (Join-PackagePath "voice_source_status.json") -Raw | ConvertFrom-Json
+if ($voiceSourceStatusJson.schema -ne "stackchan.voice-source-status.v1") {
+  throw "voice_source_status.json schema mismatch: $($voiceSourceStatusJson.schema)"
+}
+if ($voiceSourceStatusJson.status -ne "blocked-pending-production-voice-source") {
+  throw "voice_source_status.json should keep current package blocked pending production voice source: $($voiceSourceStatusJson.status)"
+}
+if ([int]$voiceSourceStatusJson.blockedGateCount -lt 1) {
+  throw "voice_source_status.json should report at least one blocked voice-source gate"
+}
+foreach ($gate in @("production-source-selected", "rvc-candidate-rights-review", "rollout-gate-open")) {
+  $match = @($voiceSourceStatusJson.gates | Where-Object { $_.gate -eq $gate -and $_.status -eq "blocked" })
+  if ($match.Count -ne 1) {
+    throw "voice_source_status.json missing blocked gate: $gate"
+  }
+}
+
 & (Join-PackagePath "tools/verify_rvc_voice_base.ps1") -ManifestPath (Join-PackagePath "data/voice_rvc_base.yaml") -MetadataPath (Join-PackagePath "data/voice_rvc_base_metadata.json")
 
 $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.json") -Raw | ConvertFrom-Json
@@ -765,7 +808,7 @@ if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
 if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
   $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
@@ -779,7 +822,7 @@ foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mod
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Hardware media importer", "add_hardware_evidence_media.cmd", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Hardware media importer", "add_hardware_evidence_media.cmd", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -807,7 +850,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "gith
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Voice source provenance", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Voice source provenance", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -834,6 +877,10 @@ foreach ($gate in @($readinessJson.noHardwareProof)) {
 $voiceSourceNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-provenance-template-present" -and $_.status -eq "pass" })
 if ($voiceSourceNoHardwareGate.Count -ne 1) {
   throw "readiness_report.json missing passed voice-source provenance template gate"
+}
+$voiceSourceStatusNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-status-report-present" -and $_.status -eq "pass" })
+if ($voiceSourceStatusNoHardwareGate.Count -ne 1) {
+  throw "readiness_report.json missing passed voice-source status report gate"
 }
 $mediaImporterNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "hardware-media-importer-present" -and $_.status -eq "pass" })
 if ($mediaImporterNoHardwareGate.Count -ne 1) {

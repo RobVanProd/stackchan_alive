@@ -432,6 +432,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "github_actions_status.json"); Name = "github_actions_status.json" },
   @{ Source = (Join-Path $packageRoot "DEPENDENCIES.md"); Name = "DEPENDENCIES.md" },
   @{ Source = (Join-Path $packageRoot "dependency_lock.json"); Name = "dependency_lock.json" },
+  @{ Source = (Join-Path $packageRoot "VOICE_SOURCE_STATUS.md"); Name = "VOICE_SOURCE_STATUS.md" },
+  @{ Source = (Join-Path $packageRoot "voice_source_status.json"); Name = "voice_source_status.json" },
   @{ Source = (Join-Path $packageRoot "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"); Name = "VOICE_SOURCE_PROVENANCE_TEMPLATE.md" },
   @{ Source = (Join-Path $packageRoot "data/voice_source_provenance.yaml"); Name = "voice_source_provenance.yaml" },
   @{ Source = (Join-Path $packageRoot "data/voice_rvc_base.yaml"); Name = "voice_rvc_base.yaml" },
@@ -458,6 +460,7 @@ foreach ($file in $files) {
 $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.json") -Raw | ConvertFrom-Json
 $readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
 $dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
+$voiceSourceStatus = Get-Content -LiteralPath (Join-Path $packageRoot "voice_source_status.json") -Raw | ConvertFrom-Json
 
 $preflightRoot = Join-Path $repoRoot "output/preflight/$Version"
 $preflightReportMarkdown = Join-Path $preflightRoot "preflight_report.md"
@@ -513,6 +516,8 @@ $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $passedGateCount = @($readiness.noHardwareProof | Where-Object { $_.status -eq "pass" }).Count
 $pendingGateCount = @($readiness.hardwareGates | Where-Object { $_.status -match "pending" }).Count
 $consumerRollout = [string]$readiness.consumerRollout
+$voiceSourceGateStatus = [System.Net.WebUtility]::HtmlEncode([string]$voiceSourceStatus.status)
+$voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
 $declaredDependencyCount = @($dependencyLock.declaredLibDeps).Count
 $directGitMissingRefCount = @($dependencyLock.dependencyAudit.directGitDepsMissingRef).Count
 $duplicateDependencyCount = @($dependencyLock.dependencyAudit.duplicateResolvedPackages).Count
@@ -737,6 +742,7 @@ $promotionGateItems
 
   <h2>Voice Source Gate</h2>
   <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
+  <p>Generated status: <code>$voiceSourceGateStatus</code> with <code>$voiceSourceBlockedGateCount</code> blocked voice-source gates. See <a href="VOICE_SOURCE_STATUS.md">VOICE_SOURCE_STATUS.md</a> and <a href="voice_source_status.json">voice_source_status.json</a>.</p>
   <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v4 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
   <div class="status">
     <span class="pill pending">Voice source: pending production source</span>
@@ -800,6 +806,8 @@ $promotionGateItems
     <div class="item"><a href="voice/rvc/stackchan_rvc_high_character.wav">RVC High Character WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">RVC Thinking WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.wav">RVC Safety WAV</a></div>
+    <div class="item"><a href="VOICE_SOURCE_STATUS.md">Voice Source Status</a></div>
+    <div class="item"><a href="voice_source_status.json">Voice Source Status JSON</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
     <div class="item"><a href="voice_rvc_base.yaml">RVC Candidate Base YAML</a></div>

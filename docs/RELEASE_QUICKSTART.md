@@ -84,6 +84,14 @@ notepad .\AUDIO_REVIEW.md
 
 Save at least one real-device speaker recording under `audio\`. The strict verifier accepts `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`, but generated source WAVs alone do not count as target-speaker evidence.
 
+Before consumer promotion, review the generated voice-source status report:
+
+```powershell
+notepad .\VOICE_SOURCE_STATUS.md
+```
+
+That report must move from `blocked-pending-production-voice-source` to production-ready before a non-prerelease rollout.
+
 ## Promotion Evidence
 
 Before calling the release consumer-ready, save:

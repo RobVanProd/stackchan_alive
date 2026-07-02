@@ -183,6 +183,14 @@ Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
 
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
+  -VoiceSourceProvenancePath (Join-Path $dataDir "voice_source_provenance.yaml") `
+  -TemplatePath (Join-Path $docsDir "VOICE_SOURCE_PROVENANCE_TEMPLATE.md") `
+  -OutputDir $outDir
+if ($LASTEXITCODE -ne 0) {
+  throw "Voice source status export failed."
+}
+
 $releaseTools = @(
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
@@ -195,6 +203,8 @@ $releaseTools = @(
   "tools/publish_release.ps1",
   "tools/export_github_actions_status.cmd",
   "tools/export_github_actions_status.ps1",
+  "tools/export_voice_source_status.cmd",
+  "tools/export_voice_source_status.ps1",
   "tools/setup_voice_tools.cmd",
   "tools/setup_voice_tools.ps1",
   "tools/render_voice_samples.cmd",
@@ -525,6 +535,8 @@ $manifest = [ordered]@{
   voicePersona = "data/voice_persona.yaml"
   voiceSourceProvenanceTemplate = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
   voiceSourceProvenance = "data/voice_source_provenance.yaml"
+  voiceSourceStatusReport = "VOICE_SOURCE_STATUS.md"
+  voiceSourceStatusReportJson = "voice_source_status.json"
   voiceRvcBase = "data/voice_rvc_base.yaml"
   voiceRvcBaseMetadata = "data/voice_rvc_base_metadata.json"
   mediaArtifacts = @(
@@ -574,6 +586,8 @@ $manifest = [ordered]@{
     "tools/publish_release.ps1",
     "tools/export_github_actions_status.cmd",
     "tools/export_github_actions_status.ps1",
+    "tools/export_voice_source_status.cmd",
+    "tools/export_voice_source_status.ps1",
     "tools/generate_synthetic_hardware_evidence.cmd",
     "tools/generate_synthetic_hardware_evidence.ps1",
     "tools/add_hardware_evidence_media.cmd",
@@ -674,6 +688,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "preview-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_preview.mp4, media/stackchan_alive_preview.gif" },
     [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
+    [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
@@ -714,6 +729,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
+    [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates imported photos/videos/audio and records hashes" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
@@ -751,6 +767,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Visual review media present: preview image, expression sheet, and preview video
 - [x] Voice review samples present: Stackchan Spark greeting, thinking, safety, warm-slow audition, and bright-robot audition WAVs
 - [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
+- [x] Voice source status report present: ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
 - [x] Hardware media importer present: ``tools/add_hardware_evidence_media.cmd`` validates imported photos/videos/audio and records hashes
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
@@ -786,7 +803,7 @@ Consumer rollout: blocked pending hardware validation
 - Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
-- Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
+- Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json`` list the blocked production-voice gates. Current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
@@ -815,7 +832,7 @@ Commit: $commit
 
 This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Hardware validation is still required before consumer rollout:
 
