@@ -6,6 +6,7 @@
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
 #include "io/SensorAdapter.hpp"
+#include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "persona/EmotionModel.hpp"
@@ -589,6 +590,20 @@ void test_actuation_disable_stops_and_suppresses_writes_until_resumed() {
   TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);
 }
 
+void test_stackchan_servo_stop_returns_tracked_axes_to_neutral() {
+  StackChanServoAdapter adapter;
+  TEST_ASSERT_TRUE(adapter.begin());
+
+  adapter.writePitchDeg(9.0f);
+  adapter.writeYawAngleDeg(-18.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 9.0f, adapter.lastPitchDeg());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -18.0f, adapter.lastYawDeg());
+
+  adapter.stop();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, adapter.lastPitchDeg());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, adapter.lastYawDeg());
+}
+
 void test_actuation_clamps_yaw_velocity() {
   RobotConfig config;
   config.servos.yawMaxVelocity = 0.35f;
@@ -736,6 +751,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
+  RUN_TEST(test_stackchan_servo_stop_returns_tracked_axes_to_neutral);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);
   RUN_TEST(test_speech_planner_uses_original_stackchan_lines);

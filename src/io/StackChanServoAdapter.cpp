@@ -41,9 +41,12 @@ void StackChanServoAdapter::writeYawVelocity(float yawVel) {
 }
 
 void StackChanServoAdapter::stop() {
+  lastPitchDeg_ = 0.0f;
+  lastYawDeg_ = 0.0f;
   lastYawVel_ = 0.0f;
 #if STACKCHAN_ENABLE_SERVOS && STACKCHAN_HAS_SERVO_LIBRARY
   if (enabled_) {
+    servo_.moveX(90, 0);
     servo_.moveY(90, 0, false);
   }
 #endif

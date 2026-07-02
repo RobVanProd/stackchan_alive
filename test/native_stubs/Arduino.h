@@ -4,9 +4,24 @@
 #include <cmath>
 #include <cstdint>
 
+#define F(value) value
+
 using std::int16_t;
 using std::uint8_t;
 using std::uint32_t;
+
+class SerialStub {
+ public:
+  template <typename T>
+  void print(const T&) {}
+
+  template <typename T>
+  void println(const T&) {}
+
+  void println() {}
+};
+
+inline SerialStub Serial;
 
 template <typename T>
 T constrain(T value, T low, T high) {
