@@ -82,6 +82,8 @@ Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` recordings
 
 The evidence packet also includes `RVC_LEAD_AUDITION.md`, `reference_audio\`, and `RUN_PLAY_LEAD_VOICE.cmd`. Use that playback helper for the target speaker check so the recording is tied to the selected `RVC Bright Robot` lead audition and its exact pitch/index/RMS/protect settings.
 
+The packet copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json` from the verified release package. Review those reports before promotion; they should stay blocked until the production voice source and RVC rights gates are explicitly cleared.
+
 Before promotion review, complete the audio evidence record generated in the packet:
 
 ```powershell
@@ -94,6 +96,7 @@ Before consumer promotion, review the generated voice-source status report:
 
 ```powershell
 notepad .\VOICE_SOURCE_STATUS.md
+notepad .\RVC_VOICE_BASE_STATUS.md
 ```
 
 That report must move from `blocked-pending-production-voice-source` to production-ready before a non-prerelease rollout.

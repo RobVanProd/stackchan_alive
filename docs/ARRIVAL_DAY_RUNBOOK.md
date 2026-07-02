@@ -95,6 +95,8 @@ Expected evidence:
 
 The evidence packet copies the current lead RVC audition into `reference_audio/`. For this prerelease direction, the lead is `RVC Bright Robot` with pitch 2, index 0.62, RMS mix 0.72, and protect 0.28. This remains review-only voice evidence; production voice-source provenance is still required before consumer rollout.
 
+The packet also copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json` from the verified release package. Treat these as the authoritative voice gate reports during bring-up; they should remain blocked until a licensed or owned production voice source and RVC rights review are cleared.
+
 Import the speaker recording into the packet. Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` files are stored under `audio/`:
 
 ```powershell

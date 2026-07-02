@@ -176,6 +176,62 @@ function Copy-VoiceLeadArtifactsFromZip {
   }
 }
 
+function Copy-VoiceGateStatusFromRoot {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot
+  )
+
+  $statusFiles = @(
+    "VOICE_SOURCE_STATUS.md",
+    "voice_source_status.json",
+    "RVC_VOICE_BASE_STATUS.md",
+    "rvc_voice_base_status.json"
+  )
+
+  foreach ($relativePath in $statusFiles) {
+    $sourcePath = Join-Path $SourceRoot $relativePath
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+      throw "Release package missing voice gate status artifact: $relativePath"
+    }
+    Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $DestinationRoot $relativePath)
+  }
+
+  $voiceSourceStatus = Get-Content -LiteralPath (Join-Path $DestinationRoot "voice_source_status.json") -Raw | ConvertFrom-Json
+  $rvcBaseStatus = Get-Content -LiteralPath (Join-Path $DestinationRoot "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
+
+  return [ordered]@{
+    voiceSourceStatus = [string]$voiceSourceStatus.status
+    voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
+    rvcVoiceBaseStatus = [string]$rvcBaseStatus.status
+    rvcConsumerApproved = [bool]$rvcBaseStatus.consumerApproved
+    rvcDistributionApproved = [bool]$rvcBaseStatus.distributionApproved
+    reports = @(
+      "VOICE_SOURCE_STATUS.md",
+      "voice_source_status.json",
+      "RVC_VOICE_BASE_STATUS.md",
+      "rvc_voice_base_status.json"
+    )
+  }
+}
+
+function Copy-VoiceGateStatusFromZip {
+  param(
+    [string]$ZipPath,
+    [string]$DestinationRoot
+  )
+
+  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-voice-gates"
+  $extractDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+  try {
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $extractDir
+    return Copy-VoiceGateStatusFromRoot -SourceRoot $extractDir -DestinationRoot $DestinationRoot
+  } finally {
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Copy-ShareVerificationArtifactsFromRoot {
   param(
     [string]$SourceRoot,
@@ -410,6 +466,7 @@ New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $refe
 
 $packageInfo = $null
 $voiceLeadInfo = $null
+$voiceGateInfo = $null
 $shareVerificationInfo = $null
 $packageVerified = $false
 $requiredLogs = @(
@@ -457,6 +514,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   $packageVerified = $true
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
+  $voiceGateInfo = Copy-VoiceGateStatusFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   $packageRootItem = Get-Item -LiteralPath $PackageRoot
@@ -491,6 +549,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   $packageVerified = $true
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
+  $voiceGateInfo = Copy-VoiceGateStatusFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
 }
 
@@ -703,6 +762,8 @@ $readme = @(
   "",
   "The packet includes ``RVC_LEAD_AUDITION.md`` and ``reference_audio/`` with the current lead voice audition copied from the verified release package. Use ``RUN_PLAY_LEAD_VOICE.cmd`` as a playback aid for the speaker check, then record the actual device speaker and import that recording under ``audio/``.",
   "",
+  "The packet also includes ``VOICE_SOURCE_STATUS.md/json`` and ``RVC_VOICE_BASE_STATUS.md/json`` copied from the verified release package. These reports document that current voice samples and RVC base evidence are review-only until the production voice-source gate is cleared.",
+  "",
   "If present, ``HOSTED_MEDIA_REFERENCE.md`` records the verified Cloudflare/share page for this release. Use it as the remote review reference for the image, video, face GIFs, and voice samples while still collecting real-device evidence locally.",
   "",
   "## Suggested Commands",
@@ -816,6 +877,14 @@ if ($shareVerificationInfo) {
     "share/PUBLIC_URL.txt"
   )
 }
+if ($voiceGateInfo) {
+  $requiredRecords += @(
+    "VOICE_SOURCE_STATUS.md",
+    "voice_source_status.json",
+    "RVC_VOICE_BASE_STATUS.md",
+    "rvc_voice_base_status.json"
+  )
+}
 
 $metadata = [ordered]@{
   releaseTag = $ReleaseTag
@@ -827,6 +896,7 @@ $metadata = [ordered]@{
   port = $Port
   package = $packageInfo
   voiceLeadAudition = $voiceLeadInfo
+  voiceGateStatus = $voiceGateInfo
   shareVerification = $shareVerificationInfo
   requiredLogs = $requiredLogs
   requiredRecords = $requiredRecords

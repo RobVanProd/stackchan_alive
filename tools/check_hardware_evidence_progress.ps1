@@ -137,6 +137,48 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
   } else {
     Add-Finding "metadata.json has no shareVerification reference; hosted media review page is not pinned in this evidence packet"
   }
+
+  if ($null -ne $metadata.voiceGateStatus) {
+    [void](Test-RequiredFile "VOICE_SOURCE_STATUS.md" 500)
+    [void](Test-RequiredFile "voice_source_status.json" 500)
+    [void](Test-RequiredFile "RVC_VOICE_BASE_STATUS.md" 500)
+    [void](Test-RequiredFile "rvc_voice_base_status.json" 500)
+
+    if (Test-Path -LiteralPath (Join-EvidencePath "voice_source_status.json")) {
+      $voiceSourceStatus = Get-Content -LiteralPath (Join-EvidencePath "voice_source_status.json") -Raw | ConvertFrom-Json
+      if ($voiceSourceStatus.schema -eq "stackchan.voice-source-status.v1" -and
+          $voiceSourceStatus.status -eq $metadata.voiceGateStatus.voiceSourceStatus -and
+          [int]$voiceSourceStatus.blockedGateCount -eq [int]$metadata.voiceGateStatus.voiceSourceBlockedGateCount) {
+        Add-Pass "Voice source status report matches metadata"
+      } else {
+        Add-Finding "voice_source_status.json is missing a matching schema/status/blocked-gate count"
+      }
+      if ($voiceSourceStatus.status -eq "production-source-ready") {
+        Add-Pass "Voice source status reports production-source-ready"
+      } else {
+        Add-Finding "Production voice-source gate remains blocked: $($voiceSourceStatus.status)"
+      }
+    }
+
+    if (Test-Path -LiteralPath (Join-EvidencePath "rvc_voice_base_status.json")) {
+      $rvcBaseStatus = Get-Content -LiteralPath (Join-EvidencePath "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
+      if ($rvcBaseStatus.schema -eq "stackchan.rvc-voice-base-status.v1" -and
+          $rvcBaseStatus.status -eq $metadata.voiceGateStatus.rvcVoiceBaseStatus -and
+          [bool]$rvcBaseStatus.consumerApproved -eq [bool]$metadata.voiceGateStatus.rvcConsumerApproved -and
+          [bool]$rvcBaseStatus.distributionApproved -eq [bool]$metadata.voiceGateStatus.rvcDistributionApproved) {
+        Add-Pass "RVC voice base status report matches metadata"
+      } else {
+        Add-Finding "rvc_voice_base_status.json is missing a matching schema/status/approval state"
+      }
+      if ([bool]$rvcBaseStatus.consumerApproved -and [bool]$rvcBaseStatus.distributionApproved) {
+        Add-Pass "RVC voice base is marked approved for consumer distribution"
+      } else {
+        Add-Finding "RVC voice base remains review-only, not consumer/distribution approved"
+      }
+    }
+  } else {
+    Add-Finding "metadata.json missing voiceGateStatus reference; voice-source and RVC gate reports are not pinned in this evidence packet"
+  }
 }
 
 if (Test-Path -LiteralPath (Join-EvidencePath "CHECKLIST.md")) {
