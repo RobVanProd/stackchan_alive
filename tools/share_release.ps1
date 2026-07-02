@@ -1310,6 +1310,7 @@ $preflightDownloadItems
   <h3>Arrival-Day Evidence Loop</h3>
   <ol>
     <li>Run <code>RUN_DISPLAY_ONLY.cmd</code> and confirm the face appears with dry-run servo logs.</li>
+    <li>Run <code>RUN_SPEECH_MOUTH_DEMO.cmd</code> while display-only firmware is still connected to capture the speech envelope mouth demo.</li>
     <li>Run <code>RUN_SERVO_CALIBRATION.cmd</code> only after the body is clear and supervised.</li>
     <li>Run <code>RUN_SOAK_MONITOR.cmd</code> for the 30-minute mixed-mode soak.</li>
     <li>Complete <code>AUDIO_REVIEW.md</code> and save a real-device speaker recording under <code>audio/</code>.</li>
