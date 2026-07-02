@@ -106,7 +106,7 @@ Import the speaker recording into the packet. Use `-Type Audio` for phone videos
 
 ## 5. Progress Check Before Promotion
 
-Open `NEXT_STEPS.md` in the evidence packet first. It gives the shortest run order for package verification, display, servo, soak, speaker recording, progress checks, rollout status, and promotion gates.
+Open `BENCH_STATUS.md` in the evidence packet first. It gives the current next action and command. Then open `NEXT_STEPS.md` for the full run order covering package verification, display, servo, soak, speaker recording, progress checks, rollout status, and promotion gates.
 
 Run this repeatedly while collecting evidence:
 
@@ -115,7 +115,7 @@ Run this repeatedly while collecting evidence:
 .\RUN_ROLLOUT_STATUS.cmd
 ```
 
-`RUN_ROLLOUT_STATUS.cmd` writes `ROLLOUT_STATUS.md` and `ROLLOUT_STATUS.json` into the packet. Use those files as the current handoff summary for package, hardware evidence, hosted media, GitHub Actions, and production voice-source gates.
+`RUN_PROGRESS_CHECK.cmd` refreshes `BENCH_STATUS.md` and `BENCH_STATUS.json`. `RUN_ROLLOUT_STATUS.cmd` writes `ROLLOUT_STATUS.md` and `ROLLOUT_STATUS.json` into the packet. Use those files as the current handoff summary for package, hardware evidence, hosted media, GitHub Actions, and production voice-source gates.
 
 Do not run the strict verifier until the progress check is clean or only lists intentionally deferred gates.
 

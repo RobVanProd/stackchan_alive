@@ -752,6 +752,8 @@ $nextSteps = @(
   "",
   "Use this as the short operator path for the packet. The longer README.md explains the details and exact commands.",
   "",
+  "Open ``BENCH_STATUS.md`` for the latest single next action. ``RUN_PROGRESS_CHECK.cmd`` refreshes ``BENCH_STATUS.md`` and ``BENCH_STATUS.json`` after each bench step.",
+  "",
   "## Run Order",
   "",
   "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
@@ -762,7 +764,7 @@ $nextSteps = @(
   "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
   "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
   "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-  "9. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "9. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
   "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
   "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
   "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
@@ -790,6 +792,8 @@ $readme = @(
   "Use this folder as the record for one device bring-up session. Start with NEXT_STEPS.md for the short run order, then complete CHECKLIST.md and OBSERVATIONS.md, save serial logs under logs/, and place real photos or short videos under photos/.",
   "",
   "The runnable command files in this folder are generated for this release, port, package, and evidence path.",
+  "",
+  "BENCH_STATUS.md is the quick handoff file. RUN_PROGRESS_CHECK.cmd refreshes it with the current status, next action, next command, top findings, and matching BENCH_STATUS.json machine-readable report.",
   "",
   "RELEASE_ACCEPTANCE.md and release_acceptance.json record the no-hardware gates that were already accepted and the hardware gates still required before consumer rollout.",
   "",
@@ -861,6 +865,8 @@ $readme = @(
   "",
   "    .\RUN_PROGRESS_CHECK.cmd",
   "",
+  "This refreshes ``BENCH_STATUS.md`` and ``BENCH_STATUS.json`` with the current next bench action.",
+  "",
   "Export the current package/evidence/CI/voice rollout summary:",
   "",
   "    $rolloutStatusCommand",
@@ -885,7 +891,36 @@ $readme = @(
 )
 $readme | Set-Content -Path (Join-Path $outDir "README.md") -Encoding UTF8
 
+$initialBenchStatus = [ordered]@{
+  schema = "stackchan.bench-status.v1"
+  evidenceRoot = $outDir
+  generatedUtc = $createdUtc
+  status = "not-yet-checked"
+  nextAction = "Run the progress check to generate the current bench handoff summary."
+  nextCommand = "RUN_PROGRESS_CHECK.cmd"
+  reason = "Initial evidence packet scaffold; hardware evidence has not been checked yet."
+  findingCount = $null
+  passCount = $null
+  findings = @()
+  passes = @()
+}
+$initialBenchStatus | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $outDir "BENCH_STATUS.json") -Encoding UTF8
+@(
+  "# Stackchan Bench Status",
+  "",
+  "- Schema: stackchan.bench-status.v1",
+  "- Generated UTC: $createdUtc",
+  "- Status: not-yet-checked",
+  "- Next action: Run the progress check to generate the current bench handoff summary.",
+  "- Next command: ``RUN_PROGRESS_CHECK.cmd``",
+  "- Reason: Initial evidence packet scaffold; hardware evidence has not been checked yet.",
+  "",
+  "Run ``RUN_PROGRESS_CHECK.cmd`` after each bench step to refresh this file."
+) | Set-Content -Path (Join-Path $outDir "BENCH_STATUS.md") -Encoding UTF8
+
 $requiredRecords = @(
+  "BENCH_STATUS.md",
+  "BENCH_STATUS.json",
   "NEXT_STEPS.md",
   "CHECKLIST.md",
   "RELEASE_ACCEPTANCE.md",
@@ -944,6 +979,11 @@ $metadata = [ordered]@{
   shareVerification = $shareVerificationInfo
   requiredLogs = $requiredLogs
   requiredRecords = $requiredRecords
+  benchStatus = [ordered]@{
+    summary = "BENCH_STATUS.md"
+    report = "BENCH_STATUS.json"
+    refreshCommand = "RUN_PROGRESS_CHECK.cmd"
+  }
   promotionVerifier = "tools/verify_consumer_promotion.ps1"
   hardwareEvidenceVerifier = "tools/verify_hardware_evidence.ps1"
 }

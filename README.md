@@ -103,7 +103,7 @@ Start a device-arrival evidence packet:
 ```
 
 When `-PackageZip` is provided, the evidence packet copies the ZIP and writes `logs/package_verify.log`. The hardware evidence verifier requires that package proof by default before promotion.
-The packet also writes `RUN_*.cmd` files for the exact flash, soak, package verification, and evidence verification commands for that release and port.
+The packet also writes `BENCH_STATUS.md/json` plus `RUN_*.cmd` files for the exact flash, soak, package verification, progress summary, and evidence verification commands for that release and port.
 
 To run the package verification, display-flash dry-run, and evidence packet creation in one no-hardware-safe step:
 

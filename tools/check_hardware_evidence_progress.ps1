@@ -1,5 +1,7 @@
 param(
-  [string]$EvidenceRoot = ""
+  [string]$EvidenceRoot = "",
+  [string]$ReportPath = "",
+  [switch]$NoWriteReport
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,6 +83,162 @@ function Test-TextPattern {
     Add-Finding "$RelativePath missing $Description"
   } else {
     Add-Pass "$RelativePath has $Description"
+  }
+}
+
+function Get-FirstFindingLike {
+  param([string[]]$Patterns)
+
+  foreach ($pattern in $Patterns) {
+    foreach ($finding in $findings) {
+      if ($finding -match $pattern) {
+        return $finding
+      }
+    }
+  }
+  return ""
+}
+
+function Get-BenchNextAction {
+  $packageFinding = Get-FirstFindingLike @("logs/package_verify\.log", "package verification")
+  if (-not [string]::IsNullOrWhiteSpace($packageFinding)) {
+    return [ordered]@{
+      action = "Verify the release package captured in this evidence packet."
+      command = "RUN_PACKAGE_VERIFY.cmd"
+      reason = $packageFinding
+    }
+  }
+
+  $displayFinding = Get-FirstFindingLike @("logs/display_only_serial\.log", "display-only boot marker", "display readiness marker", "display frame-budget telemetry", "display face animator telemetry", "display runtime health telemetry", "No photo or video evidence")
+  if (-not [string]::IsNullOrWhiteSpace($displayFinding)) {
+    return [ordered]@{
+      action = "Run the display-only flash, then add a clear face photo or short video."
+      command = "RUN_DISPLAY_ONLY.cmd; RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg"
+      reason = $displayFinding
+    }
+  }
+
+  $servoFinding = Get-FirstFindingLike @("logs/servo_calibration_serial\.log", "servo-calibration boot marker", "servo hardware-enable marker", "Yaw classification", "yaw_mode", "calibration/calibration\.yaml", "Calibration changes", "Pitch behavior")
+  if (-not [string]::IsNullOrWhiteSpace($servoFinding)) {
+    return [ordered]@{
+      action = "Run supervised servo calibration and update calibration/calibration.yaml with measured yaw behavior."
+      command = "RUN_SERVO_CALIBRATION.cmd"
+      reason = $servoFinding
+    }
+  }
+
+  $soakFinding = Get-FirstFindingLike @("logs/soak_serial\.log", "runtime heartbeat marker", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "Duration", "USB power-cycle recovery", "Reset, stall, jitter, or heat")
+  if (-not [string]::IsNullOrWhiteSpace($soakFinding)) {
+    return [ordered]@{
+      action = "Run the soak monitor for at least 30 minutes and complete the soak fields in OBSERVATIONS.md."
+      command = "RUN_SOAK_MONITOR.cmd"
+      reason = $soakFinding
+    }
+  }
+
+  $audioFinding = Get-FirstFindingLike @("AUDIO_REVIEW\.md", "real-device speaker recording", "audio/", "speaker audio", "RVC voice base remains review-only")
+  if (-not [string]::IsNullOrWhiteSpace($audioFinding)) {
+    return [ordered]@{
+      action = "Play the lead voice reference, record the actual target speaker path, import it, and complete AUDIO_REVIEW.md."
+      command = "RUN_PLAY_LEAD_VOICE.cmd; RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav"
+      reason = $audioFinding
+    }
+  }
+
+  $checklistFinding = Get-FirstFindingLike @("CHECKLIST\.md still has unchecked gates", "Production voice-source gate remains blocked", "metadata\.json has no shareVerification", "GitHub Actions")
+  if (-not [string]::IsNullOrWhiteSpace($checklistFinding)) {
+    return [ordered]@{
+      action = "Clear the remaining checklist, voice-source, hosted-media, or CI handoff gates."
+      command = "RUN_ROLLOUT_STATUS.cmd"
+      reason = $checklistFinding
+    }
+  }
+
+  if ($findings.Count -gt 0) {
+    return [ordered]@{
+      action = "Resolve the first remaining progress finding."
+      command = "RUN_PROGRESS_CHECK.cmd"
+      reason = [string]$findings[0]
+    }
+  }
+
+  return [ordered]@{
+    action = "Run the strict hardware evidence verifier."
+    command = "RUN_EVIDENCE_VERIFY.cmd"
+    reason = "No obvious progress gaps found."
+  }
+}
+
+function Write-BenchStatusReport {
+  param([string]$JsonPath)
+
+  $markdownPath = ""
+  if ([string]::IsNullOrWhiteSpace($JsonPath)) {
+    $JsonPath = Join-EvidencePath "BENCH_STATUS.json"
+    $markdownPath = Join-EvidencePath "BENCH_STATUS.md"
+  }
+
+  $jsonFullPath = $JsonPath
+  if (-not [System.IO.Path]::IsPathRooted($jsonFullPath)) {
+    $jsonFullPath = Join-EvidencePath $jsonFullPath
+  }
+
+  $jsonDir = Split-Path -Parent $jsonFullPath
+  if (-not [string]::IsNullOrWhiteSpace($jsonDir)) {
+    New-Item -ItemType Directory -Force -Path $jsonDir | Out-Null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($markdownPath)) {
+    $markdownPath = [System.IO.Path]::ChangeExtension($jsonFullPath, ".md")
+  }
+  $next = Get-BenchNextAction
+  $status = if ($findings.Count -gt 0) { "blocked-or-pending" } else { "ready-for-strict-evidence-verify" }
+  $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+  $report = [ordered]@{
+    schema = "stackchan.bench-status.v1"
+    evidenceRoot = $evidencePath
+    generatedUtc = $generatedUtc
+    status = $status
+    nextAction = [string]$next.action
+    nextCommand = [string]$next.command
+    reason = [string]$next.reason
+    findingCount = $findings.Count
+    passCount = $passes.Count
+    findings = @($findings)
+    passes = @($passes)
+  }
+  $report | ConvertTo-Json -Depth 6 | Set-Content -Path $jsonFullPath -Encoding UTF8
+
+  $topFindings = @($findings | Select-Object -First 20)
+  $markdown = @(
+    "# Stackchan Bench Status",
+    "",
+    "- Schema: stackchan.bench-status.v1",
+    "- Generated UTC: $generatedUtc",
+    "- Status: $status",
+    "- Next action: $($next.action)",
+    "- Next command: ``$($next.command)``",
+    "- Reason: $($next.reason)",
+    "- Findings: $($findings.Count)",
+    "- Passing signals: $($passes.Count)",
+    "",
+    "Run ``RUN_PROGRESS_CHECK.cmd`` after each bench step to refresh this file.",
+    "",
+    "## Top Findings"
+  )
+  if ($topFindings.Count -gt 0) {
+    foreach ($finding in $topFindings) {
+      $markdown += "- $finding"
+    }
+  } else {
+    $markdown += "- No obvious progress gaps found. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict promotion check."
+  }
+  $markdown | Set-Content -Path $markdownPath -Encoding UTF8
+
+  return [ordered]@{
+    json = $jsonFullPath
+    markdown = $markdownPath
   }
 }
 
@@ -313,9 +471,21 @@ if ($audioFiles.Count -lt 1) {
   Add-Pass "Speaker recording files present: $($audioFiles.Count)"
 }
 
+$benchStatusPaths = $null
+if (-not $NoWriteReport) {
+  $benchStatusPaths = Write-BenchStatusReport -JsonPath $ReportPath
+}
+
 Write-Host "Hardware evidence progress:"
 Write-Host $evidencePath
 Write-Host ""
+
+if ($benchStatusPaths) {
+  Write-Host "Bench status written:"
+  Write-Host "  $($benchStatusPaths.markdown)"
+  Write-Host "  $($benchStatusPaths.json)"
+  Write-Host ""
+}
 
 if ($passes.Count -gt 0) {
   Write-Host "Passing signals:"

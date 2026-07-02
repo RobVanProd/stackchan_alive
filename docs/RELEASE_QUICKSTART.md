@@ -70,7 +70,7 @@ Open the newest evidence packet folder and run:
 .\RUN_DISPLAY_ONLY.cmd
 ```
 
-Open `NEXT_STEPS.md` in the evidence packet for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
+Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:
 
@@ -87,7 +87,7 @@ During bring-up, run:
 .\RUN_ROLLOUT_STATUS.cmd
 ```
 
-This lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
+This refreshes `BENCH_STATUS.md/json` and lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
 The rollout status command also writes `ROLLOUT_STATUS.md/json`, combining the evidence progress result with the package, GitHub Actions status, hosted media reference, and voice-source gate.
 
 Import photos, videos, and speaker recordings through the packet helper so the files are validated and hashed:

@@ -1005,6 +1005,8 @@ function Assert-ArrivalPacketScaffoldGate {
   try {
     foreach ($relativePath in @(
       "README.md",
+      "BENCH_STATUS.md",
+      "BENCH_STATUS.json",
       "NEXT_STEPS.md",
       "CHECKLIST.md",
       "OBSERVATIONS.md",
@@ -1066,9 +1068,11 @@ function Assert-ArrivalPacketScaffoldGate {
     $readme = Get-Content -LiteralPath (Join-Path $evidenceRoot "README.md") -Raw
     Assert-TextContains $readme "RUN_PLAY_LEAD_VOICE.cmd"
     Assert-TextContains $readme "real-device speaker recording"
+    Assert-TextContains $readme "BENCH_STATUS.md"
 
     $nextSteps = Get-Content -LiteralPath (Join-Path $evidenceRoot "NEXT_STEPS.md") -Raw
     Assert-TextContains $nextSteps "RUN_PACKAGE_VERIFY.cmd"
+    Assert-TextContains $nextSteps "BENCH_STATUS.md"
     Assert-TextContains $nextSteps "RUN_CONSUMER_PROMOTION_CHECK.cmd"
     Assert-TextContains $nextSteps "Generated source WAVs alone do not count"
     Assert-TextContains $nextSteps "Do not run servo calibration unless the body is clear"
@@ -1098,8 +1102,33 @@ function Assert-ArrivalPacketScaffoldGate {
       throw "Expected arrival packet progress wrapper to exit 2 for missing real hardware evidence, got $progressExitCode. Output:$([Environment]::NewLine)$progressText"
     }
     Assert-TextContains $progressText "Hardware evidence progress:"
+    Assert-TextContains $progressText "Bench status written:"
     Assert-TextContains $progressText "RVC lead audition reference hash matches metadata"
     Assert-TextContains $progressText "No real-device speaker recording found under audio/"
+    foreach ($relativePath in @("BENCH_STATUS.md", "BENCH_STATUS.json")) {
+      $path = Join-Path $evidenceRoot $relativePath
+      if (-not (Test-Path -LiteralPath $path)) {
+        throw "Arrival packet progress check did not write: $relativePath"
+      }
+      if ((Get-Item -LiteralPath $path).Length -lt 100) {
+        throw "Arrival packet progress check wrote a suspiciously small status file: $relativePath"
+      }
+    }
+    $benchStatusMarkdown = Get-Content -LiteralPath (Join-Path $evidenceRoot "BENCH_STATUS.md") -Raw
+    Assert-TextContains $benchStatusMarkdown "stackchan.bench-status.v1"
+    Assert-TextContains $benchStatusMarkdown "blocked-or-pending"
+    Assert-TextContains $benchStatusMarkdown "Next command:"
+    Assert-TextContains $benchStatusMarkdown "RUN_DISPLAY_ONLY.cmd"
+    $benchStatusJson = Get-Content -LiteralPath (Join-Path $evidenceRoot "BENCH_STATUS.json") -Raw | ConvertFrom-Json
+    if ([string]$benchStatusJson.schema -ne "stackchan.bench-status.v1") {
+      throw "Arrival packet BENCH_STATUS.json schema mismatch: $($benchStatusJson.schema)"
+    }
+    if ([string]$benchStatusJson.status -ne "blocked-or-pending") {
+      throw "Arrival packet BENCH_STATUS.json should be blocked-or-pending, got $($benchStatusJson.status)"
+    }
+    if ([string]$benchStatusJson.nextCommand -notmatch "RUN_DISPLAY_ONLY\.cmd") {
+      throw "Arrival packet BENCH_STATUS.json next command did not point at display evidence: $($benchStatusJson.nextCommand)"
+    }
 
     $oldErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
