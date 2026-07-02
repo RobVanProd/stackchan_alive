@@ -10,6 +10,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - Release packages include dependency provenance, a machine-readable dependency lock, copied build inputs, and a dependency audit that flags duplicate resolved package names or upstream Git requirements that were not directly pinned by this project.
 - Release packages can be verified locally before publication, and published release assets can be re-audited after upload.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
+- Hardware evidence packets include a media importer that validates phone photos/videos/audio and records SHA256 hashes in `media_manifest.json`.
 - Release packages include a binary flasher that writes the exact packaged display-only or servo-calibration firmware.
 - Release packages include a manual GitHub publish helper that verifies the uploaded ZIP when GitHub Actions cannot run.
 - Published release assets can be audited against the local package by size, SHA256 digest, and downloaded-ZIP verification.

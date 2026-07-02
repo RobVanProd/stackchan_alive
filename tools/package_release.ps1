@@ -206,6 +206,8 @@ $releaseTools = @(
   "tools/verify_rvc_auditions.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
+  "tools/add_hardware_evidence_media.cmd",
+  "tools/add_hardware_evidence_media.ps1",
   "tools/check_hardware_evidence_progress.cmd",
   "tools/check_hardware_evidence_progress.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -574,6 +576,8 @@ $manifest = [ordered]@{
     "tools/export_github_actions_status.ps1",
     "tools/generate_synthetic_hardware_evidence.cmd",
     "tools/generate_synthetic_hardware_evidence.ps1",
+    "tools/add_hardware_evidence_media.cmd",
+    "tools/add_hardware_evidence_media.ps1",
     "tools/check_hardware_evidence_progress.cmd",
     "tools/check_hardware_evidence_progress.ps1",
     "tools/prepare_device_arrival.cmd",
@@ -675,6 +679,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
     [ordered]@{ gate = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ gate = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, and tools/check_hardware_evidence_progress.cmd" },
+    [ordered]@{ gate = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates phone media and writes media_manifest.json" },
     [ordered]@{ gate = "servo-risk-acknowledgement-required"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" }
   )
   hardwareGates = @(
@@ -710,6 +715,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
+    [ordered]@{ requirement = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates imported photos/videos/audio and records hashes" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
     [ordered]@{ requirement = "share-page-verifiable"; status = "pass"; evidence = "tools/share_release.cmd and tools/verify_share_release.cmd" }
   )
@@ -746,6 +752,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Voice review samples present: Stackchan Spark greeting, thinking, safety, warm-slow audition, and bright-robot audition WAVs
 - [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
+- [x] Hardware media importer present: ``tools/add_hardware_evidence_media.cmd`` validates imported photos/videos/audio and records hashes
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
 - [x] Servo risk gated by explicit ``-ConfirmServoRisk``
 - [x] Share page can be verified by ``tools/verify_share_release.cmd``
@@ -781,6 +788,7 @@ Consumer rollout: blocked pending hardware validation
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
 - Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
+- Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
 ## Pending Device Evidence

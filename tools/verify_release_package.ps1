@@ -173,6 +173,8 @@ $requiredFiles = @(
   "tools/verify_rvc_auditions.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
+  "tools/add_hardware_evidence_media.cmd",
+  "tools/add_hardware_evidence_media.ps1",
   "tools/check_hardware_evidence_progress.cmd",
   "tools/check_hardware_evidence_progress.ps1",
   "tools/prepare_device_arrival.cmd",
@@ -225,7 +227,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "PUBLIC_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ADD_MEDIA.cmd", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -260,9 +262,16 @@ foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1")) {
+foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
+  }
+}
+
+$hardwareMediaImporterText = Get-Content -LiteralPath (Join-PackagePath "tools/add_hardware_evidence_media.ps1") -Raw
+foreach ($pattern in @("stackchan.hardware-media-manifest.v1", "Test-PhotoEvidenceFile", "Test-AudioEvidenceFile", "media_manifest.json", "SHA256", "photos", "audio")) {
+  if ($hardwareMediaImporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/add_hardware_evidence_media.ps1 missing media import or validation logic: $pattern"
   }
 }
 
@@ -756,7 +765,7 @@ if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
 if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "servo-risk-gated", "share-page-verifiable")) {
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
   $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
@@ -770,7 +779,7 @@ foreach ($requirement in @("display-only-flash", "servo-calibration", "mixed-mod
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Hardware media importer", "add_hardware_evidence_media.cmd", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -798,7 +807,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "gith
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "verify_hardware_evidence.cmd", "Voice source provenance", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Voice source provenance", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -825,6 +834,10 @@ foreach ($gate in @($readinessJson.noHardwareProof)) {
 $voiceSourceNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-provenance-template-present" -and $_.status -eq "pass" })
 if ($voiceSourceNoHardwareGate.Count -ne 1) {
   throw "readiness_report.json missing passed voice-source provenance template gate"
+}
+$mediaImporterNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "hardware-media-importer-present" -and $_.status -eq "pass" })
+if ($mediaImporterNoHardwareGate.Count -ne 1) {
+  throw "readiness_report.json missing passed hardware-media-importer-present gate"
 }
 $speakerAudioGate = @($readinessJson.hardwareGates | Where-Object { $_.gate -eq "target-speaker-audio-evidence" -and $_.status -eq "pending-device" })
 if ($speakerAudioGate.Count -ne 1) {

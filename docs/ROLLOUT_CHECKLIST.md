@@ -5,6 +5,7 @@ Use this as the arrival-day test record. Do not promote a release from prereleas
 When completing `OBSERVATIONS.md`, use promotion-verifiable values: `Result: pass`, reset/heat/brownout/stall/jitter observed fields as `no`, `Procedural face visible: yes`, `Dry-run servo log observed: yes`, `Yaw classification: angle`, `velocity`, or `disabled`, soak `Duration` of at least `30 minutes`, and `USB power-cycle recovery: pass`.
 Promotion evidence must include at least one real photo or video under `photos/`: `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp4`, `.mov`, or `.webm`. Text placeholders do not count.
 Promotion evidence must include `AUDIO_REVIEW.md` plus at least one real-device speaker recording under `audio/`: `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`. Text placeholders or generated source WAVs alone do not count as target-speaker evidence.
+Use `RUN_ADD_MEDIA.cmd` from the generated evidence packet to import phone photos, videos, and speaker recordings. It validates file headers, copies files into `photos/` or `audio/`, and records hashes in `media_manifest.json`.
 Serial logs must include firmware markers: display-only boot `mode=display_only`, servo-calibration boot `mode=servo_calibration`, display renderer ready, servo dry-run or hardware-enable line, and soak heartbeat `[heartbeat] stackchan_alive ... uptime_ms=...`.
 
 ## Build Evidence
@@ -21,6 +22,7 @@ Serial logs must include firmware markers: display-only boot `mode=display_only`
 - [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
 - [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
 - [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`, or records a verified extracted package root.
+- [ ] Photo/video and speaker recordings imported with `RUN_ADD_MEDIA.cmd`, producing `media_manifest.json`.
 - [ ] Evidence packet includes completed `AUDIO_REVIEW.md` and a real-device speaker recording under `audio/`.
 - [ ] `RUN_PROGRESS_CHECK.cmd` has no remaining missing evidence items.
 - [ ] If testing from an extracted release package, `tools/prepare_device_arrival.ps1 -Port <COM> -Operator <name> -DeviceId <id>` passes from inside that package root.

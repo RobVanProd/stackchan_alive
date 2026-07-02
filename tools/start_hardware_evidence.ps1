@@ -337,6 +337,7 @@ if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
 }
 $progressCommand = "& '.\tools\check_hardware_evidence_progress.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
+$addMediaCommand = "& '.\tools\add_hardware_evidence_media.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $evidenceVerifyCommand = "& '.\tools\verify_hardware_evidence.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $promotionPackageArg = "-PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
 if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
@@ -374,6 +375,11 @@ $commandFiles = [ordered]@{
     "cd /d `"$repoRoot`"",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $progressCommand }`""
   )
+  "RUN_ADD_MEDIA.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\add_hardware_evidence_media.ps1`" -EvidenceRoot `"$outDir`" %*"
+  )
   "RUN_EVIDENCE_VERIFY.cmd" = @(
     "@echo off",
     "cd /d `"$repoRoot`"",
@@ -407,6 +413,8 @@ $readme = @(
   "",
   "Promotion verification also requires at least one valid media file under photos/: .png, .jpg, .jpeg, .gif, .mp4, .mov, or .webm. Text placeholders, header-only files, tiny files, and images without plausible dimensions do not count as photo/video evidence.",
   "",
+  "Use ``RUN_ADD_MEDIA.cmd`` to import phone photos, videos, and target-speaker recordings. It copies files into ``photos/`` or ``audio/``, validates media headers, and records SHA256 hashes in ``media_manifest.json``.",
+  "",
   "## Suggested Commands",
   "",
   "Display-only flash:",
@@ -434,6 +442,18 @@ $readme = @(
   "    .\RUN_PACKAGE_VERIFY.cmd",
   "",
   "The packet creation command automatically writes ``logs/package_verify.log`` when ``-PackageZip`` is provided.",
+  "",
+  "Import display/motion photos or videos:",
+  "",
+  "    $addMediaCommand -Type Photo C:\path\stackchan-face.jpg",
+  "",
+  "    .\RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg",
+  "",
+  "Import a real-device speaker recording. Use ``-Type Audio`` for phone video recordings of the speaker so .mp4/.mov files go under ``audio/``:",
+  "",
+  "    $addMediaCommand -Type Audio C:\path\stackchan-speaker.wav",
+  "",
+  "    .\RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav",
   "",
   "Before marking a release hardware-validated, verify this evidence packet:",
   "",
@@ -479,6 +499,7 @@ $metadata = [ordered]@{
     "RUN_SOAK_MONITOR.cmd",
     "RUN_PACKAGE_VERIFY.cmd",
     "RUN_PROGRESS_CHECK.cmd",
+    "RUN_ADD_MEDIA.cmd",
     "RUN_EVIDENCE_VERIFY.cmd",
     "RUN_CONSUMER_PROMOTION_CHECK.cmd"
   )

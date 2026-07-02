@@ -42,6 +42,12 @@ Hard stop if:
 - serial output has no boot marker
 - any servo moves during display-only firmware
 
+Import the display photo or video into the packet:
+
+```powershell
+.\RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg
+```
+
 ## 3. Supervised Servo Calibration
 
 Only continue after display-only passes and the body is clear.
@@ -81,6 +87,12 @@ Expected evidence:
 - real-device speaker recording saved under `audio/`
 - audio sample is intelligible through the device speaker
 - no clipping, distortion, playback dropout, or excessive delay
+
+Import the speaker recording into the packet. Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` files are stored under `audio/`:
+
+```powershell
+.\RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav
+```
 
 ## 5. Progress Check Before Promotion
 

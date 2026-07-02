@@ -67,6 +67,15 @@ During bring-up, run:
 
 This lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
 
+Import photos, videos, and speaker recordings through the packet helper so the files are validated and hashed:
+
+```powershell
+.\RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg
+.\RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav
+```
+
+Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` recordings land under `audio\` instead of `photos\`.
+
 Before promotion review, complete the audio evidence record generated in the packet:
 
 ```powershell
