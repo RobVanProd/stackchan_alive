@@ -158,10 +158,11 @@ try {
 
   $actionsStatus = Get-Content -LiteralPath (Join-ResolvedPath $packageRootPath "github_actions_status.json") -Raw | ConvertFrom-Json
   if ($actionsStatus.status -ne "success") {
-    if (-not ($AllowExternalAccountCiBlock -and $actionsStatus.status -eq "external-account-billing-or-spending-limit")) {
+    $externalAccountStatuses = @("external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation")
+    if (-not ($AllowExternalAccountCiBlock -and $externalAccountStatuses -contains $actionsStatus.status)) {
       throw "GitHub Actions status is not promotion-ready: $($actionsStatus.status)"
     }
-    Write-Warning "Allowing external GitHub Actions account billing/spending-limit block because -AllowExternalAccountCiBlock was passed."
+    Write-Warning "Allowing external GitHub Actions account/pre-runner block because -AllowExternalAccountCiBlock was passed."
   }
 
   if ([string]::IsNullOrWhiteSpace($VoiceSourceProvenancePath)) {

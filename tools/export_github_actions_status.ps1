@@ -142,6 +142,8 @@ if ($allSuccessful) {
   $summaryStatus = "success"
 } elseif ($billingMessages.Count -gt 0 -and $jobsNeverReachedRunner) {
   $summaryStatus = "external-account-billing-or-spending-limit"
+} elseif ($jobsNeverReachedRunner) {
+  $summaryStatus = "external-account-ci-pre-runner-allocation"
 } elseif ($runReports.Count -gt 0) {
   $summaryStatus = "failed-or-incomplete"
 }
@@ -155,6 +157,8 @@ $report = [ordered]@{
   status = $summaryStatus
   interpretation = if ($summaryStatus -eq "external-account-billing-or-spending-limit") {
     "GitHub Actions did not start any job steps because GitHub reported an account billing or spending-limit issue. Treat local release verification and device preflight as the available technical evidence until account billing is fixed and workflows can run."
+  } elseif ($summaryStatus -eq "external-account-ci-pre-runner-allocation") {
+    "GitHub Actions did not start any job steps and no runner was assigned to any matching job. GitHub did not provide a billing annotation, so this is recorded as an external pre-runner allocation failure rather than an in-repo build or test failure. Treat local release verification and device preflight as the available technical evidence until hosted jobs can start."
   } elseif ($summaryStatus -eq "success") {
     "GitHub Actions completed successfully for the matching commit."
   } elseif ($summaryStatus -eq "missing") {

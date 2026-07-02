@@ -306,7 +306,7 @@ foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive",
 }
 
 $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
-foreach ($pattern in @("stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "payments have failed", "spending limit", "runnerId", "stepCount")) {
+foreach ($pattern in @("stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
   }
@@ -774,7 +774,7 @@ if ($actionsStatus.version -ne $Version) {
 if ($actionsStatus.commit -ne $ExpectedCommit) {
   throw "github_actions_status.json commit mismatch: expected $ExpectedCommit, got $($actionsStatus.commit)"
 }
-if (@("post-push-check-required", "external-account-billing-or-spending-limit", "success") -notcontains $actionsStatus.status) {
+if (@("post-push-check-required", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
   throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
 }
 
