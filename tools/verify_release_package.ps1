@@ -180,6 +180,8 @@ $requiredFiles = @(
   "tools/flash_release_firmware.cmd",
   "tools/flash_release_firmware.ps1",
   "tools/platformio_resolver.ps1",
+  "tools/check_native_toolchain.cmd",
+  "tools/check_native_toolchain.ps1",
   "tools/preview_python_resolver.ps1",
   "tools/render_preview.py",
   "tools/audit_published_release.cmd",
@@ -416,6 +418,20 @@ $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_pr
 foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
+  }
+}
+
+$nativeToolchainCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_native_toolchain.ps1") -Raw
+foreach ($pattern in @("stackchan.native-toolchain-check.v1", "Get-StackchanNativeCompilerDirs", "Add-StackchanNativeCompilerToPath", "winget install BrechtSanders.WinLibs.POSIX.UCRT", "Candidate directories")) {
+  if ($nativeToolchainCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_native_toolchain.ps1 missing native toolchain diagnostic logic: $pattern"
+  }
+}
+
+$platformioResolverText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_resolver.ps1") -Raw
+foreach ($pattern in @("scoop/apps/mingw/current/bin", "scoop/apps/gcc/current/bin", "chocolatey/lib/mingw", "BrechtSanders.WinLibs")) {
+  if ($platformioResolverText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/platformio_resolver.ps1 missing native compiler discovery path: $pattern"
   }
 }
 

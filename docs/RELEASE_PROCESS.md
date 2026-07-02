@@ -19,6 +19,7 @@ Before flashing or publishing, run the no-hardware preflight:
 ```
 
 The preflight also checks that servo-calibration flashing is blocked unless `-ConfirmServoRisk` is present, that dry-run upload commands render correctly, that speech-envelope sidecars can be generated and dry-streamed into serial mouth commands, and that a verified local share can be captured into an evidence packet without requiring a Cloudflare `PUBLIC_URL.txt`.
+If the native logic test step reports missing `gcc`/`g++`, run `.\tools\check_native_toolchain.cmd` to see the searched compiler paths and Windows install options.
 
 Verify the package before sharing it:
 

@@ -118,9 +118,17 @@ function Get-StackchanNativeCompilerDirs {
     "C:/msys64/mingw64/bin",
     "C:/msys64/ucrt64/bin",
     "C:/mingw64/bin",
-    "C:/mingw/bin"
+    "C:/mingw/bin",
+    "C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin",
+    "C:/ProgramData/chocolatey/bin"
   )) {
     $dirs += $candidateDir
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $dirs += Join-Path $env:USERPROFILE "scoop/apps/mingw/current/bin"
+    $dirs += Join-Path $env:USERPROFILE "scoop/apps/gcc/current/bin"
+    $dirs += Join-Path $env:USERPROFILE "scoop/shims"
   }
 
   if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {

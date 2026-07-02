@@ -42,6 +42,7 @@ Run the no-hardware device preflight before flashing or handing off a package:
 ```
 
 The preflight checks tool availability, dependency pins, flash-helper safety gates, local-share evidence capture, speech-envelope sidecar generation/dry streaming, tests, and both firmware builds.
+If native host tests cannot find `gcc`/`g++`, run `.\tools\check_native_toolchain.cmd` for searched paths and install guidance.
 
 Create an auditable prerelease package:
 
