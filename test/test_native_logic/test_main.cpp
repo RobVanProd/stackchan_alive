@@ -237,6 +237,11 @@ void test_face_animator_reduced_motion_dampens_autonomic_offsets() {
   TEST_ASSERT_GREATER_THAN_FLOAT(reducedMaxOffset * 2.0f, fullMaxOffset);
 }
 
+void test_robot_config_exposes_face_reduced_motion_default() {
+  const RobotConfig config = defaultRobotConfig();
+  TEST_ASSERT_FALSE(config.face.reducedMotion);
+}
+
 void test_face_animator_starts_listen_transition_with_blink_and_pop() {
   FaceAnimator animator;
   RobotFrame frame = makeNeutralFrame();
@@ -514,6 +519,7 @@ int main() {
   RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
   RUN_TEST(test_face_animator_autonomic_layer_adds_life_over_time);
   RUN_TEST(test_face_animator_reduced_motion_dampens_autonomic_offsets);
+  RUN_TEST(test_robot_config_exposes_face_reduced_motion_default);
   RUN_TEST(test_face_animator_starts_listen_transition_with_blink_and_pop);
   RUN_TEST(test_face_animator_think_to_speak_centers_gaze_before_mouth_settles);
   RUN_TEST(test_face_animator_sleep_wake_transition_uses_longer_startle_clip);

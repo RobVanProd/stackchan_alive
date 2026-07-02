@@ -45,6 +45,8 @@ Display telemetry should print about every 5 seconds with `frame_ms_avg`, `frame
 Face animator telemetry should also print about every 5 seconds with `[face]`, `blink_count`, `saccade_count`, `gesture_active`, `speech_active`, and `speech_env`.
 Heartbeat telemetry should include `[system]`, `heap_free`, `heap_min`, and task stack high-water marks for loop, motion, face, and intent tasks.
 
+For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
+
 ## Servo Enable Gate
 
 Servos are disabled by default in `platformio.ini`:

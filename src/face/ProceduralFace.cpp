@@ -6,10 +6,23 @@
 namespace stackchan {
 
 void ProceduralFace::begin(IDisplay* display) {
+  begin(display, FaceConfig {});
+}
+
+void ProceduralFace::begin(IDisplay* display, const FaceConfig& config) {
   display_ = display;
+  animator_.setReducedMotion(config.reducedMotion);
   if (display_ != nullptr) {
     display_->begin();
   }
+  Serial.print(F("[face] reduced_motion="));
+  Serial.println(config.reducedMotion ? 1 : 0);
+}
+
+void ProceduralFace::setReducedMotion(bool enabled) {
+  animator_.setReducedMotion(enabled);
+  Serial.print(F("[face] reduced_motion="));
+  Serial.println(enabled ? 1 : 0);
 }
 
 void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {

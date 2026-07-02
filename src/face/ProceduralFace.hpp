@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config/RobotConfig.hpp"
 #include "face/EyeGeometry.hpp"
 #include "face/FaceAnimator.hpp"
 #include "face/MouthGeometry.hpp"
@@ -20,6 +21,8 @@ class IDisplay {
 class ProceduralFace {
  public:
   void begin(IDisplay* display);
+  void begin(IDisplay* display, const FaceConfig& config);
+  void setReducedMotion(bool enabled);
   void render(const RobotFrame& frame, uint32_t nowMs);
 
  private:

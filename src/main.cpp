@@ -140,7 +140,7 @@ void setup() {
 
   gSensors.begin();
   gActuation.begin(&gServo);
-  gFace.begin(&gDisplay);
+  gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
 
   publishFrame(makeNeutralFrame());
