@@ -220,6 +220,23 @@ bool fillDemoEnable(const char* valueToken, BenchControl* controlOut) {
   return true;
 }
 
+bool fillSafeStop(BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasReducedMotion = true;
+  parsed.hasMotionEnable = true;
+  parsed.hasDemoEnable = true;
+  parsed.hasSpeech = true;
+  parsed.reducedMotion = true;
+  parsed.motionEnabled = false;
+  parsed.demoEnabled = false;
+  parsed.speech.clear = true;
+  parsed.speech.envelope = 0.0f;
+  parsed.speech.viseme = BenchSpeechViseme::Neutral;
+  parsed.command = "safe_stop";
+  *controlOut = parsed;
+  return true;
+}
+
 bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchControl* controlOut) {
   for (const ModeCommand& command : kModeCommands) {
     if (strcmp(token, command.name) != 0) {
@@ -383,6 +400,13 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   if (strcmp(first, "demo") == 0 && second != nullptr) {
     return fillDemoEnable(second, controlOut);
   }
+  if (strcmp(first, "panic") == 0 || strcmp(first, "estop") == 0 ||
+      strcmp(first, "e_stop") == 0 || strcmp(first, "all_stop") == 0 ||
+      strcmp(first, "safestop") == 0 ||
+      (strcmp(first, "safe") == 0 && (second == nullptr || strcmp(second, "stop") == 0)) ||
+      (strcmp(first, "all") == 0 && second != nullptr && strcmp(second, "stop") == 0)) {
+    return fillSafeStop(controlOut);
+  }
 
   if (token == nullptr || isHelpToken(token)) {
     return false;
@@ -418,6 +442,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));
+  Serial.println(F("[control] help: safe stop|panic"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif
 }

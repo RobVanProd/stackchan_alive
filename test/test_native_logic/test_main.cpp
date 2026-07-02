@@ -570,6 +570,28 @@ void test_sensor_adapter_parses_demo_enable_commands() {
   TEST_ASSERT_FALSE(parseBenchControlLine("demo banana", 5100, &control));
 }
 
+void test_sensor_adapter_parses_safe_stop_command() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("safe stop", 5200, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_TRUE(control.hasSpeech);
+  TEST_ASSERT_TRUE(control.speech.clear);
+  TEST_ASSERT_TRUE(control.hasReducedMotion);
+  TEST_ASSERT_TRUE(control.reducedMotion);
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_FALSE(control.motionEnabled);
+  TEST_ASSERT_TRUE(control.hasDemoEnable);
+  TEST_ASSERT_FALSE(control.demoEnabled);
+  TEST_ASSERT_EQUAL_STRING("safe_stop", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("panic", 5300, &control));
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_FALSE(control.motionEnabled);
+  TEST_ASSERT_TRUE(control.hasDemoEnable);
+  TEST_ASSERT_FALSE(control.demoEnabled);
+  TEST_ASSERT_EQUAL_STRING("safe_stop", control.command);
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -786,6 +808,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
   RUN_TEST(test_sensor_adapter_parses_demo_enable_commands);
+  RUN_TEST(test_sensor_adapter_parses_safe_stop_command);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
   RUN_TEST(test_stackchan_servo_stop_returns_tracked_axes_to_neutral);
