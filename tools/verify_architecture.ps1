@@ -199,6 +199,8 @@ Assert-FileContains (Expand-SourcePath "src/main.cpp") "\[system\]" "Main loop m
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "heap_free" "Runtime health telemetry must report free heap."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "heap_min" "Runtime health telemetry must report minimum free heap."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "stack_face_hwm" "Runtime health telemetry must report face task stack margin."
+Assert-FileContains (Expand-SourcePath "src/main.cpp") "\[speech\]" "Runtime must emit speech cue telemetry for output-adapter evidence."
+Assert-FileContains (Expand-SourcePath "src/main.cpp") "speechSeq" "Speech cue telemetry must expose the dedupe sequence number."
 
 Assert-PlatformioFlag "stackchan" "-D STACKCHAN_ENABLE_SERVOS=0"
 Assert-PlatformioFlag "stackchan" "-O3"

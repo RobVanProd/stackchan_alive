@@ -1001,6 +1001,7 @@ function Assert-HardwareEvidenceMediaGate {
       "[display] M5 display renderer ready",
       "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[face] mode=1 blink_count=3 saccade_count=4 blink_open=1.00 breath_y=0.42 gaze_x=0.08 gaze_y=-0.03 gesture_active=0 speech_active=0 speech_env=0.00",
+      "[speech] seq=1 at_ms=3020 intent=listen priority=160 earcon=confirm earcon_delay_ms=0 text=`"I am listening with maximum attention.`"",
       "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
       "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
       "[system] heap_free=243000 heap_min=239000 stack_loop_hwm=7200 stack_motion_hwm=3100 stack_face_hwm=2800 stack_intent_hwm=3300",
@@ -1017,6 +1018,7 @@ function Assert-HardwareEvidenceMediaGate {
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
       "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[face] mode=1 blink_count=12 saccade_count=16 blink_open=1.00 breath_y=-0.18 gaze_x=-0.04 gaze_y=0.02 gesture_active=0 speech_active=0 speech_env=0.00",
+      "[speech] seq=4 at_ms=20020 intent=think priority=150 earcon=think earcon_delay_ms=80 text=`"Input received. I am thinking now.`"",
       "[system] heap_free=242500 heap_min=238800 stack_loop_hwm=7200 stack_motion_hwm=3090 stack_face_hwm=2760 stack_intent_hwm=3280",
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
       "synthetic soak log line for verifier negative-test coverage."
@@ -1169,6 +1171,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       "[display] M5 display renderer ready",
       "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[face] mode=1 blink_count=3 saccade_count=4 blink_open=1.00 breath_y=0.42 gaze_x=0.08 gaze_y=-0.03 gesture_active=0 speech_active=0 speech_env=0.00",
+      "[speech] seq=1 at_ms=3020 intent=listen priority=160 earcon=confirm earcon_delay_ms=0 text=`"I am listening with maximum attention.`"",
       "[servo] dry-run mode; set STACKCHAN_ENABLE_SERVOS=1 after calibration",
       "[heartbeat] stackchan_alive mode=display_only uptime_ms=10000",
       "[system] heap_free=243000 heap_min=239000 stack_loop_hwm=7200 stack_motion_hwm=3100 stack_face_hwm=2800 stack_intent_hwm=3300",
@@ -1185,6 +1188,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=20000",
       "[display] frame_ms_avg=12.80 frame_ms_max=16.10 fps_avg=78.1 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
       "[face] mode=1 blink_count=12 saccade_count=16 blink_open=1.00 breath_y=-0.18 gaze_x=-0.04 gaze_y=0.02 gesture_active=0 speech_active=0 speech_env=0.00",
+      "[speech] seq=4 at_ms=20020 intent=think priority=150 earcon=think earcon_delay_ms=80 text=`"Input received. I am thinking now.`"",
       "[system] heap_free=242500 heap_min=238800 stack_loop_hwm=7200 stack_motion_hwm=3090 stack_face_hwm=2760 stack_intent_hwm=3280",
       "[heartbeat] stackchan_alive mode=servo_calibration uptime_ms=30000",
       "synthetic soak log line for verifier negative-test coverage."

@@ -38,6 +38,62 @@ const __FlashStringHelper* firmwareMode() {
 #endif
 }
 
+const __FlashStringHelper* speechIntentName(SpeechIntent intent) {
+  switch (intent) {
+    case SpeechIntent::Boot:
+      return F("boot");
+    case SpeechIntent::Idle:
+      return F("idle");
+    case SpeechIntent::Attend:
+      return F("attend");
+    case SpeechIntent::Listen:
+      return F("listen");
+    case SpeechIntent::Think:
+      return F("think");
+    case SpeechIntent::Speak:
+      return F("speak");
+    case SpeechIntent::React:
+      return F("react");
+    case SpeechIntent::Happy:
+      return F("happy");
+    case SpeechIntent::Concern:
+      return F("concern");
+    case SpeechIntent::Sleep:
+      return F("sleep");
+    case SpeechIntent::Error:
+      return F("error");
+    case SpeechIntent::Safety:
+      return F("safety");
+    case SpeechIntent::None:
+      break;
+  }
+  return F("none");
+}
+
+const __FlashStringHelper* speechEarconName(SpeechEarcon earcon) {
+  switch (earcon) {
+    case SpeechEarcon::Wake:
+      return F("wake");
+    case SpeechEarcon::Confirm:
+      return F("confirm");
+    case SpeechEarcon::Think:
+      return F("think");
+    case SpeechEarcon::Happy:
+      return F("happy");
+    case SpeechEarcon::Concern:
+      return F("concern");
+    case SpeechEarcon::Sleep:
+      return F("sleep");
+    case SpeechEarcon::Error:
+      return F("error");
+    case SpeechEarcon::Safety:
+      return F("safety");
+    case SpeechEarcon::None:
+      break;
+  }
+  return F("none");
+}
+
 void printBootMarker() {
   Serial.print(F("[boot] stackchan_alive mode="));
   Serial.print(firmwareMode());
@@ -68,6 +124,24 @@ void printSystemTelemetry() {
   Serial.print(stackHighWater(gFaceTaskHandle));
   Serial.print(F(" stack_intent_hwm="));
   Serial.println(stackHighWater(gIntentTaskHandle));
+}
+
+void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
+  Serial.print(F("[speech] seq="));
+  Serial.print(speechSeq);
+  Serial.print(F(" at_ms="));
+  Serial.print(nowMs);
+  Serial.print(F(" intent="));
+  Serial.print(speechIntentName(cue.intent));
+  Serial.print(F(" priority="));
+  Serial.print(cue.priority);
+  Serial.print(F(" earcon="));
+  Serial.print(speechEarconName(cue.earcon));
+  Serial.print(F(" earcon_delay_ms="));
+  Serial.print(cue.earconDelayMs);
+  Serial.print(F(" text=\""));
+  Serial.print(cue.text);
+  Serial.println(F("\""));
 }
 
 void publishFrame(const RobotFrame& frame) {
@@ -111,9 +185,14 @@ void FaceTask(void* pv) {
 void IntentTask(void* pv) {
   (void)pv;
   TickType_t wake = xTaskGetTickCount();
+  uint32_t lastSpeechSeq = 0;
 
   while (true) {
     RobotFrame frame = gIntent.update(millis());
+    if (frame.speechSeq != 0 && frame.speechSeq != lastSpeechSeq && frame.speech.shouldSpeak()) {
+      lastSpeechSeq = frame.speechSeq;
+      printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);
+    }
     publishFrame(frame);
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.intentPeriodMs));
   }

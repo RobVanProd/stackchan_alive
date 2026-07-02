@@ -581,12 +581,14 @@ Assert-LogContains "logs/display_only_serial.log" "\[display\]\s+M5 display rend
 Assert-LogContains "logs/display_only_serial.log" "\[servo\]\s+dry-run mode" "display-only servo dry-run marker"
 Assert-LogContains "logs/display_only_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "display frame-budget telemetry"
 Assert-LogContains "logs/display_only_serial.log" "\[face\]\s+mode=\d+\s+blink_count=\d+\s+saccade_count=\d+.*gesture_active=\d+\s+speech_active=\d+\s+speech_env=" "display face animator telemetry"
+Assert-LogContains "logs/display_only_serial.log" "\[speech\]\s+seq=\d+\s+at_ms=\d+\s+intent=\w+\s+priority=\d+\s+earcon=\w+\s+earcon_delay_ms=\d+\s+text=" "display speech cue telemetry"
 Assert-LogContains "logs/display_only_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\d+\s+stack_loop_hwm=\d+\s+stack_motion_hwm=\d+\s+stack_face_hwm=\d+\s+stack_intent_hwm=\d+" "display runtime health telemetry"
 Assert-LogContains "logs/servo_calibration_serial.log" "\[boot\]\s+stackchan_alive\s+mode=servo_calibration\s+serial=v1" "servo-calibration boot marker"
 Assert-LogContains "logs/servo_calibration_serial.log" "\[servo\]\s+enabling StackchanSERVO hardware output" "servo hardware-enable marker"
 Assert-LogContains "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=(display_only|servo_calibration)\s+uptime_ms=\d+" "runtime heartbeat marker"
 Assert-LogContains "logs/soak_serial.log" "\[display\]\s+frame_ms_avg=.*fps_window=.*frame_budget_us=33333.*slow_frames=\d+" "soak display frame-budget telemetry"
 Assert-LogContains "logs/soak_serial.log" "\[face\]\s+mode=\d+\s+blink_count=\d+\s+saccade_count=\d+.*gesture_active=\d+\s+speech_active=\d+\s+speech_env=" "soak face animator telemetry"
+Assert-LogContains "logs/soak_serial.log" "\[speech\]\s+seq=\d+\s+at_ms=\d+\s+intent=\w+\s+priority=\d+\s+earcon=\w+\s+earcon_delay_ms=\d+\s+text=" "soak speech cue telemetry"
 Assert-LogContains "logs/soak_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\d+\s+stack_loop_hwm=\d+\s+stack_motion_hwm=\d+\s+stack_face_hwm=\d+\s+stack_intent_hwm=\d+" "soak runtime health telemetry"
 
 foreach ($recordPath in @($metadata.requiredRecords)) {

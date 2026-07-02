@@ -42,6 +42,7 @@ Pass criteria:
 - [ ] Serial log includes dry-run servo mode.
 - [ ] Display telemetry includes `fps_window`, `frame_budget_us=33333`, and no repeated nonzero `slow_frames`.
 - [ ] Face telemetry includes `[face]`, `blink_count`, `saccade_count`, `gesture_active`, `speech_active`, and `speech_env`.
+- [ ] Speech cue telemetry includes `[speech]`, `seq`, `intent`, `earcon`, `earcon_delay_ms`, and `text`.
 - [ ] System telemetry includes `[system]`, `heap_free`, `heap_min`, `stack_loop_hwm`, `stack_motion_hwm`, `stack_face_hwm`, and `stack_intent_hwm`.
 - [ ] 10-minute idle run completes without resets.
 
