@@ -160,6 +160,7 @@ $requiredFiles = @(
   "media/voice/stackchan_spark_thinking.mp3",
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/VOICE_AUDITION.html",
+  "media/voice/rvc/README.md",
   "media/voice/rvc/RVC_AUDITION.html",
   "media/voice/rvc/RVC_AUDITIONS.md",
   "media/voice/rvc/RVC_AUDITIONS.json",
@@ -271,14 +272,14 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PA
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
-foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
+foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/README.md", "RVC MP3 Readme", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
 }
 
 $shareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_share_release.ps1") -Raw
-foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk", "ProbeRetries", "ProbeDelaySeconds", "share_verification_report.json", "stackchan.share-verification.v1", "usedCurlResolveFallback", "bindAddress", "loopbackUrl", "lanUrls", "OPEN_LOCAL_SHARE.cmd", "openLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "lanDiagnostics", "hostProbeResults", "Pending Promotion Gates", "target-speaker-audio-evidence", "Face Phase A", "phase_a_idle_10s.gif", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "Face Phase C", "phase_c_idle_10s.gif", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "Face Phase E", "phase_e_speech_reactive_6s.gif", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "Speaker audio evidence", "voice/rvc/RVC_AUDITION.html", "voice/rvc/stackchan_rvc_bright_robot.mp3", "voice/rvc/stackchan_rvc_thinking_neutral.mp3", "voice/rvc/stackchan_rvc_safety_neutral.mp3")) {
+foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk", "ProbeRetries", "ProbeDelaySeconds", "share_verification_report.json", "stackchan.share-verification.v1", "usedCurlResolveFallback", "bindAddress", "loopbackUrl", "lanUrls", "OPEN_LOCAL_SHARE.cmd", "openLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "lanDiagnostics", "hostProbeResults", "Pending Promotion Gates", "target-speaker-audio-evidence", "Face Phase A", "phase_a_idle_10s.gif", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "Face Phase C", "phase_c_idle_10s.gif", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "Face Phase E", "phase_e_speech_reactive_6s.gif", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "Speaker audio evidence", "voice/rvc/README.md", "voice/rvc/RVC_AUDITION.html", "voice/rvc/stackchan_rvc_bright_robot.mp3", "voice/rvc/stackchan_rvc_thinking_neutral.mp3", "voice/rvc/stackchan_rvc_safety_neutral.mp3")) {
   if ($shareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_share_release.ps1 missing required remote verification logic: $pattern"
   }
@@ -366,6 +367,20 @@ foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
   }
 }
 
+$repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -Raw
+foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audition.cmd -Rvc")) {
+  if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/README.md missing RVC audition discoverability guidance: $pattern"
+  }
+}
+
+$releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
+foreach ($pattern in @("open_voice_audition.cmd -Rvc", "media/voice/rvc/", "browser-friendly RVC review copies")) {
+  if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/RELEASE_PROCESS.md missing RVC audition process guidance: $pattern"
+  }
+}
+
 $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
 foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
@@ -440,6 +455,7 @@ Assert-Mp3File "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3"
 Assert-Mp3File "media/voice/stackchan_spark_thinking.mp3"
 Assert-File "media/voice/VOICE_SAMPLES.md" 100
 Assert-File "media/voice/VOICE_AUDITION.html" 1000
+Assert-File "media/voice/rvc/README.md" 400
 Assert-File "media/voice/rvc/RVC_AUDITION.html" 1000
 Assert-File "media/voice/rvc/RVC_AUDITIONS.md" 500
 Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
@@ -617,6 +633,7 @@ $expectedMediaArtifacts = @(
   "media/voice/stackchan_spark_thinking.mp3",
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/VOICE_AUDITION.html",
+  "media/voice/rvc/README.md",
   "media/voice/rvc/RVC_AUDITION.html",
   "media/voice/rvc/RVC_AUDITIONS.md",
   "media/voice/rvc/RVC_AUDITIONS.json",
@@ -837,7 +854,7 @@ foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.
 }
 
 $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
-foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "Acceptance Criteria")) {
+foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
   }

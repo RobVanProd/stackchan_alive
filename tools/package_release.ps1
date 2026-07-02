@@ -180,6 +180,7 @@ foreach ($file in $voiceRvcFiles) {
   }
   Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
 }
+Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDir
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
@@ -598,6 +599,7 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_thinking.mp3",
     "media/voice/VOICE_SAMPLES.md",
     "media/voice/VOICE_AUDITION.html",
+    "media/voice/rvc/README.md",
     "media/voice/rvc/RVC_AUDITION.html",
     "media/voice/rvc/RVC_AUDITIONS.md",
     "media/voice/rvc/RVC_AUDITIONS.json",

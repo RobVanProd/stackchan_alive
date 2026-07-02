@@ -9,8 +9,8 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $pageName = if ($Rvc) { "RVC_AUDITION.html" } else { "VOICE_AUDITION.html" }
 $candidates = if ($Rvc) {
   @(
-    (Join-Path $root "output/voice_auditions/rvc_base/final/$pageName"),
-    (Join-Path $root "media/voice/rvc/$pageName")
+    (Join-Path $root "media/voice/rvc/$pageName"),
+    (Join-Path $root "output/voice_auditions/rvc_base/final/$pageName")
   )
 } else {
   @(

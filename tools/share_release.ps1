@@ -797,6 +797,7 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3"); Name = "voice/stackchan_spark_thinking.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_AUDITION.html"); Name = "voice/VOICE_AUDITION.html" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/README.md"); Name = "voice/rvc/README.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITION.html"); Name = "voice/rvc/RVC_AUDITION.html" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"); Name = "voice/rvc/RVC_AUDITIONS.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"); Name = "voice/rvc/RVC_AUDITIONS.json" },
@@ -1220,6 +1221,7 @@ $promotionGateItems
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Bright Robot MP3</a></div>
     <div class="item"><a href="voice/stackchan_spark_thinking.mp3">Thinking MP3</a></div>
+    <div class="item"><a href="voice/rvc/README.md">RVC MP3 Readme</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITION.html">RVC Local Audition Page</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITIONS.md">RVC Audition Notes</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITIONS.json">RVC Audition JSON</a></div>
