@@ -191,6 +191,8 @@ $requiredFiles = @(
   "tools/setup_voice_tools.ps1",
   "tools/open_voice_audition.cmd",
   "tools/open_voice_audition.ps1",
+  "tools/render_rvc_audition_mp3s.cmd",
+  "tools/render_rvc_audition_mp3s.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
   "tools/render_rvc_auditions.ps1",
@@ -334,7 +336,7 @@ if ($consumerPromotionVerifierText -match "evidenceArgs\s*\+=\s*['`"]-AllowMissi
 }
 
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
-foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
+foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_published_release.ps1 missing required published ZIP sidecar verification logic: $pattern"
   }
@@ -348,7 +350,7 @@ foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.p
 }
 
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
-foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
+foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
     throw "tools/publish_release.ps1 missing required finalized Actions status publish logic: $pattern"
   }
@@ -442,13 +444,16 @@ Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
 Assert-File "media/voice/rvc/stackchan_rvc_neutral.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_warm_slow.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_bright_robot.wav" 100000
+Assert-Mp3File "media/voice/rvc/stackchan_rvc_bright_robot.mp3"
 Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_spark_boops.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_high_character.wav" 100000
 Assert-File "media/voice/rvc/stackchan_rvc_thinking_neutral.wav" 100000
+Assert-Mp3File "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"
 Assert-File "media/voice/rvc/stackchan_rvc_safety_neutral.wav" 100000
+Assert-Mp3File "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
@@ -615,13 +620,16 @@ $expectedMediaArtifacts = @(
   "media/voice/rvc/stackchan_rvc_neutral.wav",
   "media/voice/rvc/stackchan_rvc_warm_slow.wav",
   "media/voice/rvc/stackchan_rvc_bright_robot.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
   "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
   "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
   "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
   "media/voice/rvc/stackchan_rvc_spark_boops.wav",
   "media/voice/rvc/stackchan_rvc_high_character.wav",
   "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
-  "media/voice/rvc/stackchan_rvc_safety_neutral.wav"
+  "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
+  "media/voice/rvc/stackchan_rvc_safety_neutral.wav",
+  "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
 )
 $actualMediaArtifacts = @($manifest.mediaArtifacts)
 foreach ($file in $expectedMediaArtifacts) {
@@ -819,7 +827,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }

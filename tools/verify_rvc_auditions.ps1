@@ -35,6 +35,28 @@ function Assert-File {
   }
 }
 
+function Assert-Mp3File {
+  param([string]$RelativePath)
+
+  Assert-File $RelativePath 1000
+  $path = Join-VoicePath $RelativePath
+  $stream = [System.IO.File]::OpenRead($path)
+  try {
+    $header = New-Object byte[] 4
+    $read = $stream.Read($header, 0, $header.Length)
+    if ($read -lt 3) {
+      throw "RVC MP3 is too short: $RelativePath"
+    }
+    $hasId3 = $header[0] -eq 0x49 -and $header[1] -eq 0x44 -and $header[2] -eq 0x33
+    $hasFrameSync = $read -ge 2 -and $header[0] -eq 0xFF -and (($header[1] -band 0xE0) -eq 0xE0)
+    if (-not ($hasId3 -or $hasFrameSync)) {
+      throw "RVC MP3 has no ID3 tag or MPEG frame sync: $RelativePath"
+    }
+  } finally {
+    $stream.Dispose()
+  }
+}
+
 function Get-WavInfo {
   param([string]$Path)
 
@@ -116,6 +138,12 @@ $expectedWavs = @(
   [pscustomobject]@{ File = "stackchan_rvc_safety_neutral.wav"; MinDuration = 6.4; MaxDuration = 8.4 }
 )
 
+$expectedMp3s = @(
+  [pscustomobject]@{ File = "stackchan_rvc_bright_robot.mp3"; SourceWav = "stackchan_rvc_bright_robot.wav" },
+  [pscustomobject]@{ File = "stackchan_rvc_thinking_neutral.mp3"; SourceWav = "stackchan_rvc_thinking_neutral.wav" },
+  [pscustomobject]@{ File = "stackchan_rvc_safety_neutral.mp3"; SourceWav = "stackchan_rvc_safety_neutral.wav" }
+)
+
 Assert-File "RVC_AUDITIONS.md" 500
 Assert-File "RVC_AUDITIONS.json" 500
 
@@ -161,6 +189,9 @@ foreach ($comparisonFile in @("stackchan_rvc_bright_robot_less_static.wav", "sta
     throw "RVC_AUDITIONS.json leadAudition missing adjacent comparison: $comparisonFile"
   }
 }
+if ($json.leadAudition.mp3File -ne "stackchan_rvc_bright_robot.mp3") {
+  throw "RVC_AUDITIONS.json leadAudition mp3File mismatch: $($json.leadAudition.mp3File)"
+}
 
 $infos = @()
 foreach ($expected in $expectedWavs) {
@@ -187,6 +218,20 @@ foreach ($expected in $expectedWavs) {
     throw "RVC audition duration out of range for $($expected.File): $($info.durationSeconds)s"
   }
   $infos += $info
+}
+
+foreach ($expected in $expectedMp3s) {
+  Assert-Mp3File $expected.File
+  if ($notes -notmatch [regex]::Escape($expected.File)) {
+    throw "RVC_AUDITIONS.md missing MP3 file: $($expected.File)"
+  }
+  if ($notes -notmatch [regex]::Escape($expected.SourceWav)) {
+    throw "RVC_AUDITIONS.md missing MP3 source WAV: $($expected.SourceWav)"
+  }
+  $mp3Match = @($json.quickMp3Copies | Where-Object { $_.file -eq $expected.File -and $_.sourceWav -eq $expected.SourceWav })
+  if ($mp3Match.Count -ne 1) {
+    throw "RVC_AUDITIONS.json missing quickMp3Copies entry for $($expected.File)"
+  }
 }
 
 $infos | ConvertTo-Json -Depth 4

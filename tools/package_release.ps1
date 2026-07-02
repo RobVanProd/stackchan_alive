@@ -149,19 +149,28 @@ foreach ($file in $voiceMediaFiles) {
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
 }
 
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "render_rvc_audition_mp3s.ps1") `
+  -VoiceRoot "output/voice_auditions/rvc_base/final"
+if ($LASTEXITCODE -ne 0) {
+  throw "RVC audition MP3 export failed."
+}
+
 $voiceRvcFiles = @(
   "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.md",
   "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.json",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_neutral.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_warm_slow.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot.mp3",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot_less_static.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot_sweet_vocoder.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot_soft_boops.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_spark_boops.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_high_character.wav",
   "output/voice_auditions/rvc_base/final/stackchan_rvc_thinking_neutral.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.wav"
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_thinking_neutral.mp3",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.mp3"
 )
 
 foreach ($file in $voiceRvcFiles) {
@@ -229,6 +238,8 @@ $releaseTools = @(
   "tools/open_voice_audition.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/render_rvc_audition_mp3s.cmd",
+  "tools/render_rvc_audition_mp3s.ps1",
   "tools/render_rvc_auditions.ps1",
   "tools/verify_voice_samples.cmd",
   "tools/verify_voice_samples.ps1",
@@ -591,13 +602,16 @@ $manifest = [ordered]@{
     "media/voice/rvc/stackchan_rvc_neutral.wav",
     "media/voice/rvc/stackchan_rvc_warm_slow.wav",
     "media/voice/rvc/stackchan_rvc_bright_robot.wav",
+    "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
     "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
     "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
     "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
     "media/voice/rvc/stackchan_rvc_spark_boops.wav",
     "media/voice/rvc/stackchan_rvc_high_character.wav",
     "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
-    "media/voice/rvc/stackchan_rvc_safety_neutral.wav"
+    "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
+    "media/voice/rvc/stackchan_rvc_safety_neutral.wav",
+    "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
   )
   includedTools = @(
     "tools/flash_device.cmd",
@@ -622,6 +636,8 @@ $manifest = [ordered]@{
     "tools/export_rollout_status.ps1",
     "tools/open_voice_audition.cmd",
     "tools/open_voice_audition.ps1",
+    "tools/render_rvc_audition_mp3s.cmd",
+    "tools/render_rvc_audition_mp3s.ps1",
     "tools/generate_synthetic_hardware_evidence.cmd",
     "tools/generate_synthetic_hardware_evidence.ps1",
     "tools/add_hardware_evidence_media.cmd",
@@ -877,6 +893,7 @@ Voice audition quick check:
 
 - Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
 - Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
+- RVC review copies ``stackchan_rvc_bright_robot.mp3``, ``stackchan_rvc_thinking_neutral.mp3``, and ``stackchan_rvc_safety_neutral.mp3`` are included in ``media/voice/rvc/`` and uploaded as release assets for browser playback.
 - These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
 
 Hardware validation is still required before consumer rollout:

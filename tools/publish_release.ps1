@@ -279,13 +279,16 @@ if (-not $releaseExists) {
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav") `
+      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav") `
+      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3") `
       (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav") `
+      (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3") `
       (Join-Path $stageDir "firmware-display-only.bin") `
       (Join-Path $stageDir "firmware-servo-calibration.bin") `
       (Join-Path $stageDir "bootloader.bin") `

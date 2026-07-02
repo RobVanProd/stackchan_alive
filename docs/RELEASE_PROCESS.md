@@ -39,7 +39,7 @@ To open the local MP3 audition page without starting a share server:
 .\tools\open_voice_audition.cmd
 ```
 
-Published prereleases also upload the two quick MP3 audition files as standalone GitHub release assets, so reviewers can play them without downloading the full ZIP.
+Published prereleases also upload quick MP3 audition files as standalone GitHub release assets, so reviewers can play them without downloading the full ZIP. This includes the Stackchan Spark MP3s plus browser-friendly RVC review copies for the current lead, thinking, and safety lines.
 
 To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
 
