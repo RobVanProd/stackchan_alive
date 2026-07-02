@@ -65,6 +65,42 @@ function Add-Gate {
     }) | Out-Null
 }
 
+function Get-SpeechMouthDemoEvidenceStatus {
+  param([string]$EvidenceRoot)
+
+  $logPath = Join-Path $EvidenceRoot "logs/speech_mouth_demo_serial.log"
+  if (-not (Test-Path -LiteralPath $logPath)) {
+    return [ordered]@{
+      status = "pending"
+      evidence = "logs/speech_mouth_demo_serial.log is missing"
+    }
+  }
+
+  $text = Get-Content -LiteralPath $logPath -Raw
+  $missing = New-Object System.Collections.Generic.List[string]
+  if ($text -notmatch "\[demo\]\s+>\s+speech\s+[0-9]") {
+    $missing.Add("streamed speech envelope command") | Out-Null
+  }
+  if ($text -notmatch "\[demo\]\s+>\s+speech clear") {
+    $missing.Add("speech clear command") | Out-Null
+  }
+  if ($text -notmatch "\[demo\]\s+Speech mouth demo complete\.") {
+    $missing.Add("completion marker") | Out-Null
+  }
+
+  if ($missing.Count -gt 0) {
+    return [ordered]@{
+      status = "pending"
+      evidence = "logs/speech_mouth_demo_serial.log missing $($missing -join ', ')"
+    }
+  }
+
+  return [ordered]@{
+    status = "pass"
+    evidence = "logs/speech_mouth_demo_serial.log proves streamed speech envelope, clear, and completion"
+  }
+}
+
 function Get-VoiceGateStatusMismatches {
   param(
     [object]$MetadataVoiceGateStatus,
@@ -151,6 +187,16 @@ function Get-RolloutNextAction {
   }
 
   $progressGate = Get-FirstGate -Gates $Gates -Gate "hardware-evidence-progress"
+  $speechMouthGate = Get-FirstGate -Gates $Gates -Gate "speech-mouth-demo-evidence"
+  if ($null -ne $speechMouthGate -and [string]$speechMouthGate.status -ne "pass" -and $null -ne $EvidenceSummary -and -not [string]::IsNullOrWhiteSpace([string]$EvidenceSummary.root)) {
+    return [ordered]@{
+      owner = "hardware"
+      action = "Run the speech-mouth demo while display-only firmware is connected, then refresh progress and rollout status."
+      command = "RUN_SPEECH_MOUTH_DEMO.cmd"
+      reason = [string]$speechMouthGate.evidence
+    }
+  }
+
   if ($null -ne $progressGate -and [string]$progressGate.status -ne "pass") {
     if ($null -ne $EvidenceSummary -and -not [string]::IsNullOrWhiteSpace([string]$EvidenceSummary.root)) {
       $benchStatus = Read-JsonFile (Join-Path ([string]$EvidenceSummary.root) "BENCH_STATUS.json")
@@ -353,6 +399,7 @@ try {
     $progress = Invoke-ToolCapture @((Join-Path $PSScriptRoot "check_hardware_evidence_progress.ps1"), "-EvidenceRoot", $evidencePath)
     $strict = Invoke-ToolCapture @((Join-Path $PSScriptRoot "verify_hardware_evidence.ps1"), "-EvidenceRoot", $evidencePath)
     $metadata = Read-JsonFile (Join-Path $evidencePath "metadata.json")
+    $speechMouth = Get-SpeechMouthDemoEvidenceStatus -EvidenceRoot $evidencePath
 
     if ($progress.exitCode -eq 0) {
       Add-Gate $gates "hardware-evidence-progress" "pass" "RUN_PROGRESS_CHECK has no obvious gaps" "hardware"
@@ -366,6 +413,11 @@ try {
     } else {
       Add-Gate $gates "strict-hardware-evidence" "pending" "verify_hardware_evidence.ps1 exit code $($strict.exitCode)" "hardware"
       $blockers.Add("Strict hardware evidence verification has not passed.") | Out-Null
+    }
+
+    Add-Gate $gates "speech-mouth-demo-evidence" ([string]$speechMouth.status) ([string]$speechMouth.evidence) "hardware"
+    if ([string]$speechMouth.status -ne "pass") {
+      $blockers.Add("Speech-mouth demo evidence has not passed: $($speechMouth.evidence).") | Out-Null
     }
 
     if ($null -ne $metadata -and $null -ne $metadata.shareVerification) {
@@ -407,6 +459,7 @@ try {
   } else {
     Add-Gate $gates "hardware-evidence-progress" "pending" "No hardware evidence packet was passed" "hardware"
     Add-Gate $gates "strict-hardware-evidence" "pending" "No hardware evidence packet was passed" "hardware"
+    Add-Gate $gates "speech-mouth-demo-evidence" "pending" "No hardware evidence packet was passed" "hardware"
     Add-Gate $gates "voice-gate-status-consistency" "pending" "No hardware evidence packet was passed" "voice"
     $blockers.Add("No hardware evidence packet was passed.") | Out-Null
   }
