@@ -91,6 +91,7 @@ Then run the full consumer-promotion gate, which composes package verification, 
 ```
 
 The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. The `-AllowExternalAccountCiBlock` switch exists only for an explicit account-billing outage exception and should not be used silently.
+The GitHub Actions status report records the required workflow set. For normal release promotion, both `Firmware` and `Release` must be present for the matching commit; a missing required workflow is a blocker even if another workflow succeeded.
 
 ## GitHub Release
 

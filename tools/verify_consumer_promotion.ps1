@@ -159,6 +159,15 @@ try {
   }
 
   $actionsStatus = Get-Content -LiteralPath (Join-ResolvedPath $packageRootPath "github_actions_status.json") -Raw | ConvertFrom-Json
+  $requiredWorkflowNames = @($actionsStatus.requiredWorkflows | ForEach-Object { [string]$_ })
+  foreach ($workflowName in @("Firmware", "Release")) {
+    if ($requiredWorkflowNames -notcontains $workflowName) {
+      throw "GitHub Actions status is missing required workflow contract: $workflowName"
+    }
+  }
+  if (@($actionsStatus.missingRequiredWorkflows).Count -gt 0) {
+    throw "GitHub Actions status is missing required workflow evidence: $(@($actionsStatus.missingRequiredWorkflows) -join ', ')"
+  }
   if ($actionsStatus.status -ne "success") {
     $externalAccountStatuses = @("external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation")
     if (-not ($AllowExternalAccountCiBlock -and $externalAccountStatuses -contains $actionsStatus.status)) {

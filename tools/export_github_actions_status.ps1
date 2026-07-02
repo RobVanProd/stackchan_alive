@@ -2,7 +2,8 @@ param(
   [string]$Repo = "RobVanProd/stackchan_alive",
   [string]$Version = "",
   [string]$Commit = "",
-  [string]$OutputDir = ""
+  [string]$OutputDir = "",
+  [string[]]$RequiredWorkflows = @("Firmware", "Release")
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,17 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
   $OutputDir = Join-Path $repoRoot "output/actions-status/$Version"
+}
+
+$RequiredWorkflows = @(
+  $RequiredWorkflows |
+    ForEach-Object { ([string]$_) -split "," } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Select-Object -Unique
+)
+if ($RequiredWorkflows.Count -lt 1) {
+  throw "At least one required workflow must be specified."
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -108,7 +120,7 @@ foreach ($run in $parsedRuns) {
 }
 $matchingRuns = @(
   $allRuns |
-    Where-Object { $_.headSha -eq $Commit -and ($_.name -eq "Firmware" -or $_.name -eq "Release") } |
+    Where-Object { $_.headSha -eq $Commit -and $RequiredWorkflows -contains [string]$_.name } |
     Sort-Object createdAt
 )
 
@@ -130,19 +142,27 @@ foreach ($run in $matchingRuns) {
 
 $allJobs = @($runReports | ForEach-Object { $_.jobs })
 $allAnnotations = @($allJobs | ForEach-Object { $_.annotations })
+$observedWorkflowNames = @($runReports | ForEach-Object { [string]$_.workflow } | Select-Object -Unique)
+$missingRequiredWorkflows = @(
+  $RequiredWorkflows |
+    Where-Object { $observedWorkflowNames -notcontains $_ }
+)
+$allRequiredWorkflowsObserved = ($missingRequiredWorkflows.Count -eq 0)
 $billingMessages = @(
   $allAnnotations |
     Where-Object { $_.message -match "payments have failed|spending limit" }
 )
 $jobsNeverReachedRunner = ($allJobs.Count -gt 0 -and @($allJobs | Where-Object { $_.runnerId -eq 0 -and $_.stepCount -eq 0 }).Count -eq $allJobs.Count)
-$allSuccessful = ($runReports.Count -gt 0 -and @($runReports | Where-Object { $_.conclusion -ne "success" }).Count -eq 0)
+$allSuccessful = ($allRequiredWorkflowsObserved -and $runReports.Count -gt 0 -and @($runReports | Where-Object { $_.conclusion -ne "success" }).Count -eq 0)
 
 $summaryStatus = "missing"
-if ($allSuccessful) {
+if (-not $allRequiredWorkflowsObserved -and $runReports.Count -gt 0) {
+  $summaryStatus = "missing-required-workflow"
+} elseif ($allSuccessful) {
   $summaryStatus = "success"
-} elseif ($billingMessages.Count -gt 0 -and $jobsNeverReachedRunner) {
+} elseif ($allRequiredWorkflowsObserved -and $billingMessages.Count -gt 0 -and $jobsNeverReachedRunner) {
   $summaryStatus = "external-account-billing-or-spending-limit"
-} elseif ($jobsNeverReachedRunner) {
+} elseif ($allRequiredWorkflowsObserved -and $jobsNeverReachedRunner) {
   $summaryStatus = "external-account-ci-pre-runner-allocation"
 } elseif ($runReports.Count -gt 0) {
   $summaryStatus = "failed-or-incomplete"
@@ -160,12 +180,16 @@ $report = [ordered]@{
   } elseif ($summaryStatus -eq "external-account-ci-pre-runner-allocation") {
     "GitHub Actions did not start any job steps and no runner was assigned to any matching job. GitHub did not provide a billing annotation, so this is recorded as an external pre-runner allocation failure rather than an in-repo build or test failure. Treat local release verification and device preflight as the available technical evidence until hosted jobs can start."
   } elseif ($summaryStatus -eq "success") {
-    "GitHub Actions completed successfully for the matching commit."
+    "GitHub Actions completed successfully for all required workflows on the matching commit."
+  } elseif ($summaryStatus -eq "missing-required-workflow") {
+    "At least one required GitHub Actions workflow was not found for this commit in the recent run list. This is not promotion-ready because success requires every required workflow to be observed."
   } elseif ($summaryStatus -eq "missing") {
     "No matching Firmware or Release workflow runs were found for this commit in the recent run list."
   } else {
     "One or more GitHub Actions runs failed or were incomplete; inspect run and job annotations."
   }
+  requiredWorkflows = @($RequiredWorkflows)
+  missingRequiredWorkflows = @($missingRequiredWorkflows)
   workflows = @($runReports)
 }
 
@@ -185,7 +209,15 @@ foreach ($workflow in @($runReports)) {
 }
 
 if ($workflowLines.Count -eq 0) {
-  $workflowLines += "- No matching Firmware or Release workflow runs found for this commit."
+  $workflowLines += "- No matching required workflow runs found for this commit."
+}
+
+$missingWorkflowLines = @()
+foreach ($workflowName in $missingRequiredWorkflows) {
+  $missingWorkflowLines += "- $workflowName"
+}
+if ($missingWorkflowLines.Count -eq 0) {
+  $missingWorkflowLines += "- None"
 }
 
 @"
@@ -195,8 +227,13 @@ Release: $Version
 Commit: $Commit
 Repository: $Repo
 Status: $summaryStatus
+Required workflows: $($RequiredWorkflows -join ", ")
 
 $($report.interpretation)
+
+## Missing Required Workflows
+
+$($missingWorkflowLines -join [Environment]::NewLine)
 
 ## Matching Workflow Runs
 
@@ -209,6 +246,6 @@ Write-Host "GitHub Actions status exported:"
 Write-Host $mdPath
 Write-Host $jsonPath
 
-if ($summaryStatus -eq "failed-or-incomplete" -or $summaryStatus -eq "missing") {
+if ($summaryStatus -eq "failed-or-incomplete" -or $summaryStatus -eq "missing" -or $summaryStatus -eq "missing-required-workflow") {
   exit 1
 }

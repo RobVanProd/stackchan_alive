@@ -301,7 +301,7 @@ foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "produc
 }
 
 $consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
-foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
+foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "voice_source_provenance.yaml", "pending-production-source", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
   if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_consumer_promotion.ps1 missing promotion gate logic: $pattern"
   }
@@ -325,7 +325,7 @@ foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive",
 }
 
 $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
-foreach ($pattern in @("stackchan.github-actions-status.v1", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "payments have failed", "spending limit", "runnerId", "stepCount")) {
+foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
   }
@@ -346,7 +346,7 @@ foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "local-archive-veri
 }
 
 $rolloutStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rollout_status.ps1") -Raw
-foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "voice_source_status.json", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference")) {
+foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "github-actions-required-workflows", "voice_source_status.json", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference")) {
   if ($rolloutStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rollout_status.ps1 missing rollout status export logic: $pattern"
   }
@@ -877,12 +877,18 @@ if ($actionsStatus.version -ne $Version) {
 if ($actionsStatus.commit -ne $ExpectedCommit) {
   throw "github_actions_status.json commit mismatch: expected $ExpectedCommit, got $($actionsStatus.commit)"
 }
-if (@("post-push-check-required", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
+if (@("post-push-check-required", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
   throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
+}
+$requiredActionWorkflowNames = @($actionsStatus.requiredWorkflows | ForEach-Object { [string]$_ })
+foreach ($workflowName in @("Firmware", "Release")) {
+  if ($requiredActionWorkflowNames -notcontains $workflowName) {
+    throw "github_actions_status.json missing required workflow contract: $workflowName"
+  }
 }
 
 $actionsStatusText = Get-Content -LiteralPath (Join-PackagePath "GITHUB_ACTIONS_STATUS.md") -Raw
-foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "github_actions_status.json")) {
+foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Required workflows", "github_actions_status.json")) {
   if ($actionsStatusText -notmatch [regex]::Escape($pattern)) {
     throw "GITHUB_ACTIONS_STATUS.md missing expected status text: $pattern"
   }

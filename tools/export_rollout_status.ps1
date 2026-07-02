@@ -127,6 +127,14 @@ try {
   }
 
   $actionsStatus = if ($null -ne $actions) { [string]$actions.status } else { "missing" }
+  $missingRequiredActionWorkflows = if ($null -ne $actions) { @($actions.missingRequiredWorkflows | ForEach-Object { [string]$_ }) } else { @() }
+  if ($missingRequiredActionWorkflows.Count -gt 0) {
+    Add-Gate $gates "github-actions-required-workflows" "blocked" "Missing required workflow evidence: $($missingRequiredActionWorkflows -join ', ')" "github"
+    $blockers.Add("GitHub Actions status is missing required workflow evidence: $($missingRequiredActionWorkflows -join ', ').") | Out-Null
+  } else {
+    Add-Gate $gates "github-actions-required-workflows" "pass" "Required workflow evidence observed or status predates this check" "github"
+  }
+
   if ($actionsStatus -eq "success") {
     Add-Gate $gates "github-actions" "pass" "github_actions_status.json reports success" "github"
   } elseif (@("external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation") -contains $actionsStatus) {

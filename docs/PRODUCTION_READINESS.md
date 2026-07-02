@@ -22,7 +22,7 @@ Current status: device-ready scaffold, not hardware-certified.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, preview media, hardware evidence verifier gates, tests, builds, and an optional release ZIP before device flashing.
 - Release package verification rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence.
 - Release packaging refuses dirty source worktrees by default.
-- GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status and hosted-runner allocation must allow jobs to start before they can be used as rollout evidence.
+- GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status and hosted-runner allocation must allow jobs to start before they can be used as rollout evidence. Promotion evidence requires both required workflows, `Firmware` and `Release`, to be observed for the matching commit; one green workflow is not enough if the other is missing.
 - Production voice-source provenance is explicitly tracked; current generated WAVs are review samples until `data/voice_source_provenance.yaml` is completed with licensed or owned source evidence.
 - Release packages include `VOICE_SOURCE_STATUS.md` and `voice_source_status.json`, which summarize the blocked production-voice gates from the provenance YAML and template.
 - Native host tests execute mood, spring, and expression logic without hardware.

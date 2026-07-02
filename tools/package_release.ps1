@@ -672,6 +672,8 @@ $ciStatus = [ordered]@{
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   status = "post-push-check-required"
   interpretation = "This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run tools/export_github_actions_status.cmd to replace this placeholder with the observed GitHub Actions result."
+  requiredWorkflows = @("Firmware", "Release")
+  missingRequiredWorkflows = @("Firmware", "Release")
   workflows = @()
 }
 $ciStatus | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "github_actions_status.json") -Encoding UTF8
@@ -683,6 +685,7 @@ Release: $Version
 Commit: $commit
 Repository: RobVanProd/stackchan_alive
 Status: post-push-check-required
+Required workflows: Firmware, Release
 
 This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run:
 
