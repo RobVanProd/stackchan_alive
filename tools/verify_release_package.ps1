@@ -205,6 +205,9 @@ $requiredFiles = @(
   "tools/verify_rvc_auditions.ps1",
   "tools/verify_tracked_rvc_assets.cmd",
   "tools/verify_tracked_rvc_assets.ps1",
+  "tools/generate_speech_envelope_sidecar.cmd",
+  "tools/generate_speech_envelope_sidecar.ps1",
+  "tools/generate_speech_envelope_sidecar.py",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/add_hardware_evidence_media.cmd",
@@ -453,6 +456,20 @@ $trackedRvcVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/veri
 foreach ($pattern in @("Stackchan RVC MP3 Auditions", "RVC_AUDITION.html", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "source provenance and rights review")) {
   if ($trackedRvcVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_tracked_rvc_assets.ps1 missing tracked RVC asset check: $pattern"
+  }
+}
+
+$speechSidecarGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/generate_speech_envelope_sidecar.py") -Raw
+foreach ($pattern in @("stackchan.speech-envelope-sidecar.v1", "frameRateHz", "attackMs", "releaseMs", "viseme", "zero_crossings", "brightness")) {
+  if ($speechSidecarGeneratorText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/generate_speech_envelope_sidecar.py missing speech sidecar generation logic: $pattern"
+  }
+}
+
+$speechMouthSenderText = Get-Content -LiteralPath (Join-PackagePath "tools/send_speech_mouth_demo.ps1") -Raw
+foreach ($pattern in @("SidecarPath", "PrintOnly", "stackchan.speech-envelope-sidecar.v1", "ConvertFrom-Json", "FrameStride", "speech clear")) {
+  if ($speechMouthSenderText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/send_speech_mouth_demo.ps1 missing sidecar streaming logic: $pattern"
   }
 }
 

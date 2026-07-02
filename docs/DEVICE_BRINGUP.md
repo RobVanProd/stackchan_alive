@@ -73,6 +73,13 @@ To quickly exercise the speech-reactive mouth path after display-only firmware i
 .\tools\send_speech_mouth_demo.cmd -Port COM3
 ```
 
+To drive that same mouth path from an actual WAV envelope, generate a sidecar and stream it:
+
+```powershell
+.\tools\generate_speech_envelope_sidecar.cmd -InputWav output\voice_auditions\rvc_base\final\stackchan_rvc_bright_robot.wav -OutputJson output\speech\bright_robot.speech_envelope.json
+.\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\speech\bright_robot.speech_envelope.json
+```
+
 The generated evidence packet also includes `RUN_SPEECH_MOUTH_DEMO.cmd`, which captures its output to `logs\speech_mouth_demo_serial.log`.
 
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.

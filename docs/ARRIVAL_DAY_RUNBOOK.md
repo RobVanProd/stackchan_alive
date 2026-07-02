@@ -53,6 +53,13 @@ Import the display photo or video into the packet:
 .\RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg
 ```
 
+Optional speech-mouth sidecar check from the extracted release folder:
+
+```powershell
+.\tools\generate_speech_envelope_sidecar.cmd -InputWav media\voice\rvc\stackchan_rvc_bright_robot.wav -OutputJson output\bright_robot.speech_envelope.json
+.\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
+```
+
 ## 3. Supervised Servo Calibration
 
 Only continue after display-only passes and the body is clear.
