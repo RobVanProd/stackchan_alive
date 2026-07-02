@@ -729,6 +729,31 @@ function Assert-ArrivalPacketScaffoldGate {
     [switch]$AllowDirtyPackage
   )
 
+  $preflightReportDir = Join-Path $repoRoot "output/preflight/$Version"
+  $preflightReportPath = Join-Path $preflightReportDir "preflight_report.json"
+  $preflightBackupPath = $null
+  if (Test-Path -LiteralPath $preflightReportPath) {
+    $preflightBackupPath = "$preflightReportPath.preflight-selftest-$([System.Guid]::NewGuid().ToString('N')).bak"
+    Move-Item -LiteralPath $preflightReportPath -Destination $preflightBackupPath
+  }
+  New-Item -ItemType Directory -Force -Path $preflightReportDir | Out-Null
+  [ordered]@{
+    schema = "stackchan.preflight-report.v1"
+    version = $Version
+    commit = $ExpectedCommit
+    status = "pass"
+    generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    note = "Temporary self-test report used to verify arrival-packet checklist annotation."
+    steps = @()
+  } | ConvertTo-Json -Depth 5 | Set-Content -Path $preflightReportPath -Encoding UTF8
+
+  function Restore-TemporaryPreflightReport {
+    Remove-Item -LiteralPath $preflightReportPath -Force -ErrorAction SilentlyContinue
+    if (-not [string]::IsNullOrWhiteSpace($preflightBackupPath) -and (Test-Path -LiteralPath $preflightBackupPath)) {
+      Move-Item -LiteralPath $preflightBackupPath -Destination $preflightReportPath
+    }
+  }
+
   $startArgs = @(
     (Join-Path $PSScriptRoot "start_hardware_evidence.ps1"),
     "-ReleaseTag", $Version,
@@ -743,6 +768,7 @@ function Assert-ArrivalPacketScaffoldGate {
 
   $created = Invoke-ToolText $startArgs
   if ($created.ExitCode -ne 0) {
+    Restore-TemporaryPreflightReport
     throw "Arrival packet scaffold creation failed:$([Environment]::NewLine)$($created.Text)"
   }
 
@@ -753,6 +779,7 @@ function Assert-ArrivalPacketScaffoldGate {
   ) | Select-Object -Last 1
 
   if ([string]::IsNullOrWhiteSpace($evidenceRoot)) {
+    Restore-TemporaryPreflightReport
     throw "Could not locate generated arrival packet in output:$([Environment]::NewLine)$($created.Text)"
   }
 
@@ -823,6 +850,14 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $readme "RUN_PLAY_LEAD_VOICE.cmd"
     Assert-TextContains $readme "real-device speaker recording"
 
+    $checklist = Get-Content -LiteralPath (Join-Path $evidenceRoot "CHECKLIST.md") -Raw
+    Assert-TextContains $checklist 'Pre-marked no-hardware gates were proven by the matching preflight report'
+    Assert-TextContains $checklist '- [x] `pio run -e stackchan` passes.'
+    Assert-TextContains $checklist '- [x] `tools/run_device_preflight.ps1` passes.'
+    Assert-TextContains $checklist '- [x] `tools/verify_release_package.ps1` passes for the release ZIP.'
+    Assert-TextContains $checklist '- [ ] GitHub Actions `Firmware` workflow is green on `main`.'
+    Assert-TextContains $checklist '- [ ] Production voice-source provenance is completed and no longer marked pending.'
+
     $audioReview = Get-Content -LiteralPath (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Raw
     Assert-TextContains $audioReview "reference_audio/stackchan_rvc_bright_robot.wav"
     Assert-TextContains $audioReview "RVC Bright Robot (pitch 2, index 0.62, RMS mix 0.72, protect 0.28)"
@@ -873,6 +908,7 @@ function Assert-ArrivalPacketScaffoldGate {
       throw "Refusing to clean unexpected arrival packet path: $resolvedEvidence"
     }
     Remove-Item -LiteralPath $resolvedEvidence -Recurse -Force
+    Restore-TemporaryPreflightReport
   }
 }
 

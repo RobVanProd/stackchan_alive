@@ -271,6 +271,75 @@ function Copy-ShareVerificationArtifactsFromRoot {
   }
 }
 
+function Set-ChecklistItemState {
+  param(
+    [string[]]$Lines,
+    [string]$ExactItemText,
+    [bool]$Checked
+  )
+
+  $state = if ($Checked) { "x" } else { " " }
+  $escaped = [regex]::Escape($ExactItemText)
+  return @($Lines | ForEach-Object {
+      if ($_ -match "^- \[[ x]\] $escaped$") {
+        "- [$state] $ExactItemText"
+      } else {
+        $_
+      }
+    })
+}
+
+function Write-EvidenceChecklist {
+  param(
+    [string]$DestinationPath,
+    [bool]$PackageVerified,
+    [bool]$PreflightPassed,
+    [bool]$PackageCopied
+  )
+
+  $lines = @(Get-Content -LiteralPath "docs/ROLLOUT_CHECKLIST.md")
+
+  if ($PreflightPassed) {
+    foreach ($item in @(
+        '`pio run -e stackchan` passes.',
+        '`pio run -e stackchan_servo_calibration` passes.',
+        '`pio test -e native_logic` passes.',
+        '`pio test -e stackchan --without-uploading --without-testing` passes.',
+        '`tools/run_device_preflight.ps1` passes.',
+        '`tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.'
+      )) {
+      $lines = Set-ChecklistItemState -Lines $lines -ExactItemText $item -Checked $true
+    }
+  }
+
+  if ($PackageVerified) {
+    foreach ($item in @(
+        'Release package ZIP contains firmware, media, docs, manifest, dependency provenance, `dependency_lock.json`, copied build inputs, and checksums.',
+        '`tools/verify_release_package.ps1` passes for the release ZIP.',
+        'Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.'
+      )) {
+      $lines = Set-ChecklistItemState -Lines $lines -ExactItemText $item -Checked $true
+    }
+  }
+
+  if ($PackageVerified -and $PackageCopied) {
+    $lines = Set-ChecklistItemState -Lines $lines -ExactItemText 'Evidence packet includes the tested ZIP and `logs/package_verify.log`, or records a verified extracted package root.' -Checked $true
+  }
+
+  $preflightNote = if ($PreflightPassed) {
+    "Pre-marked no-hardware gates were proven by the matching preflight report for this release. Hardware, GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence."
+  } else {
+    "Only package-verification gates were pre-marked. Run the matching no-hardware preflight and attach its report before treating build/test gates as proven."
+  }
+
+  $annotated = @(
+    "<!-- Generated evidence packet checklist for $ReleaseTag at $createdUtc. -->",
+    "<!-- $preflightNote -->"
+  ) + $lines
+
+  $annotated | Set-Content -Path $DestinationPath -Encoding UTF8
+}
+
 $rootManifest = Get-ReleaseManifest $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
@@ -342,6 +411,7 @@ New-Item -ItemType Directory -Force -Path $logsDir, $photosDir, $audioDir, $refe
 $packageInfo = $null
 $voiceLeadInfo = $null
 $shareVerificationInfo = $null
+$packageVerified = $false
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/servo_calibration_serial.log",
@@ -384,6 +454,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($verifyExitCode -ne 0) {
     throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
   }
+  $packageVerified = $true
   Copy-AcceptanceArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromZip -ZipPath $packageItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
@@ -417,6 +488,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   if ($verifyExitCode -ne 0) {
     throw "Release package verification failed while creating evidence packet. See $packageVerifyLog"
   }
+  $packageVerified = $true
   Copy-AcceptanceArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $voiceLeadInfo = Copy-VoiceLeadArtifactsFromRoot -SourceRoot $packageRootItem.FullName -DestinationRoot $outDir
   $requiredLogs = @("logs/package_verify.log") + $requiredLogs
@@ -424,7 +496,13 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
 
 $shareVerificationInfo = Copy-ShareVerificationArtifactsFromRoot -SourceRoot $ShareRoot -DestinationRoot $outDir -Required $shareRootWasExplicit
 
-Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination (Join-Path $outDir "CHECKLIST.md")
+$preflightPassed = $false
+$preflightReportPath = Join-Path $repoRoot "output/preflight/$ReleaseTag/preflight_report.json"
+if (Test-Path -LiteralPath $preflightReportPath) {
+  $preflightReport = Get-Content -LiteralPath $preflightReportPath -Raw | ConvertFrom-Json
+  $preflightPassed = ([string]$preflightReport.status -eq "pass" -and [string]$preflightReport.commit -eq $commit)
+}
+Write-EvidenceChecklist -DestinationPath (Join-Path $outDir "CHECKLIST.md") -PackageVerified $packageVerified -PreflightPassed $preflightPassed -PackageCopied ($null -ne $packageInfo)
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination (Join-Path $outDir "DEVICE_BRINGUP.md")
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $outDir "PRODUCTION_READINESS.md")
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination (Join-Path $calibrationDir "calibration.yaml")
