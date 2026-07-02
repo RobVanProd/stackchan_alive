@@ -127,6 +127,7 @@ Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, ima
 ```
 
 For same-network phone/laptop review without Cloudflare, add `-Lan`. The helper binds to `0.0.0.0`, verifies the server through loopback, prints ranked LAN URL candidates, and records those candidates in `share_status.json` as `lanUrls`.
+It also writes `LAN_TROUBLESHOOTING.md` and `share_probe_report.json` with adapter metadata, virtual/VPN/no-gateway notes, and host-side reachability probes for the loopback and LAN candidate URLs. If a phone cannot open a LAN URL, start with that troubleshooting file and try a non-virtual candidate on the same Wi-Fi/LAN before falling back to Cloudflare.
 If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
 From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.

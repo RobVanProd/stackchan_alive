@@ -45,6 +45,7 @@ If Cloudflare DNS or tunnel startup is unreliable and the reviewer is on the sam
 ```
 
 Open the first printed same-network URL on the other device. The loopback URL is for the machine running the share command.
+If the first same-network URL fails, open `output\share\<version>\LAN_TROUBLESHOOTING.md` and check `share_probe_report.json`. Prefer candidates that are not virtual/VPN adapters and have a default gateway; allow the Python server through Windows Firewall for private networks if host-side probes pass but another device still cannot connect.
 
 ## Prepare The Arrival Packet
 

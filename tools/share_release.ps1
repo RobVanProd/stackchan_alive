@@ -70,6 +70,9 @@ function Write-ShareStatus {
     $LanUrls = @($script:ShareLanUrls)
   }
 
+  $lanDiagnostics = if ($null -ne $script:ShareLanDiagnostics) { @($script:ShareLanDiagnostics) } else { @() }
+  $hostProbeResults = if ($null -ne $script:ShareUrlProbeResults) { @($script:ShareUrlProbeResults) } else { @() }
+
   $statusObject = [ordered]@{
     version = $Version
     status = $Status
@@ -79,13 +82,17 @@ function Write-ShareStatus {
     loopbackUrl = "http://127.0.0.1`:$Port/"
     localUrl = $script:ShareProbeUrl
     lanUrls = @($LanUrls)
+    lanDiagnostics = @($lanDiagnostics)
+    hostProbeResults = @($hostProbeResults)
+    lanTroubleshooting = "LAN_TROUBLESHOOTING.md"
+    shareProbeReport = "share_probe_report.json"
     publicUrl = $PublicUrl
     publicUrlReady = $PublicUrlReady
     processIds = @($ProcessIds)
     shareRoot = $shareRoot
   }
 
-  $statusObject | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $shareRoot "share_status.json") -Encoding UTF8
+  $statusObject | ConvertTo-Json -Depth 7 | Set-Content -Path (Join-Path $shareRoot "share_status.json") -Encoding UTF8
   if (-not [string]::IsNullOrWhiteSpace($PublicUrl)) {
     $PublicUrl | Set-Content -Path (Join-Path $shareRoot "PUBLIC_URL.txt") -Encoding ASCII
   }
@@ -268,6 +275,67 @@ function Get-ShareLanUrlsForBind {
   return @()
 }
 
+function Get-ShareLanDiagnosticsForBind {
+  param(
+    [string]$Address,
+    [int]$SharePort
+  )
+
+  if ($Address -match "^127\.") {
+    return @()
+  }
+
+  $hostAddresses = @(Get-HostIpv4Addresses)
+  if ($Address -ne "0.0.0.0") {
+    $hostAddresses = @($hostAddresses | Where-Object { $_.Address -eq $Address })
+    if ($hostAddresses.Count -eq 0) {
+      $hostAddresses = @([pscustomobject]@{
+        Address = $Address
+        InterfaceAlias = "explicit-bind"
+        InterfaceDescription = "Explicit bind address not present in adapter inventory"
+        HasGateway = $false
+        IsPrivate = [bool](Test-PrivateIpv4 -Address $Address)
+        IsVirtual = $false
+      })
+    }
+  } else {
+    $preferred = @($hostAddresses | Where-Object { -not $_.IsVirtual })
+    if ($preferred.Count -gt 0) {
+      $hostAddresses = $preferred
+    }
+  }
+
+  $rank = 0
+  return @($hostAddresses | ForEach-Object {
+    $rank += 1
+    $notes = @()
+    if ($_.IsVirtual) {
+      $notes += "virtual-or-vpn-adapter"
+    }
+    if (-not $_.HasGateway) {
+      $notes += "no-default-gateway"
+    }
+    if (-not $_.IsPrivate) {
+      $notes += "not-rfc1918-private"
+    }
+    if ($notes.Count -eq 0) {
+      $notes += "preferred-lan-candidate"
+    }
+
+    [ordered]@{
+      rank = $rank
+      url = "http://$($_.Address)`:$SharePort/"
+      address = [string]$_.Address
+      interfaceAlias = [string]$_.InterfaceAlias
+      interfaceDescription = [string]$_.InterfaceDescription
+      hasGateway = [bool]$_.HasGateway
+      isPrivate = [bool]$_.IsPrivate
+      isVirtual = [bool]$_.IsVirtual
+      notes = @($notes)
+    }
+  })
+}
+
 function Assert-BindAddressAvailable {
   param([string]$Address)
 
@@ -300,6 +368,110 @@ function Wait-LocalUrlReady {
   }
 
   return (Test-PublicUrlReady -TargetUrl $TargetUrl)
+}
+
+function Test-ShareUrlsFromHost {
+  param([string[]]$Urls)
+
+  $results = @()
+  foreach ($url in @($Urls | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+    $started = Get-Date
+    $statusCode = 0
+    $errorMessage = ""
+    $ok = $false
+
+    try {
+      $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 3 -UseBasicParsing
+      $statusCode = [int]$response.StatusCode
+      $ok = ($statusCode -ge 200 -and $statusCode -lt 400)
+    } catch {
+      $errorMessage = $_.Exception.Message
+    }
+
+    $ended = Get-Date
+    $results += [ordered]@{
+      url = $url
+      reachableFromHost = $ok
+      statusCode = $statusCode
+      elapsedMs = [Math]::Round(($ended - $started).TotalMilliseconds, 1)
+      error = $errorMessage
+      note = "This probe only tests reachability from the machine running share_release. A phone or laptop must still be on the same network, allowed by the firewall, and using one of the LAN URLs."
+    }
+  }
+
+  return @($results)
+}
+
+function Write-ShareProbeReport {
+  param([string]$Status)
+
+  $report = [ordered]@{
+    schema = "stackchan.share-probe-report.v1"
+    version = $Version
+    status = $Status
+    generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    bindAddress = $BindAddress
+    loopbackUrl = "http://127.0.0.1`:$Port/"
+    localUrl = $script:ShareProbeUrl
+    lanUrls = @($script:ShareLanUrls)
+    lanDiagnostics = @($script:ShareLanDiagnostics)
+    hostProbeResults = @($script:ShareUrlProbeResults)
+  }
+
+  $report | ConvertTo-Json -Depth 7 | Set-Content -Path (Join-Path $shareRoot "share_probe_report.json") -Encoding UTF8
+}
+
+function Write-LanTroubleshooting {
+  $diagnostics = if ($null -ne $script:ShareLanDiagnostics) { @($script:ShareLanDiagnostics) } else { @() }
+  $probeResults = if ($null -ne $script:ShareUrlProbeResults) { @($script:ShareUrlProbeResults) } else { @() }
+  $lines = @(
+    "# Stackchan Share LAN Troubleshooting",
+    "",
+    "Version: $Version",
+    "Bind address: $BindAddress",
+    "Loopback URL: http://127.0.0.1`:$Port/",
+    "",
+    "Use the loopback URL on this Windows machine. Use a same-network URL only from another device on the same Wi-Fi/LAN.",
+    "",
+    "## LAN URL Candidates",
+    ""
+  )
+
+  if ($diagnostics.Count -eq 0) {
+    $lines += "- No non-loopback LAN candidates were detected for this share."
+  } else {
+    foreach ($item in $diagnostics) {
+      $lines += "- $($item.url) - adapter: $($item.interfaceAlias); gateway: $($item.hasGateway); private: $($item.isPrivate); virtual: $($item.isVirtual); notes: $(@($item.notes) -join ', ')"
+    }
+  }
+
+  $lines += @(
+    "",
+    "## Host Reachability Probes",
+    ""
+  )
+
+  if ($probeResults.Count -eq 0) {
+    $lines += "- No host probes have run yet. Start the share without `-NoServe` to probe loopback and LAN candidates."
+  } else {
+    foreach ($probe in $probeResults) {
+      $state = if ($probe.reachableFromHost) { "reachable" } else { "not reachable" }
+      $detail = if ([string]::IsNullOrWhiteSpace([string]$probe.error)) { "HTTP $($probe.statusCode)" } else { [string]$probe.error }
+      $lines += "- $($probe.url) - $state from host ($detail, $($probe.elapsedMs) ms)"
+    }
+  }
+
+  $lines += @(
+    "",
+    "## If Another Device Cannot Open The Page",
+    "",
+    "1. Confirm the other device is on the same Wi-Fi/LAN as this Windows machine.",
+    "2. Try each same-network URL candidate, not the loopback URL.",
+    "3. Prefer candidates marked `preferred-lan-candidate`; virtual, VPN, WSL, Docker, Bluetooth, or no-gateway adapters are less likely to work from another device.",
+    "4. If every LAN URL fails, allow the Python server through Windows Firewall for private networks or use `-CloudflareTunnel -DownloadCloudflared`."
+  )
+
+  $lines | Set-Content -Path (Join-Path $shareRoot "LAN_TROUBLESHOOTING.md") -Encoding UTF8
 }
 
 function Wait-PublicUrlReady {
@@ -1056,6 +1228,9 @@ $preflightDownloadItems
     <li>Run <code>RUN_CONSUMER_PROMOTION_CHECK.cmd</code> only after evidence verification passes and production voice-source provenance plus GitHub Actions status are ready.</li>
   </ol>
   <p>Use display-only firmware first. Servo calibration requires the explicit <code>-ConfirmServoRisk</code> command generated in the evidence packet and a supervised clear work area.</p>
+  <h2>Share Diagnostics</h2>
+  <p>Local and LAN troubleshooting artifacts: <a href="LAN_TROUBLESHOOTING.md">LAN_TROUBLESHOOTING.md</a>, <a href="share_status.json">share_status.json</a>, and <a href="share_probe_report.json">share_probe_report.json</a>.</p>
+  <p>If a same-network URL does not open from another device, use the LAN troubleshooting report to identify virtual/VPN adapters, no-gateway addresses, and host-side probe results before trying another candidate.</p>
 </main>
 </body>
 </html>
@@ -1069,29 +1244,33 @@ if (-not $NoServe) {
   }
 }
 
-$script:ShareLanUrls = @(Get-ShareLanUrlsForBind -Address $BindAddress -SharePort $Port)
-$script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0" -and $script:ShareLanUrls.Count -gt 0) {
-  [string]$script:ShareLanUrls[0]
-} elseif ($BindAddress -eq "0.0.0.0") {
+$script:ShareLanDiagnostics = @(Get-ShareLanDiagnosticsForBind -Address $BindAddress -SharePort $Port)
+$script:ShareLanUrls = @($script:ShareLanDiagnostics | ForEach-Object { [string]$_.url })
+$script:ShareUrlProbeResults = @()
+$script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0") {
   "http://127.0.0.1`:$Port/"
 } else {
   "http://$BindAddress`:$Port/"
 }
 
+Write-LanTroubleshooting
+Write-ShareProbeReport -Status "prepared"
 Write-ShareStatus -Status "prepared"
 
 Write-Host "Release share folder:"
 Write-Host $shareRoot
 Write-Host "Loopback URL:"
-Write-Host $script:ShareProbeUrl
+Write-Host "http://127.0.0.1`:$Port/"
 if ($script:ShareLanUrls.Count -gt 0) {
   Write-Host "Same-network URL candidates:"
-  foreach ($lanUrl in $script:ShareLanUrls) {
-    Write-Host $lanUrl
+  foreach ($lanCandidate in $script:ShareLanDiagnostics) {
+    Write-Host "$($lanCandidate.url)  [$($lanCandidate.interfaceAlias); $(@($lanCandidate.notes) -join ', ')]"
   }
 } elseif ($BindAddress -eq "0.0.0.0") {
   Write-Warning "No active non-loopback IPv4 address was detected. The loopback URL should still work on this machine."
 }
+Write-Host "LAN troubleshooting report:"
+Write-Host (Join-Path $shareRoot "LAN_TROUBLESHOOTING.md")
 
 if ($NoServe) {
   exit 0
@@ -1121,9 +1300,18 @@ Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
 Write-Host "Started local server PID $($server.Id)"
 Write-Host "Waiting for local share page to answer..."
 if (-not (Wait-LocalUrlReady -TargetUrl $script:ShareProbeUrl)) {
+  $script:ShareUrlProbeResults = @(Test-ShareUrlsFromHost -Urls (@("http://127.0.0.1`:$Port/") + $script:ShareLanUrls))
+  Write-ShareProbeReport -Status "local-readiness-failed"
+  Write-LanTroubleshooting
+  Write-ShareStatus -Status "local-readiness-failed" -ProcessIds @($server.Id)
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   throw "Local share page did not answer before the readiness timeout: $script:ShareProbeUrl"
 }
+
+$script:ShareUrlProbeResults = @(Test-ShareUrlsFromHost -Urls (@("http://127.0.0.1`:$Port/") + $script:ShareLanUrls))
+Write-ShareProbeReport -Status "local-ready"
+Write-LanTroubleshooting
+Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
 
 if ($CloudflareTunnel) {
   $cloudflaredOutLog = Join-Path $shareRoot "cloudflared.stdout.log"

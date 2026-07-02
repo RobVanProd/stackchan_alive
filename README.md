@@ -86,10 +86,10 @@ Stage a local handoff page for the ZIP, ZIP SHA256 sidecar, preview image, expre
 .\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
 ```
 
-Use `-Lan` when another device on the same Wi-Fi/LAN needs to open the page; it binds to all interfaces, probes the server through loopback, and prints ranked same-network URL candidates while avoiding common virtual adapters.
+Use `-Lan` when another device on the same Wi-Fi/LAN needs to open the page; it binds to all interfaces, probes the server through loopback, and prints ranked same-network URL candidates while avoiding common virtual adapters. The share folder also writes `LAN_TROUBLESHOOTING.md` and `share_probe_report.json` with adapter metadata and host-side reachability probes for each candidate.
 When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL and writes it to `output\share\<version>\PUBLIC_URL.txt`. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
 From an extracted release package, `.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared` infers the release version from `release_manifest.json`.
-The share folder also includes `share_status.json` with `loopbackUrl`, `localUrl`, and `lanUrls`, plus `STOP_SHARING.cmd` for stopping the local server and tunnel. To clean up every share server started by this repo, run `.\tools\stop_share.cmd -All`; it only stops processes that still match share metadata under `output\share`.
+The share folder also includes `share_status.json` with `loopbackUrl`, `localUrl`, `lanUrls`, LAN diagnostics, host probe results, plus `STOP_SHARING.cmd` for stopping the local server and tunnel. To clean up every share server started by this repo, run `.\tools\stop_share.cmd -All`; it only stops processes that still match share metadata under `output\share`.
 Verify the active local or Cloudflare share before sending it:
 
 ```powershell
