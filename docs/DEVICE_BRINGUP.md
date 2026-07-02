@@ -85,6 +85,17 @@ The generated evidence packet also includes `RUN_SPEECH_MOUTH_DEMO.cmd`, which c
 
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
 
+You can also toggle this at runtime from the serial monitor without reflashing:
+
+```text
+reduced on
+reduced off
+motion reduced on
+motion reduced off
+```
+
+The command logs `[control] command=reduced_motion_on reduced_motion=1` or `[control] command=reduced_motion_off reduced_motion=0`, then the face task applies the change and logs the new `[face] reduced_motion=` state.
+
 ## Servo Enable Gate
 
 Servos are disabled by default in `platformio.ini`:

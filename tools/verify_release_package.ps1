@@ -435,6 +435,20 @@ foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub A
   }
 }
 
+$sensorAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SensorAdapter.cpp") -Raw
+foreach ($pattern in @("reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "parseOnOff", "hasReducedMotion")) {
+  if ($sensorAdapterText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/SensorAdapter.cpp missing reduced-motion serial command support: $pattern"
+  }
+}
+
+$mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
+foreach ($pattern in @("gFaceControlQueue", "FaceControlInput", "publishFaceControl", "applyFaceControlInput", "gFace.setReducedMotion", "reduced_motion=")) {
+  if ($mainText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/main.cpp missing reduced-motion face-control queue support: $pattern"
+  }
+}
+
 $nativeToolchainCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_native_toolchain.ps1") -Raw
 foreach ($pattern in @("stackchan.native-toolchain-check.v1", "Get-StackchanNativeCompilerDirs", "Add-StackchanNativeCompilerToPath", "winget install BrechtSanders.WinLibs.POSIX.UCRT", "Candidate directories")) {
   if ($nativeToolchainCheckerText -notmatch [regex]::Escape($pattern)) {

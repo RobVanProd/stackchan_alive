@@ -469,6 +469,28 @@ void test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme() {
   TEST_ASSERT_FALSE(parseBenchControlLine("speech 0.5 banana", 3800, &control));
 }
 
+void test_sensor_adapter_parses_reduced_motion_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("reduced on", 4100, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_TRUE(control.hasReducedMotion);
+  TEST_ASSERT_TRUE(control.reducedMotion);
+  TEST_ASSERT_EQUAL_STRING("reduced_motion_on", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("motion reduced off", 4200, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_TRUE(control.hasReducedMotion);
+  TEST_ASSERT_FALSE(control.reducedMotion);
+  TEST_ASSERT_EQUAL_STRING("reduced_motion_off", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("reduced_motion 1", 4300, &control));
+  TEST_ASSERT_TRUE(control.hasReducedMotion);
+  TEST_ASSERT_TRUE(control.reducedMotion);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("motion reduced maybe", 4400, &control));
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -642,6 +664,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_event_aliases_and_clamps_strength);
   RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
+  RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

@@ -147,6 +147,38 @@ bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
   return false;
 }
 
+bool parseOnOff(const char* token, bool* valueOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  if (strcmp(token, "on") == 0 || strcmp(token, "1") == 0 || strcmp(token, "true") == 0 ||
+      strcmp(token, "yes") == 0 || strcmp(token, "reduced") == 0) {
+    *valueOut = true;
+    return true;
+  }
+  if (strcmp(token, "off") == 0 || strcmp(token, "0") == 0 || strcmp(token, "false") == 0 ||
+      strcmp(token, "no") == 0 || strcmp(token, "full") == 0 || strcmp(token, "normal") == 0) {
+    *valueOut = false;
+    return true;
+  }
+  return false;
+}
+
+bool fillReducedMotion(const char* valueToken, BenchControl* controlOut) {
+  bool enabled = false;
+  if (!parseOnOff(valueToken, &enabled)) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasReducedMotion = true;
+  parsed.reducedMotion = enabled;
+  parsed.command = enabled ? "reduced_motion_on" : "reduced_motion_off";
+  *controlOut = parsed;
+  return true;
+}
+
 bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchControl* controlOut) {
   for (const ModeCommand& command : kModeCommands) {
     if (strcmp(token, command.name) != 0) {
@@ -282,6 +314,16 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return fillFromSpeech(second, third, strtok(nullptr, " \t"), nowMs, controlOut);
   }
 
+  if (strcmp(first, "reduced") == 0 || strcmp(first, "reduced_motion") == 0 ||
+      strcmp(first, "reducedmotion") == 0 || strcmp(first, "calm") == 0) {
+    return fillReducedMotion(second, controlOut);
+  }
+  if (strcmp(first, "motion") == 0 && second != nullptr &&
+      (strcmp(second, "reduced") == 0 || strcmp(second, "reduced_motion") == 0 ||
+       strcmp(second, "reducedmotion") == 0)) {
+    return fillReducedMotion(third, controlOut);
+  }
+
   if (token == nullptr || isHelpToken(token)) {
     return false;
   }
@@ -312,6 +354,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: mode listen|think|speak|idle|sleep|error [strength]"));
   Serial.println(F("[control] help: event wake|touch|response|speech_end|idle|error [strength]"));
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
+  Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif
 }

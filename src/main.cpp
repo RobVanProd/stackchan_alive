@@ -20,6 +20,7 @@ namespace {
 
 QueueHandle_t gFrameQueue = nullptr;
 QueueHandle_t gSpeechQueue = nullptr;
+QueueHandle_t gFaceControlQueue = nullptr;
 RobotConfig gConfig = defaultRobotConfig();
 StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
@@ -37,6 +38,11 @@ struct FaceSpeechInput {
   SpeechViseme viseme = SpeechViseme::Neutral;
   uint32_t timestampMs = 0;
   uint32_t durationMs = 0;
+};
+
+struct FaceControlInput {
+  bool hasReducedMotion = false;
+  bool reducedMotion = false;
 };
 
 const __FlashStringHelper* firmwareMode() {
@@ -256,6 +262,10 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" speech_duration_ms="));
     Serial.print(control.speech.durationMs);
   }
+  if (control.hasReducedMotion) {
+    Serial.print(F(" reduced_motion="));
+    Serial.print(control.reducedMotion ? 1 : 0);
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -272,6 +282,17 @@ void publishSpeechInput(const BenchControl& control) {
   input.timestampMs = control.hasEvent ? control.event.timestampMs : millis();
   input.durationMs = control.speech.durationMs;
   xQueueOverwrite(gSpeechQueue, &input);
+}
+
+void publishFaceControl(const BenchControl& control) {
+  if (gFaceControlQueue == nullptr || !control.hasReducedMotion) {
+    return;
+  }
+
+  FaceControlInput input;
+  input.hasReducedMotion = true;
+  input.reducedMotion = control.reducedMotion;
+  xQueueOverwrite(gFaceControlQueue, &input);
 }
 
 void publishFrame(const RobotFrame& frame) {
@@ -314,6 +335,15 @@ void applySpeechInput(uint32_t nowMs) {
   }
 }
 
+void applyFaceControlInput() {
+  FaceControlInput input;
+  while (gFaceControlQueue != nullptr && xQueueReceive(gFaceControlQueue, &input, 0) == pdTRUE) {
+    if (input.hasReducedMotion) {
+      gFace.setReducedMotion(input.reducedMotion);
+    }
+  }
+}
+
 void MotionTask(void* pv) {
   (void)pv;
   RobotFrame target = makeNeutralFrame();
@@ -334,6 +364,7 @@ void FaceTask(void* pv) {
   while (true) {
     target = readLatestFrame(target);
     const uint32_t nowMs = millis();
+    applyFaceControlInput();
     applySpeechInput(nowMs);
     gFace.render(target, nowMs);
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.facePeriodMs));
@@ -352,6 +383,7 @@ void IntentTask(void* pv) {
         gIntent.applyEvent(control.event, control.mode);
       }
       publishSpeechInput(control);
+      publishFaceControl(control);
       printBenchControl(control);
     }
 
@@ -380,7 +412,8 @@ void setup() {
 
   gFrameQueue = xQueueCreate(1, sizeof(RobotFrame));
   gSpeechQueue = xQueueCreate(1, sizeof(FaceSpeechInput));
-  if (gFrameQueue == nullptr || gSpeechQueue == nullptr) {
+  gFaceControlQueue = xQueueCreate(1, sizeof(FaceControlInput));
+  if (gFrameQueue == nullptr || gSpeechQueue == nullptr || gFaceControlQueue == nullptr) {
     Serial.println(F("[fatal] queue allocation failed"));
     abort();
   }
