@@ -30,6 +30,14 @@ From a source checkout, pass the release version:
 .\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
 ```
 
+If Cloudflare DNS or tunnel startup is unreliable and the reviewer is on the same network, use a LAN share instead:
+
+```powershell
+.\tools\share_release.cmd -Version <version> -Lan
+```
+
+Open the first printed same-network URL on the other device. The loopback URL is for the machine running the share command.
+
 ## Prepare The Arrival Packet
 
 From inside the extracted release folder:

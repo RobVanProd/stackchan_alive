@@ -125,10 +125,11 @@ Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, ima
 .\tools\share_release.cmd -Version <version>
 ```
 
+For same-network phone/laptop review without Cloudflare, add `-Lan`. The helper binds to `0.0.0.0`, verifies the server through loopback, prints ranked LAN URL candidates, and records those candidates in `share_status.json` as `lanUrls`.
 If `cloudflared` is installed, add `-CloudflareTunnel` to start a tunnel for remote review. The script writes the static share folder under `output/share/<version>/`.
 If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local copy under `output/tools/` before starting the tunnel.
 From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.
-When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes.
+When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes. For `-Lan`, use the first printed same-network URL unless the machine is on a VPN-only or isolated network.
 Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending the URL; it checks the handoff page plus the preview PNG, expression sheet, MP4, GIF, voice samples, voice-source provenance files, readiness report, readiness JSON, ZIP, ZIP SHA256 sidecar, and package checksums over HTTP.
 Run `output/share/<version>/STOP_SHARING.cmd` or `tools/stop_share.cmd -Version <version>` to stop the local server and tunnel.
 

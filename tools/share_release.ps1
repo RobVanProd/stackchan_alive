@@ -2,6 +2,7 @@ param(
   [string]$Version,
   [int]$Port = 8787,
   [string]$BindAddress = "127.0.0.1",
+  [switch]$Lan,
   [switch]$CloudflareTunnel,
   [switch]$DownloadCloudflared,
   [int]$TunnelWaitSeconds = 30,
@@ -61,15 +62,23 @@ function Write-ShareStatus {
     [string]$Status,
     [string]$PublicUrl = "",
     [bool]$PublicUrlReady = $false,
-    [int[]]$ProcessIds = @()
+    [int[]]$ProcessIds = @(),
+    [string[]]$LanUrls = @()
   )
+
+  if ($LanUrls.Count -eq 0 -and $null -ne $script:ShareLanUrls) {
+    $LanUrls = @($script:ShareLanUrls)
+  }
 
   $statusObject = [ordered]@{
     version = $Version
     status = $Status
     generatedUtc = $generatedUtc
     updatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    localUrl = "http://$BindAddress`:$Port/"
+    bindAddress = $BindAddress
+    loopbackUrl = "http://127.0.0.1`:$Port/"
+    localUrl = $script:ShareProbeUrl
+    lanUrls = @($LanUrls)
     publicUrl = $PublicUrl
     publicUrlReady = $PublicUrlReady
     processIds = @($ProcessIds)
@@ -136,6 +145,145 @@ function Test-PublicUrlReady {
     return ([int]$response.StatusCode -eq 200)
   } catch {
     return $false
+  }
+}
+
+function Test-PrivateIpv4 {
+  param([string]$Address)
+
+  $bytes = $Address.Split(".")
+  if ($bytes.Count -ne 4) {
+    return $false
+  }
+
+  $first = [int]$bytes[0]
+  $second = [int]$bytes[1]
+  return (
+    $first -eq 10 -or
+    ($first -eq 172 -and $second -ge 16 -and $second -le 31) -or
+    ($first -eq 192 -and $second -eq 168)
+  )
+}
+
+function Get-HostIpv4Addresses {
+  $addresses = @()
+
+  try {
+    $configs = @(Get-NetIPConfiguration -ErrorAction Stop | Where-Object {
+      $null -ne $_.IPv4Address -and
+      $null -ne $_.NetAdapter -and
+      $_.NetAdapter.Status -eq "Up"
+    })
+
+    foreach ($config in $configs) {
+      foreach ($ip in @($config.IPv4Address)) {
+        $address = [string]$ip.IPAddress
+        if ([string]::IsNullOrWhiteSpace($address)) {
+          continue
+        }
+
+        $name = [string]$config.InterfaceAlias
+        $description = [string]$config.InterfaceDescription
+        $adapterText = "$name $description"
+        $isVirtual = $adapterText -match "(?i)virtual|vethernet|hyper-v|wsl|docker|vmware|virtualbox|npcap|loopback|bluetooth|tailscale"
+        $hasGateway = @($config.IPv4DefaultGateway).Count -gt 0
+        $isPrivate = Test-PrivateIpv4 -Address $address
+
+        $addresses += [pscustomobject]@{
+          Address = $address
+          InterfaceAlias = $name
+          InterfaceDescription = $description
+          HasGateway = [bool]$hasGateway
+          IsPrivate = [bool]$isPrivate
+          IsVirtual = [bool]$isVirtual
+        }
+      }
+    }
+  } catch {
+    try {
+      $hostName = [System.Net.Dns]::GetHostName()
+      $dnsAddresses = [System.Net.Dns]::GetHostAddresses($hostName) | Where-Object {
+        $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork
+      }
+
+      foreach ($ip in $dnsAddresses) {
+        $address = $ip.ToString()
+        $addresses += [pscustomobject]@{
+          Address = $address
+          InterfaceAlias = "dns"
+          InterfaceDescription = "DNS host address fallback"
+          HasGateway = $false
+          IsPrivate = [bool](Test-PrivateIpv4 -Address $address)
+          IsVirtual = $false
+        }
+      }
+    } catch {
+    }
+  }
+
+  $addresses |
+    Where-Object {
+      $_.Address -notmatch "^127\." -and
+      $_.Address -notmatch "^169\.254\." -and
+      $_.Address -ne "0.0.0.0"
+    } |
+    Sort-Object -Property `
+      @{ Expression = "IsVirtual"; Descending = $false },
+      @{ Expression = "HasGateway"; Descending = $true },
+      @{ Expression = "IsPrivate"; Descending = $true },
+      @{ Expression = "Address"; Descending = $false } |
+    Select-Object -Unique -Property Address, InterfaceAlias, InterfaceDescription, HasGateway, IsPrivate, IsVirtual
+}
+
+function Get-LanShareUrls {
+  param([int]$SharePort)
+
+  $candidates = @(Get-HostIpv4Addresses)
+  if ($candidates.Count -eq 0) {
+    return @()
+  }
+
+  $preferred = @($candidates | Where-Object { -not $_.IsVirtual })
+  if ($preferred.Count -eq 0) {
+    $preferred = $candidates
+  }
+
+  return @($preferred | ForEach-Object { "http://$($_.Address)`:$SharePort/" })
+}
+
+function Get-ShareLanUrlsForBind {
+  param(
+    [string]$Address,
+    [int]$SharePort
+  )
+
+  if ($Address -eq "0.0.0.0") {
+    return @(Get-LanShareUrls -SharePort $SharePort)
+  }
+
+  if ($Address -notmatch "^127\.") {
+    return @("http://$Address`:$SharePort/")
+  }
+
+  return @()
+}
+
+function Assert-BindAddressAvailable {
+  param([string]$Address)
+
+  $parsedAddress = [System.Net.IPAddress]::Any
+  if (-not [System.Net.IPAddress]::TryParse($Address, [ref]$parsedAddress)) {
+    throw "BindAddress must be an IPv4 address, got: $Address"
+  }
+
+  if ($Address -eq "127.0.0.1" -or $Address -eq "0.0.0.0") {
+    return
+  }
+
+  $hostAddresses = @(Get-HostIpv4Addresses | Select-Object -ExpandProperty Address)
+  if ($hostAddresses -notcontains $Address) {
+    $availableText = if ($hostAddresses.Count -gt 0) { $hostAddresses -join ", " } else { "none detected" }
+    throw "BindAddress $Address is not assigned to an active non-loopback interface. Use -Lan or one of: $availableText"
   }
 }
 
@@ -337,6 +485,27 @@ function Test-TcpPortAvailable {
   }
 }
 
+function Test-SharePortAvailable {
+  param(
+    [string]$Address,
+    [int]$CandidatePort
+  )
+
+  $addressesToCheck = @($Address)
+  if ($Address -eq "0.0.0.0") {
+    $addressesToCheck += "127.0.0.1"
+    $addressesToCheck += @(Get-HostIpv4Addresses | Select-Object -ExpandProperty Address)
+  }
+
+  foreach ($addressToCheck in @($addressesToCheck | Select-Object -Unique)) {
+    if (-not (Test-TcpPortAvailable -Address $addressToCheck -CandidatePort $CandidatePort)) {
+      return $false
+    }
+  }
+
+  return $true
+}
+
 function Find-AvailableTcpPort {
   param(
     [string]$Address,
@@ -345,7 +514,7 @@ function Find-AvailableTcpPort {
 
   $maxPort = [Math]::Min(65535, $StartPort + 200)
   for ($candidate = $StartPort; $candidate -le $maxPort; $candidate++) {
-    if (Test-TcpPortAvailable -Address $Address -CandidatePort $candidate) {
+    if (Test-SharePortAvailable -Address $Address -CandidatePort $candidate) {
       return $candidate
     }
   }
@@ -366,6 +535,14 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 if ([string]::IsNullOrWhiteSpace($Version)) {
   throw "Version is required when it cannot be inferred from git or release_manifest.json."
 }
+
+if ($Lan) {
+  $BindAddress = "0.0.0.0"
+}
+
+Assert-BindAddressAvailable -Address $BindAddress
+$script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0") { "http://127.0.0.1`:$Port/" } else { "http://$BindAddress`:$Port/" }
+$script:ShareLanUrls = @()
 
 $shareRoot = Join-Path $repoRoot "output/share/$Version"
 if (Test-Path -LiteralPath $shareRoot) {
@@ -892,12 +1069,29 @@ if (-not $NoServe) {
   }
 }
 
+$script:ShareLanUrls = @(Get-ShareLanUrlsForBind -Address $BindAddress -SharePort $Port)
+$script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0" -and $script:ShareLanUrls.Count -gt 0) {
+  [string]$script:ShareLanUrls[0]
+} elseif ($BindAddress -eq "0.0.0.0") {
+  "http://127.0.0.1`:$Port/"
+} else {
+  "http://$BindAddress`:$Port/"
+}
+
 Write-ShareStatus -Status "prepared"
 
 Write-Host "Release share folder:"
 Write-Host $shareRoot
-Write-Host "Local URL:"
-Write-Host "http://$BindAddress`:$Port/"
+Write-Host "Loopback URL:"
+Write-Host $script:ShareProbeUrl
+if ($script:ShareLanUrls.Count -gt 0) {
+  Write-Host "Same-network URL candidates:"
+  foreach ($lanUrl in $script:ShareLanUrls) {
+    Write-Host $lanUrl
+  }
+} elseif ($BindAddress -eq "0.0.0.0") {
+  Write-Warning "No active non-loopback IPv4 address was detected. The loopback URL should still work on this machine."
+}
 
 if ($NoServe) {
   exit 0
@@ -925,11 +1119,10 @@ $server.Id | Set-Content -Path (Join-Path $shareRoot "server.pid") -Encoding ASC
 Write-StopHelper -ProcessIds @($server.Id)
 Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
 Write-Host "Started local server PID $($server.Id)"
-$localUrl = "http://$BindAddress`:$Port/"
 Write-Host "Waiting for local share page to answer..."
-if (-not (Wait-LocalUrlReady -TargetUrl $localUrl)) {
+if (-not (Wait-LocalUrlReady -TargetUrl $script:ShareProbeUrl)) {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
-  throw "Local share page did not answer before the readiness timeout: $localUrl"
+  throw "Local share page did not answer before the readiness timeout: $script:ShareProbeUrl"
 }
 
 if ($CloudflareTunnel) {
@@ -937,7 +1130,8 @@ if ($CloudflareTunnel) {
   $cloudflaredErrLog = Join-Path $shareRoot "cloudflared.stderr.log"
   Remove-Item -LiteralPath $cloudflaredOutLog, $cloudflaredErrLog -Force -ErrorAction SilentlyContinue
 
-  $tunnelArgs = @("tunnel", "--url", "http://$BindAddress`:$Port")
+  $tunnelOriginUrl = $script:ShareProbeUrl.TrimEnd("/")
+  $tunnelArgs = @("tunnel", "--url", $tunnelOriginUrl)
   $tunnel = Start-Process -FilePath $cloudflaredPath -ArgumentList $tunnelArgs -WindowStyle Hidden -RedirectStandardOutput $cloudflaredOutLog -RedirectStandardError $cloudflaredErrLog -PassThru
   $tunnel.Id | Set-Content -Path (Join-Path $shareRoot "cloudflared.pid") -Encoding ASCII
   Write-StopHelper -ProcessIds @($server.Id, $tunnel.Id)

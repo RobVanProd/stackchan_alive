@@ -146,8 +146,14 @@ function Write-VerificationReport {
     [string]$Url,
     [bool]$RequiredPublicUrl,
     [object[]]$Probes,
-    [string]$ShareRootPath
+    [string]$ShareRootPath,
+    [object]$ShareStatus
   )
+
+  $lanUrls = @()
+  if ($null -ne $ShareStatus -and $null -ne $ShareStatus.lanUrls) {
+    $lanUrls = @($ShareStatus.lanUrls)
+  }
 
   $reportObject = [ordered]@{
     schema = "stackchan.share-verification.v1"
@@ -156,6 +162,9 @@ function Write-VerificationReport {
     url = $Url
     requirePublicUrl = $RequiredPublicUrl
     shareRoot = $ShareRootPath
+    bindAddress = if ($null -ne $ShareStatus) { [string]$ShareStatus.bindAddress } else { "" }
+    loopbackUrl = if ($null -ne $ShareStatus) { [string]$ShareStatus.loopbackUrl } else { "" }
+    lanUrls = @($lanUrls)
     probeCount = $Probes.Count
     allHttp200 = (@($Probes | Where-Object { $_.StatusLine -notmatch "\s200\s" }).Count -eq 0)
     usedCurlResolveFallback = (@($Probes | Where-Object { $_.Method -eq "curl-resolve" }).Count -gt 0)
@@ -179,6 +188,8 @@ function Write-VerificationReport {
     "- URL: $Url",
     "- Generated UTC: $($reportObject.generatedUtc)",
     "- Public URL required: $RequiredPublicUrl",
+    "- Bind address: $($reportObject.bindAddress)",
+    "- LAN URL candidates: $(@($reportObject.lanUrls).Count)",
     "- Probe count: $($reportObject.probeCount)",
     "- All probes HTTP 200: $($reportObject.allHttp200)",
     "- Used curl DNS override fallback: $fallbackText",
@@ -405,7 +416,7 @@ foreach ($file in $expectedFiles | Where-Object { $_.Path -in $probedPaths }) {
 if ([string]::IsNullOrWhiteSpace($ReportPath)) {
   $ReportPath = Join-Path $shareRootPath "share_verification_report.json"
 }
-$reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $Url -RequiredPublicUrl ([bool]$RequirePublicUrl) -Probes $probes -ShareRootPath $shareRootPath
+$reportPaths = Write-VerificationReport -ReportBasePath $ReportPath -Version $Version -Url $Url -RequiredPublicUrl ([bool]$RequirePublicUrl) -Probes $probes -ShareRootPath $shareRootPath -ShareStatus $status
 
 Write-Host "Share release verified:"
 Write-Host $Url
