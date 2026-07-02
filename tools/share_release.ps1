@@ -338,6 +338,15 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav"); Name = "voice/stackchan_spark_audition_warm_slow_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav"); Name = "voice/stackchan_spark_audition_bright_robot_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"); Name = "voice/rvc/RVC_AUDITIONS.md" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"); Name = "voice/rvc/RVC_AUDITIONS.json" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav"); Name = "voice/rvc/stackchan_rvc_neutral.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav"); Name = "voice/rvc/stackchan_rvc_warm_slow.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav"); Name = "voice/rvc/stackchan_rvc_spark_boops.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav"); Name = "voice/rvc/stackchan_rvc_high_character.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav"); Name = "voice/rvc/stackchan_rvc_safety_neutral.wav" },
   @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
@@ -575,6 +584,60 @@ $promotionGateItems
     <li>Worth moving into a licensed or owned production voice source before consumer rollout.</li>
   </ul>
 
+  <h2>RVC Voice Auditions</h2>
+  <p>Review-only samples rendered through the selected RVC candidate base. These compare pitch, RVC blend, light vocoder, and beep/boop balance. They are not consumer-approved until voice rights and source provenance are cleared.</p>
+  <div class="grid">
+    <div class="item">
+      <strong>RVC Neutral</strong>
+      <audio src="voice/rvc/stackchan_rvc_neutral.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Closest to the raw RVC base with only a light Stackchan edge.</p>
+      <p><a href="voice/rvc/stackchan_rvc_neutral.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Warm Slow</strong>
+      <audio src="voice/rvc/stackchan_rvc_warm_slow.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Warmer, slower, softer consonants for small-speaker intelligibility.</p>
+      <p><a href="voice/rvc/stackchan_rvc_warm_slow.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Bright Robot</strong>
+      <audio src="voice/rvc/stackchan_rvc_bright_robot.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Brighter robot pass with light vocoder and subtle phrase earcons.</p>
+      <p><a href="voice/rvc/stackchan_rvc_bright_robot.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Spark Boops</strong>
+      <audio src="voice/rvc/stackchan_rvc_spark_boops.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Friendly candidate with slightly more musical beeps and boops.</p>
+      <p><a href="voice/rvc/stackchan_rvc_spark_boops.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC High Character</strong>
+      <audio src="voice/rvc/stackchan_rvc_high_character.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
+      <p>Most synthetic and animated; useful as an upper bound.</p>
+      <p><a href="voice/rvc/stackchan_rvc_high_character.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Thinking</strong>
+      <audio src="voice/rvc/stackchan_rvc_thinking_neutral.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Input received. I am thinking now. Curiosity level rising.</p>
+      <p>Neutral RVC settings on the thinking line.</p>
+      <p><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">Download WAV</a></p>
+    </div>
+    <div class="item">
+      <strong>RVC Safety</strong>
+      <audio src="voice/rvc/stackchan_rvc_safety_neutral.wav" controls preload="metadata"></audio>
+      <p class="transcript"><strong>Transcript:</strong> Small problem found. I can help fix it. Safety first.</p>
+      <p>Neutral RVC settings on the safety line.</p>
+      <p><a href="voice/rvc/stackchan_rvc_safety_neutral.wav">Download WAV</a></p>
+    </div>
+  </div>
+
   <h2>Voice Source Gate</h2>
   <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
   <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v4 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
@@ -628,6 +691,15 @@ $promotionGateItems
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Warm Slow Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
+    <div class="item"><a href="voice/rvc/RVC_AUDITIONS.md">RVC Audition Notes</a></div>
+    <div class="item"><a href="voice/rvc/RVC_AUDITIONS.json">RVC Audition JSON</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_neutral.wav">RVC Neutral WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_warm_slow.wav">RVC Warm Slow WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.wav">RVC Bright Robot WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_spark_boops.wav">RVC Spark Boops WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_high_character.wav">RVC High Character WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">RVC Thinking WAV</a></div>
+    <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.wav">RVC Safety WAV</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
     <div class="item"><a href="voice_rvc_base.yaml">RVC Candidate Base YAML</a></div>

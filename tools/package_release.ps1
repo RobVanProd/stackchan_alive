@@ -127,7 +127,9 @@ foreach ($file in $faceArtifactFiles) {
 }
 
 $voiceMediaDir = Join-Path $mediaDir "voice"
+$voiceRvcMediaDir = Join-Path $voiceMediaDir "rvc"
 New-Item -ItemType Directory -Force -Path $voiceMediaDir | Out-Null
+New-Item -ItemType Directory -Force -Path $voiceRvcMediaDir | Out-Null
 $voiceMediaFiles = @(
   "docs/media/voice/stackchan_spark_greeting.wav",
   "docs/media/voice/stackchan_spark_thinking.wav",
@@ -142,6 +144,25 @@ foreach ($file in $voiceMediaFiles) {
     throw "Missing voice artifact: $file"
   }
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
+}
+
+$voiceRvcFiles = @(
+  "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.md",
+  "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.json",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_neutral.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_warm_slow.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_spark_boops.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_high_character.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_thinking_neutral.wav",
+  "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.wav"
+)
+
+foreach ($file in $voiceRvcFiles) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing RVC voice audition artifact: $file. Run tools/render_rvc_auditions.ps1 first."
+  }
+  Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
 }
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
@@ -175,8 +196,11 @@ $releaseTools = @(
   "tools/setup_voice_tools.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
+  "tools/render_rvc_auditions.ps1",
   "tools/verify_voice_samples.cmd",
   "tools/verify_voice_samples.ps1",
+  "tools/verify_rvc_auditions.cmd",
+  "tools/verify_rvc_auditions.ps1",
   "tools/generate_synthetic_hardware_evidence.cmd",
   "tools/generate_synthetic_hardware_evidence.ps1",
   "tools/check_hardware_evidence_progress.cmd",
@@ -518,7 +542,16 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_safety.wav",
     "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
     "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
-    "media/voice/VOICE_SAMPLES.md"
+    "media/voice/VOICE_SAMPLES.md",
+    "media/voice/rvc/RVC_AUDITIONS.md",
+    "media/voice/rvc/RVC_AUDITIONS.json",
+    "media/voice/rvc/stackchan_rvc_neutral.wav",
+    "media/voice/rvc/stackchan_rvc_warm_slow.wav",
+    "media/voice/rvc/stackchan_rvc_bright_robot.wav",
+    "media/voice/rvc/stackchan_rvc_spark_boops.wav",
+    "media/voice/rvc/stackchan_rvc_high_character.wav",
+    "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
+    "media/voice/rvc/stackchan_rvc_safety_neutral.wav"
   )
   includedTools = @(
     "tools/flash_device.cmd",
@@ -528,6 +561,7 @@ $manifest = [ordered]@{
     "tools/platformio_resolver.ps1",
     "tools/preview_python_resolver.ps1",
     "tools/render_preview.py",
+    "tools/render_rvc_auditions.ps1",
     "tools/publish_release.cmd",
     "tools/publish_release.ps1",
     "tools/export_github_actions_status.cmd",
@@ -566,6 +600,8 @@ $manifest = [ordered]@{
     "tools/verify_face_phase_d.ps1",
     "tools/verify_face_phase_e.cmd",
     "tools/verify_face_phase_e.ps1",
+    "tools/verify_rvc_auditions.cmd",
+    "tools/verify_rvc_auditions.ps1",
     "tools/verify_rvc_voice_base.cmd",
     "tools/verify_rvc_voice_base.ps1",
     "tools/verify_release_package.cmd",
