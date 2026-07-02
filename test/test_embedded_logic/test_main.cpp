@@ -43,6 +43,8 @@ void test_speech_planner_boot_line_is_available() {
   const SpeechCue cue = planner.plan(CharacterMode::Boot, emotion);
   TEST_ASSERT_TRUE(cue.shouldSpeak());
   TEST_ASSERT_EQUAL_STRING("Hello. I am Stackchan, and I am awake.", cue.text);
+  TEST_ASSERT_TRUE(cue.hasEarcon());
+  TEST_ASSERT_EQUAL(SpeechEarcon::Wake, cue.earcon);
 }
 
 void setup() {

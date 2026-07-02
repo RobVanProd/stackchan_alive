@@ -435,11 +435,15 @@ void test_speech_planner_uses_original_stackchan_lines() {
   TEST_ASSERT_TRUE(boot.shouldSpeak());
   TEST_ASSERT_EQUAL(SpeechIntent::Boot, boot.intent);
   TEST_ASSERT_EQUAL_STRING("Hello. I am Stackchan, and I am awake.", boot.text);
+  TEST_ASSERT_TRUE(boot.hasEarcon());
+  TEST_ASSERT_EQUAL(SpeechEarcon::Wake, boot.earcon);
 
   const SpeechCue think = planner.plan(CharacterMode::Think, emotion);
   TEST_ASSERT_TRUE(think.shouldSpeak());
   TEST_ASSERT_EQUAL(SpeechIntent::Think, think.intent);
   TEST_ASSERT_EQUAL_STRING("Input received. I am thinking now.", think.text);
+  TEST_ASSERT_EQUAL(SpeechEarcon::Think, think.earcon);
+  TEST_ASSERT_GREATER_THAN_UINT16(0, think.earconDelayMs);
 }
 
 void test_speech_planner_keeps_idle_quiet_until_emotion_moves() {
@@ -448,12 +452,26 @@ void test_speech_planner_keeps_idle_quiet_until_emotion_moves() {
 
   SpeechCue cue = planner.plan(CharacterMode::Idle, emotion);
   TEST_ASSERT_FALSE(cue.shouldSpeak());
+  TEST_ASSERT_FALSE(cue.hasEarcon());
 
   emotion.arousal = 0.80f;
   cue = planner.plan(CharacterMode::Idle, emotion);
   TEST_ASSERT_TRUE(cue.shouldSpeak());
   TEST_ASSERT_EQUAL(SpeechIntent::Idle, cue.intent);
   TEST_ASSERT_EQUAL_STRING("Curiosity level rising.", cue.text);
+  TEST_ASSERT_EQUAL(SpeechEarcon::Think, cue.earcon);
+}
+
+void test_speech_planner_marks_safety_with_distinct_earcon() {
+  SpeechPlanner planner;
+  EmotionalProfile emotion;
+  emotion.focus = 0.90f;
+
+  const SpeechCue cue = planner.plan(CharacterMode::Error, emotion);
+  TEST_ASSERT_TRUE(cue.shouldSpeak());
+  TEST_ASSERT_EQUAL(SpeechIntent::Safety, cue.intent);
+  TEST_ASSERT_EQUAL(SpeechEarcon::Safety, cue.earcon);
+  TEST_ASSERT_EQUAL_UINT16(0, cue.earconDelayMs);
 }
 
 void test_speech_planner_avoids_character_clone_markers() {
@@ -508,6 +526,7 @@ int main() {
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);
   RUN_TEST(test_speech_planner_uses_original_stackchan_lines);
   RUN_TEST(test_speech_planner_keeps_idle_quiet_until_emotion_moves);
+  RUN_TEST(test_speech_planner_marks_safety_with_distinct_earcon);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);
   return UNITY_END();
 }

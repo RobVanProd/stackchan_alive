@@ -84,7 +84,8 @@ This is not a production approval. The model title is `joh`, the author metadata
 Initial firmware should treat speech as an output adapter, similar to display and motion:
 
 - persona emits speech intents
-- a speech adapter selects text, face mode, and optional earcons
+- `SpeechCue` carries text, priority, a typed earcon, and a phrase-timing offset so host playback can place matching beeps or boops without hard-coded phrase tables
+- a speech adapter selects the TTS source, face mode, and the actual earcon waveform for each typed cue
 - TTS generation can run off-device at first
 - packaged WAV/MP3 prompts can be used for hardware soak tests
 - hardware evidence should include at least one speaker/audio check before consumer promotion
