@@ -102,6 +102,29 @@ function Read-StackchanWavInfo {
   }
 }
 
+function Assert-StackchanMp3 {
+  param(
+    [string]$File,
+    [int64]$MinBytes
+  )
+
+  $path = Join-VoicePath $File
+  if (-not (Test-Path -LiteralPath $path)) {
+    throw "Missing MP3 voice sample: $File"
+  }
+
+  $bytes = [System.IO.File]::ReadAllBytes($path)
+  if ($bytes.Length -lt $MinBytes) {
+    throw "MP3 voice sample is too small: $File ($($bytes.Length) bytes)"
+  }
+
+  $hasId3 = $bytes.Length -ge 3 -and $bytes[0] -eq 0x49 -and $bytes[1] -eq 0x44 -and $bytes[2] -eq 0x33
+  $hasFrameSync = $bytes.Length -ge 2 -and $bytes[0] -eq 0xff -and (($bytes[1] -band 0xe0) -eq 0xe0)
+  if (-not ($hasId3 -or $hasFrameSync)) {
+    throw "MP3 voice sample has no ID3 tag or MPEG frame sync: $File"
+  }
+}
+
 $expected = @(
   [pscustomobject]@{ file = "stackchan_spark_greeting.wav"; minDuration = 4.8; maxDuration = 7.1 },
   [pscustomobject]@{ file = "stackchan_spark_thinking.wav"; minDuration = 6.4; maxDuration = 9.2 },
@@ -133,6 +156,9 @@ foreach ($sample in $expected) {
   $results += $info
 }
 
+Assert-StackchanMp3 -File "stackchan_spark_audition_bright_robot_greeting.mp3" -MinBytes 50000
+Assert-StackchanMp3 -File "stackchan_spark_thinking.mp3" -MinBytes 50000
+
 $notesPath = Join-VoicePath "VOICE_SAMPLES.md"
 if (-not (Test-Path -LiteralPath $notesPath)) {
   throw "Missing voice sample notes: VOICE_SAMPLES.md"
@@ -152,6 +178,8 @@ foreach ($pattern in @(
   "tiny synthetic chirps",
   "light musical vocoder blend",
   "phrase-timed chirp/boop accents",
+  "Quick MP3 copies",
+  "browser-friendly copy",
   "Audition variants",
   "warmer, slightly slower",
   "brighter synthetic",

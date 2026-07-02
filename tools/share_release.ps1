@@ -793,6 +793,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_safety.wav"); Name = "voice/stackchan_spark_safety.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_warm_slow_greeting.wav"); Name = "voice/stackchan_spark_audition_warm_slow_greeting.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav"); Name = "voice/stackchan_spark_audition_bright_robot_greeting.wav" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3"); Name = "voice/stackchan_spark_audition_bright_robot_greeting.mp3" },
+  @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3"); Name = "voice/stackchan_spark_thinking.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"); Name = "voice/rvc/RVC_AUDITIONS.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"); Name = "voice/rvc/RVC_AUDITIONS.json" },
@@ -1038,9 +1040,9 @@ $promotionGateItems
     </div>
     <div class="item">
       <strong>Thinking</strong>
-      <audio src="voice/stackchan_spark_thinking.wav" controls preload="metadata"></audio>
+      <audio src="voice/stackchan_spark_thinking.mp3" controls preload="metadata"></audio>
       <p class="transcript"><strong>Transcript:</strong> Input received. I am thinking now. Curiosity level rising.</p>
-      <p><a href="voice/stackchan_spark_thinking.wav">Download WAV</a></p>
+      <p><a href="voice/stackchan_spark_thinking.wav">Download WAV</a> | <a href="voice/stackchan_spark_thinking.mp3">Download MP3</a></p>
     </div>
     <div class="item">
       <strong>Safety</strong>
@@ -1057,10 +1059,10 @@ $promotionGateItems
     </div>
     <div class="item">
       <strong>Audition: Bright Robot</strong>
-      <audio src="voice/stackchan_spark_audition_bright_robot_greeting.wav" controls preload="metadata"></audio>
+      <audio src="voice/stackchan_spark_audition_bright_robot_greeting.mp3" controls preload="metadata"></audio>
       <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
       <p>Brighter synthetic pass with slightly reduced static, a light musical vocoder blend, and phrase-timed chirp/boop accents.</p>
-      <p><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Download WAV</a></p>
+      <p><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Download WAV</a> | <a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Download MP3</a></p>
     </div>
   </div>
   <h3>Voice Review Checklist</h3>
@@ -1210,6 +1212,8 @@ $promotionGateItems
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Warm Slow Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
+    <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Bright Robot MP3</a></div>
+    <div class="item"><a href="voice/stackchan_spark_thinking.mp3">Thinking MP3</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITIONS.md">RVC Audition Notes</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITIONS.json">RVC Audition JSON</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_neutral.wav">RVC Neutral WAV</a></div>

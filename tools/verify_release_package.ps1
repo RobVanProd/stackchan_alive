@@ -140,6 +140,8 @@ $requiredFiles = @(
   "media/voice/stackchan_spark_safety.wav",
   "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
   "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
+  "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
+  "media/voice/stackchan_spark_thinking.mp3",
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/rvc/RVC_AUDITIONS.md",
   "media/voice/rvc/RVC_AUDITIONS.json",
@@ -405,6 +407,8 @@ Assert-File "media/voice/stackchan_spark_thinking.wav" 1000
 Assert-File "media/voice/stackchan_spark_safety.wav" 1000
 Assert-File "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" 1000
 Assert-File "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" 1000
+Assert-File "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3" 50000
+Assert-File "media/voice/stackchan_spark_thinking.mp3" 50000
 Assert-File "media/voice/VOICE_SAMPLES.md" 100
 Assert-File "media/voice/rvc/RVC_AUDITIONS.md" 500
 Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
@@ -438,6 +442,8 @@ Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
+Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3" ([byte[]](0xff, 0xf3))
+Assert-Bytes "media/voice/stackchan_spark_thinking.mp3" ([byte[]](0xff, 0xf3))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_warm_slow.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
@@ -575,6 +581,8 @@ $expectedMediaArtifacts = @(
   "media/voice/stackchan_spark_safety.wav",
   "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
   "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
+  "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
+  "media/voice/stackchan_spark_thinking.mp3",
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/rvc/RVC_AUDITIONS.md",
   "media/voice/rvc/RVC_AUDITIONS.json",

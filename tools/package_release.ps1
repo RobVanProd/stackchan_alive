@@ -136,6 +136,8 @@ $voiceMediaFiles = @(
   "docs/media/voice/stackchan_spark_safety.wav",
   "docs/media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
   "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
+  "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
+  "docs/media/voice/stackchan_spark_thinking.mp3",
   "docs/media/voice/VOICE_SAMPLES.md"
 )
 
@@ -577,6 +579,8 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_safety.wav",
     "media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
     "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
+    "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
+    "media/voice/stackchan_spark_thinking.mp3",
     "media/voice/VOICE_SAMPLES.md",
     "media/voice/rvc/RVC_AUDITIONS.md",
     "media/voice/rvc/RVC_AUDITIONS.json",
@@ -713,7 +717,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
     [ordered]@{ gate = "preview-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_preview.mp4, media/stackchan_alive_preview.gif" },
-    [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
+    [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, warm-slow and bright-robot WAV variants, plus MP3 quick auditions" },
     [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; review-only until production voice-source rights clear" },
@@ -755,7 +759,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
     [ordered]@{ requirement = "github-actions-status-report-present"; status = "pass"; evidence = "GITHUB_ACTIONS_STATUS.md and github_actions_status.json" },
     [ordered]@{ requirement = "visual-review-media-present"; status = "pass"; evidence = "media/stackchan_alive_preview.png, media/stackchan_alive_expression_sheet.png, media/stackchan_alive_preview.mp4" },
-    [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
+    [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, warm-slow and bright-robot WAV variants, plus MP3 quick auditions" },
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; confirms review-only RVC base cache/hash status when available" },

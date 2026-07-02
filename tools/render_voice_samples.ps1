@@ -479,7 +479,11 @@ Audition variants:
 - ``stackchan_spark_audition_warm_slow_greeting.wav``: warmer, slightly slower review pass for small-speaker intelligibility
 - ``stackchan_spark_audition_bright_robot_greeting.wav``: brighter synthetic review pass with slightly reduced static, light musical vocoder blend, and phrase-timed chirp/boop accents
 
-Rollout note: these WAVs are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
+Quick MP3 copies:
+- ``stackchan_spark_audition_bright_robot_greeting.mp3``: browser-friendly copy of the Bright Robot greeting
+- ``stackchan_spark_thinking.mp3``: browser-friendly copy of the Thinking sample
+
+Rollout note: these WAV and MP3 files are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
 "@ | Set-Content -Path (Join-Path $outputPath "VOICE_SAMPLES.md") -Encoding UTF8
 
   Write-Host "Rendered Stackchan Spark voice samples:"
