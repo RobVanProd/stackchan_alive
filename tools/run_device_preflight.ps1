@@ -1495,6 +1495,65 @@ function Assert-ArrivalPacketScaffoldGate {
   }
 }
 
+function Assert-SpeechEnvelopeSidecarGate {
+  $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-speech-sidecar-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $sourceWav = Join-Path $repoRoot "docs/media/voice/stackchan_spark_greeting.wav"
+  $sidecarPath = Join-Path $fixtureRoot "stackchan_spark_greeting.speech_envelope.json"
+
+  try {
+    if (-not (Test-Path -LiteralPath $sourceWav)) {
+      throw "Speech sidecar fixture WAV missing: $sourceWav"
+    }
+
+    New-Item -ItemType Directory -Force -Path $fixtureRoot | Out-Null
+    $generateResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1"),
+      "-InputWav", $sourceWav,
+      "-OutputJson", $sidecarPath
+    )
+    if ($generateResult.ExitCode -ne 0) {
+      throw "Speech sidecar generation failed:$([Environment]::NewLine)$($generateResult.Text)"
+    }
+    Assert-TextContains $generateResult.Text "Speech envelope sidecar written:"
+
+    $sidecar = Get-Content -LiteralPath $sidecarPath -Raw | ConvertFrom-Json
+    if ([string]$sidecar.schema -ne "stackchan.speech-envelope-sidecar.v1") {
+      throw "Speech sidecar schema mismatch: $($sidecar.schema)"
+    }
+    if ([int]$sidecar.frameMs -ne 20) {
+      throw "Speech sidecar frameMs should default to 20, got $($sidecar.frameMs)"
+    }
+    if ([int]$sidecar.summary.frames -lt 100) {
+      throw "Speech sidecar has too few frames: $($sidecar.summary.frames)"
+    }
+    if ([double]$sidecar.summary.maxEnvelope -lt 0.5) {
+      throw "Speech sidecar max envelope is unexpectedly low: $($sidecar.summary.maxEnvelope)"
+    }
+    if (-not $sidecar.summary.visemes.ah -or -not $sidecar.summary.visemes.ee -or -not $sidecar.summary.visemes.oh) {
+      throw "Speech sidecar did not produce ah/ee/oh viseme variation."
+    }
+
+    $streamResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "send_speech_mouth_demo.ps1"),
+      "-SidecarPath", $sidecarPath,
+      "-MaxFrames", "12",
+      "-PrintOnly"
+    )
+    if ($streamResult.ExitCode -ne 0) {
+      throw "Speech sidecar dry stream failed:$([Environment]::NewLine)$($streamResult.Text)"
+    }
+    Assert-TextContains $streamResult.Text "Loaded sidecar"
+    Assert-TextContains $streamResult.Text "mode speak 1.0"
+    Assert-TextContains $streamResult.Text "speech clear"
+    Assert-TextContains $streamResult.Text "PrintOnly complete"
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $fixtureRoot) {
+      Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    }
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -1538,6 +1597,10 @@ Invoke-Step "Check GitHub Actions status exporter gates" {
 
 Invoke-Step "Check local share evidence capture" {
   Assert-LocalShareEvidenceGate
+}
+
+Invoke-Step "Check speech envelope sidecar tooling" {
+  Assert-SpeechEnvelopeSidecarGate
 }
 
 Invoke-Step "Check preview media quality" {

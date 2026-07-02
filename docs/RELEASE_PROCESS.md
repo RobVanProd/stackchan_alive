@@ -18,7 +18,7 @@ Before flashing or publishing, run the no-hardware preflight:
 .\tools\run_device_preflight.cmd
 ```
 
-The preflight also checks that servo-calibration flashing is blocked unless `-ConfirmServoRisk` is present, that dry-run upload commands render correctly, and that a verified local share can be captured into an evidence packet without requiring a Cloudflare `PUBLIC_URL.txt`.
+The preflight also checks that servo-calibration flashing is blocked unless `-ConfirmServoRisk` is present, that dry-run upload commands render correctly, that speech-envelope sidecars can be generated and dry-streamed into serial mouth commands, and that a verified local share can be captured into an evidence packet without requiring a Cloudflare `PUBLIC_URL.txt`.
 
 Verify the package before sharing it:
 
