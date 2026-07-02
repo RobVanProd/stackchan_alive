@@ -346,6 +346,13 @@ foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntr
   }
 }
 
+$releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "Release asset contract verified")) {
+  if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
+  }
+}
+
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
 foreach ($pattern in @("release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "allowedAssetNames", "Unexpected release asset")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
@@ -532,6 +539,21 @@ Assert-Bytes "media/voice/rvc/stackchan_rvc_safety_neutral.wav" ([byte[]](0x52, 
 
 $manifestPath = Join-PackagePath "release_manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+
+$contractZipPath = if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+  Join-Path $repoRoot "output/release/stackchan_alive_$Version.zip"
+} else {
+  $ZipPath
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-PackagePath "tools/verify_release_asset_contract.ps1") `
+  -Version $Version `
+  -PackageRoot $packageRootPath `
+  -ZipPath $contractZipPath `
+  -ZipSidecarPath "$contractZipPath.sha256" `
+  -SkipExternalFiles
+if ($LASTEXITCODE -ne 0) {
+  throw "Release asset contract verification failed."
+}
 
 if ($manifest.version -ne $Version) {
   throw "Manifest version mismatch: expected $Version, got $($manifest.version)"
