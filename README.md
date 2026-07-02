@@ -77,7 +77,7 @@ Audit the published GitHub release assets:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-Export a concise post-publish audit that verifies the release, refreshes GitHub Actions status, and summarizes remaining rollout blockers:
+Export a concise post-publish audit that verifies the release, refreshes GitHub Actions status, and summarizes remaining rollout blockers. Add `-UploadToRelease` to attach `RELEASE_AUDIT.md/json` to the GitHub release:
 
 ```powershell
 .\tools\audit_published_release.cmd -Version <version>

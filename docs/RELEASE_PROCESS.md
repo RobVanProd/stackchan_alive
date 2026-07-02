@@ -126,7 +126,7 @@ For a single post-publish operator summary, run:
 .\tools\audit_published_release.cmd -Version <version>
 ```
 
-The audit wraps the published-release verifier, refreshes GitHub Actions status, exports rollout status without requiring hardware evidence, and writes `RELEASE_AUDIT.md/json` under `output/release-audit/<version>/`.
+The audit wraps the published-release verifier, refreshes GitHub Actions status, exports rollout status without requiring hardware evidence, and writes `RELEASE_AUDIT.md/json` under `output/release-audit/<version>/`. The publish helper runs the same audit with `-UploadToRelease` so the audit files are attached to the GitHub release after upload verification.
 
 Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, voice samples, voice-source provenance gate, release notes, readiness report, and checksums:
 

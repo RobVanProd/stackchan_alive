@@ -328,5 +328,14 @@ $publishedVerifyArgs = @{
 }
 & (Join-Path $PSScriptRoot "verify_published_release.ps1") @publishedVerifyArgs
 
+& (Join-Path $PSScriptRoot "audit_published_release.ps1") `
+  -Version $Version `
+  -Repo $Repo `
+  -PackageRoot $packageRoot `
+  -ZipPath $zipPath `
+  -ZipSidecarPath $zipSidecarPath `
+  -ExpectedCommit $tagCommit `
+  -UploadToRelease
+
 Write-Host "Release published and verified:"
 Write-Host "https://github.com/$Repo/releases/tag/$Version"

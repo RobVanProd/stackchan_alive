@@ -320,14 +320,14 @@ foreach ($pattern in @("ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 si
 }
 
 $publishedAuditText = Get-Content -LiteralPath (Join-PackagePath "tools/audit_published_release.ps1") -Raw
-foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.ps1", "export_github_actions_status.ps1", "export_rollout_status.ps1", "RELEASE_AUDIT.md", "RELEASE_AUDIT.json", "published-release-blocked-or-pending")) {
+foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.ps1", "export_github_actions_status.ps1", "export_rollout_status.ps1", "RELEASE_AUDIT.md", "RELEASE_AUDIT.json", "published-release-blocked-or-pending", "UploadToRelease", "gh release upload", "Assert-UploadedAuditAsset")) {
   if ($publishedAuditText -notmatch [regex]::Escape($pattern)) {
     throw "tools/audit_published_release.ps1 missing required published release audit logic: $pattern"
   }
 }
 
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
-foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch")) {
+foreach ($pattern in @("Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "GITHUB_ACTIONS_STATUS.md", "github_actions_status.json", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
     throw "tools/publish_release.ps1 missing required finalized Actions status publish logic: $pattern"
   }

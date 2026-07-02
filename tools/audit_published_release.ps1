@@ -7,6 +7,7 @@ param(
   [string]$ExpectedCommit = "",
   [string]$OutDir = "",
   [switch]$AllowNonPrerelease,
+  [switch]$UploadToRelease,
   [switch]$StrictPromotion
 )
 
@@ -47,6 +48,29 @@ function Get-Sha256OrEmpty {
     return ""
   }
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Assert-UploadedAuditAsset {
+  param(
+    [object[]]$Assets,
+    [string]$Name,
+    [string]$Path
+  )
+
+  $asset = @($Assets | Where-Object { $_.name -eq $Name })
+  if ($asset.Count -ne 1) {
+    throw "Expected exactly one release audit asset named $Name; found $($asset.Count)"
+  }
+
+  $item = Get-Item -LiteralPath $Path
+  if ([int64]$asset[0].size -ne [int64]$item.Length) {
+    throw "Release audit asset size mismatch for $Name`: expected $($item.Length), got $($asset[0].size)"
+  }
+
+  $expectedDigest = "sha256:$(Get-Sha256OrEmpty $Path)"
+  if (-not [string]::IsNullOrWhiteSpace([string]$asset[0].digest) -and [string]$asset[0].digest -ne $expectedDigest) {
+    throw "Release audit asset digest mismatch for $Name"
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -242,9 +266,32 @@ $($blockerLines -join [Environment]::NewLine)
 - Machine-readable audit: RELEASE_AUDIT.json
 "@ | Set-Content -Path $auditMdPath -Encoding UTF8
 
+if ($UploadToRelease -and $publishedVerify.exitCode -eq 0) {
+  & gh release upload $Version `
+    $auditMdPath `
+    $auditJsonPath `
+    --repo $Repo `
+    --clobber
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to upload release audit assets to $Version"
+  }
+
+  $uploadedReleaseJson = gh release view $Version --repo $Repo --json assets 2>$null
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($uploadedReleaseJson | Out-String).Trim())) {
+    throw "Unable to verify uploaded release audit assets for $Version"
+  }
+  $uploadedRelease = $uploadedReleaseJson | ConvertFrom-Json
+  $uploadedAssets = @($uploadedRelease.assets)
+  Assert-UploadedAuditAsset -Assets $uploadedAssets -Name "RELEASE_AUDIT.md" -Path $auditMdPath
+  Assert-UploadedAuditAsset -Assets $uploadedAssets -Name "RELEASE_AUDIT.json" -Path $auditJsonPath
+}
+
 Write-Host "Published release audit exported:"
 Write-Host $auditMdPath
 Write-Host $auditJsonPath
+if ($UploadToRelease -and $publishedVerify.exitCode -eq 0) {
+  Write-Host "Published release audit assets uploaded and verified."
+}
 Write-Host "Status: $auditStatus"
 
 if ($publishedVerify.exitCode -ne 0) {
