@@ -25,6 +25,14 @@ void ProceduralFace::setReducedMotion(bool enabled) {
   Serial.println(enabled ? 1 : 0);
 }
 
+void ProceduralFace::setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs) {
+  animator_.setSpeechEnvelope(envelope, viseme, nowMs);
+}
+
+void ProceduralFace::clearSpeechEnvelope(uint32_t nowMs) {
+  animator_.clearSpeechEnvelope(nowMs);
+}
+
 void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {
   if (display_ == nullptr) {
     return;

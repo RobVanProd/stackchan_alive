@@ -404,6 +404,8 @@ void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
 void test_sensor_adapter_parses_serial_mode_command() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(control.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::WakeWord), static_cast<int>(control.event.type));
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.75f, control.event.strength);
@@ -414,6 +416,7 @@ void test_sensor_adapter_parses_serial_mode_command() {
 void test_sensor_adapter_parses_event_aliases_and_clamps_strength() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("event response-start 2.5", 2000, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(control.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(control.event.type));
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, control.event.strength);
@@ -423,6 +426,33 @@ void test_sensor_adapter_parses_event_aliases_and_clamps_strength() {
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::React), static_cast<int>(control.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::UserTouched), static_cast<int>(control.event.type));
   TEST_ASSERT_EQUAL_STRING("event_touch", control.command);
+}
+
+void test_sensor_adapter_parses_speech_envelope_command() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("speech 0.82 oh 900", 3200, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_TRUE(control.hasSpeech);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(control.event.type));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.82f, control.speech.envelope);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchSpeechViseme::Oh), static_cast<int>(control.speech.viseme));
+  TEST_ASSERT_EQUAL_UINT16(900, control.speech.durationMs);
+  TEST_ASSERT_FALSE(control.speech.clear);
+  TEST_ASSERT_EQUAL_STRING("speech_env", control.command);
+}
+
+void test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("mouth clear", 3600, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_TRUE(control.hasSpeech);
+  TEST_ASSERT_TRUE(control.speech.clear);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SpeechEnded), static_cast<int>(control.event.type));
+  TEST_ASSERT_EQUAL_STRING("speech_clear", control.command);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("speech 0.5 banana", 3800, &control));
 }
 
 void test_actuation_clamps_pitch_and_yaw_angle() {
@@ -595,6 +625,8 @@ int main() {
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_event_aliases_and_clamps_strength);
+  RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
+  RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);

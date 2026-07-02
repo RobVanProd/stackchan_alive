@@ -19,6 +19,7 @@ using namespace stackchan;
 namespace {
 
 QueueHandle_t gFrameQueue = nullptr;
+QueueHandle_t gSpeechQueue = nullptr;
 RobotConfig gConfig = defaultRobotConfig();
 StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
@@ -29,6 +30,14 @@ IntentEngine gIntent;
 TaskHandle_t gMotionTaskHandle = nullptr;
 TaskHandle_t gFaceTaskHandle = nullptr;
 TaskHandle_t gIntentTaskHandle = nullptr;
+
+struct FaceSpeechInput {
+  bool clear = false;
+  float envelope = 0.0f;
+  SpeechViseme viseme = SpeechViseme::Neutral;
+  uint32_t timestampMs = 0;
+  uint32_t durationMs = 0;
+};
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_ENABLE_SERVOS
@@ -90,6 +99,34 @@ const __FlashStringHelper* eventTypeName(EventType type) {
       return F("error");
   }
   return F("unknown");
+}
+
+const __FlashStringHelper* speechVisemeName(SpeechViseme viseme) {
+  switch (viseme) {
+    case SpeechViseme::Ah:
+      return F("ah");
+    case SpeechViseme::Oh:
+      return F("oh");
+    case SpeechViseme::Ee:
+      return F("ee");
+    case SpeechViseme::Neutral:
+      return F("neutral");
+  }
+  return F("unknown");
+}
+
+SpeechViseme toSpeechViseme(BenchSpeechViseme viseme) {
+  switch (viseme) {
+    case BenchSpeechViseme::Ah:
+      return SpeechViseme::Ah;
+    case BenchSpeechViseme::Oh:
+      return SpeechViseme::Oh;
+    case BenchSpeechViseme::Ee:
+      return SpeechViseme::Ee;
+    case BenchSpeechViseme::Neutral:
+      return SpeechViseme::Neutral;
+  }
+  return SpeechViseme::Neutral;
 }
 
 const __FlashStringHelper* speechIntentName(SpeechIntent intent) {
@@ -201,14 +238,40 @@ void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
 void printBenchControl(const BenchControl& control) {
   Serial.print(F("[control] command="));
   Serial.print(control.command);
-  Serial.print(F(" mode="));
-  Serial.print(characterModeName(control.mode));
-  Serial.print(F(" event="));
-  Serial.print(eventTypeName(control.event.type));
-  Serial.print(F(" strength="));
-  Serial.print(control.event.strength, 2);
+  if (control.hasEvent) {
+    Serial.print(F(" mode="));
+    Serial.print(characterModeName(control.mode));
+    Serial.print(F(" event="));
+    Serial.print(eventTypeName(control.event.type));
+    Serial.print(F(" strength="));
+    Serial.print(control.event.strength, 2);
+  }
+  if (control.hasSpeech) {
+    Serial.print(F(" speech_clear="));
+    Serial.print(control.speech.clear ? 1 : 0);
+    Serial.print(F(" speech_env="));
+    Serial.print(control.speech.envelope, 2);
+    Serial.print(F(" viseme="));
+    Serial.print(speechVisemeName(toSpeechViseme(control.speech.viseme)));
+    Serial.print(F(" speech_duration_ms="));
+    Serial.print(control.speech.durationMs);
+  }
   Serial.print(F(" at_ms="));
-  Serial.println(control.event.timestampMs);
+  Serial.println(control.hasEvent ? control.event.timestampMs : millis());
+}
+
+void publishSpeechInput(const BenchControl& control) {
+  if (gSpeechQueue == nullptr || !control.hasSpeech) {
+    return;
+  }
+
+  FaceSpeechInput input;
+  input.clear = control.speech.clear;
+  input.envelope = control.speech.envelope;
+  input.viseme = toSpeechViseme(control.speech.viseme);
+  input.timestampMs = control.hasEvent ? control.event.timestampMs : millis();
+  input.durationMs = control.speech.durationMs;
+  xQueueOverwrite(gSpeechQueue, &input);
 }
 
 void publishFrame(const RobotFrame& frame) {
@@ -223,6 +286,32 @@ RobotFrame readLatestFrame(const RobotFrame& fallback) {
     return incoming;
   }
   return fallback;
+}
+
+void applySpeechInput(uint32_t nowMs) {
+  static FaceSpeechInput active;
+  static bool hasActive = false;
+
+  FaceSpeechInput incoming;
+  while (gSpeechQueue != nullptr && xQueueReceive(gSpeechQueue, &incoming, 0) == pdTRUE) {
+    active = incoming;
+    hasActive = !incoming.clear;
+    if (incoming.clear) {
+      gFace.clearSpeechEnvelope(nowMs);
+    }
+  }
+
+  if (!hasActive) {
+    return;
+  }
+
+  const uint32_t elapsedMs = nowMs - active.timestampMs;
+  if (elapsedMs <= active.durationMs) {
+    gFace.setSpeechEnvelope(active.envelope, active.viseme, nowMs);
+  } else {
+    hasActive = false;
+    gFace.clearSpeechEnvelope(nowMs);
+  }
 }
 
 void MotionTask(void* pv) {
@@ -244,7 +333,9 @@ void FaceTask(void* pv) {
 
   while (true) {
     target = readLatestFrame(target);
-    gFace.render(target, millis());
+    const uint32_t nowMs = millis();
+    applySpeechInput(nowMs);
+    gFace.render(target, nowMs);
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.facePeriodMs));
   }
 }
@@ -257,7 +348,10 @@ void IntentTask(void* pv) {
   while (true) {
     BenchControl control;
     while (gSensors.poll(&control)) {
-      gIntent.applyEvent(control.event, control.mode);
+      if (control.hasEvent) {
+        gIntent.applyEvent(control.event, control.mode);
+      }
+      publishSpeechInput(control);
       printBenchControl(control);
     }
 
@@ -285,8 +379,9 @@ void setup() {
   randomSeed(esp_random());
 
   gFrameQueue = xQueueCreate(1, sizeof(RobotFrame));
-  if (gFrameQueue == nullptr) {
-    Serial.println(F("[fatal] frame queue allocation failed"));
+  gSpeechQueue = xQueueCreate(1, sizeof(FaceSpeechInput));
+  if (gFrameQueue == nullptr || gSpeechQueue == nullptr) {
+    Serial.println(F("[fatal] queue allocation failed"));
     abort();
   }
 

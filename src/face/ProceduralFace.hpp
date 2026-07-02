@@ -23,6 +23,8 @@ class ProceduralFace {
   void begin(IDisplay* display);
   void begin(IDisplay* display, const FaceConfig& config);
   void setReducedMotion(bool enabled);
+  void setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs);
+  void clearSpeechEnvelope(uint32_t nowMs);
   void render(const RobotFrame& frame, uint32_t nowMs);
 
  private:

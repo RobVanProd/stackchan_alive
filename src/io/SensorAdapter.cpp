@@ -97,6 +97,44 @@ bool parseStrength(const char* token, float* strengthOut) {
   return true;
 }
 
+bool parseDurationMs(const char* token, uint16_t* durationOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const long parsed = strtol(token, &end, 10);
+  if (end == token) {
+    return false;
+  }
+  *durationOut = static_cast<uint16_t>(constrain(parsed, 50L, 2000L));
+  return true;
+}
+
+bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  if (strcmp(token, "ah") == 0 || strcmp(token, "a") == 0 || strcmp(token, "open") == 0) {
+    *visemeOut = BenchSpeechViseme::Ah;
+    return true;
+  }
+  if (strcmp(token, "oh") == 0 || strcmp(token, "o") == 0 || strcmp(token, "round") == 0) {
+    *visemeOut = BenchSpeechViseme::Oh;
+    return true;
+  }
+  if (strcmp(token, "ee") == 0 || strcmp(token, "e") == 0 || strcmp(token, "wide") == 0) {
+    *visemeOut = BenchSpeechViseme::Ee;
+    return true;
+  }
+  if (strcmp(token, "neutral") == 0 || strcmp(token, "n") == 0 || strcmp(token, "rest") == 0) {
+    *visemeOut = BenchSpeechViseme::Neutral;
+    return true;
+  }
+  return false;
+}
+
 bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchControl* controlOut) {
   for (const ModeCommand& command : kModeCommands) {
     if (strcmp(token, command.name) != 0) {
@@ -107,6 +145,7 @@ bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchContro
     controlOut->event.type = command.event;
     controlOut->event.timestampMs = nowMs;
     controlOut->event.strength = strength;
+    controlOut->hasEvent = true;
     controlOut->command = command.command;
     return true;
   }
@@ -123,10 +162,58 @@ bool fillFromEvent(const char* token, uint32_t nowMs, float strength, BenchContr
     controlOut->event.type = command.event;
     controlOut->event.timestampMs = nowMs;
     controlOut->event.strength = strength;
+    controlOut->hasEvent = true;
     controlOut->command = command.command;
     return true;
   }
   return false;
+}
+
+bool fillFromSpeech(char* envelopeToken, char* visemeToken, char* durationToken, uint32_t nowMs, BenchControl* controlOut) {
+  if (envelopeToken == nullptr) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasSpeech = true;
+  parsed.hasEvent = true;
+  parsed.mode = CharacterMode::Speak;
+  parsed.event.type = EventType::ResponseStarted;
+  parsed.event.timestampMs = nowMs;
+  parsed.event.strength = 1.0f;
+  parsed.command = "speech_env";
+
+  if (strcmp(envelopeToken, "clear") == 0 || strcmp(envelopeToken, "off") == 0 || strcmp(envelopeToken, "stop") == 0) {
+    parsed.mode = CharacterMode::Idle;
+    parsed.event.type = EventType::SpeechEnded;
+    parsed.speech.clear = true;
+    parsed.speech.envelope = 0.0f;
+    parsed.speech.viseme = BenchSpeechViseme::Neutral;
+    parsed.command = "speech_clear";
+    *controlOut = parsed;
+    return true;
+  }
+
+  float envelope = 0.0f;
+  if (!parseStrength(envelopeToken, &envelope)) {
+    return false;
+  }
+
+  BenchSpeechViseme viseme = BenchSpeechViseme::Ah;
+  uint16_t durationMs = 600;
+  if (visemeToken != nullptr && !parseViseme(visemeToken, &viseme)) {
+    if (!parseDurationMs(visemeToken, &durationMs)) {
+      return false;
+    }
+    visemeToken = nullptr;
+  }
+  parseDurationMs(durationToken, &durationMs);
+
+  parsed.speech.envelope = envelope;
+  parsed.speech.viseme = viseme;
+  parsed.speech.durationMs = durationMs;
+  *controlOut = parsed;
+  return true;
 }
 
 }  // namespace
@@ -149,6 +236,7 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
 
   bool forceMode = false;
   bool forceEvent = false;
+  bool forceSpeech = false;
   const char* token = first;
   const char* strengthToken = second;
 
@@ -160,6 +248,12 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     forceEvent = true;
     token = second;
     strengthToken = third;
+  } else if (strcmp(first, "speech") == 0 || strcmp(first, "mouth") == 0 || strcmp(first, "env") == 0) {
+    forceSpeech = true;
+  }
+
+  if (forceSpeech) {
+    return fillFromSpeech(second, third, strtok(nullptr, " \t"), nowMs, controlOut);
   }
 
   if (token == nullptr || isHelpToken(token)) {
@@ -191,7 +285,7 @@ bool SensorAdapter::begin() {
   lineLength_ = 0;
   line_[0] = '\0';
 #if defined(ARDUINO_ARCH_ESP32)
-  Serial.println(F("[control] serial commands: mode listen|think|speak|idle|sleep|error; event wake|touch|response|speech_end|idle|error"));
+  Serial.println(F("[control] serial commands: mode listen|think|speak|idle|sleep|error; event wake|touch|response|speech_end|idle|error; speech 0.8 ah|oh|ee"));
 #endif
   return true;
 }

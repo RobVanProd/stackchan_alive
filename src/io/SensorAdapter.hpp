@@ -5,9 +5,26 @@
 
 namespace stackchan {
 
+enum class BenchSpeechViseme : uint8_t {
+  Neutral,
+  Ah,
+  Oh,
+  Ee,
+};
+
+struct BenchSpeechEnvelope {
+  float envelope = 0.0f;
+  BenchSpeechViseme viseme = BenchSpeechViseme::Neutral;
+  uint16_t durationMs = 600;
+  bool clear = false;
+};
+
 struct BenchControl {
+  bool hasEvent = false;
+  bool hasSpeech = false;
   CharacterMode mode = CharacterMode::Idle;
   RobotEvent event;
+  BenchSpeechEnvelope speech;
   const char* command = "";
 };
 
