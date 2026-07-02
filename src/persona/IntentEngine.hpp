@@ -11,6 +11,7 @@ class IntentEngine {
  public:
   void begin();
   void applyEvent(const RobotEvent& event, CharacterMode mode);
+  void setDemoEnabled(bool enabled, uint32_t nowMs);
   RobotFrame update(uint32_t nowMs);
 
  private:
@@ -25,6 +26,7 @@ class IntentEngine {
   uint32_t lastUpdateMs_ = 0;
   uint32_t lastSpeechCueMs_ = 0;
   uint32_t activeSpeechUntilMs_ = 0;
+  bool demoEnabled_ = true;
   SpeechIntent lastSpeechIntent_ = SpeechIntent::None;
   SpeechCue activeSpeech_;
 

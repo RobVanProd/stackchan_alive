@@ -402,6 +402,22 @@ void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
   TEST_ASSERT_EQUAL_UINT32(0, expired.speechSeq);
 }
 
+void test_intent_engine_demo_can_be_disabled_and_resumed() {
+  IntentEngine engine;
+  engine.begin();
+
+  engine.setDemoEnabled(false, 0);
+  const RobotFrame quiet = engine.update(4000);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(quiet.mode));
+
+  engine.setDemoEnabled(true, 4000);
+  const RobotFrame held = engine.update(6500);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(held.mode));
+
+  const RobotFrame demo = engine.update(7100);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Think), static_cast<int>(demo.mode));
+}
+
 void test_sensor_adapter_parses_serial_mode_command() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
@@ -533,6 +549,25 @@ void test_sensor_adapter_parses_motion_stop_commands() {
   TEST_ASSERT_EQUAL_STRING("motion_stop", control.command);
 
   TEST_ASSERT_FALSE(parseBenchControlLine("motion maybe", 4800, &control));
+}
+
+void test_sensor_adapter_parses_demo_enable_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("demo off", 4900, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_FALSE(control.hasReducedMotion);
+  TEST_ASSERT_FALSE(control.hasMotionEnable);
+  TEST_ASSERT_TRUE(control.hasDemoEnable);
+  TEST_ASSERT_FALSE(control.demoEnabled);
+  TEST_ASSERT_EQUAL_STRING("demo_off", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("demo resume", 5000, &control));
+  TEST_ASSERT_TRUE(control.hasDemoEnable);
+  TEST_ASSERT_TRUE(control.demoEnabled);
+  TEST_ASSERT_EQUAL_STRING("demo_on", control.command);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("demo banana", 5100, &control));
 }
 
 void test_actuation_clamps_pitch_and_yaw_angle() {
@@ -741,6 +776,7 @@ int main() {
   RUN_TEST(test_robot_frame_carries_character_mode_for_renderer);
   RUN_TEST(test_robot_frame_carries_speech_cue_for_output_adapters);
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
+  RUN_TEST(test_intent_engine_demo_can_be_disabled_and_resumed);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_status_without_event);
@@ -749,6 +785,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
+  RUN_TEST(test_sensor_adapter_parses_demo_enable_commands);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
   RUN_TEST(test_stackchan_servo_stop_returns_tracked_axes_to_neutral);

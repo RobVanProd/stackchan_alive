@@ -26,8 +26,10 @@ struct BenchControl {
   bool hasSpeech = false;
   bool hasReducedMotion = false;
   bool hasMotionEnable = false;
+  bool hasDemoEnable = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
+  bool demoEnabled = true;
   CharacterMode mode = CharacterMode::Idle;
   RobotEvent event;
   BenchSpeechEnvelope speech;

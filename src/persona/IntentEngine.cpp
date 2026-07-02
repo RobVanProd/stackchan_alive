@@ -19,6 +19,7 @@ void IntentEngine::begin() {
   lastUpdateMs_ = millis();
   lastSpeechCueMs_ = 0;
   activeSpeechUntilMs_ = 0;
+  demoEnabled_ = true;
   lastSpeechIntent_ = SpeechIntent::None;
   activeSpeech_ = SpeechCue {};
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
@@ -28,6 +29,13 @@ void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   mode_ = mode;
   emotion_.applyEvent(event);
   nextDemoEventMs_ = event.timestampMs + 10000;
+}
+
+void IntentEngine::setDemoEnabled(bool enabled, uint32_t nowMs) {
+  demoEnabled_ = enabled;
+  if (enabled) {
+    nextDemoEventMs_ = nowMs + 3000;
+  }
 }
 
 RobotFrame IntentEngine::update(uint32_t nowMs) {
@@ -53,6 +61,9 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
 }
 
 void IntentEngine::injectDemoEvents(uint32_t nowMs) {
+  if (!demoEnabled_) {
+    return;
+  }
   if (nowMs < nextDemoEventMs_) {
     return;
   }

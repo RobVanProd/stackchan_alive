@@ -276,6 +276,10 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" motion_enabled="));
     Serial.print(control.motionEnabled ? 1 : 0);
   }
+  if (control.hasDemoEnable) {
+    Serial.print(F(" demo_enabled="));
+    Serial.print(control.demoEnabled ? 1 : 0);
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -418,6 +422,9 @@ void IntentTask(void* pv) {
       if (control.wantsStatus) {
         printHeartbeat();
         printSystemTelemetry();
+      }
+      if (control.hasDemoEnable) {
+        gIntent.setDemoEnabled(control.demoEnabled, millis());
       }
       publishSpeechInput(control);
       publishFaceControl(control);

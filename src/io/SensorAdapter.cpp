@@ -162,14 +162,15 @@ bool parseOnOff(const char* token, bool* valueOut) {
 
   if (strcmp(token, "on") == 0 || strcmp(token, "1") == 0 || strcmp(token, "true") == 0 ||
       strcmp(token, "yes") == 0 || strcmp(token, "reduced") == 0 ||
-      strcmp(token, "resume") == 0 || strcmp(token, "enable") == 0 ||
-      strcmp(token, "enabled") == 0) {
+      strcmp(token, "resume") == 0 || strcmp(token, "start") == 0 ||
+      strcmp(token, "enable") == 0 || strcmp(token, "enabled") == 0) {
     *valueOut = true;
     return true;
   }
   if (strcmp(token, "off") == 0 || strcmp(token, "0") == 0 || strcmp(token, "false") == 0 ||
       strcmp(token, "no") == 0 || strcmp(token, "full") == 0 || strcmp(token, "normal") == 0 ||
       strcmp(token, "stop") == 0 || strcmp(token, "halt") == 0 ||
+      strcmp(token, "pause") == 0 || strcmp(token, "paused") == 0 ||
       strcmp(token, "disable") == 0 || strcmp(token, "disabled") == 0) {
     *valueOut = false;
     return true;
@@ -201,6 +202,20 @@ bool fillMotionEnable(const char* valueToken, BenchControl* controlOut) {
   parsed.hasMotionEnable = true;
   parsed.motionEnabled = enabled;
   parsed.command = enabled ? "motion_resume" : "motion_stop";
+  *controlOut = parsed;
+  return true;
+}
+
+bool fillDemoEnable(const char* valueToken, BenchControl* controlOut) {
+  bool enabled = true;
+  if (!parseOnOff(valueToken, &enabled)) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasDemoEnable = true;
+  parsed.demoEnabled = enabled;
+  parsed.command = enabled ? "demo_on" : "demo_off";
   *controlOut = parsed;
   return true;
 }
@@ -365,6 +380,9 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   if (strcmp(first, "resume") == 0) {
     return fillMotionEnable("on", controlOut);
   }
+  if (strcmp(first, "demo") == 0 && second != nullptr) {
+    return fillDemoEnable(second, controlOut);
+  }
 
   if (token == nullptr || isHelpToken(token)) {
     return false;
@@ -399,6 +417,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
+  Serial.println(F("[control] help: demo off|on"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif
 }

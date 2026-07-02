@@ -64,7 +64,7 @@ status
 help
 ```
 
-An optional strength value in `[0.0, 1.0]` may follow mode/event commands, for example `mode listen 0.75`. Speech commands use `speech <envelope> <ah|oh|ee|neutral> [duration_ms]`; the duration defaults to 600 ms and is clamped to 50-2000 ms. Send `status`, `telemetry`, or `health` to print immediate `[heartbeat]` and `[system]` telemetry without waiting for the periodic heartbeat. Send `help` or `?` to print the command summary on serial. Each accepted command logs `[control] command=... mode=... event=... strength=... at_ms=...` and holds off demo events briefly so the commanded state remains observable.
+An optional strength value in `[0.0, 1.0]` may follow mode/event commands, for example `mode listen 0.75`. Speech commands use `speech <envelope> <ah|oh|ee|neutral> [duration_ms]`; the duration defaults to 600 ms and is clamped to 50-2000 ms. Send `status`, `telemetry`, or `health` to print immediate `[heartbeat]` and `[system]` telemetry without waiting for the periodic heartbeat. Send `help` or `?` to print the command summary on serial. Each accepted command logs `[control] command=... mode=... event=... strength=... at_ms=...` and holds off demo events briefly so the commanded state remains observable. For long deterministic checks, send `demo off` to stop random demo events and `demo on` or `demo resume` to restart them.
 
 The same bench path also listens to CoreS3 inputs: screen tap = React/UserTouched, screen hold = Listen/UserNear, BtnA = Listen, BtnB = Think, and BtnC = Speak. These input events log the same `[control]` telemetry as serial commands.
 
@@ -95,10 +95,12 @@ motion reduced on
 motion reduced off
 motion stop
 motion resume
+demo off
+demo on
 ```
 
-The command logs `[control] command=reduced_motion_on reduced_motion=1` or `[control] command=reduced_motion_off reduced_motion=0`, then the face task applies the change and logs the new `[face] reduced_motion=` state.
-Those reduced-motion command lines count as display bench-control telemetry in the evidence checks, but they do not replace the required photo, video, speaker audio, or strict hardware logs.
+The reduced-motion command logs `[control] command=reduced_motion_on reduced_motion=1` or `[control] command=reduced_motion_off reduced_motion=0`, then the face task applies the change and logs the new `[face] reduced_motion=` state.
+These runtime command lines count as display bench-control telemetry in the evidence checks, but they do not replace the required photo, video, speaker audio, or strict hardware logs.
 
 During supervised servo tests, send `motion stop`, `servo off`, or `halt` to call the actuator stop hook and suppress further motion writes. Send `motion resume` or `servos on` only after the body is clear and you are ready to continue. The firmware logs `[motion] enabled=0` or `[motion] enabled=1` when the motion task applies the command.
 
