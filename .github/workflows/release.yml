@@ -50,27 +50,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $pkg = Get-ChildItem output/release/*.zip | Select-Object -First 1
-          $pkgHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pkg.FullName).Hash.ToLowerInvariant()
-          "$pkgHash  $($pkg.Name)" | Set-Content -Path "$($pkg.FullName).sha256" -Encoding ASCII
-          Copy-Item .pio/build/stackchan/firmware.bin output/release/firmware-display-only.bin
-          Copy-Item .pio/build/stackchan_servo_calibration/firmware.bin output/release/firmware-servo-calibration.bin
-          Copy-Item .pio/build/stackchan/bootloader.bin output/release/bootloader.bin
-          Copy-Item .pio/build/stackchan/partitions.bin output/release/partitions.bin
+          . ./tools/release_asset_contract.ps1
+          $version = "${{ github.ref_name }}"
+          $packageRoot = "output/release/$version"
+          $zipPath = "output/release/stackchan_alive_$version.zip"
+          $zipSidecarPath = "$zipPath.sha256"
+          $stageDir = "output/release/workflow-assets-$version"
+          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+          Copy-Item "$packageRoot/firmware/display_only/firmware.bin" "$stageDir/firmware-display-only.bin"
+          Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
+          Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
+          Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
+          ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath
+          $releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
+          $releaseAssetPaths = @($releaseAssetEntries | ForEach-Object { $_.Path })
           gh release create "${{ github.ref_name }}" `
-            $pkg.FullName `
-            "$($pkg.FullName).sha256" `
-            docs/media/stackchan_alive_preview.png `
-            docs/media/stackchan_alive_expression_sheet.png `
-            docs/media/stackchan_alive_preview.mp4 `
-            docs/media/stackchan_alive_preview.gif `
-            docs/media/voice/stackchan_spark_greeting.wav `
-            docs/media/voice/stackchan_spark_thinking.wav `
-            docs/media/voice/stackchan_spark_safety.wav `
-            output/release/firmware-display-only.bin `
-            output/release/firmware-servo-calibration.bin `
-            output/release/bootloader.bin `
-            output/release/partitions.bin `
+            @releaseAssetPaths `
             --repo "${{ github.repository }}" `
             --title "Stackchan Alive ${{ github.ref_name }}" `
             --notes-file "output/release/${{ github.ref_name }}/RELEASE_NOTES.md" `
