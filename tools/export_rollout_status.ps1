@@ -4,6 +4,7 @@ param(
   [string]$PackageZip = "",
   [string]$EvidenceRoot = "",
   [string]$OutDir = "",
+  [string]$ActionsStatusPath = "",
   [string]$ExpectedCommit = ""
 )
 
@@ -276,7 +277,12 @@ try {
 
   $manifest = Read-JsonFile (Join-ResolvedPath $packageRootPath "release_manifest.json")
   $readiness = Read-JsonFile (Join-ResolvedPath $packageRootPath "readiness_report.json")
-  $actions = Read-JsonFile (Join-ResolvedPath $packageRootPath "github_actions_status.json")
+  $actionsStatusSource = if ([string]::IsNullOrWhiteSpace($ActionsStatusPath)) {
+    Join-ResolvedPath $packageRootPath "github_actions_status.json"
+  } else {
+    $ActionsStatusPath
+  }
+  $actions = Read-JsonFile $actionsStatusSource
   $voice = Read-JsonFile (Join-ResolvedPath $packageRootPath "voice_source_status.json")
   $rvcVoiceBase = Read-JsonFile (Join-ResolvedPath $packageRootPath "rvc_voice_base_status.json")
 
@@ -425,6 +431,7 @@ try {
     generatedUtc = $generatedUtc
     packageRoot = $packageRootPath
     evidenceRoot = if ($null -ne $evidenceSummary) { $evidenceSummary.root } else { "" }
+    actionsStatusPath = $actionsStatusSource
     status = $overall
     consumerReady = $consumerReady
     nextOwner = [string]$next.owner

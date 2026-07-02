@@ -912,7 +912,7 @@ if (Test-Path -LiteralPath $rolloutStatusScript) {
   $oldErrorActionPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
-    $rolloutOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $rolloutStatusScript -Version $Version -PackageRoot $packageRoot -OutDir $shareRoot -ExpectedCommit $manifest.commit 2>&1
+    $rolloutOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $rolloutStatusScript -Version $Version -PackageRoot $packageRoot -OutDir $shareRoot -ActionsStatusPath (Join-Path $shareRoot "github_actions_status.json") -ExpectedCommit $manifest.commit 2>&1
     $rolloutExitCode = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $oldErrorActionPreference

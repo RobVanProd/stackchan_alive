@@ -587,6 +587,97 @@ function Assert-LocalShareEvidenceGate {
   }
 }
 
+function Assert-RolloutStatusActionsOverrideGate {
+  $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-rollout-actions-override-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $packageRoot = Join-Path $fixtureRoot "package"
+  $overrideRoot = Join-Path $fixtureRoot "override"
+  $outRoot = Join-Path $fixtureRoot "out"
+  $fixtureCommit = "abcdef0123456789abcdef0123456789abcdef01"
+  $releaseTag = "v0.0.0-rollout-actions-override"
+  $overridePath = Join-Path $overrideRoot "github_actions_status.json"
+
+  try {
+    New-Item -ItemType Directory -Force -Path $packageRoot, $overrideRoot, $outRoot | Out-Null
+    [ordered]@{
+      version = $releaseTag
+      commit = $fixtureCommit
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $packageRoot "release_manifest.json") -Encoding UTF8
+    [ordered]@{
+      schema = "stackchan.readiness-report.v1"
+      version = $releaseTag
+      commit = $fixtureCommit
+      consumerRollout = "blocked-pending-hardware-validation"
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $packageRoot "readiness_report.json") -Encoding UTF8
+    [ordered]@{
+      schema = "stackchan.github-actions-status.v1"
+      version = $releaseTag
+      commit = $fixtureCommit
+      status = "missing-required-workflow"
+      missingRequiredWorkflows = @("Release")
+      nextAction = "PACKAGED STATUS SHOULD NOT BE USED"
+      nextCommand = "packaged-command"
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $packageRoot "github_actions_status.json") -Encoding UTF8
+    [ordered]@{
+      schema = "stackchan.github-actions-status.v1"
+      version = $releaseTag
+      commit = $fixtureCommit
+      status = "external-account-ci-pre-runner-allocation"
+      missingRequiredWorkflows = @()
+      nextAction = "Override Actions status was used."
+      nextCommand = ".\tools\export_github_actions_status.cmd -Version $releaseTag"
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path $overridePath -Encoding UTF8
+    [ordered]@{
+      schema = "stackchan.voice-source-status.v1"
+      status = "production-source-ready"
+      blockedGateCount = 0
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $packageRoot "voice_source_status.json") -Encoding UTF8
+    [ordered]@{
+      schema = "stackchan.rvc-voice-base-status.v1"
+      status = "consumer-approved"
+      consumerApproved = $true
+      distributionApproved = $true
+      blockedGateCount = 0
+      failedGateCount = 0
+    } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $packageRoot "rvc_voice_base_status.json") -Encoding UTF8
+
+    $result = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_rollout_status.ps1"),
+      "-Version", $releaseTag,
+      "-PackageRoot", $packageRoot,
+      "-OutDir", $outRoot,
+      "-ActionsStatusPath", $overridePath,
+      "-ExpectedCommit", $fixtureCommit
+    )
+    if ($result.ExitCode -ne 2) {
+      throw "Rollout status fixture should remain blocked because no hardware evidence was supplied. Exit code: $($result.ExitCode). Output:$([Environment]::NewLine)$($result.Text)"
+    }
+
+    $status = Get-Content -LiteralPath (Join-Path $outRoot "ROLLOUT_STATUS.json") -Raw | ConvertFrom-Json
+    if ([string]$status.actionsStatusPath -ne $overridePath) {
+      throw "Rollout status did not record the Actions override path."
+    }
+    $requiredWorkflowGate = @($status.gates | Where-Object { $_.gate -eq "github-actions-required-workflows" } | Select-Object -First 1)
+    if ($null -eq $requiredWorkflowGate -or [string]$requiredWorkflowGate.status -ne "pass") {
+      throw "Rollout status did not use the override Actions missing-workflow list."
+    }
+    $actionsGate = @($status.gates | Where-Object { $_.gate -eq "github-actions" } | Select-Object -First 1)
+    if ($null -eq $actionsGate -or [string]$actionsGate.status -ne "blocked-external") {
+      throw "Rollout status did not use the override Actions external-block status."
+    }
+    if ([string]$actionsGate.evidence -notmatch "external-account-ci-pre-runner-allocation") {
+      throw "Rollout status Actions gate did not report the override status."
+    }
+    if (@($status.blockers | Where-Object { [string]$_ -match "missing required workflow" }).Count -ne 0) {
+      throw "Packaged missing-workflow status leaked into rollout status despite ActionsStatusPath override."
+    }
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $fixtureRoot) {
+      Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    }
+  }
+}
+
 function Write-SyntheticAcceptanceArtifacts {
   param(
     [string]$EvidenceRoot,
@@ -1678,6 +1769,10 @@ Invoke-Step "Check GitHub Actions status exporter gates" {
 
 Invoke-Step "Check local share evidence capture" {
   Assert-LocalShareEvidenceGate
+}
+
+Invoke-Step "Check rollout status Actions override" {
+  Assert-RolloutStatusActionsOverrideGate
 }
 
 Invoke-Step "Check speech envelope sidecar tooling" {
