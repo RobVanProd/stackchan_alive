@@ -164,6 +164,7 @@ Assert-NoMatchesOutside `
   -AllowedRelativePaths @(
     "src/main.cpp",
     "src/io/DisplayAdapter.cpp",
+    "src/io/SensorAdapter.cpp",
     "src/io/StackChanServoAdapter.hpp",
     "src/io/StackChanServoAdapter.cpp"
   ) `
@@ -201,6 +202,8 @@ Assert-FileContains (Expand-SourcePath "src/main.cpp") "heap_min" "Runtime healt
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "stack_face_hwm" "Runtime health telemetry must report face task stack margin."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "\[speech\]" "Runtime must emit speech cue telemetry for output-adapter evidence."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "speechSeq" "Speech cue telemetry must expose the dedupe sequence number."
+Assert-FileContains (Expand-SourcePath "src/io/SensorAdapter.cpp") "touch_click_react" "SensorAdapter must own touch input mapping."
+Assert-FileContains (Expand-SourcePath "src/io/SensorAdapter.cpp") "button_a_listen" "SensorAdapter must own button input mapping."
 
 Assert-PlatformioFlag "stackchan" "-D STACKCHAN_ENABLE_SERVOS=0"
 Assert-PlatformioFlag "stackchan" "-O3"

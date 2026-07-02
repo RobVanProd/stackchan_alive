@@ -403,7 +403,6 @@ void setup() {
 }
 
 void loop() {
-  M5.update();
   static uint32_t lastHeartbeatMs = 0;
   const uint32_t nowMs = millis();
   if (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 10000) {

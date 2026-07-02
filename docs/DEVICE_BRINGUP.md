@@ -64,6 +64,8 @@ speech clear
 
 An optional strength value in `[0.0, 1.0]` may follow mode/event commands, for example `mode listen 0.75`. Speech commands use `speech <envelope> <ah|oh|ee|neutral> [duration_ms]`; the duration defaults to 600 ms and is clamped to 50-2000 ms. Each accepted command logs `[control] command=... mode=... event=... strength=... at_ms=...` and holds off demo events briefly so the commanded state remains observable.
 
+The same bench path also listens to CoreS3 inputs: screen tap = React/UserTouched, screen hold = Listen/UserNear, BtnA = Listen, BtnB = Think, and BtnC = Speak. These input events log the same `[control]` telemetry as serial commands.
+
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
 
 ## Servo Enable Gate

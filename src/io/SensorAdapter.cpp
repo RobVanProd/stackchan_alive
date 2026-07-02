@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <M5Unified.h>
+#endif
+
 namespace stackchan {
 
 namespace {
@@ -216,6 +220,17 @@ bool fillFromSpeech(char* envelopeToken, char* visemeToken, char* durationToken,
   return true;
 }
 
+void fillHardwareEvent(CharacterMode mode, EventType eventType, uint32_t nowMs, const char* command, BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasEvent = true;
+  parsed.mode = mode;
+  parsed.event.type = eventType;
+  parsed.event.timestampMs = nowMs;
+  parsed.event.strength = 1.0f;
+  parsed.command = command;
+  *controlOut = parsed;
+}
+
 }  // namespace
 
 bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* controlOut) {
@@ -296,6 +311,8 @@ bool SensorAdapter::poll(BenchControl* controlOut) {
   }
 
 #if defined(ARDUINO_ARCH_ESP32)
+  M5.update();
+
   while (Serial.available() > 0) {
     const char ch = static_cast<char>(Serial.read());
     if (ch == '\r') {
@@ -325,6 +342,32 @@ bool SensorAdapter::poll(BenchControl* controlOut) {
       lineLength_ = 0;
       line_[0] = '\0';
       Serial.println(F("[control] ignored overlong command"));
+    }
+  }
+
+  const uint32_t nowMs = millis();
+  if (M5.BtnA.wasClicked()) {
+    fillHardwareEvent(CharacterMode::Listen, EventType::WakeWord, nowMs, "button_a_listen", controlOut);
+    return true;
+  }
+  if (M5.BtnB.wasClicked()) {
+    fillHardwareEvent(CharacterMode::Think, EventType::ThinkingStarted, nowMs, "button_b_think", controlOut);
+    return true;
+  }
+  if (M5.BtnC.wasClicked()) {
+    fillHardwareEvent(CharacterMode::Speak, EventType::ResponseStarted, nowMs, "button_c_speak", controlOut);
+    return true;
+  }
+
+  if (M5.Touch.isEnabled() && M5.Touch.getCount() > 0) {
+    const auto detail = M5.Touch.getDetail(0);
+    if (detail.wasClicked()) {
+      fillHardwareEvent(CharacterMode::React, EventType::UserTouched, nowMs, "touch_click_react", controlOut);
+      return true;
+    }
+    if (detail.wasHold()) {
+      fillHardwareEvent(CharacterMode::Listen, EventType::UserNear, nowMs, "touch_hold_listen", controlOut);
+      return true;
     }
   }
 #endif
