@@ -708,15 +708,15 @@ $ciExceptionTemplate = [ordered]@{
   version = $ReleaseTag
   commit = $commit
   githubActionsStatus = "external-account-billing-or-spending-limit"
-  approvedBy = "TBD"
-  approvedUtc = "TBD"
+  approvedBy = "TBD - accountable approver required"
+  approvedUtc = "TBD - YYYY-MM-DDTHH:MM:SSZ"
   reason = "GitHub Actions could not start jobs because of an account billing, spending-limit, or pre-runner allocation outage outside this repository."
   riskAccepted = $false
   localReleaseVerificationPassed = $false
   strictHardwareEvidencePassed = $false
   productionVoiceSourceReady = $false
-  followUpOwner = "TBD"
-  followUpDueUtc = "TBD"
+  followUpOwner = "TBD - CI account owner"
+  followUpDueUtc = "TBD - YYYY-MM-DDTHH:MM:SSZ"
 }
 $ciExceptionTemplate | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outDir "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json") -Encoding UTF8
 
@@ -843,6 +843,7 @@ $nextSteps = @(
   "",
   "- Do not run servo calibration unless the body is clear and supervised.",
   "- Do not mark the audio gate complete without a recording captured from the actual target speaker path.",
+  "- Do not use ``-AllowExternalAccountCiBlock`` silently. ``CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json`` starts unapproved with TBD fields and false proof booleans.",
   "- Do not promote if ``CHECKLIST.md`` still has unchecked gates or ``RUN_PROGRESS_CHECK.cmd`` reports missing evidence.",
   "- Do not treat generated samples, local previews, or hosted review pages as consumer rollout evidence."
 )

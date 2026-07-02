@@ -1668,6 +1668,16 @@ function Assert-ArrivalPacketScaffoldGate {
     if ($ciExceptionTemplate.version -ne $Version -or $ciExceptionTemplate.commit -ne $ExpectedCommit) {
       throw "Arrival packet CI exception template does not pin release version/commit."
     }
+    foreach ($fieldName in @("approvedBy", "approvedUtc", "followUpOwner", "followUpDueUtc")) {
+      if ([string]$ciExceptionTemplate.PSObject.Properties[$fieldName].Value -notmatch "TBD") {
+        throw "Arrival packet CI exception template $fieldName should remain a TBD placeholder."
+      }
+    }
+    foreach ($fieldName in @("riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady")) {
+      if ($ciExceptionTemplate.PSObject.Properties[$fieldName].Value -ne $false) {
+        throw "Arrival packet CI exception template $fieldName should remain false until approved."
+      }
+    }
 
     $checklist = Get-Content -LiteralPath (Join-Path $evidenceRoot "CHECKLIST.md") -Raw
     Assert-TextContains $checklist 'Pre-marked no-hardware gates were proven by the matching preflight report'

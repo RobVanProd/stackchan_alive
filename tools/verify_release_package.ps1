@@ -307,7 +307,7 @@ foreach ($pattern in @("-All", "output/share", "Test-ShareOwnedProcess", "skippe
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "speech_mouth_demo_serial.log", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "speech_mouth_demo_serial.log", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
   }
@@ -991,6 +991,16 @@ if ($ciExceptionTemplate.schema -ne "stackchan.ci-account-block-exception.v1") {
 foreach ($field in @("version", "commit", "githubActionsStatus", "approvedBy", "approvedUtc", "reason", "riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady", "followUpOwner", "followUpDueUtc")) {
   if ($null -eq $ciExceptionTemplate.$field) {
     throw "CI account-block exception template missing field: $field"
+  }
+}
+foreach ($field in @("approvedBy", "approvedUtc", "followUpOwner", "followUpDueUtc")) {
+  if ([string]$ciExceptionTemplate.$field -notmatch "TBD") {
+    throw "CI account-block exception template $field must remain a TBD placeholder."
+  }
+}
+foreach ($field in @("riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady")) {
+  if ($ciExceptionTemplate.$field -ne $false) {
+    throw "CI account-block exception template $field must remain false until copied and approved."
   }
 }
 

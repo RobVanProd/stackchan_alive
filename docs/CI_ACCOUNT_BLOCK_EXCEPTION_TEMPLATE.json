@@ -3,13 +3,13 @@
   "version": "vX.Y.Z",
   "commit": "40-character-release-commit-sha",
   "githubActionsStatus": "external-account-billing-or-spending-limit",
-  "approvedBy": "name/contact of accountable approver",
-  "approvedUtc": "YYYY-MM-DDTHH:MM:SSZ",
+  "approvedBy": "TBD - accountable approver required",
+  "approvedUtc": "TBD - YYYY-MM-DDTHH:MM:SSZ",
   "reason": "GitHub Actions could not start jobs because of an account billing, spending-limit, or pre-runner allocation outage outside this repository.",
-  "riskAccepted": true,
-  "localReleaseVerificationPassed": true,
-  "strictHardwareEvidencePassed": true,
-  "productionVoiceSourceReady": true,
-  "followUpOwner": "name/contact responsible for clearing CI account block",
-  "followUpDueUtc": "YYYY-MM-DDTHH:MM:SSZ"
+  "riskAccepted": false,
+  "localReleaseVerificationPassed": false,
+  "strictHardwareEvidencePassed": false,
+  "productionVoiceSourceReady": false,
+  "followUpOwner": "TBD - CI account owner",
+  "followUpDueUtc": "TBD - YYYY-MM-DDTHH:MM:SSZ"
 }
