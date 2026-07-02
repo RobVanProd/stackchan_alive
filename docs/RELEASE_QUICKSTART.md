@@ -65,9 +65,11 @@ During bring-up, run:
 
 ```powershell
 .\RUN_PROGRESS_CHECK.cmd
+.\RUN_ROLLOUT_STATUS.cmd
 ```
 
 This lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
+The rollout status command also writes `ROLLOUT_STATUS.md/json`, combining the evidence progress result with the package, GitHub Actions status, hosted media reference, and voice-source gate.
 
 Import photos, videos, and speaker recordings through the packet helper so the files are validated and hashed:
 

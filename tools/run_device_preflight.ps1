@@ -774,6 +774,7 @@ function Assert-ArrivalPacketScaffoldGate {
       "RUN_SOAK_MONITOR.cmd",
       "RUN_PACKAGE_VERIFY.cmd",
       "RUN_PROGRESS_CHECK.cmd",
+      "RUN_ROLLOUT_STATUS.cmd",
       "RUN_ADD_MEDIA.cmd",
       "RUN_EVIDENCE_VERIFY.cmd",
       "RUN_CONSUMER_PROMOTION_CHECK.cmd",
@@ -841,6 +842,30 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $progressText "Hardware evidence progress:"
     Assert-TextContains $progressText "RVC lead audition reference hash matches metadata"
     Assert-TextContains $progressText "No real-device speaker recording found under audio/"
+
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+      $rolloutOutput = & cmd.exe /c (Join-Path $evidenceRoot "RUN_ROLLOUT_STATUS.cmd") 2>&1
+      $rolloutExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $oldErrorActionPreference
+    }
+    $rolloutText = ($rolloutOutput | Out-String)
+    if ($rolloutExitCode -ne 2) {
+      throw "Expected rollout status wrapper to exit 2 for blocked/pending gates, got $rolloutExitCode. Output:$([Environment]::NewLine)$rolloutText"
+    }
+    Assert-TextContains $rolloutText "Rollout status exported:"
+    foreach ($relativePath in @("ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json")) {
+      $path = Join-Path $evidenceRoot $relativePath
+      if (-not (Test-Path -LiteralPath $path)) {
+        throw "Arrival packet rollout status did not write: $relativePath"
+      }
+    }
+    $rolloutStatus = Get-Content -LiteralPath (Join-Path $evidenceRoot "ROLLOUT_STATUS.md") -Raw
+    Assert-TextContains $rolloutStatus "blocked-or-pending"
+    Assert-TextContains $rolloutStatus "production-voice-source"
+    Assert-TextContains $rolloutStatus "strict-hardware-evidence"
     $global:LASTEXITCODE = 0
   } finally {
     $resolvedEvidence = (Resolve-Path $evidenceRoot).Path

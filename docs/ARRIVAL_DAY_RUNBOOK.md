@@ -108,7 +108,10 @@ Run this repeatedly while collecting evidence:
 
 ```powershell
 .\RUN_PROGRESS_CHECK.cmd
+.\RUN_ROLLOUT_STATUS.cmd
 ```
+
+`RUN_ROLLOUT_STATUS.cmd` writes `ROLLOUT_STATUS.md` and `ROLLOUT_STATUS.json` into the packet. Use those files as the current handoff summary for package, hardware evidence, hosted media, GitHub Actions, and production voice-source gates.
 
 Do not run the strict verifier until the progress check is clean or only lists intentionally deferred gates.
 

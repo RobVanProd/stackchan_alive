@@ -561,6 +561,7 @@ if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
   $promotionPackageArg = "-PackageRoot $(Quote-PowerShellArgument $PackageRoot)"
 }
+$rolloutStatusCommand = "& '.\tools\export_rollout_status.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $promotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit) -OutDir $(Quote-PowerShellArgument $outDir)"
 $consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $promotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 $platformioResolver = Quote-PowerShellArgument (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 $soakCommand = ". $platformioResolver; Invoke-StackchanPlatformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
@@ -588,6 +589,7 @@ $commandFiles = [ordered]@{
   "RUN_SOAK_MONITOR.cmd" = New-PowerShellCommandFile $soakCommand
   "RUN_PACKAGE_VERIFY.cmd" = New-PowerShellCommandFile $verifyCommand
   "RUN_PROGRESS_CHECK.cmd" = New-PowerShellCommandFile $progressCommand
+  "RUN_ROLLOUT_STATUS.cmd" = New-PowerShellCommandFile $rolloutStatusCommand
   "RUN_ADD_MEDIA.cmd" = @(
     "@echo off",
     "cd /d `"$repoRoot`"",
@@ -677,6 +679,14 @@ $readme = @(
   "",
   "    .\RUN_PROGRESS_CHECK.cmd",
   "",
+  "Export the current package/evidence/CI/voice rollout summary:",
+  "",
+  "    $rolloutStatusCommand",
+  "",
+  "    .\RUN_ROLLOUT_STATUS.cmd",
+  "",
+  "This writes ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` into the packet for handoff review.",
+  "",
   "Use the progress check during testing to list missing fields, logs, markers, media, and checklist items. It is advisory; the strict promotion check is still required:",
   "",
   "    $evidenceVerifyCommand",
@@ -706,6 +716,7 @@ $requiredRecords = @(
   "RUN_SOAK_MONITOR.cmd",
   "RUN_PACKAGE_VERIFY.cmd",
   "RUN_PROGRESS_CHECK.cmd",
+  "RUN_ROLLOUT_STATUS.cmd",
   "RUN_ADD_MEDIA.cmd",
   "RUN_EVIDENCE_VERIFY.cmd",
   "RUN_CONSUMER_PROMOTION_CHECK.cmd"
