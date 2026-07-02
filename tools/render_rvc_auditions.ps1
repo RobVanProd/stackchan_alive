@@ -252,6 +252,24 @@ def finalize_variant(path, style):
         out = formant_edge(rate, out, mix=0.20, carrier_hz=58.0)
         out = light_vocoder(rate, out, mix=0.065)
         out = phrase_earcons(rate, out, mix=0.014)
+    elif style == "bright_robot_less_static":
+        # Same winning RVC params, with the synthetic edge eased back slightly.
+        out = sample_hold(samples, rate, 11200.0)
+        out = formant_edge(rate, out, mix=0.185, carrier_hz=54.0)
+        out = light_vocoder(rate, out, mix=0.062)
+        out = phrase_earcons(rate, out, mix=0.012)
+    elif style == "bright_robot_sweet_vocoder":
+        # Keeps the bright identity but lets the musical fourth/fifth bed carry more life.
+        out = sample_hold(samples, rate, 11200.0)
+        out = formant_edge(rate, out, mix=0.178, carrier_hz=52.0)
+        out = light_vocoder(rate, out, mix=0.078)
+        out = phrase_earcons(rate, out, mix=0.010)
+    elif style == "bright_robot_soft_boops":
+        # Same core voice with the phrase earcons tucked farther under speech.
+        out = sample_hold(samples, rate, 10800.0)
+        out = formant_edge(rate, out, mix=0.188, carrier_hz=56.0)
+        out = light_vocoder(rate, out, mix=0.066)
+        out = phrase_earcons(rate, out, mix=0.007)
     elif style == "spark_boops":
         out = formant_edge(rate, samples, mix=0.16, carrier_hz=47.0)
         out = light_vocoder(rate, out, mix=0.050)
@@ -298,6 +316,39 @@ variants = [
         "rms_mix_rate": 0.72,
         "protect": 0.28,
         "notes": "Brighter robot pass with light vocoder and subtle phrase earcons.",
+    },
+    {
+        "slug": "bright_robot_less_static",
+        "title": "RVC Bright Robot Less Static",
+        "sample_slug": "greeting",
+        "style": "bright_robot_less_static",
+        "pitch": 2,
+        "index_rate": 0.62,
+        "rms_mix_rate": 0.72,
+        "protect": 0.28,
+        "notes": "Near-final pass: same RVC settings as Bright Robot with roughly 8 percent less static edge.",
+    },
+    {
+        "slug": "bright_robot_sweet_vocoder",
+        "title": "RVC Bright Robot Sweet Vocoder",
+        "sample_slug": "greeting",
+        "style": "bright_robot_sweet_vocoder",
+        "pitch": 2,
+        "index_rate": 0.62,
+        "rms_mix_rate": 0.72,
+        "protect": 0.28,
+        "notes": "Near-final pass: same RVC settings with a slightly more pleasant fourth/fifth vocoder blend.",
+    },
+    {
+        "slug": "bright_robot_soft_boops",
+        "title": "RVC Bright Robot Soft Boops",
+        "sample_slug": "greeting",
+        "style": "bright_robot_soft_boops",
+        "pitch": 2,
+        "index_rate": 0.62,
+        "rms_mix_rate": 0.72,
+        "protect": 0.28,
+        "notes": "Near-final pass: same RVC settings with the beeps and boops tucked lower under the voice.",
     },
     {
         "slug": "spark_boops",
