@@ -17,6 +17,7 @@ From an extracted release package:
 ```
 
 This serves the release ZIP, ZIP SHA256 sidecar, preview image, expression sheet, video, quickstart, release notes, readiness report, and checksums. It downloads a local `cloudflared.exe` under `output\tools` only when `cloudflared` is not already installed.
+Use `-OpenLocal` when you want the helper to open the host-only local page automatically after it proves the server is answering.
 The public URL is also saved as `output\share\<version>\PUBLIC_URL.txt`, and the share folder includes `OPEN_LOCAL_SHARE.cmd` for opening the host-only local page plus `STOP_SHARING.cmd` to stop the local server and tunnel.
 Before sending the URL, verify the handoff page and public assets:
 

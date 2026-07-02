@@ -9,6 +9,7 @@ param(
   [int]$PublicUrlReadyWaitSeconds = 120,
   [int]$PublicUrlReadyPollSeconds = 2,
   [switch]$StopAfterUrl,
+  [switch]$OpenLocal,
   [switch]$NoServe
 )
 
@@ -87,6 +88,7 @@ function Write-ShareStatus {
     lanTroubleshooting = "LAN_TROUBLESHOOTING.md"
     shareProbeReport = "share_probe_report.json"
     openLocalShare = "OPEN_LOCAL_SHARE.cmd"
+    openLocalRequested = [bool]$OpenLocal
     publicUrl = $PublicUrl
     publicUrlReady = $PublicUrlReady
     processIds = @($ProcessIds)
@@ -418,6 +420,7 @@ function Write-ShareProbeReport {
     lanDiagnostics = @($script:ShareLanDiagnostics)
     hostProbeResults = @($script:ShareUrlProbeResults)
     openLocalShare = "OPEN_LOCAL_SHARE.cmd"
+    openLocalRequested = [bool]$OpenLocal
   }
 
   $report | ConvertTo-Json -Depth 7 | Set-Content -Path (Join-Path $shareRoot "share_probe_report.json") -Encoding UTF8
@@ -542,6 +545,22 @@ function Write-OpenLocalShareHelper {
     "echo $LocalUrl",
     "start ""Stackchan Alive Share"" ""$LocalUrl"""
   ) | Set-Content -Path (Join-Path $shareRoot "OPEN_LOCAL_SHARE.cmd") -Encoding ASCII
+}
+
+function Invoke-OpenLocalShare {
+  param([string]$LocalUrl)
+
+  if ([string]::IsNullOrWhiteSpace($LocalUrl)) {
+    return
+  }
+
+  try {
+    Start-Process -FilePath $LocalUrl | Out-Null
+    Write-Host "Opened local share page:"
+    Write-Host $LocalUrl
+  } catch {
+    Write-Warning "Could not open local share page automatically. Run OPEN_LOCAL_SHARE.cmd or open $LocalUrl manually. $($_.Exception.Message)"
+  }
 }
 
 function Stop-ExistingShare {
@@ -1291,6 +1310,9 @@ Write-Host "LAN troubleshooting report:"
 Write-Host (Join-Path $shareRoot "LAN_TROUBLESHOOTING.md")
 
 if ($NoServe) {
+  if ($OpenLocal) {
+    Write-Warning "-OpenLocal was ignored because -NoServe only prepares the share folder."
+  }
   exit 0
 }
 
@@ -1330,6 +1352,9 @@ $script:ShareUrlProbeResults = @(Test-ShareUrlsFromHost -Urls (@("http://127.0.0
 Write-ShareProbeReport -Status "local-ready"
 Write-LanTroubleshooting
 Write-ShareStatus -Status "local" -ProcessIds @($server.Id)
+if ($OpenLocal) {
+  Invoke-OpenLocalShare -LocalUrl $script:ShareProbeUrl
+}
 
 if ($CloudflareTunnel) {
   $cloudflaredOutLog = Join-Path $shareRoot "cloudflared.stdout.log"
