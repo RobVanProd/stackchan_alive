@@ -209,6 +209,41 @@ function Write-StopHelper {
   }
 }
 
+function Stop-ExistingShare {
+  param([string]$ExistingShareRoot)
+
+  if (-not (Test-Path -LiteralPath $ExistingShareRoot)) {
+    return
+  }
+
+  $stopScript = Join-Path $PSScriptRoot "stop_share.ps1"
+  if (-not (Test-Path -LiteralPath $stopScript)) {
+    return
+  }
+
+  try {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript -ShareRoot $ExistingShareRoot | Out-Null
+  } catch {
+    Write-Warning "Existing share stop helper reported a problem: $($_.Exception.Message)"
+  }
+}
+
+function Remove-ShareRoot {
+  param([string]$ExistingShareRoot)
+
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+      Remove-Item -LiteralPath $ExistingShareRoot -Recurse -Force
+      return
+    } catch {
+      if ($attempt -eq 5) {
+        throw
+      }
+      Start-Sleep -Milliseconds (250 * $attempt)
+    }
+  }
+}
+
 function Get-CloudflaredPath {
   $command = Get-Command "cloudflared" -ErrorAction SilentlyContinue
   if ($null -ne $command) {
@@ -281,6 +316,43 @@ function Get-PythonPath {
   throw "Required Python runtime is not available. Install Python 3, install PlatformIO, or add python.exe to PATH."
 }
 
+function Test-TcpPortAvailable {
+  param(
+    [string]$Address,
+    [int]$CandidatePort
+  )
+
+  $listener = $null
+  try {
+    $ipAddress = [System.Net.IPAddress]::Parse($Address)
+    $listener = [System.Net.Sockets.TcpListener]::new($ipAddress, $CandidatePort)
+    $listener.Start()
+    return $true
+  } catch {
+    return $false
+  } finally {
+    if ($null -ne $listener) {
+      $listener.Stop()
+    }
+  }
+}
+
+function Find-AvailableTcpPort {
+  param(
+    [string]$Address,
+    [int]$StartPort
+  )
+
+  $maxPort = [Math]::Min(65535, $StartPort + 200)
+  for ($candidate = $StartPort; $candidate -le $maxPort; $candidate++) {
+    if (Test-TcpPortAvailable -Address $Address -CandidatePort $candidate) {
+      return $candidate
+    }
+  }
+
+  throw "No available TCP port found for $Address between $StartPort and $maxPort."
+}
+
 $rootManifest = Get-ReleaseManifest $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -297,7 +369,8 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 $shareRoot = Join-Path $repoRoot "output/share/$Version"
 if (Test-Path -LiteralPath $shareRoot) {
-  Remove-Item -LiteralPath $shareRoot -Recurse -Force
+  Stop-ExistingShare -ExistingShareRoot $shareRoot
+  Remove-ShareRoot -ExistingShareRoot $shareRoot
 }
 New-Item -ItemType Directory -Force -Path $shareRoot | Out-Null
 
@@ -767,6 +840,14 @@ $preflightDownloadItems
 </body>
 </html>
 "@ | Set-Content -Path (Join-Path $shareRoot "index.html") -Encoding UTF8
+
+if (-not $NoServe) {
+  $requestedPort = $Port
+  $Port = Find-AvailableTcpPort -Address $BindAddress -StartPort $Port
+  if ($Port -ne $requestedPort) {
+    Write-Warning "Requested share port $requestedPort is already in use; using $Port instead."
+  }
+}
 
 Write-ShareStatus -Status "prepared"
 
