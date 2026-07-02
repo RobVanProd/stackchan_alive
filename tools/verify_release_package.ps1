@@ -189,6 +189,8 @@ $requiredFiles = @(
   "tools/export_voice_source_status.ps1",
   "tools/setup_voice_tools.cmd",
   "tools/setup_voice_tools.ps1",
+  "tools/open_voice_audition.cmd",
+  "tools/open_voice_audition.ps1",
   "tools/render_voice_samples.cmd",
   "tools/render_voice_samples.ps1",
   "tools/render_rvc_auditions.ps1",
@@ -400,6 +402,13 @@ $voiceToolsSetupText = Get-Content -LiteralPath (Join-PackagePath "tools/setup_v
 foreach ($pattern in @("eSpeak-NG.eSpeak-NG", "ChrisBagwell.SoX", "ContinueOnInstallFailure", "RenderEspeakSamples", "render_voice_samples.ps1", "-Engine espeak", "verify_voice_samples.ps1", "stackchan.voice-tools-status.v1", "installFailures")) {
   if ($voiceToolsSetupText -notmatch [regex]::Escape($pattern)) {
     throw "tools/setup_voice_tools.ps1 missing required lightweight voice setup logic: $pattern"
+  }
+}
+
+$voiceAuditionOpenerText = Get-Content -LiteralPath (Join-PackagePath "tools/open_voice_audition.ps1") -Raw
+foreach ($pattern in @("VOICE_AUDITION.html", "docs/media/voice", "media/voice", "PrintOnly", "Start-Process")) {
+  if ($voiceAuditionOpenerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/open_voice_audition.ps1 missing required local audition open logic: $pattern"
   }
 }
 

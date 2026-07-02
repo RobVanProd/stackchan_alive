@@ -33,6 +33,12 @@ Voice review samples are verified as part of the package gate. To check only the
 .\tools\verify_voice_samples.cmd
 ```
 
+To open the local MP3 audition page without starting a share server:
+
+```powershell
+.\tools\open_voice_audition.cmd
+```
+
 To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
 
 ```powershell
