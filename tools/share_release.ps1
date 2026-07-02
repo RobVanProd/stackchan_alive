@@ -461,6 +461,7 @@ $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.j
 $readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
 $dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
 $voiceSourceStatus = Get-Content -LiteralPath (Join-Path $packageRoot "voice_source_status.json") -Raw | ConvertFrom-Json
+$rvcAuditions = Get-Content -LiteralPath (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json") -Raw | ConvertFrom-Json
 
 $preflightRoot = Join-Path $repoRoot "output/preflight/$Version"
 $preflightReportMarkdown = Join-Path $preflightRoot "preflight_report.md"
@@ -518,6 +519,21 @@ $pendingGateCount = @($readiness.hardwareGates | Where-Object { $_.status -match
 $consumerRollout = [string]$readiness.consumerRollout
 $voiceSourceGateStatus = [System.Net.WebUtility]::HtmlEncode([string]$voiceSourceStatus.status)
 $voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
+$rvcLead = $rvcAuditions.leadAudition
+if ($null -eq $rvcLead) {
+  throw "RVC_AUDITIONS.json is missing leadAudition metadata."
+}
+$rvcLeadTitle = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.title)
+$rvcLeadFile = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.file)
+$rvcLeadTranscript = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.transcript)
+$rvcLeadRating = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.userRating)
+$rvcLeadPurpose = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.perceptualPurpose)
+$rvcLeadPitch = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.pitch)
+$rvcLeadIndex = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.index_rate)
+$rvcLeadRms = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.rms_mix_rate)
+$rvcLeadProtect = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.protect)
+$rvcLeadPath = "voice/rvc/$($rvcLead.file)"
+$rvcLeadPathHtml = [System.Net.WebUtility]::HtmlEncode($rvcLeadPath)
 $declaredDependencyCount = @($dependencyLock.declaredLibDeps).Count
 $directGitMissingRefCount = @($dependencyLock.dependencyAudit.directGitDepsMissingRef).Count
 $duplicateDependencyCount = @($dependencyLock.dependencyAudit.duplicateResolvedPackages).Count
@@ -667,6 +683,14 @@ $promotionGateItems
 
   <h2>RVC Voice Auditions</h2>
   <p>Review-only samples rendered through the selected RVC candidate base. These compare pitch, RVC blend, light vocoder, and beep/boop balance. They are not consumer-approved until voice rights and source provenance are cleared.</p>
+  <div class="item">
+    <strong>Current Lead: $rvcLeadTitle</strong>
+    <audio src="$rvcLeadPathHtml" controls preload="metadata"></audio>
+    <p class="transcript"><strong>Transcript:</strong> $rvcLeadTranscript</p>
+    <p><strong>Selected settings:</strong> pitch $rvcLeadPitch, index $rvcLeadIndex, RMS mix $rvcLeadRms, protect $rvcLeadProtect.</p>
+    <p><strong>Listening note:</strong> $rvcLeadRating. $rvcLeadPurpose.</p>
+    <p><a href="$rvcLeadPathHtml">Download $rvcLeadFile</a></p>
+  </div>
   <div class="grid">
     <div class="item">
       <strong>RVC Neutral</strong>

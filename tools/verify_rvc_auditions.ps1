@@ -122,7 +122,7 @@ Assert-File "RVC_AUDITIONS.json" 500
 $notes = Get-Content -LiteralPath (Join-VoicePath "RVC_AUDITIONS.md") -Raw
 $json = Get-Content -LiteralPath (Join-VoicePath "RVC_AUDITIONS.json") -Raw | ConvertFrom-Json
 
-foreach ($pattern in @("Stackchan RVC Base Auditions", "Review-only auditions", "not consumer-approved", "RVC Neutral", "RVC Warm Slow", "RVC Bright Robot", "RVC Spark Boops", "RVC High Character")) {
+foreach ($pattern in @("Stackchan RVC Base Auditions", "Review-only auditions", "not consumer-approved", "Current Lead", "Lead audition", "near-final direction", "pitch 2", "index 0.62", "RMS mix 0.72", "protect 0.28", "RVC Neutral", "RVC Warm Slow", "RVC Bright Robot", "RVC Spark Boops", "RVC High Character")) {
   if ($notes -notmatch [regex]::Escape($pattern)) {
     throw "RVC_AUDITIONS.md missing expected marker: $pattern"
   }
@@ -133,6 +133,33 @@ if ($json.schema -ne "stackchan.rvc-audition-manifest.v1") {
 }
 if ($json.status -ne "review-only-candidate") {
   throw "RVC_AUDITIONS.json status mismatch: $($json.status)"
+}
+
+if ($null -eq $json.leadAudition) {
+  throw "RVC_AUDITIONS.json missing leadAudition metadata"
+}
+if ($json.leadAudition.slug -ne "bright_robot") {
+  throw "RVC_AUDITIONS.json leadAudition slug mismatch: $($json.leadAudition.slug)"
+}
+if ($json.leadAudition.file -ne "stackchan_rvc_bright_robot.wav") {
+  throw "RVC_AUDITIONS.json leadAudition file mismatch: $($json.leadAudition.file)"
+}
+if ([int]$json.leadAudition.pitch -ne 2) {
+  throw "RVC_AUDITIONS.json leadAudition pitch mismatch: $($json.leadAudition.pitch)"
+}
+if ([double]$json.leadAudition.index_rate -ne 0.62) {
+  throw "RVC_AUDITIONS.json leadAudition index_rate mismatch: $($json.leadAudition.index_rate)"
+}
+if ([double]$json.leadAudition.rms_mix_rate -ne 0.72) {
+  throw "RVC_AUDITIONS.json leadAudition rms_mix_rate mismatch: $($json.leadAudition.rms_mix_rate)"
+}
+if ([double]$json.leadAudition.protect -ne 0.28) {
+  throw "RVC_AUDITIONS.json leadAudition protect mismatch: $($json.leadAudition.protect)"
+}
+foreach ($comparisonFile in @("stackchan_rvc_bright_robot_less_static.wav", "stackchan_rvc_bright_robot_sweet_vocoder.wav", "stackchan_rvc_bright_robot_soft_boops.wav")) {
+  if (@($json.leadAudition.adjacentComparisons | Where-Object { $_ -eq $comparisonFile }).Count -ne 1) {
+    throw "RVC_AUDITIONS.json leadAudition missing adjacent comparison: $comparisonFile"
+  }
 }
 
 $infos = @()

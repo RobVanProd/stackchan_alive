@@ -73,6 +73,23 @@ $manifest = [ordered]@{
   rvcModel = "data/voice_rvc_base.yaml"
   status = "review-only-candidate"
   rightsNote = "RVC candidate remains pending rights review; samples are not consumer-approved."
+  leadAudition = [ordered]@{
+    slug = "bright_robot"
+    title = "RVC Bright Robot"
+    file = "stackchan_rvc_bright_robot.wav"
+    transcript = "Hello. I am Stackchan, and I am awake."
+    userRating = "near-final direction, approximately 97 percent"
+    pitch = 2
+    index_rate = 0.62
+    rms_mix_rate = 0.72
+    protect = 0.28
+    perceptualPurpose = "bright synthetic robot character with light vocoder and subtle phrase earcons"
+    adjacentComparisons = @(
+      "stackchan_rvc_bright_robot_less_static.wav",
+      "stackchan_rvc_bright_robot_sweet_vocoder.wav",
+      "stackchan_rvc_bright_robot_soft_boops.wav"
+    )
+  }
   samples = $samples
 }
 $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path $manifestPath -Encoding UTF8
@@ -425,6 +442,14 @@ with open(os.path.join(final_dir, "RVC_AUDITIONS.json"), "w", encoding="utf-8") 
 with open(os.path.join(final_dir, "RVC_AUDITIONS.md"), "w", encoding="utf-8") as handle:
     handle.write("# Stackchan RVC Base Auditions\n\n")
     handle.write("Review-only auditions using the selected RVC candidate base. These are not consumer-approved voice assets until rights and source provenance are cleared.\n\n")
+    lead = manifest["leadAudition"]
+    handle.write("## Current Lead\n\n")
+    handle.write(f"- Lead audition: `{lead['file']}` / {lead['title']}.\n")
+    handle.write(f"- Transcript: \"{lead['transcript']}\"\n")
+    handle.write(f"- Tuning: pitch {lead['pitch']}, index {lead['index_rate']}, RMS mix {lead['rms_mix_rate']}, protect {lead['protect']}.\n")
+    handle.write(f"- Listening note: {lead['userRating']}; {lead['perceptualPurpose']}.\n")
+    handle.write("- Adjacent comparison passes: " + ", ".join(f"`{name}`" for name in lead["adjacentComparisons"]) + ".\n\n")
+    handle.write("## Rendered Samples\n\n")
     for item in rendered:
         text = next(s["Text"] for s in manifest["samples"] if s["Slug"] == item["sample_slug"])
         handle.write(f"- `{item['file']}`: {item['title']} - {item['notes']} Transcript: \"{text}\"\n")
