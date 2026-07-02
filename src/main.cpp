@@ -229,6 +229,20 @@ void printSystemTelemetry() {
   Serial.println(stackHighWater(gIntentTaskHandle));
 }
 
+void printRuntimeStatus() {
+  const FaceSpeechTelemetry& speech = gFace.speechTelemetry();
+  Serial.print(F("[runtime] motion_enabled="));
+  Serial.print(gActuation.isEnabled() ? 1 : 0);
+  Serial.print(F(" demo_enabled="));
+  Serial.print(gIntent.isDemoEnabled() ? 1 : 0);
+  Serial.print(F(" reduced_motion="));
+  Serial.print(gFace.isReducedMotion() ? 1 : 0);
+  Serial.print(F(" speech_active="));
+  Serial.print(speech.active ? 1 : 0);
+  Serial.print(F(" speech_env="));
+  Serial.println(speech.envelope, 2);
+}
+
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
   Serial.print(F("[speech] seq="));
   Serial.print(speechSeq);
@@ -422,6 +436,7 @@ void IntentTask(void* pv) {
       if (control.wantsStatus) {
         printHeartbeat();
         printSystemTelemetry();
+        printRuntimeStatus();
       }
       if (control.hasDemoEnable) {
         gIntent.setDemoEnabled(control.demoEnabled, millis());
@@ -488,6 +503,7 @@ void loop() {
     lastHeartbeatMs = nowMs;
     printHeartbeat();
     printSystemTelemetry();
+    printRuntimeStatus();
   }
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

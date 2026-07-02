@@ -25,6 +25,12 @@ class ProceduralFace {
   void setReducedMotion(bool enabled);
   void setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs);
   void clearSpeechEnvelope(uint32_t nowMs);
+  bool isReducedMotion() const {
+    return animator_.isReducedMotion();
+  }
+  const FaceSpeechTelemetry& speechTelemetry() const {
+    return animator_.speechTelemetry();
+  }
   void render(const RobotFrame& frame, uint32_t nowMs);
 
  private:

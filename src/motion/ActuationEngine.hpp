@@ -22,6 +22,9 @@ class ActuationEngine {
 
   void begin(IActuator* actuator);
   void setEnabled(bool enabled);
+  bool isEnabled() const {
+    return enabled_;
+  }
   void update(const RobotFrame& target, uint32_t nowUs);
 
  private:

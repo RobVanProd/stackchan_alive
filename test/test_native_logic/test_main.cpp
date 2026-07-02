@@ -237,6 +237,8 @@ void test_face_animator_reduced_motion_dampens_autonomic_offsets() {
   }
 
   TEST_ASSERT_GREATER_THAN_FLOAT(reducedMaxOffset * 2.0f, fullMaxOffset);
+  TEST_ASSERT_TRUE(reducedMotion.isReducedMotion());
+  TEST_ASSERT_FALSE(fullMotion.isReducedMotion());
 }
 
 void test_robot_config_exposes_face_reduced_motion_default() {
@@ -405,12 +407,15 @@ void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
 void test_intent_engine_demo_can_be_disabled_and_resumed() {
   IntentEngine engine;
   engine.begin();
+  TEST_ASSERT_TRUE(engine.isDemoEnabled());
 
   engine.setDemoEnabled(false, 0);
+  TEST_ASSERT_FALSE(engine.isDemoEnabled());
   const RobotFrame quiet = engine.update(4000);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(quiet.mode));
 
   engine.setDemoEnabled(true, 4000);
+  TEST_ASSERT_TRUE(engine.isDemoEnabled());
   const RobotFrame held = engine.update(6500);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(held.mode));
 
@@ -628,6 +633,7 @@ void test_actuation_disable_stops_and_suppresses_writes_until_resumed() {
   FakeActuator actuator;
   ActuationEngine engine(config);
   engine.begin(&actuator);
+  TEST_ASSERT_TRUE(engine.isEnabled());
 
   RobotFrame target = makeNeutralFrame();
   target.motion.yawMode = YawMode::Angle;
@@ -635,6 +641,7 @@ void test_actuation_disable_stops_and_suppresses_writes_until_resumed() {
   target.motion.yawDeg = 12.0f;
 
   engine.setEnabled(false);
+  TEST_ASSERT_FALSE(engine.isEnabled());
   engine.update(target, 10000);
   TEST_ASSERT_TRUE(actuator.stopped);
   TEST_ASSERT_EQUAL(0, actuator.pitchWrites);
@@ -642,6 +649,7 @@ void test_actuation_disable_stops_and_suppresses_writes_until_resumed() {
   TEST_ASSERT_EQUAL(0, actuator.yawVelocityWrites);
 
   engine.setEnabled(true);
+  TEST_ASSERT_TRUE(engine.isEnabled());
   engine.update(target, 20000);
   TEST_ASSERT_GREATER_THAN(0, actuator.pitchWrites);
   TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);

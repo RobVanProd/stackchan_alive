@@ -54,6 +54,9 @@ class FaceAnimator {
   void setReducedMotion(bool enabled);
   void setSpeechEnvelope(float envelope, SpeechViseme viseme, uint32_t nowMs);
   void clearSpeechEnvelope(uint32_t nowMs);
+  bool isReducedMotion() const {
+    return reducedMotion_;
+  }
   const FaceAutonomicTelemetry& autonomicTelemetry() const {
     return telemetry_;
   }

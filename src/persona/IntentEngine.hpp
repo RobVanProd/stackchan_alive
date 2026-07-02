@@ -12,6 +12,9 @@ class IntentEngine {
   void begin();
   void applyEvent(const RobotEvent& event, CharacterMode mode);
   void setDemoEnabled(bool enabled, uint32_t nowMs);
+  bool isDemoEnabled() const {
+    return demoEnabled_;
+  }
   RobotFrame update(uint32_t nowMs);
 
  private:
