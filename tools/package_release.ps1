@@ -191,6 +191,14 @@ if ($LASTEXITCODE -ne 0) {
   throw "Voice source status export failed."
 }
 
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_rvc_voice_base_status.ps1") `
+  -ManifestPath (Join-Path $dataDir "voice_rvc_base.yaml") `
+  -MetadataPath (Join-Path $dataDir "voice_rvc_base_metadata.json") `
+  -OutputDir $outDir
+if ($LASTEXITCODE -ne 0) {
+  throw "RVC voice base status export failed."
+}
+
 $releaseTools = @(
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
@@ -205,6 +213,8 @@ $releaseTools = @(
   "tools/export_github_actions_status.ps1",
   "tools/export_voice_source_status.cmd",
   "tools/export_voice_source_status.ps1",
+  "tools/export_rvc_voice_base_status.cmd",
+  "tools/export_rvc_voice_base_status.ps1",
   "tools/export_rollout_status.cmd",
   "tools/export_rollout_status.ps1",
   "tools/setup_voice_tools.cmd",
@@ -541,6 +551,8 @@ $manifest = [ordered]@{
   voiceSourceStatusReportJson = "voice_source_status.json"
   voiceRvcBase = "data/voice_rvc_base.yaml"
   voiceRvcBaseMetadata = "data/voice_rvc_base_metadata.json"
+  voiceRvcBaseStatusReport = "RVC_VOICE_BASE_STATUS.md"
+  voiceRvcBaseStatusReportJson = "rvc_voice_base_status.json"
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
@@ -590,6 +602,8 @@ $manifest = [ordered]@{
     "tools/export_github_actions_status.ps1",
     "tools/export_voice_source_status.cmd",
     "tools/export_voice_source_status.ps1",
+    "tools/export_rvc_voice_base_status.cmd",
+    "tools/export_rvc_voice_base_status.ps1",
     "tools/export_rollout_status.cmd",
     "tools/export_rollout_status.ps1",
     "tools/generate_synthetic_hardware_evidence.cmd",
@@ -693,6 +707,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
+    [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; review-only until production voice-source rights clear" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
@@ -734,6 +749,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, plus warm-slow and bright-robot audition variants" },
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
+    [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; confirms review-only RVC base cache/hash status when available" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates imported photos/videos/audio and records hashes" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },

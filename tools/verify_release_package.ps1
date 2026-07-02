@@ -338,6 +338,13 @@ foreach ($pattern in @("stackchan.voice-source-status.v1", "blocked-pending-prod
   }
 }
 
+$rvcBaseStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rvc_voice_base_status.ps1") -Raw
+foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "local-archive-verified-review-only", "manifest-recorded-review-only", "distributionApproved", "consumerApproved", "candidate remains review-only", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md")) {
+  if ($rvcBaseStatusExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_rvc_voice_base_status.ps1 missing required RVC base status logic: $pattern"
+  }
+}
+
 $rolloutStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rollout_status.ps1") -Raw
 foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "voice_source_status.json", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference")) {
   if ($rolloutStatusExporterText -notmatch [regex]::Escape($pattern)) {
@@ -807,6 +814,28 @@ foreach ($gate in @("production-source-selected", "rvc-candidate-rights-review",
 }
 
 & (Join-PackagePath "tools/verify_rvc_voice_base.ps1") -ManifestPath (Join-PackagePath "data/voice_rvc_base.yaml") -MetadataPath (Join-PackagePath "data/voice_rvc_base_metadata.json")
+
+Assert-File "RVC_VOICE_BASE_STATUS.md" 500
+Assert-File "rvc_voice_base_status.json" 500
+$rvcBaseStatusMarkdown = Get-Content -LiteralPath (Join-PackagePath "RVC_VOICE_BASE_STATUS.md") -Raw
+foreach ($pattern in @("RVC Voice Base Status", "Drive file ID: 1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb", "Weights.gg", "Consumer approved: False", "Distribution approved: False", "clear the production voice-source gate", "rvc_voice_base_status.json")) {
+  if ($rvcBaseStatusMarkdown -notmatch [regex]::Escape($pattern)) {
+    throw "RVC_VOICE_BASE_STATUS.md missing expected RVC base status text: $pattern"
+  }
+}
+$rvcBaseStatusJson = Get-Content -LiteralPath (Join-PackagePath "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
+if ($rvcBaseStatusJson.schema -ne "stackchan.rvc-voice-base-status.v1") {
+  throw "rvc_voice_base_status.json schema mismatch: $($rvcBaseStatusJson.schema)"
+}
+if ($rvcBaseStatusJson.status -notin @("local-archive-verified-review-only", "manifest-recorded-review-only")) {
+  throw "rvc_voice_base_status.json status mismatch: $($rvcBaseStatusJson.status)"
+}
+if ($rvcBaseStatusJson.consumerApproved -ne $false -or $rvcBaseStatusJson.distributionApproved -ne $false) {
+  throw "rvc_voice_base_status.json must keep RVC base unapproved for consumer distribution"
+}
+if ($rvcBaseStatusJson.expectedArchive.sha256 -ne "CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE") {
+  throw "rvc_voice_base_status.json expected archive SHA mismatch: $($rvcBaseStatusJson.expectedArchive.sha256)"
+}
 
 $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.json") -Raw | ConvertFrom-Json
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {

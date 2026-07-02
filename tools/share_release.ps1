@@ -438,6 +438,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "data/voice_source_provenance.yaml"); Name = "voice_source_provenance.yaml" },
   @{ Source = (Join-Path $packageRoot "data/voice_rvc_base.yaml"); Name = "voice_rvc_base.yaml" },
   @{ Source = (Join-Path $packageRoot "data/voice_rvc_base_metadata.json"); Name = "voice_rvc_base_metadata.json" },
+  @{ Source = (Join-Path $packageRoot "RVC_VOICE_BASE_STATUS.md"); Name = "RVC_VOICE_BASE_STATUS.md" },
+  @{ Source = (Join-Path $packageRoot "rvc_voice_base_status.json"); Name = "rvc_voice_base_status.json" },
   @{ Source = (Join-Path $packageRoot "READINESS_REPORT.md"); Name = "READINESS_REPORT.md" },
   @{ Source = (Join-Path $packageRoot "readiness_report.json"); Name = "readiness_report.json" },
   @{ Source = (Join-Path $packageRoot "SHA256SUMS.txt"); Name = "SHA256SUMS.txt" }
@@ -461,6 +463,7 @@ $manifest = Get-Content -LiteralPath (Join-Path $packageRoot "release_manifest.j
 $readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.json") -Raw | ConvertFrom-Json
 $dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
 $voiceSourceStatus = Get-Content -LiteralPath (Join-Path $packageRoot "voice_source_status.json") -Raw | ConvertFrom-Json
+$rvcBaseStatus = Get-Content -LiteralPath (Join-Path $packageRoot "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
 $rvcAuditions = Get-Content -LiteralPath (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json") -Raw | ConvertFrom-Json
 
 $preflightRoot = Join-Path $repoRoot "output/preflight/$Version"
@@ -519,6 +522,11 @@ $pendingGateCount = @($readiness.hardwareGates | Where-Object { $_.status -match
 $consumerRollout = [string]$readiness.consumerRollout
 $voiceSourceGateStatus = [System.Net.WebUtility]::HtmlEncode([string]$voiceSourceStatus.status)
 $voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
+$rvcBaseStatusText = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.status)
+$rvcBaseArchiveText = if ([bool]$rvcBaseStatus.localArchive.present) { "local archive verified for review cache" } else { "manifest recorded; local archive not bundled" }
+$rvcBaseArchiveText = [System.Net.WebUtility]::HtmlEncode($rvcBaseArchiveText)
+$rvcBaseExpectedSha = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.expectedArchive.sha256)
+$rvcBaseExpectedBytes = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.expectedArchive.bytes)
 $rvcLead = $rvcAuditions.leadAudition
 if ($null -eq $rvcLead) {
   throw "RVC_AUDITIONS.json is missing leadAudition metadata."
@@ -777,10 +785,11 @@ $promotionGateItems
   <h2>RVC Candidate Base</h2>
   <p>The selected audition base is the Drive/Weights.gg RVC archive <code>stackchan voice - Weights.gg Model.zip</code>. It is tracked as <code>candidate-pending-rights-review</code> for internal voice-conversion auditions only; it is not bundled in the release ZIP and is not consumer-approved.</p>
   <p>Checked by <code>tools/verify_rvc_voice_base.ps1</code> for manifest markers and, when the local archive is present, ZIP size, SHA256, entries, and embedded metadata.</p>
+  <p>Generated RVC base status: <code>$rvcBaseStatusText</code>; $rvcBaseArchiveText. See <a href="RVC_VOICE_BASE_STATUS.md">RVC_VOICE_BASE_STATUS.md</a> and <a href="rvc_voice_base_status.json">rvc_voice_base_status.json</a>.</p>
   <ul class="checklist">
     <li>Drive file ID: <code>1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb</code></li>
     <li>Weights.gg model: <code>clyaxlb9b000eoiqywl68wcrc</code>; title <code>joh</code>; author metadata <code>triceratops</code>.</li>
-    <li>ZIP SHA256: <code>CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE</code></li>
+    <li>ZIP bytes: <code>$rvcBaseExpectedBytes</code>; ZIP SHA256: <code>$rvcBaseExpectedSha</code></li>
     <li>Consumer rollout remains blocked until license, consent, training-source, commercial-device-use, and generated-prompt distribution evidence are recorded.</li>
   </ul>
   <div class="status">
@@ -836,6 +845,8 @@ $promotionGateItems
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
     <div class="item"><a href="voice_rvc_base.yaml">RVC Candidate Base YAML</a></div>
     <div class="item"><a href="voice_rvc_base_metadata.json">RVC Candidate Metadata JSON</a></div>
+    <div class="item"><a href="RVC_VOICE_BASE_STATUS.md">RVC Base Status</a></div>
+    <div class="item"><a href="rvc_voice_base_status.json">RVC Base Status JSON</a></div>
     <div class="item"><a href="ARRIVAL_DAY_RUNBOOK.md">Arrival-Day Runbook</a></div>
     <div class="item"><a href="QUICKSTART.md">Quickstart</a></div>
     <div class="item"><a href="RELEASE_ACCEPTANCE.md">Release Acceptance Checklist</a></div>
