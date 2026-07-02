@@ -747,6 +747,37 @@ function Assert-ReleaseFlashHelperSafety {
   Assert-TextContains $servoDryRun.Text "--chip esp32s3"
 }
 
+function Assert-ReleasePublishBranchGuard {
+  param(
+    [switch]$AllowDirtyPackage
+  )
+
+  $publishScript = Join-Path $PSScriptRoot "publish_release.ps1"
+  $publishArgs = @(
+    $publishScript,
+    "-Version", $Version,
+    "-Repo", "RobVanProd/stackchan_alive",
+    "-CreateTag",
+    "-PushCurrentBranch",
+    "-PushTag",
+    "-DryRun"
+  )
+  if ($AllowDirtyPackage) {
+    $publishArgs += "-AllowDirtyPackage"
+  }
+
+  $publishDryRun = Invoke-ToolText $publishArgs
+  if ($publishDryRun.ExitCode -ne 0) {
+    throw "Publish dry-run failed unexpectedly:$([Environment]::NewLine)$($publishDryRun.Text)"
+  }
+
+  Assert-TextContains $publishDryRun.Text "Dry run: git push"
+  Assert-TextContains $publishDryRun.Text "would verify"
+  Assert-TextContains $publishDryRun.Text "before creating/uploading release assets"
+  Assert-TextContains $publishDryRun.Text "Dry run: gh release create"
+  Assert-TextContains $publishDryRun.Text "Release dry run passed:"
+}
+
 function Assert-HardwareEvidenceMediaGate {
   $evidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-evidence-media-gate-" + [System.Guid]::NewGuid().ToString("N"))
   $logsDir = Join-Path $evidenceRoot "logs"
@@ -1389,6 +1420,10 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
 
   Invoke-Step "Check release binary flash helper" {
     Assert-ReleaseFlashHelperSafety $PackageZip -AllowDirtyPackage:$AllowDirty
+  }
+
+  Invoke-Step "Check release publish branch guard" {
+    Assert-ReleasePublishBranchGuard -AllowDirtyPackage:$AllowDirty
   }
 }
 
