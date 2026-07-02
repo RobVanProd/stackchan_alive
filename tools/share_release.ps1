@@ -907,10 +907,40 @@ if ((Get-Command "gh" -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPat
   }
 }
 $actionsStatus = Get-Content -LiteralPath (Join-Path $shareRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+$rolloutStatusScript = Join-Path $packageRoot "tools/export_rollout_status.ps1"
+if (Test-Path -LiteralPath $rolloutStatusScript) {
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $rolloutOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $rolloutStatusScript -Version $Version -PackageRoot $packageRoot -OutDir $shareRoot -ExpectedCommit $manifest.commit 2>&1
+    $rolloutExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  if ($rolloutExitCode -ne 0 -and $rolloutExitCode -ne 2) {
+    Write-Warning "Unable to export rollout status for share; continuing without rollout next-action details. Output:$([Environment]::NewLine)$(($rolloutOutput | Out-String).Trim())"
+  }
+}
+$rolloutStatusPath = Join-Path $shareRoot "ROLLOUT_STATUS.json"
+$rolloutStatus = if (Test-Path -LiteralPath $rolloutStatusPath) {
+  Get-Content -LiteralPath $rolloutStatusPath -Raw | ConvertFrom-Json
+} else {
+  [pscustomobject]@{
+    status = "blocked-or-pending"
+    nextOwner = "hardware"
+    nextAction = "Create the arrival-day evidence packet and run the progress check."
+    nextCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+    nextReason = "ROLLOUT_STATUS.json was not available in this share."
+  }
+}
 $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $passedGateCount = @($readiness.noHardwareProof | Where-Object { $_.status -eq "pass" }).Count
 $pendingGateCount = @($readiness.hardwareGates | Where-Object { $_.status -match "pending" }).Count
 $consumerRollout = [string]$readiness.consumerRollout
+$rolloutNextOwner = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextOwner)
+$rolloutNextAction = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextAction)
+$rolloutNextCommand = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextCommand)
+$rolloutNextReason = [System.Net.WebUtility]::HtmlEncode([string]$rolloutStatus.nextReason)
 $voiceSourceGateStatus = [System.Net.WebUtility]::HtmlEncode([string]$voiceSourceStatus.status)
 $voiceSourceBlockedGateCount = [int]$voiceSourceStatus.blockedGateCount
 $rvcBaseStatusText = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.status)
@@ -984,6 +1014,14 @@ $promotionGateItems = (@($readiness.hardwareGates) | ForEach-Object {
     <span class="pill pending">Speaker audio evidence: pending device</span>
   </div>
   <p><strong>GitHub Actions:</strong> $($actionsStatus.interpretation)</p>
+  <h2>Next Action</h2>
+  <div class="status">
+    <span class="pill pending">Next owner: $rolloutNextOwner</span>
+  </div>
+  <p><strong>Action:</strong> $rolloutNextAction</p>
+  <p><strong>Command:</strong> <code>$rolloutNextCommand</code></p>
+  <p><strong>Reason:</strong> $rolloutNextReason</p>
+  <p><a href="ROLLOUT_STATUS.md">Read rollout status</a> or <a href="ROLLOUT_STATUS.json">download rollout JSON</a>.</p>
 
 $preflightSection
 
@@ -1252,6 +1290,8 @@ $promotionGateItems
     <div class="item"><a href="release_acceptance.json">Acceptance JSON</a></div>
     <div class="item"><a href="GITHUB_ACTIONS_STATUS.md">GitHub Actions Status</a></div>
     <div class="item"><a href="github_actions_status.json">Actions Status JSON</a></div>
+    <div class="item"><a href="ROLLOUT_STATUS.md">Rollout Status</a></div>
+    <div class="item"><a href="ROLLOUT_STATUS.json">Rollout Status JSON</a></div>
     <div class="item"><a href="DEPENDENCIES.md">Dependency Provenance</a></div>
     <div class="item"><a href="dependency_lock.json">Dependency Lock JSON</a></div>
     <div class="item"><a href="RELEASE_NOTES.md">Release Notes</a></div>
