@@ -14,11 +14,14 @@ float clamp01(float value) {
   return value;
 }
 
-float smoothChannel(float current, float target, float dtMs, float tauMs) {
+float smoothingAlpha(float dtMs, float tauMs) {
   if (tauMs <= 0.0f || dtMs <= 0.0f) {
-    return target;
+    return 1.0f;
   }
-  const float alpha = 1.0f - expf(-dtMs / tauMs);
+  return 1.0f - expf(-dtMs / tauMs);
+}
+
+float smoothChannel(float current, float target, float alpha) {
   return current + (target - current) * alpha;
 }
 
@@ -42,7 +45,13 @@ float applyEase(Ease ease, float x) {
     case Ease::Linear:
       return x;
     case Ease::InOutCubic:
-      return x < 0.5f ? 4.0f * x * x * x : 1.0f - powf(-2.0f * x + 2.0f, 3.0f) * 0.5f;
+      if (x < 0.5f) {
+        return 4.0f * x * x * x;
+      }
+      {
+        const float u = -2.0f * x + 2.0f;
+        return 1.0f - u * u * u * 0.5f;
+      }
     case Ease::OutQuad:
       return 1.0f - (1.0f - x) * (1.0f - x);
     case Ease::InQuad:
@@ -408,31 +417,39 @@ FaceTargets FaceAnimator::smoothToward(const FaceTargets& target, uint32_t nowMs
   const float dtMs = static_cast<float>(nowMs - lastMs_);
   lastMs_ = nowMs;
 
-  current_.eyeOpen = smoothChannel(current_.eyeOpen, target.eyeOpen, dtMs, 60.0f);
-  current_.eyeWidthScale = smoothChannel(current_.eyeWidthScale, target.eyeWidthScale, dtMs, 40.0f);
-  current_.squint = smoothChannel(current_.squint, target.squint, dtMs, 60.0f);
-  current_.eyeSmile = smoothChannel(current_.eyeSmile, target.eyeSmile, dtMs, 60.0f);
-  current_.pupilX = smoothChannel(current_.pupilX, target.pupilX, dtMs, 80.0f);
-  current_.pupilY = smoothChannel(current_.pupilY, target.pupilY, dtMs, 80.0f);
-  current_.pupilScale = smoothChannel(current_.pupilScale, target.pupilScale, dtMs, 80.0f);
-  current_.browTilt = smoothChannel(current_.browTilt, target.browTilt, dtMs, 110.0f);
-  current_.mouthSmile = smoothChannel(current_.mouthSmile, target.mouthSmile, dtMs, 140.0f);
-  current_.mouthOpen = smoothChannel(current_.mouthOpen, target.mouthOpen, dtMs, 140.0f);
-  current_.mouthWidthDelta = smoothChannel(current_.mouthWidthDelta, target.mouthWidthDelta, dtMs, 140.0f);
-  current_.mouthCornerL = smoothChannel(current_.mouthCornerL, target.mouthCornerL, dtMs, 140.0f);
-  current_.mouthCornerR = smoothChannel(current_.mouthCornerR, target.mouthCornerR, dtMs, 140.0f);
-  current_.upperLidTilt = smoothChannel(current_.upperLidTilt, target.upperLidTilt, dtMs, 40.0f);
-  current_.lowerLidTilt = smoothChannel(current_.lowerLidTilt, target.lowerLidTilt, dtMs, 40.0f);
-  current_.faceX = smoothChannel(current_.faceX, target.faceX, dtMs, 250.0f);
-  current_.faceY = smoothChannel(current_.faceY, target.faceY, dtMs, 250.0f);
-  current_.leftCorners.tl = smoothChannel(current_.leftCorners.tl, target.leftCorners.tl, dtMs, 60.0f);
-  current_.leftCorners.tr = smoothChannel(current_.leftCorners.tr, target.leftCorners.tr, dtMs, 60.0f);
-  current_.leftCorners.bl = smoothChannel(current_.leftCorners.bl, target.leftCorners.bl, dtMs, 60.0f);
-  current_.leftCorners.br = smoothChannel(current_.leftCorners.br, target.leftCorners.br, dtMs, 60.0f);
-  current_.rightCorners.tl = smoothChannel(current_.rightCorners.tl, target.rightCorners.tl, dtMs, 60.0f);
-  current_.rightCorners.tr = smoothChannel(current_.rightCorners.tr, target.rightCorners.tr, dtMs, 60.0f);
-  current_.rightCorners.bl = smoothChannel(current_.rightCorners.bl, target.rightCorners.bl, dtMs, 60.0f);
-  current_.rightCorners.br = smoothChannel(current_.rightCorners.br, target.rightCorners.br, dtMs, 60.0f);
+  // Compute each tau once per frame; this keeps the layered animator expressive without 27 expf calls.
+  const float alpha40 = smoothingAlpha(dtMs, 40.0f);
+  const float alpha60 = smoothingAlpha(dtMs, 60.0f);
+  const float alpha80 = smoothingAlpha(dtMs, 80.0f);
+  const float alpha110 = smoothingAlpha(dtMs, 110.0f);
+  const float alpha140 = smoothingAlpha(dtMs, 140.0f);
+  const float alpha250 = smoothingAlpha(dtMs, 250.0f);
+
+  current_.eyeOpen = smoothChannel(current_.eyeOpen, target.eyeOpen, alpha60);
+  current_.eyeWidthScale = smoothChannel(current_.eyeWidthScale, target.eyeWidthScale, alpha40);
+  current_.squint = smoothChannel(current_.squint, target.squint, alpha60);
+  current_.eyeSmile = smoothChannel(current_.eyeSmile, target.eyeSmile, alpha60);
+  current_.pupilX = smoothChannel(current_.pupilX, target.pupilX, alpha80);
+  current_.pupilY = smoothChannel(current_.pupilY, target.pupilY, alpha80);
+  current_.pupilScale = smoothChannel(current_.pupilScale, target.pupilScale, alpha80);
+  current_.browTilt = smoothChannel(current_.browTilt, target.browTilt, alpha110);
+  current_.mouthSmile = smoothChannel(current_.mouthSmile, target.mouthSmile, alpha140);
+  current_.mouthOpen = smoothChannel(current_.mouthOpen, target.mouthOpen, alpha140);
+  current_.mouthWidthDelta = smoothChannel(current_.mouthWidthDelta, target.mouthWidthDelta, alpha140);
+  current_.mouthCornerL = smoothChannel(current_.mouthCornerL, target.mouthCornerL, alpha140);
+  current_.mouthCornerR = smoothChannel(current_.mouthCornerR, target.mouthCornerR, alpha140);
+  current_.upperLidTilt = smoothChannel(current_.upperLidTilt, target.upperLidTilt, alpha40);
+  current_.lowerLidTilt = smoothChannel(current_.lowerLidTilt, target.lowerLidTilt, alpha40);
+  current_.faceX = smoothChannel(current_.faceX, target.faceX, alpha250);
+  current_.faceY = smoothChannel(current_.faceY, target.faceY, alpha250);
+  current_.leftCorners.tl = smoothChannel(current_.leftCorners.tl, target.leftCorners.tl, alpha60);
+  current_.leftCorners.tr = smoothChannel(current_.leftCorners.tr, target.leftCorners.tr, alpha60);
+  current_.leftCorners.bl = smoothChannel(current_.leftCorners.bl, target.leftCorners.bl, alpha60);
+  current_.leftCorners.br = smoothChannel(current_.leftCorners.br, target.leftCorners.br, alpha60);
+  current_.rightCorners.tl = smoothChannel(current_.rightCorners.tl, target.rightCorners.tl, alpha60);
+  current_.rightCorners.tr = smoothChannel(current_.rightCorners.tr, target.rightCorners.tr, alpha60);
+  current_.rightCorners.bl = smoothChannel(current_.rightCorners.bl, target.rightCorners.bl, alpha60);
+  current_.rightCorners.br = smoothChannel(current_.rightCorners.br, target.rightCorners.br, alpha60);
   return current_;
 }
 
@@ -574,7 +591,7 @@ void FaceAnimator::updateSaccade(const RobotFrame& frame, uint32_t nowMs) {
     chooseSaccadeTarget(frame, nextX, nextY);
     const float travelX = nextX - saccade_.offsetX;
     const float travelY = nextY - saccade_.offsetY;
-    const float travel = sqrtf(travelX * travelX + travelY * travelY);
+    const float travelSq = travelX * travelX + travelY * travelY;
     saccade_.startX = saccade_.offsetX;
     saccade_.startY = saccade_.offsetY;
     saccade_.targetX = nextX;
@@ -586,7 +603,7 @@ void FaceAnimator::updateSaccade(const RobotFrame& frame, uint32_t nowMs) {
     saccade_.settleStartMs = nowMs;
     saccade_.settling = true;
     saccade_.count++;
-    if (travel > 0.50f && randomRange(0, 99) < 40 && blink_.phase == BlinkPhase::Open) {
+    if (travelSq > 0.25f && randomRange(0, 99) < 40 && blink_.phase == BlinkPhase::Open) {
       blink_.nextMs = nowMs;
     }
     scheduleSaccade(frame, nowMs);

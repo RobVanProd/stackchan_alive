@@ -11,6 +11,12 @@ constexpr uint32_t kEye = 0xF7FBFF;
 constexpr uint32_t kPupil = 0x111827;
 constexpr uint32_t kAccent = 0x61E4D7;
 constexpr uint32_t kMouth = 0xFF6B8A;
+constexpr int kOpenMouthSegments = 12;
+constexpr float kSmilePow06[] = {
+  0.000000f, 0.189465f, 0.287175f, 0.366270f, 0.435275f, 0.497634f,
+  0.555161f, 0.608957f, 0.659754f, 0.708066f, 0.754272f, 0.798663f,
+  0.841466f, 0.882864f, 0.923007f, 0.962017f, 1.000000f,
+};
 
 int32_t roundToInt(float value) {
   return static_cast<int32_t>(value + (value >= 0.0f ? 0.5f : -0.5f));
@@ -19,6 +25,13 @@ int32_t roundToInt(float value) {
 float qbez(float p0, float p1, float p2, float u) {
   const float a = 1.0f - u;
   return a * a * p0 + 2.0f * a * u * p1 + u * u * p2;
+}
+
+float smileCurveGain(float smileMagnitude) {
+  const float x = constrain(smileMagnitude, 0.0f, 1.0f) * 16.0f;
+  const int index = constrain(static_cast<int>(x), 0, 15);
+  const float frac = x - static_cast<float>(index);
+  return kSmilePow06[index] + (kSmilePow06[index + 1] - kSmilePow06[index]) * frac;
 }
 
 }  // namespace
@@ -162,7 +175,7 @@ void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
   const int32_t cx = roundToInt(mouth.cx);
   const int32_t cy = roundToInt(mouth.cy);
   const int32_t half = roundToInt(mouth.width * 0.5f);
-  const float smileMagnitude = powf(fabsf(mouth.smile), 0.6f);
+  const float smileMagnitude = smileCurveGain(fabsf(mouth.smile));
   const float smileSign = mouth.smile < 0.0f ? -1.0f : 1.0f;
   const int32_t curve = roundToInt(smileSign * smileMagnitude * 22.0f);
   const int32_t open = roundToInt(mouth.open * 18.0f);
@@ -176,8 +189,8 @@ void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
     int32_t prevTopY = leftY;
     int32_t prevBottomX = cx - half;
     int32_t prevBottomY = leftY + max<int32_t>(2, open / 2);
-    for (int i = 1; i <= 18; ++i) {
-      const float u = static_cast<float>(i) / 18.0f;
+    for (int i = 1; i <= kOpenMouthSegments; ++i) {
+      const float u = static_cast<float>(i) / static_cast<float>(kOpenMouthSegments);
       const int32_t topX = roundToInt(qbez(cx - half, cx, cx + half, u));
       const int32_t topY = roundToInt(qbez(leftY, topCtrlY, rightY, u));
       const int32_t bottomX = topX;

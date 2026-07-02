@@ -63,6 +63,19 @@ function Assert-FileContains {
   }
 }
 
+function Assert-FileNotContains {
+  param(
+    [string]$Path,
+    [string]$Pattern,
+    [string]$Message
+  )
+
+  $text = Get-Content -LiteralPath $Path -Raw
+  if ($text -match $Pattern) {
+    throw $Message
+  }
+}
+
 function Assert-NoMatchesOutside {
   param(
     [string]$Pattern,
@@ -184,6 +197,20 @@ Assert-FileContains (Expand-SourcePath "src/main.cpp") "xTaskCreatePinnedToCore\
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "xTaskCreatePinnedToCore\s*\(\s*IntentTask\s*,[^;]*,\s*1\s*\)" "IntentTask must be pinned to Core 1 by default."
 
 Assert-PlatformioFlag "stackchan" "-D STACKCHAN_ENABLE_SERVOS=0"
+Assert-PlatformioFlag "stackchan" "-O3"
+Assert-PlatformioFlag "stackchan" "-ffast-math"
+Assert-PlatformioFlag "stackchan" "-fno-math-errno"
+Assert-PlatformioFlag "stackchan" "-D CORE_DEBUG_LEVEL=0"
 Assert-PlatformioFlag "stackchan_servo_calibration" "-D STACKCHAN_ENABLE_SERVOS=1"
+Assert-PlatformioFlag "stackchan_servo_calibration" "-O3"
+Assert-PlatformioFlag "stackchan_servo_calibration" "-ffast-math"
+Assert-PlatformioFlag "stackchan_servo_calibration" "-fno-math-errno"
+Assert-PlatformioFlag "stackchan_servo_calibration" "-D CORE_DEBUG_LEVEL=0"
+
+Assert-FileContains (Expand-SourcePath "src/face/FaceAnimator.cpp") "smoothingAlpha" "FaceAnimator must compute per-tau smoothing alpha once per frame."
+Assert-FileContains (Expand-SourcePath "src/face/FaceAnimator.cpp") "const float alpha40" "FaceAnimator must cache smoothing alphas for hot-path channels."
+Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "kOpenMouthSegments\s*=\s*12" "DisplayAdapter open-mouth tessellation must stay bounded for device frame time."
+Assert-FileContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "kSmilePow06" "DisplayAdapter must use the smile gain lookup instead of powf in the render hot path."
+Assert-FileNotContains (Expand-SourcePath "src/io/DisplayAdapter.cpp") "powf\s*\(" "DisplayAdapter render hot path must not call powf."
 
 Write-Host "Architecture boundaries verified."
