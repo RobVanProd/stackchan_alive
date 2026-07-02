@@ -102,9 +102,12 @@ try {
   @"
 import math
 import os
+import subprocess
 import struct
 import sys
 import wave
+
+import imageio_ffmpeg
 
 source_dir = sys.argv[1]
 out_dir = sys.argv[2]
@@ -137,6 +140,24 @@ def write_wav(path, rate, samples):
         wav.setsampwidth(2)
         wav.setframerate(rate)
         wav.writeframes(bytes(pcm))
+
+def encode_mp3(wav_path, mp3_path):
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run([
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        wav_path,
+        "-vn",
+        "-codec:a",
+        "libmp3lame",
+        "-b:a",
+        "96k",
+        mp3_path,
+    ], check=True)
 
 def resample_linear(samples, factor):
     if factor <= 0:
@@ -444,6 +465,15 @@ for name in sorted(os.listdir(source_dir)):
     if slug == "greeting":
         write_wav(os.path.join(out_dir, "stackchan_spark_audition_warm_slow_greeting.wav"), rate, audition_warm_slow(rate, processed))
         write_wav(os.path.join(out_dir, "stackchan_spark_audition_bright_robot_greeting.wav"), rate, audition_bright_robot(rate, processed))
+
+encode_mp3(
+    os.path.join(out_dir, "stackchan_spark_audition_bright_robot_greeting.wav"),
+    os.path.join(out_dir, "stackchan_spark_audition_bright_robot_greeting.mp3"),
+)
+encode_mp3(
+    os.path.join(out_dir, "stackchan_spark_thinking.wav"),
+    os.path.join(out_dir, "stackchan_spark_thinking.mp3"),
+)
 "@ | Set-Content -Path $effectScript -Encoding UTF8
 
   & $pythonPath $effectScript $tempDir $outputPath
@@ -482,12 +512,16 @@ Audition variants:
 Quick MP3 copies:
 - ``stackchan_spark_audition_bright_robot_greeting.mp3``: browser-friendly copy of the Bright Robot greeting
 - ``stackchan_spark_thinking.mp3``: browser-friendly copy of the Thinking sample
+- The renderer refreshes these MP3 copies from the WAVs with the bundled preview ffmpeg path, so release packages do not carry stale audition audio.
 
 Rollout note: these WAV and MP3 files are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
 "@ | Set-Content -Path (Join-Path $outputPath "VOICE_SAMPLES.md") -Encoding UTF8
 
   Write-Host "Rendered Stackchan Spark voice samples:"
-  Get-ChildItem -LiteralPath $outputPath -Filter "stackchan_spark_*.wav" | ForEach-Object {
+  Get-ChildItem -LiteralPath $outputPath -File |
+    Where-Object { $_.Name -match "^stackchan_spark_.*\.(wav|mp3)$" } |
+    Sort-Object Name |
+    ForEach-Object {
     Write-Host $_.FullName
   }
 } finally {

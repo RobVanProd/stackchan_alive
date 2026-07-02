@@ -20,5 +20,6 @@ Audition variants:
 Quick MP3 copies:
 - `stackchan_spark_audition_bright_robot_greeting.mp3`: browser-friendly copy of the Bright Robot greeting
 - `stackchan_spark_thinking.mp3`: browser-friendly copy of the Thinking sample
+- The renderer refreshes these MP3 copies from the WAVs with the bundled preview ffmpeg path, so release packages do not carry stale audition audio.
 
 Rollout note: these WAV and MP3 files are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.

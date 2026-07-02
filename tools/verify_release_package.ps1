@@ -85,6 +85,22 @@ function Assert-Bytes {
   }
 }
 
+function Assert-Mp3File {
+  param(
+    [string]$RelativePath,
+    [int64]$MinBytes = 50000
+  )
+
+  Assert-File $RelativePath $MinBytes
+  $path = Join-PackagePath $RelativePath
+  $bytes = [System.IO.File]::ReadAllBytes($path)
+  $hasId3 = $bytes.Length -ge 3 -and $bytes[0] -eq 0x49 -and $bytes[1] -eq 0x44 -and $bytes[2] -eq 0x33
+  $hasFrameSync = $bytes.Length -ge 2 -and $bytes[0] -eq 0xff -and (($bytes[1] -band 0xe0) -eq 0xe0)
+  if (-not ($hasId3 -or $hasFrameSync)) {
+    throw "Package MP3 has no ID3 tag or MPEG frame sync: $RelativePath"
+  }
+}
+
 $requiredFiles = @(
   "DEPENDENCIES.md",
   "ARRIVAL_DAY_RUNBOOK.md",
@@ -407,8 +423,8 @@ Assert-File "media/voice/stackchan_spark_thinking.wav" 1000
 Assert-File "media/voice/stackchan_spark_safety.wav" 1000
 Assert-File "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" 1000
 Assert-File "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" 1000
-Assert-File "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3" 50000
-Assert-File "media/voice/stackchan_spark_thinking.mp3" 50000
+Assert-Mp3File "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3"
+Assert-Mp3File "media/voice/stackchan_spark_thinking.mp3"
 Assert-File "media/voice/VOICE_SAMPLES.md" 100
 Assert-File "media/voice/rvc/RVC_AUDITIONS.md" 500
 Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
@@ -442,8 +458,6 @@ Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3" ([byte[]](0xff, 0xf3))
-Assert-Bytes "media/voice/stackchan_spark_thinking.mp3" ([byte[]](0xff, 0xf3))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_warm_slow.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
