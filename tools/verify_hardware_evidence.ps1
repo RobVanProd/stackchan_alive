@@ -659,6 +659,60 @@ foreach ($pattern in @("RVC Lead Audition Reference", [string]$metadata.voiceLea
   }
 }
 
+if ($null -eq $metadata.voiceGateStatus) {
+  throw "metadata.json missing voiceGateStatus reference"
+}
+
+foreach ($field in @("voiceSourceStatus", "voiceSourceBlockedGateCount", "rvcVoiceBaseStatus", "rvcConsumerApproved", "rvcDistributionApproved")) {
+  if ($null -eq $metadata.voiceGateStatus.$field -or [string]::IsNullOrWhiteSpace([string]$metadata.voiceGateStatus.$field)) {
+    throw "metadata voiceGateStatus missing required field: $field"
+  }
+}
+
+Assert-File "VOICE_SOURCE_STATUS.md" 500
+Assert-File "voice_source_status.json" 500
+Assert-File "RVC_VOICE_BASE_STATUS.md" 500
+Assert-File "rvc_voice_base_status.json" 500
+
+$voiceSourceStatus = Get-Content -LiteralPath (Join-EvidencePath "voice_source_status.json") -Raw | ConvertFrom-Json
+if ($voiceSourceStatus.schema -ne "stackchan.voice-source-status.v1") {
+  throw "voice_source_status.json schema mismatch: $($voiceSourceStatus.schema)"
+}
+if ($voiceSourceStatus.status -ne [string]$metadata.voiceGateStatus.voiceSourceStatus) {
+  throw "voice_source_status.json status does not match metadata voiceGateStatus"
+}
+if ([int]$voiceSourceStatus.blockedGateCount -ne [int]$metadata.voiceGateStatus.voiceSourceBlockedGateCount) {
+  throw "voice_source_status.json blockedGateCount does not match metadata voiceGateStatus"
+}
+
+$rvcBaseStatus = Get-Content -LiteralPath (Join-EvidencePath "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
+if ($rvcBaseStatus.schema -ne "stackchan.rvc-voice-base-status.v1") {
+  throw "rvc_voice_base_status.json schema mismatch: $($rvcBaseStatus.schema)"
+}
+if ($rvcBaseStatus.status -ne [string]$metadata.voiceGateStatus.rvcVoiceBaseStatus) {
+  throw "rvc_voice_base_status.json status does not match metadata voiceGateStatus"
+}
+if ([bool]$rvcBaseStatus.consumerApproved -ne [bool]$metadata.voiceGateStatus.rvcConsumerApproved) {
+  throw "rvc_voice_base_status.json consumerApproved does not match metadata voiceGateStatus"
+}
+if ([bool]$rvcBaseStatus.distributionApproved -ne [bool]$metadata.voiceGateStatus.rvcDistributionApproved) {
+  throw "rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus"
+}
+
+$voiceSourceStatusText = Get-Content -LiteralPath (Join-EvidencePath "VOICE_SOURCE_STATUS.md") -Raw
+foreach ($pattern in @("Voice Source", [string]$metadata.voiceGateStatus.voiceSourceStatus, "production voice")) {
+  if ($voiceSourceStatusText -notmatch [regex]::Escape($pattern)) {
+    throw "VOICE_SOURCE_STATUS.md missing expected marker: $pattern"
+  }
+}
+
+$rvcBaseStatusText = Get-Content -LiteralPath (Join-EvidencePath "RVC_VOICE_BASE_STATUS.md") -Raw
+foreach ($pattern in @("RVC", [string]$metadata.voiceGateStatus.rvcVoiceBaseStatus, "review")) {
+  if ($rvcBaseStatusText -notmatch [regex]::Escape($pattern)) {
+    throw "RVC_VOICE_BASE_STATUS.md missing expected marker: $pattern"
+  }
+}
+
 if ($null -eq $metadata.package) {
   if (-not $AllowMissingPackage) {
     throw "metadata.json missing package proof. Recreate the packet with -PackageZip or pass -AllowMissingPackage for diagnostic-only evidence."
