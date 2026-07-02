@@ -20,6 +20,7 @@ struct BenchSpeechEnvelope {
 };
 
 struct BenchControl {
+  bool wantsHelp = false;
   bool hasEvent = false;
   bool hasSpeech = false;
   CharacterMode mode = CharacterMode::Idle;
@@ -37,6 +38,8 @@ class SensorAdapter {
   bool poll(BenchControl* controlOut);
 
  private:
+  void printHelp() const;
+
   char line_[96] = {};
   uint8_t lineLength_ = 0;
 };

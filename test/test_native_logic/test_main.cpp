@@ -404,6 +404,7 @@ void test_intent_engine_emits_deduped_speech_cue_on_external_event() {
 void test_sensor_adapter_parses_serial_mode_command() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
+  TEST_ASSERT_FALSE(control.wantsHelp);
   TEST_ASSERT_TRUE(control.hasEvent);
   TEST_ASSERT_FALSE(control.hasSpeech);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(control.mode));
@@ -411,6 +412,19 @@ void test_sensor_adapter_parses_serial_mode_command() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.75f, control.event.strength);
   TEST_ASSERT_EQUAL_UINT32(1234, control.event.timestampMs);
   TEST_ASSERT_EQUAL_STRING("mode_listen", control.command);
+}
+
+void test_sensor_adapter_parses_help_without_event() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("help", 1000, &control));
+  TEST_ASSERT_TRUE(control.wantsHelp);
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_EQUAL_STRING("help", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("?", 1000, &control));
+  TEST_ASSERT_TRUE(control.wantsHelp);
+  TEST_ASSERT_EQUAL_STRING("help", control.command);
 }
 
 void test_sensor_adapter_parses_event_aliases_and_clamps_strength() {
@@ -624,6 +638,7 @@ int main() {
   RUN_TEST(test_robot_frame_carries_speech_cue_for_output_adapters);
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
+  RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_event_aliases_and_clamps_strength);
   RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);

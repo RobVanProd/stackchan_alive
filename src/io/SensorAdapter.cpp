@@ -69,6 +69,14 @@ bool isHelpToken(const char* token) {
   return strcmp(token, "help") == 0 || strcmp(token, "?") == 0;
 }
 
+bool fillHelp(BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.wantsHelp = true;
+  parsed.command = "help";
+  *controlOut = parsed;
+  return true;
+}
+
 void normalizeLine(const char* line, char* out, size_t outSize) {
   if (outSize == 0) {
     return;
@@ -242,8 +250,11 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   normalizeLine(line, normalized, sizeof(normalized));
 
   char* first = strtok(normalized, " \t");
-  if (first == nullptr || isHelpToken(first)) {
+  if (first == nullptr) {
     return false;
+  }
+  if (isHelpToken(first)) {
+    return fillHelp(controlOut);
   }
 
   char* second = strtok(nullptr, " \t");
@@ -296,11 +307,20 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   return true;
 }
 
+void SensorAdapter::printHelp() const {
+#if defined(ARDUINO_ARCH_ESP32)
+  Serial.println(F("[control] help: mode listen|think|speak|idle|sleep|error [strength]"));
+  Serial.println(F("[control] help: event wake|touch|response|speech_end|idle|error [strength]"));
+  Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
+  Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
+#endif
+}
+
 bool SensorAdapter::begin() {
   lineLength_ = 0;
   line_[0] = '\0';
 #if defined(ARDUINO_ARCH_ESP32)
-  Serial.println(F("[control] serial commands: mode listen|think|speak|idle|sleep|error; event wake|touch|response|speech_end|idle|error; speech 0.8 ah|oh|ee"));
+  printHelp();
 #endif
   return true;
 }
@@ -324,6 +344,11 @@ bool SensorAdapter::poll(BenchControl* controlOut) {
       lineLength_ = 0;
 
       if (parseBenchControlLine(line_, millis(), controlOut)) {
+        if (controlOut->wantsHelp) {
+          printHelp();
+          line_[0] = '\0';
+          continue;
+        }
         return true;
       }
 
