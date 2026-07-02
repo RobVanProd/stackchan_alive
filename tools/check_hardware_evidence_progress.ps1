@@ -118,6 +118,15 @@ function Get-BenchNextAction {
     }
   }
 
+  $speechMouthFinding = Get-FirstFindingLike @("logs/speech_mouth_demo_serial\.log", "speech mouth demo")
+  if (-not [string]::IsNullOrWhiteSpace($speechMouthFinding)) {
+    return [ordered]@{
+      action = "Run the speech-mouth demo while display-only firmware is still connected."
+      command = "RUN_SPEECH_MOUTH_DEMO.cmd"
+      reason = $speechMouthFinding
+    }
+  }
+
   $servoFinding = Get-FirstFindingLike @("logs/servo_calibration_serial\.log", "servo-calibration boot marker", "servo hardware-enable marker", "Yaw classification", "yaw_mode", "calibration/calibration\.yaml", "Calibration changes", "Pitch behavior")
   if (-not [string]::IsNullOrWhiteSpace($servoFinding)) {
     return [ordered]@{
