@@ -20,8 +20,10 @@ void IntentEngine::begin() {
   lastSpeechCueMs_ = 0;
   activeSpeechUntilMs_ = 0;
   demoEnabled_ = true;
+  reducedMotion_ = false;
   lastSpeechIntent_ = SpeechIntent::None;
   activeSpeech_ = SpeechCue {};
+  idleLife_.reset(lastUpdateMs_);
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
 }
 
@@ -36,6 +38,10 @@ void IntentEngine::setDemoEnabled(bool enabled, uint32_t nowMs) {
   if (enabled) {
     nextDemoEventMs_ = nowMs + 3000;
   }
+}
+
+void IntentEngine::setReducedMotion(bool enabled) {
+  reducedMotion_ = enabled;
 }
 
 RobotFrame IntentEngine::update(uint32_t nowMs) {
@@ -53,6 +59,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   frame.emotion = emotion_.profile();
   frame.motion = motionForMode(nowMs);
   frame.face = expression_.map(frame.emotion, mode_);
+  idleLife_.apply(frame, nowMs, reducedMotion_);
   if (nowMs < activeSpeechUntilMs_ && activeSpeech_.shouldSpeak()) {
     frame.speech = activeSpeech_;
     frame.speechSeq = speechSeq_;

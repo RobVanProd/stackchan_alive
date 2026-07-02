@@ -10,6 +10,7 @@
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "persona/EmotionModel.hpp"
+#include "persona/IdleLife.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/SpeechPlanner.hpp"
 
@@ -423,6 +424,72 @@ void test_intent_engine_demo_can_be_disabled_and_resumed() {
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Think), static_cast<int>(demo.mode));
 }
 
+void test_idle_life_breathing_moves_face_and_body_together() {
+  IdleLife idle;
+  idle.reset(0);
+  RobotFrame frame = makeNeutralFrame();
+  frame.timestampMs = 1250;
+  frame.mode = CharacterMode::Idle;
+  frame.emotion.arousal = 0.20f;
+  frame.emotion.focus = 0.55f;
+
+  idle.apply(frame, 1250, false);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, fabsf(frame.face.faceY));
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, fabsf(frame.motion.pitchDeg));
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.90f, frame.face.pupilScale);
+}
+
+void test_idle_life_reduced_motion_dampens_offsets() {
+  IdleLife fullMotion;
+  IdleLife reducedMotion;
+  fullMotion.reset(0);
+  reducedMotion.reset(0);
+  RobotFrame full = makeNeutralFrame();
+  RobotFrame reduced = makeNeutralFrame();
+  full.emotion.arousal = 0.20f;
+  reduced.emotion.arousal = 0.20f;
+
+  fullMotion.apply(full, 1250, false);
+  reducedMotion.apply(reduced, 1250, true);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.face.faceY), fabsf(full.face.faceY));
+  TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.motion.pitchDeg), fabsf(full.motion.pitchDeg));
+}
+
+void test_idle_life_micro_expression_is_deterministic() {
+  IdleLife first;
+  IdleLife second;
+  first.reset(0);
+  second.reset(0);
+  RobotFrame a = makeNeutralFrame();
+  RobotFrame b = makeNeutralFrame();
+
+  first.apply(a, 1920, false);
+  second.apply(b, 1920, false);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.18f, a.face.mouthSmile);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, a.face.mouthSmile, b.face.mouthSmile);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, first.telemetry().microExpression, second.telemetry().microExpression);
+}
+
+void test_intent_engine_reduced_motion_dampens_idle_life() {
+  IntentEngine fullMotion;
+  IntentEngine reducedMotion;
+  fullMotion.begin();
+  reducedMotion.begin();
+  fullMotion.setDemoEnabled(false, 0);
+  reducedMotion.setDemoEnabled(false, 0);
+  reducedMotion.setReducedMotion(true);
+
+  const RobotFrame full = fullMotion.update(1250);
+  const RobotFrame reduced = reducedMotion.update(1250);
+
+  TEST_ASSERT_FALSE(fullMotion.isReducedMotion());
+  TEST_ASSERT_TRUE(reducedMotion.isReducedMotion());
+  TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.face.faceY), fabsf(full.face.faceY));
+}
+
 void test_sensor_adapter_parses_serial_mode_command() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
@@ -831,6 +898,10 @@ int main() {
   RUN_TEST(test_robot_frame_carries_speech_cue_for_output_adapters);
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
   RUN_TEST(test_intent_engine_demo_can_be_disabled_and_resumed);
+  RUN_TEST(test_idle_life_breathing_moves_face_and_body_together);
+  RUN_TEST(test_idle_life_reduced_motion_dampens_offsets);
+  RUN_TEST(test_idle_life_micro_expression_is_deterministic);
+  RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_status_without_event);
