@@ -138,7 +138,8 @@ $voiceMediaFiles = @(
   "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
   "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
   "docs/media/voice/stackchan_spark_thinking.mp3",
-  "docs/media/voice/VOICE_SAMPLES.md"
+  "docs/media/voice/VOICE_SAMPLES.md",
+  "docs/media/voice/VOICE_AUDITION.html"
 )
 
 foreach ($file in $voiceMediaFiles) {
@@ -582,6 +583,7 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
     "media/voice/stackchan_spark_thinking.mp3",
     "media/voice/VOICE_SAMPLES.md",
+    "media/voice/VOICE_AUDITION.html",
     "media/voice/rvc/RVC_AUDITIONS.md",
     "media/voice/rvc/RVC_AUDITIONS.json",
     "media/voice/rvc/stackchan_rvc_neutral.wav",

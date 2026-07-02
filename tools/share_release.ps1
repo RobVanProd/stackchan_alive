@@ -796,6 +796,7 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3"); Name = "voice/stackchan_spark_audition_bright_robot_greeting.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/stackchan_spark_thinking.mp3"); Name = "voice/stackchan_spark_thinking.mp3" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
+  @{ Source = (Join-Path $packageRoot "media/voice/VOICE_AUDITION.html"); Name = "voice/VOICE_AUDITION.html" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"); Name = "voice/rvc/RVC_AUDITIONS.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"); Name = "voice/rvc/RVC_AUDITIONS.json" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav"); Name = "voice/rvc/stackchan_rvc_neutral.wav" },
@@ -1210,6 +1211,7 @@ $promotionGateItems
     <div class="item"><a href="artifacts/face/phase_d_idle_to_sleep_filmstrip_50ms.png">Face Phase D Idle to Sleep Filmstrip</a></div>
     <div class="item"><a href="artifacts/face/phase_e_speech_reactive_6s.gif">Face Phase E Speech GIF</a></div>
     <div class="item"><a href="voice/VOICE_SAMPLES.md">Voice Sample Notes</a></div>
+    <div class="item"><a href="voice/VOICE_AUDITION.html">Local Voice Audition Page</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_warm_slow_greeting.wav">Warm Slow Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Bright Robot MP3</a></div>

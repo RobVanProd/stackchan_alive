@@ -164,6 +164,11 @@ if (-not (Test-Path -LiteralPath $notesPath)) {
   throw "Missing voice sample notes: VOICE_SAMPLES.md"
 }
 
+$auditionPagePath = Join-VoicePath "VOICE_AUDITION.html"
+if (-not (Test-Path -LiteralPath $auditionPagePath)) {
+  throw "Missing voice audition page: VOICE_AUDITION.html"
+}
+
 $notes = Get-Content -LiteralPath $notesPath -Raw
 foreach ($pattern in @(
   "Stackchan Spark Synth v4",
@@ -187,6 +192,20 @@ foreach ($pattern in @(
   "not trained from soundboard clips"
 )) {
   Assert-TextContains -Text $notes -Pattern $pattern -Name "VOICE_SAMPLES.md"
+}
+
+$auditionPage = Get-Content -LiteralPath $auditionPagePath -Raw
+foreach ($pattern in @(
+  "Stackchan Spark Voice Audition",
+  "stackchan_spark_audition_bright_robot_greeting.mp3",
+  "stackchan_spark_audition_bright_robot_greeting.wav",
+  "stackchan_spark_thinking.mp3",
+  "stackchan_spark_thinking.wav",
+  "Hello. I am Stackchan, and I am awake.",
+  "Input received. I am thinking now. Curiosity level rising.",
+  "production rollout remains blocked"
+)) {
+  Assert-TextContains -Text $auditionPage -Pattern $pattern -Name "VOICE_AUDITION.html"
 }
 
 $results | ConvertTo-Json -Depth 3

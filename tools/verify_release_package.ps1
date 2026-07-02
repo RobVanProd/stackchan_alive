@@ -159,6 +159,7 @@ $requiredFiles = @(
   "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
   "media/voice/stackchan_spark_thinking.mp3",
   "media/voice/VOICE_SAMPLES.md",
+  "media/voice/VOICE_AUDITION.html",
   "media/voice/rvc/RVC_AUDITIONS.md",
   "media/voice/rvc/RVC_AUDITIONS.json",
   "media/voice/rvc/stackchan_rvc_neutral.wav",
@@ -426,6 +427,7 @@ Assert-File "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" 100
 Assert-Mp3File "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3"
 Assert-Mp3File "media/voice/stackchan_spark_thinking.mp3"
 Assert-File "media/voice/VOICE_SAMPLES.md" 100
+Assert-File "media/voice/VOICE_AUDITION.html" 1000
 Assert-File "media/voice/rvc/RVC_AUDITIONS.md" 500
 Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
 Assert-File "media/voice/rvc/stackchan_rvc_neutral.wav" 100000
@@ -598,6 +600,7 @@ $expectedMediaArtifacts = @(
   "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
   "media/voice/stackchan_spark_thinking.mp3",
   "media/voice/VOICE_SAMPLES.md",
+  "media/voice/VOICE_AUDITION.html",
   "media/voice/rvc/RVC_AUDITIONS.md",
   "media/voice/rvc/RVC_AUDITIONS.json",
   "media/voice/rvc/stackchan_rvc_neutral.wav",
