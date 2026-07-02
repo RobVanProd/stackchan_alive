@@ -220,8 +220,10 @@ function Assert-TextContains {
 function Assert-GitHubActionsStatusExporterGate {
   $fixtureBase = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-actions-status-gate-" + [System.Guid]::NewGuid().ToString("N"))
   $completeFixtureRoot = Join-Path $fixtureBase "complete-required-workflows"
+  $preRunnerFixtureRoot = Join-Path $fixtureBase "pre-runner-allocation"
   $missingFixtureRoot = Join-Path $fixtureBase "missing-required-workflow"
   $completeOutputRoot = Join-Path $fixtureBase "out-complete"
+  $preRunnerOutputRoot = Join-Path $fixtureBase "out-pre-runner"
   $missingOutputRoot = Join-Path $fixtureBase "out-missing"
   $fixtureCommit = "0123456789abcdef0123456789abcdef01234567"
   $fixtureVersion = "v0.0.0-actions-status-selftest"
@@ -322,6 +324,60 @@ function Assert-GitHubActionsStatusExporterGate {
         throw "Billing fixture missing required workflow contract: $workflowName"
       }
     }
+
+    Write-FixtureJson $preRunnerFixtureRoot "run_list.json" @(
+      [ordered]@{
+        databaseId = 201
+        name = "Firmware"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "failure"
+        createdAt = "2026-07-02T00:03:00Z"
+        url = "https://example.invalid/runs/201"
+        event = "push"
+        displayTitle = "Firmware"
+      },
+      [ordered]@{
+        databaseId = 202
+        name = "Release"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "failure"
+        createdAt = "2026-07-02T00:04:00Z"
+        url = "https://example.invalid/runs/202"
+        event = "push"
+        displayTitle = "Release"
+      }
+    )
+    Write-FixtureJson $preRunnerFixtureRoot "jobs_201.json" ([ordered]@{ jobs = @((New-FixtureJob 501 "native-tests" "failure" 0 @())) })
+    Write-FixtureJson $preRunnerFixtureRoot "jobs_202.json" ([ordered]@{ jobs = @((New-FixtureJob 502 "release" "failure" 0 @())) })
+    foreach ($jobId in @(501, 502)) {
+      Write-FixtureJson $preRunnerFixtureRoot "annotations_$jobId.json" @()
+    }
+
+    $preRunnerResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $preRunnerOutputRoot,
+      "-FixtureRoot", $preRunnerFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release"
+    )
+    if ($preRunnerResult.ExitCode -ne 0) {
+      throw "Actions status exporter rejected pre-runner allocation fixture:$([Environment]::NewLine)$($preRunnerResult.Text)"
+    }
+    $preRunnerStatus = Get-Content -LiteralPath (Join-Path $preRunnerOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($preRunnerStatus.status -ne "external-account-ci-pre-runner-allocation") {
+      throw "Expected pre-runner fixture status external-account-ci-pre-runner-allocation, got $($preRunnerStatus.status)"
+    }
+    if (@($preRunnerStatus.missingRequiredWorkflows).Count -ne 0) {
+      throw "Pre-runner fixture unexpectedly reported missing required workflows: $(@($preRunnerStatus.missingRequiredWorkflows) -join ', ')"
+    }
+    $preRunnerMarkdown = Get-Content -LiteralPath (Join-Path $preRunnerOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
+    Assert-TextContains $preRunnerMarkdown "no runner was assigned"
 
     Write-FixtureJson $missingFixtureRoot "run_list.json" @(
       [ordered]@{
