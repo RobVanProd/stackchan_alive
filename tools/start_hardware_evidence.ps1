@@ -465,52 +465,32 @@ if ($voiceLeadInfo) {
   $playLeadCommand = "`$player = New-Object System.Media.SoundPlayer $(Quote-PowerShellArgument $leadAudioPath); `$player.PlaySync()"
 }
 
+function New-PowerShellCommandFile {
+  param([string]$Command)
+
+  return @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $Command; if (`$null -ne `$global:LASTEXITCODE) { exit `$global:LASTEXITCODE }; if (-not `$?) { exit 1 } }`"",
+    "exit /b %ERRORLEVEL%"
+  )
+}
+
 $commandFiles = [ordered]@{
-  "RUN_PLAY_LEAD_VOICE.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $playLeadCommand }`""
-  )
-  "RUN_DISPLAY_ONLY.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $displayCommand }`""
-  )
-  "RUN_SERVO_CALIBRATION.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $servoCommand }`""
-  )
-  "RUN_SOAK_MONITOR.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $soakCommand }`""
-  )
-  "RUN_PACKAGE_VERIFY.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $verifyCommand }`""
-  )
-  "RUN_PROGRESS_CHECK.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $progressCommand }`""
-  )
+  "RUN_PLAY_LEAD_VOICE.cmd" = New-PowerShellCommandFile $playLeadCommand
+  "RUN_DISPLAY_ONLY.cmd" = New-PowerShellCommandFile $displayCommand
+  "RUN_SERVO_CALIBRATION.cmd" = New-PowerShellCommandFile $servoCommand
+  "RUN_SOAK_MONITOR.cmd" = New-PowerShellCommandFile $soakCommand
+  "RUN_PACKAGE_VERIFY.cmd" = New-PowerShellCommandFile $verifyCommand
+  "RUN_PROGRESS_CHECK.cmd" = New-PowerShellCommandFile $progressCommand
   "RUN_ADD_MEDIA.cmd" = @(
     "@echo off",
     "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\add_hardware_evidence_media.ps1`" -EvidenceRoot `"$outDir`" %*"
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\add_hardware_evidence_media.ps1`" -EvidenceRoot `"$outDir`" %*",
+    "exit /b %ERRORLEVEL%"
   )
-  "RUN_EVIDENCE_VERIFY.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $evidenceVerifyCommand }`""
-  )
-  "RUN_CONSUMER_PROMOTION_CHECK.cmd" = @(
-    "@echo off",
-    "cd /d `"$repoRoot`"",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"& { $consumerPromotionCommand }`""
-  )
+  "RUN_EVIDENCE_VERIFY.cmd" = New-PowerShellCommandFile $evidenceVerifyCommand
+  "RUN_CONSUMER_PROMOTION_CHECK.cmd" = New-PowerShellCommandFile $consumerPromotionCommand
 }
 
 foreach ($commandFile in $commandFiles.GetEnumerator()) {

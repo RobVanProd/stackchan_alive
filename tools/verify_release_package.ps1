@@ -266,7 +266,7 @@ foreach ($pattern in @("stillRunningProcessIds", "processIds", "Stop-Process", "
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1")) {
+foreach ($pattern in @("RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
   }

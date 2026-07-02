@@ -723,6 +723,134 @@ function Assert-HardwareEvidenceSerialMarkerGate {
   }
 }
 
+function Assert-ArrivalPacketScaffoldGate {
+  param(
+    [string]$ZipPath,
+    [switch]$AllowDirtyPackage
+  )
+
+  $startArgs = @(
+    (Join-Path $PSScriptRoot "start_hardware_evidence.ps1"),
+    "-ReleaseTag", $Version,
+    "-PackageZip", $ZipPath,
+    "-Port", "COM_TEST",
+    "-Operator", "preflight",
+    "-DeviceId", "SELFTEST"
+  )
+  if ($AllowDirtyPackage) {
+    $startArgs += "-AllowDirtyPackage"
+  }
+
+  $created = Invoke-ToolText $startArgs
+  if ($created.ExitCode -ne 0) {
+    throw "Arrival packet scaffold creation failed:$([Environment]::NewLine)$($created.Text)"
+  }
+
+  $evidenceRoot = @(
+    ($created.Text -split "\r?\n") |
+      ForEach-Object { $_.Trim() } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) }
+  ) | Select-Object -Last 1
+
+  if ([string]::IsNullOrWhiteSpace($evidenceRoot)) {
+    throw "Could not locate generated arrival packet in output:$([Environment]::NewLine)$($created.Text)"
+  }
+
+  $evidenceRoot = (Resolve-Path $evidenceRoot).Path
+  $evidenceBase = (Resolve-Path (Join-Path $repoRoot "output/hardware-evidence")).Path
+
+  try {
+    foreach ($relativePath in @(
+      "README.md",
+      "CHECKLIST.md",
+      "OBSERVATIONS.md",
+      "AUDIO_REVIEW.md",
+      "RVC_LEAD_AUDITION.md",
+      "metadata.json",
+      "logs/package_verify.log",
+      "RUN_PLAY_LEAD_VOICE.cmd",
+      "RUN_DISPLAY_ONLY.cmd",
+      "RUN_SERVO_CALIBRATION.cmd",
+      "RUN_SOAK_MONITOR.cmd",
+      "RUN_PACKAGE_VERIFY.cmd",
+      "RUN_PROGRESS_CHECK.cmd",
+      "RUN_ADD_MEDIA.cmd",
+      "RUN_EVIDENCE_VERIFY.cmd",
+      "RUN_CONSUMER_PROMOTION_CHECK.cmd",
+      "reference_audio/RVC_AUDITIONS.md",
+      "reference_audio/RVC_AUDITIONS.json",
+      "reference_audio/stackchan_rvc_bright_robot.wav"
+    )) {
+      $path = Join-Path $evidenceRoot ($relativePath -replace "/", "\")
+      if (-not (Test-Path -LiteralPath $path)) {
+        throw "Arrival packet missing scaffold file: $relativePath"
+      }
+      if ((Get-Item -LiteralPath $path).Length -lt 1) {
+        throw "Arrival packet scaffold file is empty: $relativePath"
+      }
+    }
+
+    $metadata = Get-Content -LiteralPath (Join-Path $evidenceRoot "metadata.json") -Raw | ConvertFrom-Json
+    if ($null -eq $metadata.voiceLeadAudition) {
+      throw "Arrival packet metadata missing voiceLeadAudition"
+    }
+    if ([string]$metadata.voiceLeadAudition.title -ne "RVC Bright Robot") {
+      throw "Arrival packet lead voice mismatch: $($metadata.voiceLeadAudition.title)"
+    }
+    if ([string]$metadata.voiceLeadAudition.referenceFile -ne "reference_audio/stackchan_rvc_bright_robot.wav") {
+      throw "Arrival packet lead reference mismatch: $($metadata.voiceLeadAudition.referenceFile)"
+    }
+    foreach ($field in @(
+      @("pitch", "2"),
+      @("index_rate", "0.62"),
+      @("rms_mix_rate", "0.72"),
+      @("protect", "0.28")
+    )) {
+      $actual = [string]$metadata.voiceLeadAudition.PSObject.Properties[$field[0]].Value
+      if ($actual -ne $field[1]) {
+        throw "Arrival packet lead setting mismatch for $($field[0]): $actual"
+      }
+    }
+
+    $leadPath = Join-Path $evidenceRoot "reference_audio/stackchan_rvc_bright_robot.wav"
+    $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadPath).Hash.ToLowerInvariant()
+    if ($leadHash -ne [string]$metadata.voiceLeadAudition.sha256) {
+      throw "Arrival packet lead reference hash mismatch"
+    }
+
+    $readme = Get-Content -LiteralPath (Join-Path $evidenceRoot "README.md") -Raw
+    Assert-TextContains $readme "RUN_PLAY_LEAD_VOICE.cmd"
+    Assert-TextContains $readme "real-device speaker recording"
+
+    $audioReview = Get-Content -LiteralPath (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Raw
+    Assert-TextContains $audioReview "reference_audio/stackchan_rvc_bright_robot.wav"
+    Assert-TextContains $audioReview "RVC Bright Robot (pitch 2, index 0.62, RMS mix 0.72, protect 0.28)"
+
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+      $progressOutput = & cmd.exe /c (Join-Path $evidenceRoot "RUN_PROGRESS_CHECK.cmd") 2>&1
+      $progressExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $oldErrorActionPreference
+    }
+    $progressText = ($progressOutput | Out-String)
+    if ($progressExitCode -ne 2) {
+      throw "Expected arrival packet progress wrapper to exit 2 for missing real hardware evidence, got $progressExitCode. Output:$([Environment]::NewLine)$progressText"
+    }
+    Assert-TextContains $progressText "Hardware evidence progress:"
+    Assert-TextContains $progressText "RVC lead audition reference hash matches metadata"
+    Assert-TextContains $progressText "No real-device speaker recording found under audio/"
+    $global:LASTEXITCODE = 0
+  } finally {
+    $resolvedEvidence = (Resolve-Path $evidenceRoot).Path
+    if (-not $resolvedEvidence.StartsWith($evidenceBase, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Refusing to clean unexpected arrival packet path: $resolvedEvidence"
+    }
+    Remove-Item -LiteralPath $resolvedEvidence -Recurse -Force
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
 }
@@ -792,6 +920,10 @@ if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     } else {
       & $verifyScript -Version $Version -ZipPath $PackageZip -ExpectedCommit $ExpectedCommit
     }
+  }
+
+  Invoke-Step "Check arrival packet scaffold" {
+    Assert-ArrivalPacketScaffoldGate $PackageZip -AllowDirtyPackage:$AllowDirty
   }
 
   Invoke-Step "Check release binary flash helper" {
