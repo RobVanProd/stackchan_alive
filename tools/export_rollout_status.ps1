@@ -117,6 +117,127 @@ function Get-VoiceGateStatusMismatches {
   return @($mismatches.ToArray())
 }
 
+function Get-FirstGate {
+  param(
+    [object[]]$Gates,
+    [string]$Gate
+  )
+
+  foreach ($item in @($Gates)) {
+    if ([string]$item.gate -eq $Gate) {
+      return $item
+    }
+  }
+  return $null
+}
+
+function Get-RolloutNextAction {
+  param(
+    [object[]]$Gates,
+    [object]$ActionsStatus,
+    [object]$EvidenceSummary,
+    [string]$ReleaseVersion
+  )
+
+  $manifestGate = Get-FirstGate -Gates $Gates -Gate "release-package-manifest"
+  if ($null -ne $manifestGate -and [string]$manifestGate.status -ne "pass") {
+    return [ordered]@{
+      owner = "package"
+      action = "Regenerate or verify the release package so release_manifest.json matches the expected commit."
+      command = ".\tools\package_release.cmd -Version $ReleaseVersion"
+      reason = [string]$manifestGate.evidence
+    }
+  }
+
+  $progressGate = Get-FirstGate -Gates $Gates -Gate "hardware-evidence-progress"
+  if ($null -ne $progressGate -and [string]$progressGate.status -ne "pass") {
+    if ($null -ne $EvidenceSummary -and -not [string]::IsNullOrWhiteSpace([string]$EvidenceSummary.root)) {
+      $benchStatus = Read-JsonFile (Join-Path ([string]$EvidenceSummary.root) "BENCH_STATUS.json")
+      if ($null -ne $benchStatus -and -not [string]::IsNullOrWhiteSpace([string]$benchStatus.nextAction)) {
+        return [ordered]@{
+          owner = "hardware"
+          action = [string]$benchStatus.nextAction
+          command = [string]$benchStatus.nextCommand
+          reason = [string]$benchStatus.reason
+        }
+      }
+    }
+    return [ordered]@{
+      owner = "hardware"
+      action = "Create or refresh the hardware evidence packet and run its progress check."
+      command = ".\tools\start_hardware_evidence.cmd -ReleaseTag $ReleaseVersion -PackageZip output\release\stackchan_alive_$ReleaseVersion.zip -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
+      reason = [string]$progressGate.evidence
+    }
+  }
+
+  $strictGate = Get-FirstGate -Gates $Gates -Gate "strict-hardware-evidence"
+  if ($null -ne $strictGate -and [string]$strictGate.status -ne "pass") {
+    return [ordered]@{
+      owner = "hardware"
+      action = "Run the strict hardware evidence verifier on the completed packet."
+      command = "RUN_EVIDENCE_VERIFY.cmd"
+      reason = [string]$strictGate.evidence
+    }
+  }
+
+  $voiceGate = Get-FirstGate -Gates $Gates -Gate "production-voice-source"
+  if ($null -ne $voiceGate -and [string]$voiceGate.status -ne "pass") {
+    return [ordered]@{
+      owner = "voice"
+      action = "Complete production voice-source provenance with an owned or licensed source before consumer promotion."
+      command = "notepad docs\VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
+      reason = [string]$voiceGate.evidence
+    }
+  }
+
+  $rvcGate = Get-FirstGate -Gates $Gates -Gate "rvc-voice-base-approval"
+  if ($null -ne $rvcGate -and [string]$rvcGate.status -ne "pass") {
+    return [ordered]@{
+      owner = "voice"
+      action = "Resolve or replace the review-only RVC base before consumer distribution."
+      command = ".\tools\export_rvc_voice_base_status.cmd"
+      reason = [string]$rvcGate.evidence
+    }
+  }
+
+  $voiceConsistencyGate = Get-FirstGate -Gates $Gates -Gate "voice-gate-status-consistency"
+  if ($null -ne $voiceConsistencyGate -and [string]$voiceConsistencyGate.status -ne "pass") {
+    return [ordered]@{
+      owner = "voice"
+      action = "Regenerate the evidence packet or copy the current package voice status reports so metadata voiceGateStatus matches."
+      command = "RUN_PROGRESS_CHECK.cmd"
+      reason = [string]$voiceConsistencyGate.evidence
+    }
+  }
+
+  $actionsGate = Get-FirstGate -Gates $Gates -Gate "github-actions"
+  if ($null -ne $actionsGate -and [string]$actionsGate.status -ne "pass") {
+    $action = if ($null -ne $ActionsStatus -and -not [string]::IsNullOrWhiteSpace([string]$ActionsStatus.nextAction)) {
+      [string]$ActionsStatus.nextAction
+    } else {
+      "Refresh GitHub Actions status after hosted workflows can run."
+    }
+    $command = if ($null -ne $ActionsStatus -and -not [string]::IsNullOrWhiteSpace([string]$ActionsStatus.nextCommand)) {
+      [string]$ActionsStatus.nextCommand
+    } else {
+      ".\tools\export_github_actions_status.cmd -Version $ReleaseVersion"
+    }
+    return [ordered]@{
+      owner = "github"
+      action = $action
+      command = $command
+      reason = [string]$actionsGate.evidence
+    }
+  }
+
+  return [ordered]@{
+    owner = "release"
+    action = "Run the consumer promotion verifier."
+    command = ".\tools\verify_consumer_promotion.cmd -Version $ReleaseVersion"
+    reason = "All rollout status gates are passing."
+  }
+}
+
 try {
   if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
     if (-not (Test-Path -LiteralPath $PackageZip)) {
@@ -294,6 +415,7 @@ try {
     }
   }
   $overall = if ($consumerReady) { "consumer-promotion-ready" } else { "blocked-or-pending" }
+  $next = Get-RolloutNextAction -Gates $gateArray -ActionsStatus $actions -EvidenceSummary $evidenceSummary -ReleaseVersion $Version
 
   $generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   $status = [ordered]@{
@@ -305,6 +427,10 @@ try {
     evidenceRoot = if ($null -ne $evidenceSummary) { $evidenceSummary.root } else { "" }
     status = $overall
     consumerReady = $consumerReady
+    nextOwner = [string]$next.owner
+    nextAction = [string]$next.action
+    nextCommand = [string]$next.command
+    nextReason = [string]$next.reason
     gates = $gateArray
     blockers = $blockerArray
     evidence = $evidenceSummary
@@ -318,6 +444,10 @@ try {
     "- Commit: $ExpectedCommit",
     "- Status: $overall",
     "- Consumer ready: $consumerReady",
+    "- Next owner: $($status.nextOwner)",
+    "- Next action: $($status.nextAction)",
+    "- Next command: ``$($status.nextCommand)``",
+    "- Next reason: $($status.nextReason)",
     "- Generated UTC: $generatedUtc",
     "- Package root: $packageRootPath",
     "- Evidence root: $($status.evidenceRoot)",

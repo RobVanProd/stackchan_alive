@@ -1557,10 +1557,20 @@ function Assert-ArrivalPacketScaffoldGate {
     }
     $rolloutStatus = Get-Content -LiteralPath (Join-Path $evidenceRoot "ROLLOUT_STATUS.md") -Raw
     Assert-TextContains $rolloutStatus "blocked-or-pending"
+    Assert-TextContains $rolloutStatus "Next action:"
+    Assert-TextContains $rolloutStatus "Next command:"
+    Assert-TextContains $rolloutStatus "RUN_DISPLAY_ONLY.cmd"
     Assert-TextContains $rolloutStatus "production-voice-source"
     Assert-TextContains $rolloutStatus "strict-hardware-evidence"
     Assert-TextContains $rolloutStatus "voice-gate-status-consistency"
     Assert-TextContains $rolloutStatus "Evidence metadata voiceGateStatus matches package voice status reports"
+    $rolloutStatusJson = Get-Content -LiteralPath (Join-Path $evidenceRoot "ROLLOUT_STATUS.json") -Raw | ConvertFrom-Json
+    if ([string]$rolloutStatusJson.nextOwner -ne "hardware") {
+      throw "Arrival packet ROLLOUT_STATUS.json next owner should be hardware, got $($rolloutStatusJson.nextOwner)"
+    }
+    if ([string]$rolloutStatusJson.nextCommand -notmatch "RUN_DISPLAY_ONLY\.cmd") {
+      throw "Arrival packet ROLLOUT_STATUS.json next command did not point at display evidence: $($rolloutStatusJson.nextCommand)"
+    }
     $global:LASTEXITCODE = 0
   } finally {
     $resolvedEvidence = (Resolve-Path $evidenceRoot).Path
