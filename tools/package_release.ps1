@@ -873,6 +873,12 @@ This is a device-ready prerelease package. It is built, native-tested, compile-c
 
 Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
+Voice audition quick check:
+
+- Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
+- Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
+- These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
+
 Hardware validation is still required before consumer rollout:
 
 1. Display-only flash and 10-minute idle run.

@@ -819,6 +819,11 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
+foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.cmd", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "prototype voice-direction samples")) {
+  if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
+    throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
+  }
+}
 
 $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
 foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "Acceptance Criteria")) {
