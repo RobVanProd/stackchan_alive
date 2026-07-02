@@ -86,6 +86,7 @@ function Write-ShareStatus {
     hostProbeResults = @($hostProbeResults)
     lanTroubleshooting = "LAN_TROUBLESHOOTING.md"
     shareProbeReport = "share_probe_report.json"
+    openLocalShare = "OPEN_LOCAL_SHARE.cmd"
     publicUrl = $PublicUrl
     publicUrlReady = $PublicUrlReady
     processIds = @($ProcessIds)
@@ -416,6 +417,7 @@ function Write-ShareProbeReport {
     lanUrls = @($script:ShareLanUrls)
     lanDiagnostics = @($script:ShareLanDiagnostics)
     hostProbeResults = @($script:ShareUrlProbeResults)
+    openLocalShare = "OPEN_LOCAL_SHARE.cmd"
   }
 
   $report | ConvertTo-Json -Depth 7 | Set-Content -Path (Join-Path $shareRoot "share_probe_report.json") -Encoding UTF8
@@ -430,8 +432,9 @@ function Write-LanTroubleshooting {
     "Version: $Version",
     "Bind address: $BindAddress",
     "Loopback URL: http://127.0.0.1`:$Port/",
+    "Host-only open helper: OPEN_LOCAL_SHARE.cmd",
     "",
-    "Use the loopback URL on this Windows machine. Use a same-network URL only from another device on the same Wi-Fi/LAN.",
+    "Use OPEN_LOCAL_SHARE.cmd or the loopback URL on this Windows machine. Use a same-network URL only from another device on the same Wi-Fi/LAN.",
     "",
     "## LAN URL Candidates",
     ""
@@ -465,7 +468,7 @@ function Write-LanTroubleshooting {
     "",
     "## If Another Device Cannot Open The Page",
     "",
-    "1. Confirm the other device is on the same Wi-Fi/LAN as this Windows machine.",
+    "1. On this Windows machine, run `OPEN_LOCAL_SHARE.cmd` first to confirm the local server is alive.",
     "2. Try each same-network URL candidate, not the loopback URL.",
     "3. Prefer candidates marked `preferred-lan-candidate`; virtual, VPN, WSL, Docker, Bluetooth, or no-gateway adapters are less likely to work from another device.",
     "4. If every LAN URL fails, allow the Python server through Windows Firewall for private networks or use `-CloudflareTunnel -DownloadCloudflared`."
@@ -527,6 +530,18 @@ function Write-StopHelper {
   if ($ProcessIds.Count -gt 0) {
     "Stop-Process -Id $($ProcessIds -join ',')" | Set-Content -Path (Join-Path $shareRoot "STOP_SHARING.ps1.txt") -Encoding ASCII
   }
+}
+
+function Write-OpenLocalShareHelper {
+  param([string]$LocalUrl)
+
+  @(
+    "@echo off",
+    "setlocal",
+    "echo Opening Stackchan Alive local share on this Windows machine...",
+    "echo $LocalUrl",
+    "start ""Stackchan Alive Share"" ""$LocalUrl"""
+  ) | Set-Content -Path (Join-Path $shareRoot "OPEN_LOCAL_SHARE.cmd") -Encoding ASCII
 }
 
 function Stop-ExistingShare {
@@ -1229,7 +1244,7 @@ $preflightDownloadItems
   </ol>
   <p>Use display-only firmware first. Servo calibration requires the explicit <code>-ConfirmServoRisk</code> command generated in the evidence packet and a supervised clear work area.</p>
   <h2>Share Diagnostics</h2>
-  <p>Local and LAN troubleshooting artifacts: <a href="LAN_TROUBLESHOOTING.md">LAN_TROUBLESHOOTING.md</a>, <a href="share_status.json">share_status.json</a>, and <a href="share_probe_report.json">share_probe_report.json</a>.</p>
+  <p>Local and LAN troubleshooting artifacts: <a href="OPEN_LOCAL_SHARE.cmd">OPEN_LOCAL_SHARE.cmd</a>, <a href="LAN_TROUBLESHOOTING.md">LAN_TROUBLESHOOTING.md</a>, <a href="share_status.json">share_status.json</a>, and <a href="share_probe_report.json">share_probe_report.json</a>.</p>
   <p>If a same-network URL does not open from another device, use the LAN troubleshooting report to identify virtual/VPN adapters, no-gateway addresses, and host-side probe results before trying another candidate.</p>
 </main>
 </body>
@@ -1256,11 +1271,14 @@ $script:ShareProbeUrl = if ($BindAddress -eq "0.0.0.0") {
 Write-LanTroubleshooting
 Write-ShareProbeReport -Status "prepared"
 Write-ShareStatus -Status "prepared"
+Write-OpenLocalShareHelper -LocalUrl "http://127.0.0.1`:$Port/"
 
 Write-Host "Release share folder:"
 Write-Host $shareRoot
-Write-Host "Loopback URL:"
+Write-Host "Host-only URL for this Windows machine:"
 Write-Host "http://127.0.0.1`:$Port/"
+Write-Host "Host-only open helper:"
+Write-Host (Join-Path $shareRoot "OPEN_LOCAL_SHARE.cmd")
 if ($script:ShareLanUrls.Count -gt 0) {
   Write-Host "Same-network URL candidates:"
   foreach ($lanCandidate in $script:ShareLanDiagnostics) {
