@@ -855,24 +855,31 @@ void test_command_map_maps_multinet_phrase_ids_to_existing_actions() {
   const CommandMapResult sleep = CommandMap::mapPhraseId(1, 6100);
   TEST_ASSERT_TRUE(sleep.valid);
   TEST_ASSERT_TRUE(sleep.hasEvent);
+  TEST_ASSERT_TRUE(sleep.hasSpeechCue);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep), static_cast<int>(sleep.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::IdleTimeout), static_cast<int>(sleep.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Sleep), static_cast<int>(sleep.speechCue.intent));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechEarcon::Sleep), static_cast<int>(sleep.speechCue.earcon));
   TEST_ASSERT_EQUAL_UINT32(6100, sleep.event.timestampMs);
   TEST_ASSERT_EQUAL_STRING("command_go_to_sleep", sleep.command);
 
   const CommandMapResult wake = CommandMap::mapPhraseId(2, 6200);
   TEST_ASSERT_TRUE(wake.valid);
   TEST_ASSERT_TRUE(wake.hasEvent);
+  TEST_ASSERT_TRUE(wake.hasSpeechCue);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(wake.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::WakeWord), static_cast<int>(wake.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechEarcon::Wake), static_cast<int>(wake.speechCue.earcon));
   TEST_ASSERT_EQUAL_STRING("command_wake_up", wake.command);
 
   const CommandMapResult look = CommandMap::mapPhraseId(3, 6300);
   TEST_ASSERT_TRUE(look.valid);
   TEST_ASSERT_TRUE(look.hasEvent);
+  TEST_ASSERT_TRUE(look.hasSpeechCue);
   TEST_ASSERT_TRUE(look.event.hasPayload);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(look.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(look.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Attend), static_cast<int>(look.speechCue.intent));
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, look.event.x);
   TEST_ASSERT_EQUAL_STRING("command_look_at_me", look.command);
 
@@ -881,13 +888,18 @@ void test_command_map_maps_multinet_phrase_ids_to_existing_actions() {
   TEST_ASSERT_FALSE(stop.hasEvent);
   TEST_ASSERT_TRUE(stop.hasMotionEnable);
   TEST_ASSERT_FALSE(stop.motionEnabled);
+  TEST_ASSERT_TRUE(stop.hasSpeechCue);
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Safety), static_cast<int>(stop.speechCue.intent));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechEarcon::Safety), static_cast<int>(stop.speechCue.earcon));
   TEST_ASSERT_EQUAL_STRING("command_stop_moving", stop.command);
 
   const CommandMapResult feel = CommandMap::mapPhraseId(5, 6500);
   TEST_ASSERT_TRUE(feel.valid);
   TEST_ASSERT_TRUE(feel.hasEvent);
+  TEST_ASSERT_TRUE(feel.hasSpeechCue);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(feel.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(feel.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Speak), static_cast<int>(feel.speechCue.intent));
   TEST_ASSERT_EQUAL_STRING("command_how_do_you_feel", feel.command);
 
   TEST_ASSERT_FALSE(CommandMap::mapPhraseId(99, 6600).valid);
@@ -908,6 +920,32 @@ void test_command_map_accepts_bench_tokens_matching_yaml_keys() {
                     static_cast<int>(CommandMap::fromToken("3")));
   TEST_ASSERT_EQUAL(static_cast<int>(SpokenCommandId::Unknown),
                     static_cast<int>(CommandMap::fromToken("dance")));
+}
+
+void test_intent_engine_prioritizes_explicit_command_speech_cue() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 100);
+
+  RobotEvent event;
+  event.type = EventType::FaceDetected;
+  event.timestampMs = 200;
+  event.strength = 1.0f;
+  engine.applyEvent(event, CharacterMode::Attend);
+
+  SpeechCue cue;
+  cue.intent = SpeechIntent::Safety;
+  cue.text = "Motion hold active. I will stay still.";
+  cue.priority = 250;
+  cue.earcon = SpeechEarcon::Safety;
+  cue.earconDelayMs = 0;
+  engine.queueSpeechCue(cue, 205);
+
+  const RobotFrame frame = engine.update(210);
+  TEST_ASSERT_TRUE(frame.speech.shouldSpeak());
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Safety), static_cast<int>(frame.speech.intent));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechEarcon::Safety), static_cast<int>(frame.speech.earcon));
+  TEST_ASSERT_EQUAL_STRING("Motion hold active. I will stay still.", frame.speech.text);
 }
 
 void test_sensor_adapter_parses_serial_mode_command() {
@@ -1037,8 +1075,10 @@ void test_sensor_adapter_parses_spoken_command_bench_events() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("command 3", 4081, &control));
   TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_TRUE(control.hasSpeechCue);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(control.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(control.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Attend), static_cast<int>(control.speechCue.intent));
   TEST_ASSERT_TRUE(control.event.hasPayload);
   TEST_ASSERT_EQUAL_STRING("command_look_at_me", control.command);
 
@@ -1046,12 +1086,17 @@ void test_sensor_adapter_parses_spoken_command_bench_events() {
   TEST_ASSERT_FALSE(control.hasEvent);
   TEST_ASSERT_TRUE(control.hasMotionEnable);
   TEST_ASSERT_FALSE(control.motionEnabled);
+  TEST_ASSERT_TRUE(control.hasSpeechCue);
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Safety), static_cast<int>(control.speechCue.intent));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechEarcon::Safety), static_cast<int>(control.speechCue.earcon));
   TEST_ASSERT_EQUAL_STRING("command_stop_moving", control.command);
 
   TEST_ASSERT_TRUE(parseBenchControlLine("phrase how-do-you-feel", 4083, &control));
   TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_TRUE(control.hasSpeechCue);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(control.mode));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(control.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Speak), static_cast<int>(control.speechCue.intent));
   TEST_ASSERT_EQUAL_STRING("command_how_do_you_feel", control.command);
 
   TEST_ASSERT_FALSE(parseBenchControlLine("command unknown", 4084, &control));
@@ -1480,6 +1525,7 @@ int main() {
   RUN_TEST(test_intent_engine_orients_toward_sound_event);
   RUN_TEST(test_command_map_maps_multinet_phrase_ids_to_existing_actions);
   RUN_TEST(test_command_map_accepts_bench_tokens_matching_yaml_keys);
+  RUN_TEST(test_intent_engine_prioritizes_explicit_command_speech_cue);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_status_without_event);

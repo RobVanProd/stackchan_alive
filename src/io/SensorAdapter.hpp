@@ -34,6 +34,7 @@ struct BenchControl {
   bool hasDemoEnable = false;
   bool hasAmbient = false;
   bool hasCircadian = false;
+  bool hasSpeechCue = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
@@ -42,6 +43,7 @@ struct BenchControl {
   RobotEvent event;
   BenchSpeechEnvelope speech;
   BenchAmbientReading ambient;
+  SpeechCue speechCue;
   const char* command = "";
 };
 

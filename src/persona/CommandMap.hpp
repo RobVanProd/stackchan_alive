@@ -23,6 +23,8 @@ struct CommandMapResult {
   RobotEvent event;
   bool hasMotionEnable = false;
   bool motionEnabled = true;
+  bool hasSpeechCue = false;
+  SpeechCue speechCue;
   const char* command = "";
 };
 
