@@ -16,6 +16,7 @@
 #include "motion/Spring.hpp"
 #include "persona/AudioSaliency.hpp"
 #include "persona/CommandMap.hpp"
+#include "persona/EarconSynth.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/GazeTracker.hpp"
 #include "persona/IdleLife.hpp"
@@ -1628,6 +1629,57 @@ void test_speech_planner_marks_safety_with_distinct_earcon() {
   TEST_ASSERT_EQUAL_UINT16(0, cue.earconDelayMs);
 }
 
+void test_earcon_synth_renders_each_typed_cue() {
+  int16_t buffer[6400] = {};
+  const SpeechEarcon earcons[] = {
+      SpeechEarcon::Wake,
+      SpeechEarcon::Confirm,
+      SpeechEarcon::Think,
+      SpeechEarcon::Happy,
+      SpeechEarcon::Concern,
+      SpeechEarcon::Sleep,
+      SpeechEarcon::Error,
+      SpeechEarcon::Safety,
+  };
+
+  for (SpeechEarcon earcon : earcons) {
+    const EarconRenderResult result = EarconSynth::render(earcon, buffer, 6400);
+    TEST_ASSERT_FALSE(result.truncated);
+    TEST_ASSERT_GREATER_THAN_UINT32(500, result.samplesWritten);
+    TEST_ASSERT_GREATER_THAN_INT16(2000, result.peakAbs);
+    TEST_ASSERT_EQUAL_UINT16(EarconSynth::expectedDurationMs(earcon), result.durationMs);
+    TEST_ASSERT_NOT_EQUAL_UINT32(2166136261u, result.checksum);
+  }
+}
+
+void test_earcon_synth_is_deterministic_and_respects_intensity() {
+  int16_t fullA[6400] = {};
+  int16_t fullB[6400] = {};
+  int16_t quiet[6400] = {};
+
+  const EarconRenderResult a = EarconSynth::render(SpeechEarcon::Happy, fullA, 6400);
+  const EarconRenderResult b = EarconSynth::render(SpeechEarcon::Happy, fullB, 6400);
+
+  EarconRenderConfig quietConfig;
+  quietConfig.intensity = 0.35f;
+  const EarconRenderResult q = EarconSynth::render(SpeechEarcon::Happy, quiet, 6400, quietConfig);
+
+  TEST_ASSERT_EQUAL_UINT32(a.samplesWritten, b.samplesWritten);
+  TEST_ASSERT_EQUAL_UINT32(a.checksum, b.checksum);
+  TEST_ASSERT_EQUAL_INT16(a.peakAbs, b.peakAbs);
+  TEST_ASSERT_LESS_THAN_INT16(a.peakAbs, q.peakAbs);
+  TEST_ASSERT_EQUAL_UINT32(a.samplesWritten, q.samplesWritten);
+}
+
+void test_earcon_synth_reports_truncation_without_allocation() {
+  int16_t small[32] = {};
+  const EarconRenderResult result = EarconSynth::render(SpeechEarcon::Safety, small, 32);
+
+  TEST_ASSERT_TRUE(result.truncated);
+  TEST_ASSERT_EQUAL_UINT32(32, result.samplesWritten);
+  TEST_ASSERT_GREATER_THAN_INT16(0, result.peakAbs);
+}
+
 void test_speech_planner_avoids_character_clone_markers() {
   SpeechPlanner planner;
   EmotionalProfile emotion;
@@ -1731,6 +1783,9 @@ int main() {
   RUN_TEST(test_speech_planner_uses_original_stackchan_lines);
   RUN_TEST(test_speech_planner_keeps_idle_quiet_until_emotion_moves);
   RUN_TEST(test_speech_planner_marks_safety_with_distinct_earcon);
+  RUN_TEST(test_earcon_synth_renders_each_typed_cue);
+  RUN_TEST(test_earcon_synth_is_deterministic_and_respects_intensity);
+  RUN_TEST(test_earcon_synth_reports_truncation_without_allocation);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);
   return UNITY_END();
 }

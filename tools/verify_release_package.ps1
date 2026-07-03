@@ -266,6 +266,8 @@ $requiredFiles = @(
   "provenance/src/io/CameraAdapter.cpp",
   "provenance/src/persona/SpeechPlanner.hpp",
   "provenance/src/persona/SpeechPlanner.cpp",
+  "provenance/src/persona/EarconSynth.hpp",
+  "provenance/src/persona/EarconSynth.cpp",
   "provenance/release.yml",
   "provenance/requirements-preview.txt"
 )
@@ -485,6 +487,13 @@ $cameraAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/
 foreach ($pattern in @("CameraAdapter::begin", "CameraAdapter::submitFace", "CameraAdapter::submitFaceLost", "CameraAdapter::poll", "STACKCHAN_ENABLE_CAMERA", "EventType::FaceDetected", "EventType::FaceLost", "eventsPublished", "lastEventMs")) {
   if ($cameraAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/CameraAdapter.cpp missing P5 camera-adapter support: $pattern"
+  }
+}
+
+$earconSynthText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/EarconSynth.cpp") -Raw
+foreach ($pattern in @("EarconSynth::render", "EarconSynth::expectedDurationMs", "SpeechEarcon::Wake", "SpeechEarcon::Confirm", "SpeechEarcon::Think", "SpeechEarcon::Happy", "SpeechEarcon::Concern", "SpeechEarcon::Sleep", "SpeechEarcon::Error", "SpeechEarcon::Safety", "checksum", "truncated", "sinf")) {
+  if ($earconSynthText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/persona/EarconSynth.cpp missing P6 earcon synth support: $pattern"
   }
 }
 
@@ -1030,7 +1039,7 @@ foreach ($pattern in @("Voice audition quick check", "tools/open_voice_audition.
 }
 
 $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
-foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "Acceptance Criteria")) {
+foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "persona/EarconSynth", 'typed `SpeechEarcon`', "no allocation", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
   }
