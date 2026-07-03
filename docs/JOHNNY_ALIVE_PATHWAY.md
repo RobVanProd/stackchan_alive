@@ -30,7 +30,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, and bounded binary PCM upload exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, then add STT and dynamic TTS/audio streaming. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, bounded binary PCM upload, and local STT command adapter exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, select/measure the real STT engine, then add dynamic TTS/audio streaming. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -60,13 +60,14 @@ Keep each item independently shippable and package-verified.
      `cancel`.
    - It accepts bounded binary PCM frames after `utterance_start`, reports upload telemetry,
      and clears raw PCM at `utterance_end`.
-   - Until STT lands, `utterance_end` needs an explicit `text` or `transcript` field to stand
-     in for recognition output.
-   - On transcript-backed `utterance_end`, the service runs the local runner wrapper, validates
-     Character Lock JSON, applies host memory, and streams normalized `thinking`,
-     `response_start`, `audio`, and `response_end` frames.
-   - Real STT, downloaded audio chunks, and dynamic TTS streaming remain the next P7 bridge
-     gates.
+   - Audio-only turns can use a configured local STT command that receives raw signed 16-bit
+     mono PCM on stdin and returns transcript text or JSON. If no STT command is configured,
+     `utterance_end` still accepts explicit `text` or `transcript` for deterministic tests.
+   - On transcript-backed or STT-backed `utterance_end`, the service runs the local runner
+     wrapper, validates Character Lock JSON, applies host memory, and streams normalized
+     `thinking`, `response_start`, `audio`, and `response_end` frames.
+   - Selecting/measuring the real STT engine, downloaded audio chunks, and dynamic TTS
+     streaming remain the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.
 
 4. Dynamic TTS sidecar path.

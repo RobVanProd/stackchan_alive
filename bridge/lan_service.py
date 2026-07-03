@@ -21,6 +21,7 @@ from reference_bridge import (
     save_bridge_memory,
     turn_from_character_response,
 )
+from stt_adapter import DEFAULT_STT_TIMEOUT_MS, SttConfigurationError, SttExecutionError, transcribe_pcm
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -41,6 +42,8 @@ class LanBridgeConfig:
     runner_command: str = ""
     require_runner: bool = False
     runner_timeout_ms: int = 60000
+    stt_command: str = ""
+    stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
     max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
     memory_file: Path | None = None
     once: bool = False
@@ -280,16 +283,30 @@ class LanBridgeSession:
         seq = int(message.get("seq") or self.next_seq)
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
+        pcm = bytes(self.audio.buffer)
         audio_summary = self.audio.finish_and_clear()
         has_audio = int(audio_summary["audio_bytes"]) > 0
         if has_audio and not user_text:
-            return [
-                error_frame(
-                    "stt_not_implemented",
-                    f"received {audio_summary['audio_bytes']} PCM bytes; provide transcript until STT lands",
+            try:
+                stt = transcribe_pcm(
+                    pcm,
+                    int(audio_summary["audio_sample_rate"]),
+                    command=self.config.stt_command,
+                    timeout_ms=self.config.stt_timeout_ms,
                 )
-                | audio_summary
-            ]
+            except SttConfigurationError:
+                return [
+                    error_frame(
+                        "stt_not_implemented",
+                        f"received {audio_summary['audio_bytes']} PCM bytes; configure STT or provide transcript",
+                    )
+                    | audio_summary
+                ]
+            except (SttExecutionError, ValueError) as exc:
+                return [error_frame("stt_error", str(exc)) | audio_summary]
+            user_text = stt.transcript
+            audio_summary["stt_elapsed_ms"] = round(stt.elapsed_ms, 2)
+            audio_summary["stt_command_source"] = stt.command_source
         if user_text:
             self.memory = self.memory.remember_user_text(user_text)
 
@@ -380,6 +397,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-command", default="")
     parser.add_argument("--require-runner", action="store_true")
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
+    parser.add_argument("--stt-command", default="")
+    parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--reset-memory", action="store_true")
@@ -399,6 +418,8 @@ def main() -> int:
         runner_command=args.runner_command,
         require_runner=args.require_runner,
         runner_timeout_ms=args.runner_timeout_ms,
+        stt_command=args.stt_command,
+        stt_timeout_ms=args.stt_timeout_ms,
         max_audio_bytes=args.max_audio_bytes,
         memory_file=args.memory_file,
     )

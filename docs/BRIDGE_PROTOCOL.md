@@ -45,16 +45,27 @@ python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma
 
 This service performs the WebSocket handshake, accepts device-side JSON text frames, accepts
 binary PCM frames after `utterance_start`, runs the same local runner/validator/memory path on
-`utterance_end`, and streams normalized bridge JSON text frames back to the client. Until real
-STT lands, audio-only turns return `stt_not_implemented`; include `text` or `transcript` on
-`utterance_end` to test the runner path with a wake-gated binary upload.
+`utterance_end`, and streams normalized bridge JSON text frames back to the client. Audio-only
+turns can use a configured local STT command:
+
+```powershell
+$env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
+python bridge/lan_service.py --stt-command "python path\to\local_stt.py"
+```
+
+The STT command receives raw signed 16-bit mono PCM on stdin with
+`STACKCHAN_AUDIO_SAMPLE_RATE`, `STACKCHAN_AUDIO_FORMAT=s16le_mono`, and
+`STACKCHAN_AUDIO_BYTES` in its environment. It must print plain transcript text or JSON with
+`transcript`, `text`, or `spoken_text`. If no command is configured, audio-only turns return
+`stt_not_implemented`; include `text` or `transcript` on `utterance_end` to test the runner
+path while bypassing STT.
 
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.
 - `utterance_start`: wake-gated user speech has started.
 - `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
-- `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. Until STT lands, a `text` or `transcript` field is the explicit placeholder transcript.
+- `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. A `text` or `transcript` field bypasses STT and is useful for deterministic tests.
 - `cancel`: barge-in or local safety state interrupted playback.
 
 Example:
@@ -96,7 +107,8 @@ output.
 
 - Wake-word gating happens before audio leaves the device.
 - Firmware must never block face, motion, or intent tasks while waiting for bridge traffic.
-- The bridge upload buffer is bounded and raw PCM is cleared at `utterance_end`; host memory
-  may store summaries and validated memory fields, never raw audio.
+- The bridge upload buffer is bounded and raw PCM is cleared at `utterance_end` or `cancel`.
+  A configured local STT command may receive the one-turn PCM on stdin. Host memory may store
+  summaries and validated memory fields, never raw audio.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

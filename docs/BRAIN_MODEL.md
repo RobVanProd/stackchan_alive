@@ -104,12 +104,21 @@ The same path is exposed as a local WebSocket service for P7 LAN-loop testing:
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
 ```
 
-This is still a scaffold, not full STT/TTS. It accepts wake-gated control frames and runs the
-runner/validator/memory path on `utterance_end`. It also accepts bounded binary PCM uploads
-after `utterance_start` and clears raw audio at `utterance_end`. Until real STT lands, include
-`text` or `transcript` on `utterance_end` to explicitly stand in for the transcript while the
-binary upload path is exercised. Dynamic TTS audio download and real viseme/audio chunk
-streaming remain separate follow-up gates.
+This is still a scaffold, not a complete STT/TTS stack. It accepts wake-gated control frames
+and runs the runner/validator/memory path on `utterance_end`. It also accepts bounded binary
+PCM uploads after `utterance_start`, can hand one-turn audio to a configured local STT command
+through stdin, and clears raw audio at `utterance_end` or `cancel`:
+
+```powershell
+$env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
+python bridge/lan_service.py --stt-command "python path\to\local_stt.py"
+```
+
+The command must return transcript text or JSON containing `transcript`, `text`, or
+`spoken_text`. If no STT command is configured, include `text` or `transcript` on
+`utterance_end` to explicitly stand in for the transcript while the binary upload path is
+exercised. Selecting and measuring the real local STT engine, dynamic TTS audio download, and
+real viseme/audio chunk streaming remain separate follow-up gates.
 
 Render a validated model-style response through the deterministic bridge frames:
 

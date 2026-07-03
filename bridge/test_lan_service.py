@@ -1,6 +1,7 @@
 import json
 import os
 import base64
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,7 @@ from lan_service import (
     websocket_accept_value,
 )
 from reference_bridge import PROTOCOL, load_bridge_memory
+from stt_adapter import STT_COMMAND_ENV
 
 RUNNER_ENV = {
     "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND": "",
@@ -92,13 +94,14 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("Rob", loaded.preferred_name)
         self.assertIn("bridge", loaded.recent_topics)
 
-    def test_binary_audio_upload_tracks_telemetry_and_requires_transcript_for_now(self):
-        session = LanBridgeSession(LanBridgeConfig(max_audio_bytes=6))
+    def test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript(self):
+        with patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False):
+            session = LanBridgeSession(LanBridgeConfig(max_audio_bytes=6))
 
-        listening = session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
-        first = session.handle_binary(b"\x01\x00\x02\x00")
-        second = session.handle_binary(b"\x03\x00\x04\x00")
-        error = session.handle_text(json.dumps({"type": "utterance_end", "seq": 2}))
+            listening = session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
+            first = session.handle_binary(b"\x01\x00\x02\x00")
+            second = session.handle_binary(b"\x03\x00\x04\x00")
+            error = session.handle_text(json.dumps({"type": "utterance_end", "seq": 2}))
 
         self.assertEqual("listening", listening[0]["type"])
         self.assertEqual(16000, listening[0]["audio_sample_rate"])
@@ -113,6 +116,56 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(8, error[0]["audio_bytes"])
         self.assertFalse(session.audio.active)
         self.assertEqual(0, session.audio.bytes_received)
+
+    def test_audio_only_turn_uses_configured_stt_command(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_stt.py"
+            script.write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "import sys",
+                        "payload = sys.stdin.buffer.read()",
+                        "assert os.environ['STACKCHAN_AUDIO_SAMPLE_RATE'] == '16000'",
+                        "assert os.environ['STACKCHAN_AUDIO_FORMAT'] == 's16le_mono'",
+                        "assert os.environ['STACKCHAN_AUDIO_BYTES'] == str(len(payload))",
+                        "print('I picked you up gently.')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            with patch.dict(os.environ, RUNNER_ENV, clear=False):
+                session = LanBridgeSession(LanBridgeConfig(runner_case="greeting", stt_command=command))
+                session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
+                session.handle_binary(b"\x01\x00\x02\x00")
+                frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 5}))
+
+        self.assertEqual("thinking", frames[0]["type"])
+        self.assertEqual(4, frames[0]["audio_bytes"])
+        self.assertEqual(16000, frames[0]["audio_sample_rate"])
+        self.assertEqual("cli", frames[0]["stt_command_source"])
+        self.assertGreaterEqual(frames[0]["stt_elapsed_ms"], 0.0)
+        self.assertEqual("response_start", frames[1]["type"])
+        self.assertEqual("react", frames[1]["intent"])
+        self.assertIn("user picked Stackchan up", session.memory.physical_context)
+
+    def test_audio_only_turn_reports_stt_command_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "broken_stt.py"
+            script.write_text("import sys\nsys.stdin.buffer.read()\nprint('nope', file=sys.stderr)\nsys.exit(7)\n")
+            command = f'"{sys.executable}" "{script}"'
+
+            session = LanBridgeSession(LanBridgeConfig(stt_command=command))
+            session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
+            session.handle_binary(b"\x01\x00\x02\x00")
+            frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 6}))
+
+        self.assertEqual("error", frames[0]["type"])
+        self.assertEqual("stt_error", frames[0]["code"])
+        self.assertIn("exit 7", frames[0]["detail"])
+        self.assertEqual(4, frames[0]["audio_bytes"])
 
     def test_binary_audio_with_placeholder_transcript_runs_runner(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):
