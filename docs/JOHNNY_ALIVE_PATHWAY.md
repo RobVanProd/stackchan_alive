@@ -99,13 +99,17 @@ Keep each item independently shippable and package-verified.
      returns to `Ready` without a timeout or parse failure.
    - Native firmware tests now enforce the same recovery contract: bridge `error` and
      timeout paths clear open audio-stream state before accepting the next bridge session.
+   - `offline-command-fallback` keeps the virtual bridge disconnected while CoreS3 input and
+     P4-style command-map events still request packaged prompts, animate the mouth/display,
+     and return to idle.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
    - GitHub Actions runs the bridge tests and simulator in the `bridge-tests` job and
      uploads the simulation report artifact for each PR/push.
    - This catches bridge ordering, conversation timing, timeout, mouth-frame, input-mapping,
-     reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical
-     device arrives. It does not replace real display, speaker, mic, camera, touch, IMU,
+     offline command fallback, reboot-recovery, bridge-kill recovery, and binary stream
+     regressions before the physical device arrives. It does not replace real display,
+     speaker, mic, camera, touch, IMU,
      servo, heat, power, or soak evidence.
 
 6. End-to-end demo gate.

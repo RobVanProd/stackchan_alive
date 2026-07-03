@@ -31,13 +31,15 @@ The simulator currently checks:
   including byte/chunk accounting before firmware speaker playback is wired
 - firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts,
   recoverable bridge-error handling, and timeout handling
+- an offline command fallback: no bridge session, CoreS3 wake input, P4-style commands,
+  packaged prompt requests, mouth/display activity, and no bridge dependency
 - a virtual CoreS3 shell: boot/display readiness, 30 fps display ticks, persistent label
   drawing, CoreS3 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, speaker
   stream submission counters, mouth-display activity during speech, and a power-cycle
   recovery rehearsal
 
 The default run includes `reference`, `lan-text`, `conversation-rehearsal`, `audio-downlink`,
-`arrival-rehearsal`, and `bridge-kill-recovery`.
+`arrival-rehearsal`, `bridge-kill-recovery`, and `offline-command-fallback`.
 The `conversation-rehearsal` scenario is the no-hardware P7 demo proxy: a virtual wake input
 starts a turn, the simulator marks utterance end, the LAN bridge emits `listening`,
 `thinking`, `response_start`, `audio`, and `response_end`, and the virtual device checks that
@@ -52,6 +54,10 @@ binary TTS stream is open. The virtual device must abort that stream, emit one o
 fallback prompt, accept a new `hello`, speak a recovery turn, and end back in `Ready` with no
 parse errors or timeout. Native firmware tests also assert that bridge `error` and timeout
 paths clear open stream state before the next session.
+
+The `offline-command-fallback` scenario keeps the bridge disconnected and verifies that local
+button/command-map behavior can still request packaged speech, animate the mouth/display, and
+return to idle without any LAN session.
 
 It intentionally does not claim real LCD, speaker, microphone, camera, capacitive touch, IMU,
 servo, heat, battery, USB power, Wi-Fi, or soak behavior. Those remain real hardware gates in
@@ -79,6 +85,12 @@ To run the bridge-kill recovery rehearsal:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario bridge-kill-recovery -Json
+```
+
+To run the offline command fallback rehearsal:
+
+```powershell
+.\tools\run_hardware_simulation.cmd -Scenario offline-command-fallback -Json
 ```
 
 To inspect a failure-mode scenario:

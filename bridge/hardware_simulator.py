@@ -39,6 +39,7 @@ class VirtualHardwareTelemetry:
     bridge_errors: int = 0
     bridge_recoveries: int = 0
     offline_fallback_prompts: int = 0
+    packaged_prompt_requests: int = 0
     conversation_turns: int = 0
     conversation_first_audio_latency_ms: int = 0
     speech_frames: int = 0
@@ -80,6 +81,7 @@ class VirtualHardwareTelemetry:
             "bridge_errors": self.bridge_errors,
             "bridge_recoveries": self.bridge_recoveries,
             "offline_fallback_prompts": self.offline_fallback_prompts,
+            "packaged_prompt_requests": self.packaged_prompt_requests,
             "conversation_turns": self.conversation_turns,
             "conversation_first_audio_latency_ms": self.conversation_first_audio_latency_ms,
             "speech_frames": self.speech_frames,
@@ -249,6 +251,20 @@ class VirtualStackchanHardware:
             for mode in ("listen", "think", "happy", "idle"):
                 if mode not in self.telemetry.modes_seen:
                     self._record_issue(f"conversation_mode_not_seen:{mode}")
+        if scenario == "offline-command-fallback":
+            if self.telemetry.bridge_ready:
+                self._record_issue("offline_bridge_unexpectedly_ready")
+            if self.telemetry.bridge_state != "Disconnected":
+                self._record_issue("offline_bridge_state_changed")
+            if self.telemetry.packaged_prompt_requests < 4:
+                self._record_issue("offline_packaged_prompts_not_covered")
+            if self.telemetry.speech_frames <= 0:
+                self._record_issue("offline_speech_frames_missing")
+            if self.telemetry.mouth_display_frames <= 0:
+                self._record_issue("offline_mouth_display_not_exercised")
+            for mode in ("listen", "attend", "happy", "sleep", "idle"):
+                if mode not in self.telemetry.modes_seen:
+                    self._record_issue(f"offline_mode_not_seen:{mode}")
 
     def _process_text(self, frame: dict[str, object]) -> None:
         frame_type = str(frame.get("type", "")).strip().lower()
@@ -467,6 +483,22 @@ class VirtualStackchanHardware:
             mode = "idle"
             event = "SafetyResume"
             self.telemetry.motion_enabled = True
+        elif command == "look_at_me":
+            mode = "attend"
+            event = "ExplicitCommand"
+            self._packaged_prompt("attend", "Looking right at you.")
+        elif command == "how_do_you_feel":
+            mode = "happy"
+            event = "ExplicitCommand"
+            self._packaged_prompt("happy", "I feel awake and curious.")
+        elif command == "go_to_sleep":
+            mode = "sleep"
+            event = "ExplicitCommand"
+            self._packaged_prompt("sleep", "Going quiet now.")
+        elif command == "wake_up":
+            mode = "idle"
+            event = "WakeWord"
+            self._packaged_prompt("boot", "I am awake.")
         else:
             self._record_error(f"unsupported_control_command:{command or 'blank'}")
             return
@@ -476,6 +508,20 @@ class VirtualStackchanHardware:
             "[control] "
             f"command={command} mode={mode} event={event} strength={strength:.2f} "
             f"motion_enabled={int(self.telemetry.motion_enabled)} at_ms={self.now_ms}"
+        )
+
+    def _packaged_prompt(self, intent: str, text: str) -> None:
+        self.telemetry.packaged_prompt_requests += 1
+        self.telemetry.speech_frames += 1
+        self.telemetry.speech_final_frames += 1
+        self.telemetry.mouth_peak = max(self.telemetry.mouth_peak, 0.58)
+        self.telemetry.response_text = text[:160]
+        self.mouth_env = 0.58
+        self.speech_active = True
+        self._serial(
+            "[speech] "
+            f"seq={self.telemetry.active_seq} intent={intent} earcon=confirm "
+            f'text="{text}" source=packaged_prompt'
         )
 
     def _process_conversation_marker(self, frame: dict[str, object]) -> None:
@@ -678,6 +724,16 @@ def conversation_rehearsal_frames() -> list[Frame]:
     return frames
 
 
+def offline_command_fallback_frames() -> list[Frame]:
+    return [
+        {"type": "control_input", "input": "btn_a"},
+        {"type": "control_command", "command": "look_at_me"},
+        {"type": "control_command", "command": "how_do_you_feel"},
+        {"type": "control_command", "command": "go_to_sleep"},
+        {"type": "control_command", "command": "wake_up"},
+    ]
+
+
 def reference_frames() -> list[Frame]:
     return list(bridge_frames(BridgeTurn(session="sim", seq=7)))
 
@@ -734,6 +790,8 @@ def scenario_frames(name: str) -> tuple[list[Frame], int | None]:
         return arrival_rehearsal_frames(), None
     if name == "bridge-kill-recovery":
         return bridge_kill_recovery_frames(), None
+    if name == "offline-command-fallback":
+        return offline_command_fallback_frames(), None
     if name == "timeout":
         return timeout_frames(), DEFAULT_TIMEOUT_MS + 10
     raise ValueError(f"unknown scenario: {name}")
@@ -807,6 +865,7 @@ def write_outputs(output_dir: Path, scenarios: Iterable[str]) -> dict[str, objec
                 f"- Bridge state: {telemetry['bridge_state']}",
                 f"- Face mode: {telemetry['face_mode']}",
                 f"- Speech frames: {telemetry['speech_frames']}",
+                f"- Packaged prompts: {telemetry['packaged_prompt_requests']}",
                 f"- Conversation turns: {telemetry['conversation_turns']}",
                 f"- First audio latency: {telemetry['conversation_first_audio_latency_ms']} ms",
                 f"- Display frames: {telemetry['display_frames']} (max gap {telemetry['display_frame_gap_max_ms']} ms)",
@@ -836,11 +895,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "audio-downlink",
             "arrival-rehearsal",
             "bridge-kill-recovery",
+            "offline-command-fallback",
             "timeout",
         ),
         help=(
             "Scenario to run. Defaults to reference, lan-text, conversation-rehearsal, "
-            "audio-downlink, arrival-rehearsal, and bridge-kill-recovery."
+            "audio-downlink, arrival-rehearsal, bridge-kill-recovery, and "
+            "offline-command-fallback."
         ),
     )
     parser.add_argument("--out-dir", type=Path, help="Optional directory for JSON and serial-like logs.")
@@ -857,6 +918,7 @@ def main() -> int:
         "audio-downlink",
         "arrival-rehearsal",
         "bridge-kill-recovery",
+        "offline-command-fallback",
     ]
     if args.out_dir:
         summary = write_outputs(args.out_dir, scenarios)
