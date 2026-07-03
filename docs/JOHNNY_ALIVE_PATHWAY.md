@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, firmware downlink consumer telemetry, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, then wire decoded downlinked chunks into speaker playback. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, convert dynamic TTS output to PCM16 for downlink, and collect real-device speaker evidence. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -104,17 +104,20 @@ Keep each item independently shippable and package-verified.
      verifies mouth frames, and returns to `Ready`.
    - The default simulator run also includes `arrival-rehearsal`, which models virtual
      CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
-     safety toggles, speaker stream counters, mouth-display activity, and power-cycle
+     safety toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle
      recovery before the physical unit arrives.
    - It also includes `bridge-kill-recovery`, which aborts an in-flight TTS stream after a
      bridge error, emits one offline fallback prompt, reconnects, speaks a recovery turn, and
      returns to `Ready` without a timeout or parse failure.
    - The `audio-downlink` and `arrival-rehearsal` scenarios now exercise the 4096-byte
-     firmware chunk limit with a synthetic 5000-byte downlink split into 4096-byte and
-     904-byte chunks.
+     firmware chunk limit with a synthetic decoded PCM16 5000-byte downlink split into
+     4096-byte and 904-byte chunks.
    - Simulator JSON and serial-like `[runtime]` logs now include firmware-mirrored
-     `bridge_downlink_*` counters, giving arrival-day hardware runs a direct no-hardware
-     baseline for downlink streams, completions, chunks, bytes, and errors.
+     `bridge_downlink_*` and `bridge_downlink_playback_*` counters, giving arrival-day
+     hardware runs a direct no-hardware baseline for downlink streams, completions, chunks,
+     bytes, unsupported playback formats, and errors.
+   - The `audio-downlink-unsupported` scenario proves a non-PCM16 container is transported
+     and accounted without claiming virtual speaker playback.
    - Native firmware tests now enforce the same recovery contract: bridge `error` and
      timeout paths clear open audio-stream state before accepting the next bridge session.
    - `offline-command-fallback` keeps the virtual bridge disconnected while CoreS3 input and
