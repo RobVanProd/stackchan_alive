@@ -26,7 +26,7 @@ RUNNER_PROFILES: dict[str, dict[str, str]] = {
     "gemma4-e2b-litert-lm": {
         **MODEL_PROFILES["gemma4-e2b-litert-lm"],
         "command_env": "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND",
-        "example_command": "python path\\to\\litert_lm_stackchan_wrapper.py",
+        "example_command": "python bridge\\litert_lm_stackchan_wrapper.py",
         "status": "mobile-low-active-memory",
     },
     "gemma4-e4b-gguf": {
