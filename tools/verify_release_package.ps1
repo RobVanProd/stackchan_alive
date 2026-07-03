@@ -799,14 +799,14 @@ foreach ($pattern in @("TtsAdapterTests", "test_compact_beat_output_normalizes_a
 }
 
 $hardwareSimulatorText = Get-Content -LiteralPath (Join-PackagePath "bridge/hardware_simulator.py") -Raw
-foreach ($pattern in @("stackchan.hardware-sim.v1", "VirtualStackchanHardware", "full_audio_downlink_frames", "lan_text_frames", "arrival_rehearsal_frames", "bridge_kill_recovery_frames", "control_input", "power_cycle", "display_frames", "speaker_frames_submitted", "offline_fallback_prompts", "bridge_recoveries", "audio_streams_aborted", "audio_stream_start", "audio_stream_end", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "bridge_timeout", "bridge-kill-recovery", "hardware_simulation.json", "HARDWARE_SIMULATION.md")) {
+foreach ($pattern in @("stackchan.hardware-sim.v1", "VirtualStackchanHardware", "full_audio_downlink_frames", "lan_text_frames", "conversation_rehearsal_frames", "conversation_first_audio_latency_ms", "conversation-rehearsal", "arrival_rehearsal_frames", "bridge_kill_recovery_frames", "control_input", "power_cycle", "display_frames", "speaker_frames_submitted", "offline_fallback_prompts", "bridge_recoveries", "audio_streams_aborted", "audio_stream_start", "audio_stream_end", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "bridge_timeout", "bridge-kill-recovery", "hardware_simulation.json", "HARDWARE_SIMULATION.md")) {
   if ($hardwareSimulatorText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/hardware_simulator.py missing hardware simulation support: $pattern"
   }
 }
 
 $hardwareSimulatorTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_hardware_simulator.py") -Raw
-foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reaches_ready_with_mouth_frames", "test_lan_text_scenario_exercises_local_bridge_path", "test_audio_downlink_counts_binary_stream_payload", "test_arrival_rehearsal_exercises_virtual_device_shell", "test_bridge_kill_recovery_uses_offline_fallback_and_returns_ready", "test_binary_without_audio_stream_fails", "test_timeout_scenario_reports_expected_failure")) {
+foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reaches_ready_with_mouth_frames", "test_lan_text_scenario_exercises_local_bridge_path", "test_conversation_rehearsal_covers_wake_to_lipsync_to_ready", "test_audio_downlink_counts_binary_stream_payload", "test_arrival_rehearsal_exercises_virtual_device_shell", "test_bridge_kill_recovery_uses_offline_fallback_and_returns_ready", "test_binary_without_audio_stream_fails", "test_timeout_scenario_reports_expected_failure")) {
   if ($hardwareSimulatorTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_hardware_simulator.py missing hardware simulator test coverage: $pattern"
   }

@@ -39,6 +39,8 @@ class VirtualHardwareTelemetry:
     bridge_errors: int = 0
     bridge_recoveries: int = 0
     offline_fallback_prompts: int = 0
+    conversation_turns: int = 0
+    conversation_first_audio_latency_ms: int = 0
     speech_frames: int = 0
     speech_final_frames: int = 0
     mouth_peak: float = 0.0
@@ -78,6 +80,8 @@ class VirtualHardwareTelemetry:
             "bridge_errors": self.bridge_errors,
             "bridge_recoveries": self.bridge_recoveries,
             "offline_fallback_prompts": self.offline_fallback_prompts,
+            "conversation_turns": self.conversation_turns,
+            "conversation_first_audio_latency_ms": self.conversation_first_audio_latency_ms,
             "speech_frames": self.speech_frames,
             "speech_final_frames": self.speech_final_frames,
             "mouth_peak": round(self.mouth_peak, 3),
@@ -130,6 +134,7 @@ class VirtualStackchanHardware:
     display_last_frame_ms: int | None = None
     mouth_env: float = 0.0
     speech_active: bool = False
+    conversation_wait_start_ms: int | None = None
 
     def __post_init__(self) -> None:
         self._boot()
@@ -228,6 +233,22 @@ class VirtualStackchanHardware:
                 self._record_issue("bridge_kill_error_mode_not_seen")
             if self.telemetry.speech_frames <= 0:
                 self._record_issue("bridge_kill_recovery_response_not_spoken")
+        if scenario == "conversation-rehearsal":
+            if self.telemetry.conversation_turns != 1:
+                self._record_issue("conversation_turn_not_observed")
+            if self.telemetry.conversation_first_audio_latency_ms <= 0:
+                self._record_issue("conversation_first_audio_latency_missing")
+            if self.telemetry.conversation_first_audio_latency_ms > 2500:
+                self._record_issue("conversation_first_audio_latency_over_budget")
+            if self.telemetry.core_inputs < 1:
+                self._record_issue("conversation_wake_input_not_observed")
+            if self.telemetry.bridge_state != "Ready":
+                self._record_issue("conversation_did_not_return_ready")
+            if self.telemetry.mouth_display_frames <= 0:
+                self._record_issue("conversation_mouth_display_not_exercised")
+            for mode in ("listen", "think", "happy", "idle"):
+                if mode not in self.telemetry.modes_seen:
+                    self._record_issue(f"conversation_mode_not_seen:{mode}")
 
     def _process_text(self, frame: dict[str, object]) -> None:
         frame_type = str(frame.get("type", "")).strip().lower()
@@ -309,6 +330,9 @@ class VirtualStackchanHardware:
         if frame_type == "power_cycle":
             self._power_cycle()
             return
+        if frame_type == "conversation_marker":
+            self._process_conversation_marker(frame)
+            return
         self._record_error(f"unsupported_frame:{frame_type or 'blank'}")
 
     def _process_binary(self, payload: bytes) -> None:
@@ -377,6 +401,8 @@ class VirtualStackchanHardware:
         env = max(0.0, min(1.0, env))
         self.telemetry.speech_frames += 1
         self.telemetry.mouth_peak = max(self.telemetry.mouth_peak, env)
+        if self.conversation_wait_start_ms is not None and self.telemetry.conversation_first_audio_latency_ms == 0:
+            self.telemetry.conversation_first_audio_latency_ms = max(1, self.now_ms - self.conversation_wait_start_ms)
         self.mouth_env = env
         self.speech_active = env > 0.02
         if bool(frame.get("final", False)):
@@ -451,6 +477,16 @@ class VirtualStackchanHardware:
             f"command={command} mode={mode} event={event} strength={strength:.2f} "
             f"motion_enabled={int(self.telemetry.motion_enabled)} at_ms={self.now_ms}"
         )
+
+    def _process_conversation_marker(self, frame: dict[str, object]) -> None:
+        marker = str(frame.get("marker") or "").strip().lower()
+        if marker != "utterance_end":
+            self._record_error(f"unsupported_conversation_marker:{marker or 'blank'}")
+            return
+        self.telemetry.conversation_turns += 1
+        self.conversation_wait_start_ms = self.now_ms
+        self.telemetry.conversation_first_audio_latency_ms = 0
+        self._serial(f"[conversation] marker=utterance_end turns={self.telemetry.conversation_turns}")
 
     def _boot(self) -> None:
         self.telemetry.boot_count += 1
@@ -633,6 +669,15 @@ def bridge_kill_recovery_frames() -> list[Frame]:
     ]
 
 
+def conversation_rehearsal_frames() -> list[Frame]:
+    frames: list[Frame] = [
+        {"type": "control_input", "input": "btn_a"},
+        {"type": "conversation_marker", "marker": "utterance_end"},
+    ]
+    frames.extend(lan_text_frames())
+    return frames
+
+
 def reference_frames() -> list[Frame]:
     return list(bridge_frames(BridgeTurn(session="sim", seq=7)))
 
@@ -681,6 +726,8 @@ def scenario_frames(name: str) -> tuple[list[Frame], int | None]:
         return reference_frames(), None
     if name == "lan-text":
         return lan_text_frames(), None
+    if name == "conversation-rehearsal":
+        return conversation_rehearsal_frames(), None
     if name == "audio-downlink":
         return full_audio_downlink_frames(), None
     if name == "arrival-rehearsal":
@@ -713,6 +760,8 @@ def frame_duration_ms(frame: Frame) -> int:
         return 120
     if frame.get("type") == "power_cycle":
         return 300
+    if frame.get("type") == "conversation_marker":
+        return 20
     if frame.get("type") == "audio":
         return max(10, min(250, _int(frame.get("duration_ms"), 20)))
     if frame.get("type") in {"thinking", "response_start", "response_end"}:
@@ -758,6 +807,8 @@ def write_outputs(output_dir: Path, scenarios: Iterable[str]) -> dict[str, objec
                 f"- Bridge state: {telemetry['bridge_state']}",
                 f"- Face mode: {telemetry['face_mode']}",
                 f"- Speech frames: {telemetry['speech_frames']}",
+                f"- Conversation turns: {telemetry['conversation_turns']}",
+                f"- First audio latency: {telemetry['conversation_first_audio_latency_ms']} ms",
                 f"- Display frames: {telemetry['display_frames']} (max gap {telemetry['display_frame_gap_max_ms']} ms)",
                 f"- Controls: {telemetry['control_events']} total / {telemetry['core_inputs']} CoreS3 inputs",
                 f"- Audio streams: {telemetry['audio_streams_started']} started / {telemetry['audio_streams_ended']} ended",
@@ -778,10 +829,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scenario",
         action="append",
-        choices=("reference", "lan-text", "audio-downlink", "arrival-rehearsal", "bridge-kill-recovery", "timeout"),
+        choices=(
+            "reference",
+            "lan-text",
+            "conversation-rehearsal",
+            "audio-downlink",
+            "arrival-rehearsal",
+            "bridge-kill-recovery",
+            "timeout",
+        ),
         help=(
-            "Scenario to run. Defaults to reference, lan-text, audio-downlink, "
-            "arrival-rehearsal, and bridge-kill-recovery."
+            "Scenario to run. Defaults to reference, lan-text, conversation-rehearsal, "
+            "audio-downlink, arrival-rehearsal, and bridge-kill-recovery."
         ),
     )
     parser.add_argument("--out-dir", type=Path, help="Optional directory for JSON and serial-like logs.")
@@ -794,6 +853,7 @@ def main() -> int:
     scenarios = args.scenario or [
         "reference",
         "lan-text",
+        "conversation-rehearsal",
         "audio-downlink",
         "arrival-rehearsal",
         "bridge-kill-recovery",

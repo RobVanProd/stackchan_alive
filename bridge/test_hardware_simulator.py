@@ -34,6 +34,25 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertEqual("Ready", report["telemetry"]["bridge_state"])
         self.assertIn("Curiosity systems", report["telemetry"]["response_text"])
 
+    def test_conversation_rehearsal_covers_wake_to_lipsync_to_ready(self):
+        hardware = run_simulation("conversation-rehearsal")
+        report = hardware.report("conversation-rehearsal")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertEqual(1, telemetry["conversation_turns"])
+        self.assertGreater(telemetry["conversation_first_audio_latency_ms"], 0)
+        self.assertLessEqual(telemetry["conversation_first_audio_latency_ms"], 2500)
+        self.assertEqual(1, telemetry["core_inputs"])
+        self.assertEqual("Ready", telemetry["bridge_state"])
+        self.assertEqual("idle", telemetry["face_mode"])
+        self.assertGreater(telemetry["mouth_display_frames"], 0)
+        self.assertGreater(telemetry["speech_frames"], 0)
+        self.assertIn("Curiosity systems", telemetry["response_text"])
+        for mode in ("listen", "think", "happy", "idle"):
+            self.assertIn(mode, telemetry["modes_seen"])
+        self.assertTrue(any("marker=utterance_end" in line for line in hardware.serial_lines))
+
     def test_audio_downlink_counts_binary_stream_payload(self):
         hardware = run_simulation("audio-downlink")
         report = hardware.report("audio-downlink")

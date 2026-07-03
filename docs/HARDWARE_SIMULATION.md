@@ -24,6 +24,9 @@ The simulator currently checks:
 
 - deterministic reference bridge frames from `bridge/reference_bridge.py`
 - LAN text turn output from `bridge/lan_service.py`
+- a full no-hardware conversation rehearsal: virtual wake input, utterance-end marker,
+  LAN bridge response, visible thinking, mouth/lip-sync frames, latency budget, and return to
+  `Ready`
 - binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`,
   including byte/chunk accounting before firmware speaker playback is wired
 - firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts,
@@ -33,8 +36,12 @@ The simulator currently checks:
   stream submission counters, mouth-display activity during speech, and a power-cycle
   recovery rehearsal
 
-The default run includes `reference`, `lan-text`, `audio-downlink`, `arrival-rehearsal`, and
-`bridge-kill-recovery`.
+The default run includes `reference`, `lan-text`, `conversation-rehearsal`, `audio-downlink`,
+`arrival-rehearsal`, and `bridge-kill-recovery`.
+The `conversation-rehearsal` scenario is the no-hardware P7 demo proxy: a virtual wake input
+starts a turn, the simulator marks utterance end, the LAN bridge emits `listening`,
+`thinking`, `response_start`, `audio`, and `response_end`, and the virtual device checks that
+first audio arrives within the 2.5 s LAN budget before returning to `Ready`.
 The `arrival-rehearsal` scenario is the best no-hardware proxy before the unit arrives: it
 pushes virtual button/touch events, shakes/puts down the robot through the safety path,
 streams a tiny synthetic TTS payload, verifies mouth/display activity, then power-cycles and
@@ -59,6 +66,12 @@ To run the pre-arrival device-shell rehearsal:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario arrival-rehearsal -Json
+```
+
+To run the conversation rehearsal:
+
+```powershell
+.\tools\run_hardware_simulation.cmd -Scenario conversation-rehearsal -Json
 ```
 
 To run the bridge-kill recovery rehearsal:

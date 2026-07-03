@@ -122,8 +122,10 @@ python bridge/hardware_simulator.py --out-dir output/hardware-sim/latest --json
 ```
 
 It consumes the same bridge frames as the firmware parser and checks response state, face mode,
-speech-envelope frames, binary TTS audio stream accounting, timeout behavior, and a
-pre-arrival device-shell rehearsal. The rehearsal simulates virtual display ticks, label
+speech-envelope frames, binary TTS audio stream accounting, timeout behavior, a conversation
+rehearsal, and a pre-arrival device-shell rehearsal. The conversation rehearsal simulates
+virtual wake input, LAN bridge response frames, first-audio latency, mouth-display activity,
+and return to `Ready`. The device-shell rehearsal simulates virtual display ticks, label
 persistence, CoreS3 tap/hold/BtnA/BtnB/BtnC inputs, motion safety toggles, speaker stream
 counters, mouth-display activity, and power-cycle recovery. The default run also includes
 `bridge-kill-recovery`: a dropped bridge during an open TTS stream must produce one offline

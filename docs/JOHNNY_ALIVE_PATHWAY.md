@@ -87,6 +87,9 @@ Keep each item independently shippable and package-verified.
 5. Virtual hardware proxy.
    - `bridge/hardware_simulator.py` consumes reference, LAN, and binary audio-downlink
      bridge frames and produces firmware-like serial logs plus JSON telemetry.
+   - The default simulator run includes `conversation-rehearsal`, which drives virtual wake
+     input through the LAN bridge path, checks first-audio latency against the 2.5 s budget,
+     verifies mouth frames, and returns to `Ready`.
    - The default simulator run also includes `arrival-rehearsal`, which models virtual
      CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
      safety toggles, speaker stream counters, mouth-display activity, and power-cycle
@@ -98,10 +101,10 @@ Keep each item independently shippable and package-verified.
      `output/hardware-sim/`.
    - GitHub Actions runs the bridge tests and simulator in the `bridge-tests` job and
      uploads the simulation report artifact for each PR/push.
-   - This catches bridge ordering, timeout, mouth-frame, input-mapping, reboot-recovery,
-     bridge-kill recovery, and binary stream regressions before the physical device arrives.
-     It does not replace real display, speaker, mic, camera, touch, IMU, servo, heat, power,
-     or soak evidence.
+   - This catches bridge ordering, conversation timing, timeout, mouth-frame, input-mapping,
+     reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical
+     device arrives. It does not replace real display, speaker, mic, camera, touch, IMU,
+     servo, heat, power, or soak evidence.
 
 6. End-to-end demo gate.
    - Wake or bench start, listen, visible thinking, in-character spoken response, lip-sync,

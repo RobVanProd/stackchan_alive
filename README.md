@@ -136,8 +136,9 @@ Run the virtual hardware proxy while the physical unit is unavailable:
 ```
 
 The default simulation includes a pre-arrival device-shell rehearsal for bridge ordering,
-virtual CoreS3 inputs, display frame ticks, mouth/speaker stream counters, power-cycle
-recovery, and bridge-kill recovery. It is still not a substitute for real hardware evidence.
+virtual CoreS3 inputs, display frame ticks, conversation timing, mouth/speaker stream
+counters, power-cycle recovery, and bridge-kill recovery. It is still not a substitute for
+real hardware evidence.
 
 If native host tests cannot find `gcc` / `g++`, run:
 
