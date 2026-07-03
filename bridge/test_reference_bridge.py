@@ -1,5 +1,7 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from reference_bridge import (
     BridgeMemory,
@@ -7,9 +9,12 @@ from reference_bridge import (
     PROTOCOL,
     bridge_frames,
     build_persona_prompt,
+    load_bridge_memory,
     plan_turn,
     render_bench,
     render_jsonl,
+    reset_bridge_memory,
+    save_bridge_memory,
 )
 
 
@@ -65,6 +70,28 @@ class ReferenceBridgeTests(unittest.TestCase):
         self.assertEqual("happy", turn.intent)
         self.assertIn("Hello Rob.", turn.text)
         self.assertIn("You picked me up", turn.text)
+
+    def test_memory_store_round_trips_minimal_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "memory.json"
+            memory = BridgeMemory(preferred_name="Rob", recent_topics=("voice",), physical_context=("room is dark",), turns_seen=3)
+            save_bridge_memory(path, memory)
+
+            loaded = load_bridge_memory(path)
+            self.assertEqual(memory, loaded)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(["voice"], data["recent_topics"])
+            self.assertNotIn("audio", data)
+            self.assertNotIn("transcript", data)
+
+    def test_memory_store_reset_deletes_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "memory.json"
+            save_bridge_memory(path, BridgeMemory(preferred_name="Rob"))
+            reset = reset_bridge_memory(path)
+
+            self.assertEqual(BridgeMemory(), reset)
+            self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":
