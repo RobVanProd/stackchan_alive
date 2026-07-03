@@ -9,6 +9,8 @@
 
 namespace stackchan {
 
+class AudioOut;
+
 constexpr size_t kSpeechAdapterEarconBufferSamples =
     (static_cast<size_t>(kEarconSampleRate) * kEarconMaxDurationMs) / 1000u;
 
@@ -47,6 +49,7 @@ struct SpeechAdapterTelemetry {
 class SpeechAdapter {
  public:
   bool begin(bool hardwareEnabled = false);
+  bool begin(bool hardwareEnabled, AudioOut* audioOut);
   bool handleCue(const SpeechCue& cue, uint32_t seq, const EmotionalProfile& emotion, uint32_t nowMs);
 
   const SpeechAdapterTelemetry& telemetry() const {
@@ -63,6 +66,7 @@ class SpeechAdapter {
 
   SpeechAdapterTelemetry telemetry_;
   SpeechPlaybackPlan lastPlan_;
+  AudioOut* audioOut_ = nullptr;
   int16_t earconBuffer_[kSpeechAdapterEarconBufferSamples] = {};
 };
 

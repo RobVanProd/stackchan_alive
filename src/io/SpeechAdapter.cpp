@@ -1,12 +1,19 @@
 #include "io/SpeechAdapter.hpp"
 
+#include "io/AudioOut.hpp"
+
 #include <string.h>
 
 namespace stackchan {
 
 bool SpeechAdapter::begin(bool hardwareEnabled) {
+  return begin(hardwareEnabled, nullptr);
+}
+
+bool SpeechAdapter::begin(bool hardwareEnabled, AudioOut* audioOut) {
   telemetry_ = SpeechAdapterTelemetry {};
   lastPlan_ = SpeechPlaybackPlan {};
+  audioOut_ = audioOut;
   telemetry_.ready = true;
   telemetry_.hardwareEnabled = hardwareEnabled;
   return true;
@@ -50,6 +57,23 @@ bool SpeechAdapter::handleCue(const SpeechCue& cue, uint32_t seq, const Emotiona
   telemetry_.lastEarconChecksum = plan.earconRender.checksum;
   telemetry_.lastEarconPeakAbs = plan.earconRender.peakAbs;
   telemetry_.lastPromptChars = plan.promptChars;
+
+  if (audioOut_ != nullptr) {
+    AudioOutPlaybackRequest request;
+    request.seq = plan.seq;
+    request.queuedAtMs = nowMs;
+    request.source = plan.promptSource == PromptSource::PackagedPrompt ? AudioOutSource::PackagedPrompt
+                                                                       : AudioOutSource::None;
+    request.promptId = plan.promptId;
+    request.wavPath = plan.promptWavPath;
+    request.sidecarPath = plan.promptSidecarPath;
+    request.earconSamples = plan.earconRender.samplesWritten;
+    request.earconDelayMs = plan.earconDelayMs;
+    request.promptChars = plan.promptChars;
+    request.hasPrompt = plan.hasPrompt;
+    request.hasEarcon = plan.hasEarcon;
+    audioOut_->enqueue(request);
+  }
   return true;
 }
 
