@@ -2273,6 +2273,11 @@ void test_bridge_client_parses_audio_stream_metadata() {
   TEST_ASSERT_EQUAL_UINT32(12, output.streamChunk.seq);
   TEST_ASSERT_EQUAL_UINT32(1, output.streamChunk.index);
   TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.bytes);
+  TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.payloadBytes);
+  TEST_ASSERT_NOT_NULL(output.streamChunk.payload);
+  TEST_ASSERT_EQUAL_UINT8(1, output.streamChunk.payload[0]);
+  TEST_ASSERT_EQUAL_UINT8(2, output.streamChunk.payload[1]);
+  TEST_ASSERT_EQUAL_UINT8(3, output.streamChunk.payload[2]);
   TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.receivedBytes);
   TEST_ASSERT_FALSE(output.streamChunk.finalChunk);
 
@@ -2288,6 +2293,9 @@ void test_bridge_client_parses_audio_stream_metadata() {
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
   TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.index);
   TEST_ASSERT_EQUAL_UINT32(1, output.streamChunk.bytes);
+  TEST_ASSERT_EQUAL_UINT32(1, output.streamChunk.payloadBytes);
+  TEST_ASSERT_NOT_NULL(output.streamChunk.payload);
+  TEST_ASSERT_EQUAL_UINT8(7, output.streamChunk.payload[0]);
   TEST_ASSERT_EQUAL_UINT32(7, output.streamChunk.receivedBytes);
   TEST_ASSERT_TRUE(output.streamChunk.finalChunk);
   TEST_ASSERT_GREATER_THAN_UINT32(0, output.streamChunk.checksum);
@@ -2350,6 +2358,43 @@ void test_bridge_client_rejects_truncated_audio_stream() {
   TEST_ASSERT_EQUAL_STRING("audio_stream_payload_bytes_mismatch", output.error);
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().parseErrors);
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamErrors);
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
+}
+
+void test_bridge_client_rejects_oversized_audio_stream_chunk() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_FALSE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":15,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":4097,\"chunk_bytes\":4097,\"chunks\":1}",
+      642));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("audio_stream_chunk_too_large", output.error);
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"hello\",\"session\":\"after-oversize-metadata\"}", 644));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":16,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":4097,\"chunk_bytes\":4096,\"chunks\":1}",
+      645));
+
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+
+  uint8_t chunk[kBridgeAudioStreamChunkPayloadMax + 1] = {};
+  TEST_ASSERT_FALSE(bridge.submitBinaryFrame(chunk, sizeof(chunk), 650));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("audio_stream_chunk_too_large", output.error);
+  TEST_ASSERT_EQUAL_UINT32(2, bridge.telemetry().parseErrors);
+  TEST_ASSERT_EQUAL_UINT32(2, bridge.telemetry().audioStreamErrors);
   TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
 }
 
@@ -2609,6 +2654,7 @@ int main() {
   RUN_TEST(test_bridge_client_parses_audio_stream_metadata);
   RUN_TEST(test_bridge_client_rejects_binary_without_audio_stream);
   RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
+  RUN_TEST(test_bridge_client_rejects_oversized_audio_stream_chunk);
   RUN_TEST(test_bridge_client_recovers_after_error_aborts_audio_stream);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   RUN_TEST(test_bridge_client_times_out_active_session_once);

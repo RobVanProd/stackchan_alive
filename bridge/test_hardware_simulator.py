@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 
 from hardware_simulator import (
+    AUDIO_DOWNLINK_TEST_BYTES,
+    MAX_AUDIO_STREAM_CHUNK_BYTES,
     SIM_SCHEMA,
     VirtualStackchanHardware,
     full_audio_downlink_frames,
@@ -60,12 +62,14 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertEqual("pass", report["status"], report["issues"])
         self.assertEqual(1, report["telemetry"]["audio_streams_started"])
         self.assertEqual(1, report["telemetry"]["audio_streams_ended"])
-        self.assertEqual(9, report["telemetry"]["audio_stream_bytes_expected"])
-        self.assertEqual(9, report["telemetry"]["audio_stream_bytes_received"])
-        self.assertEqual(3, report["telemetry"]["audio_stream_chunks_expected"])
-        self.assertEqual(3, report["telemetry"]["audio_stream_chunks_received"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, report["telemetry"]["audio_stream_bytes_expected"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, report["telemetry"]["audio_stream_bytes_received"])
+        self.assertEqual(MAX_AUDIO_STREAM_CHUNK_BYTES, report["telemetry"]["audio_stream_chunk_bytes_declared"])
+        self.assertEqual(MAX_AUDIO_STREAM_CHUNK_BYTES, report["telemetry"]["audio_stream_chunk_bytes_max"])
+        self.assertEqual(2, report["telemetry"]["audio_stream_chunks_expected"])
+        self.assertEqual(2, report["telemetry"]["audio_stream_chunks_received"])
         self.assertEqual(1, report["telemetry"]["speaker_playback_starts"])
-        self.assertEqual(3, report["telemetry"]["speaker_frames_submitted"])
+        self.assertEqual(2, report["telemetry"]["speaker_frames_submitted"])
         self.assertGreater(report["telemetry"]["mouth_display_frames"], 0)
 
     def test_arrival_rehearsal_exercises_virtual_device_shell(self):
@@ -81,7 +85,7 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertEqual(5, telemetry["core_inputs"])
         self.assertGreaterEqual(telemetry["control_events"], 7)
         self.assertEqual(1, telemetry["speaker_playback_starts"])
-        self.assertEqual(3, telemetry["speaker_frames_submitted"])
+        self.assertEqual(2, telemetry["speaker_frames_submitted"])
         self.assertGreater(telemetry["mouth_display_frames"], 0)
         self.assertEqual(2, telemetry["boot_count"])
         self.assertEqual(1, telemetry["power_cycles"])
@@ -137,9 +141,51 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertIn("binary_without_audio_stream", report["issues"])
         self.assertEqual(1, report["telemetry"]["parse_errors"])
 
+    def test_oversized_audio_stream_chunk_fails(self):
+        hardware = VirtualStackchanHardware()
+        hardware.process(
+            {
+                "type": "audio_stream_start",
+                "seq": 22,
+                "format": "wav",
+                "sample_rate": 22050,
+                "audio_bytes": MAX_AUDIO_STREAM_CHUNK_BYTES + 1,
+                "chunk_bytes": MAX_AUDIO_STREAM_CHUNK_BYTES,
+                "chunks": 1,
+            },
+            at_ms=0,
+        )
+        hardware.process(b"x" * (MAX_AUDIO_STREAM_CHUNK_BYTES + 1), at_ms=20)
+        report = hardware.report("oversized-chunk")
+
+        self.assertEqual("fail", report["status"])
+        self.assertIn("audio_stream_chunk_too_large", report["issues"])
+        self.assertEqual(1, report["telemetry"]["parse_errors"])
+
+    def test_oversized_declared_audio_stream_chunk_fails(self):
+        hardware = VirtualStackchanHardware()
+        hardware.process(
+            {
+                "type": "audio_stream_start",
+                "seq": 23,
+                "format": "wav",
+                "sample_rate": 22050,
+                "audio_bytes": MAX_AUDIO_STREAM_CHUNK_BYTES + 1,
+                "chunk_bytes": MAX_AUDIO_STREAM_CHUNK_BYTES + 1,
+                "chunks": 1,
+            },
+            at_ms=0,
+        )
+        report = hardware.report("oversized-declared-chunk")
+
+        self.assertEqual("fail", report["status"])
+        self.assertIn("audio_stream_chunk_too_large", report["issues"])
+        self.assertEqual(1, report["telemetry"]["parse_errors"])
+
     def test_truncated_audio_stream_fails(self):
         frames = full_audio_downlink_frames()
-        broken = [frame for frame in frames if frame != b"ghi"]
+        last_binary_index = max(index for index, frame in enumerate(frames) if isinstance(frame, bytes))
+        broken = [frame for index, frame in enumerate(frames) if index != last_binary_index]
         hardware = VirtualStackchanHardware()
         now_ms = 0
         for frame in broken:

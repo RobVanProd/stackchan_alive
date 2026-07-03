@@ -76,7 +76,9 @@ Keep each item independently shippable and package-verified.
    - A configured local TTS command can receive response text on stdin and replace the
      deterministic mouth beats with returned TTS metadata.
    - If the TTS command returns `audio_b64`, the LAN service sends stream metadata plus binary
-     WebSocket chunks. Firmware parses the stream metadata and accounts chunk payloads for telemetry.
+     WebSocket chunks. Firmware parses the stream metadata, copies the current chunk into a
+     bounded `BridgeClient` buffer exposed through bridge outputs, and accounts chunk payloads
+     for telemetry.
    - Selecting/measuring real STT/TTS engines and wiring downlinked chunks into speaker
      playback remain the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.
@@ -85,7 +87,8 @@ Keep each item independently shippable and package-verified.
    - Bridge streams response text plus TTS-derived envelope/viseme timing.
    - Firmware keeps using the existing mouth-envelope path.
    - Binary audio transport to firmware has a LAN scaffold; generated audio can travel as
-     chunks, but firmware speaker playback from those chunks is still future work.
+     chunks and firmware keeps the current accepted chunk payload available to the output
+     handler, but firmware speaker playback from those chunks is still future work.
    - Voice-source provenance remains blocking for any consumer-ready build.
 
 5. Virtual hardware proxy.
@@ -101,6 +104,9 @@ Keep each item independently shippable and package-verified.
    - It also includes `bridge-kill-recovery`, which aborts an in-flight TTS stream after a
      bridge error, emits one offline fallback prompt, reconnects, speaks a recovery turn, and
      returns to `Ready` without a timeout or parse failure.
+   - The `audio-downlink` and `arrival-rehearsal` scenarios now exercise the 4096-byte
+     firmware chunk limit with a synthetic 5000-byte downlink split into 4096-byte and
+     904-byte chunks.
    - Native firmware tests now enforce the same recovery contract: bridge `error` and
      timeout paths clear open audio-stream state before accepting the next bridge session.
    - `offline-command-fallback` keeps the virtual bridge disconnected while CoreS3 input and
