@@ -322,6 +322,19 @@ Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
+$audioFixtureProvenanceDir = Join-Path $provenanceDir "test/fixtures/audio"
+New-Item -ItemType Directory -Force -Path $audioFixtureProvenanceDir | Out-Null
+foreach ($fixture in @(
+  "test/fixtures/audio/speech_right.wav",
+  "test/fixtures/audio/speech_left.wav",
+  "test/fixtures/audio/music_center.wav",
+  "test/fixtures/audio/fan_noise.wav"
+)) {
+  if (-not (Test-Path -LiteralPath $fixture)) {
+    throw "Missing P3 audio saliency fixture: $fixture"
+  }
+  Copy-Item -LiteralPath $fixture -Destination $audioFixtureProvenanceDir
+}
 
 function Invoke-CapturedText {
   param(
@@ -731,7 +744,11 @@ $manifest = [ordered]@{
     "provenance/release.yml",
     "provenance/src/main.cpp",
     "provenance/src/persona/SpeechPlanner.hpp",
-    "provenance/src/persona/SpeechPlanner.cpp"
+    "provenance/src/persona/SpeechPlanner.cpp",
+    "provenance/test/fixtures/audio/speech_right.wav",
+    "provenance/test/fixtures/audio/speech_left.wav",
+    "provenance/test/fixtures/audio/music_center.wav",
+    "provenance/test/fixtures/audio/fan_noise.wav"
   )
 }
 

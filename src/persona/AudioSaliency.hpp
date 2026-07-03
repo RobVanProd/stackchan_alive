@@ -14,6 +14,15 @@ struct AudioSaliencySample {
   float zeroCrossingRate = 0.0f;
 };
 
+struct AudioPcmWindow {
+  uint32_t timestampMs = 0;
+  const int16_t* left = nullptr;
+  const int16_t* right = nullptr;
+  uint16_t sampleCount = 0;
+};
+
+AudioSaliencySample makeAudioSaliencySample(const AudioPcmWindow& window);
+
 struct AudioSaliencyResult {
   bool salient = false;
   bool speechActive = false;

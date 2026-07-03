@@ -1,7 +1,11 @@
 #include <unity.h>
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <string>
+#include <vector>
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
@@ -55,6 +59,84 @@ class FakeActuator final : public IActuator {
   float lastYawAngleDeg = 0.0f;
   float lastYawVelocity = 0.0f;
 };
+
+struct WavPcmFixture {
+  uint32_t sampleRate = 0;
+  std::vector<int16_t> left;
+  std::vector<int16_t> right;
+};
+
+uint16_t readLe16(const std::vector<uint8_t>& bytes, size_t offset) {
+  return static_cast<uint16_t>(bytes[offset] | (bytes[offset + 1] << 8));
+}
+
+uint32_t readLe32(const std::vector<uint8_t>& bytes, size_t offset) {
+  return static_cast<uint32_t>(bytes[offset] | (bytes[offset + 1] << 8) |
+                               (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24));
+}
+
+bool readWavFixture(const char* relativePath, WavPcmFixture& out) {
+  const char* roots[] = {"", "../", "../../"};
+  std::ifstream file;
+  for (const char* root : roots) {
+    const std::string candidate = std::string(root) + relativePath;
+    file.open(candidate, std::ios::binary);
+    if (file.good()) {
+      break;
+    }
+    file.close();
+  }
+  if (!file.good()) {
+    return false;
+  }
+
+  std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  if (bytes.size() < 44 || std::memcmp(bytes.data(), "RIFF", 4) != 0 ||
+      std::memcmp(bytes.data() + 8, "WAVE", 4) != 0) {
+    return false;
+  }
+
+  uint16_t channels = 0;
+  uint16_t bitsPerSample = 0;
+  uint16_t audioFormat = 0;
+  size_t dataOffset = 0;
+  uint32_t dataBytes = 0;
+
+  size_t offset = 12;
+  while (offset + 8 <= bytes.size()) {
+    const uint32_t chunkSize = readLe32(bytes, offset + 4);
+    const size_t payload = offset + 8;
+    if (payload + chunkSize > bytes.size()) {
+      return false;
+    }
+    if (std::memcmp(bytes.data() + offset, "fmt ", 4) == 0) {
+      audioFormat = readLe16(bytes, payload);
+      channels = readLe16(bytes, payload + 2);
+      out.sampleRate = readLe32(bytes, payload + 4);
+      bitsPerSample = readLe16(bytes, payload + 14);
+    } else if (std::memcmp(bytes.data() + offset, "data", 4) == 0) {
+      dataOffset = payload;
+      dataBytes = chunkSize;
+    }
+    offset = payload + chunkSize + (chunkSize & 1);
+  }
+
+  if (audioFormat != 1 || channels != 2 || bitsPerSample != 16 || dataOffset == 0) {
+    return false;
+  }
+
+  const size_t frameCount = dataBytes / 4;
+  out.left.clear();
+  out.right.clear();
+  out.left.reserve(frameCount);
+  out.right.reserve(frameCount);
+  for (size_t i = 0; i < frameCount; ++i) {
+    const size_t frameOffset = dataOffset + i * 4;
+    out.left.push_back(static_cast<int16_t>(readLe16(bytes, frameOffset)));
+    out.right.push_back(static_cast<int16_t>(readLe16(bytes, frameOffset + 2)));
+  }
+  return true;
+}
 
 void test_spring_converges_without_exploding() {
   Spring1D spring;
@@ -232,6 +314,52 @@ void test_audio_saliency_marks_loud_noise_without_speech_band() {
   TEST_ASSERT_TRUE(result.loudNoise);
   TEST_ASSERT_FALSE(result.speechActive);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.80f, result.level);
+}
+
+void test_audio_saliency_uses_wav_fixtures_for_vad_and_direction() {
+  WavPcmFixture rightSpeech;
+  WavPcmFixture leftSpeech;
+  WavPcmFixture music;
+  WavPcmFixture fan;
+  TEST_ASSERT_TRUE(readWavFixture("test/fixtures/audio/speech_right.wav", rightSpeech));
+  TEST_ASSERT_TRUE(readWavFixture("test/fixtures/audio/speech_left.wav", leftSpeech));
+  TEST_ASSERT_TRUE(readWavFixture("test/fixtures/audio/music_center.wav", music));
+  TEST_ASSERT_TRUE(readWavFixture("test/fixtures/audio/fan_noise.wav", fan));
+  TEST_ASSERT_EQUAL_UINT32(16000, rightSpeech.sampleRate);
+
+  AudioSaliency saliency;
+  saliency.reset(0.02f);
+  AudioSaliencySample sample = makeAudioSaliencySample({100, rightSpeech.left.data(), rightSpeech.right.data(),
+                                                        static_cast<uint16_t>(rightSpeech.left.size())});
+  AudioSaliencyResult result = saliency.process(sample);
+  TEST_ASSERT_TRUE(result.speechActive);
+  TEST_ASSERT_TRUE(result.salient);
+  TEST_ASSERT_GREATER_THAN_FLOAT(45.0f, result.azimuthDeg);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, sample.zeroCrossingRate);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.32f, sample.zeroCrossingRate);
+
+  saliency.reset(0.02f);
+  sample = makeAudioSaliencySample({100, leftSpeech.left.data(), leftSpeech.right.data(),
+                                    static_cast<uint16_t>(leftSpeech.left.size())});
+  result = saliency.process(sample);
+  TEST_ASSERT_TRUE(result.speechActive);
+  TEST_ASSERT_LESS_THAN_FLOAT(-45.0f, result.azimuthDeg);
+
+  saliency.reset(0.02f);
+  sample = makeAudioSaliencySample({100, music.left.data(), music.right.data(),
+                                    static_cast<uint16_t>(music.left.size())});
+  result = saliency.process(sample);
+  TEST_ASSERT_FALSE(result.speechActive);
+  TEST_ASSERT_FALSE(result.loudNoise);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.32f, sample.zeroCrossingRate);
+
+  saliency.reset(0.02f);
+  sample = makeAudioSaliencySample({100, fan.left.data(), fan.right.data(),
+                                    static_cast<uint16_t>(fan.left.size())});
+  result = saliency.process(sample);
+  TEST_ASSERT_FALSE(result.speechActive);
+  TEST_ASSERT_FALSE(result.loudNoise);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.035f, sample.zeroCrossingRate);
 }
 
 void test_audio_reflex_maps_saliency_to_persona_events() {
@@ -1236,6 +1364,7 @@ int main() {
   RUN_TEST(test_mood_decay_returns_toward_baseline);
   RUN_TEST(test_audio_saliency_detects_speech_direction_and_habituation);
   RUN_TEST(test_audio_saliency_marks_loud_noise_without_speech_band);
+  RUN_TEST(test_audio_saliency_uses_wav_fixtures_for_vad_and_direction);
   RUN_TEST(test_audio_reflex_maps_saliency_to_persona_events);
   RUN_TEST(test_audio_reflex_loud_noise_preempts_speech_events);
   RUN_TEST(test_positive_valence_smiles);
