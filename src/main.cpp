@@ -170,6 +170,20 @@ SpeechViseme toSpeechViseme(BenchSpeechViseme viseme) {
   return SpeechViseme::Neutral;
 }
 
+SpeechViseme toSpeechViseme(AudioOutViseme viseme) {
+  switch (viseme) {
+    case AudioOutViseme::Ah:
+      return SpeechViseme::Ah;
+    case AudioOutViseme::Oh:
+      return SpeechViseme::Oh;
+    case AudioOutViseme::Ee:
+      return SpeechViseme::Ee;
+    case AudioOutViseme::Neutral:
+      return SpeechViseme::Neutral;
+  }
+  return SpeechViseme::Neutral;
+}
+
 const __FlashStringHelper* speechIntentName(SpeechIntent intent) {
   switch (intent) {
     case SpeechIntent::Boot:
@@ -318,7 +332,13 @@ void printRuntimeStatus() {
   Serial.print(F(" audio_out_core0="));
   Serial.print(audioOut.taskPinnedToCore0 ? 1 : 0);
   Serial.print(F(" audio_out_requests="));
-  Serial.println(audioOut.requestsQueued);
+  Serial.print(audioOut.requestsQueued);
+  Serial.print(F(" audio_out_playing="));
+  Serial.print(audioOut.playbackActive ? 1 : 0);
+  Serial.print(F(" audio_out_frames="));
+  Serial.print(audioOut.speechFramesEmitted);
+  Serial.print(F(" audio_out_ducks="));
+  Serial.println(audioOut.duckEvents);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -381,6 +401,12 @@ void printAudioOutPlayback(const AudioOutPlaybackRequest& request) {
   Serial.print(request.sidecarPath);
   Serial.print(F(" earcon_samples="));
   Serial.print(request.earconSamples);
+  Serial.print(F(" sidecar_frames="));
+  Serial.print(gAudioOut.telemetry().sidecarFrames);
+  Serial.print(F(" sidecar_frame_ms="));
+  Serial.print(gAudioOut.telemetry().sidecarFrameMs);
+  Serial.print(F(" playback_ms="));
+  Serial.print(gAudioOut.telemetry().playbackDurationMs);
   Serial.print(F(" duck_on_barge_in="));
   Serial.println(request.duckOnBargeIn ? 1 : 0);
 }
@@ -497,6 +523,25 @@ void publishSpeechInput(const BenchControl& control) {
   input.viseme = toSpeechViseme(control.speech.viseme);
   input.timestampMs = control.hasEvent ? control.event.timestampMs : millis();
   input.durationMs = control.speech.durationMs;
+  xQueueOverwrite(gSpeechQueue, &input);
+}
+
+void publishAudioOutSpeechFrame(uint32_t nowMs) {
+  if (gSpeechQueue == nullptr) {
+    return;
+  }
+
+  AudioOutSpeechFrame frame;
+  if (!gAudioOut.pollSpeechFrame(nowMs, &frame)) {
+    return;
+  }
+
+  FaceSpeechInput input;
+  input.clear = frame.clear;
+  input.envelope = frame.envelope;
+  input.viseme = toSpeechViseme(frame.viseme);
+  input.timestampMs = frame.timestampMs;
+  input.durationMs = frame.clear ? 0 : frame.durationMs;
   xQueueOverwrite(gSpeechQueue, &input);
 }
 
@@ -632,6 +677,9 @@ void IntentTask(void* pv) {
           pendingAudioEvent = control.event;
           hasPendingAudioEvent = true;
         }
+        if (control.event.type == EventType::UserSpeaking) {
+          gAudioOut.duck(millis());
+        }
       }
       if (control.wantsStatus) {
         printHeartbeat();
@@ -672,6 +720,7 @@ void IntentTask(void* pv) {
         printAudioOutPlayback(gAudioOut.lastRequest());
       }
     }
+    publishAudioOutSpeechFrame(frame.timestampMs);
     publishFrame(frame);
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.intentPeriodMs));
   }
