@@ -747,6 +747,8 @@ $soakLog = Quote-PowerShellArgument (Join-Path $logsDir "soak_serial.log")
 $speechDemoLog = Quote-PowerShellArgument (Join-Path $logsDir "speech_mouth_demo_serial.log")
 $speakAllLog = Quote-PowerShellArgument (Join-Path $logsDir "speak_all_intents_serial.log")
 $bridgeReplayLog = Quote-PowerShellArgument (Join-Path $logsDir "bridge_replay_serial.log")
+$hardwareSimBaselineLog = Quote-PowerShellArgument (Join-Path $logsDir "hardware_simulation_baseline.log")
+$hardwareSimBaselineDir = Quote-PowerShellArgument (Join-Path $outDir "simulation/hardware-sim/latest")
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
 $speechDemoBody = "& '.\tools\send_speech_mouth_demo.ps1'$portArg"
@@ -760,6 +762,7 @@ if ($voiceLeadInfo) {
 $speechDemoCommand = "& { $speechDemoBody } 2>&1 | Tee-Object -FilePath $speechDemoLog"
 $speakAllCommand = "& '.\tools\send_speak_all_intents_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $speakAllLog"
 $bridgeReplayCommand = "& '.\tools\send_bridge_replay_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $bridgeReplayLog"
+$hardwareSimBaselineCommand = "& '.\tools\run_hardware_simulation.ps1' -OutputDir $hardwareSimBaselineDir -Json 2>&1 | Tee-Object -FilePath $hardwareSimBaselineLog"
 $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
@@ -803,6 +806,7 @@ $commandFiles = [ordered]@{
   "RUN_SERVO_CALIBRATION.cmd" = New-PowerShellCommandFile $servoCommand
   "RUN_SOAK_MONITOR.cmd" = New-PowerShellCommandFile $soakCommand
   "RUN_PACKAGE_VERIFY.cmd" = New-PowerShellCommandFile $verifyCommand
+  "RUN_HARDWARE_SIM_BASELINE.cmd" = New-PowerShellCommandFile $hardwareSimBaselineCommand
   "RUN_PROGRESS_CHECK.cmd" = New-PowerShellCommandFile $progressCommand
   "RUN_ROLLOUT_STATUS.cmd" = New-PowerShellCommandFile $rolloutStatusCommand
   "RUN_ADD_MEDIA.cmd" = @(
@@ -835,24 +839,26 @@ $nextSteps = @(
   "## Run Order",
   "",
   "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
-  "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
-  "3. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
-  "4. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
-  "5. Optionally run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
-  "6. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
-  "7. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
-  "8. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
-  "9. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
-  "10. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
-  "11. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-  "12. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
-  "13. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
-  "14. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
-  "15. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "2. If the physical unit is not connected yet, run ``RUN_HARDWARE_SIM_BASELINE.cmd`` to save the no-hardware virtual Stackchan baseline under ``simulation/hardware-sim/latest/`` and ``logs/hardware_simulation_baseline.log``.",
+  "3. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
+  "4. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
+  "5. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
+  "6. Optionally run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
+  "7. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+  "8. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+  "9. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+  "10. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+  "11. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+  "12. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+  "13. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "14. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "15. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+  "16. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
   "",
   "## Gates Still Expected",
   "",
   "- Hardware validation remains pending until this packet has real display, servo, soak, calibration, photo/video, and speaker evidence.",
+  "- ``RUN_HARDWARE_SIM_BASELINE.cmd`` is a pre-arrival rehearsal only. It does not satisfy display, mic, speaker, servo, soak, or promotion evidence gates.",
   "- Production voice-source provenance remains pending until the owned or licensed source record is completed.",
   "- RVC voice-base evidence remains review-only until consumer and distribution approvals are explicitly recorded.",
   "- GitHub Actions may still be externally blocked; use ``RUN_ROLLOUT_STATUS.cmd`` for the current CI/account state.",
@@ -875,6 +881,8 @@ $readme = @(
   "",
   "The runnable command files in this folder are generated for this release, port, package, and evidence path.",
   "",
+  "``RUN_HARDWARE_SIM_BASELINE.cmd`` can be run before the robot arrives. It writes the full virtual Stackchan proxy report, including the fake mic/STT/model/TTS/speaker loop, under ``simulation/hardware-sim/latest/`` and logs the command to ``logs/hardware_simulation_baseline.log``. Treat it as a comparison baseline only, not hardware evidence.",
+  "",
   "BENCH_STATUS.md is the quick handoff file. RUN_PROGRESS_CHECK.cmd refreshes it with the current status, next action, next command, top findings, and matching BENCH_STATUS.json machine-readable report.",
   "",
   "RELEASE_ACCEPTANCE.md and release_acceptance.json record the no-hardware gates that were already accepted and the hardware gates still required before consumer rollout.",
@@ -896,6 +904,12 @@ $readme = @(
   "If present, ``HOSTED_MEDIA_REFERENCE.md`` records the verified Cloudflare/share page for this release. Use it as the remote review reference for the image, video, face GIFs, and voice samples while still collecting real-device evidence locally.",
   "",
   "## Suggested Commands",
+  "",
+  "No-hardware simulation baseline:",
+  "",
+  "    $hardwareSimBaselineCommand",
+  "",
+  "    .\RUN_HARDWARE_SIM_BASELINE.cmd",
   "",
   "Display-only flash:",
   "",
@@ -1026,6 +1040,7 @@ $requiredRecords = @(
   "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json",
   "calibration/calibration.yaml",
   "RUN_PLAY_LEAD_VOICE.cmd",
+  "RUN_HARDWARE_SIM_BASELINE.cmd",
   "RUN_DISPLAY_ONLY.cmd",
   "RUN_SPEECH_MOUTH_DEMO.cmd",
   "RUN_SPEAK_ALL_INTENTS.cmd",
@@ -1077,6 +1092,12 @@ $metadata = [ordered]@{
   voiceLeadAudition = $voiceLeadInfo
   voiceGateStatus = $voiceGateInfo
   shareVerification = $shareVerificationInfo
+  simulationBaseline = [ordered]@{
+    command = "RUN_HARDWARE_SIM_BASELINE.cmd"
+    report = "simulation/hardware-sim/latest/hardware_simulation.json"
+    log = "logs/hardware_simulation_baseline.log"
+    evidenceRole = "pre-arrival comparison baseline only"
+  }
   requiredLogs = $requiredLogs
   requiredRecords = $requiredRecords
   benchStatus = [ordered]@{

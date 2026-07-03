@@ -135,6 +135,9 @@ Keep each item independently shippable and package-verified.
      and return to idle.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
+   - Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd`, which writes the same
+     no-hardware proxy report under `simulation/hardware-sim/latest/` for pre-arrival
+     comparison without satisfying hardware evidence gates.
    - GitHub Actions runs the bridge tests, engine readiness probe, and simulator in the
      `bridge-tests` job, then uploads both the engine-probe and hardware-simulation report
      artifacts for each PR/push.
