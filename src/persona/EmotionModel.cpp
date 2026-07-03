@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "PersonaBehavior.hpp"
+
 namespace stackchan {
 
 namespace {
@@ -52,10 +54,10 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       break;
     case EventType::ThinkingStarted:
       emotion_.focus += 0.15f * s;
-      emotion_.arousal += 0.10f * s;
+      emotion_.arousal += generated_persona::kCuriosityArousalDelta * s;
       break;
     case EventType::ResponseStarted:
-      emotion_.valence += 0.10f * s;
+      emotion_.valence += (generated_persona::kHappyValenceDelta * 0.50f) * s;
       emotion_.focus += 0.15f * s;
       break;
     case EventType::IdleTimeout:
@@ -64,7 +66,7 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       emotion_.fatigue += 0.05f * s;
       break;
     case EventType::Error:
-      emotion_.valence -= 0.35f * s;
+      emotion_.valence += (generated_persona::kSafetyValenceDelta - 0.05f) * s;
       emotion_.arousal += 0.20f * s;
       emotion_.focus = 0.40f;
       break;
@@ -114,15 +116,16 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
 void EmotionModel::applyCircadian(uint8_t hourOfDay) {
   const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
 
-  if (safeHour >= 21 || safeHour < 5) {
+  if (safeHour >= generated_persona::kNightStartHour || safeHour < generated_persona::kMorningStartHour) {
     emotion_.fatigue += 0.09f;
     emotion_.arousal -= 0.04f;
     emotion_.focus -= 0.02f;
-  } else if (safeHour >= 18) {
+  } else if (safeHour >= generated_persona::kEveningStartHour) {
     // Evening drift: sleepy enough to invite yawns without forcing Sleep mode.
     emotion_.fatigue += 0.05f;
     emotion_.arousal -= 0.02f;
-  } else if (safeHour >= 6 && safeHour < 10) {
+  } else if (safeHour >= generated_persona::kMorningStartHour &&
+             safeHour < generated_persona::kMorningEndHour) {
     // Morning lift: Stackchan wakes gently instead of snapping to high arousal.
     emotion_.fatigue -= 0.05f;
     emotion_.arousal += 0.025f;
@@ -140,8 +143,10 @@ void EmotionModel::applyCircadian(uint8_t hourOfDay) {
 void EmotionModel::applyAmbient(float lux, uint8_t hourOfDay) {
   const float safeLux = constrain(lux, 0.0f, 2000.0f);
   const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
-  const bool night = safeHour >= 20 || safeHour < 6;
-  const bool daytime = safeHour >= 7 && safeHour < 18;
+  const bool night = safeHour >= generated_persona::kNightStartHour ||
+                     safeHour < generated_persona::kMorningStartHour;
+  const bool daytime = safeHour >= static_cast<uint8_t>(generated_persona::kMorningStartHour + 1) &&
+                       safeHour < generated_persona::kEveningStartHour;
 
   applyCircadian(safeHour);
 

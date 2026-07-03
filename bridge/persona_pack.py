@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 PACK_SCHEMA = "stackchan.persona-pack.v1"
 CHARACTER_SCHEMA = "stackchan.persona-character.v1"
+BEHAVIOR_SCHEMA = "stackchan.persona-behavior.v1"
 DEFAULT_PERSONA_ID = "spark"
 
 FOUNDATION_MAX_CHARS = 140
@@ -205,6 +206,13 @@ def int_value(value: object, default: int) -> int:
         return default
 
 
+def float_value(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass(frozen=True)
 class PersonaPack:
     root: Path
@@ -337,6 +345,8 @@ def validate_pack(pack: PersonaPack) -> list[str]:
         issues.append("pack_schema_invalid")
     if pack.character.get("schema") != CHARACTER_SCHEMA:
         issues.append("character_schema_invalid")
+    if pack.behavior.get("schema") != BEHAVIOR_SCHEMA:
+        issues.append("behavior_schema_invalid")
     if not pack.pack_id:
         issues.append("pack_id_missing")
     files = mapping(pack.manifest.get("files"))
@@ -386,6 +396,49 @@ def validate_pack(pack: PersonaPack) -> list[str]:
         issues.append("prompt_contains_clone_marker")
     if "Reply only as JSON" not in rendered_prompt:
         issues.append("prompt_missing_json_contract")
+
+    idle_life = mapping(pack.behavior.get("idle_life"))
+    circadian = mapping(pack.behavior.get("circadian"))
+    emotion_response = mapping(pack.behavior.get("emotion_response"))
+    for key in ("breathing_hz", "breathing_px", "fidget_min_ms", "fidget_max_ms", "reduced_motion_scale"):
+        if key not in idle_life:
+            issues.append(f"behavior_idle_life_missing:{key}")
+    breathing_hz = float_value(idle_life.get("breathing_hz"), -1.0)
+    if not 0.05 <= breathing_hz <= 0.50:
+        issues.append("behavior_idle_life_breathing_hz_out_of_range")
+    breathing_px = float_value(idle_life.get("breathing_px"), -1.0)
+    if not 0.20 <= breathing_px <= 4.00:
+        issues.append("behavior_idle_life_breathing_px_out_of_range")
+    fidget_min = int_value(idle_life.get("fidget_min_ms"), -1)
+    fidget_max = int_value(idle_life.get("fidget_max_ms"), -1)
+    if fidget_min < 1000 or fidget_max < 1000 or fidget_max < fidget_min:
+        issues.append("behavior_idle_life_fidget_range_invalid")
+    reduced_motion_scale = float_value(idle_life.get("reduced_motion_scale"), -1.0)
+    if not 0.05 <= reduced_motion_scale <= 1.00:
+        issues.append("behavior_idle_life_reduced_motion_scale_out_of_range")
+
+    for key in ("evening_start_hour", "night_start_hour", "morning_start_hour", "morning_end_hour"):
+        if key not in circadian:
+            issues.append(f"behavior_circadian_missing:{key}")
+    evening = int_value(circadian.get("evening_start_hour"), -1)
+    night = int_value(circadian.get("night_start_hour"), -1)
+    morning_start = int_value(circadian.get("morning_start_hour"), -1)
+    morning_end = int_value(circadian.get("morning_end_hour"), -1)
+    if not (0 <= morning_start < morning_end <= evening <= night <= 23):
+        issues.append("behavior_circadian_window_order_invalid")
+
+    for key in ("curiosity_arousal_delta", "safety_valence_delta", "happy_valence_delta"):
+        if key not in emotion_response:
+            issues.append(f"behavior_emotion_response_missing:{key}")
+    curiosity = float_value(emotion_response.get("curiosity_arousal_delta"), -1.0)
+    safety = float_value(emotion_response.get("safety_valence_delta"), 1.0)
+    happy = float_value(emotion_response.get("happy_valence_delta"), -1.0)
+    if not 0.00 <= curiosity <= 0.50:
+        issues.append("behavior_emotion_response_curiosity_out_of_range")
+    if not -1.00 <= safety <= 0.00:
+        issues.append("behavior_emotion_response_safety_out_of_range")
+    if not 0.00 <= happy <= 0.80:
+        issues.append("behavior_emotion_response_happy_out_of_range")
     return issues
 
 

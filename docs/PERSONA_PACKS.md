@@ -111,10 +111,11 @@ of sharing.
 Current implementation status: Spark now exists under `personas/spark` as the active
 reference pack, and Glow now exists under `personas/glow` as the quieter second pack that
 proves the pack seam is not Spark-specific. The bridge prompt, character harness, firmware
-`SpeechPlanner` line table, firmware earcon tone table, and red-team dry-run harness load
-from persona packs. The red-team gate is corpus/validator-ready, but it still requires a
-configured real runner before it can pass as model evidence. Later PRs still need broader
-codegen coverage for expression, behavior, and voice assets.
+`SpeechPlanner` line table, firmware earcon tone table, firmware idle-life/circadian
+behavior constants, and red-team dry-run harness load from persona packs. The red-team
+gate is corpus/validator-ready, but it still requires a configured real runner before it
+can pass as model evidence. Later PRs still need broader codegen coverage for expression
+poses and voice assets.
 
 1. **Extract Spark:** create `personas/spark/` from CHARACTER_LOCK.md, `voice_persona.yaml`,
    `expressions.yaml`, and the strings currently in `SpeechPlanner.cpp` /
@@ -129,9 +130,9 @@ codegen coverage for expression, behavior, and voice assets.
    persona. Keep using Glow as the regression pack whenever new persona-controlled surface
    area lands. If hardcoded Spark-isms appear, fix them by moving data into the pack, not by
    adding conditionals.
-7. Extend codegen coverage as later phases land. Speech lines and earcon params are now
-   generated from the pack; behavior tuning, circadian schedule, expressions, and voice
-   assets remain the next pack-native surfaces.
+7. Extend codegen coverage as later phases land. Speech lines, earcon params, and the
+   idle-life/circadian behavior constants are now generated from the pack; expression poses
+   and voice assets remain the next pack-native surfaces.
 
 Steps 1-6 can run entirely in parallel with the hardware bring-up track in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — this is host/build tooling and pure-logic firmware

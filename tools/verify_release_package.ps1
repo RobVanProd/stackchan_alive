@@ -586,14 +586,14 @@ foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.
     throw "docs/README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line and earcon codegen", "verify_persona_pack.cmd glow --Json")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, and behavior codegen", "verify_persona_pack.cmd glow --Json")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "Speech lines and earcon params")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware idle-life/circadian", "Speech lines, earcon params")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
@@ -791,7 +791,7 @@ foreach ($pattern in @("FirmwareVoiceAssets.hpp", "stackchan_spark_greeting.wav"
 }
 
 $personaAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_persona_assets.py") -Raw
-foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
+foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "PersonaBehavior.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "kIdleBreathingHz", "kIdleFidgetMinMs", "kCuriosityArousalDelta", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
   if ($personaAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_generate_persona_assets.py missing persona speech generation logic: $pattern"
   }

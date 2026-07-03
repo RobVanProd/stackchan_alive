@@ -41,6 +41,8 @@ class PersonaPackTests(unittest.TestCase):
         self.assertEqual("Hello. Stackchan Glow is online. Quiet sensors ready.", pack.spoken_line("boot")["text"])
         self.assertEqual("safety", pack.spoken_line("safety")["earcon"])
         self.assertLess(pack.earcons["earcons"]["wake"]["base_hz"], 600)
+        self.assertLess(pack.behavior["idle_life"]["breathing_hz"], 0.20)
+        self.assertLess(pack.behavior["emotion_response"]["curiosity_arousal_delta"], 0.10)
 
     def test_glow_prompt_uses_template_slots_without_clone_markers(self):
         pack = load_and_validate_persona_pack("glow")
@@ -139,6 +141,10 @@ class PersonaPackTests(unittest.TestCase):
         self.assertIn("contractions_not_forbidden", issues)
         self.assertIn("memory_prefixes_loosened", issues)
         self.assertIn("safety_line_must_use_safety_earcon", issues)
+        self.assertIn("behavior_schema_invalid", issues)
+        self.assertIn("behavior_idle_life_missing:breathing_hz", issues)
+        self.assertIn("behavior_circadian_missing:evening_start_hour", issues)
+        self.assertIn("behavior_emotion_response_missing:curiosity_arousal_delta", issues)
 
     def test_missing_pack_raises_clear_error(self):
         with self.assertRaises(PersonaPackError):

@@ -86,6 +86,25 @@ def _clamp_int(value, minimum, maximum, default):
     return max(minimum, min(maximum, numeric))
 
 
+def _clamp_float(value, minimum, maximum, default):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        numeric = default
+    return max(minimum, min(maximum, numeric))
+
+
+def _cpp_float(value):
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    if text in ("", "-0"):
+        text = "0"
+    return f"{text}f"
+
+
+def _mapping(value):
+    return value if isinstance(value, dict) else {}
+
+
 def _earcon_tones(name, spec):
     base_hz = _clamp_int(spec.get("base_hz"), 160, 2400, 660)
     chirps = _clamp_int(spec.get("chirps"), 1, 4, 1)
@@ -137,6 +156,7 @@ generated_dir = build_dir / "generated"
 generated_dir.mkdir(parents=True, exist_ok=True)
 speech_header_path = generated_dir / "PersonaSpeechLines.hpp"
 earcon_header_path = generated_dir / "PersonaEarcons.hpp"
+behavior_header_path = generated_dir / "PersonaBehavior.hpp"
 
 ordered_intents = (
     "boot",
@@ -286,5 +306,61 @@ if earcon_header_path.exists() and earcon_header_path.read_text(encoding="utf-8"
     pass
 else:
     earcon_header_path.write_text(earcon_text, encoding="utf-8")
+
+behavior = _mapping(pack.behavior)
+idle_life = _mapping(behavior.get("idle_life"))
+circadian = _mapping(behavior.get("circadian"))
+emotion_response = _mapping(behavior.get("emotion_response"))
+
+fidget_min_ms = _clamp_int(idle_life.get("fidget_min_ms"), 1000, 120000, 10000)
+fidget_max_ms = _clamp_int(idle_life.get("fidget_max_ms"), fidget_min_ms, 180000, 30000)
+
+behavior_parts = [
+    "#pragma once",
+    "",
+    "#include <stdint.h>",
+    "",
+    "namespace stackchan {",
+    "namespace generated_persona {",
+    "",
+    f"static constexpr const char* kBehaviorPersonaId = {_cpp_string(pack.pack_id)};",
+    "",
+    "// Base idle breathing rate; lower values make a persona feel calmer.",
+    "static constexpr float kIdleBreathingHz = "
+    f"{_cpp_float(_clamp_float(idle_life.get('breathing_hz'), 0.05, 0.50, 0.20))};",
+    "// Base whole-face breathing amplitude in pixels before emotion modulation.",
+    "static constexpr float kIdleBreathingPx = "
+    f"{_cpp_float(_clamp_float(idle_life.get('breathing_px'), 0.20, 4.00, 1.50))};",
+    "// Minimum/maximum idle fidget interval; jitter prevents metronomic motion.",
+    f"static constexpr uint32_t kIdleFidgetMinMs = {fidget_min_ms}UL;",
+    f"static constexpr uint32_t kIdleFidgetMaxMs = {fidget_max_ms}UL;",
+    "// Reduced-motion multiplier; keeps life visible while calming background motion.",
+    "static constexpr float kReducedMotionScale = "
+    f"{_cpp_float(_clamp_float(idle_life.get('reduced_motion_scale'), 0.05, 1.00, 0.30))};",
+    "",
+    "// Circadian hour windows; these bias energy without forcing a mode.",
+    f"static constexpr uint8_t kEveningStartHour = {_clamp_int(circadian.get('evening_start_hour'), 0, 23, 18)};",
+    f"static constexpr uint8_t kNightStartHour = {_clamp_int(circadian.get('night_start_hour'), 0, 23, 21)};",
+    f"static constexpr uint8_t kMorningStartHour = {_clamp_int(circadian.get('morning_start_hour'), 0, 23, 6)};",
+    f"static constexpr uint8_t kMorningEndHour = {_clamp_int(circadian.get('morning_end_hour'), 0, 24, 10)};",
+    "",
+    "// Persona-scale emotional response gains used by shared event logic.",
+    "static constexpr float kCuriosityArousalDelta = "
+    f"{_cpp_float(_clamp_float(emotion_response.get('curiosity_arousal_delta'), 0.00, 0.50, 0.10))};",
+    "static constexpr float kSafetyValenceDelta = "
+    f"{_cpp_float(_clamp_float(emotion_response.get('safety_valence_delta'), -1.00, 0.00, -0.30))};",
+    "static constexpr float kHappyValenceDelta = "
+    f"{_cpp_float(_clamp_float(emotion_response.get('happy_valence_delta'), 0.00, 0.80, 0.20))};",
+    "",
+    "}  // namespace generated_persona",
+    "}  // namespace stackchan",
+    "",
+]
+
+behavior_text = "\n".join(behavior_parts)
+if behavior_header_path.exists() and behavior_header_path.read_text(encoding="utf-8") == behavior_text:
+    pass
+else:
+    behavior_header_path.write_text(behavior_text, encoding="utf-8")
 
 env.Append(CPPPATH=[str(generated_dir)])
