@@ -25,6 +25,12 @@ After the display, speech-mouth, speak-all, and bridge replay logs exist, run
 serial markers and bridge counters against the no-hardware baseline as an advisory diagnostic
 only.
 
+Before hardware arrives, run `tools/run_prearrival_sim_check.cmd` from the repo or release
+package for a single proxy status report. Open
+`output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md` for simulator pass/fail,
+engine-readiness status, and the next action. This report is only a proxy; keep collecting
+real serial logs, media, and audio once hardware is connected.
+
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
 ```powershell

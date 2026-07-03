@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal, and combined pre-arrival simulation check exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -142,9 +142,11 @@ Keep each item independently shippable and package-verified.
      `SIM_HARDWARE_COMPARE.md/json` after real display, speech-mouth, speak-all, and bridge
      replay logs exist. It compares serial markers and bridge counters against the simulator
      baseline as an advisory diagnostic, not as promotion evidence.
-   - GitHub Actions runs the bridge tests, engine readiness probe, and simulator in the
-     `bridge-tests` job, then uploads both the engine-probe and hardware-simulation report
-     artifacts for each PR/push.
+   - `tools/run_prearrival_sim_check.cmd` writes `PREARRIVAL_SIM_CHECK.md/json` so the
+     fastest pre-arrival proxy combines virtual hardware status and engine-readiness status.
+   - GitHub Actions runs the bridge tests, engine readiness probe, simulator, and
+     pre-arrival check in the `bridge-tests` job, then uploads engine-probe,
+     hardware-simulation, and prearrival-simulation-check artifacts for each PR/push.
    - This catches bridge ordering, conversation timing, LAN STT/TTS audio-loop ordering, LAN
      TTS downlink, timeout, mouth-frame, input-mapping, offline command fallback,
      reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical

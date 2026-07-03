@@ -253,7 +253,9 @@ $bridgePackageFiles = @(
   "lan_service.py",
   "test_lan_service.py",
   "hardware_simulator.py",
-  "test_hardware_simulator.py"
+  "test_hardware_simulator.py",
+  "prearrival_sim_check.py",
+  "test_prearrival_sim_check.py"
 )
 foreach ($bridgeFile in $bridgePackageFiles) {
   Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
@@ -339,6 +341,8 @@ $releaseTools = @(
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
   "tools/run_engine_probe.ps1",
+  "tools/run_prearrival_sim_check.cmd",
+  "tools/run_prearrival_sim_check.ps1",
   "tools/run_hardware_simulation.cmd",
   "tools/run_hardware_simulation.ps1",
   "tools/compare_hardware_sim_baseline.cmd",
@@ -790,6 +794,8 @@ $manifest = [ordered]@{
     "tools/run_bridge_reference_tests.ps1",
     "tools/run_engine_probe.cmd",
     "tools/run_engine_probe.ps1",
+    "tools/run_prearrival_sim_check.cmd",
+    "tools/run_prearrival_sim_check.ps1",
     "tools/run_hardware_simulation.cmd",
     "tools/run_hardware_simulation.ps1",
     "tools/send_speech_mouth_demo.cmd",
@@ -857,6 +863,8 @@ $manifest = [ordered]@{
     "provenance/bridge/test_lan_service.py",
     "provenance/bridge/hardware_simulator.py",
     "provenance/bridge/test_hardware_simulator.py",
+    "provenance/bridge/prearrival_sim_check.py",
+    "provenance/bridge/test_prearrival_sim_check.py",
     "provenance/firmware.yml",
     "provenance/release.yml",
     "provenance/data/commands.yaml",
@@ -1083,7 +1091,7 @@ Commit: $commit
 
 This is a device-ready prerelease package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, sim-vs-hardware comparison, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, pre-arrival simulation check, sim-vs-hardware comparison, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
 
 Engine readiness quick check:
 
@@ -1093,6 +1101,7 @@ Engine readiness quick check:
 
 No-hardware simulation quick check:
 
+- Run ``tools/run_prearrival_sim_check.cmd`` to create ``output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`` with the combined virtual CoreS3/LAN/audio proxy status plus engine-readiness status.
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
 - The simulator proves bridge frame ordering, LAN text turns, fake mic PCM upload through fake STT, conversation timing, fake WAV TTS normalization to PCM16 downlink, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
 - After an evidence packet has simulator output plus real display, speech, and bridge replay logs, run ``RUN_SIM_HARDWARE_COMPARE.cmd`` inside that packet to write advisory ``SIM_HARDWARE_COMPARE.md/json`` reports.
