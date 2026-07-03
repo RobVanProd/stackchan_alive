@@ -752,6 +752,8 @@ $manifest = [ordered]@{
     "provenance/src/persona/SpeechPlanner.cpp",
     "provenance/src/persona/CommandMap.hpp",
     "provenance/src/persona/CommandMap.cpp",
+    "provenance/src/persona/GazeTracker.hpp",
+    "provenance/src/persona/GazeTracker.cpp",
     "provenance/test/fixtures/audio/speech_right.wav",
     "provenance/test/fixtures/audio/speech_left.wav",
     "provenance/test/fixtures/audio/music_center.wav",

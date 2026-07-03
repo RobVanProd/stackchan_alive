@@ -2,6 +2,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "persona/EmotionModel.hpp"
+#include "persona/GazeTracker.hpp"
 #include "persona/IdleLife.hpp"
 #include "persona/SpeechPlanner.hpp"
 #include "persona/StateMatrix.hpp"
@@ -28,6 +29,7 @@ class IntentEngine {
  private:
   EmotionModel emotion_;
   ExpressionMapper expression_;
+  GazeTracker gaze_;
   IdleLife idleLife_;
   SpeechPlanner speech_;
   CharacterMode mode_ = CharacterMode::Idle;

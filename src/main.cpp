@@ -89,6 +89,8 @@ const __FlashStringHelper* eventTypeName(EventType type) {
       return F("boot");
     case EventType::FaceDetected:
       return F("face_detected");
+    case EventType::FaceLost:
+      return F("face_lost");
     case EventType::UserNear:
       return F("user_near");
     case EventType::UserTouched:

@@ -16,6 +16,7 @@
 #include "persona/AudioSaliency.hpp"
 #include "persona/CommandMap.hpp"
 #include "persona/EmotionModel.hpp"
+#include "persona/GazeTracker.hpp"
 #include "persona/IdleLife.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/SpeechPlanner.hpp"
@@ -851,6 +852,113 @@ void test_intent_engine_orients_toward_sound_event() {
   TEST_ASSERT_GREATER_THAN_FLOAT(before.motion.yawDeg + 5.0f, oriented.motion.yawDeg);
 }
 
+void test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking() {
+  GazeTracker tracker;
+  tracker.reset(0);
+  RobotFrame frame = makeNeutralFrame();
+  frame.motion.yawMode = YawMode::Angle;
+
+  RobotEvent event;
+  event.type = EventType::FaceDetected;
+  event.timestampMs = 100;
+  event.strength = 1.0f;
+  event.hasPayload = true;
+  event.x = 0.65f;
+  event.y = -0.25f;
+  event.z = 0.70f;
+  tracker.applyEvent(event);
+  tracker.apply(frame, 140, false);
+
+  TEST_ASSERT_TRUE(tracker.telemetry().tracking);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.12f, frame.face.pupilX);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.02f, frame.face.pupilY);
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, frame.face.faceX);
+  TEST_ASSERT_GREATER_THAN_FLOAT(4.0f, frame.motion.yawDeg);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.5f, frame.motion.pitchDeg);
+}
+
+void test_gaze_tracker_reduced_motion_dampens_face_tracking() {
+  GazeTracker tracker;
+  RobotEvent event;
+  event.type = EventType::FaceDetected;
+  event.timestampMs = 100;
+  event.strength = 1.0f;
+  event.hasPayload = true;
+  event.x = 0.80f;
+  event.y = 0.20f;
+  event.z = 0.80f;
+
+  RobotFrame full = makeNeutralFrame();
+  full.motion.yawMode = YawMode::Angle;
+  tracker.reset(0);
+  tracker.applyEvent(event);
+  tracker.apply(full, 130, false);
+
+  RobotFrame reduced = makeNeutralFrame();
+  reduced.motion.yawMode = YawMode::Angle;
+  tracker.reset(0);
+  tracker.applyEvent(event);
+  tracker.apply(reduced, 130, true);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.face.pupilX) * 2.0f, fabsf(full.face.pupilX));
+  TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.motion.yawDeg) * 2.0f, fabsf(full.motion.yawDeg));
+}
+
+void test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction() {
+  GazeTracker tracker;
+  tracker.reset(0);
+
+  RobotEvent seen;
+  seen.type = EventType::FaceDetected;
+  seen.timestampMs = 100;
+  seen.strength = 1.0f;
+  seen.hasPayload = true;
+  seen.x = -0.70f;
+  seen.y = 0.0f;
+  seen.z = 0.60f;
+  tracker.applyEvent(seen);
+
+  RobotEvent lost;
+  lost.type = EventType::FaceLost;
+  lost.timestampMs = 900;
+  lost.strength = 1.0f;
+  tracker.applyEvent(lost);
+
+  RobotFrame searching = makeNeutralFrame();
+  searching.motion.yawMode = YawMode::Angle;
+  tracker.apply(searching, 1300, false);
+  TEST_ASSERT_FALSE(tracker.telemetry().tracking);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.02f, searching.face.pupilX);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.3f, searching.motion.yawDeg);
+
+  RobotFrame settled = makeNeutralFrame();
+  settled.motion.yawMode = YawMode::Angle;
+  tracker.apply(settled, 7000, false);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, settled.face.pupilX);
+}
+
+void test_intent_engine_tracks_face_position_payload() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 100);
+
+  RobotFrame before = engine.update(100);
+  RobotEvent event;
+  event.type = EventType::FaceDetected;
+  event.timestampMs = 120;
+  event.strength = 1.0f;
+  event.hasPayload = true;
+  event.x = -0.65f;
+  event.y = 0.20f;
+  event.z = 0.75f;
+  engine.applyEvent(event, CharacterMode::Attend);
+
+  const RobotFrame tracked = engine.update(160);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(tracked.mode));
+  TEST_ASSERT_LESS_THAN_FLOAT(before.face.pupilX - 0.10f, tracked.face.pupilX);
+  TEST_ASSERT_LESS_THAN_FLOAT(before.motion.yawDeg - 3.0f, tracked.motion.yawDeg);
+}
+
 void test_command_map_maps_multinet_phrase_ids_to_existing_actions() {
   const CommandMapResult sleep = CommandMap::mapPhraseId(1, 6100);
   TEST_ASSERT_TRUE(sleep.valid);
@@ -1069,6 +1177,37 @@ void test_sensor_adapter_parses_circadian_context_commands() {
   TEST_ASSERT_EQUAL_UINT8(7, control.hourOfDay);
 
   TEST_ASSERT_FALSE(parseBenchControlLine("time 24", 4080, &control));
+}
+
+void test_sensor_adapter_parses_face_tracking_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("facepos x=-0.50 y=0.25 s=0.70", 4081, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.50f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.25f, control.event.y);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.70f, control.event.z);
+  TEST_ASSERT_EQUAL_STRING("face_position", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("facepos 0.40 -0.20 0.60", 4082, &control));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.40f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.20f, control.event.y);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.60f, control.event.z);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("facelost", 4083, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceLost), static_cast<int>(control.event.type));
+  TEST_ASSERT_EQUAL_STRING("face_lost", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("face", 4084, &control));
+  TEST_ASSERT_EQUAL_STRING("event_face", control.command);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(control.event.type));
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("facepos x=0.1 y=0.2", 4085, &control));
 }
 
 void test_sensor_adapter_parses_spoken_command_bench_events() {
@@ -1523,6 +1662,10 @@ int main() {
   RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_intent_engine_applies_circadian_context);
   RUN_TEST(test_intent_engine_orients_toward_sound_event);
+  RUN_TEST(test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking);
+  RUN_TEST(test_gaze_tracker_reduced_motion_dampens_face_tracking);
+  RUN_TEST(test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction);
+  RUN_TEST(test_intent_engine_tracks_face_position_payload);
   RUN_TEST(test_command_map_maps_multinet_phrase_ids_to_existing_actions);
   RUN_TEST(test_command_map_accepts_bench_tokens_matching_yaml_keys);
   RUN_TEST(test_intent_engine_prioritizes_explicit_command_speech_cue);
@@ -1534,6 +1677,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_sensor_adapter_parses_ambient_context_commands);
   RUN_TEST(test_sensor_adapter_parses_circadian_context_commands);
+  RUN_TEST(test_sensor_adapter_parses_face_tracking_commands);
   RUN_TEST(test_sensor_adapter_parses_spoken_command_bench_events);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
