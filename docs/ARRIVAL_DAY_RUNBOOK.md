@@ -68,6 +68,8 @@ Optional speech-mouth sidecar check from the extracted release folder:
 Evidence packets created from a verified package wire `RUN_SPEECH_MOUTH_DEMO.cmd` to the copied lead audition automatically. It generates `speech/lead_voice.speech_envelope.json`, verifies it, then streams that envelope so the mouth check follows the selected RVC review voice instead of the built-in fallback pattern.
 Run `RUN_SPEAK_ALL_INTENTS.cmd` after that helper while display-only firmware is still connected. It sends `speak <intent>` for every packaged speech intent and captures prompt, earcon, and `[audio_out]` handoff telemetry in `logs/speak_all_intents_serial.log`.
 
+Optional P7 check: run `RUN_BRIDGE_REPLAY.cmd` while display-only firmware is connected. It sends a deterministic bridge transcript and captures `[bridge-replay]`, `[bridge]`, `[speech]`, mouth-envelope, and runtime bridge counter telemetry in `logs/bridge_replay_serial.log`.
+
 ## 3. Supervised Servo Calibration
 
 Only continue after display-only passes and the body is clear.

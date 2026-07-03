@@ -205,6 +205,7 @@ Write-Host $evidenceRoot
 Write-Host ""
 Write-Host "When the device is connected, run these from the evidence packet:"
 Write-Host "  .\RUN_DISPLAY_ONLY.cmd"
+Write-Host "  .\RUN_BRIDGE_REPLAY.cmd"
 Write-Host "  .\RUN_SERVO_CALIBRATION.cmd"
 Write-Host "  .\RUN_SOAK_MONITOR.cmd"
 Write-Host "  .\RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg"
