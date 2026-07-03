@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from character_harness import MODEL_PROFILES, PROMPT_SUITE, HarnessResult, build_prompt, validate_response
+from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
 DEFAULT_PROFILE = "gemma4-e2b-gguf"
 GENERIC_COMMAND_ENV = "STACKCHAN_MODEL_COMMAND"
@@ -92,6 +93,7 @@ class RunnerExecutionError(RuntimeError):
 @dataclass
 class RunnerResult:
     profile: str
+    persona: str
     model: str
     runtime: str
     prompt_case: str
@@ -106,6 +108,7 @@ class RunnerResult:
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "profile": self.profile,
+            "persona": self.persona,
             "model": self.model,
             "runtime": self.runtime,
             "prompt_case": self.prompt_case,
@@ -129,8 +132,30 @@ def prompt_case_by_name(case_name: str) -> dict[str, str]:
     raise ValueError(f"unknown prompt case '{case_name}'; expected one of: {known}")
 
 
-def deterministic_response(case_name: str) -> str:
-    response = DETERMINISTIC_RESPONSES.get(case_name, DETERMINISTIC_RESPONSES["greeting"])
+def _with_persona_line(response: dict[str, Any], persona: PersonaPack, intent: str) -> dict[str, Any]:
+    line = persona.spoken_line(intent)
+    if not line:
+        return dict(response)
+    updated = dict(response)
+    updated["spoken_text"] = str(line.get("text", updated["spoken_text"]))
+    updated["earcon"] = str(line.get("earcon", updated["earcon"]))
+    return updated
+
+
+def deterministic_response(case_name: str, persona: PersonaPack | None = None) -> str:
+    response = dict(DETERMINISTIC_RESPONSES.get(case_name, DETERMINISTIC_RESPONSES["greeting"]))
+    if persona is not None and persona.pack_id != DEFAULT_PERSONA_ID:
+        intent_by_case = {
+            "greeting": "boot",
+            "picked_up": "react",
+            "low_battery": "safety",
+            "confused": "concern",
+        }
+        intent = intent_by_case.get(case_name)
+        if intent:
+            response = _with_persona_line(response, persona, intent)
+        if case_name == "confused":
+            response["mode"] = "concern"
     return json.dumps(response, separators=(",", ":"), ensure_ascii=True)
 
 
@@ -178,13 +203,15 @@ def run_runner_profile(
     command: str = "",
     require_runner: bool = False,
     timeout_ms: int = 60000,
+    persona_id: str = DEFAULT_PERSONA_ID,
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
         raise ValueError(f"unknown runner profile '{profile_id}'; expected one of: {known}")
 
+    persona = load_and_validate_persona_pack(persona_id)
     case = prompt_case_by_name(case_name)
-    prompt = build_prompt(case)
+    prompt = build_prompt(case, persona)
     resolved_command, command_source = resolve_command(profile_id, command)
     configured_runner = resolved_command is not None
     elapsed_ms: float | None = None
@@ -198,14 +225,15 @@ def run_runner_profile(
             raise RunnerConfigurationError(
                 f"no command configured for {profile_id}; set {profile_env}, {GENERIC_COMMAND_ENV}, or pass --command"
             )
-        raw_response = deterministic_response(case_name)
+        raw_response = deterministic_response(case_name, persona)
 
-    validation = validate_response(raw_response)
+    validation = validate_response(raw_response, persona)
     validation.elapsed_ms = elapsed_ms
     validation.approx_tokens_per_sec = approx_tokens_per_sec
     profile = RUNNER_PROFILES[profile_id]
     return RunnerResult(
         profile=profile_id,
+        persona=persona.pack_id,
         model=profile["model"],
         runtime=profile["runtime"],
         prompt_case=case["name"],
@@ -231,6 +259,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--command", default="", help="Optional local model command. Prompt is passed on stdin.")
     parser.add_argument("--require-runner", action="store_true", help="Fail instead of using deterministic fallback.")
     parser.add_argument("--timeout-ms", type=int, default=60000)
+    parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Persona pack id or path. Defaults to spark.")
     parser.add_argument("--raw", action="store_true", help="Print only the raw Character Lock JSON response.")
     parser.add_argument("--json", action="store_true", help="Print the full runner result as JSON.")
     return parser
@@ -249,6 +278,7 @@ def main() -> int:
             command=args.command,
             require_runner=args.require_runner,
             timeout_ms=args.timeout_ms,
+            persona_id=args.persona,
         )
     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
         print(str(exc))

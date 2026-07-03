@@ -282,8 +282,9 @@ def turn_from_character_response(
     *,
     session: str = DEFAULT_SESSION,
     seq: int = 7,
+    persona: PersonaPack | None = None,
 ) -> tuple[BridgeTurn, BridgeMemory, HarnessResult]:
-    result = validate_response(raw_response)
+    result = validate_response(raw_response, persona)
     normalized = result.normalized
     updated_memory = memory.apply_character_memory(normalized)
     emotion = normalized.get("emotion", {})
@@ -428,6 +429,7 @@ def main() -> int:
                 command=args.runner_command,
                 require_runner=args.require_runner,
                 timeout_ms=args.runner_timeout_ms,
+                persona_id=args.persona,
             )
         except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
@@ -445,7 +447,7 @@ def main() -> int:
         raw_model_response = runner.raw_response
 
     if raw_model_response is not None:
-        turn, memory, validation = turn_from_character_response(raw_model_response, memory, session=args.session, seq=seq)
+        turn, memory, validation = turn_from_character_response(raw_model_response, memory, session=args.session, seq=seq, persona=persona)
         if validation.issues:
             print("Character validation issues: " + ", ".join(validation.issues), file=sys.stderr)
         if args.memory_file and args.save_memory:

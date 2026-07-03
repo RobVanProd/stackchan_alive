@@ -24,7 +24,7 @@ What is working in the repository now:
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
-- Spark persona pack scaffold under `personas/spark`, with bridge prompt loading, firmware speech-line codegen, and a pack verifier for the first swappable Character OS layer.
+- Spark and Glow persona packs under `personas/`, with bridge prompt loading, firmware speech-line codegen, CI validation, and pack verification for the first swappable Character OS layer.
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
@@ -53,7 +53,7 @@ Stackchan: Alive is primarily a real-time character OS:
 - `motion/`: spring dynamics, actuator ownership, and safety limits.
 - `io/`: display, audio, bridge, camera, sensor, speech, and servo adapters.
 - `bridge/`: host-side reference bridge, character harness, and memory scaffold.
-- `personas/`: swappable Character OS persona packs. `personas/spark` is the reference pack.
+- `personas/`: swappable Character OS persona packs. `personas/spark` is the active reference pack; `personas/glow` is the quieter second pack used to prove the seam.
 - `tools/`: preview, hardware simulation, packaging, release, hardware-evidence, and verification helpers.
 
 Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`
@@ -153,10 +153,11 @@ Run the no-hardware preflight before flashing or packaging:
 .\tools\run_device_preflight.cmd
 ```
 
-Validate the active Spark persona pack:
+Validate the bundled Character OS persona packs:
 
 ```powershell
 .\tools\verify_persona_pack.cmd --Json
+.\tools\verify_persona_pack.cmd glow --Json
 ```
 
 Run the Character Lock red-team dry run:

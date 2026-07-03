@@ -1,0 +1,76 @@
+# Tunable expression/profile notes for the procedural runtime.
+# Firmware still renders procedurally; these values document the authored target language
+# that preview scripts, tests, and future SD/YAML loading can share.
+neutral:
+  eye_open: 0.78
+  eye_smile: 0.22
+  mouth_smile: 0.10
+listen:
+  focus: 0.82
+  pitch_bias_deg: -2.5
+think:
+  pupil_y: -0.14
+  yaw_bias_deg: 12.0
+drowsy:
+  perceptual_purpose: evening circadian fatigue; eyelids heavy without forcing Sleep mode
+  eye_open: 0.52
+  squint: 0.14
+  brow_tilt: -0.05
+  mouth_smile: 0.04
+  face_y: 1.2
+yawn:
+  perceptual_purpose: fatigue peak; mouth opens while eyes squeeze slowly
+  duration_ms: 1200
+  eye_open_delta: -0.24
+  squint_delta: 0.22
+  mouth_open: 0.55
+  mouth_smile_delta: -0.12
+  pitch_bias_deg: 0.45
+surprise:
+  perceptual_purpose: sudden light-on or pickup; fast alertness spike
+  eye_open: 1.05
+  mouth_open: 0.35
+  brow_tilt: 0.22
+  pupil_scale: 1.12
+picked_up:
+  perceptual_purpose: lift reflex; wide eyes and small worried mouth while body is moving
+  eye_open: 1.08
+  mouth_open: 0.30
+  mouth_smile: -0.20
+  brow_tilt: 0.18
+shaken:
+  perceptual_purpose: safety/startle reflex; high arousal, negative valence, motion hold
+  eye_open: 1.05
+  squint: 0.35
+  mouth_open: 0.42
+  mouth_smile: -0.55
+  brow_tilt: -0.22
+put_down:
+  perceptual_purpose: relief after being set down; arousal settles and valence recovers
+  eye_open: 0.82
+  eye_smile: 0.22
+  mouth_smile: 0.22
+  face_y: 0.5
+tilted:
+  perceptual_purpose: orientation mismatch; face tries to stay level while eyes track gravity
+  eye_open: 0.95
+  pupil_x: 0.18
+  pupil_y: -0.08
+  mouth_smile: -0.12
+sound_direction:
+  perceptual_purpose: orient reflex; eyes lead toward a salient off-axis voice before head follow-through
+  eye_open: 0.96
+  pupil_x: 0.35
+  face_x: 3.0
+  yaw_bias_deg: 16.0
+loud_noise:
+  perceptual_purpose: startle reflex; sudden broadband sound spikes arousal and briefly pulls into React mode
+  eye_open: 1.08
+  mouth_open: 0.32
+  mouth_smile: -0.22
+  brow_tilt: 0.24
+circadian:
+  evening_start_hour: 18
+  night_start_hour: 21
+  morning_start_hour: 6
+  morning_end_hour: 10
