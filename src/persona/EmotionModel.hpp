@@ -9,6 +9,7 @@ class EmotionModel {
  public:
   void reset();
   void applyEvent(const RobotEvent& event);
+  void applyCircadian(uint8_t hourOfDay);
   void applyAmbient(float lux, uint8_t hourOfDay);
   void update(float dt);
 

@@ -8,11 +8,14 @@ namespace stackchan {
 namespace {
 constexpr float kTwoPi = 6.2831853f;
 constexpr uint32_t kMicroExpressionDurationMs = 240;
+constexpr uint32_t kYawnDurationMs = 1200;
+constexpr float kYawnFatigueThreshold = 0.62f;
 }
 
 void IdleLife::reset(uint32_t nowMs) {
   telemetry_ = IdleLifeTelemetry {};
   nextMicroExpressionMs_ = nowMs + 1800;
+  nextYawnMs_ = nowMs + 4200;
   microKind_ = 0;
 }
 
@@ -54,9 +57,21 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
     }
   }
 
+  const float yawn = yawnPulse(nowMs, fatigue) * motionScale;
+  if (yawn > 0.0f && frame.mode != CharacterMode::Speak) {
+    frame.face.mouthOpen = clampValue(max(frame.face.mouthOpen, yawn * 0.55f), 0.0f, 1.0f);
+    frame.face.eyeOpen = clampValue(frame.face.eyeOpen - yawn * 0.24f, 0.02f, 1.12f);
+    frame.face.squint = clampValue(frame.face.squint + yawn * 0.22f, 0.0f, 1.0f);
+    frame.face.mouthSmile = clampValue(frame.face.mouthSmile - yawn * 0.12f, -1.0f, 1.0f);
+    frame.face.browTilt = clampValue(frame.face.browTilt - yawn * 0.08f, -1.0f, 1.0f);
+    frame.face.faceY += yawn * 0.90f;
+    frame.motion.pitchDeg += yawn * 0.45f;
+  }
+
   telemetry_.breathY = breathY;
   telemetry_.pitchBobDeg = pitchBob;
   telemetry_.microExpression = pulse;
+  telemetry_.yawn = yawn;
   telemetry_.pupilScale = frame.face.pupilScale;
 }
 
@@ -64,6 +79,11 @@ void IdleLife::scheduleNextMicroExpression(uint32_t nowMs) {
   const uint32_t h = hash32(nowMs + 0x9e3779b9UL);
   nextMicroExpressionMs_ = nowMs + 3600 + (h % 2600);
   microKind_ = static_cast<uint8_t>((h >> 8) % 3);
+}
+
+void IdleLife::scheduleNextYawn(uint32_t nowMs) {
+  const uint32_t h = hash32(nowMs + 0x517cc1b7UL);
+  nextYawnMs_ = nowMs + 9000 + (h % 9000);
 }
 
 float IdleLife::microExpressionPulse(uint32_t nowMs) {
@@ -82,6 +102,28 @@ float IdleLife::microExpressionPulse(uint32_t nowMs) {
 
   const float x = static_cast<float>(elapsed) / static_cast<float>(kMicroExpressionDurationMs);
   return sinf(x * 3.1415927f);
+}
+
+float IdleLife::yawnPulse(uint32_t nowMs, float fatigue) {
+  if (nextYawnMs_ == 0) {
+    nextYawnMs_ = nowMs + 4200;
+  }
+  if (fatigue < kYawnFatigueThreshold) {
+    return 0.0f;
+  }
+  if (nowMs < nextYawnMs_) {
+    return 0.0f;
+  }
+
+  const uint32_t elapsed = nowMs - nextYawnMs_;
+  if (elapsed >= kYawnDurationMs) {
+    scheduleNextYawn(nowMs);
+    return 0.0f;
+  }
+
+  const float x = static_cast<float>(elapsed) / static_cast<float>(kYawnDurationMs);
+  const float fatigueScale = clampValue((fatigue - kYawnFatigueThreshold) / (1.0f - kYawnFatigueThreshold), 0.0f, 1.0f);
+  return sinf(x * 3.1415927f) * fatigueScale;
 }
 
 uint32_t IdleLife::hash32(uint32_t value) {

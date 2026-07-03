@@ -217,6 +217,33 @@ bool fillAmbient(const char* first, char** tokens, uint8_t tokenCount, BenchCont
   return true;
 }
 
+bool fillCircadian(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  uint8_t hour = 12;
+  bool hasHour = false;
+
+  if (tokenCount >= 1) {
+    hasHour = parseHour(tokens[0], &hour);
+  }
+
+  for (uint8_t i = 0; i + 1 < tokenCount; ++i) {
+    if (strcmp(tokens[i], "hour") == 0 || strcmp(tokens[i], "time") == 0 ||
+        strcmp(tokens[i], "clock") == 0) {
+      hasHour = parseHour(tokens[i + 1], &hour) || hasHour;
+    }
+  }
+
+  if (!hasHour) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasCircadian = true;
+  parsed.hourOfDay = hour;
+  parsed.command = "circadian_context";
+  *controlOut = parsed;
+  return true;
+}
+
 bool parseOnOff(const char* token, bool* valueOut) {
   if (token == nullptr || token[0] == '\0') {
     return false;
@@ -466,6 +493,10 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "lux") == 0 || strcmp(first, "amb") == 0) {
     return fillAmbient(first, ambientTokens, ambientTokenCount, controlOut);
   }
+  if (strcmp(first, "time") == 0 || strcmp(first, "hour") == 0 ||
+      strcmp(first, "clock") == 0 || strcmp(first, "circadian") == 0) {
+    return fillCircadian(ambientTokens, ambientTokenCount, controlOut);
+  }
 
   if (strcmp(first, "reduced") == 0 || strcmp(first, "reduced_motion") == 0 ||
       strcmp(first, "reducedmotion") == 0 || strcmp(first, "calm") == 0) {
@@ -540,6 +571,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: event wake|touch|response|speech_end|idle|error [strength]"));
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
   Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
+  Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));

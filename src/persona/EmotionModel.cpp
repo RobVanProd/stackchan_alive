@@ -63,11 +63,39 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
   emotion_.fatigue = clamp01(emotion_.fatigue);
 }
 
+void EmotionModel::applyCircadian(uint8_t hourOfDay) {
+  const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
+
+  if (safeHour >= 21 || safeHour < 5) {
+    emotion_.fatigue += 0.09f;
+    emotion_.arousal -= 0.04f;
+    emotion_.focus -= 0.02f;
+  } else if (safeHour >= 18) {
+    // Evening drift: sleepy enough to invite yawns without forcing Sleep mode.
+    emotion_.fatigue += 0.05f;
+    emotion_.arousal -= 0.02f;
+  } else if (safeHour >= 6 && safeHour < 10) {
+    // Morning lift: Stackchan wakes gently instead of snapping to high arousal.
+    emotion_.fatigue -= 0.05f;
+    emotion_.arousal += 0.025f;
+    emotion_.valence += 0.015f;
+  } else {
+    emotion_.fatigue -= 0.025f;
+  }
+
+  emotion_.arousal = clamp01(emotion_.arousal);
+  emotion_.valence = clampSigned(emotion_.valence);
+  emotion_.focus = clamp01(emotion_.focus);
+  emotion_.fatigue = clamp01(emotion_.fatigue);
+}
+
 void EmotionModel::applyAmbient(float lux, uint8_t hourOfDay) {
   const float safeLux = constrain(lux, 0.0f, 2000.0f);
   const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
   const bool night = safeHour >= 20 || safeHour < 6;
   const bool daytime = safeHour >= 7 && safeHour < 18;
+
+  applyCircadian(safeHour);
 
   const float darkness = constrain((120.0f - safeLux) / 120.0f, 0.0f, 1.0f);
   const float brightness = constrain((safeLux - 250.0f) / 750.0f, 0.0f, 1.0f);

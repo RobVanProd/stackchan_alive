@@ -1,4 +1,6 @@
-# Placeholder for tunable expression profiles.
+# Tunable expression/profile notes for the procedural runtime.
+# Firmware still renders procedurally; these values document the authored target language
+# that preview scripts, tests, and future SD/YAML loading can share.
 neutral:
   eye_open: 0.85
   eye_smile: 0.15
@@ -9,3 +11,29 @@ listen:
 think:
   pupil_y: -0.20
   yaw_bias_deg: 18.0
+drowsy:
+  perceptual_purpose: evening circadian fatigue; eyelids heavy without forcing Sleep mode
+  eye_open: 0.58
+  squint: 0.18
+  brow_tilt: -0.08
+  mouth_smile: 0.02
+  face_y: 1.5
+yawn:
+  perceptual_purpose: fatigue peak; mouth opens while eyes squeeze slowly
+  duration_ms: 1200
+  eye_open_delta: -0.24
+  squint_delta: 0.22
+  mouth_open: 0.55
+  mouth_smile_delta: -0.12
+  pitch_bias_deg: 0.45
+surprise:
+  perceptual_purpose: sudden light-on or pickup; fast alertness spike
+  eye_open: 1.05
+  mouth_open: 0.35
+  brow_tilt: 0.22
+  pupil_scale: 1.12
+circadian:
+  evening_start_hour: 18
+  night_start_hour: 21
+  morning_start_hour: 6
+  morning_end_hour: 10

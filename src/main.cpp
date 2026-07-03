@@ -300,6 +300,10 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" hour="));
     Serial.print(control.ambient.hourOfDay);
   }
+  if (control.hasCircadian) {
+    Serial.print(F(" circadian_hour="));
+    Serial.print(control.hourOfDay);
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -452,6 +456,9 @@ void IntentTask(void* pv) {
       }
       if (control.hasAmbient) {
         gIntent.applyAmbient(control.ambient.lux, control.ambient.hourOfDay);
+      }
+      if (control.hasCircadian) {
+        gIntent.applyCircadian(control.hourOfDay);
       }
       publishSpeechInput(control);
       publishFaceControl(control);
