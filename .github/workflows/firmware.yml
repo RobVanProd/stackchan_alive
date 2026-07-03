@@ -66,6 +66,7 @@ jobs:
             output/prearrival-sim/latest/prearrival_sim_check.json
             output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md
             output/prearrival-sim/latest/hardware-sim/**
+            output/prearrival-sim/latest/lan-smoke/**
             output/prearrival-sim/latest/engine-probe/**
 
   native-tests:

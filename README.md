@@ -23,7 +23,7 @@ What is working in the repository now:
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
-- Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy plus engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
+- Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
 
 What is still gated:
@@ -151,8 +151,9 @@ Run the combined pre-arrival proxy report:
 
 It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md` and the matching JSON.
 This is the quickest "does the simulated hardware path still work?" check before the unit
-arrives. Unconfigured local model/STT/TTS commands are reported as setup work, not as a
-simulator failure.
+arrives. The report now includes nested `hardware-sim/`, `lan-smoke/`, and `engine-probe/`
+outputs. Unconfigured local model/STT/TTS commands are reported as setup work, not as a
+simulator or LAN smoke failure.
 
 Run the socket-level bridge proxy:
 

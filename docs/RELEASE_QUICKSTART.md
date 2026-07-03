@@ -20,9 +20,10 @@ Run the combined pre-arrival proxy report:
 .\tools\run_prearrival_sim_check.cmd
 ```
 
-It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`. A passing report
-means the virtual CoreS3/LAN/audio proxy is still healthy; it does not replace device
-evidence.
+It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json` plus nested
+`hardware-sim/`, `lan-smoke/`, and `engine-probe/` reports. A passing report means the
+virtual CoreS3/LAN/audio proxy and socket-level bridge proxy are still healthy; it does not
+replace device evidence.
 
 Run the socket-level LAN bridge smoke report:
 

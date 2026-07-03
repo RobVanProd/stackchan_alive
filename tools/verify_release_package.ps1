@@ -884,14 +884,14 @@ foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reache
 }
 
 $prearrivalSimCheckText = Get-Content -LiteralPath (Join-PackagePath "bridge/prearrival_sim_check.py") -Raw
-foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "proxy-pass-engines-unconfigured", "pending-device")) {
+foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "build_lan_smoke_report", "write_lan_smoke_outputs", "lan_bridge_smoke", "lan-websocket-smoke", "lan-smoke/LAN_SMOKE.md", "proxy-pass-engines-unconfigured", "pending-device")) {
   if ($prearrivalSimCheckText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/prearrival_sim_check.py missing pre-arrival simulation check support: $pattern"
   }
 }
 
 $prearrivalSimCheckTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_prearrival_sim_check.py") -Raw
-foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_write_report_includes_machine_and_human_outputs", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_write_report_includes_machine_and_human_outputs", "lan_bridge_smoke", "lan-smoke", "LAN WebSocket Smoke", "gemma4-e2b-litert-lm")) {
   if ($prearrivalSimCheckTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_prearrival_sim_check.py missing pre-arrival simulation test coverage: $pattern"
   }
@@ -1423,7 +1423,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }

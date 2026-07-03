@@ -1109,7 +1109,7 @@ Engine readiness quick check:
 
 No-hardware simulation quick check:
 
-- Run ``tools/run_prearrival_sim_check.cmd`` to create ``output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`` with the combined virtual CoreS3/LAN/audio proxy status plus engine-readiness status.
+- Run ``tools/run_prearrival_sim_check.cmd`` to create ``output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`` with the combined virtual CoreS3/LAN/audio proxy status, nested LAN smoke report, and engine-readiness status.
 - Run ``tools/run_lan_smoke.cmd`` to create ``output/lan-smoke/latest/LAN_SMOKE.md/json`` with a real local TCP/WebSocket bridge handshake, text turn, fake mic upload, fake STT, fake TTS, and PCM16 binary downlink check.
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
 - The simulator proves bridge frame ordering, LAN text turns, fake mic PCM upload through fake STT, conversation timing, fake WAV TTS normalization to PCM16 downlink, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.

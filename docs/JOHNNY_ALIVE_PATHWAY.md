@@ -148,7 +148,8 @@ Keep each item independently shippable and package-verified.
      replay logs exist. It compares serial markers and bridge counters against the simulator
      baseline as an advisory diagnostic, not as promotion evidence.
    - `tools/run_prearrival_sim_check.cmd` writes `PREARRIVAL_SIM_CHECK.md/json` so the
-     fastest pre-arrival proxy combines virtual hardware status and engine-readiness status.
+     fastest pre-arrival proxy combines virtual hardware status, LAN bridge smoke report,
+     and engine-readiness status.
    - GitHub Actions runs the bridge tests, engine readiness probe, LAN bridge smoke report,
      simulator, and pre-arrival check in the `bridge-tests` job, then uploads engine-probe,
      lan-bridge-smoke, hardware-simulation, and prearrival-simulation-check artifacts for

@@ -176,9 +176,10 @@ Run the combined pre-arrival simulation check:
 python bridge/prearrival_sim_check.py --out-dir output/prearrival-sim/latest --json
 ```
 
-It writes `PREARRIVAL_SIM_CHECK.md/json` with the virtual CoreS3/LAN/audio proxy status and
-the engine-readiness status in one place. Simulator failures are hard failures; unconfigured
-model/STT/TTS commands are reported as setup work until the local engines are installed.
+It writes `PREARRIVAL_SIM_CHECK.md/json` with the virtual CoreS3/LAN/audio proxy status, a
+nested LAN smoke report, and the engine-readiness status in one place. Simulator and LAN
+smoke failures are hard failures; unconfigured model/STT/TTS commands are reported as setup
+work until the local engines are installed.
 
 Try the deterministic response planner with user text:
 

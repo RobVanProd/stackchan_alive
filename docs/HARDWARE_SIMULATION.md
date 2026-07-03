@@ -17,8 +17,9 @@ For the fastest pre-arrival answer, run the combined proxy report:
 ```
 
 It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json` plus nested
-`hardware-sim/` and `engine-probe/` reports. The hardware simulator must pass; model/STT/TTS
-commands may still be `unconfigured` while the physical unit is pending.
+`hardware-sim/`, `lan-smoke/`, and `engine-probe/` reports. The hardware simulator and LAN
+smoke report must pass; model/STT/TTS commands may still be `unconfigured` while the physical
+unit is pending.
 
 For the socket-level LAN bridge proxy, run:
 
