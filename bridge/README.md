@@ -115,15 +115,16 @@ The command receives response text on stdin and these environment variables:
 `STACKCHAN_TTS_TEXT_BYTES`, `STACKCHAN_TTS_VOICE`, and
 `STACKCHAN_TTS_OUTPUT=stackchan.tts-metadata.v1`. It must print metadata JSON with either
 `beats` or a speech-envelope-sidecar-style `frames` array. It may also include `audio_b64`.
-The LAN service uses the beats for `audio` mouth frames and sends `audio_b64` as
+The TTS adapter canonicalizes `pcm16`, `s16le`, `raw16`, and `pcm_s16le` payloads to
+`pcm16`; it also decodes valid uncompressed WAV `audio_b64` to signed 16-bit mono PCM before
+downlink. The LAN service uses the beats for `audio` mouth frames and sends playable PCM16 as
 `audio_stream_start`, binary WebSocket chunks, and `audio_stream_end`. Firmware currently
 parses the stream metadata, copies each accepted chunk into a bounded `BridgeClient` buffer,
 exposes the current payload through `BridgeClientOutput`, feeds it to the downlink consumer
 for checksum/telemetry validation, accounts received chunk bytes, and rejects mismatched
 stream totals. When speaker hardware is enabled, firmware can also hand accepted decoded
-PCM16 chunks to the M5 speaker sink. Use `audio_format` / `format` values `pcm16`, `s16le`,
-`raw16`, or `pcm_s16le` with signed 16-bit mono PCM in `audio_b64` for that path; other
-formats are transported for validation but are not played by the downlink sink.
+PCM16 chunks to the M5 speaker sink. Other formats are transported for validation but are not
+played by the downlink sink.
 
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded

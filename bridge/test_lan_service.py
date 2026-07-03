@@ -219,7 +219,7 @@ class LanServiceTests(unittest.TestCase):
                         "assert 'Hello' in text or 'awake' in text",
                         "assert os.environ['STACKCHAN_TTS_TEXT_BYTES'] == str(len(text.encode('utf-8')))",
                         "assert os.environ['STACKCHAN_TTS_VOICE'] == 'rvc-bright'",
-                        "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_b64':base64.b64encode(b'abcdefg').decode('ascii'),'beats':[{'env':0.21,'viseme':'ah','duration_ms':30},{'env':0.63,'viseme':'ee','duration_ms':40}]}))",
+                        "print(json.dumps({'audio_format':'pcm16','sample_rate':22050,'audio_b64':base64.b64encode(b'abcdefg').decode('ascii'),'beats':[{'env':0.21,'viseme':'ah','duration_ms':30},{'env':0.63,'viseme':'ee','duration_ms':40}]}))",
                     ]
                 ),
                 encoding="utf-8",
@@ -246,7 +246,7 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("rvc-bright", response_start["tts_voice"])
         self.assertEqual(2, response_start["tts_beats"])
         self.assertEqual(70, response_start["tts_duration_ms"])
-        self.assertEqual("wav", response_start["tts_audio_format"])
+        self.assertEqual("pcm16", response_start["tts_audio_format"])
         self.assertEqual(22050, response_start["tts_sample_rate"])
         self.assertEqual(7, response_start["tts_audio_bytes"])
         self.assertEqual(7, response_start["tts_audio_payload_bytes"])

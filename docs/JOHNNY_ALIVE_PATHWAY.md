@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, convert dynamic TTS output to PCM16 for downlink, and collect real-device speaker evidence. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -75,13 +75,15 @@ Keep each item independently shippable and package-verified.
      `thinking`, `response_start`, `audio`, and `response_end` frames.
    - A configured local TTS command can receive response text on stdin and replace the
      deterministic mouth beats with returned TTS metadata.
-   - If the TTS command returns `audio_b64`, the LAN service sends stream metadata plus binary
-     WebSocket chunks. Firmware parses the stream metadata, copies the current chunk into a
-     bounded `BridgeClient` buffer exposed through bridge outputs, feeds it to the downlink
-     consumer, and accounts chunk payloads for telemetry.
+   - If the TTS command returns `audio_b64`, the TTS adapter canonicalizes playable PCM
+     payloads to `pcm16`, decodes valid uncompressed WAV payloads to signed 16-bit mono PCM,
+     and the LAN service sends stream metadata plus binary WebSocket chunks. Firmware parses
+     the stream metadata, copies the current chunk into a bounded `BridgeClient` buffer
+     exposed through bridge outputs, feeds it to the downlink consumer, and accounts chunk
+     payloads for telemetry.
    - The downlink consumer can now hand accepted decoded PCM16 chunks to the M5 speaker sink
-     when speaker hardware is enabled. The bridge must decode WAV/RVC output to signed
-     16-bit mono PCM before downlink for firmware playback.
+     when speaker hardware is enabled. Unsupported formats are still transported and counted,
+     but they do not claim firmware speaker playback.
    - Selecting/measuring real STT/TTS engines and collecting real-device speaker evidence
      remain the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.
@@ -91,8 +93,9 @@ Keep each item independently shippable and package-verified.
    - Firmware keeps using the existing mouth-envelope path.
    - Binary audio transport to firmware has a LAN scaffold; generated audio can travel as
      chunks and firmware keeps the current accepted chunk payload available to the output
-     handler/downlink consumer. Decoded PCM16 chunks can be submitted to the M5 speaker sink
-     when hardware speaker output is enabled; unsupported formats are still accounted but not
+     handler/downlink consumer. The host TTS adapter decodes valid uncompressed WAV payloads
+     to PCM16 for playback. Decoded PCM16 chunks can be submitted to the M5 speaker sink when
+     hardware speaker output is enabled; unsupported formats are still accounted but not
      played.
    - Voice-source provenance remains blocking for any consumer-ready build.
 
