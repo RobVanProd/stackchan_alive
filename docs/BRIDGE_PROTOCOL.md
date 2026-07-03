@@ -40,6 +40,7 @@ Example:
 - `response_end`: bridge finished the response; firmware emits `ResponseEnded`.
 - `heartbeat`: keepalive; no user-facing output.
 - `error`: recoverable bridge failure; firmware emits `Error` and falls back to packaged prompts.
+- Timeout: if a connecting/listening/thinking/responding session stops producing bridge traffic for the firmware timeout window, firmware emits the same recoverable `Error` path with `bridge_timeout`.
 
 Example response:
 
@@ -54,5 +55,5 @@ Example response:
 
 - Wake-word gating happens before audio leaves the device.
 - Firmware must never block face, motion, or intent tasks while waiting for bridge traffic.
-- Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work.
+- Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

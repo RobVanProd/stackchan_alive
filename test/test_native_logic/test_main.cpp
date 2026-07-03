@@ -2199,6 +2199,36 @@ void test_bridge_client_reports_parse_errors_without_allocating() {
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
 }
 
+void test_bridge_client_times_out_active_session_once() {
+  BridgeClient bridge;
+  BridgeClientConfig config;
+  config.responseTimeoutMs = 100;
+  TEST_ASSERT_TRUE(bridge.begin(config));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"thinking\",\"seq\":9}", 1000));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Event), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Thinking), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_FALSE(bridge.update(1099));
+  TEST_ASSERT_FALSE(bridge.poll(&output));
+
+  TEST_ASSERT_TRUE(bridge.update(1100));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::Error), static_cast<int>(output.event.type));
+  TEST_ASSERT_EQUAL_STRING("bridge_timeout", output.error);
+  TEST_ASSERT_EQUAL_UINT32(1100, output.event.timestampMs);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().timeouts);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_FALSE(bridge.update(1400));
+  TEST_ASSERT_FALSE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().timeouts);
+}
+
 void test_bridge_client_accepts_serial_bridge_transcript() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -2323,6 +2353,7 @@ int main() {
   RUN_TEST(test_bridge_client_maps_thinking_and_response_events);
   RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
+  RUN_TEST(test_bridge_client_times_out_active_session_once);
   RUN_TEST(test_bridge_client_accepts_serial_bridge_transcript);
   return UNITY_END();
 }

@@ -8,6 +8,13 @@ namespace stackchan {
 
 namespace {
 constexpr const char* kBridgeProtocolMarker = "stackchan.bridge.v1";
+
+bool isTimeoutState(BridgeClientState state) {
+  return state == BridgeClientState::Connecting ||
+         state == BridgeClientState::Listening ||
+         state == BridgeClientState::Thinking ||
+         state == BridgeClientState::Responding;
+}
 }
 
 bool BridgeClient::begin(const BridgeClientConfig& config) {
@@ -40,6 +47,19 @@ void BridgeClient::markDisconnected(uint32_t nowMs) {
   telemetry_.state = BridgeClientState::Offline;
   telemetry_.lastMessageMs = nowMs;
   hasPending_ = false;
+}
+
+bool BridgeClient::update(uint32_t nowMs) {
+  if (!telemetry_.ready || config_.responseTimeoutMs == 0 || hasPending_) {
+    return false;
+  }
+  if (!isTimeoutState(telemetry_.state)) {
+    return false;
+  }
+  if (nowMs - telemetry_.lastMessageMs < config_.responseTimeoutMs) {
+    return false;
+  }
+  return failTimeout(nowMs);
 }
 
 bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
@@ -339,6 +359,20 @@ bool BridgeClient::failParse(const char* reason) {
   copyBounded(output.error, sizeof(output.error), reason);
   queueOutput(output);
   return false;
+}
+
+bool BridgeClient::failTimeout(uint32_t nowMs) {
+  telemetry_.timeouts++;
+  telemetry_.state = BridgeClientState::Error;
+  telemetry_.lastMessageMs = nowMs;
+  BridgeClientOutput output;
+  output.type = BridgeClientOutputType::Error;
+  output.event.type = EventType::Error;
+  output.event.timestampMs = nowMs;
+  output.event.strength = 1.0f;
+  copyBounded(output.error, sizeof(output.error), "bridge_timeout");
+  queueOutput(output);
+  return true;
 }
 
 }  // namespace stackchan

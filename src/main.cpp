@@ -587,7 +587,9 @@ void printRuntimeStatus() {
   Serial.print(F(" bridge_outputs="));
   Serial.print(bridge.outputsQueued);
   Serial.print(F(" bridge_parse_errors="));
-  Serial.println(bridge.parseErrors);
+  Serial.print(bridge.parseErrors);
+  Serial.print(F(" bridge_timeouts="));
+  Serial.println(bridge.timeouts);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -917,6 +919,7 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
 }
 
 void pollBridgeOutputs(uint32_t nowMs) {
+  gBridge.update(nowMs);
   BridgeClientOutput output;
   while (gBridge.poll(&output)) {
     handleBridgeOutput(output, nowMs);

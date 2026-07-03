@@ -39,6 +39,7 @@ struct BridgeClientConfig {
   const char* protocolVersion = "stackchan.bridge.v1";
   uint16_t controlPort = 8788;
   uint16_t audioSampleRate = 16000;
+  uint32_t responseTimeoutMs = 2500;
   bool wakeWordGateRequired = true;
 };
 
@@ -76,6 +77,7 @@ struct BridgeClientTelemetry {
   uint32_t outputsQueued = 0;
   uint32_t outputsDropped = 0;
   uint32_t parseErrors = 0;
+  uint32_t timeouts = 0;
   uint32_t heartbeats = 0;
   uint32_t lastSeq = 0;
   uint32_t lastMessageMs = 0;
@@ -87,6 +89,7 @@ class BridgeClient {
   void markConnecting(uint32_t nowMs);
   void markDisconnected(uint32_t nowMs);
 
+  bool update(uint32_t nowMs);
   bool submitControlLine(const char* jsonLine, uint32_t nowMs);
   bool poll(BridgeClientOutput* outputOut);
 
@@ -107,6 +110,7 @@ class BridgeClient {
 
   void queueOutput(const BridgeClientOutput& output);
   bool failParse(const char* reason);
+  bool failTimeout(uint32_t nowMs);
 
   BridgeClientConfig config_;
   BridgeClientTelemetry telemetry_;
