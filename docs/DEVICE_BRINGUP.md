@@ -33,8 +33,8 @@ proxy; keep collecting real serial logs, media, and audio once hardware is conne
 
 When changing the P7 bridge service, also run `tools/run_lan_smoke.cmd`. It writes
 `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the real local WebSocket handshake,
-deterministic text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink path
-without hardware.
+deterministic text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink path, and
+visible `thinking-latency` timing without hardware.
 
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 

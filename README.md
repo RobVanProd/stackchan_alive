@@ -162,7 +162,8 @@ Run the socket-level bridge proxy:
 ```
 
 It writes `output/lan-smoke/latest/LAN_SMOKE.md` and matching JSON for the local WebSocket
-handshake, bridge frame order, fake audio upload, fake STT/TTS, and binary downlink path.
+handshake, bridge frame order, fake audio upload, fake STT/TTS, binary downlink path, and
+immediate visible `thinking` timing while a delayed response is still running.
 
 Check local model/STT/TTS engine readiness:
 

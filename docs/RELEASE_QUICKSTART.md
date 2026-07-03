@@ -32,8 +32,8 @@ Run the socket-level LAN bridge smoke report:
 ```
 
 It writes `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the local WebSocket
-handshake, deterministic text turn, fake mic upload, fake STT/TTS path, and PCM16 binary
-downlink without requiring hardware.
+handshake, deterministic text turn, fake mic upload, fake STT/TTS path, PCM16 binary
+downlink, and visible `thinking-latency` timing without requiring hardware.
 
 Check whether this host has local model/STT/TTS engines configured:
 

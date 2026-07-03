@@ -29,8 +29,9 @@ For the socket-level LAN bridge proxy, run:
 
 It writes `output/lan-smoke/latest/LAN_SMOKE.md/json` and exercises the actual local
 TCP/WebSocket bridge path: handshake, text turn, fake mic upload, fake STT/TTS, mouth frames,
-and PCM16 binary downlink. Use it alongside the simulator when debugging bridge service
-changes before the device arrives.
+PCM16 binary downlink, and `thinking-latency` timing for visible waiting before delayed
+speech. Use it alongside the simulator when debugging bridge service changes before the
+device arrives.
 
 By default it writes:
 

@@ -21,13 +21,21 @@ class LanSmokeTests(unittest.TestCase):
         self.assertEqual("stackchan.lan-smoke.v1", report["schema"])
         self.assertEqual("pass", report["status"])
         scenarios = {scenario["scenario"]: scenario for scenario in report["scenarios"]}
-        self.assertEqual({"text-turn", "audio-loop"}, set(scenarios))
+        self.assertEqual({"text-turn", "audio-loop", "thinking-latency"}, set(scenarios))
         self.assertEqual("pass", scenarios["text-turn"]["status"])
         self.assertEqual("pass", scenarios["audio-loop"]["status"])
+        self.assertEqual("pass", scenarios["thinking-latency"]["status"])
         self.assertIn("thinking", scenarios["text-turn"]["frame_types"])
         self.assertIn("audio_stream_start", scenarios["audio-loop"]["frame_types"])
         self.assertGreater(scenarios["audio-loop"]["binary_frames"], 0)
         self.assertGreater(scenarios["audio-loop"]["binary_bytes"], 0)
+        self.assertEqual(
+            ["hello", "listening", "thinking"],
+            scenarios["thinking-latency"]["frame_sequence"][:3],
+        )
+        timings = {item["type"]: item["elapsed_ms"] for item in scenarios["thinking-latency"]["frame_timings"]}
+        self.assertLessEqual(timings["thinking"], 200.0)
+        self.assertGreaterEqual(timings["response_end"], 250.0)
 
     def test_write_outputs_creates_json_markdown_and_per_scenario_reports(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -39,10 +47,12 @@ class LanSmokeTests(unittest.TestCase):
             self.assertTrue(paths["markdown"].exists())
             self.assertTrue((out_dir / "text-turn.json").exists())
             self.assertTrue((out_dir / "audio-loop.json").exists())
+            self.assertTrue((out_dir / "thinking-latency.json").exists())
             markdown = paths["markdown"].read_text(encoding="utf-8")
 
         self.assertIn("Stackchan LAN Bridge Smoke", markdown)
         self.assertIn("socket-level no-hardware proxy", markdown)
+        self.assertIn("thinking-latency", markdown)
 
     def test_smoke_report_does_not_leak_configured_runner_environment(self):
         key = "STACKCHAN_MODEL_COMMAND"
