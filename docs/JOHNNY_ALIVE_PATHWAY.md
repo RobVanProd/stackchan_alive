@@ -97,6 +97,8 @@ Keep each item independently shippable and package-verified.
    - It also includes `bridge-kill-recovery`, which aborts an in-flight TTS stream after a
      bridge error, emits one offline fallback prompt, reconnects, speaks a recovery turn, and
      returns to `Ready` without a timeout or parse failure.
+   - Native firmware tests now enforce the same recovery contract: bridge `error` and
+     timeout paths clear open audio-stream state before accepting the next bridge session.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
    - GitHub Actions runs the bridge tests and simulator in the `bridge-tests` job and

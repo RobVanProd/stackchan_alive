@@ -120,8 +120,11 @@ Example:
 - `audio`: one mouth/audio timing frame. `env` is normalized `[0,1]`; `viseme` is `neutral`, `ah`, `oh`, or `ee`. If a local TTS command is configured, these frames come from its returned beat metadata.
 - `response_end`: bridge finished the response; firmware emits `ResponseEnded`.
 - `heartbeat`: keepalive; no user-facing output.
-- `error`: recoverable bridge failure; firmware emits `Error` and falls back to packaged prompts.
-- Timeout: if a connecting/listening/thinking/responding session stops producing bridge traffic for the firmware timeout window, firmware emits the same recoverable `Error` path with `bridge_timeout`.
+- `error`: recoverable bridge failure; firmware aborts any open audio stream, emits `Error`,
+  and falls back to packaged prompts.
+- Timeout: if a connecting/listening/thinking/responding session stops producing bridge
+  traffic for the firmware timeout window, firmware aborts any open audio stream and emits
+  the same recoverable `Error` path with `bridge_timeout`.
 
 Example response:
 
@@ -151,5 +154,8 @@ output.
   metadata plus optional `audio_b64`. The LAN service can downlink that audio as binary
   WebSocket chunks. Firmware currently records stream metadata and chunk accounting;
   downlinked-chunk speaker playback remains a separate hardware path.
-- Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
+- Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and
+  packaged prompts still work. Open binary audio streams are discarded during recovery, so
+  stale stream metadata cannot block the next bridge session. Runtime telemetry reports
+  `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

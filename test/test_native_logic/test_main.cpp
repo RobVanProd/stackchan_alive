@@ -2353,6 +2353,63 @@ void test_bridge_client_rejects_truncated_audio_stream() {
   TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
 }
 
+void test_bridge_client_recovers_after_error_aborts_audio_stream() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"hello\",\"session\":\"before-drop\"}", 650));
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":21,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":6,\"chunk_bytes\":3,\"chunks\":2}",
+      660));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+  TEST_ASSERT_TRUE(bridge.telemetry().audioStreamActive);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Responding), static_cast<int>(bridge.telemetry().state));
+
+  const uint8_t chunk[] = {1, 2, 3};
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk, sizeof(chunk), 665));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(3, bridge.telemetry().audioStreamBytesReceived);
+  TEST_ASSERT_TRUE(bridge.telemetry().audioStreamActive);
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"error\",\"seq\":21,\"code\":\"bridge_closed\"}", 670));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("bridge_closed", output.error);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
+  TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().audioStreamErrors);
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"hello\",\"session\":\"after-drop\"}", 700));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("after-drop", output.sessionId);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"response_start\",\"seq\":22,\"intent\":\"concern\",\"arousal\":0.4,\"valence\":0.35,"
+      "\"text\":\"I lost the bridge, but I am still here.\"}",
+      710));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseStart), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(22, output.response.seq);
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Concern), static_cast<int>(output.response.intent));
+  TEST_ASSERT_EQUAL_STRING("I lost the bridge, but I am still here.", output.response.text);
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"response_end\",\"seq\":22}", 730));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseEnd), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
+}
+
 void test_bridge_client_reports_parse_errors_without_allocating() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -2395,6 +2452,32 @@ void test_bridge_client_times_out_active_session_once() {
 
   TEST_ASSERT_FALSE(bridge.update(1400));
   TEST_ASSERT_FALSE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().timeouts);
+}
+
+void test_bridge_client_timeout_aborts_audio_stream() {
+  BridgeClient bridge;
+  BridgeClientConfig config;
+  config.responseTimeoutMs = 100;
+  TEST_ASSERT_TRUE(bridge.begin(config));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":31,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":6,\"chunk_bytes\":3,\"chunks\":2}",
+      1200));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+  TEST_ASSERT_TRUE(bridge.telemetry().audioStreamActive);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Responding), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.update(1300));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("bridge_timeout", output.error);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().timeouts);
 }
 
@@ -2526,8 +2609,10 @@ int main() {
   RUN_TEST(test_bridge_client_parses_audio_stream_metadata);
   RUN_TEST(test_bridge_client_rejects_binary_without_audio_stream);
   RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
+  RUN_TEST(test_bridge_client_recovers_after_error_aborts_audio_stream);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   RUN_TEST(test_bridge_client_times_out_active_session_once);
+  RUN_TEST(test_bridge_client_timeout_aborts_audio_stream);
   RUN_TEST(test_bridge_client_accepts_serial_bridge_transcript);
   return UNITY_END();
 }

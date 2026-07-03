@@ -50,7 +50,8 @@ expects the virtual bridge to return to `Ready`.
 The `bridge-kill-recovery` scenario simulates a LAN bridge dropping mid-response while a
 binary TTS stream is open. The virtual device must abort that stream, emit one offline
 fallback prompt, accept a new `hello`, speak a recovery turn, and end back in `Ready` with no
-parse errors or timeout.
+parse errors or timeout. Native firmware tests also assert that bridge `error` and timeout
+paths clear open stream state before the next session.
 
 It intentionally does not claim real LCD, speaker, microphone, camera, capacitive touch, IMU,
 servo, heat, battery, USB power, Wi-Fi, or soak behavior. Those remain real hardware gates in
