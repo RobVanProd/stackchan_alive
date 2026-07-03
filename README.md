@@ -22,6 +22,7 @@ What is working in the repository now:
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
+- LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy plus engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
 
@@ -152,6 +153,15 @@ It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md` and the matchin
 This is the quickest "does the simulated hardware path still work?" check before the unit
 arrives. Unconfigured local model/STT/TTS commands are reported as setup work, not as a
 simulator failure.
+
+Run the socket-level bridge proxy:
+
+```powershell
+.\tools\run_lan_smoke.cmd
+```
+
+It writes `output/lan-smoke/latest/LAN_SMOKE.md` and matching JSON for the local WebSocket
+handshake, bridge frame order, fake audio upload, fake STT/TTS, and binary downlink path.
 
 Check local model/STT/TTS engine readiness:
 

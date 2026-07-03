@@ -2104,6 +2104,10 @@ Invoke-Step "Check hardware simulation proxy" {
   & (Join-Path $PSScriptRoot "run_hardware_simulation.ps1") -OutputDir (Join-Path $ReportDir "hardware-sim")
 }
 
+Invoke-Step "Check LAN bridge smoke report" {
+  & (Join-Path $PSScriptRoot "run_lan_smoke.ps1") -OutputDir (Join-Path $ReportDir "lan-smoke")
+}
+
 Invoke-Step "Check pre-arrival simulation report" {
   & (Join-Path $PSScriptRoot "run_prearrival_sim_check.ps1") -OutputDir (Join-Path $ReportDir "prearrival-sim")
 }

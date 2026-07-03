@@ -24,6 +24,16 @@ It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`. A passing
 means the virtual CoreS3/LAN/audio proxy is still healthy; it does not replace device
 evidence.
 
+Run the socket-level LAN bridge smoke report:
+
+```powershell
+.\tools\run_lan_smoke.cmd
+```
+
+It writes `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the local WebSocket
+handshake, deterministic text turn, fake mic upload, fake STT/TTS path, and PCM16 binary
+downlink without requiring hardware.
+
 Check whether this host has local model/STT/TTS engines configured:
 
 ```powershell

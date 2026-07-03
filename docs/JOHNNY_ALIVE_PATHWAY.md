@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal, and combined pre-arrival simulation check exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, LAN bridge smoke report, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal, and combined pre-arrival simulation check exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -73,6 +73,11 @@ Keep each item independently shippable and package-verified.
    - On transcript-backed or STT-backed `utterance_end`, the service runs the local runner
      wrapper, validates Character Lock JSON, applies host memory, and streams normalized
      `thinking`, `response_start`, `audio`, and `response_end` frames.
+   - `bridge/lan_smoke.py` and `tools/run_lan_smoke.cmd` write `LAN_SMOKE.md/json` by
+     exercising the actual local TCP/WebSocket handshake, a transcript-backed text turn, a
+     fake mic PCM upload, fake STT/TTS, and a PCM16 binary downlink sequence with
+     deterministic engines. This is the LAN bridge smoke report gate for PRs before the
+     unit arrives.
    - A configured local TTS command can receive response text on stdin and replace the
      deterministic mouth beats with returned TTS metadata.
    - If the TTS command returns `audio_b64`, the TTS adapter canonicalizes playable PCM
@@ -144,9 +149,10 @@ Keep each item independently shippable and package-verified.
      baseline as an advisory diagnostic, not as promotion evidence.
    - `tools/run_prearrival_sim_check.cmd` writes `PREARRIVAL_SIM_CHECK.md/json` so the
      fastest pre-arrival proxy combines virtual hardware status and engine-readiness status.
-   - GitHub Actions runs the bridge tests, engine readiness probe, simulator, and
-     pre-arrival check in the `bridge-tests` job, then uploads engine-probe,
-     hardware-simulation, and prearrival-simulation-check artifacts for each PR/push.
+   - GitHub Actions runs the bridge tests, engine readiness probe, LAN bridge smoke report,
+     simulator, and pre-arrival check in the `bridge-tests` job, then uploads engine-probe,
+     lan-bridge-smoke, hardware-simulation, and prearrival-simulation-check artifacts for
+     each PR/push.
    - This catches bridge ordering, conversation timing, LAN STT/TTS audio-loop ordering, LAN
      TTS downlink, timeout, mouth-frame, input-mapping, offline command fallback,
      reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical

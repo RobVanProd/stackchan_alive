@@ -46,6 +46,18 @@ jobs:
       - name: Run pre-arrival simulation check
         run: python bridge/prearrival_sim_check.py --out-dir output/prearrival-sim/latest --json
 
+      - name: Run LAN bridge smoke report
+        run: python bridge/lan_smoke.py --out-dir output/lan-smoke/latest --json
+
+      - name: Upload LAN bridge smoke report
+        uses: actions/upload-artifact@v7
+        with:
+          name: lan-bridge-smoke
+          path: |
+            output/lan-smoke/latest/lan_smoke.json
+            output/lan-smoke/latest/LAN_SMOKE.md
+            output/lan-smoke/latest/*.json
+
       - name: Upload pre-arrival simulation check
         uses: actions/upload-artifact@v7
         with:

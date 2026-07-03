@@ -252,6 +252,8 @@ $bridgePackageFiles = @(
   "test_tts_adapter.py",
   "lan_service.py",
   "test_lan_service.py",
+  "lan_smoke.py",
+  "test_lan_smoke.py",
   "hardware_simulator.py",
   "test_hardware_simulator.py",
   "prearrival_sim_check.py",
@@ -341,6 +343,8 @@ $releaseTools = @(
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
   "tools/run_engine_probe.ps1",
+  "tools/run_lan_smoke.cmd",
+  "tools/run_lan_smoke.ps1",
   "tools/run_prearrival_sim_check.cmd",
   "tools/run_prearrival_sim_check.ps1",
   "tools/run_hardware_simulation.cmd",
@@ -794,6 +798,8 @@ $manifest = [ordered]@{
     "tools/run_bridge_reference_tests.ps1",
     "tools/run_engine_probe.cmd",
     "tools/run_engine_probe.ps1",
+    "tools/run_lan_smoke.cmd",
+    "tools/run_lan_smoke.ps1",
     "tools/run_prearrival_sim_check.cmd",
     "tools/run_prearrival_sim_check.ps1",
     "tools/run_hardware_simulation.cmd",
@@ -861,6 +867,8 @@ $manifest = [ordered]@{
     "provenance/bridge/test_tts_adapter.py",
     "provenance/bridge/lan_service.py",
     "provenance/bridge/test_lan_service.py",
+    "provenance/bridge/lan_smoke.py",
+    "provenance/bridge/test_lan_smoke.py",
     "provenance/bridge/hardware_simulator.py",
     "provenance/bridge/test_hardware_simulator.py",
     "provenance/bridge/prearrival_sim_check.py",
@@ -1102,6 +1110,7 @@ Engine readiness quick check:
 No-hardware simulation quick check:
 
 - Run ``tools/run_prearrival_sim_check.cmd`` to create ``output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`` with the combined virtual CoreS3/LAN/audio proxy status plus engine-readiness status.
+- Run ``tools/run_lan_smoke.cmd`` to create ``output/lan-smoke/latest/LAN_SMOKE.md/json`` with a real local TCP/WebSocket bridge handshake, text turn, fake mic upload, fake STT, fake TTS, and PCM16 binary downlink check.
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
 - The simulator proves bridge frame ordering, LAN text turns, fake mic PCM upload through fake STT, conversation timing, fake WAV TTS normalization to PCM16 downlink, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
 - After an evidence packet has simulator output plus real display, speech, and bridge replay logs, run ``RUN_SIM_HARDWARE_COMPARE.cmd`` inside that packet to write advisory ``SIM_HARDWARE_COMPARE.md/json`` reports.

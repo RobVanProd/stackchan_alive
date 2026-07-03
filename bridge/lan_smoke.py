@@ -1,0 +1,519 @@
+#!/usr/bin/env python3
+"""LAN WebSocket bridge smoke report.
+
+This exercises the real TCP/WebSocket handshake and frame path with a temporary
+single-client server. It is a no-hardware proxy, not a replacement for CoreS3
+bench evidence.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import queue
+import socket
+import sys
+import tempfile
+import threading
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+from lan_service import LanBridgeConfig, WebSocketProtocolError, handle_connection, read_ws_frame
+from local_runner import GENERIC_COMMAND_ENV, RUNNER_PROFILES
+from reference_bridge import PROTOCOL, BridgeMemory
+from stt_adapter import STT_COMMAND_ENV
+from tts_adapter import DEFAULT_TTS_VOICE, TTS_COMMAND_ENV
+
+SCHEMA = "stackchan.lan-smoke.v1"
+DEFAULT_OUT_DIR = Path("output/lan-smoke/latest")
+DEFAULT_SCENARIOS = ("text-turn", "audio-loop")
+CLIENT_MASK = b"\x37\xfa\x21\x3d"
+ENV_KEYS_TO_CLEAR = (
+    GENERIC_COMMAND_ENV,
+    STT_COMMAND_ENV,
+    TTS_COMMAND_ENV,
+    *(profile["command_env"] for profile in RUNNER_PROFILES.values()),
+)
+
+
+@dataclass
+class ReceivedFrame:
+    opcode: int
+    payload: bytes
+    elapsed_ms: float
+
+    @property
+    def is_text(self) -> bool:
+        return self.opcode == 0x1
+
+    @property
+    def is_binary(self) -> bool:
+        return self.opcode == 0x2
+
+    def text_payload(self) -> dict[str, Any]:
+        return json.loads(self.payload.decode("utf-8"))
+
+
+@dataclass
+class ScenarioResult:
+    scenario: str
+    status: str = "pass"
+    issues: list[str] = field(default_factory=list)
+    frames: list[dict[str, Any]] = field(default_factory=list)
+    frame_sequence: list[str] = field(default_factory=list)
+    binary_frames: int = 0
+    binary_bytes: int = 0
+    elapsed_ms: float = 0.0
+    response_text: str = ""
+    handshake_status: str = ""
+    server_errors: list[str] = field(default_factory=list)
+
+    def fail(self, issue: str) -> None:
+        self.status = "fail"
+        self.issues.append(issue)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "scenario": self.scenario,
+            "status": self.status,
+            "issues": list(self.issues),
+            "frame_types": [frame.get("type", "") for frame in self.frames],
+            "frame_sequence": list(self.frame_sequence),
+            "text_frames": len(self.frames),
+            "binary_frames": self.binary_frames,
+            "binary_bytes": self.binary_bytes,
+            "elapsed_ms": round(self.elapsed_ms, 2),
+            "response_text": self.response_text,
+            "handshake_status": self.handshake_status,
+            "server_errors": list(self.server_errors),
+        }
+
+
+@contextmanager
+def cleared_bridge_env() -> Iterable[None]:
+    saved = {key: os.environ.get(key) for key in ENV_KEYS_TO_CLEAR}
+    for key in ENV_KEYS_TO_CLEAR:
+        os.environ.pop(key, None)
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def encode_client_frame(payload: bytes, opcode: int = 0x1) -> bytes:
+    if len(payload) > 65535:
+        raise ValueError("client frame payload too large")
+    first = 0x80 | (opcode & 0x0F)
+    if len(payload) < 126:
+        header = bytes([first, 0x80 | len(payload)])
+    else:
+        header = bytes([first, 0x80 | 126]) + len(payload).to_bytes(2, "big")
+    masked = bytes(value ^ CLIENT_MASK[index % len(CLIENT_MASK)] for index, value in enumerate(payload))
+    return header + CLIENT_MASK + masked
+
+
+def encode_client_text(frame: dict[str, Any]) -> bytes:
+    payload = json.dumps(frame, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return encode_client_frame(payload, opcode=0x1)
+
+
+def make_handshake(host: str, port: int) -> bytes:
+    return (
+        "GET /bridge HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: ZGV2LWxhbi1zbW9rZS1rZXk=\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n"
+    ).encode("ascii")
+
+
+def read_handshake_response(sock: socket.socket) -> str:
+    data = bytearray()
+    while b"\r\n\r\n" not in data:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise WebSocketProtocolError("server closed before handshake response")
+        data.extend(chunk)
+        if len(data) > 8192:
+            raise WebSocketProtocolError("handshake response too large")
+    return data.decode("iso-8859-1", errors="replace")
+
+
+class SmokeServer:
+    def __init__(self, config: LanBridgeConfig):
+        self.config = config
+        self.port_queue: queue.Queue[int] = queue.Queue(maxsize=1)
+        self.errors: list[str] = []
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self) -> "SmokeServer":
+        self.thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.thread.join(timeout=5.0)
+        if self.thread.is_alive():
+            self.errors.append("server_thread_left_running")
+
+    def port(self) -> int:
+        try:
+            return self.port_queue.get(timeout=5.0)
+        except queue.Empty as exc:
+            raise RuntimeError("LAN smoke server did not bind a port") from exc
+
+    def _run(self) -> None:
+        try:
+            with socket.create_server((self.config.host, 0), reuse_port=False) as server:
+                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.port_queue.put(int(server.getsockname()[1]))
+                conn, _address = server.accept()
+                with conn:
+                    handle_connection(conn, self.config, BridgeMemory())
+        except Exception as exc:  # pragma: no cover - surfaced in scenario report
+            self.errors.append(f"{type(exc).__name__}: {exc}")
+
+
+class SmokeClient:
+    def __init__(self, host: str, port: int):
+        self.host = host
+        self.port = port
+        self.sock = socket.create_connection((host, port), timeout=5.0)
+        self.sock.settimeout(5.0)
+        self.started = time.perf_counter()
+
+    def __enter__(self) -> "SmokeClient":
+        self.sock.sendall(make_handshake(self.host, self.port))
+        response = read_handshake_response(self.sock)
+        if "101 Switching Protocols" not in response:
+            raise WebSocketProtocolError("server did not accept WebSocket handshake")
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            self.sock.sendall(encode_client_frame(b"", opcode=0x8))
+            read_ws_frame(self.sock)
+        except Exception:
+            pass
+        self.sock.close()
+
+    def send_text(self, frame: dict[str, Any]) -> None:
+        self.sock.sendall(encode_client_text(frame))
+
+    def send_binary(self, payload: bytes) -> None:
+        self.sock.sendall(encode_client_frame(payload, opcode=0x2))
+
+    def read(self) -> ReceivedFrame:
+        opcode, payload = read_ws_frame(self.sock)
+        elapsed_ms = (time.perf_counter() - self.started) * 1000.0
+        return ReceivedFrame(opcode=opcode, payload=payload, elapsed_ms=elapsed_ms)
+
+    def read_many(self, stop_types: set[str], max_frames: int = 64) -> list[ReceivedFrame]:
+        frames: list[ReceivedFrame] = []
+        for _ in range(max_frames):
+            received = self.read()
+            frames.append(received)
+            if received.is_text:
+                frame_type = str(received.text_payload().get("type", ""))
+                if frame_type in stop_types:
+                    return frames
+        raise WebSocketProtocolError(f"did not receive {sorted(stop_types)} within {max_frames} frames")
+
+
+def write_fake_stt(path: Path, transcript: str = "I picked you up gently.") -> str:
+    path.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "import sys",
+                "payload = sys.stdin.buffer.read()",
+                "if os.environ.get('STACKCHAN_AUDIO_BYTES') != str(len(payload)):",
+                "    raise SystemExit('audio byte count mismatch')",
+                f"print(json.dumps({{'transcript': {transcript!r}}}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return f'"{sys.executable}" "{path}"'
+
+
+def write_fake_tts(path: Path) -> str:
+    audio = base64.b64encode((b"stackchan-audio-" * 240)[:3200]).decode("ascii")
+    beats = [
+        {"env": 0.18, "viseme": "ah", "duration_ms": 40},
+        {"env": 0.62, "viseme": "ee", "duration_ms": 45},
+        {"env": 0.36, "viseme": "oh", "duration_ms": 50},
+        {"env": 0.0, "viseme": "neutral", "duration_ms": 35, "final": True},
+    ]
+    path.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "import sys",
+                "text = sys.stdin.buffer.read().decode('utf-8')",
+                "if not text.strip():",
+                "    raise SystemExit('missing TTS text')",
+                f"audio_b64 = {audio!r}",
+                f"beats = {json.dumps(beats, separators=(',', ':'))!r}",
+                "print(json.dumps({'audio_format':'pcm16','sample_rate':22050,'audio_b64':audio_b64,'beats':json.loads(beats)}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return f'"{sys.executable}" "{path}"'
+
+
+def append_received(result: ScenarioResult, received: ReceivedFrame) -> None:
+    if received.is_binary:
+        result.binary_frames += 1
+        result.binary_bytes += len(received.payload)
+        result.frame_sequence.append(f"binary:{len(received.payload)}")
+        return
+    if not received.is_text:
+        result.fail(f"unexpected_opcode_{received.opcode}")
+        return
+    frame = received.text_payload()
+    result.frames.append(frame)
+    result.frame_sequence.append(str(frame.get("type", "")))
+    if frame.get("type") == "response_start":
+        result.response_text = str(frame.get("text", ""))
+
+
+def require_frame(result: ScenarioResult, frame_type: str) -> dict[str, Any] | None:
+    for frame in result.frames:
+        if frame.get("type") == frame_type:
+            return frame
+    result.fail(f"missing_{frame_type}")
+    return None
+
+
+def require_order(result: ScenarioResult, ordered: tuple[str, ...]) -> None:
+    types = [str(frame.get("type", "")) for frame in result.frames]
+    cursor = -1
+    for expected in ordered:
+        try:
+            next_index = types.index(expected, cursor + 1)
+        except ValueError:
+            result.fail(f"missing_ordered_{expected}")
+            return
+        cursor = next_index
+
+
+def run_text_turn(host: str, config: LanBridgeConfig) -> ScenarioResult:
+    result = ScenarioResult(scenario="text-turn")
+    start = time.perf_counter()
+    with SmokeServer(config) as server:
+        port = server.port()
+        with SmokeClient(host, port) as client:
+            result.handshake_status = "accepted"
+            client.send_text({"type": "hello", "device_id": "stackchan-smoke"})
+            append_received(result, client.read())
+            client.send_text({"type": "utterance_start", "seq": 11, "sample_rate": 16000})
+            append_received(result, client.read())
+            client.send_text({"type": "utterance_end", "seq": 11, "text": "Hello Stackchan."})
+            for frame in client.read_many({"response_end"}):
+                append_received(result, frame)
+        result.server_errors.extend(server.errors)
+    result.elapsed_ms = (time.perf_counter() - start) * 1000.0
+    validate_text_turn(result)
+    return result
+
+
+def run_audio_loop(host: str, base_config: LanBridgeConfig, temp_dir: Path) -> ScenarioResult:
+    result = ScenarioResult(scenario="audio-loop")
+    start = time.perf_counter()
+    config = LanBridgeConfig(
+        host=base_config.host,
+        runner_profile=base_config.runner_profile,
+        runner_case="greeting",
+        stt_command=write_fake_stt(temp_dir / "fake_stt.py"),
+        tts_command=write_fake_tts(temp_dir / "fake_tts.py"),
+        tts_voice=DEFAULT_TTS_VOICE,
+        downlink_audio_chunk_bytes=1024,
+        max_audio_bytes=base_config.max_audio_bytes,
+    )
+    with SmokeServer(config) as server:
+        port = server.port()
+        with SmokeClient(host, port) as client:
+            result.handshake_status = "accepted"
+            client.send_text({"type": "hello", "device_id": "stackchan-smoke"})
+            append_received(result, client.read())
+            client.send_text({"type": "utterance_start", "seq": 12, "sample_rate": 16000})
+            append_received(result, client.read())
+            client.send_binary((b"\x01\x00\x02\x00" * 800)[:3200])
+            append_received(result, client.read())
+            client.send_binary((b"\x03\x00\x04\x00" * 800)[:3200])
+            append_received(result, client.read())
+            client.send_text({"type": "utterance_end", "seq": 12})
+            for frame in client.read_many({"response_end"}):
+                append_received(result, frame)
+        result.server_errors.extend(server.errors)
+    result.elapsed_ms = (time.perf_counter() - start) * 1000.0
+    validate_audio_loop(result)
+    return result
+
+
+def validate_common(result: ScenarioResult) -> None:
+    if result.server_errors:
+        result.fail("server_errors_present")
+    require_frame(result, "hello")
+    require_frame(result, "listening")
+    require_frame(result, "thinking")
+    require_frame(result, "response_start")
+    require_frame(result, "response_end")
+    require_order(result, ("hello", "listening", "thinking", "response_start", "response_end"))
+    errors = [frame for frame in result.frames if frame.get("type") == "error"]
+    if errors:
+        result.fail("error_frames_present")
+    if not result.response_text:
+        result.fail("missing_response_text")
+
+
+def validate_text_turn(result: ScenarioResult) -> None:
+    validate_common(result)
+    if result.binary_frames != 0:
+        result.fail("text_turn_unexpected_binary_frames")
+
+
+def validate_audio_loop(result: ScenarioResult) -> None:
+    validate_common(result)
+    thinking = require_frame(result, "thinking") or {}
+    stream_start = require_frame(result, "audio_stream_start") or {}
+    stream_end = require_frame(result, "audio_stream_end") or {}
+    require_order(result, ("response_start", "audio_stream_start", "audio_stream_end", "response_end"))
+    if int(thinking.get("audio_bytes", 0)) <= 0:
+        result.fail("missing_uploaded_audio_telemetry")
+    if str(thinking.get("stt_command_source", "")) != "cli":
+        result.fail("fake_stt_not_used")
+    expected_bytes = int(stream_start.get("audio_bytes", 0))
+    if expected_bytes <= 0:
+        result.fail("missing_audio_stream_bytes")
+    if result.binary_frames <= 0 or result.binary_bytes != expected_bytes:
+        result.fail("binary_downlink_byte_mismatch")
+    if stream_end.get("audio_bytes") != stream_start.get("audio_bytes"):
+        result.fail("audio_stream_end_mismatch")
+
+
+def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEFAULT_SCENARIOS) -> dict[str, Any]:
+    selected = tuple(scenarios)
+    results: list[ScenarioResult] = []
+    config = LanBridgeConfig(host="127.0.0.1", runner_case="greeting", require_runner=False)
+    with cleared_bridge_env(), tempfile.TemporaryDirectory() as temp:
+        temp_dir = Path(temp)
+        for scenario in selected:
+            if scenario == "text-turn":
+                results.append(run_text_turn(config.host, config))
+            elif scenario == "audio-loop":
+                results.append(run_audio_loop(config.host, config, temp_dir))
+            else:
+                result = ScenarioResult(scenario=scenario, status="fail")
+                result.issues.append("unknown_scenario")
+                results.append(result)
+    status = "pass" if all(result.status == "pass" for result in results) else "fail"
+    return {
+        "schema": SCHEMA,
+        "generated_at": utc_timestamp(),
+        "protocol": PROTOCOL,
+        "status": status,
+        "scenario_count": len(results),
+        "scenarios": [result.to_dict() for result in results],
+        "artifacts": {
+            "markdown": str(out_dir / "LAN_SMOKE.md"),
+            "json": str(out_dir / "lan_smoke.json"),
+        },
+        "notes": [
+            "This report exercises the real local TCP/WebSocket bridge path with deterministic fake engines.",
+            "It does not prove Wi-Fi, firmware networking, speaker output, microphone capture, display, servo, or thermal behavior.",
+        ],
+    }
+
+
+def render_markdown(report: dict[str, Any]) -> str:
+    lines = [
+        "# Stackchan LAN Bridge Smoke",
+        "",
+        f"Schema: `{report['schema']}`",
+        f"Generated: `{report['generated_at']}`",
+        f"Protocol: `{report['protocol']}`",
+        f"Status: `{report['status']}`",
+        "",
+        "This is the socket-level no-hardware proxy for the P7 brain bridge.",
+        "It starts a temporary bridge server, performs a real WebSocket handshake, sends device-style frames, and validates response ordering.",
+        "",
+        "| Scenario | Status | Text frames | Binary frames | Binary bytes | Key response |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
+    for scenario in report["scenarios"]:
+        response = str(scenario.get("response_text", "")).replace("|", "\\|")
+        if len(response) > 72:
+            response = response[:69] + "..."
+        lines.append(
+            f"| `{scenario['scenario']}` | `{scenario['status']}` | {scenario['text_frames']} | "
+            f"{scenario['binary_frames']} | {scenario['binary_bytes']} | {response} |"
+        )
+    lines.extend(["", "## Gates", ""])
+    for scenario in report["scenarios"]:
+        frame_sequence = ", ".join(f"`{item}`" for item in scenario.get("frame_sequence", []))
+        lines.append(f"- `{scenario['scenario']}` frame sequence: {frame_sequence}")
+        if scenario.get("issues"):
+            issues = ", ".join(f"`{item}`" for item in scenario["issues"])
+            lines.append(f"- `{scenario['scenario']}` issues: {issues}")
+    lines.extend(["", "## Limits", ""])
+    for note in report["notes"]:
+        lines.append(f"- {note}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_outputs(report: dict[str, Any], out_dir: Path = DEFAULT_OUT_DIR) -> dict[str, Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / "lan_smoke.json"
+    markdown_path = out_dir / "LAN_SMOKE.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    markdown_path.write_text(render_markdown(report), encoding="utf-8")
+    for scenario in report["scenarios"]:
+        scenario_path = out_dir / f"{scenario['scenario']}.json"
+        scenario_path.write_text(json.dumps(scenario, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {"json": json_path, "markdown": markdown_path}
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run a deterministic LAN WebSocket bridge smoke check.")
+    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    parser.add_argument("--scenario", action="append", choices=DEFAULT_SCENARIOS, help="Scenario to run. Repeatable.")
+    parser.add_argument("--json", action="store_true", help="Print the summary JSON to stdout.")
+    return parser
+
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    report = build_report(args.out_dir, args.scenario or DEFAULT_SCENARIOS)
+    paths = write_outputs(report, args.out_dir)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"Wrote {paths['markdown']}")
+        print(f"Wrote {paths['json']}")
+        print(f"Status: {report['status']}")
+    return 0 if report["status"] == "pass" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

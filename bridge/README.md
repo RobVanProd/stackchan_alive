@@ -90,6 +90,16 @@ Run the local LAN WebSocket bridge:
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
 ```
 
+Run the socket-level no-hardware smoke report:
+
+```powershell
+python bridge/lan_smoke.py --out-dir output/lan-smoke/latest --json
+```
+
+It writes `LAN_SMOKE.md/json`, starts a temporary local WebSocket bridge, performs a real
+handshake, sends a transcript-backed text turn, then sends a fake mic PCM upload through fake
+STT/TTS and validates the binary PCM16 downlink sequence.
+
 Audio-only turns can use a local STT command:
 
 ```powershell
