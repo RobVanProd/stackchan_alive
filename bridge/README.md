@@ -14,4 +14,16 @@ Run it as firmware bench commands:
 python bridge/reference_bridge.py --format bench
 ```
 
+Inspect the deterministic persona prompt and local memory context that the future LAN bridge will pass to the LLM:
+
+```powershell
+python bridge/reference_bridge.py --format prompt --name Rob --topic voice --physical-context "room is dark"
+```
+
+Try the deterministic response planner with user text:
+
+```powershell
+python bridge/reference_bridge.py --format bench --user-text "My name is Rob and I picked you up to check the servo voice."
+```
+
 The bench output can be sent through `tools/send_bridge_replay_demo.ps1 -TranscriptPath <file>` or pasted into the serial monitor. Later P7 work can replace the deterministic response generator with STT, LLM, memory, and Stackchan Spark TTS while keeping the same frame schema.
