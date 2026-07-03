@@ -1826,6 +1826,75 @@ void test_audio_out_accepts_packaged_prompt_requests() {
   TEST_ASSERT_TRUE(audio.lastRequest().duckOnBargeIn);
 }
 
+void test_audio_out_streams_packaged_sidecar_mouth_frames() {
+  AudioOut audio;
+  TEST_ASSERT_TRUE(audio.begin(false));
+
+  AudioOutPlaybackRequest request;
+  request.seq = 43;
+  request.queuedAtMs = 1000;
+  request.source = AudioOutSource::PackagedPrompt;
+  request.promptId = "think_processing";
+  request.wavPath = "media/voice/stackchan_spark_thinking.wav";
+  request.sidecarPath = "media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json";
+  request.earconDelayMs = 80;
+  request.promptChars = 56;
+  request.hasPrompt = true;
+
+  TEST_ASSERT_TRUE(audio.enqueue(request));
+  TEST_ASSERT_TRUE(audio.telemetry().playbackActive);
+  TEST_ASSERT_EQUAL_UINT16(421, audio.telemetry().sidecarFrames);
+  TEST_ASSERT_EQUAL_UINT16(20, audio.telemetry().sidecarFrameMs);
+  TEST_ASSERT_EQUAL_UINT32(8414, audio.telemetry().playbackDurationMs);
+
+  AudioOutSpeechFrame frame;
+  TEST_ASSERT_FALSE(audio.pollSpeechFrame(1070, &frame));
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(1080, &frame));
+  TEST_ASSERT_TRUE(frame.active);
+  TEST_ASSERT_FALSE(frame.clear);
+  TEST_ASSERT_EQUAL_UINT32(43, frame.seq);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, frame.envelope);
+  TEST_ASSERT_NOT_EQUAL(static_cast<int>(AudioOutViseme::Neutral), static_cast<int>(frame.viseme));
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().speechFramesEmitted);
+
+  TEST_ASSERT_FALSE(audio.pollSpeechFrame(1089, &frame));
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(1100, &frame));
+  TEST_ASSERT_EQUAL_UINT32(2, audio.telemetry().speechFramesEmitted);
+
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(9500, &frame));
+  TEST_ASSERT_TRUE(frame.clear);
+  TEST_ASSERT_FALSE(frame.active);
+  TEST_ASSERT_FALSE(audio.telemetry().playbackActive);
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().playbackCompleted);
+}
+
+void test_audio_out_ducks_active_playback_for_barge_in() {
+  AudioOut audio;
+  TEST_ASSERT_TRUE(audio.begin(false));
+
+  AudioOutPlaybackRequest request;
+  request.seq = 44;
+  request.queuedAtMs = 2000;
+  request.source = AudioOutSource::PackagedPrompt;
+  request.promptId = "boot_awake";
+  request.wavPath = "media/voice/stackchan_spark_greeting.wav";
+  request.sidecarPath = "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json";
+  request.hasPrompt = true;
+  request.duckOnBargeIn = true;
+
+  TEST_ASSERT_TRUE(audio.enqueue(request));
+  AudioOutSpeechFrame frame;
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(2040, &frame));
+  const float normalEnvelope = frame.envelope;
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, normalEnvelope);
+
+  TEST_ASSERT_TRUE(audio.duck(2060));
+  TEST_ASSERT_TRUE(audio.telemetry().duckActive);
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().duckEvents);
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(2060, &frame));
+  TEST_ASSERT_LESS_THAN_FLOAT(normalEnvelope, frame.envelope);
+}
+
 void test_speech_adapter_queues_audio_out_request() {
   AudioOut audio;
   SpeechAdapter adapter;
@@ -2008,6 +2077,8 @@ int main() {
   RUN_TEST(test_speech_adapter_prepares_packaged_prompt_and_earcon);
   RUN_TEST(test_speech_prompt_bank_covers_all_spoken_intents_with_sidecars);
   RUN_TEST(test_audio_out_accepts_packaged_prompt_requests);
+  RUN_TEST(test_audio_out_streams_packaged_sidecar_mouth_frames);
+  RUN_TEST(test_audio_out_ducks_active_playback_for_barge_in);
   RUN_TEST(test_speech_adapter_queues_audio_out_request);
   RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
