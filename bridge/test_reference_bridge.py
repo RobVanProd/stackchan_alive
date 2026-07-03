@@ -1,7 +1,16 @@
 import json
 import unittest
 
-from reference_bridge import BridgeTurn, PROTOCOL, bridge_frames, render_bench, render_jsonl
+from reference_bridge import (
+    BridgeMemory,
+    BridgeTurn,
+    PROTOCOL,
+    bridge_frames,
+    build_persona_prompt,
+    plan_turn,
+    render_bench,
+    render_jsonl,
+)
 
 
 class ReferenceBridgeTests(unittest.TestCase):
@@ -29,6 +38,33 @@ class ReferenceBridgeTests(unittest.TestCase):
         self.assertIn("bridge audio 0.72 ee 80", text)
         self.assertIn("bridge audio 0.12 neutral 60 final", text)
         self.assertTrue(text.endswith("status"))
+
+    def test_persona_prompt_uses_memory_without_clone_markers(self):
+        memory = BridgeMemory(preferred_name="Rob", recent_topics=("voice",), physical_context=("room is dark",))
+        prompt = build_persona_prompt(memory)
+        self.assertIn("Stackchan Spark", prompt)
+        self.assertIn("preferred_name: Rob", prompt)
+        self.assertIn("recent_topics: voice", prompt)
+        self.assertIn("physical_context: room is dark", prompt)
+        self.assertNotIn("Johnny", prompt)
+        self.assertNotIn("Short Circuit", prompt)
+        self.assertNotIn("Number 5", prompt)
+
+    def test_memory_extracts_name_topics_and_physical_context(self):
+        memory = BridgeMemory().remember_user_text("My name is Rob and I picked you up to check the servo voice.")
+        self.assertEqual("Rob", memory.preferred_name)
+        self.assertIn("servos", memory.recent_topics)
+        self.assertIn("voice", memory.recent_topics)
+        self.assertIn("user picked Stackchan up", memory.physical_context)
+        self.assertEqual(1, memory.turns_seen)
+
+    def test_plan_turn_couples_memory_to_response(self):
+        memory = BridgeMemory(preferred_name="Rob")
+        turn = plan_turn("I picked you up", memory, seq=12)
+        self.assertEqual(12, turn.seq)
+        self.assertEqual("happy", turn.intent)
+        self.assertIn("Hello Rob.", turn.text)
+        self.assertIn("You picked me up", turn.text)
 
 
 if __name__ == "__main__":
