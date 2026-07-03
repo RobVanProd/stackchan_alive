@@ -120,7 +120,10 @@ The LAN service uses the beats for `audio` mouth frames and sends `audio_b64` as
 parses the stream metadata, copies each accepted chunk into a bounded `BridgeClient` buffer,
 exposes the current payload through `BridgeClientOutput`, feeds it to the downlink consumer
 for checksum/telemetry validation, accounts received chunk bytes, and rejects mismatched
-stream totals; decoded speaker playback from downlinked chunks is still future work.
+stream totals. When speaker hardware is enabled, firmware can also hand accepted decoded
+PCM16 chunks to the M5 speaker sink. Use `audio_format` / `format` values `pcm16`, `s16le`,
+`raw16`, or `pcm_s16le` with signed 16-bit mono PCM in `audio_b64` for that path; other
+formats are transported for validation but are not played by the downlink sink.
 
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded

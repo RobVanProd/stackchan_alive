@@ -2437,6 +2437,142 @@ void test_bridge_audio_downlink_consumes_bridge_payload_output() {
   TEST_ASSERT_EQUAL_UINT32(0, telemetry.errors);
 }
 
+class CountingBridgeDownlinkSink : public BridgeAudioDownlinkSink {
+ public:
+  bool begin() override {
+    beginCalls++;
+    ready = true;
+    return true;
+  }
+
+  bool start(const BridgeAudioStream& stream, uint32_t nowMs) override {
+    startCalls++;
+    active = true;
+    lastSeq = stream.seq;
+    lastSampleRate = stream.sampleRate;
+    lastStartMs = nowMs;
+    strncpy(lastFormat, stream.format, sizeof(lastFormat) - 1);
+    lastFormat[sizeof(lastFormat) - 1] = '\0';
+    return startResult;
+  }
+
+  bool writeChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs) override {
+    chunkCalls++;
+    lastChunkMs = nowMs;
+    lastPayloadBytes = chunk.payloadBytes;
+    bytesWritten += chunk.payloadBytes;
+    return chunkResult;
+  }
+
+  void stop(uint32_t nowMs) override {
+    stopCalls++;
+    lastStopMs = nowMs;
+    active = false;
+  }
+
+  bool isReady() const override {
+    return ready;
+  }
+
+  bool ready = false;
+  bool active = false;
+  bool startResult = true;
+  bool chunkResult = true;
+  uint32_t beginCalls = 0;
+  uint32_t startCalls = 0;
+  uint32_t chunkCalls = 0;
+  uint32_t stopCalls = 0;
+  uint32_t lastSeq = 0;
+  uint32_t lastSampleRate = 0;
+  uint32_t lastStartMs = 0;
+  uint32_t lastChunkMs = 0;
+  uint32_t lastStopMs = 0;
+  uint32_t lastPayloadBytes = 0;
+  uint32_t bytesWritten = 0;
+  char lastFormat[kBridgeAudioFormatMax] = {};
+};
+
+void test_bridge_audio_downlink_hands_pcm16_chunks_to_playback_sink() {
+  CountingBridgeDownlinkSink sink;
+  BridgeAudioDownlink downlink;
+  TEST_ASSERT_TRUE(downlink.begin(true, &sink));
+  TEST_ASSERT_TRUE(downlink.telemetry().playbackEnabled);
+  TEST_ASSERT_TRUE(downlink.telemetry().playbackReady);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.beginCalls);
+
+  BridgeAudioStream stream;
+  stream.seq = 19;
+  stream.sampleRate = 22050;
+  stream.audioBytes = 4;
+  stream.chunkBytes = 4;
+  stream.chunks = 1;
+  strncpy(stream.format, "pcm16", sizeof(stream.format) - 1);
+  TEST_ASSERT_TRUE(downlink.start(stream, 900));
+  TEST_ASSERT_TRUE(downlink.telemetry().playbackActive);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().playbackStarts);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.startCalls);
+  TEST_ASSERT_EQUAL_UINT32(19, sink.lastSeq);
+  TEST_ASSERT_EQUAL_UINT32(22050, sink.lastSampleRate);
+  TEST_ASSERT_EQUAL_STRING("pcm16", sink.lastFormat);
+
+  const uint8_t payload[] = {0x00, 0x00, 0xff, 0x7f};
+  BridgeAudioStreamChunk chunk;
+  chunk.seq = 19;
+  chunk.index = 1;
+  chunk.bytes = sizeof(payload);
+  chunk.payloadBytes = sizeof(payload);
+  chunk.receivedBytes = sizeof(payload);
+  chunk.finalChunk = true;
+  chunk.payload = payload;
+  TEST_ASSERT_TRUE(downlink.submitChunk(chunk, 910));
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().playbackChunks);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), downlink.telemetry().playbackBytes);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.chunkCalls);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), sink.bytesWritten);
+
+  TEST_ASSERT_TRUE(downlink.end(stream, 920));
+  TEST_ASSERT_FALSE(downlink.telemetry().playbackActive);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().playbackStops);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.stopCalls);
+  TEST_ASSERT_EQUAL_UINT32(0, downlink.telemetry().playbackErrors);
+}
+
+void test_bridge_audio_downlink_counts_unsupported_playback_format_without_failing_stream() {
+  CountingBridgeDownlinkSink sink;
+  BridgeAudioDownlink downlink;
+  TEST_ASSERT_TRUE(downlink.begin(true, &sink));
+
+  BridgeAudioStream stream;
+  stream.seq = 20;
+  stream.sampleRate = 22050;
+  stream.audioBytes = 4;
+  stream.chunkBytes = 4;
+  stream.chunks = 1;
+  strncpy(stream.format, "wav", sizeof(stream.format) - 1);
+  TEST_ASSERT_TRUE(downlink.start(stream, 940));
+  TEST_ASSERT_FALSE(downlink.telemetry().playbackActive);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().playbackUnsupported);
+  TEST_ASSERT_EQUAL_UINT32(0, sink.startCalls);
+
+  const uint8_t payload[] = {1, 2, 3, 4};
+  BridgeAudioStreamChunk chunk;
+  chunk.seq = 20;
+  chunk.index = 1;
+  chunk.bytes = sizeof(payload);
+  chunk.payloadBytes = sizeof(payload);
+  chunk.receivedBytes = sizeof(payload);
+  chunk.finalChunk = true;
+  chunk.payload = payload;
+  TEST_ASSERT_TRUE(downlink.submitChunk(chunk, 950));
+  TEST_ASSERT_TRUE(downlink.end(stream, 960));
+
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().streamsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), downlink.telemetry().bytesAccepted);
+  TEST_ASSERT_EQUAL_UINT32(0, downlink.telemetry().playbackStarts);
+  TEST_ASSERT_EQUAL_UINT32(0, downlink.telemetry().playbackChunks);
+  TEST_ASSERT_EQUAL_UINT32(0, downlink.telemetry().playbackErrors);
+}
+
 void test_bridge_audio_downlink_rejects_invalid_payload_and_aborts() {
   BridgeAudioDownlink downlink;
   TEST_ASSERT_TRUE(downlink.begin());
@@ -2723,6 +2859,8 @@ int main() {
   RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
   RUN_TEST(test_bridge_client_rejects_oversized_audio_stream_chunk);
   RUN_TEST(test_bridge_audio_downlink_consumes_bridge_payload_output);
+  RUN_TEST(test_bridge_audio_downlink_hands_pcm16_chunks_to_playback_sink);
+  RUN_TEST(test_bridge_audio_downlink_counts_unsupported_playback_format_without_failing_stream);
   RUN_TEST(test_bridge_audio_downlink_rejects_invalid_payload_and_aborts);
   RUN_TEST(test_bridge_client_recovers_after_error_aborts_audio_stream);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);

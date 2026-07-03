@@ -10,8 +10,9 @@ binary WebSocket frames for downlinked TTS audio chunks. Current firmware parses
 stream metadata, copies each accepted chunk into a bounded `BridgeClient` buffer, exposes the
 current payload through `BridgeClientOutput`, feeds that payload to the firmware downlink
 consumer for checksum/telemetry validation, and still uses `audio` response frames for
-mouth/envelope timing; decoded speaker playback from downlinked chunks is a later hardware
-path.
+mouth/envelope timing. When speaker hardware is enabled, the downlink consumer can hand
+accepted decoded PCM16 chunks to the M5 speaker sink; WAV/RVC decoding is still a bridge-side
+responsibility before downlink.
 
 For hardware bench replay before the LAN companion exists, run:
 
@@ -91,7 +92,9 @@ The TTS command receives response text on stdin with `STACKCHAN_TTS_TEXT_BYTES`,
 environment. It must print metadata JSON with either compact `beats` or
 speech-envelope-sidecar-style `frames`. The service maps those beats into existing `audio`
 frames. If the command includes `audio_b64`, the service sends `audio_stream_start`, binary
-WebSocket chunks, and `audio_stream_end` around the same response.
+WebSocket chunks, and `audio_stream_end` around the same response. Use `audio_format` /
+`format` value `pcm16`, `s16le`, `raw16`, or `pcm_s16le` for firmware speaker playback;
+other formats are still transported and accounted but are not played by the downlink sink.
 
 ## Device To Bridge
 
@@ -123,7 +126,11 @@ Example:
   pointer on `BridgeClientOutput`, records chunk count, byte count, and a rolling checksum,
   then hands the payload to the downlink consumer. The downlink consumer validates payload
   pointer/length, records its own accepted bytes/chunks/checksum telemetry, rejects chunks
-  without an active stream, and rejects mismatched totals at `audio_stream_end`.
+  without an active stream, and rejects mismatched totals at `audio_stream_end`. If
+  `STACKCHAN_ENABLE_SPEAKER` is enabled and the stream format is decoded signed 16-bit mono
+  PCM (`pcm16`, `s16le`, `raw16`, or `pcm_s16le`), accepted chunks are also submitted to the
+  M5 speaker sink with separate `bridge_downlink_playback_*` runtime telemetry. Unsupported
+  formats increment playback-unsupported telemetry but do not fail the validated stream.
 - `audio_stream_end`: optional end marker for the TTS audio downlink.
 - `audio`: one mouth/audio timing frame. `env` is normalized `[0,1]`; `viseme` is `neutral`, `ah`, `oh`, or `ee`. If a local TTS command is configured, these frames come from its returned beat metadata.
 - `response_end`: bridge finished the response; firmware emits `ResponseEnded`.
@@ -139,8 +146,8 @@ Example response:
 ```json
 {"type":"thinking","seq":41}
 {"type":"response_start","seq":41,"intent":"happy","arousal":0.62,"valence":0.72,"text":"Hello. I am awake and looking."}
-{"type":"audio_stream_start","seq":41,"format":"wav","sample_rate":22050,"audio_bytes":4096,"chunk_bytes":4096,"chunks":1}
-<binary WebSocket frame: TTS audio bytes>
+{"type":"audio_stream_start","seq":41,"format":"pcm16","sample_rate":22050,"audio_bytes":4096,"chunk_bytes":4096,"chunks":1}
+<binary WebSocket frame: decoded signed 16-bit mono PCM>
 {"type":"audio_stream_end","seq":41,"audio_bytes":4096,"chunks":1}
 {"type":"audio","seq":41,"env":0.58,"viseme":"ee","duration_ms":20}
 {"type":"response_end","seq":41}
@@ -160,10 +167,11 @@ output.
   summaries and validated memory fields, never raw audio.
 - A configured local TTS command may receive response text on stdin and return mouth timing
   metadata plus optional `audio_b64`. The LAN service can downlink that audio as binary
-  WebSocket chunks. Firmware currently records stream metadata, keeps the current payload
-  bytes in a bounded `BridgeClient` buffer exposed through `BridgeClientOutput`, feeds those
-  bytes to the firmware downlink consumer, and accounts chunks; decoded downlinked-chunk
-  speaker playback remains a separate hardware path.
+  WebSocket chunks. Firmware records stream metadata, keeps the current payload bytes in a
+  bounded `BridgeClient` buffer exposed through `BridgeClientOutput`, feeds those bytes to
+  the firmware downlink consumer, accounts chunks, and can play decoded PCM16 downlink chunks
+  through the M5 speaker sink when speaker hardware is enabled. The bridge should decode RVC
+  or WAV output to signed 16-bit mono PCM before downlink if device-side playback is desired.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and
   packaged prompts still work. Open binary audio streams are discarded during recovery, so
   stale stream metadata cannot block the next bridge session. Runtime telemetry reports

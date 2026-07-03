@@ -170,11 +170,14 @@ speech-envelope-sidecar-style `frames`; it may also include `audio_b64`. The LAN
 the metadata for existing `audio` mouth frames and sends `audio_b64` as `audio_stream_start`,
 binary WebSocket chunks, and `audio_stream_end`. Firmware accounts those chunks, keeps the
 current bounded chunk payload available through bridge outputs, feeds it to the downlink
-consumer for checksum/telemetry validation before decoded speaker playback is wired, and
-rejects missing or mismatched stream totals. If no STT command is configured, include `text`
-or `transcript` on `utterance_end` to explicitly stand in for the transcript while the binary
-upload path is exercised. Selecting and measuring the real local STT/TTS engines and wiring
-decoded downlinked chunks into speaker playback remain separate follow-up gates.
+consumer for checksum/telemetry validation, and can hand accepted decoded PCM16 chunks to the
+M5 speaker sink when `STACKCHAN_ENABLE_SPEAKER` is enabled. For playback, the TTS command or a
+bridge wrapper should set `audio_format`/`format` to `pcm16`, `s16le`, `raw16`, or
+`pcm_s16le` and encode signed 16-bit mono PCM in `audio_b64`; WAV/RVC decoding stays on the
+host side. If no STT command is configured, include `text` or `transcript` on
+`utterance_end` to explicitly stand in for the transcript while the binary upload path is
+exercised. Selecting and measuring the real local STT/TTS engines and collecting real-device
+speaker evidence remain separate follow-up gates.
 
 Render a validated model-style response through the deterministic bridge frames:
 

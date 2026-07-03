@@ -79,8 +79,11 @@ Keep each item independently shippable and package-verified.
      WebSocket chunks. Firmware parses the stream metadata, copies the current chunk into a
      bounded `BridgeClient` buffer exposed through bridge outputs, feeds it to the downlink
      consumer, and accounts chunk payloads for telemetry.
-   - Selecting/measuring real STT/TTS engines and wiring decoded downlinked chunks into
-     speaker playback remain the next P7 bridge gates.
+   - The downlink consumer can now hand accepted decoded PCM16 chunks to the M5 speaker sink
+     when speaker hardware is enabled. The bridge must decode WAV/RVC output to signed
+     16-bit mono PCM before downlink for firmware playback.
+   - Selecting/measuring real STT/TTS engines and collecting real-device speaker evidence
+     remain the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.
 
 4. Dynamic TTS sidecar path.
@@ -88,8 +91,9 @@ Keep each item independently shippable and package-verified.
    - Firmware keeps using the existing mouth-envelope path.
    - Binary audio transport to firmware has a LAN scaffold; generated audio can travel as
      chunks and firmware keeps the current accepted chunk payload available to the output
-     handler/downlink consumer, but decoded firmware speaker playback from those chunks is
-     still future work.
+     handler/downlink consumer. Decoded PCM16 chunks can be submitted to the M5 speaker sink
+     when hardware speaker output is enabled; unsupported formats are still accounted but not
+     played.
    - Voice-source provenance remains blocking for any consumer-ready build.
 
 5. Virtual hardware proxy.
