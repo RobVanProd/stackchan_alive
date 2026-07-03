@@ -41,6 +41,19 @@ void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   nextDemoEventMs_ = event.timestampMs + 10000;
 }
 
+void IntentEngine::queueSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
+  if (!cue.shouldSpeak()) {
+    return;
+  }
+
+  activateSpeechCue(cue, nowMs);
+  // Command acknowledgments are intentional one-shots. Mark the current mode
+  // as already handled so the mode planner does not overwrite the cue
+  // during the same update tick.
+  lastSpeechMode_ = mode_;
+  lastSpeechIntent_ = cue.intent;
+}
+
 void IntentEngine::applyCircadian(uint8_t hourOfDay) {
   emotion_.applyCircadian(hourOfDay);
 }

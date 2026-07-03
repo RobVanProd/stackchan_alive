@@ -364,6 +364,8 @@ bool fillCommandEvent(char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchCo
   parsed.event = action.event;
   parsed.hasMotionEnable = action.hasMotionEnable;
   parsed.motionEnabled = action.motionEnabled;
+  parsed.hasSpeechCue = action.hasSpeechCue;
+  parsed.speechCue = action.speechCue;
   parsed.command = action.command;
   *controlOut = parsed;
   return true;

@@ -10,6 +10,29 @@ bool tokenEquals(const char* token, const char* expected) {
   return token != nullptr && strcmp(token, expected) == 0;
 }
 
+SpeechCue ackCue(SpokenCommandId commandId) {
+  switch (commandId) {
+    case SpokenCommandId::GoToSleep:
+      return {SpeechIntent::Sleep, "Sleep command received. Systems going quiet.", 210,
+              SpeechEarcon::Sleep, 80};
+    case SpokenCommandId::WakeUp:
+      return {SpeechIntent::Listen, "Wake command received. I am listening.", 210,
+              SpeechEarcon::Wake, 0};
+    case SpokenCommandId::LookAtMe:
+      return {SpeechIntent::Attend, "Looking at you now.", 190,
+              SpeechEarcon::Confirm, 0};
+    case SpokenCommandId::StopMoving:
+      return {SpeechIntent::Safety, "Motion hold active. I will stay still.", 250,
+              SpeechEarcon::Safety, 0};
+    case SpokenCommandId::HowDoYouFeel:
+      return {SpeechIntent::Speak, "Status check received. Feeling curious and awake.", 190,
+              SpeechEarcon::Confirm, 0};
+    case SpokenCommandId::Unknown:
+    default:
+      return {};
+  }
+}
+
 CommandMapResult eventResult(SpokenCommandId commandId,
                              CharacterMode mode,
                              EventType eventType,
@@ -23,6 +46,8 @@ CommandMapResult eventResult(SpokenCommandId commandId,
   result.event.type = eventType;
   result.event.timestampMs = nowMs;
   result.event.strength = constrain(strength, 0.0f, 1.0f);
+  result.hasSpeechCue = true;
+  result.speechCue = ackCue(commandId);
   result.command = command;
 
   if (commandId == SpokenCommandId::LookAtMe) {
@@ -101,6 +126,8 @@ CommandMapResult CommandMap::map(SpokenCommandId commandId, uint32_t nowMs) {
       result.mode = CharacterMode::Listen;
       result.hasMotionEnable = true;
       result.motionEnabled = false;
+      result.hasSpeechCue = true;
+      result.speechCue = ackCue(commandId);
       result.command = "command_stop_moving";
       return result;
     }

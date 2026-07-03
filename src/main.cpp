@@ -329,6 +329,12 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" circadian_hour="));
     Serial.print(control.hourOfDay);
   }
+  if (control.hasSpeechCue) {
+    Serial.print(F(" cue_intent="));
+    Serial.print(speechIntentName(control.speechCue.intent));
+    Serial.print(F(" cue_earcon="));
+    Serial.print(speechEarconName(control.speechCue.earcon));
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -509,6 +515,9 @@ void IntentTask(void* pv) {
       }
       if (control.hasCircadian) {
         gIntent.applyCircadian(control.hourOfDay);
+      }
+      if (control.hasSpeechCue) {
+        gIntent.queueSpeechCue(control.speechCue, millis());
       }
       publishSpeechInput(control);
       publishFaceControl(control);

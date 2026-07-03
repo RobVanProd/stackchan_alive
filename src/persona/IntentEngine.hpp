@@ -12,6 +12,7 @@ class IntentEngine {
  public:
   void begin();
   void applyEvent(const RobotEvent& event, CharacterMode mode);
+  void queueSpeechCue(const SpeechCue& cue, uint32_t nowMs);
   void applyCircadian(uint8_t hourOfDay);
   void applyAmbient(float lux, uint8_t hourOfDay);
   void setDemoEnabled(bool enabled, uint32_t nowMs);
