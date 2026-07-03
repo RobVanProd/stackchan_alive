@@ -7,6 +7,31 @@ on:
     branches: [main]
 
 jobs:
+  bridge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run bridge and simulator tests
+        run: python -m unittest discover -s bridge -p "test_*.py"
+
+      - name: Run hardware simulation report
+        run: python bridge/hardware_simulator.py --out-dir output/hardware-sim/latest --json
+
+      - name: Upload hardware simulation report
+        uses: actions/upload-artifact@v7
+        with:
+          name: hardware-simulation
+          path: |
+            output/hardware-sim/latest/hardware_simulation.json
+            output/hardware-sim/latest/HARDWARE_SIMULATION.md
+            output/hardware-sim/latest/*.serial.log
+            output/hardware-sim/latest/*.json
+
   native-tests:
     runs-on: ubuntu-latest
     steps:

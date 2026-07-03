@@ -93,6 +93,8 @@ Keep each item independently shippable and package-verified.
      recovery before the physical unit arrives.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
+   - GitHub Actions runs the bridge tests and simulator in the `bridge-tests` job and
+     uploads the simulation report artifact for each PR/push.
    - This catches bridge ordering, timeout, mouth-frame, input-mapping, reboot-recovery, and
      binary stream regressions before the physical device arrives. It does not replace real
      display, speaker, mic, camera, touch, IMU, servo, heat, power, or soak evidence.
