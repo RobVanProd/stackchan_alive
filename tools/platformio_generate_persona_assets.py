@@ -78,6 +78,51 @@ def _entry(intent_key, line):
     )
 
 
+def _clamp_int(value, minimum, maximum, default):
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        numeric = default
+    return max(minimum, min(maximum, numeric))
+
+
+def _earcon_tones(name, spec):
+    base_hz = _clamp_int(spec.get("base_hz"), 160, 2400, 660)
+    chirps = _clamp_int(spec.get("chirps"), 1, 4, 1)
+    duration_ms = _clamp_int(spec.get("duration_ms"), 60, 360, 160)
+    gap_ms = 12 if chirps > 1 else 0
+    total_gap_ms = gap_ms * (chirps - 1)
+    tone_ms = max(24, (duration_ms - total_gap_ms) // chirps)
+    level = 190
+    if name in ("sleep", "concern"):
+        level = 155
+    elif name in ("error", "safety"):
+        level = 175
+
+    descending = name in ("sleep", "concern", "error")
+    tones = []
+    for index in range(chirps):
+        step = -0.16 * index if descending else 0.18 * index
+        frequency_hz = _clamp_int(round(base_hz * (1.0 + step)), 120, 2800, base_hz)
+        tones.append(
+            {
+                "frequency_hz": frequency_hz,
+                "duration_ms": tone_ms,
+                "level": level,
+                "gap_ms": gap_ms if index < chirps - 1 else 0,
+            }
+        )
+    return tones
+
+
+def _earcon_entry(earcon_key, spec):
+    earcon = EARCON_ENUMS.get(earcon_key)
+    if earcon is None or earcon == "None":
+        raise RuntimeError(f"Unknown persona earcon key: {earcon_key}")
+    tones = _earcon_tones(earcon_key, spec if isinstance(spec, dict) else {})
+    return earcon, tones
+
+
 project_dir = Path(env["PROJECT_DIR"])
 sys.path.insert(0, str(project_dir / "bridge"))
 
@@ -90,7 +135,8 @@ pack = load_and_validate_persona_pack(persona_id, project_dir)
 build_dir = Path(env.subst("$BUILD_DIR"))
 generated_dir = build_dir / "generated"
 generated_dir.mkdir(parents=True, exist_ok=True)
-header_path = generated_dir / "PersonaSpeechLines.hpp"
+speech_header_path = generated_dir / "PersonaSpeechLines.hpp"
+earcon_header_path = generated_dir / "PersonaEarcons.hpp"
 
 ordered_intents = (
     "boot",
@@ -150,9 +196,95 @@ parts.extend(
 )
 
 new_text = "\n".join(parts)
-if header_path.exists() and header_path.read_text(encoding="utf-8") == new_text:
+if speech_header_path.exists() and speech_header_path.read_text(encoding="utf-8") == new_text:
     pass
 else:
-    header_path.write_text(new_text, encoding="utf-8")
+    speech_header_path.write_text(new_text, encoding="utf-8")
+
+earcon_map = pack.earcons.get("earcons", {})
+if not isinstance(earcon_map, dict):
+    raise RuntimeError(f"Persona {pack.pack_id} earcons.yaml must contain an earcons mapping")
+
+earcon_parts = [
+    "#pragma once",
+    "",
+    "#include <stddef.h>",
+    "#include <stdint.h>",
+    "",
+    "#include \"persona/StateMatrix.hpp\"",
+    "",
+    "namespace stackchan {",
+    "namespace generated_persona {",
+    "",
+    f"static constexpr bool kUsePersonaEarconPatterns = {'true' if pack.pack_id != 'spark' else 'false'};",
+    "",
+    "struct PersonaEarconTone {",
+    "  uint16_t frequencyHz;",
+    "  uint16_t durationMs;",
+    "  uint8_t level;",
+    "  uint8_t gapMs;",
+    "};",
+    "",
+    "struct PersonaEarconPattern {",
+    "  const PersonaEarconTone* tones;",
+    "  uint8_t count;",
+    "};",
+    "",
+]
+
+ordered_earcons = ("wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety")
+for earcon_key in ordered_earcons:
+    _, tones = _earcon_entry(earcon_key, earcon_map.get(earcon_key, {}))
+    symbol = EARCON_ENUMS[earcon_key]
+    earcon_parts.append(f"static constexpr PersonaEarconTone k{symbol}EarconTones[] = {{")
+    for tone in tones:
+        earcon_parts.append(
+            "    {"
+            f"{tone['frequency_hz']}, {tone['duration_ms']}, {tone['level']}, {tone['gap_ms']}"
+            "},"
+        )
+    earcon_parts.append("};")
+    earcon_parts.append("")
+
+earcon_parts.extend(
+    [
+        "template <size_t N>",
+        "constexpr PersonaEarconPattern personaPatternOf(const PersonaEarconTone (&tones)[N]) {",
+        "  return {tones, static_cast<uint8_t>(N)};",
+        "}",
+        "",
+        "inline PersonaEarconPattern earconPatternFor(SpeechEarcon earcon) {",
+        "  switch (earcon) {",
+    ]
+)
+
+for earcon_key in ordered_earcons:
+    symbol = EARCON_ENUMS[earcon_key]
+    earcon_parts.extend(
+        [
+            f"    case SpeechEarcon::{symbol}:",
+            f"      return personaPatternOf(k{symbol}EarconTones);",
+        ]
+    )
+
+earcon_parts.extend(
+    [
+        "    case SpeechEarcon::None:",
+        "      break;",
+        "  }",
+        "  return {nullptr, 0};",
+        "}",
+        "",
+        "}  // namespace generated_persona",
+        "}  // namespace stackchan",
+        "",
+    ]
+)
+
+earcon_text = "\n".join(earcon_parts)
+if earcon_header_path.exists() and earcon_header_path.read_text(encoding="utf-8") == earcon_text:
+    pass
+else:
+    earcon_header_path.write_text(earcon_text, encoding="utf-8")
 
 env.Append(CPPPATH=[str(generated_dir)])
