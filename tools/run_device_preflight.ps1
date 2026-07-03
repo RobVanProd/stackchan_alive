@@ -2100,6 +2100,10 @@ Invoke-Step "Check speech envelope sidecar tooling" {
   Assert-SpeechEnvelopeSidecarGate
 }
 
+Invoke-Step "Check LiteRT-LM contract smoke" {
+  & (Join-Path $PSScriptRoot "run_litert_lm_smoke.ps1") -OutputDir (Join-Path $ReportDir "litert-lm-smoke")
+}
+
 Invoke-Step "Check hardware simulation proxy" {
   & (Join-Path $PSScriptRoot "run_hardware_simulation.ps1") -OutputDir (Join-Path $ReportDir "hardware-sim")
 }

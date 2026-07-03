@@ -242,6 +242,8 @@ $bridgePackageFiles = @(
   "test_local_runner.py",
   "litert_lm_stackchan_wrapper.py",
   "test_litert_lm_stackchan_wrapper.py",
+  "litert_lm_contract_smoke.py",
+  "test_litert_lm_contract_smoke.py",
   "engine_probe.py",
   "test_engine_probe.py",
   "model_benchmark.py",
@@ -343,6 +345,8 @@ $releaseTools = @(
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
   "tools/run_engine_probe.ps1",
+  "tools/run_litert_lm_smoke.cmd",
+  "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
   "tools/run_prearrival_sim_check.cmd",
@@ -798,6 +802,8 @@ $manifest = [ordered]@{
     "tools/run_bridge_reference_tests.ps1",
     "tools/run_engine_probe.cmd",
     "tools/run_engine_probe.ps1",
+    "tools/run_litert_lm_smoke.cmd",
+    "tools/run_litert_lm_smoke.ps1",
     "tools/run_lan_smoke.cmd",
     "tools/run_lan_smoke.ps1",
     "tools/run_prearrival_sim_check.cmd",
@@ -857,6 +863,8 @@ $manifest = [ordered]@{
     "provenance/bridge/test_local_runner.py",
     "provenance/bridge/litert_lm_stackchan_wrapper.py",
     "provenance/bridge/test_litert_lm_stackchan_wrapper.py",
+    "provenance/bridge/litert_lm_contract_smoke.py",
+    "provenance/bridge/test_litert_lm_contract_smoke.py",
     "provenance/bridge/engine_probe.py",
     "provenance/bridge/test_engine_probe.py",
     "provenance/bridge/model_benchmark.py",
@@ -1111,6 +1119,7 @@ No-hardware simulation quick check:
 
 - Run ``tools/run_prearrival_sim_check.cmd`` to create ``output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`` with the combined virtual CoreS3/LAN/audio proxy status, nested LAN smoke report, and engine-readiness status.
 - Run ``tools/run_lan_smoke.cmd`` to create ``output/lan-smoke/latest/LAN_SMOKE.md/json`` with a real local TCP/WebSocket bridge handshake, text turn, fake mic upload, fake STT, fake TTS, PCM16 binary downlink check, and visible ``thinking-latency`` timing while delayed speech is still running.
+- Run ``tools/run_litert_lm_smoke.cmd`` to create ``output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json`` with a deterministic two-layer LiteRT-LM wrapper contract check.
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
 - The simulator proves bridge frame ordering, LAN text turns, fake mic PCM upload through fake STT, conversation timing, fake WAV TTS normalization to PCM16 downlink, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
 - After an evidence packet has simulator output plus real display, speech, and bridge replay logs, run ``RUN_SIM_HARDWARE_COMPARE.cmd`` inside that packet to write advisory ``SIM_HARDWARE_COMPARE.md/json`` reports.

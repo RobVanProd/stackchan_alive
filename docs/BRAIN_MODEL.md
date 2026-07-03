@@ -98,6 +98,16 @@ $env:STACKCHAN_GEMMA4_E2B_LITERT_COMMAND = "python bridge\litert_lm_stackchan_wr
 python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case greeting --require-runner --json
 ```
 
+Run the deterministic LiteRT-LM contract smoke before installing the real mobile runtime:
+
+```powershell
+.\tools\run_litert_lm_smoke.cmd -Json
+```
+
+It writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and proves the two-layer
+mobile path is wired correctly: `local_runner.py` -> `litert_lm_stackchan_wrapper.py` ->
+`STACKCHAN_LITERT_LM_COMMAND`. This is setup evidence only, not real model speed evidence.
+
 `bridge/litert_lm_stackchan_wrapper.py` is the stable low-footprint runner boundary. It reads
 the Stackchan Character Lock prompt on stdin, runs `STACKCHAN_LITERT_LM_COMMAND` or
 `--command` with that prompt on stdin, skips non-JSON logs, validates the first real JSON
@@ -131,6 +141,10 @@ The probe writes:
 
 GitHub Actions also runs the probe in the `bridge-tests` job and uploads the report as the
 `engine-probe` artifact on each PR/push.
+
+GitHub Actions also runs `bridge/litert_lm_contract_smoke.py` and uploads the
+`litert-lm-contract-smoke` artifact so the mobile runner contract stays healthy even before
+the real LiteRT-LM engine is available.
 
 `unconfigured` means the bridge software is present but no real local engine command is
 available yet. That is useful setup evidence, not model speed evidence. A real P7 candidate

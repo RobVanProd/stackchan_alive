@@ -44,6 +44,15 @@ Check whether this host has local model/STT/TTS engines configured:
 Re-run with `-RunModelSmoke` after exporting a real runner command. The probe is setup
 evidence only; full brain selection still requires a non-dry-run model benchmark.
 
+Check the mobile LiteRT-LM runner contract:
+
+```powershell
+.\tools\run_litert_lm_smoke.cmd -Json
+```
+
+This writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the wrapper
+contract without claiming real model speed.
+
 ## Remote Review Link
 
 From an extracted release package:
