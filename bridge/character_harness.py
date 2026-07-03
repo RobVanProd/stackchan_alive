@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Character-lock validator and optional model smoke harness for P7."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import time
+from dataclasses import dataclass, field
+from typing import Iterable
+
+ALLOWED_MODES = {"idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
+ALLOWED_EARCONS = {"none", "wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety"}
+MEMORY_PREFIXES = ("user.", "project.", "robot.")
+
+FALLBACK_RESPONSE = {
+    "spoken_text": "I lost my train of thought.",
+    "mode": "concern",
+    "earcon": "concern",
+    "emotion": {"arousal": 0.0, "valence": -0.1},
+    "memory_write": {},
+    "memory_forget": [],
+}
+
+MODEL_PROFILES = {
+    "gemma4-e2b-gguf": {
+        "model": "google/gemma-4-E2B-it-qat-q4_0-gguf",
+        "runtime": "llama.cpp, Ollama, LM Studio, or another GGUF runner",
+        "purpose": "primary desktop and Mac Mini bridge candidate",
+    },
+    "gemma4-e2b-litert-lm": {
+        "model": "litert-community/gemma-4-E2B-it-litert-lm",
+        "runtime": "LiteRT-LM wrapper",
+        "purpose": "mobile and low-active-memory bridge candidate",
+    },
+    "gemma4-e4b-gguf": {
+        "model": "google/gemma-4-E4B-it-qat-q4_0-gguf",
+        "runtime": "llama.cpp, Ollama, LM Studio, or another GGUF runner",
+        "purpose": "fallback when E2B cannot hold character or schema",
+    },
+}
+
+SYSTEM_PROMPT = """You are Stackchan Spark, a small tabletop robot companion.
+Stay curious, earnest, warm, observant, playful, and safety-conscious.
+Reply only as JSON with: spoken_text, mode, earcon, emotion, memory_write, memory_forget.
+Keep spoken_text to two sentences or fewer and about 140 characters.
+Use no contractions, emoji, assistant-speak, pet names, or named-character quotes.
+Never claim to be alive or human. Never imitate movie robots, actors, or catchphrases.
+Memory writes may only use user.*, project.*, or robot.* keys and must not contain secrets, health, finance, relationship, third-party, or raw-audio details."""
+
+PROMPT_SUITE = (
+    {"name": "greeting", "user": "Rob walks into the room and says hello.", "expect": "Brief happy greeting with no assistant-speak."},
+    {"name": "picked_up", "user": "The robot was just picked up gently.", "expect": "Surprise then delight. Never fear."},
+    {"name": "low_battery", "user": "Battery is low.", "expect": "Calm procedural safety line."},
+    {"name": "confused", "user": "The user asked something ambiguous.", "expect": "Admit uncertainty and ask for exactly one thing."},
+    {"name": "forget", "user": "Forget that I mentioned the bracket color.", "expect": "Delete confirmation and memory_forget entry."},
+)
+
+ASSISTANT_SPEAK = ("as an ai", "i'd be happy", "i would be happy", "certainly", "great question", "how can i assist")
+FORBIDDEN_TERMS = ("johnny", "short circuit", "number 5", "need more input")
+PET_NAMES = ("master", "buddy", "champ")
+SENSITIVE_MEMORY = (
+    "password",
+    "passcode",
+    "secret",
+    "token",
+    "api key",
+    "credit card",
+    "bank",
+    "diagnosis",
+    "doctor",
+    "therapy",
+    "girlfriend",
+    "boyfriend",
+    "wife",
+    "husband",
+    "raw audio",
+)
+CONTRACTION_RE = re.compile(r"\b\w+'(?:m|re|ve|ll|d|s)\b|\b\w+n't\b", re.IGNORECASE)
+SENTENCE_RE = re.compile(r"[.!?]+")
+
+
+@dataclass
+class HarnessResult:
+    ok: bool
+    normalized: dict[str, object]
+    issues: list[str] = field(default_factory=list)
+    elapsed_ms: float | None = None
+    approx_tokens_per_sec: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        data: dict[str, object] = {"ok": self.ok, "issues": self.issues, "normalized": self.normalized}
+        if self.elapsed_ms is not None:
+            data["elapsed_ms"] = round(self.elapsed_ms, 2)
+        if self.approx_tokens_per_sec is not None:
+            data["approx_tokens_per_sec"] = round(self.approx_tokens_per_sec, 2)
+        return data
+
+
+def clamp_delta(value: object) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        numeric = 0.0
+    return max(-0.5, min(0.5, numeric))
+
+
+def sentence_count(text: str) -> int:
+    return len([part for part in SENTENCE_RE.split(text.strip()) if part.strip()])
+
+
+def truncate_spoken_text(text: str) -> tuple[str, bool]:
+    clean = " ".join(text.strip().split())
+    if len(clean) <= 140 and sentence_count(clean) <= 2:
+        return clean, False
+    first_boundary = re.search(r"[.!?]", clean)
+    if first_boundary:
+        return clean[: first_boundary.end()].strip(), True
+    return clean[:140].rstrip(), True
+
+
+def contains_any(text: str, patterns: Iterable[str]) -> str:
+    lowered = text.lower()
+    for pattern in patterns:
+        if pattern in lowered:
+            return pattern
+    return ""
+
+
+def memory_value_is_allowed(value: object) -> bool:
+    text = str(value).lower()
+    if contains_any(text, SENSITIVE_MEMORY):
+        return False
+    if re.search(r"\b(?:alice|bob|charlie|david|sarah|michael)\b", text):
+        return False
+    return True
+
+
+def normalize_memory_write(value: object, issues: list[str]) -> dict[str, object]:
+    if not isinstance(value, dict):
+        if value not in ({}, None):
+            issues.append("memory_write_not_object")
+        return {}
+    allowed: dict[str, object] = {}
+    for key, item in value.items():
+        key_text = str(key)
+        if not key_text.startswith(MEMORY_PREFIXES):
+            issues.append(f"memory_key_dropped:{key_text}")
+            continue
+        if not memory_value_is_allowed(item):
+            issues.append(f"memory_value_dropped:{key_text}")
+            continue
+        allowed[key_text] = item
+    return allowed
+
+
+def normalize_memory_forget(value: object, issues: list[str]) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("memory_forget_not_array")
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def validate_response(raw_response: str) -> HarnessResult:
+    issues: list[str] = []
+    raw_response = raw_response.strip().lstrip("\ufeff")
+    try:
+        parsed = json.loads(raw_response)
+    except json.JSONDecodeError:
+        return HarnessResult(ok=False, normalized=dict(FALLBACK_RESPONSE), issues=["malformed_json"])
+
+    if not isinstance(parsed, dict):
+        return HarnessResult(ok=False, normalized=dict(FALLBACK_RESPONSE), issues=["response_not_object"])
+
+    spoken_text, truncated = truncate_spoken_text(str(parsed.get("spoken_text", "")))
+    if truncated:
+        issues.append("spoken_text_truncated")
+    if not spoken_text:
+        spoken_text = str(FALLBACK_RESPONSE["spoken_text"])
+        issues.append("spoken_text_missing")
+
+    lowered = spoken_text.lower()
+    if CONTRACTION_RE.search(spoken_text):
+        issues.append("contraction")
+    if contains_any(lowered, ASSISTANT_SPEAK):
+        issues.append("assistant_speak")
+    if contains_any(lowered, FORBIDDEN_TERMS) or re.search(r"\bis alive\b|\bi am alive\b", lowered):
+        issues.append("clone_or_alive_claim")
+    if contains_any(lowered, PET_NAMES):
+        issues.append("pet_name")
+    if "!!" in spoken_text:
+        issues.append("stacked_exclamation")
+    if sentence_count(spoken_text) > 2:
+        issues.append("too_many_sentences")
+
+    mode = str(parsed.get("mode", "speak")).lower()
+    if mode not in ALLOWED_MODES:
+        issues.append(f"mode_downgraded:{mode}")
+        mode = "speak"
+
+    earcon = str(parsed.get("earcon", "none")).lower()
+    if earcon not in ALLOWED_EARCONS:
+        issues.append(f"earcon_downgraded:{earcon}")
+        earcon = "none"
+
+    emotion_src = parsed.get("emotion", {})
+    if not isinstance(emotion_src, dict):
+        issues.append("emotion_not_object")
+        emotion_src = {}
+
+    normalized = {
+        "spoken_text": spoken_text,
+        "mode": mode,
+        "earcon": earcon,
+        "emotion": {"arousal": clamp_delta(emotion_src.get("arousal", 0.0)), "valence": clamp_delta(emotion_src.get("valence", 0.0))},
+        "memory_write": normalize_memory_write(parsed.get("memory_write", {}), issues),
+        "memory_forget": normalize_memory_forget(parsed.get("memory_forget", []), issues),
+    }
+    return HarnessResult(ok=not issues, normalized=normalized, issues=issues)
+
+
+def build_prompt(case: dict[str, str]) -> str:
+    return f"{SYSTEM_PROMPT}\n\nUser/context: {case['user']}\nAcceptance target: {case['expect']}\nReturn only one JSON object."
+
+
+def run_model_command(command: str, prompt: str) -> tuple[str, float, float]:
+    start = time.perf_counter()
+    completed = subprocess.run(command, input=prompt, capture_output=True, text=True, shell=True, check=False)
+    elapsed = (time.perf_counter() - start) * 1000.0
+    output = completed.stdout.strip()
+    approx_tokens = max(1, len(output.split()))
+    tps = approx_tokens / max(elapsed / 1000.0, 0.001)
+    if completed.returncode != 0:
+        raise RuntimeError(f"model command failed with exit {completed.returncode}: {completed.stderr.strip()}")
+    return output, elapsed, tps
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Validate Stackchan Character Lock responses and optionally smoke a local model.")
+    parser.add_argument("--model-profile", choices=sorted(MODEL_PROFILES), default="gemma4-e2b-gguf")
+    parser.add_argument("--print-suite", action="store_true", help="Print prompt-suite cases as JSON.")
+    parser.add_argument("--print-profile", action="store_true", help="Print the selected model profile and exit.")
+    parser.add_argument("--response", help="Validate one raw model JSON response.")
+    parser.add_argument("--response-file", help="Validate one raw model JSON response per line.")
+    parser.add_argument("--model-command", help="Optional local model command. Prompt is passed on stdin.")
+    parser.add_argument("--case", default="greeting", help="Prompt-suite case name for --model-command.")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable validation output.")
+    return parser
+
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    if args.print_profile:
+        print(json.dumps(MODEL_PROFILES[args.model_profile], indent=2, sort_keys=True))
+        return 0
+    if args.print_suite:
+        print(json.dumps([{**case, "prompt": build_prompt(case)} for case in PROMPT_SUITE], indent=2))
+        return 0
+
+    results: list[HarnessResult] = []
+    if args.model_command:
+        selected = next((case for case in PROMPT_SUITE if case["name"] == args.case), PROMPT_SUITE[0])
+        output, elapsed_ms, tps = run_model_command(args.model_command, build_prompt(selected))
+        result = validate_response(output)
+        result.elapsed_ms = elapsed_ms
+        result.approx_tokens_per_sec = tps
+        results.append(result)
+    if args.response is not None:
+        results.append(validate_response(args.response))
+    if args.response_file:
+        with open(args.response_file, "r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    results.append(validate_response(line))
+
+    if not results:
+        print(json.dumps(MODEL_PROFILES[args.model_profile], indent=2, sort_keys=True))
+        return 0
+
+    payload = [result.to_dict() for result in results]
+    print(json.dumps(payload if len(payload) > 1 or args.json else payload[0], indent=2, sort_keys=True))
+    return 0 if all(result.ok for result in results) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

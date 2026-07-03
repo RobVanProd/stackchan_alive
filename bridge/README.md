@@ -20,6 +20,13 @@ Inspect the deterministic persona prompt and local memory context that the futur
 python bridge/reference_bridge.py --format prompt --name Rob --topic voice --physical-context "room is dark"
 ```
 
+Validate model output against the locked character schema:
+
+```powershell
+python bridge/character_harness.py --print-suite
+python bridge/character_harness.py --model-profile gemma4-e2b-litert-lm
+```
+
 Try the deterministic response planner with user text:
 
 ```powershell

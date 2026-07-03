@@ -118,6 +118,8 @@ $requiredFiles = @(
   "readiness_report.json",
   "release_manifest.json",
   "voice_source_status.json",
+  "docs/BRAIN_MODEL.md",
+  "docs/CHARACTER_LOCK.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
   "docs/PRIVACY.md",
@@ -134,6 +136,8 @@ $requiredFiles = @(
   "data/voice_rvc_base.yaml",
   "data/voice_rvc_base_metadata.json",
   "bridge/README.md",
+  "bridge/character_harness.py",
+  "bridge/test_character_harness.py",
   "bridge/reference_bridge.py",
   "bridge/test_reference_bridge.py",
   "firmware/display_only/bootloader.bin",
@@ -234,6 +238,8 @@ $requiredFiles = @(
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
   "tools/run_device_preflight.ps1",
+  "tools/run_character_harness_tests.cmd",
+  "tools/run_character_harness_tests.ps1",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
   "tools/send_speech_mouth_demo.cmd",
@@ -673,6 +679,20 @@ foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "Bridge
   }
 }
 
+$characterHarnessText = Get-Content -LiteralPath (Join-PackagePath "bridge/character_harness.py") -Raw
+foreach ($pattern in @("ALLOWED_MODES", "ALLOWED_EARCONS", "MODEL_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "validate_response", "FALLBACK_RESPONSE", "memory_write", "model-command")) {
+  if ($characterHarnessText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/character_harness.py missing character harness support: $pattern"
+  }
+}
+
+$characterHarnessTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_harness.py") -Raw
+foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_character_lock", "test_malformed_json_returns_in_character_fallback", "test_memory_policy_drops_forbidden_keys_and_values", "gemma4-e2b-litert-lm")) {
+  if ($characterHarnessTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_character_harness.py missing character harness test coverage: $pattern"
+  }
+}
+
 $bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
 foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_topics_and_physical_context", "test_plan_turn_couples_memory_to_response", "test_memory_store_round_trips_minimal_fields", "test_memory_store_reset_deletes_file", "bridge response happy 7")) {
   if ($bridgeReferenceTestText -notmatch [regex]::Escape($pattern)) {
@@ -681,7 +701,7 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
 }
 
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "character_harness.py", "gemma4-e2b-litert-lm")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
@@ -691,6 +711,13 @@ $bridgeReferenceTestRunnerText = Get-Content -LiteralPath (Join-PackagePath "too
 foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "unittest discover", "bridge", "test_*.py")) {
   if ($bridgeReferenceTestRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_bridge_reference_tests.ps1 missing reference bridge test runner logic: $pattern"
+  }
+}
+
+$characterHarnessTestRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_character_harness_tests.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "unittest discover", "test_character_harness.py")) {
+  if ($characterHarnessTestRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_character_harness_tests.ps1 missing character harness test runner logic: $pattern"
   }
 }
 
@@ -869,6 +896,14 @@ if ($manifest.acceptanceChecklist -ne "RELEASE_ACCEPTANCE.md") {
 
 if ($manifest.acceptanceChecklistJson -ne "release_acceptance.json") {
   throw "Manifest acceptanceChecklistJson mismatch: $($manifest.acceptanceChecklistJson)"
+}
+
+if ($manifest.brainModelGuide -ne "docs/BRAIN_MODEL.md") {
+  throw "Manifest brainModelGuide mismatch: $($manifest.brainModelGuide)"
+}
+
+if ($manifest.characterLock -ne "docs/CHARACTER_LOCK.md") {
+  throw "Manifest characterLock mismatch: $($manifest.characterLock)"
 }
 
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
@@ -1162,6 +1197,20 @@ $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY
 foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "persona/EarconSynth", "io/SpeechAdapter", "io/AudioOut", "generated firmware WAV playback", "mouth-frame streaming", "M5 speaker carrier fallback", "barge-in ducking", "[speech_audio]", 'typed `SpeechEarcon`', "no allocation", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
+  }
+}
+
+$characterLock = Get-Content -LiteralPath (Join-PackagePath "docs/CHARACTER_LOCK.md") -Raw
+foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions", "2 sentences", "memory_write", "memory_forget", "Stackchan never claims to be alive or human", "malformed JSON")) {
+  if ($characterLock -notmatch [regex]::Escape($pattern)) {
+    throw "CHARACTER_LOCK.md missing expected character lock: $pattern"
+  }
+}
+
+$brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/character_harness.py", "tokens per second", "Do not fine-tune first")) {
+  if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
+    throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
 }
 

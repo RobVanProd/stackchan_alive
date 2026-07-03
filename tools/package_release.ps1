@@ -210,6 +210,8 @@ foreach ($file in $voiceRvcFiles) {
 Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDir
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRIVACY.md" -Destination $docsDir
@@ -229,6 +231,8 @@ Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
 Copy-Item -LiteralPath "bridge/README.md" -Destination $bridgeDir
+Copy-Item -LiteralPath "bridge/character_harness.py" -Destination $bridgeDir
+Copy-Item -LiteralPath "bridge/test_character_harness.py" -Destination $bridgeDir
 Copy-Item -LiteralPath "bridge/reference_bridge.py" -Destination $bridgeDir
 Copy-Item -LiteralPath "bridge/test_reference_bridge.py" -Destination $bridgeDir
 
@@ -306,6 +310,8 @@ $releaseTools = @(
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
   "tools/run_device_preflight.ps1",
+  "tools/run_character_harness_tests.cmd",
+  "tools/run_character_harness_tests.ps1",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
   "tools/send_speech_mouth_demo.cmd",
@@ -639,6 +645,8 @@ $manifest = [ordered]@{
   releaseAssetManifest = "release_assets.json"
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
+  brainModelGuide = "docs/BRAIN_MODEL.md"
+  characterLock = "docs/CHARACTER_LOCK.md"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
   privacyModel = "docs/PRIVACY.md"
@@ -746,6 +754,8 @@ $manifest = [ordered]@{
     "tools/prepare_device_arrival.ps1",
     "tools/run_device_preflight.cmd",
     "tools/run_device_preflight.ps1",
+    "tools/run_character_harness_tests.cmd",
+    "tools/run_character_harness_tests.ps1",
     "tools/run_bridge_reference_tests.cmd",
     "tools/run_bridge_reference_tests.ps1",
     "tools/send_speech_mouth_demo.cmd",
