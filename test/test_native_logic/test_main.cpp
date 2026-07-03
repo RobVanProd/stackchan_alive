@@ -9,6 +9,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
+#include "io/AudioOut.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
@@ -1745,6 +1746,63 @@ void test_speech_prompt_bank_covers_all_spoken_intents_with_sidecars() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(intents) / sizeof(intents[0]), count);
 }
 
+void test_audio_out_accepts_packaged_prompt_requests() {
+  AudioOut audio;
+  TEST_ASSERT_TRUE(audio.begin(false));
+
+  AudioOutPlaybackRequest request;
+  request.seq = 42;
+  request.queuedAtMs = 1234;
+  request.source = AudioOutSource::PackagedPrompt;
+  request.promptId = "boot_awake";
+  request.wavPath = "media/voice/stackchan_spark_greeting.wav";
+  request.sidecarPath = "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json";
+  request.earconSamples = 1440;
+  request.hasPrompt = true;
+  request.hasEarcon = true;
+
+  TEST_ASSERT_TRUE(audio.enqueue(request));
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().requestsQueued);
+  TEST_ASSERT_EQUAL_UINT32(0, audio.telemetry().requestsDropped);
+  TEST_ASSERT_EQUAL_UINT32(42, audio.telemetry().lastSeq);
+  TEST_ASSERT_EQUAL(static_cast<int>(AudioOutSource::PackagedPrompt), static_cast<int>(audio.telemetry().lastSource));
+  TEST_ASSERT_EQUAL_STRING("boot_awake", audio.lastRequest().promptId);
+  TEST_ASSERT_EQUAL_STRING(request.wavPath, audio.telemetry().lastWavPath);
+  TEST_ASSERT_EQUAL_STRING(request.sidecarPath, audio.telemetry().lastSidecarPath);
+  TEST_ASSERT_TRUE(audio.lastRequest().duckOnBargeIn);
+}
+
+void test_speech_adapter_queues_audio_out_request() {
+  AudioOut audio;
+  SpeechAdapter adapter;
+  TEST_ASSERT_TRUE(audio.begin(false));
+  TEST_ASSERT_TRUE(adapter.begin(false, &audio));
+
+  SpeechCue cue;
+  cue.intent = SpeechIntent::Think;
+  cue.text = "Input received. I am thinking now.";
+  cue.priority = 180;
+  cue.earcon = SpeechEarcon::Think;
+  cue.earconDelayMs = 90;
+
+  EmotionalProfile emotion;
+  emotion.arousal = 0.35f;
+  TEST_ASSERT_TRUE(adapter.handleCue(cue, 9, emotion, 2468));
+
+  const AudioOutPlaybackRequest& request = audio.lastRequest();
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().requestsQueued);
+  TEST_ASSERT_EQUAL_UINT32(9, request.seq);
+  TEST_ASSERT_EQUAL_UINT32(2468, request.queuedAtMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(AudioOutSource::PackagedPrompt), static_cast<int>(request.source));
+  TEST_ASSERT_EQUAL_STRING("think_processing", request.promptId);
+  TEST_ASSERT_EQUAL_STRING("media/voice/stackchan_spark_thinking.wav", request.wavPath);
+  TEST_ASSERT_EQUAL_STRING("media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json", request.sidecarPath);
+  TEST_ASSERT_EQUAL_UINT16(90, request.earconDelayMs);
+  TEST_ASSERT_TRUE(request.hasPrompt);
+  TEST_ASSERT_TRUE(request.hasEarcon);
+  TEST_ASSERT_GREATER_THAN_UINT32(500, request.earconSamples);
+}
+
 void test_speech_adapter_rejects_empty_or_uninitialized_cues() {
   SpeechAdapter adapter;
   SpeechCue cue;
@@ -1894,6 +1952,8 @@ int main() {
   RUN_TEST(test_earcon_synth_reports_truncation_without_allocation);
   RUN_TEST(test_speech_adapter_prepares_packaged_prompt_and_earcon);
   RUN_TEST(test_speech_prompt_bank_covers_all_spoken_intents_with_sidecars);
+  RUN_TEST(test_audio_out_accepts_packaged_prompt_requests);
+  RUN_TEST(test_speech_adapter_queues_audio_out_request);
   RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);

@@ -7,6 +7,7 @@
 
 #include "config/RobotConfig.hpp"
 #include "face/ProceduralFace.hpp"
+#include "io/AudioOut.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -29,6 +30,7 @@ StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
 SensorAdapter gSensors;
 CameraAdapter gCamera;
+AudioOut gAudioOut;
 SpeechAdapter gSpeechAdapter;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
@@ -236,6 +238,16 @@ const __FlashStringHelper* promptSourceName(PromptSource source) {
   return F("none");
 }
 
+const __FlashStringHelper* audioOutSourceName(AudioOutSource source) {
+  switch (source) {
+    case AudioOutSource::PackagedPrompt:
+      return F("packaged_prompt");
+    case AudioOutSource::None:
+      break;
+  }
+  return F("none");
+}
+
 void printBootMarker() {
   Serial.print(F("[boot] stackchan_alive mode="));
   Serial.print(firmwareMode());
@@ -290,6 +302,7 @@ void printRuntimeStatus() {
   Serial.print(F(" camera_events="));
   Serial.print(camera.eventsPublished);
   const SpeechAdapterTelemetry& speechOut = gSpeechAdapter.telemetry();
+  const AudioOutTelemetry& audioOut = gAudioOut.telemetry();
   Serial.print(F(" speech_adapter_ready="));
   Serial.print(speechOut.ready ? 1 : 0);
   Serial.print(F(" speech_adapter_hw="));
@@ -297,7 +310,15 @@ void printRuntimeStatus() {
   Serial.print(F(" speech_cues="));
   Serial.print(speechOut.cuesQueued);
   Serial.print(F(" speech_earcons="));
-  Serial.println(speechOut.earconsRendered);
+  Serial.print(speechOut.earconsRendered);
+  Serial.print(F(" audio_out_ready="));
+  Serial.print(audioOut.ready ? 1 : 0);
+  Serial.print(F(" audio_out_hw="));
+  Serial.print(audioOut.hardwareEnabled ? 1 : 0);
+  Serial.print(F(" audio_out_core0="));
+  Serial.print(audioOut.taskPinnedToCore0 ? 1 : 0);
+  Serial.print(F(" audio_out_requests="));
+  Serial.println(audioOut.requestsQueued);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -345,6 +366,23 @@ void printSpeechPlayback(const SpeechPlaybackPlan& plan) {
   Serial.print(plan.earconRender.peakAbs);
   Serial.print(F(" earcon_checksum="));
   Serial.println(plan.earconRender.checksum, HEX);
+}
+
+void printAudioOutPlayback(const AudioOutPlaybackRequest& request) {
+  Serial.print(F("[audio_out] seq="));
+  Serial.print(request.seq);
+  Serial.print(F(" source="));
+  Serial.print(audioOutSourceName(request.source));
+  Serial.print(F(" prompt_id="));
+  Serial.print(request.promptId);
+  Serial.print(F(" wav="));
+  Serial.print(request.wavPath);
+  Serial.print(F(" sidecar="));
+  Serial.print(request.sidecarPath);
+  Serial.print(F(" earcon_samples="));
+  Serial.print(request.earconSamples);
+  Serial.print(F(" duck_on_barge_in="));
+  Serial.println(request.duckOnBargeIn ? 1 : 0);
 }
 
 void printBenchControl(const BenchControl& control) {
@@ -631,6 +669,7 @@ void IntentTask(void* pv) {
       printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);
       if (gSpeechAdapter.handleCue(frame.speech, frame.speechSeq, frame.emotion, frame.timestampMs)) {
         printSpeechPlayback(gSpeechAdapter.lastPlan());
+        printAudioOutPlayback(gAudioOut.lastRequest());
       }
     }
     publishFrame(frame);
@@ -662,7 +701,8 @@ void setup() {
 
   gSensors.begin();
   gCamera.begin();
-  gSpeechAdapter.begin(false);
+  gAudioOut.begin(false);
+  gSpeechAdapter.begin(false, &gAudioOut);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();

@@ -271,6 +271,8 @@ $requiredFiles = @(
   "provenance/src/persona/SpeechPlanner.cpp",
   "provenance/src/persona/EarconSynth.hpp",
   "provenance/src/persona/EarconSynth.cpp",
+  "provenance/src/io/AudioOut.hpp",
+  "provenance/src/io/AudioOut.cpp",
   "provenance/src/io/SpeechPromptBank.hpp",
   "provenance/src/io/SpeechPromptBank.cpp",
   "provenance/src/io/SpeechAdapter.hpp",
@@ -298,7 +300,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PA
 }
 
 $deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
-foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "camera_ready", "camera_hw", "camera_active", "camera_events", "speech_adapter_ready", "speech_adapter_hw", "speech_cues", "speech_earcons", "[speech_audio]", "source=packaged_prompt", "prompt_id", "prompt_wav", "prompt_sidecar", "media/voice/sidecars", "earcon_samples", "earcon_peak", "earcon_checksum", "help", "speech clear", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "sound dir=-45 level=0.70", "noise level=0.90", "[audio] event=", "latency_ms", "azimuth_deg", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "camera_ready", "camera_hw", "camera_active", "camera_events", "speech_adapter_ready", "speech_adapter_hw", "speech_cues", "speech_earcons", "audio_out_ready", "audio_out_hw", "audio_out_core0", "audio_out_requests", "[speech_audio]", "source=packaged_prompt", "prompt_id", "prompt_wav", "prompt_sidecar", "[audio_out]", "duck_on_barge_in", "media/voice/sidecars", "earcon_samples", "earcon_peak", "earcon_checksum", "help", "speech clear", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "sound dir=-45 level=0.70", "noise level=0.90", "[audio] event=", "latency_ms", "azimuth_deg", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
   if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
@@ -504,6 +506,13 @@ foreach ($pattern in @("EarconSynth::render", "EarconSynth::expectedDurationMs",
   }
 }
 
+$audioOutText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/AudioOut.cpp") -Raw
+foreach ($pattern in @("AudioOut::begin", "AudioOut::enqueue", "requestsQueued", "requestsDropped", "lastSidecarPath", "taskPinnedToCore0")) {
+  if ($audioOutText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/AudioOut.cpp missing P6 audio-output scaffold support: $pattern"
+  }
+}
+
 $speechPromptBankText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SpeechPromptBank.cpp") -Raw
 foreach ($pattern in @("SpeechPromptBank::find", "SpeechPromptBank::assets", "PromptSource::PackagedPrompt", "boot_awake", "think_processing", "safety_servo_not_armed", "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json", "media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json", "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json")) {
   if ($speechPromptBankText -notmatch [regex]::Escape($pattern)) {
@@ -512,14 +521,14 @@ foreach ($pattern in @("SpeechPromptBank::find", "SpeechPromptBank::assets", "Pr
 }
 
 $speechAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SpeechAdapter.cpp") -Raw
-foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "SpeechPromptBank::find", "promptWavPath", "promptSidecarPath", "EarconSynth::render", "earconIntensity", "cuesQueued", "earconsRendered", "lastEarconChecksum")) {
+foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "SpeechPromptBank::find", "AudioOutPlaybackRequest", "audioOut_->enqueue", "promptWavPath", "promptSidecarPath", "EarconSynth::render", "earconIntensity", "cuesQueued", "earconsRendered", "lastEarconChecksum")) {
   if ($speechAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/SpeechAdapter.cpp missing P6 speech-adapter support: $pattern"
   }
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "[speech_audio]", "prompt_wav=", "prompt_sidecar=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_requests=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
