@@ -86,6 +86,12 @@ hallucinated modes, memory writes outside the allowlist under adversarial phrasi
 it against the first configured real engine as a gate — the same way the character harness
 gates format today.
 
+**Current status:** the host-side red-team corpus and report runner now exist in
+`bridge/character_red_team.py`, with wrappers in `tools/run_character_red_team.*` and a
+dry-run artifact in CI. This addresses the corpus/harness half of B7. It does **not** close
+B7 until a configured local model runs the same suite with `--require-runner` and
+`summary.gate.ready == true`.
+
 ### B8. Nothing has ever run concurrently
 
 Mic capture + camera + ESP-SR + Wi-Fi + speaker playback are each individually planned for

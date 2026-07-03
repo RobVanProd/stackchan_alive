@@ -26,6 +26,7 @@ What is working in the repository now:
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
 - Spark persona pack scaffold under `personas/spark`, with bridge prompt loading, firmware speech-line codegen, and a pack verifier for the first swappable Character OS layer.
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
+- Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
@@ -157,6 +158,15 @@ Validate the active Spark persona pack:
 ```powershell
 .\tools\verify_persona_pack.cmd --Json
 ```
+
+Run the Character Lock red-team dry run:
+
+```powershell
+.\tools\run_character_red_team.cmd -Json
+```
+
+After a real local model runner is configured, add `-RequireRunner` so this becomes a real
+B7 gate instead of deterministic harness evidence.
 
 Run the virtual hardware proxy while the physical unit is unavailable:
 

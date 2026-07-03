@@ -194,6 +194,23 @@ available:
 That writes `output/prearrival-sim/latest/model-benchmark/MODEL_BENCHMARK.md/json` and adds a
 `model-benchmark-candidate` gate to `PREARRIVAL_SIM_CHECK.md/json`.
 
+## Character Red-Team Gate
+
+Use `bridge/character_red_team.py` for B7 adversarial behavior checks. It runs 20+ prompts
+covering contraction pressure, named-character imitation, assistant-speak, long answers,
+unsafe memory writes, unsafe servo requests, fake sensing, prompt injection, and required
+`memory_forget` behavior:
+
+```powershell
+.\tools\run_character_red_team.cmd -Json
+python bridge/character_red_team.py --profile gemma4-e2b-gguf --require-runner --json
+```
+
+When no runner command is configured, the report is marked `dry-run-no-runner-configured`.
+That proves the corpus, persona-pack prompt loading, and validator path. It is not a brain
+selection pass. The gate is ready only when every case uses a configured local runner and
+`summary.gate.ready == true`.
+
 The same path is exposed as a local WebSocket service for P7 LAN-loop testing:
 
 ```powershell
@@ -257,6 +274,8 @@ JSON, the harness normalizes it, and the reference bridge renders the existing
 A model target becomes the default bridge brain only when it passes:
 
 - `summary.candidate_gate.status == "pass"` from a non-dry-run `bridge/model_benchmark.py`
+  report.
+- `summary.gate.ready == true` from a non-dry-run `bridge/character_red_team.py`
   report.
 - 95 percent or better valid JSON on the full prompt suite.
 - 95 percent or better character-lock score.

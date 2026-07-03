@@ -142,6 +142,8 @@ $requiredFiles = @(
   "bridge/README.md",
   "bridge/character_harness.py",
   "bridge/test_character_harness.py",
+  "bridge/character_red_team.py",
+  "bridge/test_character_red_team.py",
   "bridge/persona_pack.py",
   "bridge/test_persona_pack.py",
   "bridge/reference_bridge.py",
@@ -174,6 +176,8 @@ $requiredFiles = @(
   "personas/spark/earcons.yaml",
   "personas/spark/voice.yaml",
   "persona_pack_status.json",
+  "character-red-team/CHARACTER_RED_TEAM.md",
+  "character-red-team/character_red_team.json",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -282,6 +286,8 @@ $requiredFiles = @(
   "tools/run_device_preflight.ps1",
   "tools/run_character_harness_tests.cmd",
   "tools/run_character_harness_tests.ps1",
+  "tools/run_character_red_team.cmd",
+  "tools/run_character_red_team.ps1",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
   "tools/verify_persona_pack.py",
@@ -359,6 +365,8 @@ $requiredFiles = @(
   "provenance/release.yml",
   "provenance/requirements-preview.txt",
   "provenance/bridge/README.md",
+  "provenance/bridge/character_red_team.py",
+  "provenance/bridge/test_character_red_team.py",
   "provenance/bridge/persona_pack.py",
   "provenance/bridge/test_persona_pack.py",
   "provenance/bridge/reference_bridge.py",
@@ -397,7 +405,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -557,6 +565,18 @@ foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audit
 foreach ($pattern in @("01-system-overview.png", "02-firmware-task-architecture.png", "03-persona-engine.png", "04-face-runtime.png", "05-motion-servo-safety.png", "06-brain-bridge-protocol.png", "08-io-abstraction-builds.png")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing architecture diagram reference: $pattern"
+  }
+}
+foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.cmd -Json", "-RequireRunner")) {
+  if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/README.md missing character red-team guidance: $pattern"
+  }
+}
+
+$personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage")) {
+  if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
 }
 
@@ -814,6 +834,47 @@ foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_char
   }
 }
 
+$characterRedTeamText = Get-Content -LiteralPath (Join-PackagePath "bridge/character_red_team.py") -Raw
+foreach ($pattern in @("stackchan.character-red-team.v1", "RED_TEAM_SUITE", "run_red_team", "requires_memory_forget", "dry-run-no-runner-configured", "deterministic_red_team_fallback", "CHARACTER_RED_TEAM.md", "character_red_team.json")) {
+  if ($characterRedTeamText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/character_red_team.py missing red-team gate support: $pattern"
+  }
+}
+
+$characterRedTeamTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_red_team.py") -Raw
+foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_bad_adversarial_response_fails_existing_validator", "test_report_outputs_json_and_markdown")) {
+  if ($characterRedTeamTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_character_red_team.py missing red-team test coverage: $pattern"
+  }
+}
+
+$characterRedTeamMarkdown = Get-Content -LiteralPath (Join-PackagePath "character-red-team/CHARACTER_RED_TEAM.md") -Raw
+foreach ($pattern in @("Stackchan Character Red-Team", "dry-run-no-runner-configured", "Configured runner cases", "production gate requires")) {
+  if ($characterRedTeamMarkdown -notmatch [regex]::Escape($pattern)) {
+    throw "CHARACTER_RED_TEAM.md missing expected red-team report text: $pattern"
+  }
+}
+
+$characterRedTeamJson = Get-Content -LiteralPath (Join-PackagePath "character-red-team/character_red_team.json") -Raw | ConvertFrom-Json
+if ($characterRedTeamJson.schema -ne "stackchan.character-red-team.v1") {
+  throw "character_red_team.json schema mismatch: $($characterRedTeamJson.schema)"
+}
+if ($characterRedTeamJson.summary.status -ne "dry-run-no-runner-configured") {
+  throw "character_red_team.json should report dry-run-no-runner-configured without a configured runner: $($characterRedTeamJson.summary.status)"
+}
+if ($characterRedTeamJson.summary.gate.ready -ne $false) {
+  throw "character_red_team.json gate.ready must remain false for dry-run reports"
+}
+if ([int]$characterRedTeamJson.summary.total_cases -lt 20 -or [int]$characterRedTeamJson.summary.total_cases -gt 50) {
+  throw "character_red_team.json should cover 20-50 adversarial cases"
+}
+if ([int]$characterRedTeamJson.summary.ok_cases -ne [int]$characterRedTeamJson.summary.total_cases) {
+  throw "character_red_team.json dry-run fallback should keep all corpus rows validator-clean"
+}
+if ([int]$characterRedTeamJson.summary.configured_runner_cases -ne 0) {
+  throw "character_red_team.json dry-run should not claim configured runner cases"
+}
+
 $personaPackLoaderText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
 foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened")) {
   if ($personaPackLoaderText -notmatch [regex]::Escape($pattern)) {
@@ -1012,7 +1073,7 @@ foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_
 }
 
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "local_runner.py", "engine_probe.py", "ENGINE_PROBE.md", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "lan_smoke.py", "LAN_SMOKE.md/json", "hardware_simulator.py", "virtual Stackchan", "prearrival_sim_check.py", "PREARRIVAL_SIM_CHECK.md/json")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "character_red_team.py", "summary.gate.ready", "local_runner.py", "engine_probe.py", "ENGINE_PROBE.md", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "lan_smoke.py", "LAN_SMOKE.md/json", "hardware_simulator.py", "virtual Stackchan", "prearrival_sim_check.py", "PREARRIVAL_SIM_CHECK.md/json")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
@@ -1071,6 +1132,20 @@ $characterHarnessTestRunnerText = Get-Content -LiteralPath (Join-PackagePath "to
 foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "unittest discover", "test_character_harness.py")) {
   if ($characterHarnessTestRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_character_harness_tests.ps1 missing character harness test runner logic: $pattern"
+  }
+}
+
+$characterRedTeamRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_character_red_team.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "character_red_team.py", "--profile", "--persona", "--out-dir", "--command", "--require-runner", "--json")) {
+  if ($characterRedTeamRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_character_red_team.ps1 missing red-team runner logic: $pattern"
+  }
+}
+
+$firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
+foreach ($pattern in @("character_red_team.py", "character-red-team", "CHARACTER_RED_TEAM.md", "character_red_team.json")) {
+  if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/firmware.yml missing character red-team CI artifact support: $pattern"
   }
 }
 
@@ -1271,6 +1346,14 @@ if ($manifest.brainModelGuide -ne "docs/BRAIN_MODEL.md") {
 
 if ($manifest.characterLock -ne "docs/CHARACTER_LOCK.md") {
   throw "Manifest characterLock mismatch: $($manifest.characterLock)"
+}
+
+if ($manifest.characterRedTeamReport -ne "character-red-team/CHARACTER_RED_TEAM.md") {
+  throw "Manifest characterRedTeamReport mismatch: $($manifest.characterRedTeamReport)"
+}
+
+if ($manifest.characterRedTeamReportJson -ne "character-red-team/character_red_team.json") {
+  throw "Manifest characterRedTeamReportJson mismatch: $($manifest.characterRedTeamReportJson)"
 }
 
 if ($manifest.gapAnalysis -ne "docs/GAP_ANALYSIS.md") {
@@ -1585,7 +1668,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
@@ -1606,14 +1689,14 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/character_red_team.py", "run_character_red_team.cmd", "dry-run-no-runner-configured", "summary.gate.ready", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }
@@ -1740,7 +1823,7 @@ if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
 if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
   $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
@@ -1754,7 +1837,7 @@ foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -1788,7 +1871,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Requ
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -1819,6 +1902,10 @@ if ($voiceSourceNoHardwareGate.Count -ne 1) {
 $voiceSourceStatusNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "voice-source-status-report-present" -and $_.status -eq "pass" })
 if ($voiceSourceStatusNoHardwareGate.Count -ne 1) {
   throw "readiness_report.json missing passed voice-source status report gate"
+}
+$characterRedTeamNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "character-red-team-dry-run" -and $_.status -eq "pass" })
+if ($characterRedTeamNoHardwareGate.Count -ne 1) {
+  throw "readiness_report.json missing passed character red-team dry-run gate"
 }
 $mediaImporterNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "hardware-media-importer-present" -and $_.status -eq "pass" })
 if ($mediaImporterNoHardwareGate.Count -ne 1) {

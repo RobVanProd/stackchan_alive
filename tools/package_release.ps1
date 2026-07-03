@@ -257,6 +257,8 @@ $bridgePackageFiles = @(
   "README.md",
   "character_harness.py",
   "test_character_harness.py",
+  "character_red_team.py",
+  "test_character_red_team.py",
   "persona_pack.py",
   "test_persona_pack.py",
   "reference_bridge.py",
@@ -297,6 +299,13 @@ $personaStatusPath = Join-Path $outDir "persona_pack_status.json"
 $personaStatus | Set-Content -Path $personaStatusPath -Encoding UTF8
 if ($personaStatusExit -ne 0) {
   throw "Persona pack verification failed."
+}
+
+$characterRedTeamOutDir = Join-Path $outDir "character-red-team"
+$characterRedTeamPython = Get-StackchanPreviewPython
+& $characterRedTeamPython bridge/character_red_team.py --out-dir $characterRedTeamOutDir --json | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Character red-team dry run failed."
 }
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
@@ -376,6 +385,8 @@ $releaseTools = @(
   "tools/run_device_preflight.ps1",
   "tools/run_character_harness_tests.cmd",
   "tools/run_character_harness_tests.ps1",
+  "tools/run_character_red_team.cmd",
+  "tools/run_character_red_team.ps1",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
   "tools/verify_persona_pack.py",
@@ -734,6 +745,8 @@ $manifest = [ordered]@{
   activePersona = "spark"
   activePersonaPack = "personas/spark"
   activePersonaVerification = "persona_pack_status.json"
+  characterRedTeamReport = "character-red-team/CHARACTER_RED_TEAM.md"
+  characterRedTeamReportJson = "character-red-team/character_red_team.json"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
   privacyModel = "docs/PRIVACY.md"
   expressionProfiles = "data/expressions.yaml"
@@ -850,6 +863,8 @@ $manifest = [ordered]@{
     "tools/run_device_preflight.ps1",
     "tools/run_character_harness_tests.cmd",
     "tools/run_character_harness_tests.ps1",
+    "tools/run_character_red_team.cmd",
+    "tools/run_character_red_team.ps1",
     "tools/run_bridge_reference_tests.cmd",
     "tools/run_bridge_reference_tests.ps1",
     "tools/run_engine_probe.cmd",
@@ -911,6 +926,8 @@ $manifest = [ordered]@{
     "provenance/bridge/README.md",
     "provenance/bridge/persona_pack.py",
     "provenance/bridge/test_persona_pack.py",
+    "provenance/bridge/character_red_team.py",
+    "provenance/bridge/test_character_red_team.py",
     "provenance/bridge/reference_bridge.py",
     "provenance/bridge/test_reference_bridge.py",
     "provenance/bridge/local_runner.py",
@@ -1020,6 +1037,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; review-only until production voice-source rights clear" },
+    [ordered]@{ gate = "character-red-team-dry-run"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json; real gate still requires a configured model runner" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
@@ -1063,6 +1081,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; confirms review-only RVC base cache/hash status when available" },
+    [ordered]@{ requirement = "character-red-team-dry-run-present"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates imported photos/videos/audio and records hashes" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
@@ -1102,6 +1121,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Voice review samples present: Stackchan Spark greeting, thinking, safety, warm-slow audition, and bright-robot audition WAVs
 - [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
 - [x] Voice source status report present: ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``
+- [x] Character red-team dry-run report present: ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
 - [x] Hardware media importer present: ``tools/add_hardware_evidence_media.cmd`` validates imported photos/videos/audio and records hashes
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
@@ -1139,6 +1159,7 @@ Consumer rollout: blocked pending hardware validation
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
 - Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json`` list the blocked production-voice gates. Current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
+- Character red-team dry-run evidence is present in ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``. It proves the adversarial corpus and validator path; the gate only passes after the same suite runs with ``--require-runner`` against a configured local model.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
@@ -1175,6 +1196,7 @@ Engine readiness quick check:
 - Run ``tools/run_engine_probe.cmd -Json`` to check whether local model, STT, and TTS commands are configured.
 - Run ``tools/run_engine_probe.cmd -RunModelSmoke -Json`` after exporting a runner command to capture the first real smoke result. This is setup evidence; full model selection still requires ``bridge/model_benchmark.py --require-runner`` with a passing ``summary.candidate_gate`` and recorded ``recommended_profile``.
 - Run ``python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json`` after the real runner is configured to write ``MODEL_BENCHMARK.md/json`` with candidate blockers, ``ready_profiles``, and the fastest ready profile recommendation.
+- Run ``tools/run_character_red_team.cmd -Json`` to regenerate the dry-run Character Lock red-team report. After a real runner is configured, run ``tools/run_character_red_team.cmd -RequireRunner -Json`` so the B7 gate is backed by an actual model instead of deterministic fallback responses.
 - For the mobile/low-footprint brain path, configure ``STACKCHAN_LITERT_LM_COMMAND`` and use ``bridge/litert_lm_stackchan_wrapper.py`` as ``STACKCHAN_GEMMA4_E2B_LITERT_COMMAND`` before running the LiteRT-LM profile benchmark.
 
 No-hardware simulation quick check:
