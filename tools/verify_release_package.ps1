@@ -121,6 +121,7 @@ $requiredFiles = @(
   "docs/BRAIN_MODEL.md",
   "docs/CHARACTER_LOCK.md",
   "docs/JOHNNY_ALIVE_PATHWAY.md",
+  "docs/HARDWARE_SIMULATION.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
   "docs/PRIVACY.md",
@@ -141,6 +142,8 @@ $requiredFiles = @(
   "bridge/test_character_harness.py",
   "bridge/reference_bridge.py",
   "bridge/test_reference_bridge.py",
+  "bridge/hardware_simulator.py",
+  "bridge/test_hardware_simulator.py",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -243,6 +246,8 @@ $requiredFiles = @(
   "tools/run_character_harness_tests.ps1",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
+  "tools/run_hardware_simulation.cmd",
+  "tools/run_hardware_simulation.ps1",
   "tools/send_speech_mouth_demo.cmd",
   "tools/send_speech_mouth_demo.ps1",
   "tools/send_speak_all_intents_demo.cmd",
@@ -302,7 +307,9 @@ $requiredFiles = @(
   "provenance/requirements-preview.txt",
   "provenance/bridge/README.md",
   "provenance/bridge/reference_bridge.py",
-  "provenance/bridge/test_reference_bridge.py"
+  "provenance/bridge/test_reference_bridge.py",
+  "provenance/bridge/hardware_simulator.py",
+  "provenance/bridge/test_hardware_simulator.py"
 )
 
 foreach ($file in $requiredFiles) {
@@ -701,8 +708,22 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
   }
 }
 
+$hardwareSimulatorText = Get-Content -LiteralPath (Join-PackagePath "bridge/hardware_simulator.py") -Raw
+foreach ($pattern in @("stackchan.hardware-sim.v1", "VirtualStackchanHardware", "full_audio_downlink_frames", "lan_text_frames", "audio_stream_start", "audio_stream_end", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "bridge_timeout", "hardware_simulation.json", "HARDWARE_SIMULATION.md")) {
+  if ($hardwareSimulatorText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/hardware_simulator.py missing hardware simulation support: $pattern"
+  }
+}
+
+$hardwareSimulatorTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_hardware_simulator.py") -Raw
+foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reaches_ready_with_mouth_frames", "test_lan_text_scenario_exercises_local_bridge_path", "test_audio_downlink_counts_binary_stream_payload", "test_binary_without_audio_stream_fails", "test_timeout_scenario_reports_expected_failure")) {
+  if ($hardwareSimulatorTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_hardware_simulator.py missing hardware simulator test coverage: $pattern"
+  }
+}
+
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "gemma4-e2b-litert-lm", "hardware_simulator.py", "virtual Stackchan")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
@@ -712,6 +733,13 @@ $bridgeReferenceTestRunnerText = Get-Content -LiteralPath (Join-PackagePath "too
 foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "unittest discover", "bridge", "test_*.py")) {
   if ($bridgeReferenceTestRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_bridge_reference_tests.ps1 missing reference bridge test runner logic: $pattern"
+  }
+}
+
+$hardwareSimulationRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_hardware_simulation.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "hardware_simulator.py", "--out-dir", "output/hardware-sim/latest", "Hardware simulation report")) {
+  if ($hardwareSimulationRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_hardware_simulation.ps1 missing hardware simulation runner logic: $pattern"
   }
 }
 

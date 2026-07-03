@@ -298,7 +298,7 @@ def render_frame(t: float) -> Image.Image:
     draw_eye(draw, 214, 104 + alive_y, target, True)
     target = {**target, "mouth_y": 172 + alive_y}
     draw_mouth(draw, target)
-    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
 
 
@@ -309,7 +309,7 @@ def render_idle_frame(t: float) -> Image.Image:
     draw_eye(draw, 106, 104, target, False)
     draw_eye(draw, 214, 104, target, True)
     draw_mouth(draw, target)
-    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
 
 
@@ -322,7 +322,7 @@ def render_pose(label: str, target: dict[str, float], *, show_label: bool = True
     if show_label:
         draw.text((12, 14), label, fill=ACCENT, anchor="lm")
     if show_brand:
-        draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+        draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img
 
 
@@ -648,7 +648,7 @@ def render_speech_frame(t: float) -> Image.Image:
     draw_eye(draw, 106, 104, target, False)
     draw_eye(draw, 214, 104, target, True)
     draw_mouth(draw, target)
-    draw.text((160, 220), "Stackchan Alive", fill=ACCENT, anchor="mm")
+    draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
 
 

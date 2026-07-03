@@ -541,9 +541,9 @@ function Write-OpenLocalShareHelper {
   @(
     "@echo off",
     "setlocal",
-    "echo Opening Stackchan Alive local share on this Windows machine...",
+    "echo Opening Stackchan: Alive local share on this Windows machine...",
     "echo $LocalUrl",
-    "start ""Stackchan Alive Share"" ""$LocalUrl"""
+    "start ""Stackchan: Alive Share"" ""$LocalUrl"""
   ) | Set-Content -Path (Join-Path $shareRoot "OPEN_LOCAL_SHARE.cmd") -Encoding ASCII
 }
 
@@ -981,7 +981,7 @@ $promotionGateItems = (@($readiness.hardwareGates) | ForEach-Object {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stackchan Alive $Version</title>
+  <title>Stackchan: Alive $Version</title>
   <style>
     :root { color-scheme: light dark; font-family: Segoe UI, Arial, sans-serif; }
     body { margin: 0; padding: 32px; line-height: 1.45; }
@@ -1001,8 +1001,8 @@ $promotionGateItems = (@($readiness.hardwareGates) | ForEach-Object {
 </head>
 <body>
 <main>
-  <h1>Stackchan Alive $Version</h1>
-  <p>Device-ready prerelease. Hardware validation is still pending.</p>
+  <h1>Stackchan: Alive $Version</h1>
+  <p>Character OS for Stackchan hardware. Device-ready prerelease; hardware validation is still pending.</p>
   <p><strong>Commit:</strong> <code>$($manifest.commit)</code></p>
   <p><strong>Generated UTC:</strong> <code>$generatedUtc</code></p>
   <div class="status">
@@ -1043,10 +1043,10 @@ $promotionGateItems
   <p>The duplicate and upstream-unpinned entries are the known transitive <code>SCServo</code> declarations from <code>stackchan-arduino</code>; this project also declares <code>SCServo#ee6ee4a</code> directly.</p>
 
   <h2>Preview</h2>
-  <p><img src="stackchan_alive_preview.png" alt="Stackchan Alive preview image"></p>
-  <p><img src="stackchan_alive_expression_sheet.png" alt="Stackchan Alive expression sheet"></p>
+  <p><img src="stackchan_alive_preview.png" alt="Stackchan: Alive preview image"></p>
+  <p><img src="stackchan_alive_expression_sheet.png" alt="Stackchan: Alive expression sheet"></p>
   <p><video src="stackchan_alive_preview.mp4" controls loop muted playsinline></video></p>
-  <p><img src="stackchan_alive_speech_preview.gif" alt="Stackchan Alive speech-reactive preview GIF"></p>
+  <p><img src="stackchan_alive_speech_preview.gif" alt="Stackchan: Alive speech-reactive preview GIF"></p>
 
   <h2>Face Phase A Artifacts</h2>
   <p>Phase A adds the double-buffered M5Canvas render path, frame telemetry, and the small layered animator skeleton with independent smoothing constants. These artifacts are generated procedurally by <code>tools/render_preview.py</code> and checked by <code>tools/verify_face_phase_a.ps1</code>.</p>

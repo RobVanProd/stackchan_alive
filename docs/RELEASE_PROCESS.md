@@ -18,7 +18,15 @@ Before flashing or publishing, run the no-hardware preflight:
 .\tools\run_device_preflight.cmd
 ```
 
-The preflight also checks that servo-calibration flashing is blocked unless `-ConfirmServoRisk` is present, that dry-run upload commands render correctly, that speech-envelope sidecars can be generated and dry-streamed into serial mouth commands, and that a verified local share can be captured into an evidence packet without requiring a Cloudflare `PUBLIC_URL.txt`.
+The preflight also checks that servo-calibration flashing is blocked unless `-ConfirmServoRisk` is present, that dry-run upload commands render correctly, that speech-envelope sidecars can be generated and dry-streamed into serial mouth commands, that the no-hardware virtual Stackchan bridge proxy passes, and that a verified local share can be captured into an evidence packet without requiring a Cloudflare `PUBLIC_URL.txt`.
+
+Run the simulator by itself when you want a fast proxy for bridge behavior while the physical device is unavailable:
+
+```powershell
+.\tools\run_hardware_simulation.cmd
+```
+
+This proves bridge frame ordering, LAN text turns, binary TTS audio stream accounting, mouth-envelope handoff, and timeout failure behavior. It does not replace real hardware evidence.
 If the native logic test step reports missing `gcc`/`g++`, run `.\tools\check_native_toolchain.cmd` to see the searched compiler paths and Windows install options.
 
 Verify the package before sharing it:

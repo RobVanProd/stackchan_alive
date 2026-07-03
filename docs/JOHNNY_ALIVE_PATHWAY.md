@@ -9,9 +9,10 @@ voice, evidence, and release tooling.
 
 ## North Star
 
-Stackchan should feel like a small tabletop robot that notices, reacts, listens, thinks, and
-answers in character. The core rule is layered aliveness: fast reflexes first, deeper
-understanding later, and no frozen dead states.
+Stackchan: Alive is the character OS layer for Stackchan hardware. It should make a small
+tabletop robot feel like it notices, reacts, listens, thinks, and answers in character. The
+core rule is layered aliveness: fast reflexes first, deeper understanding later, and no
+frozen dead states.
 
 Latency targets from the roadmap remain active:
 
@@ -30,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, and binary TTS audio downlink scaffold exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, and no-hardware virtual Stackchan simulator exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -81,7 +82,16 @@ Keep each item independently shippable and package-verified.
      chunks, but firmware speaker playback from those chunks is still future work.
    - Voice-source provenance remains blocking for any consumer-ready build.
 
-5. End-to-end demo gate.
+5. Virtual hardware proxy.
+   - `bridge/hardware_simulator.py` consumes reference, LAN, and binary audio-downlink
+     bridge frames and produces firmware-like serial logs plus JSON telemetry.
+   - `tools/run_hardware_simulation.cmd` writes repeatable reports under
+     `output/hardware-sim/`.
+   - This catches bridge ordering, timeout, mouth-frame, and binary stream regressions before
+     the physical device arrives. It does not replace real display, speaker, mic, camera,
+     touch, IMU, servo, heat, power, or soak evidence.
+
+6. End-to-end demo gate.
    - Wake or bench start, listen, visible thinking, in-character spoken response, lip-sync,
      graceful return to ambient life.
    - Bridge kill test proves in-character recovery with no freeze or reboot.

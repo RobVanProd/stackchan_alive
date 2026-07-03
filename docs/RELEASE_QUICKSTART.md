@@ -1,4 +1,4 @@
-# Stackchan Alive Release Quickstart
+# Stackchan: Alive Release Quickstart
 
 Use this from an extracted release package when the device arrives.
 
@@ -7,6 +7,12 @@ Use this from an extracted release package when the device arrives.
 1. Install Python, PlatformIO, and GitHub CLI if this machine will verify or publish releases.
 2. Confirm the body is clear and the servos are not mechanically blocked.
 3. Keep the first run display-only. Servo calibration is a separate, supervised step.
+
+Run the no-hardware virtual Stackchan proxy while the physical unit is unavailable:
+
+```powershell
+.\tools\run_hardware_simulation.cmd
+```
 
 ## Remote Review Link
 
