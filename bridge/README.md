@@ -1,7 +1,7 @@
 # Stackchan Reference Bridge
 
 This directory contains the first host-side reference for the P7 conversation bridge. It is
-intentionally small: no STT, LLM, TTS, or cloud dependency yet. Its job is to generate and
+intentionally small: no cloud dependency, no bundled LLM, and no bundled TTS yet. Its job is to generate and
 serve deterministic `stackchan.bridge.v1` control frames that the firmware bridge client
 already accepts through the serial bench path and the local LAN scaffold.
 
@@ -65,11 +65,24 @@ Run the local LAN WebSocket bridge:
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
 ```
 
+Audio-only turns can use a local STT command:
+
+```powershell
+$env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python path\to\local_stt.py"
+```
+
+The command receives raw signed 16-bit mono PCM on stdin and these environment variables:
+`STACKCHAN_AUDIO_SAMPLE_RATE`, `STACKCHAN_AUDIO_FORMAT=s16le_mono`, and
+`STACKCHAN_AUDIO_BYTES`. It must print either plain transcript text or JSON with
+`transcript`, `text`, or `spoken_text`. If no command is configured, audio-only turns return
+`stt_not_implemented`; include `text` or `transcript` on `utterance_end` to bypass STT while
+testing.
+
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded
-upload telemetry and clears raw audio at `utterance_end`. Until real STT lands, audio-only
-turns return `stt_not_implemented`; include `text` or `transcript` on `utterance_end` to drive
-the runner path while testing binary upload. On a transcript-backed turn, it validates Character
+upload telemetry and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
+or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, `audio`, and
 `response_end` frames back to the client.
 
