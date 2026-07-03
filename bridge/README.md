@@ -146,6 +146,9 @@ rehearsal simulates virtual wake input, LAN bridge response frames, first-audio 
 mouth-display activity, and return to `Ready`. The `conversation-tts-downlink` rehearsal adds
 a fake WAV-producing local TTS command, verifies bridge-side WAV-to-PCM16 normalization, streams
 the decoded PCM16 as binary downlink chunks, and checks virtual M5 speaker handoff counters.
+The `conversation-audio-loop` rehearsal adds the fake microphone side: bounded binary PCM
+upload, fake local STT, Character Lock/model response, fake WAV TTS, PCM16 downlink, mouth
+activity, and virtual speaker handoff.
 The device-shell rehearsal simulates virtual
 display ticks, label persistence, CoreS3 tap/hold/BtnA/BtnB/BtnC inputs, motion safety
 toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle recovery. The

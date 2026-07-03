@@ -1092,7 +1092,7 @@ Engine readiness quick check:
 No-hardware simulation quick check:
 
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
-- The simulator proves bridge frame ordering, LAN text turns, conversation timing, fake WAV TTS normalization to PCM16 downlink, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
+- The simulator proves bridge frame ordering, LAN text turns, fake mic PCM upload through fake STT, conversation timing, fake WAV TTS normalization to PCM16 downlink, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
 
 Voice audition quick check:
 

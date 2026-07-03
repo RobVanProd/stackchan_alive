@@ -194,6 +194,11 @@ validation, and can hand accepted decoded PCM16 chunks to the M5 speaker sink wh
 exercised. Selecting and measuring the real local STT/TTS engines and collecting real-device
 speaker evidence remain separate follow-up gates.
 
+The no-hardware simulator includes `conversation-audio-loop`, which runs the same LAN seam
+with fake mic PCM upload, fake local STT, the Character Lock/model response path, fake WAV
+TTS, PCM16 downlink, and virtual speaker counters. This is the current proxy for end-to-end
+spoken-loop ordering until the physical unit and real STT/TTS engines are available.
+
 Render a validated model-style response through the deterministic bridge frames:
 
 ```powershell

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hardware_simulator import (
     AUDIO_DOWNLINK_TEST_BYTES,
+    AUDIO_UPLOAD_TEST_BYTES,
     MAX_AUDIO_STREAM_CHUNK_BYTES,
     SIM_SCHEMA,
     VirtualStackchanHardware,
@@ -90,6 +91,43 @@ class HardwareSimulatorTests(unittest.TestCase):
             self.assertIn(mode, telemetry["modes_seen"])
         self.assertTrue(any("format=pcm16 bytes=5000" in line for line in hardware.serial_lines))
         self.assertTrue(any("sample_rate=22050" in line for line in hardware.serial_lines))
+
+    def test_conversation_audio_loop_runs_stt_model_tts_and_pcm16_playback(self):
+        hardware = run_simulation("conversation-audio-loop")
+        report = hardware.report("conversation-audio-loop")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertEqual(1, telemetry["conversation_turns"])
+        self.assertGreater(telemetry["conversation_first_audio_latency_ms"], 0)
+        self.assertLessEqual(telemetry["conversation_first_audio_latency_ms"], 2500)
+        self.assertEqual(1, telemetry["core_inputs"])
+        self.assertEqual("Ready", telemetry["bridge_state"])
+        self.assertEqual("idle", telemetry["face_mode"])
+        self.assertEqual(AUDIO_UPLOAD_TEST_BYTES, telemetry["bridge_upload_audio_bytes"])
+        self.assertEqual(2, telemetry["bridge_upload_audio_chunks"])
+        self.assertEqual(16000, telemetry["bridge_upload_sample_rate"])
+        self.assertEqual(1, telemetry["bridge_stt_runs"])
+        self.assertEqual("cli", telemetry["bridge_stt_last_source"])
+        self.assertIn("Altitude change", telemetry["response_text"])
+        self.assertGreater(telemetry["mouth_display_frames"], 0)
+        self.assertEqual(1, telemetry["audio_streams_started"])
+        self.assertEqual(1, telemetry["audio_streams_ended"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, telemetry["audio_stream_bytes_received"])
+        self.assertEqual(2, telemetry["audio_stream_chunks_received"])
+        self.assertEqual(1, telemetry["speaker_playback_starts"])
+        self.assertEqual(2, telemetry["speaker_frames_submitted"])
+        self.assertEqual(1, telemetry["bridge_downlink_completed"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, telemetry["bridge_downlink_bytes"])
+        self.assertEqual(0, telemetry["bridge_downlink_errors"])
+        self.assertEqual(1, telemetry["bridge_downlink_playback_starts"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, telemetry["bridge_downlink_playback_bytes"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_unsupported"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_errors"])
+        for mode in ("listen", "think", "react", "idle"):
+            self.assertIn(mode, telemetry["modes_seen"])
+        self.assertTrue(any("upload_audio_bytes=6400 stt_source=cli" in line for line in hardware.serial_lines))
+        self.assertTrue(any("format=pcm16 bytes=5000" in line for line in hardware.serial_lines))
 
     def test_audio_downlink_counts_binary_stream_payload(self):
         hardware = run_simulation("audio-downlink")

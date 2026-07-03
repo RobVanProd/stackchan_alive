@@ -30,6 +30,9 @@ The simulator currently checks:
 - a LAN TTS downlink rehearsal: fake WAV-producing TTS command, bridge-side WAV-to-PCM16
   normalization, binary downlink chunks, virtual M5 speaker handoff, mouth frames, and return
   to `Ready`
+- a full LAN audio-loop rehearsal: bounded binary PCM mic upload, fake local STT,
+  character-locked model response, fake WAV TTS, PCM16 downlink, virtual M5 speaker handoff,
+  mouth frames, and return to `Ready`
 - binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`,
   including 4096-byte chunk-limit enforcement and byte/chunk accounting
 - firmware-mirrored `bridge_downlink_*` counters for the audio downlink consumer, written to
@@ -47,7 +50,8 @@ The simulator currently checks:
   recovery rehearsal
 
 The default run includes `reference`, `lan-text`, `conversation-rehearsal`,
-`conversation-tts-downlink`, `audio-downlink`, `audio-downlink-unsupported`,
+`conversation-tts-downlink`, `conversation-audio-loop`, `audio-downlink`,
+`audio-downlink-unsupported`,
 `arrival-rehearsal`, `bridge-kill-recovery`, and `offline-command-fallback`.
 The `conversation-rehearsal` scenario is the no-hardware P7 demo proxy: a virtual wake input
 starts a turn, the simulator marks utterance end, the LAN bridge emits `listening`,
@@ -58,6 +62,11 @@ returns WAV `audio_b64`. The host TTS adapter decodes it to 5000 bytes of signed
 `pcm16`, the LAN service downlinks it as 4096-byte and 904-byte binary chunks, and the virtual
 hardware verifies `bridge_downlink_*`, `bridge_downlink_playback_*`, speaker handoff, mouth
 activity, and the final `Ready` state.
+The `conversation-audio-loop` scenario is the closest no-hardware proxy for the future
+spoken loop: it uploads 6400 bytes of signed 16-bit mono PCM as two binary mic chunks, routes
+the buffered audio through a fake local STT command, runs the Character Lock/model response
+path, generates fake WAV TTS, normalizes it to 5000 bytes of PCM16 downlink audio, and
+verifies virtual speaker playback counters, mouth activity, and final `Ready` state.
 The `arrival-rehearsal` scenario is the best no-hardware proxy before the unit arrives: it
 pushes virtual button/touch events, shakes/puts down the robot through the safety path,
 streams a synthetic decoded PCM16 5000-byte TTS payload as 4096-byte and 904-byte downlink
@@ -108,6 +117,12 @@ To run the LAN TTS downlink rehearsal:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario conversation-tts-downlink -Json
+```
+
+To run the full fake mic/STT/model/TTS/speaker loop:
+
+```powershell
+.\tools\run_hardware_simulation.cmd -Scenario conversation-audio-loop -Json
 ```
 
 To run the bridge-kill recovery rehearsal:
