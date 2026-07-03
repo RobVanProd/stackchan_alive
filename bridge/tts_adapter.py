@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import io
 import json
 import os
 import subprocess
 import time
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,8 @@ TTS_COMMAND_ENV = "STACKCHAN_TTS_COMMAND"
 VALID_VISEMES = {"neutral", "ah", "oh", "ee"}
 MAX_TTS_BEATS = 800
 MAX_TTS_AUDIO_BYTES = 2 * 1024 * 1024
+PLAYABLE_AUDIO_FORMATS = {"pcm16", "s16le", "raw16", "pcm_s16le"}
+WAV_AUDIO_FORMATS = {"wav", "wave", "audio/wav", "audio/x-wav"}
 
 
 class TtsConfigurationError(RuntimeError):
@@ -179,10 +183,18 @@ def normalize_tts_output(raw_output: bytes) -> tuple[tuple[TtsBeat, ...], dict[s
         raise TtsExecutionError("tts command produced no usable mouth beats")
 
     audio_data = decode_audio_payload(parsed)
+    audio_format = str(parsed.get("audio_format") or parsed.get("format") or "").strip()[:32]
+    sample_rate = max(0, int(clamp(parsed.get("sample_rate", parsed.get("sampleRate", 0)), 0, 192000)))
+    if audio_data:
+        audio_format, sample_rate, audio_data = normalize_audio_for_downlink(
+            audio_data,
+            audio_format,
+            sample_rate,
+        )
     reported_audio_bytes = max(0, int(clamp(parsed.get("audio_bytes", parsed.get("audioBytes", 0)), 0, 100 * 1024 * 1024)))
     metadata = {
-        "audio_format": str(parsed.get("audio_format") or parsed.get("format") or "").strip()[:32],
-        "sample_rate": max(0, int(clamp(parsed.get("sample_rate", parsed.get("sampleRate", 0)), 0, 192000))),
+        "audio_format": audio_format,
+        "sample_rate": sample_rate,
         "audio_bytes": len(audio_data) if audio_data else reported_audio_bytes,
         "audio_path": str(parsed.get("audio_path") or parsed.get("sourceWav") or parsed.get("path") or "").strip()[:260],
         "audio_data": audio_data,
@@ -201,6 +213,77 @@ def decode_audio_payload(parsed: dict[str, object]) -> bytes:
     if len(audio) > MAX_TTS_AUDIO_BYTES:
         raise TtsExecutionError(f"tts audio payload exceeds {MAX_TTS_AUDIO_BYTES} bytes")
     return audio
+
+
+def normalize_audio_for_downlink(audio: bytes, audio_format: str, sample_rate: int) -> tuple[str, int, bytes]:
+    clean_format = str(audio_format or "").strip().lower()
+    if clean_format in PLAYABLE_AUDIO_FORMATS:
+        if sample_rate <= 0:
+            raise TtsExecutionError("tts pcm16 audio requires sample_rate")
+        return "pcm16", sample_rate, audio
+    if clean_format in WAV_AUDIO_FORMATS or is_wav_payload(audio):
+        wav_rate, pcm = decode_wav_to_pcm16_mono(audio)
+        if len(pcm) > MAX_TTS_AUDIO_BYTES:
+            raise TtsExecutionError(f"decoded tts PCM payload exceeds {MAX_TTS_AUDIO_BYTES} bytes")
+        return "pcm16", wav_rate, pcm
+    return clean_format, sample_rate, audio
+
+
+def is_wav_payload(audio: bytes) -> bool:
+    return len(audio) >= 12 and audio[:4] == b"RIFF" and audio[8:12] == b"WAVE"
+
+
+def decode_wav_to_pcm16_mono(audio: bytes) -> tuple[int, bytes]:
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as wav:
+            channels = wav.getnchannels()
+            sample_width = wav.getsampwidth()
+            sample_rate = wav.getframerate()
+            compression = wav.getcomptype()
+            frames = wav.readframes(wav.getnframes())
+    except (EOFError, wave.Error) as exc:
+        raise TtsExecutionError("tts WAV audio_b64 is not a valid PCM WAV") from exc
+    if compression != "NONE":
+        raise TtsExecutionError("tts WAV audio must be uncompressed PCM")
+    if channels <= 0 or sample_rate <= 0:
+        raise TtsExecutionError("tts WAV audio has invalid channel or sample-rate metadata")
+    if sample_width not in (1, 2, 3, 4):
+        raise TtsExecutionError("tts WAV audio must use 8, 16, 24, or 32 bit PCM samples")
+    return sample_rate, pcm_frames_to_s16_mono(frames, sample_width, channels)
+
+
+def pcm_frames_to_s16_mono(frames: bytes, sample_width: int, channels: int) -> bytes:
+    frame_width = sample_width * channels
+    if frame_width <= 0 or len(frames) % frame_width != 0:
+        raise TtsExecutionError("tts WAV PCM frame data is misaligned")
+    out = bytearray((len(frames) // frame_width) * 2)
+    out_index = 0
+    for frame_index in range(0, len(frames), frame_width):
+        total = 0
+        for channel in range(channels):
+            offset = frame_index + channel * sample_width
+            total += decode_pcm_sample(frames[offset : offset + sample_width], sample_width)
+        sample = clamp_int(total // channels, -32768, 32767)
+        out[out_index : out_index + 2] = int(sample).to_bytes(2, "little", signed=True)
+        out_index += 2
+    return bytes(out)
+
+
+def decode_pcm_sample(sample: bytes, sample_width: int) -> int:
+    if sample_width == 1:
+        return (sample[0] - 128) << 8
+    if sample_width == 2:
+        return int.from_bytes(sample, "little", signed=True)
+    if sample_width == 3:
+        extended = sample + (b"\xff" if sample[2] & 0x80 else b"\x00")
+        return int.from_bytes(extended, "little", signed=True) >> 8
+    if sample_width == 4:
+        return int.from_bytes(sample, "little", signed=True) >> 16
+    raise TtsExecutionError("unsupported PCM sample width")
+
+
+def clamp_int(value: int, low: int, high: int) -> int:
+    return max(low, min(high, value))
 
 
 def run_tts_command(command: str, text: str, voice: str, timeout_ms: int) -> tuple[tuple[TtsBeat, ...], dict[str, object], float]:
