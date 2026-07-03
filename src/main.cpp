@@ -17,6 +17,13 @@
 #include "persona/IntentEngine.hpp"
 #include "persona/StateMatrix.hpp"
 
+#if __has_include("FirmwareVoiceAssets.hpp")
+#include "FirmwareVoiceAssets.hpp"
+#define STACKCHAN_HAS_FIRMWARE_VOICE_ASSETS 1
+#else
+#define STACKCHAN_HAS_FIRMWARE_VOICE_ASSETS 0
+#endif
+
 #ifndef STACKCHAN_ENABLE_SPEAKER
 #define STACKCHAN_ENABLE_SPEAKER 0
 #endif
@@ -75,7 +82,6 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
   }
 
   bool start(const AudioOutPlaybackRequest& request, uint32_t promptStartMs, uint32_t durationMs) override {
-    (void)request;
     (void)promptStartMs;
     (void)durationMs;
     if (!ready_) {
@@ -86,6 +92,17 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
     phase_ = 0;
     phaseFifth_ = 0;
     noise_ = 0x1234abcd;
+#if STACKCHAN_HAS_FIRMWARE_VOICE_ASSETS
+    const firmware_voice::FirmwareVoiceAsset* asset = firmware_voice::find(request.wavPath);
+    if (asset != nullptr) {
+      wavActive_ = M5.Speaker.playWav(asset->data, asset->size, 1, kChannel, true);
+      M5.Speaker.setChannelVolume(kChannel, 255);
+    } else {
+      wavActive_ = false;
+    }
+#else
+    wavActive_ = false;
+#endif
     return true;
   }
 
@@ -95,6 +112,11 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
     }
     if (frame.clear || !frame.active) {
       stop();
+      return true;
+    }
+
+    if (wavActive_) {
+      M5.Speaker.setChannelVolume(kChannel, frame.ducked ? 84 : 255);
       return true;
     }
 
@@ -108,6 +130,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
     }
     M5.Speaker.stop(kChannel);
     active_ = false;
+    wavActive_ = false;
   }
 
   bool isReady() const override {
@@ -168,6 +191,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
 
   bool ready_ = false;
   bool active_ = false;
+  bool wavActive_ = false;
   uint32_t phase_ = 0;
   uint32_t phaseFifth_ = 0;
   uint32_t noise_ = 0x1234abcd;
