@@ -125,6 +125,11 @@ const __FlashStringHelper* eventTypeName(EventType type) {
   return F("unknown");
 }
 
+bool isAudioTelemetryEvent(EventType type) {
+  return type == EventType::SoundDirection || type == EventType::LoudNoise ||
+         type == EventType::UserSpeaking || type == EventType::SpeechEnded;
+}
+
 const __FlashStringHelper* speechVisemeName(SpeechViseme viseme) {
   switch (viseme) {
     case SpeechViseme::Ah:
@@ -328,6 +333,25 @@ void printBenchControl(const BenchControl& control) {
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
 
+void printAudioTelemetry(const RobotEvent& event, uint32_t frameMs) {
+  const uint32_t latencyMs = frameMs >= event.timestampMs ? frameMs - event.timestampMs : 0;
+  Serial.print(F("[audio] event="));
+  Serial.print(eventTypeName(event.type));
+  Serial.print(F(" detect_ms="));
+  Serial.print(event.timestampMs);
+  Serial.print(F(" frame_ms="));
+  Serial.print(frameMs);
+  Serial.print(F(" latency_ms="));
+  Serial.print(latencyMs);
+  Serial.print(F(" level="));
+  Serial.print(event.hasPayload ? event.z : event.strength, 2);
+  if (event.hasPayload) {
+    Serial.print(F(" azimuth_deg="));
+    Serial.print(event.x * 90.0f, 1);
+  }
+  Serial.println();
+}
+
 void publishSpeechInput(const BenchControl& control) {
   if (gSpeechQueue == nullptr || !control.hasSpeech) {
     return;
@@ -456,12 +480,18 @@ void IntentTask(void* pv) {
   (void)pv;
   TickType_t wake = xTaskGetTickCount();
   uint32_t lastSpeechSeq = 0;
+  RobotEvent pendingAudioEvent;
+  bool hasPendingAudioEvent = false;
 
   while (true) {
     BenchControl control;
     while (gSensors.poll(&control)) {
       if (control.hasEvent) {
         gIntent.applyEvent(control.event, control.mode);
+        if (isAudioTelemetryEvent(control.event.type)) {
+          pendingAudioEvent = control.event;
+          hasPendingAudioEvent = true;
+        }
       }
       if (control.wantsStatus) {
         printHeartbeat();
@@ -487,6 +517,10 @@ void IntentTask(void* pv) {
     }
 
     RobotFrame frame = gIntent.update(millis());
+    if (hasPendingAudioEvent) {
+      printAudioTelemetry(pendingAudioEvent, frame.timestampMs);
+      hasPendingAudioEvent = false;
+    }
     if (frame.speechSeq != 0 && frame.speechSeq != lastSpeechSeq && frame.speech.shouldSpeak()) {
       lastSpeechSeq = frame.speechSeq;
       printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);

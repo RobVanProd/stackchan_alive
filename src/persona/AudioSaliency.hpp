@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 
+#include "persona/EventBus.hpp"
+#include "persona/StateMatrix.hpp"
+
 namespace stackchan {
 
 struct AudioSaliencySample {
@@ -35,6 +38,39 @@ class AudioSaliency {
   bool speechActive_ = false;
 
   static float clamp01(float value);
+};
+
+struct AudioReflexEvent {
+  bool valid = false;
+  CharacterMode mode = CharacterMode::Idle;
+  RobotEvent event;
+  const char* command = "";
+};
+
+struct AudioReflexTelemetry {
+  uint32_t detectedAtMs = 0;
+  float level = 0.0f;
+  float azimuthDeg = 0.0f;
+  float noiseFloor = 0.02f;
+  float habituation = 0.0f;
+  bool speechActive = false;
+  bool loudNoise = false;
+};
+
+class AudioReflex {
+ public:
+  void reset(float noiseFloor = 0.02f);
+  uint8_t process(const AudioSaliencySample& sample, AudioReflexEvent* eventsOut, uint8_t maxEvents);
+  const AudioReflexTelemetry& telemetry() const {
+    return telemetry_;
+  }
+
+ private:
+  AudioSaliency saliency_;
+  AudioReflexTelemetry telemetry_;
+
+  static float strengthFromLevel(float level);
+  static float azimuthNorm(float azimuthDeg);
 };
 
 }  // namespace stackchan
