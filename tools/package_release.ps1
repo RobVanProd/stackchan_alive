@@ -94,6 +94,16 @@ $mediaFiles = @(
   "docs/media/stackchan_alive_speech_preview.gif"
 )
 
+$diagramFiles = @(
+  "docs/media/diagrams/01-system-overview.png",
+  "docs/media/diagrams/02-firmware-task-architecture.png",
+  "docs/media/diagrams/03-persona-engine.png",
+  "docs/media/diagrams/04-face-runtime.png",
+  "docs/media/diagrams/05-motion-servo-safety.png",
+  "docs/media/diagrams/06-brain-bridge-protocol.png",
+  "docs/media/diagrams/08-io-abstraction-builds.png"
+)
+
 $windowsPowerShell = Join-Path $env:SystemRoot "System32/WindowsPowerShell/v1.0/powershell.exe"
 if (-not (Test-Path -LiteralPath $windowsPowerShell)) {
   $windowsPowerShell = "powershell.exe"
@@ -108,6 +118,15 @@ foreach ($file in $mediaFiles) {
     throw "Missing preview artifact: $file"
   }
   Copy-Item -LiteralPath $file -Destination $mediaDir
+}
+
+$diagramMediaDir = Join-Path $mediaDir "diagrams"
+New-Item -ItemType Directory -Force -Path $diagramMediaDir | Out-Null
+foreach ($file in $diagramFiles) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing architecture diagram: $file"
+  }
+  Copy-Item -LiteralPath $file -Destination $diagramMediaDir
 }
 
 $faceArtifactFiles = @(
@@ -709,6 +728,13 @@ $manifest = [ordered]@{
     "media/stackchan_alive_preview.mp4",
     "media/stackchan_alive_preview.gif",
     "media/stackchan_alive_speech_preview.gif",
+    "media/diagrams/01-system-overview.png",
+    "media/diagrams/02-firmware-task-architecture.png",
+    "media/diagrams/03-persona-engine.png",
+    "media/diagrams/04-face-runtime.png",
+    "media/diagrams/05-motion-servo-safety.png",
+    "media/diagrams/06-brain-bridge-protocol.png",
+    "media/diagrams/08-io-abstraction-builds.png",
     "artifacts/face/phase_a_idle_10s.gif",
     "artifacts/face/phase_a_blink_filmstrip_50ms.png",
     "artifacts/face/phase_a_unlabeled_expression_sheet.png",
@@ -1119,6 +1145,7 @@ Engine readiness quick check:
 No-hardware simulation quick check:
 
 - Run ``tools/run_prearrival_sim_check.cmd`` to create ``output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`` with the combined virtual CoreS3/LAN/audio proxy status, nested LAN smoke report, and engine-readiness status.
+- After a real runner command is configured, run ``tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json`` to include nested ``model-benchmark/MODEL_BENCHMARK.md/json`` output and the ``model-benchmark-candidate`` gate in the same pre-arrival report.
 - Run ``tools/run_lan_smoke.cmd`` to create ``output/lan-smoke/latest/LAN_SMOKE.md/json`` with a real local TCP/WebSocket bridge handshake, text turn, fake mic upload, fake STT, fake TTS, PCM16 binary downlink check, and visible ``thinking-latency`` timing while delayed speech is still running.
 - Run ``tools/run_litert_lm_smoke.cmd`` to create ``output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json`` with a deterministic two-layer LiteRT-LM wrapper contract check.
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.

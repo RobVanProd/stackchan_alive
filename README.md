@@ -10,6 +10,8 @@ no face sprite sheets or character-image assets in the runtime.
 
 ![Stackchan: Alive preview](docs/media/stackchan_alive_preview.png)
 
+![Stackchan: Alive system overview](docs/media/diagrams/01-system-overview.png)
+
 ## Project Status
 
 Status as of July 2026: **device-ready prerelease scaffold, not consumer-ready**.
@@ -50,6 +52,13 @@ Stackchan: Alive is primarily a real-time character OS:
 
 Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`
 snapshots; new sensors and bridge code must not touch actuators directly.
+
+![Firmware task architecture](docs/media/diagrams/02-firmware-task-architecture.png)
+
+The persona engine turns sensor, bridge, and speech state into the `RobotFrame` snapshots
+consumed by face and motion tasks.
+
+![Persona engine](docs/media/diagrams/03-persona-engine.png)
 
 The initial procedural runtime design source is in
 [docs/stackchan_procedural_runtime_design.pdf](docs/stackchan_procedural_runtime_design.pdf).
@@ -104,6 +113,8 @@ wake-word or explicit activation, and bridge memory stays host-side and resettab
 or the bridge is unavailable, Stackchan must keep local expressions, safety behavior, packaged
 prompts, and offline commands working.
 
+![Brain bridge conversation flow](docs/media/diagrams/06-brain-bridge-protocol.png)
+
 See [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Quick Start
@@ -126,6 +137,8 @@ Run host/native tests and embedded compile checks:
 pio test -e native_logic
 pio test -e stackchan --without-uploading --without-testing
 ```
+
+![I/O abstraction build environments](docs/media/diagrams/08-io-abstraction-builds.png)
 
 Run the no-hardware preflight before flashing or packaging:
 
@@ -155,6 +168,9 @@ This is the quickest "does the simulated hardware path still work?" check before
 arrives. The report now includes nested `hardware-sim/`, `lan-smoke/`, and `engine-probe/`
 outputs. Unconfigured local model/STT/TTS commands are reported as setup work, not as a
 simulator or LAN smoke failure.
+Add `-RunModelBenchmark` after a real runner is configured when you want the same report to
+include `model-benchmark/MODEL_BENCHMARK.md/json` and the `summary.candidate_gate` brain
+selection status.
 
 Run the socket-level bridge proxy:
 
@@ -196,6 +212,10 @@ If native host tests cannot find `gcc` / `g++`, run:
 ```
 
 ## Preview Media
+
+The same procedural face runtime drives firmware rendering and host-side preview artifacts.
+
+![Procedural face runtime](docs/media/diagrams/04-face-runtime.png)
 
 Generate the hardware-free preview image, GIF, MP4, expression sheet, and speech preview:
 
@@ -257,6 +277,8 @@ operator instructions live in [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md) a
 - Servo calibration is a separate environment and requires explicit `-ConfirmServoRisk` in the release flash helper.
 - Motion commands flow through the existing motion-control queue and safety limits.
 - Do not promote a release as consumer-ready until the hardware evidence and production voice-source gates pass.
+
+![Motion system servo safety](docs/media/diagrams/05-motion-servo-safety.png)
 
 ## Use And Contributions
 

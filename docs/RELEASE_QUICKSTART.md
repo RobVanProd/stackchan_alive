@@ -24,6 +24,9 @@ It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json` plus neste
 `hardware-sim/`, `lan-smoke/`, and `engine-probe/` reports. A passing report means the
 virtual CoreS3/LAN/audio proxy and socket-level bridge proxy are still healthy; it does not
 replace device evidence.
+After a real model runner command is configured, add `-RunModelBenchmark` to include
+`model-benchmark/MODEL_BENCHMARK.md/json` and the `model-benchmark-candidate` gate in the
+same pre-arrival report.
 
 Run the socket-level LAN bridge smoke report:
 
