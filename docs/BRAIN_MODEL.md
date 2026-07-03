@@ -59,6 +59,14 @@ python bridge/character_harness.py --model-profile gemma4-e2b-gguf --model-comma
 
 The command receives the prompt on stdin and must print one JSON object. This lets the same harness test Ollama, llama.cpp wrappers, and a future LiteRT-LM wrapper without changing the bridge validator.
 
+Render a validated model-style response through the deterministic bridge frames:
+
+```powershell
+python bridge/reference_bridge.py --format bench --model-response '{"spoken_text":"Looking at you now.","mode":"attend","earcon":"confirm","emotion":{"arousal":0.2,"valence":0.1},"memory_write":{"user.name":"Rob"},"memory_forget":[]}'
+```
+
+This is the current P7 integration seam: the model speaks Character Lock JSON, the harness normalizes it, and the reference bridge renders the existing `stackchan.bridge.v1` device frames.
+
 ## Acceptance Gate
 
 A model target becomes the default bridge brain only when it passes:

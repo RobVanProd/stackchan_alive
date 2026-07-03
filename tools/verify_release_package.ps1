@@ -120,6 +120,7 @@ $requiredFiles = @(
   "voice_source_status.json",
   "docs/BRAIN_MODEL.md",
   "docs/CHARACTER_LOCK.md",
+  "docs/JOHNNY_ALIVE_PATHWAY.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
   "docs/PRIVACY.md",
@@ -673,7 +674,7 @@ foreach ($pattern in @("TranscriptPath", "PrintOnly", "ReadBackMs", "[bridge-rep
 }
 
 $bridgeReferenceText = Get-Content -LiteralPath (Join-PackagePath "bridge/reference_bridge.py") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "BridgeMemory", "BRIDGE_SYSTEM_PROMPT", "build_persona_prompt", "spoken_physical_context", "plan_turn", "remember_user_text", "load_bridge_memory", "save_bridge_memory", "reset_bridge_memory", "--memory-file", "--save-memory", "--reset-memory", "physical_context", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
+foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "BridgeMemory", "BRIDGE_SYSTEM_PROMPT", "build_persona_prompt", "spoken_physical_context", "plan_turn", "remember_user_text", "apply_character_memory", "turn_from_character_response", "validate_response", "load_bridge_memory", "save_bridge_memory", "reset_bridge_memory", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "physical_context", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
   if ($bridgeReferenceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/reference_bridge.py missing reference bridge logic: $pattern"
   }
@@ -694,14 +695,14 @@ foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_char
 }
 
 $bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
-foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_topics_and_physical_context", "test_plan_turn_couples_memory_to_response", "test_memory_store_round_trips_minimal_fields", "test_memory_store_reset_deletes_file", "bridge response happy 7")) {
+foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_topics_and_physical_context", "test_plan_turn_couples_memory_to_response", "test_memory_store_round_trips_minimal_fields", "test_memory_store_reset_deletes_file", "test_character_response_feeds_bridge_turn_and_memory", "test_malformed_character_response_still_renders_fallback", "bridge response happy 7")) {
   if ($bridgeReferenceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_reference_bridge.py missing reference bridge test coverage: $pattern"
   }
 }
 
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "character_harness.py", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "gemma4-e2b-litert-lm")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
@@ -904,6 +905,10 @@ if ($manifest.brainModelGuide -ne "docs/BRAIN_MODEL.md") {
 
 if ($manifest.characterLock -ne "docs/CHARACTER_LOCK.md") {
   throw "Manifest characterLock mismatch: $($manifest.characterLock)"
+}
+
+if ($manifest.johnnyAlivePathway -ne "docs/JOHNNY_ALIVE_PATHWAY.md") {
+  throw "Manifest johnnyAlivePathway mismatch: $($manifest.johnnyAlivePathway)"
 }
 
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
@@ -1208,14 +1213,21 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/character_harness.py", "tokens per second", "Do not fine-tune first")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/character_harness.py", "--model-response", "tokens per second", "Do not fine-tune first")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
 }
 
+$johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "LAN bridge loop", "Documentation Rules", "No consumer-ready promotion")) {
+  if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
+    throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
+  }
+}
+
 $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "offline matrix")) {
+foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "offline matrix")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }

@@ -27,6 +27,12 @@ python bridge/character_harness.py --print-suite
 python bridge/character_harness.py --model-profile gemma4-e2b-litert-lm
 ```
 
+Render a validated model-style response through the deterministic bridge:
+
+```powershell
+python bridge/reference_bridge.py --format bench --model-response '{"spoken_text":"Looking at you now.","mode":"attend","earcon":"confirm","emotion":{"arousal":0.2,"valence":0.1},"memory_write":{"user.name":"Rob"},"memory_forget":[]}'
+```
+
 Try the deterministic response planner with user text:
 
 ```powershell

@@ -16,6 +16,12 @@ Use `-PrintOnly` to inspect the deterministic transcript without opening a seria
 
 The matching host-side reference lives in `bridge/reference_bridge.py`. It emits the same frames as newline-delimited JSON (`--format jsonl`) or firmware bench commands (`--format bench`) so the bridge protocol, serial replay helper, and firmware parser can be tested from one deterministic transcript. It also exposes the first deterministic persona prompt and local memory context (`--format prompt`, `--user-text`) that the future LAN STT/LLM/TTS service will replace behind the same frame schema.
 
+For P7 model work, the host-side model does not send raw Character Lock JSON to the device.
+The bridge validates that JSON with `bridge/character_harness.py`, applies safe memory
+writes/forgets on the host, and then emits normalized `response_start` and `audio` frames.
+Use `bridge/reference_bridge.py --model-response ...` to exercise that seam without a local
+runner.
+
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.
@@ -50,6 +56,11 @@ Example response:
 {"type":"audio","seq":41,"env":0.58,"viseme":"ee","duration_ms":20}
 {"type":"response_end","seq":41}
 ```
+
+Accepted `intent` values match the `SpeechIntent`/Character Lock vocabulary:
+`boot`, `idle`, `attend`, `listen`, `think`, `speak`, `react`, `happy`, `concern`,
+`sleep`, `error`, and `safety`. Unknown values degrade to `speak` before any user-facing
+output.
 
 ## Runtime Rules
 

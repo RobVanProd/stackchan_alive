@@ -496,25 +496,30 @@ void copyBridgeLine(BenchControl* controlOut, const char* line) {
 
 const char* bridgeIntentToken(SpeechIntent intent) {
   switch (intent) {
+    case SpeechIntent::Boot:
+      return "boot";
+    case SpeechIntent::Idle:
+      return "idle";
+    case SpeechIntent::Attend:
+      return "attend";
+    case SpeechIntent::Listen:
+      return "listen";
+    case SpeechIntent::Think:
+      return "think";
+    case SpeechIntent::Speak:
+      return "speak";
+    case SpeechIntent::React:
+      return "react";
     case SpeechIntent::Happy:
       return "happy";
     case SpeechIntent::Concern:
       return "concern";
-    case SpeechIntent::Think:
-      return "think";
-    case SpeechIntent::Listen:
-      return "listen";
     case SpeechIntent::Sleep:
       return "sleep";
     case SpeechIntent::Safety:
       return "safety";
     case SpeechIntent::Error:
       return "error";
-    case SpeechIntent::Boot:
-    case SpeechIntent::Idle:
-    case SpeechIntent::Attend:
-    case SpeechIntent::Speak:
-    case SpeechIntent::React:
     case SpeechIntent::None:
       break;
   }
