@@ -17,6 +17,9 @@ from typing import Any
 from engine_probe import DEFAULT_TTS_VOICE, RUNNER_PROFILES, run_probe, write_outputs as write_engine_outputs
 from hardware_simulator import SIM_SCHEMA as HARDWARE_SIM_SCHEMA
 from hardware_simulator import write_outputs as write_hardware_outputs
+from lan_smoke import SCHEMA as LAN_SMOKE_SCHEMA
+from lan_smoke import build_report as build_lan_smoke_report
+from lan_smoke import write_outputs as write_lan_smoke_outputs
 
 SCHEMA = "stackchan.prearrival-sim-check.v1"
 DEFAULT_OUT_DIR = Path("output/prearrival-sim/latest")
@@ -96,13 +99,43 @@ def engine_profile_rows(engine_report: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def classify(hardware_summary: dict[str, Any], engine_report: dict[str, Any]) -> tuple[str, str, str]:
+def lan_smoke_highlights(lan_report: dict[str, Any]) -> dict[str, Any]:
+    scenarios = {scenario.get("scenario", ""): scenario for scenario in lan_report.get("scenarios", [])}
+    text_turn = scenarios.get("text-turn", {})
+    audio_loop = scenarios.get("audio-loop", {})
+    return {
+        "text_turn": {
+            "status": text_turn.get("status", "missing"),
+            "text_frames": text_turn.get("text_frames", 0),
+            "response_text": text_turn.get("response_text", ""),
+        },
+        "audio_loop": {
+            "status": audio_loop.get("status", "missing"),
+            "text_frames": audio_loop.get("text_frames", 0),
+            "binary_frames": audio_loop.get("binary_frames", 0),
+            "binary_bytes": audio_loop.get("binary_bytes", 0),
+            "response_text": audio_loop.get("response_text", ""),
+        },
+    }
+
+
+def classify(
+    hardware_summary: dict[str, Any],
+    lan_smoke_report: dict[str, Any],
+    engine_report: dict[str, Any],
+) -> tuple[str, str, str]:
     engine_status = engine_report.get("summary", {}).get("status", "unknown")
     if hardware_summary.get("status") != "pass":
         return (
             "fail",
             "hardware-sim-failed",
             "Inspect hardware-sim/HARDWARE_SIMULATION.md and fix the simulator regression before device arrival.",
+        )
+    if lan_smoke_report.get("status") != "pass":
+        return (
+            "fail",
+            "lan-smoke-failed",
+            "Inspect lan-smoke/LAN_SMOKE.md and fix the local WebSocket bridge regression before device arrival.",
         )
     if engine_status == "error":
         return (
@@ -139,10 +172,13 @@ def build_report(
     tts_voice: str = DEFAULT_TTS_VOICE,
 ) -> dict[str, Any]:
     hardware_dir = out_dir / "hardware-sim"
+    lan_smoke_dir = out_dir / "lan-smoke"
     engine_dir = out_dir / "engine-probe"
     selected_profiles = profiles or list(DEFAULT_PROFILES)
 
     hardware_summary = write_hardware_outputs(hardware_dir, DEFAULT_SCENARIOS)
+    lan_smoke_report = build_lan_smoke_report(lan_smoke_dir)
+    write_lan_smoke_outputs(lan_smoke_report, lan_smoke_dir)
     engine_report = run_probe(
         profiles=selected_profiles,
         run_model_smoke=run_model_smoke,
@@ -152,7 +188,7 @@ def build_report(
     )
     write_engine_outputs(engine_report, engine_dir)
 
-    status, readiness_class, next_action = classify(hardware_summary, engine_report)
+    status, readiness_class, next_action = classify(hardware_summary, lan_smoke_report, engine_report)
     engine_summary = engine_report.get("summary", {})
     report = {
         "schema": SCHEMA,
@@ -166,6 +202,13 @@ def build_report(
             "scenario_count": len(hardware_summary.get("scenarios", [])),
             "report_dir": str(hardware_dir),
             "highlights": scenario_highlights(hardware_summary),
+        },
+        "lan_bridge_smoke": {
+            "schema": lan_smoke_report.get("schema", LAN_SMOKE_SCHEMA),
+            "status": lan_smoke_report.get("status", "unknown"),
+            "scenario_count": len(lan_smoke_report.get("scenarios", [])),
+            "report_dir": str(lan_smoke_dir),
+            "highlights": lan_smoke_highlights(lan_smoke_report),
         },
         "engine_readiness": {
             "status": engine_summary.get("status", "unknown"),
@@ -182,6 +225,11 @@ def build_report(
                 "gate": "virtual-cores3-lan-audio-proxy",
                 "status": "pass" if hardware_summary.get("status") == "pass" else "fail",
                 "evidence": "hardware-sim/hardware_simulation.json and scenario serial-like logs",
+            },
+            {
+                "gate": "lan-websocket-smoke",
+                "status": "pass" if lan_smoke_report.get("status") == "pass" else "fail",
+                "evidence": "lan-smoke/lan_smoke.json and lan-smoke/LAN_SMOKE.md",
             },
             {
                 "gate": "local-engine-setup",
@@ -205,8 +253,10 @@ def build_report(
 
 def render_markdown(report: dict[str, Any]) -> str:
     hardware = report["hardware_simulation"]
+    lan_smoke = report["lan_bridge_smoke"]
     engine = report["engine_readiness"]
     highlights = hardware["highlights"]
+    lan_highlights = lan_smoke["highlights"]
     lines = [
         "# Stackchan Pre-Arrival Simulation Check",
         "",
@@ -238,6 +288,18 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"errors `{highlights['bridge_kill_recovery']['bridge_errors']}`, "
         f"recoveries `{highlights['bridge_kill_recovery']['bridge_recoveries']}`, "
         f"final state `{highlights['bridge_kill_recovery']['final_bridge_state']}`.",
+        "",
+        "## LAN WebSocket Smoke",
+        "",
+        f"- Status: `{lan_smoke['status']}`",
+        f"- Scenarios: `{lan_smoke['scenario_count']}`",
+        f"- Report directory: `{lan_smoke['report_dir']}`",
+        f"- Text turn: `{lan_highlights['text_turn']['status']}`, "
+        f"text frames `{lan_highlights['text_turn']['text_frames']}`.",
+        f"- Audio loop: `{lan_highlights['audio_loop']['status']}`, "
+        f"text frames `{lan_highlights['audio_loop']['text_frames']}`, "
+        f"binary frames `{lan_highlights['audio_loop']['binary_frames']}`, "
+        f"binary bytes `{lan_highlights['audio_loop']['binary_bytes']}`.",
         "",
         "## Engine Readiness",
         "",

@@ -28,8 +28,8 @@ only.
 Before hardware arrives, run `tools/run_prearrival_sim_check.cmd` from the repo or release
 package for a single proxy status report. Open
 `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md` for simulator pass/fail,
-engine-readiness status, and the next action. This report is only a proxy; keep collecting
-real serial logs, media, and audio once hardware is connected.
+LAN smoke pass/fail, engine-readiness status, and the next action. This report is only a
+proxy; keep collecting real serial logs, media, and audio once hardware is connected.
 
 When changing the P7 bridge service, also run `tools/run_lan_smoke.cmd`. It writes
 `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the real local WebSocket handshake,

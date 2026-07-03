@@ -64,8 +64,8 @@ evidence.
 
 From the repo or release package, `tools/run_prearrival_sim_check.cmd` is the quick
 pre-arrival proxy. It writes `PREARRIVAL_SIM_CHECK.md/json` with simulator status and
-engine-readiness status, making it clear what is already passing before the unit is on the
-bench.
+LAN smoke status plus engine-readiness status, making it clear what is already passing before
+the unit is on the bench.
 
 For the local bridge socket path specifically, `tools/run_lan_smoke.cmd` writes
 `LAN_SMOKE.md/json` with the real WebSocket handshake, deterministic text turn, fake mic
