@@ -30,6 +30,8 @@ ordering, conversation rehearsal, mouth timing, binary TTS audio stream accounti
 checks, offline command fallback, and a pre-arrival device-shell rehearsal. The conversation
 rehearsal runs virtual wake input through the LAN bridge output path, checks first-audio
 latency against the 2.5 s budget, verifies mouth frames, and returns to `Ready`. The
+`conversation-tts-downlink` scenario adds a fake WAV-producing local TTS command and proves the
+host path decodes it to PCM16 before binary downlink and virtual speaker handoff. The
 device-shell rehearsal covers virtual display ticks, label persistence, CoreS3
 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, PCM16 speaker handoff counters,
 mouth-display activity, and power-cycle recovery. The audio-downlink simulation also mirrors
@@ -176,7 +178,8 @@ output.
   stream metadata, keeps the current payload bytes in a bounded `BridgeClient` buffer exposed
   through `BridgeClientOutput`, feeds those bytes to the firmware downlink consumer, accounts
   chunks, and can play decoded PCM16 downlink chunks through the M5 speaker sink when speaker
-  hardware is enabled.
+  hardware is enabled. The no-hardware simulator includes a `conversation-tts-downlink`
+  scenario that exercises this path with a WAV-producing fake TTS command.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and
   packaged prompts still work. Open binary audio streams are discarded during recovery, so
   stale stream metadata cannot block the next bridge session. Runtime telemetry reports
