@@ -234,6 +234,8 @@ $requiredFiles = @(
   "tools/send_speech_mouth_demo.ps1",
   "tools/send_speak_all_intents_demo.cmd",
   "tools/send_speak_all_intents_demo.ps1",
+  "tools/send_bridge_replay_demo.cmd",
+  "tools/send_bridge_replay_demo.ps1",
   "tools/share_release.cmd",
   "tools/share_release.ps1",
   "tools/start_hardware_evidence.cmd",
@@ -645,6 +647,13 @@ $speakAllSenderText = Get-Content -LiteralPath (Join-PackagePath "tools/send_spe
 foreach ($pattern in @("PrintOnly", "ReadBackMs", "InterIntentDelayMs", "[speak-all] >", "speak `$intent", "boot", "safety", "Speak-all-intents demo complete")) {
   if ($speakAllSenderText -notmatch [regex]::Escape($pattern)) {
     throw "tools/send_speak_all_intents_demo.ps1 missing speak-all-intents streaming logic: $pattern"
+  }
+}
+
+$bridgeReplaySenderText = Get-Content -LiteralPath (Join-PackagePath "tools/send_bridge_replay_demo.ps1") -Raw
+foreach ($pattern in @("TranscriptPath", "PrintOnly", "ReadBackMs", "[bridge-replay] >", "[bridge-replay] <", "bridge hello bench", "bridge thinking 7", "bridge response happy 7", "bridge audio 0.72 ee", "bridge end 7", "Bridge replay demo complete")) {
+  if ($bridgeReplaySenderText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/send_bridge_replay_demo.ps1 missing bridge replay logic: $pattern"
   }
 }
 

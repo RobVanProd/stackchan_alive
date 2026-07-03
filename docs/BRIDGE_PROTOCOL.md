@@ -6,6 +6,14 @@ The bridge is the P7 boundary between the real-time firmware and a LAN companion
 
 Control frames are newline-delimited UTF-8 JSON. Audio upload/download frames will be binary WebSocket frames in a later PR; this first firmware slice only defines the typed control messages and a deterministic parser.
 
+For hardware bench replay before the LAN companion exists, run:
+
+```powershell
+.\tools\send_bridge_replay_demo.cmd -Port COM3
+```
+
+Use `-PrintOnly` to inspect the deterministic transcript without opening a serial port, or `-TranscriptPath path\to\bridge_transcript.txt` to replay a custom line-delimited command file. The helper writes `[bridge-replay]` send/readback lines and exercises `bridge hello`, `bridge listening`, `bridge thinking`, `bridge response`, streamed `bridge audio`, `bridge end`, and `status`.
+
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.

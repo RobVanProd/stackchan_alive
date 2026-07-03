@@ -107,6 +107,14 @@ To drive that same mouth path from an actual WAV envelope, generate a sidecar an
 
 The generated evidence packet also includes required `RUN_SPEECH_MOUTH_DEMO.cmd` evidence, which captures streamed envelope commands and any immediate device readback to `logs\speech_mouth_demo_serial.log`. Run `RUN_SPEAK_ALL_INTENTS.cmd` next to capture `logs\speak_all_intents_serial.log` with every packaged intent, earcon, and `[audio_out]` handoff.
 
+To exercise the P7 bridge bench route, run:
+
+```powershell
+.\tools\send_bridge_replay_demo.cmd -Port COM3
+```
+
+Inside a generated evidence packet, `RUN_BRIDGE_REPLAY.cmd` captures the same deterministic bridge transcript to `logs\bridge_replay_serial.log`. This checks `[bridge]`, `[speech]`, mouth-envelope, and runtime bridge counter telemetry without needing the LAN companion service yet.
+
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
 
 You can also toggle this at runtime from the serial monitor without reflashing:
