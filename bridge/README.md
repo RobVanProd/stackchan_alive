@@ -72,6 +72,16 @@ The probe writes `output/engine-probe/latest/engine_probe.json` and
 commands and reports `unconfigured` instead of failing when a new host has no engines
 installed yet.
 
+Smoke the LiteRT-LM mobile runner contract without a real model:
+
+```powershell
+python bridge/litert_lm_contract_smoke.py --out-dir output/litert-lm-smoke/latest --json
+```
+
+It writes `LITERT_LM_SMOKE.md/json` and proves `local_runner.py` can call
+`litert_lm_stackchan_wrapper.py`, which then calls `STACKCHAN_LITERT_LM_COMMAND` and returns
+validated Character Lock JSON.
+
 Render a validated model-style response through the deterministic bridge:
 
 ```powershell

@@ -52,6 +52,8 @@ Keep each item independently shippable and package-verified.
      milliseconds plus approximate tokens per second.
    - When no runner is configured, the wrapper emits deterministic valid Character Lock JSON
      so bridge demos and firmware bench replay remain repeatable.
+   - `bridge/litert_lm_contract_smoke.py` and `tools/run_litert_lm_smoke.cmd` verify the
+     two-layer mobile runner contract before a real LiteRT-LM engine is installed.
    - `bridge/engine_probe.py` checks local model, STT, and TTS command readiness and writes
      `engine_probe.json` plus `ENGINE_PROBE.md`. An `unconfigured` report is a setup finding,
      not model speed evidence.

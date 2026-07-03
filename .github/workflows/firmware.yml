@@ -22,6 +22,17 @@ jobs:
       - name: Run engine readiness probe
         run: python bridge/engine_probe.py --out-dir output/engine-probe/latest --json
 
+      - name: Run LiteRT-LM contract smoke
+        run: python bridge/litert_lm_contract_smoke.py --out-dir output/litert-lm-smoke/latest --json
+
+      - name: Upload LiteRT-LM contract smoke
+        uses: actions/upload-artifact@v7
+        with:
+          name: litert-lm-contract-smoke
+          path: |
+            output/litert-lm-smoke/latest/litert_lm_smoke.json
+            output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md
+
       - name: Upload engine readiness probe
         uses: actions/upload-artifact@v7
         with:

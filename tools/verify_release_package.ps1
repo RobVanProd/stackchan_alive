@@ -146,6 +146,8 @@ $requiredFiles = @(
   "bridge/test_local_runner.py",
   "bridge/engine_probe.py",
   "bridge/test_engine_probe.py",
+  "bridge/litert_lm_contract_smoke.py",
+  "bridge/test_litert_lm_contract_smoke.py",
   "bridge/model_benchmark.py",
   "bridge/test_model_benchmark.py",
   "bridge/stt_adapter.py",
@@ -264,6 +266,8 @@ $requiredFiles = @(
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
   "tools/run_engine_probe.ps1",
+  "tools/run_litert_lm_smoke.cmd",
+  "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
   "tools/run_prearrival_sim_check.cmd",
@@ -338,6 +342,8 @@ $requiredFiles = @(
   "provenance/bridge/test_local_runner.py",
   "provenance/bridge/engine_probe.py",
   "provenance/bridge/test_engine_probe.py",
+  "provenance/bridge/litert_lm_contract_smoke.py",
+  "provenance/bridge/test_litert_lm_contract_smoke.py",
   "provenance/bridge/model_benchmark.py",
   "provenance/bridge/test_model_benchmark.py",
   "provenance/bridge/stt_adapter.py",
@@ -359,7 +365,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -487,6 +493,13 @@ foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contr
   }
 }
 
+$firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
+foreach ($pattern in @("Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
+  if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
+  }
+}
+
 $publisherText = Get-Content -LiteralPath (Join-PackagePath "tools/publish_release.ps1") -Raw
 foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Export-ActionsStatusWithRetry", "Update-ReleaseArchive", "Clear-TransientPackageOutput", "output/voice_auditions/VOICE_AUDITION_INDEX.html", '$baseReleaseAssets', '$finalReleaseAssets', '@baseReleaseAssets', '@finalReleaseAssets', "Verify finalized release asset contract before upload", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "SHA256SUMS.txt", "--clobber", "PushCurrentBranch", "Assert-CurrentBranchPublishedAtCommit", "git ls-remote", "Firmware workflow can be observed", "Push the branch first or pass -PushCurrentBranch", "audit_published_release.ps1", "-UploadToRelease")) {
   if ($publisherText -notmatch [regex]::Escape($pattern)) {
@@ -530,7 +543,7 @@ foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows"
 }
 
 $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_preflight.ps1") -Raw
-foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Check LAN bridge smoke report", "run_lan_smoke.ps1", "Check pre-arrival simulation report", "run_prearrival_sim_check.ps1", "Assert-HardwareSimComparisonGate", "Check hardware simulation comparator", "SIM_HARDWARE_COMPARE.json", "stackchan.hardware-sim-compare.v1", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Speech mouth demo complete", "Speak-all-intents demo complete", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "completed only in a real evidence packet", "reduced_motion_on", "[face] reduced_motion=1", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
+foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Check LiteRT-LM contract smoke", "run_litert_lm_smoke.ps1", "Check LAN bridge smoke report", "run_lan_smoke.ps1", "Check pre-arrival simulation report", "run_prearrival_sim_check.ps1", "Assert-HardwareSimComparisonGate", "Check hardware simulation comparator", "SIM_HARDWARE_COMPARE.json", "stackchan.hardware-sim-compare.v1", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Speech mouth demo complete", "Speak-all-intents demo complete", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "completed only in a real evidence packet", "reduced_motion_on", "[face] reduced_motion=1", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
   }
@@ -778,6 +791,20 @@ foreach ($pattern in @("LiteRtLmStackchanWrapperTests", "test_extract_first_json
   }
 }
 
+$litertSmokeText = Get-Content -LiteralPath (Join-PackagePath "bridge/litert_lm_contract_smoke.py") -Raw
+foreach ($pattern in @("stackchan.litert-lm-smoke.v1", "build_report", "write_fake_litert_command", "PROFILE_COMMAND_ENV", "LITERT_COMMAND_ENV", "LITERT_LM_SMOKE.md", "litert_lm_smoke.json", "wrapper_contract")) {
+  if ($litertSmokeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/litert_lm_contract_smoke.py missing LiteRT-LM contract smoke support: $pattern"
+  }
+}
+
+$litertSmokeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_litert_lm_contract_smoke.py") -Raw
+foreach ($pattern in @("LiteRtLmContractSmokeTests", "test_build_report_exercises_mobile_runner_wrapper_contract", "test_write_outputs_creates_json_and_markdown", "PROFILE_COMMAND_ENV", "LITERT_COMMAND_ENV")) {
+  if ($litertSmokeTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_litert_lm_contract_smoke.py missing LiteRT-LM contract smoke test coverage: $pattern"
+  }
+}
+
 $localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
 foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_command_runner_measures_speed_and_validates_json", "gemma4-e2b-litert-lm")) {
   if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
@@ -943,6 +970,13 @@ $engineProbeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_e
 foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "engine_probe.py", "--out-dir", "output/engine-probe/latest", "--run-model-smoke", "Engine probe report")) {
   if ($engineProbeRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_engine_probe.ps1 missing engine probe runner logic: $pattern"
+  }
+}
+
+$litertSmokeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_litert_lm_smoke.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "litert_lm_contract_smoke.py", "--out-dir", "output/litert-lm-smoke/latest", "LiteRT-LM contract smoke report")) {
+  if ($litertSmokeRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_litert_lm_smoke.ps1 missing LiteRT-LM smoke runner logic: $pattern"
   }
 }
 
@@ -1423,7 +1457,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
@@ -1444,14 +1478,14 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "engine readiness probe", "LAN bridge smoke report", "LAN bridge loop", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "LAN bridge smoke report", "LAN bridge loop", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }

@@ -21,7 +21,7 @@ What is working in the repository now:
 - Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
-- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
+- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
@@ -169,11 +169,14 @@ Check local model/STT/TTS engine readiness:
 
 ```powershell
 .\tools\run_engine_probe.cmd -Json
+.\tools\run_litert_lm_smoke.cmd -Json
 ```
 
 The probe writes `output/engine-probe/latest/engine_probe.json` and
 `output/engine-probe/latest/ENGINE_PROBE.md`. It reports `unconfigured` until real model,
 STT, and TTS commands are installed or exported.
+The LiteRT smoke writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and checks
+the mobile runner wrapper contract without claiming real model speed.
 
 If native host tests cannot find `gcc` / `g++`, run:
 
