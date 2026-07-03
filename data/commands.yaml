@@ -1,0 +1,28 @@
+version: 1
+engine: esp-sr-multinet
+commands:
+  - id: 1
+    key: go_to_sleep
+    phrases:
+      - go to sleep
+      - sleep now
+  - id: 2
+    key: wake_up
+    phrases:
+      - wake up
+      - hey stackchan
+  - id: 3
+    key: look_at_me
+    phrases:
+      - look at me
+      - face me
+  - id: 4
+    key: stop_moving
+    phrases:
+      - stop moving
+      - hold still
+  - id: 5
+    key: how_do_you_feel
+    phrases:
+      - how do you feel
+      - status check

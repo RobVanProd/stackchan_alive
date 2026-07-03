@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "persona/CommandMap.hpp"
+
 #if defined(ARDUINO_ARCH_ESP32)
 #include <M5Unified.h>
 #endif
@@ -341,6 +343,28 @@ bool fillCircadian(char** tokens, uint8_t tokenCount, BenchControl* controlOut) 
   parsed.hasCircadian = true;
   parsed.hourOfDay = hour;
   parsed.command = "circadian_context";
+  *controlOut = parsed;
+  return true;
+}
+
+bool fillCommandEvent(char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchControl* controlOut) {
+  if (tokens == nullptr || tokenCount == 0 || tokens[0] == nullptr) {
+    return false;
+  }
+
+  const SpokenCommandId commandId = CommandMap::fromToken(tokens[0]);
+  const CommandMapResult action = CommandMap::map(commandId, nowMs);
+  if (!action.valid) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.mode = action.mode;
+  parsed.hasEvent = action.hasEvent;
+  parsed.event = action.event;
+  parsed.hasMotionEnable = action.hasMotionEnable;
+  parsed.motionEnabled = action.motionEnabled;
+  parsed.command = action.command;
   *controlOut = parsed;
   return true;
 }
@@ -742,6 +766,10 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "clock") == 0 || strcmp(first, "circadian") == 0) {
     return fillCircadian(ambientTokens, ambientTokenCount, controlOut);
   }
+  if (strcmp(first, "command") == 0 || strcmp(first, "cmd") == 0 ||
+      strcmp(first, "multinet") == 0 || strcmp(first, "phrase") == 0) {
+    return fillCommandEvent(ambientTokens, ambientTokenCount, nowMs, controlOut);
+  }
   if (strcmp(first, "sound") == 0 || strcmp(first, "audio") == 0 ||
       strcmp(first, "voice") == 0 || strcmp(first, "noise") == 0 ||
       strcmp(first, "loud") == 0 || strcmp(first, "bang") == 0 ||
@@ -834,6 +862,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
   Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
   Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
+  Serial.println(F("[control] help: command <1-5|go_to_sleep|wake_up|look_at_me|stop_moving|how_do_you_feel>"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));
   Serial.println(F("[control] help: pickup [strength]; shake [strength]; putdown; tilt <x> <y> <z>"));

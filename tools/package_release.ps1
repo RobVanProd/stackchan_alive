@@ -196,6 +196,7 @@ Copy-Item -LiteralPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -Destination $
 Copy-Item -LiteralPath "docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json" -Destination $docsDir
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/expressions.yaml" -Destination $dataDir
+Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
@@ -322,6 +323,9 @@ Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
+$dataProvenanceDir = Join-Path $provenanceDir "data"
+New-Item -ItemType Directory -Force -Path $dataProvenanceDir | Out-Null
+Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataProvenanceDir
 $audioFixtureProvenanceDir = Join-Path $provenanceDir "test/fixtures/audio"
 New-Item -ItemType Directory -Force -Path $audioFixtureProvenanceDir | Out-Null
 foreach ($fixture in @(
@@ -742,9 +746,12 @@ $manifest = [ordered]@{
     "provenance/requirements-preview.txt",
     "provenance/firmware.yml",
     "provenance/release.yml",
+    "provenance/data/commands.yaml",
     "provenance/src/main.cpp",
     "provenance/src/persona/SpeechPlanner.hpp",
     "provenance/src/persona/SpeechPlanner.cpp",
+    "provenance/src/persona/CommandMap.hpp",
+    "provenance/src/persona/CommandMap.cpp",
     "provenance/test/fixtures/audio/speech_right.wav",
     "provenance/test/fixtures/audio/speech_left.wav",
     "provenance/test/fixtures/audio/music_center.wav",
