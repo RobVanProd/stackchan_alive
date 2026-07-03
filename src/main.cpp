@@ -7,6 +7,7 @@
 
 #include "config/RobotConfig.hpp"
 #include "face/ProceduralFace.hpp"
+#include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
@@ -26,6 +27,7 @@ RobotConfig gConfig = defaultRobotConfig();
 StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
 SensorAdapter gSensors;
+CameraAdapter gCamera;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
@@ -130,6 +132,10 @@ const __FlashStringHelper* eventTypeName(EventType type) {
 bool isAudioTelemetryEvent(EventType type) {
   return type == EventType::SoundDirection || type == EventType::LoudNoise ||
          type == EventType::UserSpeaking || type == EventType::SpeechEnded;
+}
+
+CharacterMode visionModeForEvent(EventType type) {
+  return type == EventType::FaceLost ? CharacterMode::Idle : CharacterMode::Attend;
 }
 
 const __FlashStringHelper* speechVisemeName(SpeechViseme viseme) {
@@ -259,7 +265,16 @@ void printRuntimeStatus() {
   Serial.print(F(" speech_active="));
   Serial.print(speech.active ? 1 : 0);
   Serial.print(F(" speech_env="));
-  Serial.println(speech.envelope, 2);
+  Serial.print(speech.envelope, 2);
+  const CameraAdapterTelemetry& camera = gCamera.telemetry();
+  Serial.print(F(" camera_ready="));
+  Serial.print(camera.ready ? 1 : 0);
+  Serial.print(F(" camera_hw="));
+  Serial.print(camera.hardwareEnabled ? 1 : 0);
+  Serial.print(F(" camera_active="));
+  Serial.print(camera.active ? 1 : 0);
+  Serial.print(F(" camera_events="));
+  Serial.println(camera.eventsPublished);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -356,6 +371,27 @@ void printAudioTelemetry(const RobotEvent& event, uint32_t frameMs) {
   if (event.hasPayload) {
     Serial.print(F(" azimuth_deg="));
     Serial.print(event.x * 90.0f, 1);
+  }
+  Serial.println();
+}
+
+void printVisionTelemetry(const RobotEvent& event, uint32_t frameMs) {
+  const uint32_t latencyMs = frameMs >= event.timestampMs ? frameMs - event.timestampMs : 0;
+  Serial.print(F("[vision] event="));
+  Serial.print(eventTypeName(event.type));
+  Serial.print(F(" detect_ms="));
+  Serial.print(event.timestampMs);
+  Serial.print(F(" frame_ms="));
+  Serial.print(frameMs);
+  Serial.print(F(" latency_ms="));
+  Serial.print(latencyMs);
+  if (event.hasPayload) {
+    Serial.print(F(" x="));
+    Serial.print(event.x, 2);
+    Serial.print(F(" y="));
+    Serial.print(event.y, 2);
+    Serial.print(F(" size="));
+    Serial.print(event.z, 2);
   }
   Serial.println();
 }
@@ -492,6 +528,12 @@ void IntentTask(void* pv) {
   bool hasPendingAudioEvent = false;
 
   while (true) {
+    RobotEvent cameraEvent;
+    while (gCamera.poll(&cameraEvent)) {
+      gIntent.applyEvent(cameraEvent, visionModeForEvent(cameraEvent.type));
+      printVisionTelemetry(cameraEvent, millis());
+    }
+
     BenchControl control;
     while (gSensors.poll(&control)) {
       if (control.hasEvent) {
@@ -564,6 +606,7 @@ void setup() {
   }
 
   gSensors.begin();
+  gCamera.begin();
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();

@@ -754,6 +754,8 @@ $manifest = [ordered]@{
     "provenance/src/persona/CommandMap.cpp",
     "provenance/src/persona/GazeTracker.hpp",
     "provenance/src/persona/GazeTracker.cpp",
+    "provenance/src/io/CameraAdapter.hpp",
+    "provenance/src/io/CameraAdapter.cpp",
     "provenance/test/fixtures/audio/speech_right.wav",
     "provenance/test/fixtures/audio/speech_left.wav",
     "provenance/test/fixtures/audio/music_center.wav",

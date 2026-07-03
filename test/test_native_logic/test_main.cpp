@@ -9,6 +9,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
+#include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
@@ -959,6 +960,40 @@ void test_intent_engine_tracks_face_position_payload() {
   TEST_ASSERT_LESS_THAN_FLOAT(before.motion.yawDeg - 3.0f, tracked.motion.yawDeg);
 }
 
+void test_camera_adapter_publishes_clamped_face_detection() {
+  CameraAdapter camera;
+  TEST_ASSERT_TRUE(camera.begin());
+  TEST_ASSERT_TRUE(camera.telemetry().ready);
+  TEST_ASSERT_FALSE(camera.telemetry().hardwareEnabled);
+  TEST_ASSERT_FALSE(camera.telemetry().active);
+
+  camera.submitFace(1.4f, -1.2f, 1.8f, 501);
+
+  RobotEvent event;
+  TEST_ASSERT_TRUE(camera.poll(&event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(event.type));
+  TEST_ASSERT_TRUE(event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -1.0f, event.y);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, event.z);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().eventsPublished);
+  TEST_ASSERT_EQUAL_UINT32(501, camera.telemetry().lastEventMs);
+  TEST_ASSERT_FALSE(camera.poll(&event));
+}
+
+void test_camera_adapter_publishes_face_lost_event() {
+  CameraAdapter camera;
+  TEST_ASSERT_TRUE(camera.begin());
+  camera.submitFaceLost(700, 1.5f);
+
+  RobotEvent event;
+  TEST_ASSERT_TRUE(camera.poll(&event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceLost), static_cast<int>(event.type));
+  TEST_ASSERT_FALSE(event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, event.strength);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().eventsPublished);
+}
+
 void test_command_map_maps_multinet_phrase_ids_to_existing_actions() {
   const CommandMapResult sleep = CommandMap::mapPhraseId(1, 6100);
   TEST_ASSERT_TRUE(sleep.valid);
@@ -1666,6 +1701,8 @@ int main() {
   RUN_TEST(test_gaze_tracker_reduced_motion_dampens_face_tracking);
   RUN_TEST(test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction);
   RUN_TEST(test_intent_engine_tracks_face_position_payload);
+  RUN_TEST(test_camera_adapter_publishes_clamped_face_detection);
+  RUN_TEST(test_camera_adapter_publishes_face_lost_event);
   RUN_TEST(test_command_map_maps_multinet_phrase_ids_to_existing_actions);
   RUN_TEST(test_command_map_accepts_bench_tokens_matching_yaml_keys);
   RUN_TEST(test_intent_engine_prioritizes_explicit_command_speech_cue);
