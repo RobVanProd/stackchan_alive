@@ -1686,6 +1686,7 @@ function Assert-ArrivalPacketScaffoldGate {
       "RUN_SERVO_CALIBRATION.cmd",
       "RUN_SOAK_MONITOR.cmd",
       "RUN_PACKAGE_VERIFY.cmd",
+      "RUN_SIM_HARDWARE_COMPARE.cmd",
       "RUN_PROGRESS_CHECK.cmd",
       "RUN_ROLLOUT_STATUS.cmd",
       "RUN_ADD_MEDIA.cmd",
@@ -1723,6 +1724,15 @@ function Assert-ArrivalPacketScaffoldGate {
     if ([string]$metadata.simulationBaseline.report -ne "simulation/hardware-sim/latest/hardware_simulation.json") {
       throw "Arrival packet simulation baseline report mismatch: $($metadata.simulationBaseline.report)"
     }
+    if ([string]$metadata.simulationBaseline.compareCommand -ne "RUN_SIM_HARDWARE_COMPARE.cmd") {
+      throw "Arrival packet simulation compare command mismatch: $($metadata.simulationBaseline.compareCommand)"
+    }
+    if ([string]$metadata.simulationBaseline.compareReport -ne "SIM_HARDWARE_COMPARE.json") {
+      throw "Arrival packet simulation compare report mismatch: $($metadata.simulationBaseline.compareReport)"
+    }
+    if ([string]$metadata.simulationBaseline.compareSummary -ne "SIM_HARDWARE_COMPARE.md") {
+      throw "Arrival packet simulation compare summary mismatch: $($metadata.simulationBaseline.compareSummary)"
+    }
     if ([string]$metadata.simulationBaseline.evidenceRole -notmatch "comparison baseline") {
       throw "Arrival packet simulation baseline role should stay non-evidence: $($metadata.simulationBaseline.evidenceRole)"
     }
@@ -1748,12 +1758,16 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $readme "RUN_PLAY_LEAD_VOICE.cmd"
     Assert-TextContains $readme "real-device speaker recording"
     Assert-TextContains $readme "BENCH_STATUS.md"
+    Assert-TextContains $readme "RUN_SIM_HARDWARE_COMPARE.cmd"
+    Assert-TextContains $readme "SIM_HARDWARE_COMPARE.md"
     Assert-TextContains $readme "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json"
 
     $nextSteps = Get-Content -LiteralPath (Join-Path $evidenceRoot "NEXT_STEPS.md") -Raw
     Assert-TextContains $nextSteps "RUN_PACKAGE_VERIFY.cmd"
     Assert-TextContains $nextSteps "RUN_HARDWARE_SIM_BASELINE.cmd"
     Assert-TextContains $nextSteps "pre-arrival rehearsal only"
+    Assert-TextContains $nextSteps "RUN_SIM_HARDWARE_COMPARE.cmd"
+    Assert-TextContains $nextSteps "SIM_HARDWARE_COMPARE.md/json"
     Assert-TextContains $nextSteps "RUN_SPEAK_ALL_INTENTS.cmd"
     Assert-TextContains $nextSteps "BENCH_STATUS.md"
     Assert-TextContains $nextSteps "RUN_CONSUMER_PROMOTION_CHECK.cmd"
@@ -1875,6 +1889,93 @@ function Assert-ArrivalPacketScaffoldGate {
     }
     Remove-Item -LiteralPath $resolvedEvidence -Recurse -Force
     Restore-TemporaryPreflightReport
+  }
+}
+
+function Assert-HardwareSimComparisonGate {
+  $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-sim-compare-gate-" + [System.Guid]::NewGuid().ToString("N"))
+  $logsDir = Join-Path $fixtureRoot "logs"
+  $simDir = Join-Path $fixtureRoot "simulation/hardware-sim/latest"
+
+  try {
+    New-Item -ItemType Directory -Force -Path $logsDir, $simDir | Out-Null
+
+    $simResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "run_hardware_simulation.ps1"),
+      "-OutputDir", $simDir,
+      "-Json"
+    )
+    if ($simResult.ExitCode -ne 0) {
+      throw "Hardware simulation comparator fixture could not generate a baseline:$([Environment]::NewLine)$($simResult.Text)"
+    }
+
+    @(
+      "[boot] stackchan_alive mode=display_only serial=v1",
+      "[display] M5 display renderer ready canvas=double-buffered",
+      "[display] frame_ms_avg=12.40 frame_ms_max=15.80 fps_avg=80.6 fps_window=30.0 frame_budget_us=33333 slow_frames=0",
+      "[face] mode=1 blink_count=3 saccade_count=4 blink_open=1.00 breath_y=0.42 gaze_x=0.08 gaze_y=-0.03 gesture_active=0 speech_active=0 speech_env=0.00",
+      "[system] heap_free=243000 heap_min=239000 stack_loop_hwm=7200 stack_motion_hwm=3100 stack_face_hwm=2800 stack_intent_hwm=3300"
+    ) | Set-Content -Path (Join-Path $logsDir "display_only_serial.log") -Encoding UTF8
+
+    @(
+      "[demo] > mode speak 1.0",
+      "[demo] > speech 0.620 ah 100",
+      "[demo] < [control] command=speech_env speech_env=0.62 viseme=ah duration_ms=100 at_ms=3100",
+      "[demo] > speech clear",
+      "[demo] Speech mouth demo complete."
+    ) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
+
+    Write-SyntheticSpeakAllIntentsLog -Path (Join-Path $logsDir "speak_all_intents_serial.log")
+
+    @(
+      "[bridge-replay] > bridge hello bench",
+      "[bridge-replay] < [bridge] type=session_ready state=ready seq=0 at_ms=100 session=bench",
+      "[bridge-replay] > bridge response happy 7 hello i am stackchan and i am awake",
+      "[bridge-replay] < [bridge] type=response_start state=responding seq=7 at_ms=160 event=response_started intent=happy text=`"hello i am stackchan and i am awake`"",
+      "[bridge-replay] > bridge audio 0.72 ee 80",
+      "[bridge-replay] < [bridge] type=audio state=responding seq=7 at_ms=220 env=0.72 viseme=ee duration_ms=80 final=0",
+      "[bridge-replay] > bridge end 7",
+      "[bridge-replay] < [bridge] type=response_end state=ready seq=7 at_ms=300 event=response_ended",
+      "[bridge-replay] > status",
+      "[bridge-replay] < [runtime] motion_enabled=1 demo_enabled=0 reduced_motion=0 speech_active=0 speech_env=0.00 bridge_ready=1 bridge_state=ready bridge_messages=8 bridge_outputs=8 bridge_parse_errors=0 bridge_downlink_errors=0 bridge_downlink_playback_errors=0 bridge_timeouts=0",
+      "[bridge-replay] Bridge replay demo complete."
+    ) | Set-Content -Path (Join-Path $logsDir "bridge_replay_serial.log") -Encoding UTF8
+
+    $compareResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "compare_hardware_sim_baseline.ps1"),
+      "-EvidenceRoot", $fixtureRoot
+    )
+    if ($compareResult.ExitCode -ne 0) {
+      throw "Hardware simulation comparator fixture failed with exit $($compareResult.ExitCode):$([Environment]::NewLine)$($compareResult.Text)"
+    }
+    Assert-TextContains $compareResult.Text "Status: pass"
+
+    foreach ($relativePath in @("SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json")) {
+      $path = Join-Path $fixtureRoot $relativePath
+      if (-not (Test-Path -LiteralPath $path)) {
+        throw "Hardware simulation comparator did not write: $relativePath"
+      }
+      if ((Get-Item -LiteralPath $path).Length -lt 100) {
+        throw "Hardware simulation comparator wrote a suspiciously small report: $relativePath"
+      }
+    }
+
+    $report = Get-Content -LiteralPath (Join-Path $fixtureRoot "SIM_HARDWARE_COMPARE.json") -Raw | ConvertFrom-Json
+    if ([string]$report.schema -ne "stackchan.hardware-sim-compare.v1") {
+      throw "Hardware simulation comparator schema mismatch: $($report.schema)"
+    }
+    if ([string]$report.status -ne "pass") {
+      throw "Hardware simulation comparator expected pass, got $($report.status)"
+    }
+    if ([int]$report.failCount -ne 0 -or [int]$report.pendingCount -ne 0) {
+      throw "Hardware simulation comparator should have no failed or pending checks in the fixture."
+    }
+
+    $global:LASTEXITCODE = 0
+  } finally {
+    if (Test-Path -LiteralPath $fixtureRoot) {
+      Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    }
   }
 }
 
@@ -2001,6 +2102,10 @@ Invoke-Step "Check speech envelope sidecar tooling" {
 
 Invoke-Step "Check hardware simulation proxy" {
   & (Join-Path $PSScriptRoot "run_hardware_simulation.ps1") -OutputDir (Join-Path $ReportDir "hardware-sim")
+}
+
+Invoke-Step "Check hardware simulation comparator" {
+  Assert-HardwareSimComparisonGate
 }
 
 Invoke-Step "Check preview media quality" {

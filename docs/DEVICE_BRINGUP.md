@@ -13,13 +13,17 @@ Use this when the Stack-chan hardware arrives.
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
-It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
+It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_SIM_HARDWARE_COMPARE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_BRIDGE_REPLAY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 Open `BENCH_STATUS.md` first for the current next action, then `NEXT_STEPS.md` for the full bench run order and hard stops before servo motion, audio review, and consumer promotion.
 
 Before the physical unit is connected, `RUN_HARDWARE_SIM_BASELINE.cmd` saves the virtual
 Stackchan proxy report under `simulation/hardware-sim/latest/` and
 `logs/hardware_simulation_baseline.log`. This is a comparison baseline only; it does not
 replace display, mic, speaker, servo, soak, or promotion evidence.
+After the display, speech-mouth, speak-all, and bridge replay logs exist, run
+`RUN_SIM_HARDWARE_COMPARE.cmd` to write `SIM_HARDWARE_COMPARE.md/json`. This compares real
+serial markers and bridge counters against the no-hardware baseline as an advisory diagnostic
+only.
 
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
@@ -118,7 +122,7 @@ To exercise the P7 bridge bench route, run:
 .\tools\send_bridge_replay_demo.cmd -Port COM3
 ```
 
-Inside a generated evidence packet, `RUN_BRIDGE_REPLAY.cmd` captures the same deterministic bridge transcript to `logs\bridge_replay_serial.log`. This checks `[bridge]`, `[speech]`, mouth-envelope, and runtime bridge counter telemetry without needing the LAN companion service yet.
+Inside a generated evidence packet, `RUN_BRIDGE_REPLAY.cmd` captures the same deterministic bridge transcript to `logs\bridge_replay_serial.log`. This checks `[bridge]`, `[speech]`, mouth-envelope, and runtime bridge counter telemetry without needing the LAN companion service yet. Run `RUN_SIM_HARDWARE_COMPARE.cmd` after this to create the advisory `SIM_HARDWARE_COMPARE.md/json` comparison against the pre-arrival virtual hardware baseline.
 
 For review streams or long bench recordings where the face should be calmer in the background, set `STACKCHAN_REDUCED_MOTION=1` in the active PlatformIO environment. The firmware logs `[face] reduced_motion=1` at startup and keeps blink/saccade/breathing behavior active with reduced amplitude.
 

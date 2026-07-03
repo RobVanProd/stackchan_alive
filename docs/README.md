@@ -1,7 +1,7 @@
 # Docs
 
 - `DEVICE_BRINGUP.md`: hardware-arrival flashing, evidence, and safety flow.
-- `HARDWARE_SIMULATION.md`: no-hardware virtual Stackchan proxy for bridge protocol checks.
+- `HARDWARE_SIMULATION.md`: no-hardware virtual Stackchan proxy plus sim-vs-hardware comparison workflow.
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
 - `JOHNNY_ALIVE_PATHWAY.md`: current roadmap status and next implementation path from the Johnny Alive source plan.

@@ -30,6 +30,8 @@ If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd
 .\RUN_DISPLAY_ONLY.cmd
 .\RUN_SPEECH_MOUTH_DEMO.cmd
 .\RUN_SPEAK_ALL_INTENTS.cmd
+.\RUN_BRIDGE_REPLAY.cmd
+.\RUN_SIM_HARDWARE_COMPARE.cmd
 ```
 
 Expected evidence:
@@ -40,6 +42,8 @@ Expected evidence:
 - display-only serial log
 - `logs/speech_mouth_demo_serial.log` from the required speech-mouth demo helper
 - `logs/speak_all_intents_serial.log` from the required packaged speech-intent helper
+- `logs/bridge_replay_serial.log` from the deterministic P7 bridge replay helper
+- `SIM_HARDWARE_COMPARE.md/json` from the advisory sim-vs-real serial marker comparison
 - photo or video showing the procedural face
 - observation note that servos stayed in dry-run mode
 - `AUDIO_REVIEW.md` started with the sample you plan to play later
@@ -75,7 +79,12 @@ Optional speech-mouth sidecar check from the extracted release folder:
 Evidence packets created from a verified package wire `RUN_SPEECH_MOUTH_DEMO.cmd` to the copied lead audition automatically. It generates `speech/lead_voice.speech_envelope.json`, verifies it, then streams that envelope so the mouth check follows the selected RVC review voice instead of the built-in fallback pattern.
 Run `RUN_SPEAK_ALL_INTENTS.cmd` after that helper while display-only firmware is still connected. It sends `speak <intent>` for every packaged speech intent and captures prompt, earcon, and `[audio_out]` handoff telemetry in `logs/speak_all_intents_serial.log`.
 
-Optional P7 check: run `RUN_BRIDGE_REPLAY.cmd` while display-only firmware is connected. It sends a deterministic bridge transcript and captures `[bridge-replay]`, `[bridge]`, `[speech]`, mouth-envelope, and runtime bridge counter telemetry in `logs/bridge_replay_serial.log`.
+P7 bridge comparison: run `RUN_BRIDGE_REPLAY.cmd` while display-only firmware is connected.
+It sends a deterministic bridge transcript and captures `[bridge-replay]`, `[bridge]`,
+`[speech]`, mouth-envelope, and runtime bridge counter telemetry in
+`logs/bridge_replay_serial.log`. Then run `RUN_SIM_HARDWARE_COMPARE.cmd` to write
+`SIM_HARDWARE_COMPARE.md/json`. Pending means more logs are needed; pass means the captured
+serial markers match the no-hardware proxy, not that hardware evidence gates are complete.
 
 ## 3. Supervised Servo Calibration
 
