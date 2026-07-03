@@ -31,6 +31,11 @@ package for a single proxy status report. Open
 engine-readiness status, and the next action. This report is only a proxy; keep collecting
 real serial logs, media, and audio once hardware is connected.
 
+When changing the P7 bridge service, also run `tools/run_lan_smoke.cmd`. It writes
+`output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the real local WebSocket handshake,
+deterministic text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink path
+without hardware.
+
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
 ```powershell

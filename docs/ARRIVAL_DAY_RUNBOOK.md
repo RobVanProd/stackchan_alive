@@ -67,6 +67,10 @@ pre-arrival proxy. It writes `PREARRIVAL_SIM_CHECK.md/json` with simulator statu
 engine-readiness status, making it clear what is already passing before the unit is on the
 bench.
 
+For the local bridge socket path specifically, `tools/run_lan_smoke.cmd` writes
+`LAN_SMOKE.md/json` with the real WebSocket handshake, deterministic text turn, fake mic
+upload, fake STT/TTS, and PCM16 binary downlink check.
+
 Import the display photo or video into the packet:
 
 ```powershell

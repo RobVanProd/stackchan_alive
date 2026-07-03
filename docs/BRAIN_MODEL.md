@@ -194,6 +194,12 @@ validation, and can hand accepted decoded PCM16 chunks to the M5 speaker sink wh
 exercised. Selecting and measuring the real local STT/TTS engines and collecting real-device
 speaker evidence remain separate follow-up gates.
 
+Run `bridge/lan_smoke.py` or `tools/run_lan_smoke.cmd` for the maintained socket-level
+proxy. It writes `LAN_SMOKE.md/json`, uses deterministic fake engines, and verifies the real
+local WebSocket handshake, text response path, fake mic PCM upload, fake STT/TTS bridge
+round trip, mouth frames, and PCM16 binary downlink sequence. This closes the no-hardware
+LAN path regression gate; it is still not speed evidence for a real Gemma/STT/TTS setup.
+
 The no-hardware simulator includes `conversation-audio-loop`, which runs the same LAN seam
 with fake mic PCM upload, fake local STT, the Character Lock/model response path, fake WAV
 TTS, PCM16 downlink, and virtual speaker counters. This is the current proxy for end-to-end

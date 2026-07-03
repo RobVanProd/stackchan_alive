@@ -72,6 +72,17 @@ binary PCM frames after `utterance_start`, runs the same local runner/validator/
 `utterance_end`, and streams normalized bridge JSON text frames back to the client. Audio-only
 turns can use a configured local STT command:
 
+The maintained socket-level smoke check is `tools/run_lan_smoke.cmd`:
+
+```powershell
+.\tools\run_lan_smoke.cmd
+```
+
+It writes `output/lan-smoke/latest/LAN_SMOKE.md/json`, starts a temporary local WebSocket
+server, performs the real handshake, validates the text-turn frame order, then sends fake mic
+PCM through fake STT/TTS and checks `audio_stream_start`, binary chunks, and
+`audio_stream_end` before `response_end`.
+
 ```powershell
 $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
 python bridge/lan_service.py --stt-command "python path\to\local_stt.py"
