@@ -1,36 +1,38 @@
 #include "persona/SpeechPlanner.hpp"
 
+#include "PersonaSpeechLines.hpp"
+
 namespace stackchan {
+
+namespace {
+
+SpeechCue cue(SpeechIntent intent) {
+  return generated_persona::makeSpeechCue(intent);
+}
+
+}  // namespace
 
 SpeechCue SpeechPlanner::plan(CharacterMode mode, const EmotionalProfile& emotion) const {
   switch (mode) {
     case CharacterMode::Boot:
-      return {SpeechIntent::Boot, "Hello. I am Stackchan, and I am awake.", 220,
-              SpeechEarcon::Wake, 0};
+      return cue(SpeechIntent::Boot);
     case CharacterMode::Attend:
     case CharacterMode::Listen:
-      return {SpeechIntent::Listen, "I am listening with maximum attention.", 160,
-              SpeechEarcon::Confirm, 0};
+      return cue(SpeechIntent::Listen);
     case CharacterMode::Think:
-      return {SpeechIntent::Think, "Input received. I am thinking now.", 150,
-              SpeechEarcon::Think, 80};
+      return cue(SpeechIntent::Think);
     case CharacterMode::Speak:
-      return {SpeechIntent::Speak, "That is new information. I like new information.", 150,
-              SpeechEarcon::Confirm, 0};
+      return cue(SpeechIntent::Speak);
     case CharacterMode::Sleep:
-      return {SpeechIntent::Sleep, "Systems quiet. I will keep a small light on.", 200,
-              SpeechEarcon::Sleep, 120};
+      return cue(SpeechIntent::Sleep);
     case CharacterMode::Error:
       if (emotion.focus > 0.70f) {
-        return {SpeechIntent::Safety, "Servo test is not armed. Safety first.", 250,
-                SpeechEarcon::Safety, 0};
+        return cue(SpeechIntent::Safety);
       }
-      return {SpeechIntent::Error, "Small problem found. I can help fix it.", 240,
-              SpeechEarcon::Error, 0};
+      return cue(SpeechIntent::Error);
     case CharacterMode::React:
       if (emotion.valence >= 0.35f) {
-        return {SpeechIntent::React, "Display is ready. Face systems online.", 120,
-                SpeechEarcon::Confirm, 0};
+        return cue(SpeechIntent::React);
       }
       break;
     case CharacterMode::Idle:
@@ -38,15 +40,15 @@ SpeechCue SpeechPlanner::plan(CharacterMode mode, const EmotionalProfile& emotio
   }
 
   if (emotion.valence >= 0.65f) {
-    return {SpeechIntent::Happy, "Happy signal detected.", 100, SpeechEarcon::Happy, 40};
+    return cue(SpeechIntent::Happy);
   }
 
   if (emotion.valence <= -0.45f) {
-    return {SpeechIntent::Concern, "I need a little more data.", 100, SpeechEarcon::Concern, 60};
+    return cue(SpeechIntent::Concern);
   }
 
   if (mode == CharacterMode::Idle && emotion.arousal > 0.55f) {
-    return {SpeechIntent::Idle, "Curiosity level rising.", 50, SpeechEarcon::Think, 80};
+    return cue(SpeechIntent::Idle);
   }
 
   return {};
