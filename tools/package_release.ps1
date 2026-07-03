@@ -1074,7 +1074,7 @@ Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.j
 No-hardware simulation quick check:
 
 - Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
-- The simulator proves bridge frame ordering, LAN text turns, conversation timing, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
+- The simulator proves bridge frame ordering, LAN text turns, conversation timing, speech-envelope handoff, binary TTS audio stream accounting, virtual CoreS3 input/display/speaker counters, offline command fallback, power-cycle recovery, bridge-kill recovery, and timeout failure behavior. It does not replace real hardware evidence.
 
 Voice audition quick check:
 

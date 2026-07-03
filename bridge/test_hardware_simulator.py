@@ -108,6 +108,26 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertTrue(any("intent=error" in line for line in hardware.serial_lines))
         self.assertTrue(any("bridge_closed" in line for line in hardware.serial_lines))
 
+    def test_offline_command_fallback_uses_packaged_prompts_without_bridge(self):
+        hardware = run_simulation("offline-command-fallback")
+        report = hardware.report("offline-command-fallback")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertFalse(telemetry["bridge_ready"])
+        self.assertEqual("Disconnected", telemetry["bridge_state"])
+        self.assertEqual("idle", telemetry["face_mode"])
+        self.assertEqual(4, telemetry["packaged_prompt_requests"])
+        self.assertEqual(5, telemetry["control_events"])
+        self.assertEqual(1, telemetry["core_inputs"])
+        self.assertGreaterEqual(telemetry["speech_frames"], 4)
+        self.assertGreater(telemetry["mouth_display_frames"], 0)
+        self.assertEqual(0, telemetry["parse_errors"])
+        self.assertEqual(0, telemetry["timeouts"])
+        for mode in ("listen", "attend", "happy", "sleep", "idle"):
+            self.assertIn(mode, telemetry["modes_seen"])
+        self.assertTrue(any("source=packaged_prompt" in line for line in hardware.serial_lines))
+
     def test_binary_without_audio_stream_fails(self):
         hardware = VirtualStackchanHardware()
         hardware.process(b"abc", at_ms=0)
