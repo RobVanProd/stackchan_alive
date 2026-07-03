@@ -11,6 +11,7 @@
 #include "face/FaceAnimator.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
+#include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
@@ -1680,6 +1681,76 @@ void test_earcon_synth_reports_truncation_without_allocation() {
   TEST_ASSERT_GREATER_THAN_INT16(0, result.peakAbs);
 }
 
+void test_speech_adapter_prepares_packaged_prompt_and_earcon() {
+  SpeechAdapter adapter;
+  TEST_ASSERT_TRUE(adapter.begin(false));
+
+  SpeechCue cue;
+  cue.intent = SpeechIntent::Boot;
+  cue.text = "Hello. I am Stackchan, and I am awake.";
+  cue.priority = 220;
+  cue.earcon = SpeechEarcon::Wake;
+  cue.earconDelayMs = 40;
+
+  EmotionalProfile emotion;
+  emotion.arousal = 0.45f;
+  TEST_ASSERT_TRUE(adapter.handleCue(cue, 7, emotion, 1234));
+
+  const SpeechPlaybackPlan& plan = adapter.lastPlan();
+  TEST_ASSERT_EQUAL_UINT32(7, plan.seq);
+  TEST_ASSERT_EQUAL(static_cast<int>(PromptSource::PackagedPrompt), static_cast<int>(plan.promptSource));
+  TEST_ASSERT_EQUAL_STRING("boot_awake", plan.promptId);
+  TEST_ASSERT_EQUAL_STRING(cue.text, plan.promptText);
+  TEST_ASSERT_TRUE(plan.hasPrompt);
+  TEST_ASSERT_TRUE(plan.hasEarcon);
+  TEST_ASSERT_EQUAL_UINT16(40, plan.earconDelayMs);
+  TEST_ASSERT_GREATER_THAN_UINT32(500, plan.earconRender.samplesWritten);
+  TEST_ASSERT_GREATER_THAN_INT16(2000, plan.earconRender.peakAbs);
+  TEST_ASSERT_EQUAL_UINT32(1, adapter.telemetry().cuesQueued);
+  TEST_ASSERT_EQUAL_UINT32(1, adapter.telemetry().earconsRendered);
+}
+
+void test_speech_adapter_rejects_empty_or_uninitialized_cues() {
+  SpeechAdapter adapter;
+  SpeechCue cue;
+  cue.intent = SpeechIntent::Think;
+  cue.text = "Input received. I am thinking now.";
+  cue.earcon = SpeechEarcon::Think;
+
+  EmotionalProfile emotion;
+  TEST_ASSERT_FALSE(adapter.handleCue(cue, 1, emotion, 100));
+  TEST_ASSERT_TRUE(adapter.begin(false));
+  TEST_ASSERT_FALSE(adapter.handleCue(cue, 0, emotion, 100));
+
+  SpeechCue empty;
+  TEST_ASSERT_FALSE(adapter.handleCue(empty, 2, emotion, 120));
+  TEST_ASSERT_EQUAL_UINT32(0, adapter.telemetry().cuesQueued);
+}
+
+void test_speech_adapter_scales_earcon_with_arousal() {
+  SpeechAdapter adapter;
+  TEST_ASSERT_TRUE(adapter.begin(false));
+
+  SpeechCue cue;
+  cue.intent = SpeechIntent::Happy;
+  cue.text = "Happy signal detected.";
+  cue.earcon = SpeechEarcon::Happy;
+
+  EmotionalProfile calm;
+  calm.arousal = 0.10f;
+  TEST_ASSERT_TRUE(adapter.handleCue(cue, 1, calm, 100));
+  const int16_t calmPeak = adapter.lastPlan().earconRender.peakAbs;
+
+  EmotionalProfile excited;
+  excited.arousal = 0.95f;
+  TEST_ASSERT_TRUE(adapter.handleCue(cue, 2, excited, 130));
+  const int16_t excitedPeak = adapter.lastPlan().earconRender.peakAbs;
+
+  TEST_ASSERT_GREATER_THAN_INT16(calmPeak, excitedPeak);
+  TEST_ASSERT_EQUAL_UINT32(2, adapter.telemetry().cuesQueued);
+  TEST_ASSERT_EQUAL_UINT32(2, adapter.telemetry().earconsRendered);
+}
+
 void test_speech_planner_avoids_character_clone_markers() {
   SpeechPlanner planner;
   EmotionalProfile emotion;
@@ -1786,6 +1857,9 @@ int main() {
   RUN_TEST(test_earcon_synth_renders_each_typed_cue);
   RUN_TEST(test_earcon_synth_is_deterministic_and_respects_intensity);
   RUN_TEST(test_earcon_synth_reports_truncation_without_allocation);
+  RUN_TEST(test_speech_adapter_prepares_packaged_prompt_and_earcon);
+  RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
+  RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);
   return UNITY_END();
 }
