@@ -26,12 +26,14 @@ void IntentEngine::begin() {
   lastSpeechIntent_ = SpeechIntent::None;
   activeSpeech_ = SpeechCue {};
   idleLife_.reset(lastUpdateMs_);
+  gaze_.reset(lastUpdateMs_);
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
 }
 
 void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   mode_ = mode;
   emotion_.applyEvent(event);
+  gaze_.applyEvent(event);
   if (event.type == EventType::SoundDirection && event.hasPayload) {
     soundAzimuthNorm_ = constrain(event.x, -1.0f, 1.0f);
     soundOrientUntilMs_ = event.timestampMs + 1800;
@@ -90,6 +92,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   frame.face = expression_.map(frame.emotion, mode_);
   idleLife_.apply(frame, nowMs, reducedMotion_);
   applySoundOrientation(frame, nowMs);
+  gaze_.apply(frame, nowMs, reducedMotion_);
   if (nowMs < activeSpeechUntilMs_ && activeSpeech_.shouldSpeak()) {
     frame.speech = activeSpeech_;
     frame.speechSeq = speechSeq_;

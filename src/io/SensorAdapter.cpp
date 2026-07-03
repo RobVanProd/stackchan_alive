@@ -47,6 +47,8 @@ constexpr EventCommand kEventCommands[] = {
     {"boot", CharacterMode::Boot, EventType::Boot, "event_boot"},
     {"face", CharacterMode::Attend, EventType::FaceDetected, "event_face"},
     {"detected", CharacterMode::Attend, EventType::FaceDetected, "event_face"},
+    {"facelost", CharacterMode::Idle, EventType::FaceLost, "event_face_lost"},
+    {"face_lost", CharacterMode::Idle, EventType::FaceLost, "event_face_lost"},
     {"near", CharacterMode::Attend, EventType::UserNear, "event_near"},
     {"touch", CharacterMode::React, EventType::UserTouched, "event_touch"},
     {"touched", CharacterMode::React, EventType::UserTouched, "event_touch"},
@@ -367,6 +369,63 @@ bool fillCommandEvent(char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchCo
   parsed.hasSpeechCue = action.hasSpeechCue;
   parsed.speechCue = action.speechCue;
   parsed.command = action.command;
+  *controlOut = parsed;
+  return true;
+}
+
+bool fillVisionEvent(const char* first, char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasEvent = true;
+  parsed.event.timestampMs = nowMs;
+  parsed.event.strength = 1.0f;
+
+  if (strcmp(first, "facelost") == 0 || strcmp(first, "face_lost") == 0 ||
+      strcmp(first, "lostface") == 0) {
+    parsed.mode = CharacterMode::Idle;
+    parsed.event.type = EventType::FaceLost;
+    parsed.command = "face_lost";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "facepos") != 0 && strcmp(first, "face_pos") != 0) {
+    return false;
+  }
+
+  bool hasX = false;
+  bool hasY = false;
+  bool hasSize = false;
+  float size = 0.55f;
+
+  if (tokenCount >= 3 && parsePayloadValue(tokens[0], &parsed.event.x) &&
+      parsePayloadValue(tokens[1], &parsed.event.y) && parseStrength(tokens[2], &size)) {
+    hasX = true;
+    hasY = true;
+    hasSize = true;
+  }
+
+  for (uint8_t i = 0; i + 1 < tokenCount; ++i) {
+    if (strcmp(tokens[i], "x") == 0) {
+      hasX = parsePayloadValue(tokens[i + 1], &parsed.event.x) || hasX;
+    } else if (strcmp(tokens[i], "y") == 0) {
+      hasY = parsePayloadValue(tokens[i + 1], &parsed.event.y) || hasY;
+    } else if (strcmp(tokens[i], "s") == 0 || strcmp(tokens[i], "size") == 0 ||
+               strcmp(tokens[i], "z") == 0) {
+      hasSize = parseStrength(tokens[i + 1], &size) || hasSize;
+    } else if (strcmp(tokens[i], "strength") == 0) {
+      parseStrength(tokens[i + 1], &parsed.event.strength);
+    }
+  }
+
+  if (!hasX || !hasY || !hasSize) {
+    return false;
+  }
+
+  parsed.mode = CharacterMode::Attend;
+  parsed.event.type = EventType::FaceDetected;
+  parsed.event.hasPayload = true;
+  parsed.event.z = size;
+  parsed.command = "face_position";
   *controlOut = parsed;
   return true;
 }
@@ -772,6 +831,11 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "multinet") == 0 || strcmp(first, "phrase") == 0) {
     return fillCommandEvent(ambientTokens, ambientTokenCount, nowMs, controlOut);
   }
+  if (strcmp(first, "facepos") == 0 || strcmp(first, "face_pos") == 0 ||
+      strcmp(first, "facelost") == 0 ||
+      strcmp(first, "face_lost") == 0 || strcmp(first, "lostface") == 0) {
+    return fillVisionEvent(first, ambientTokens, ambientTokenCount, nowMs, controlOut);
+  }
   if (strcmp(first, "sound") == 0 || strcmp(first, "audio") == 0 ||
       strcmp(first, "voice") == 0 || strcmp(first, "noise") == 0 ||
       strcmp(first, "loud") == 0 || strcmp(first, "bang") == 0 ||
@@ -865,6 +929,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
   Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
   Serial.println(F("[control] help: command <1-5|go_to_sleep|wake_up|look_at_me|stop_moving|how_do_you_feel>"));
+  Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));
   Serial.println(F("[control] help: pickup [strength]; shake [strength]; putdown; tilt <x> <y> <z>"));

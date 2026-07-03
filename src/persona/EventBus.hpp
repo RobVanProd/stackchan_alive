@@ -7,6 +7,7 @@ namespace stackchan {
 enum class EventType : uint8_t {
   Boot,
   FaceDetected,
+  FaceLost,
   UserNear,
   UserTouched,
   WakeWord,

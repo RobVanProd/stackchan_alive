@@ -23,6 +23,10 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       emotion_.focus += 0.25f * s;
       emotion_.valence += 0.10f * s;
       break;
+    case EventType::FaceLost:
+      emotion_.focus -= 0.16f * s;
+      emotion_.valence -= 0.06f * s;
+      break;
     case EventType::UserNear:
       emotion_.focus += 0.20f * s;
       emotion_.arousal += 0.15f * s;
