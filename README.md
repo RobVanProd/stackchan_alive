@@ -198,6 +198,10 @@ Start a hardware evidence packet when the device is connected:
 .\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
+Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd` for the pre-arrival virtual
+Stackchan proxy and `RUN_SIM_HARDWARE_COMPARE.cmd` for an advisory comparison after real
+display, speech, and bridge replay logs are captured.
+
 Verify completed evidence before promotion:
 
 ```powershell

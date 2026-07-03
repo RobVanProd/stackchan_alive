@@ -763,6 +763,7 @@ $speechDemoCommand = "& { $speechDemoBody } 2>&1 | Tee-Object -FilePath $speechD
 $speakAllCommand = "& '.\tools\send_speak_all_intents_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $speakAllLog"
 $bridgeReplayCommand = "& '.\tools\send_bridge_replay_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $bridgeReplayLog"
 $hardwareSimBaselineCommand = "& '.\tools\run_hardware_simulation.ps1' -OutputDir $hardwareSimBaselineDir -Json 2>&1 | Tee-Object -FilePath $hardwareSimBaselineLog"
+$simHardwareCompareCommand = "& '.\tools\compare_hardware_sim_baseline.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
@@ -807,6 +808,7 @@ $commandFiles = [ordered]@{
   "RUN_SOAK_MONITOR.cmd" = New-PowerShellCommandFile $soakCommand
   "RUN_PACKAGE_VERIFY.cmd" = New-PowerShellCommandFile $verifyCommand
   "RUN_HARDWARE_SIM_BASELINE.cmd" = New-PowerShellCommandFile $hardwareSimBaselineCommand
+  "RUN_SIM_HARDWARE_COMPARE.cmd" = New-PowerShellCommandFile $simHardwareCompareCommand
   "RUN_PROGRESS_CHECK.cmd" = New-PowerShellCommandFile $progressCommand
   "RUN_ROLLOUT_STATUS.cmd" = New-PowerShellCommandFile $rolloutStatusCommand
   "RUN_ADD_MEDIA.cmd" = @(
@@ -843,17 +845,18 @@ $nextSteps = @(
   "3. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
   "4. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
   "5. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
-  "6. Optionally run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
-  "7. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
-  "8. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
-  "9. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
-  "10. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
-  "11. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
-  "12. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-  "13. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
-  "14. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
-  "15. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
-  "16. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "6. Run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
+  "7. Run ``RUN_SIM_HARDWARE_COMPARE.cmd`` to write ``SIM_HARDWARE_COMPARE.md/json`` and compare the real serial markers against the no-hardware baseline. Pending means more logs are needed; it is not promotion evidence.",
+  "8. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+  "9. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+  "10. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+  "11. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+  "12. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+  "13. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+  "14. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "15. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "16. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+  "17. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
   "",
   "## Gates Still Expected",
   "",
@@ -883,6 +886,8 @@ $readme = @(
   "",
   "``RUN_HARDWARE_SIM_BASELINE.cmd`` can be run before the robot arrives. It writes the full virtual Stackchan proxy report, including the fake mic/STT/model/TTS/speaker loop, under ``simulation/hardware-sim/latest/`` and logs the command to ``logs/hardware_simulation_baseline.log``. Treat it as a comparison baseline only, not hardware evidence.",
   "",
+  "``RUN_SIM_HARDWARE_COMPARE.cmd`` can be run after display, speech-mouth, speak-all, and bridge replay logs exist. It writes ``SIM_HARDWARE_COMPARE.md`` and ``SIM_HARDWARE_COMPARE.json`` as an advisory sim-vs-real serial marker comparison. A pending report means more bench logs are needed; a passing report still does not satisfy hardware promotion gates by itself.",
+  "",
   "BENCH_STATUS.md is the quick handoff file. RUN_PROGRESS_CHECK.cmd refreshes it with the current status, next action, next command, top findings, and matching BENCH_STATUS.json machine-readable report.",
   "",
   "RELEASE_ACCEPTANCE.md and release_acceptance.json record the no-hardware gates that were already accepted and the hardware gates still required before consumer rollout.",
@@ -910,6 +915,12 @@ $readme = @(
   "    $hardwareSimBaselineCommand",
   "",
   "    .\RUN_HARDWARE_SIM_BASELINE.cmd",
+  "",
+  "Compare the simulator baseline against captured hardware serial logs:",
+  "",
+  "    $simHardwareCompareCommand",
+  "",
+  "    .\RUN_SIM_HARDWARE_COMPARE.cmd",
   "",
   "Display-only flash:",
   "",
@@ -1048,6 +1059,7 @@ $requiredRecords = @(
   "RUN_SERVO_CALIBRATION.cmd",
   "RUN_SOAK_MONITOR.cmd",
   "RUN_PACKAGE_VERIFY.cmd",
+  "RUN_SIM_HARDWARE_COMPARE.cmd",
   "RUN_PROGRESS_CHECK.cmd",
   "RUN_ROLLOUT_STATUS.cmd",
   "RUN_ADD_MEDIA.cmd",
@@ -1096,6 +1108,9 @@ $metadata = [ordered]@{
     command = "RUN_HARDWARE_SIM_BASELINE.cmd"
     report = "simulation/hardware-sim/latest/hardware_simulation.json"
     log = "logs/hardware_simulation_baseline.log"
+    compareCommand = "RUN_SIM_HARDWARE_COMPARE.cmd"
+    compareReport = "SIM_HARDWARE_COMPARE.json"
+    compareSummary = "SIM_HARDWARE_COMPARE.md"
     evidenceRole = "pre-arrival comparison baseline only"
   }
   requiredLogs = $requiredLogs

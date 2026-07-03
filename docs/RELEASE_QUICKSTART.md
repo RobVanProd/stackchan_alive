@@ -89,6 +89,8 @@ Open the newest evidence packet folder and run:
 .\RUN_DISPLAY_ONLY.cmd
 .\RUN_SPEECH_MOUTH_DEMO.cmd
 .\RUN_SPEAK_ALL_INTENTS.cmd
+.\RUN_BRIDGE_REPLAY.cmd
+.\RUN_SIM_HARDWARE_COMPARE.cmd
 ```
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
@@ -110,6 +112,12 @@ During bring-up, run:
 
 This refreshes `BENCH_STATUS.md/json` and lists missing observation fields, logs, serial markers, media evidence, calibration updates, and unchecked gates before the final promotion verifier.
 The rollout status command also writes `ROLLOUT_STATUS.md/json`, combining the evidence progress result with the package, GitHub Actions status, hosted media reference, and voice-source gate.
+
+`RUN_SIM_HARDWARE_COMPARE.cmd` writes `SIM_HARDWARE_COMPARE.md/json`. Use it after
+`RUN_HARDWARE_SIM_BASELINE.cmd` and the display/speech/bridge logs exist to compare the
+physical serial markers against the no-hardware virtual Stackchan baseline. This is a
+diagnostic aid only; a passing comparison does not replace photos, speaker recordings, servo
+calibration, soak, or strict hardware evidence verification.
 
 Import photos, videos, and speaker recordings through the packet helper so the files are validated and hashed:
 

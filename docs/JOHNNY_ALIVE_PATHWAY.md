@@ -138,6 +138,10 @@ Keep each item independently shippable and package-verified.
    - Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd`, which writes the same
      no-hardware proxy report under `simulation/hardware-sim/latest/` for pre-arrival
      comparison without satisfying hardware evidence gates.
+   - Evidence packets also include `RUN_SIM_HARDWARE_COMPARE.cmd`, which writes
+     `SIM_HARDWARE_COMPARE.md/json` after real display, speech-mouth, speak-all, and bridge
+     replay logs exist. It compares serial markers and bridge counters against the simulator
+     baseline as an advisory diagnostic, not as promotion evidence.
    - GitHub Actions runs the bridge tests, engine readiness probe, and simulator in the
      `bridge-tests` job, then uploads both the engine-probe and hardware-simulation report
      artifacts for each PR/push.

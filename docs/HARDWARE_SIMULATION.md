@@ -26,6 +26,13 @@ virtual Stackchan report under `simulation/hardware-sim/latest/` plus
 `logs/hardware_simulation_baseline.log` inside the packet. This is only a comparison
 baseline; real hardware gates still require real device logs, media, and audio recordings.
 
+After the device is on the bench and the display, speech-mouth, speak-all, and bridge replay
+logs exist, run `RUN_SIM_HARDWARE_COMPARE.cmd` from the evidence packet. It writes
+`SIM_HARDWARE_COMPARE.md` and `SIM_HARDWARE_COMPARE.json`, comparing the no-hardware
+baseline against the captured serial markers and bridge counters. A `pending` report means
+more logs are needed; a `pass` report is still advisory and does not replace hardware
+evidence or promotion gates.
+
 The simulator currently checks:
 
 - deterministic reference bridge frames from `bridge/reference_bridge.py`
@@ -111,6 +118,12 @@ To run the pre-arrival device-shell rehearsal:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario arrival-rehearsal -Json
+```
+
+To compare a generated evidence packet against captured hardware logs:
+
+```powershell
+.\tools\compare_hardware_sim_baseline.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
 ```
 
 To run the conversation rehearsal:
