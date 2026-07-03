@@ -30,6 +30,9 @@ The simulator currently checks:
 - binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`,
   including 4096-byte chunk-limit enforcement and byte/chunk accounting before firmware
   speaker playback is wired
+- firmware-mirrored `bridge_downlink_*` counters for the audio downlink consumer, written to
+  JSON and to the serial-like `[runtime]` line so simulator output can be compared directly
+  with arrival-day firmware serial logs
 - firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts,
   recoverable bridge-error handling, and timeout handling
 - an offline command fallback: no bridge session, CoreS3 wake input, P4-style commands,
@@ -48,8 +51,9 @@ first audio arrives within the 2.5 s LAN budget before returning to `Ready`.
 The `arrival-rehearsal` scenario is the best no-hardware proxy before the unit arrives: it
 pushes virtual button/touch events, shakes/puts down the robot through the safety path,
 streams a synthetic 5000-byte TTS payload as 4096-byte and 904-byte downlink chunks,
-verifies mouth/display activity, then power-cycles and expects the virtual bridge to return
-to `Ready`.
+verifies `bridge_downlink_streams`, `bridge_downlink_completed`, `bridge_downlink_chunks`,
+`bridge_downlink_bytes`, mouth/display activity, then power-cycles and expects the virtual
+bridge to return to `Ready`.
 
 The `bridge-kill-recovery` scenario simulates a LAN bridge dropping mid-response while a
 binary TTS stream is open. The virtual device must abort that stream, emit one offline
