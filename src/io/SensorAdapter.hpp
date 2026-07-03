@@ -19,6 +19,11 @@ struct BenchSpeechEnvelope {
   bool clear = false;
 };
 
+struct BenchAmbientReading {
+  float lux = 0.0f;
+  uint8_t hourOfDay = 12;
+};
+
 struct BenchControl {
   bool wantsHelp = false;
   bool wantsStatus = false;
@@ -27,12 +32,14 @@ struct BenchControl {
   bool hasReducedMotion = false;
   bool hasMotionEnable = false;
   bool hasDemoEnable = false;
+  bool hasAmbient = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
   CharacterMode mode = CharacterMode::Idle;
   RobotEvent event;
   BenchSpeechEnvelope speech;
+  BenchAmbientReading ambient;
   const char* command = "";
 };
 

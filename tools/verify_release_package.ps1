@@ -286,7 +286,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PA
 }
 
 $deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
-foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "ambient 12 22", "ambient lux 700 hour 10", "ambient_lux", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
   if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
@@ -450,14 +450,14 @@ foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub A
 }
 
 $sensorAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SensorAdapter.cpp") -Raw
-foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos off|on", "demo off|on", "safe stop|panic", "safe resume|restore", "fillStatus", "fillMotionEnable", "fillDemoEnable", "fillSafeStop", "fillSafeResume", "wantsStatus", "hasMotionEnable", "motionEnabled", "hasDemoEnable", "demoEnabled", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "motion_stop", "motion_resume", "demo_off", "demo_on", "safe_stop", "safe_resume", "parseOnOff", "hasReducedMotion")) {
+foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos off|on", "demo off|on", "safe stop|panic", "safe resume|restore", "ambient <lux> <hour>", "fillStatus", "fillMotionEnable", "fillDemoEnable", "fillSafeStop", "fillSafeResume", "fillAmbient", "parseLux", "parseHour", "wantsStatus", "hasMotionEnable", "motionEnabled", "hasDemoEnable", "demoEnabled", "hasAmbient", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "motion_stop", "motion_resume", "demo_off", "demo_on", "safe_stop", "safe_resume", "ambient_context", "parseOnOff", "hasReducedMotion")) {
   if ($sensorAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/SensorAdapter.cpp missing bench serial command support: $pattern"
   }
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "reduced_motion=", "motion_enabled=", "demo_enabled=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.applyAmbient", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }

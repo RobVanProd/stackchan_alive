@@ -4,6 +4,13 @@
 
 namespace stackchan {
 
+namespace {
+// Ambient context bias: dark/night scenes should read sleepy without forcing Sleep mode.
+constexpr float kNightFatigueGain = 0.12f;
+// Bright daytime light makes the character feel a little more alert, not startled.
+constexpr float kDayAlertnessGain = 0.08f;
+}
+
 void EmotionModel::reset() {
   emotion_ = EmotionalProfile {};
 }
@@ -48,6 +55,34 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
     case EventType::SpeechEnded:
     case EventType::ResponseEnded:
       break;
+  }
+
+  emotion_.arousal = clamp01(emotion_.arousal);
+  emotion_.valence = clampSigned(emotion_.valence);
+  emotion_.focus = clamp01(emotion_.focus);
+  emotion_.fatigue = clamp01(emotion_.fatigue);
+}
+
+void EmotionModel::applyAmbient(float lux, uint8_t hourOfDay) {
+  const float safeLux = constrain(lux, 0.0f, 2000.0f);
+  const uint8_t safeHour = hourOfDay > 23 ? 23 : hourOfDay;
+  const bool night = safeHour >= 20 || safeHour < 6;
+  const bool daytime = safeHour >= 7 && safeHour < 18;
+
+  const float darkness = constrain((120.0f - safeLux) / 120.0f, 0.0f, 1.0f);
+  const float brightness = constrain((safeLux - 250.0f) / 750.0f, 0.0f, 1.0f);
+
+  if (night || darkness > 0.65f) {
+    const float fatigueBias = darkness * (night ? kNightFatigueGain : kNightFatigueGain * 0.50f);
+    emotion_.fatigue += fatigueBias;
+    emotion_.arousal -= darkness * 0.05f;
+    emotion_.focus -= darkness * 0.03f;
+  }
+
+  if (daytime && brightness > 0.0f) {
+    emotion_.fatigue -= brightness * kDayAlertnessGain;
+    emotion_.arousal += brightness * 0.06f;
+    emotion_.valence += brightness * 0.03f;
   }
 
   emotion_.arousal = clamp01(emotion_.arousal);

@@ -131,6 +131,34 @@ bool parseDurationMs(const char* token, uint16_t* durationOut) {
   return true;
 }
 
+bool parseLux(const char* token, float* luxOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const float parsed = strtof(token, &end);
+  if (end == token) {
+    return false;
+  }
+  *luxOut = constrain(parsed, 0.0f, 2000.0f);
+  return true;
+}
+
+bool parseHour(const char* token, uint8_t* hourOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const long parsed = strtol(token, &end, 10);
+  if (end == token || parsed < 0 || parsed > 23) {
+    return false;
+  }
+  *hourOut = static_cast<uint8_t>(parsed);
+  return true;
+}
+
 bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
   if (token == nullptr || token[0] == '\0') {
     return false;
@@ -153,6 +181,40 @@ bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
     return true;
   }
   return false;
+}
+
+bool fillAmbient(const char* first, char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  float lux = 0.0f;
+  uint8_t hour = 12;
+  bool hasLux = false;
+  bool hasHour = false;
+
+  if ((strcmp(first, "ambient") == 0 || strcmp(first, "light") == 0 ||
+       strcmp(first, "lux") == 0 || strcmp(first, "amb") == 0) &&
+      tokenCount >= 2 && parseLux(tokens[0], &lux) && parseHour(tokens[1], &hour)) {
+    hasLux = true;
+    hasHour = true;
+  }
+
+  for (uint8_t i = 0; i + 1 < tokenCount; ++i) {
+    if (strcmp(tokens[i], "lux") == 0 || strcmp(tokens[i], "amb") == 0 || strcmp(tokens[i], "ambient") == 0) {
+      hasLux = parseLux(tokens[i + 1], &lux) || hasLux;
+    } else if (strcmp(tokens[i], "hour") == 0 || strcmp(tokens[i], "time") == 0) {
+      hasHour = parseHour(tokens[i + 1], &hour) || hasHour;
+    }
+  }
+
+  if (!hasLux || !hasHour) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasAmbient = true;
+  parsed.ambient.lux = lux;
+  parsed.ambient.hourOfDay = hour;
+  parsed.command = "ambient_context";
+  *controlOut = parsed;
+  return true;
 }
 
 bool parseOnOff(const char* token, bool* valueOut) {
@@ -369,6 +431,9 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
 
   char* second = strtok(nullptr, " \t");
   char* third = strtok(nullptr, " \t");
+  char* fourth = strtok(nullptr, " \t");
+  char* fifth = strtok(nullptr, " \t");
+  char* sixth = strtok(nullptr, " \t");
 
   bool forceMode = false;
   bool forceEvent = false;
@@ -389,7 +454,17 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   }
 
   if (forceSpeech) {
-    return fillFromSpeech(second, third, strtok(nullptr, " \t"), nowMs, controlOut);
+    return fillFromSpeech(second, third, fourth, nowMs, controlOut);
+  }
+
+  char* ambientTokens[] = {second, third, fourth, fifth, sixth};
+  uint8_t ambientTokenCount = 0;
+  while (ambientTokenCount < 5 && ambientTokens[ambientTokenCount] != nullptr) {
+    ambientTokenCount++;
+  }
+  if (strcmp(first, "ambient") == 0 || strcmp(first, "light") == 0 ||
+      strcmp(first, "lux") == 0 || strcmp(first, "amb") == 0) {
+    return fillAmbient(first, ambientTokens, ambientTokenCount, controlOut);
   }
 
   if (strcmp(first, "reduced") == 0 || strcmp(first, "reduced_motion") == 0 ||
@@ -464,6 +539,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: mode listen|think|speak|idle|sleep|error [strength]"));
   Serial.println(F("[control] help: event wake|touch|response|speech_end|idle|error [strength]"));
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
+  Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));

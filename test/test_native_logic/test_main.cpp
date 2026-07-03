@@ -89,6 +89,30 @@ void test_wake_word_increases_arousal_and_focus() {
   TEST_ASSERT_GREATER_THAN_FLOAT(0.75f, model.profile().focus);
 }
 
+void test_ambient_dark_night_increases_fatigue() {
+  EmotionModel model;
+  model.reset();
+
+  const float initialArousal = model.profile().arousal;
+  model.applyAmbient(4.0f, 23);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, model.profile().fatigue);
+  TEST_ASSERT_LESS_THAN_FLOAT(initialArousal, model.profile().arousal);
+}
+
+void test_ambient_bright_day_reduces_fatigue_and_lifts_arousal() {
+  EmotionModel model;
+  model.reset();
+  model.applyAmbient(4.0f, 23);
+
+  const float tiredFatigue = model.profile().fatigue;
+  const float tiredArousal = model.profile().arousal;
+  model.applyAmbient(900.0f, 11);
+
+  TEST_ASSERT_LESS_THAN_FLOAT(tiredFatigue, model.profile().fatigue);
+  TEST_ASSERT_GREATER_THAN_FLOAT(tiredArousal, model.profile().arousal);
+}
+
 void test_mood_decay_returns_toward_baseline() {
   EmotionModel model;
   model.reset();
@@ -490,6 +514,17 @@ void test_intent_engine_reduced_motion_dampens_idle_life() {
   TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.face.faceY), fabsf(full.face.faceY));
 }
 
+void test_intent_engine_applies_ambient_context() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+  engine.applyAmbient(5.0f, 22);
+
+  const RobotFrame frame = engine.update(250);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, frame.emotion.fatigue);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.20f, frame.emotion.arousal);
+}
+
 void test_sensor_adapter_parses_serial_mode_command() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
@@ -576,6 +611,24 @@ void test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme() {
   TEST_ASSERT_EQUAL_STRING("speech_clear", control.command);
 
   TEST_ASSERT_FALSE(parseBenchControlLine("speech 0.5 banana", 3800, &control));
+}
+
+void test_sensor_adapter_parses_ambient_context_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("ambient 12 22", 3900, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_TRUE(control.hasAmbient);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 12.0f, control.ambient.lux);
+  TEST_ASSERT_EQUAL_UINT8(22, control.ambient.hourOfDay);
+  TEST_ASSERT_EQUAL_STRING("ambient_context", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("light lux=700 hour=10", 4000, &control));
+  TEST_ASSERT_TRUE(control.hasAmbient);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 700.0f, control.ambient.lux);
+  TEST_ASSERT_EQUAL_UINT8(10, control.ambient.hourOfDay);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("ambient lux 40 hour 25", 4050, &control));
 }
 
 void test_sensor_adapter_parses_reduced_motion_commands() {
@@ -878,6 +931,8 @@ int main() {
   RUN_TEST(test_spring_converges_without_exploding);
   RUN_TEST(test_dt_clamp_limits_large_step);
   RUN_TEST(test_wake_word_increases_arousal_and_focus);
+  RUN_TEST(test_ambient_dark_night_increases_fatigue);
+  RUN_TEST(test_ambient_bright_day_reduces_fatigue_and_lifts_arousal);
   RUN_TEST(test_mood_decay_returns_toward_baseline);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
@@ -902,12 +957,14 @@ int main() {
   RUN_TEST(test_idle_life_reduced_motion_dampens_offsets);
   RUN_TEST(test_idle_life_micro_expression_is_deterministic);
   RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
+  RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_status_without_event);
   RUN_TEST(test_sensor_adapter_parses_event_aliases_and_clamps_strength);
   RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
+  RUN_TEST(test_sensor_adapter_parses_ambient_context_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
   RUN_TEST(test_sensor_adapter_parses_demo_enable_commands);
