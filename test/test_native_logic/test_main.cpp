@@ -234,6 +234,47 @@ void test_audio_saliency_marks_loud_noise_without_speech_band() {
   TEST_ASSERT_GREATER_THAN_FLOAT(0.80f, result.level);
 }
 
+void test_audio_reflex_maps_saliency_to_persona_events() {
+  AudioReflex reflex;
+  reflex.reset(0.02f);
+
+  AudioReflexEvent events[3];
+  uint8_t count = reflex.process({100, 0.05f, 0.35f, 0.12f}, events, 3);
+  TEST_ASSERT_EQUAL_UINT8(2, count);
+  TEST_ASSERT_TRUE(events[0].valid);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::UserSpeaking), static_cast<int>(events[0].event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Listen), static_cast<int>(events[0].mode));
+  TEST_ASSERT_EQUAL_STRING("audio_user_speaking", events[0].command);
+  TEST_ASSERT_TRUE(events[1].valid);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SoundDirection), static_cast<int>(events[1].event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(events[1].mode));
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.45f, events[1].event.x);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.19f, events[1].event.z);
+  TEST_ASSERT_EQUAL_STRING("audio_sound_direction", events[1].command);
+
+  count = reflex.process({360, 0.012f, 0.010f, 0.01f}, events, 3);
+  TEST_ASSERT_EQUAL_UINT8(1, count);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SpeechEnded), static_cast<int>(events[0].event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(events[0].mode));
+  TEST_ASSERT_EQUAL_STRING("audio_speech_ended", events[0].command);
+  TEST_ASSERT_FALSE(reflex.telemetry().speechActive);
+}
+
+void test_audio_reflex_loud_noise_preempts_speech_events() {
+  AudioReflex reflex;
+  reflex.reset(0.03f);
+
+  AudioReflexEvent events[3];
+  const uint8_t count = reflex.process({100, 0.86f, 0.90f, 0.12f}, events, 3);
+  TEST_ASSERT_EQUAL_UINT8(1, count);
+  TEST_ASSERT_TRUE(events[0].valid);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::LoudNoise), static_cast<int>(events[0].event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::React), static_cast<int>(events[0].mode));
+  TEST_ASSERT_EQUAL_STRING("audio_loud_noise", events[0].command);
+  TEST_ASSERT_TRUE(reflex.telemetry().loudNoise);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.80f, reflex.telemetry().level);
+}
+
 void test_positive_valence_smiles() {
   ExpressionMapper mapper;
   EmotionalProfile emotion;
@@ -1195,6 +1236,8 @@ int main() {
   RUN_TEST(test_mood_decay_returns_toward_baseline);
   RUN_TEST(test_audio_saliency_detects_speech_direction_and_habituation);
   RUN_TEST(test_audio_saliency_marks_loud_noise_without_speech_band);
+  RUN_TEST(test_audio_reflex_maps_saliency_to_persona_events);
+  RUN_TEST(test_audio_reflex_loud_noise_preempts_speech_events);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
   RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);

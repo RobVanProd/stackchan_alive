@@ -287,7 +287,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PA
 }
 
 $deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
-foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "sound dir=-45 level=0.70", "noise level=0.90", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "sound dir=-45 level=0.70", "noise level=0.90", "[audio] event=", "latency_ms", "azimuth_deg", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
   if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
@@ -458,9 +458,16 @@ foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos o
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "payload_x=", "payload_y=", "payload_z=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "payload_x=", "payload_y=", "payload_z=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
+  }
+}
+
+$audioSaliencyText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/AudioSaliency.cpp") -Raw
+foreach ($pattern in @("AudioReflex::process", "AudioReflexTelemetry", "EventType::UserSpeaking", "EventType::SpeechEnded", "EventType::SoundDirection", "EventType::LoudNoise", "audio_user_speaking", "audio_speech_ended", "audio_sound_direction", "audio_loud_noise", "habituation", "noiseFloor")) {
+  if ($audioSaliencyText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/persona/AudioSaliency.cpp missing P3 audio reflex support: $pattern"
   }
 }
 
