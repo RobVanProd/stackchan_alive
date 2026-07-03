@@ -1,5 +1,7 @@
 #include "io/BridgeAudioDownlink.hpp"
 
+#include <string.h>
+
 namespace stackchan {
 namespace {
 constexpr uint32_t kChecksumSeed = 2166136261u;
@@ -12,12 +14,19 @@ constexpr uint32_t kErrorByteOverrun = 6;
 constexpr uint32_t kErrorChunkOverrun = 7;
 constexpr uint32_t kErrorEndWithoutStream = 8;
 constexpr uint32_t kErrorEndMismatch = 9;
+constexpr uint32_t kErrorPlaybackNotReady = 10;
+constexpr uint32_t kErrorPlaybackStart = 11;
+constexpr uint32_t kErrorPlaybackChunk = 12;
 }  // namespace
 
-bool BridgeAudioDownlink::begin() {
+bool BridgeAudioDownlink::begin(bool playbackEnabled, BridgeAudioDownlinkSink* sink) {
   telemetry_ = BridgeAudioDownlinkTelemetry {};
   activeStream_ = BridgeAudioStream {};
+  sink_ = sink;
   telemetry_.ready = true;
+  telemetry_.playbackEnabled = playbackEnabled;
+  telemetry_.playbackReady =
+      playbackEnabled && sink_ != nullptr && sink_->begin() && sink_->isReady();
   return true;
 }
 
@@ -41,6 +50,7 @@ bool BridgeAudioDownlink::start(const BridgeAudioStream& stream, uint32_t nowMs)
   telemetry_.lastPayloadBytes = 0;
   telemetry_.checksum = 0;
   telemetry_.lastErrorCode = 0;
+  startPlayback(activeStream_, nowMs);
   return true;
 }
 
@@ -78,6 +88,7 @@ bool BridgeAudioDownlink::submitChunk(const BridgeAudioStreamChunk& chunk, uint3
   telemetry_.chunksAccepted++;
   telemetry_.checksum = updateChecksum(telemetry_.checksum, chunk.payload, chunk.payloadBytes);
   telemetry_.lastSeq = activeStream_.seq;
+  submitPlaybackChunk(chunk, nowMs);
   return true;
 }
 
@@ -98,6 +109,7 @@ bool BridgeAudioDownlink::end(const BridgeAudioStream& stream, uint32_t nowMs) {
   }
 
   telemetry_.streamsCompleted++;
+  stopPlayback(nowMs);
   clearActive();
   return true;
 }
@@ -107,8 +119,19 @@ void BridgeAudioDownlink::abort(uint32_t nowMs, uint32_t reasonCode) {
   if (telemetry_.active) {
     telemetry_.streamsAborted++;
   }
+  stopPlayback(nowMs);
   clearActive();
   telemetry_.lastErrorCode = reasonCode;
+}
+
+bool BridgeAudioDownlink::isPlayablePcm16Format(const char* format) {
+  if (format == nullptr || format[0] == '\0') {
+    return false;
+  }
+  return strcmp(format, "pcm16") == 0 ||
+         strcmp(format, "s16le") == 0 ||
+         strcmp(format, "raw16") == 0 ||
+         strcmp(format, "pcm_s16le") == 0;
 }
 
 uint32_t BridgeAudioDownlink::updateChecksum(uint32_t checksum, const uint8_t* payload, uint32_t length) {
@@ -124,6 +147,55 @@ bool BridgeAudioDownlink::fail(uint32_t code) {
   telemetry_.errors++;
   telemetry_.lastErrorCode = code;
   return false;
+}
+
+bool BridgeAudioDownlink::startPlayback(const BridgeAudioStream& stream, uint32_t nowMs) {
+  telemetry_.playbackActive = false;
+  if (!telemetry_.playbackEnabled) {
+    return true;
+  }
+  if (!telemetry_.playbackReady || sink_ == nullptr) {
+    telemetry_.playbackErrors++;
+    telemetry_.lastErrorCode = kErrorPlaybackNotReady;
+    return false;
+  }
+  if (!isPlayablePcm16Format(stream.format) || stream.sampleRate == 0) {
+    telemetry_.playbackUnsupported++;
+    return false;
+  }
+  if (!sink_->start(stream, nowMs)) {
+    telemetry_.playbackErrors++;
+    telemetry_.lastErrorCode = kErrorPlaybackStart;
+    return false;
+  }
+  telemetry_.playbackActive = true;
+  telemetry_.playbackStarts++;
+  return true;
+}
+
+void BridgeAudioDownlink::submitPlaybackChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs) {
+  if (!telemetry_.playbackActive || sink_ == nullptr) {
+    return;
+  }
+  if (sink_->writeChunk(chunk, nowMs)) {
+    telemetry_.playbackChunks++;
+    telemetry_.playbackBytes += chunk.payloadBytes;
+    return;
+  }
+  telemetry_.playbackErrors++;
+  telemetry_.lastErrorCode = kErrorPlaybackChunk;
+  stopPlayback(nowMs);
+}
+
+void BridgeAudioDownlink::stopPlayback(uint32_t nowMs) {
+  if (!telemetry_.playbackActive) {
+    return;
+  }
+  if (sink_ != nullptr) {
+    sink_->stop(nowMs);
+  }
+  telemetry_.playbackActive = false;
+  telemetry_.playbackStops++;
 }
 
 void BridgeAudioDownlink::clearActive() {

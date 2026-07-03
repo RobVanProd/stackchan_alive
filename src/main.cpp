@@ -72,7 +72,7 @@ struct MotionControlInput {
   bool motionEnabled = true;
 };
 
-class M5SpeakerAudioSink : public AudioOutSpeakerSink {
+class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlinkSink {
  public:
   bool begin() override {
     if (!M5.Speaker.begin()) {
@@ -128,6 +128,35 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
     return M5.Speaker.playRaw(samples_, kSamplesPerFrame, kSampleRate, false, 1, kChannel, false);
   }
 
+  bool start(const BridgeAudioStream& stream, uint32_t nowMs) override {
+    (void)nowMs;
+    if (!ready_) {
+      return false;
+    }
+    M5.Speaker.stop(kChannel);
+    active_ = false;
+    wavActive_ = false;
+    downlinkActive_ = true;
+    downlinkSampleRate_ = stream.sampleRate >= 8000 && stream.sampleRate <= 48000 ? stream.sampleRate : kSampleRate;
+    M5.Speaker.setChannelVolume(kChannel, 255);
+    return true;
+  }
+
+  bool writeChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs) override {
+    (void)nowMs;
+    if (!ready_ || !downlinkActive_ || chunk.payload == nullptr || chunk.payloadBytes < 2) {
+      return false;
+    }
+
+    const size_t sampleCount = min(static_cast<size_t>(chunk.payloadBytes / 2u), kMaxStreamSamples);
+    for (size_t i = 0; i < sampleCount; ++i) {
+      const uint8_t lo = chunk.payload[i * 2u];
+      const uint8_t hi = chunk.payload[i * 2u + 1u];
+      streamSamples_[i] = static_cast<int16_t>(static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8));
+    }
+    return M5.Speaker.playRaw(streamSamples_, sampleCount, downlinkSampleRate_, false, 1, kChannel, false);
+  }
+
   void stop() override {
     if (!ready_) {
       return;
@@ -135,6 +164,12 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
     M5.Speaker.stop(kChannel);
     active_ = false;
     wavActive_ = false;
+    downlinkActive_ = false;
+  }
+
+  void stop(uint32_t nowMs) override {
+    (void)nowMs;
+    stop();
   }
 
   bool isReady() const override {
@@ -145,6 +180,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
   static constexpr int kChannel = 0;
   static constexpr uint32_t kSampleRate = 22050;
   static constexpr size_t kSamplesPerFrame = 441;
+  static constexpr size_t kMaxStreamSamples = kBridgeAudioStreamChunkPayloadMax / 2u;
 
   static uint32_t frequencyForViseme(AudioOutViseme viseme) {
     switch (viseme) {
@@ -196,11 +232,14 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
   bool ready_ = false;
   bool active_ = false;
   bool wavActive_ = false;
+  bool downlinkActive_ = false;
+  uint32_t downlinkSampleRate_ = kSampleRate;
   uint32_t phase_ = 0;
   uint32_t phaseFifth_ = 0;
   uint32_t noise_ = 0x1234abcd;
   int32_t heldNoise_ = 0;
   int16_t samples_[kSamplesPerFrame] {};
+  int16_t streamSamples_[kMaxStreamSamples] {};
 };
 
 M5SpeakerAudioSink gSpeakerSink;
@@ -623,6 +662,20 @@ void printRuntimeStatus() {
   Serial.print(downlink.bytesAccepted);
   Serial.print(F(" bridge_downlink_errors="));
   Serial.print(downlink.errors);
+  Serial.print(F(" bridge_downlink_playback_ready="));
+  Serial.print(downlink.playbackReady ? 1 : 0);
+  Serial.print(F(" bridge_downlink_playback_active="));
+  Serial.print(downlink.playbackActive ? 1 : 0);
+  Serial.print(F(" bridge_downlink_playback_starts="));
+  Serial.print(downlink.playbackStarts);
+  Serial.print(F(" bridge_downlink_playback_chunks="));
+  Serial.print(downlink.playbackChunks);
+  Serial.print(F(" bridge_downlink_playback_bytes="));
+  Serial.print(downlink.playbackBytes);
+  Serial.print(F(" bridge_downlink_playback_unsupported="));
+  Serial.print(downlink.playbackUnsupported);
+  Serial.print(F(" bridge_downlink_playback_errors="));
+  Serial.print(downlink.playbackErrors);
   Serial.print(F(" bridge_timeouts="));
   Serial.println(bridge.timeouts);
 }
@@ -1197,7 +1250,7 @@ void setup() {
   gSensors.begin();
   gCamera.begin();
   gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
-  gBridgeAudioDownlink.begin();
+  gBridgeAudioDownlink.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   gSpeechAdapter.begin(false, &gAudioOut);
   gBridge.begin();
   gActuation.begin(&gServo);
