@@ -524,6 +524,17 @@ void test_face_animator_autonomic_layer_adds_life_over_time() {
   TEST_ASSERT_GREATER_THAN_FLOAT(2.0f, maxBreathY - minBreathY);
 }
 
+void test_face_animator_uses_persona_behavior_breathing_amplitude() {
+  FaceAnimator animator;
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Idle;
+  frame.emotion.arousal = 0.20f;
+
+  const FaceTargets face = animator.composeFrame(frame, 1250);
+
+  TEST_ASSERT_FLOAT_WITHIN(0.15f, generated_persona::kIdleBreathingPx, face.faceY);
+}
+
 void test_face_animator_reduced_motion_dampens_autonomic_offsets() {
   FaceAnimator fullMotion;
   FaceAnimator reducedMotion;
@@ -2829,6 +2840,7 @@ int main() {
   RUN_TEST(test_face_animator_smooths_channels_with_independent_timing);
   RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
   RUN_TEST(test_face_animator_autonomic_layer_adds_life_over_time);
+  RUN_TEST(test_face_animator_uses_persona_behavior_breathing_amplitude);
   RUN_TEST(test_face_animator_reduced_motion_dampens_autonomic_offsets);
   RUN_TEST(test_robot_config_exposes_face_reduced_motion_default);
   RUN_TEST(test_face_animator_starts_listen_transition_with_blink_and_pop);

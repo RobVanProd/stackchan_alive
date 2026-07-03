@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "PersonaBehavior.hpp"
+
 namespace {
 
 float clamp01(float value) {
@@ -261,7 +263,7 @@ FaceTargets FaceAnimator::samplePose(const RobotFrame& frame, uint32_t nowMs) co
 }
 
 void FaceAnimator::applyAutonomic(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs) {
-  const float motionScale = reducedMotion_ ? 0.30f : 1.0f;
+  const float motionScale = reducedMotion_ ? generated_persona::kReducedMotionScale : 1.0f;
   const bool sleeping = frame.mode == CharacterMode::Sleep;
   const float blinkOpen = updateBlink(frame, nowMs);
   const float blinkCompression = 1.0f - clampValue(blinkOpen, 0.0f, 1.0f);
@@ -273,8 +275,11 @@ void FaceAnimator::applyAutonomic(FaceTargets& face, const RobotFrame& frame, ui
   face.pupilX = clampValue(face.pupilX + saccade_.offsetX * motionScale, -1.0f, 1.0f);
   face.pupilY = clampValue(face.pupilY + saccade_.offsetY * motionScale, -1.0f, 1.0f);
 
-  const float breathHz = sleeping ? 0.12f : 0.20f;
-  const float breathAmp = (sleeping ? 3.0f : 1.5f) * motionScale;
+  const float breathHz = sleeping ? clampValue(generated_persona::kIdleBreathingHz * 0.60f, 0.10f, 0.20f)
+                                  : generated_persona::kIdleBreathingHz;
+  const float breathAmp = (sleeping ? generated_persona::kIdleBreathingPx * 2.0f
+                                    : generated_persona::kIdleBreathingPx) *
+                          motionScale;
   const float breathY = sinf(static_cast<float>(nowMs) * 0.001f * 6.2831853f * breathHz) * breathAmp;
   const float stageX = saccade_.offsetX * 4.0f * motionScale;
   const float stageY = saccade_.offsetY * 3.0f * motionScale;
@@ -672,7 +677,8 @@ void FaceAnimator::chooseSaccadeTarget(const RobotFrame& frame, float& x, float&
 void FaceAnimator::updateFidget(FaceTargets& face, const RobotFrame& frame, uint32_t nowMs, float motionScale) {
   const bool canFidget = frame.mode == CharacterMode::Idle || frame.mode == CharacterMode::Boot;
   if (fidget_.nextMs == 0) {
-    fidget_.nextMs = nowMs + randomRange(10000, 30000);
+    fidget_.nextMs = nowMs + randomRange(generated_persona::kIdleFidgetMinMs,
+                                         generated_persona::kIdleFidgetMaxMs);
   }
   if (!canFidget) {
     fidget_.active = false;
@@ -683,7 +689,8 @@ void FaceAnimator::updateFidget(FaceTargets& face, const RobotFrame& frame, uint
     fidget_.startMs = nowMs;
     fidget_.durationMs = randomRange(700, 1200);
     fidget_.kind = static_cast<uint8_t>(randomRange(0, 2));
-    fidget_.nextMs = nowMs + randomRange(10000, 30000);
+    fidget_.nextMs = nowMs + randomRange(generated_persona::kIdleFidgetMinMs,
+                                         generated_persona::kIdleFidgetMaxMs);
   }
   if (!fidget_.active) {
     return;

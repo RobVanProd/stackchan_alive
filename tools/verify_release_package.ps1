@@ -593,7 +593,7 @@ foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "f
 }
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware idle-life/circadian", "Speech lines, earcon params")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "Speech lines, earcon params")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
