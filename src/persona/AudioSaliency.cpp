@@ -4,6 +4,52 @@
 
 namespace stackchan {
 
+namespace {
+float rmsEnergy(const int16_t* samples, uint16_t count) {
+  if (samples == nullptr || count == 0) {
+    return 0.0f;
+  }
+
+  double sumSquares = 0.0;
+  for (uint16_t i = 0; i < count; ++i) {
+    const double normalized = samples[i] / 32768.0;
+    sumSquares += normalized * normalized;
+  }
+  return constrain(static_cast<float>(sqrt(sumSquares / count)), 0.0f, 1.0f);
+}
+}
+
+AudioSaliencySample makeAudioSaliencySample(const AudioPcmWindow& window) {
+  AudioSaliencySample sample;
+  sample.timestampMs = window.timestampMs;
+  sample.leftEnergy = rmsEnergy(window.left, window.sampleCount);
+  sample.rightEnergy = rmsEnergy(window.right != nullptr ? window.right : window.left, window.sampleCount);
+
+  if (window.left == nullptr || window.sampleCount < 2) {
+    return sample;
+  }
+
+  uint16_t crossings = 0;
+  int32_t previous = static_cast<int32_t>(window.left[0]);
+  if (window.right != nullptr) {
+    previous += static_cast<int32_t>(window.right[0]);
+  }
+
+  for (uint16_t i = 1; i < window.sampleCount; ++i) {
+    int32_t current = static_cast<int32_t>(window.left[i]);
+    if (window.right != nullptr) {
+      current += static_cast<int32_t>(window.right[i]);
+    }
+    if ((previous < 0 && current >= 0) || (previous >= 0 && current < 0)) {
+      crossings++;
+    }
+    previous = current;
+  }
+
+  sample.zeroCrossingRate = constrain(static_cast<float>(crossings) / static_cast<float>(window.sampleCount - 1), 0.0f, 1.0f);
+  return sample;
+}
+
 void AudioSaliency::reset(float noiseFloor) {
   noiseFloor_ = clamp01(noiseFloor);
   if (noiseFloor_ < 0.005f) {

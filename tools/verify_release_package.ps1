@@ -465,10 +465,13 @@ foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlI
 }
 
 $audioSaliencyText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/AudioSaliency.cpp") -Raw
-foreach ($pattern in @("AudioReflex::process", "AudioReflexTelemetry", "EventType::UserSpeaking", "EventType::SpeechEnded", "EventType::SoundDirection", "EventType::LoudNoise", "audio_user_speaking", "audio_speech_ended", "audio_sound_direction", "audio_loud_noise", "habituation", "noiseFloor")) {
+foreach ($pattern in @("makeAudioSaliencySample", "zeroCrossingRate", "AudioReflex::process", "AudioReflexTelemetry", "EventType::UserSpeaking", "EventType::SpeechEnded", "EventType::SoundDirection", "EventType::LoudNoise", "audio_user_speaking", "audio_speech_ended", "audio_sound_direction", "audio_loud_noise", "habituation", "noiseFloor")) {
   if ($audioSaliencyText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/persona/AudioSaliency.cpp missing P3 audio reflex support: $pattern"
   }
+}
+foreach ($fixture in @("speech_right.wav", "speech_left.wav", "music_center.wav", "fan_noise.wav")) {
+  Assert-File "provenance/test/fixtures/audio/$fixture" 1024
 }
 
 $nativeToolchainCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_native_toolchain.ps1") -Raw
