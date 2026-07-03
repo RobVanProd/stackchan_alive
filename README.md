@@ -1,4 +1,4 @@
-# Stackchan: Alive
+# Stackchan: Alive - A Character OS for Stackchan
 
 Stackchan: Alive is a character OS for a Stackchan-style tabletop robot on M5Stack CoreS3 /
 ESP32-S3-class hardware. The goal is a small robot that feels awake: it blinks, breathes,
@@ -29,7 +29,7 @@ What is still gated:
 - Real hardware evidence for display, speaker, servo calibration, soak, power-cycle recovery, and target-speaker audio.
 - Real camera, microphone, touch, proximity, and IMU producer bring-up beyond the bench/event boundaries.
 - Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
-- GitHub Actions as rollout evidence. The workflows exist, but hosted jobs currently fail before executing steps in this account, so local validation is being recorded on PRs.
+- Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.
 
 See [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the promotion gates.
@@ -139,6 +139,16 @@ The default simulation includes a pre-arrival device-shell rehearsal for bridge 
 virtual CoreS3 inputs, display frame ticks, conversation timing, mouth/speaker stream
 counters, power-cycle recovery, and bridge-kill recovery. It is still not a substitute for
 real hardware evidence.
+
+Check local model/STT/TTS engine readiness:
+
+```powershell
+.\tools\run_engine_probe.cmd -Json
+```
+
+The probe writes `output/engine-probe/latest/engine_probe.json` and
+`output/engine-probe/latest/ENGINE_PROBE.md`. It reports `unconfigured` until real model,
+STT, and TTS commands are installed or exported.
 
 If native host tests cannot find `gcc` / `g++`, run:
 

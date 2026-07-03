@@ -98,6 +98,28 @@ the reference bridge:
 python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
 ```
 
+## Engine Readiness Probe
+
+Use `bridge/engine_probe.py` before a full benchmark when setting up a new host. It checks
+which runner tools are on `PATH`, whether model/STT/TTS commands are configured, and whether
+the configured engines can run a minimal smoke pass:
+
+```powershell
+.\tools\run_engine_probe.cmd -Json
+.\tools\run_engine_probe.cmd -RunModelSmoke -Json
+python bridge/engine_probe.py --profile gemma4-e2b-litert-lm --run-model-smoke --json
+```
+
+The probe writes:
+
+- `output/engine-probe/latest/engine_probe.json`
+- `output/engine-probe/latest/ENGINE_PROBE.md`
+
+`unconfigured` means the bridge software is present but no real local engine command is
+available yet. That is useful setup evidence, not model speed evidence. A real P7 candidate
+still needs a non-dry-run `bridge/model_benchmark.py --require-runner` report after the
+probe shows the intended model/STT/TTS commands are reachable.
+
 ## Batch Benchmark Evidence
 
 Use `bridge/model_benchmark.py` to run the Character Lock prompt suite across the configured

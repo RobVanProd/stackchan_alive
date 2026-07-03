@@ -144,6 +144,8 @@ $requiredFiles = @(
   "bridge/test_reference_bridge.py",
   "bridge/local_runner.py",
   "bridge/test_local_runner.py",
+  "bridge/engine_probe.py",
+  "bridge/test_engine_probe.py",
   "bridge/model_benchmark.py",
   "bridge/test_model_benchmark.py",
   "bridge/stt_adapter.py",
@@ -256,6 +258,8 @@ $requiredFiles = @(
   "tools/run_character_harness_tests.ps1",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
+  "tools/run_engine_probe.cmd",
+  "tools/run_engine_probe.ps1",
   "tools/run_hardware_simulation.cmd",
   "tools/run_hardware_simulation.ps1",
   "tools/send_speech_mouth_demo.cmd",
@@ -320,6 +324,8 @@ $requiredFiles = @(
   "provenance/bridge/test_reference_bridge.py",
   "provenance/bridge/local_runner.py",
   "provenance/bridge/test_local_runner.py",
+  "provenance/bridge/engine_probe.py",
+  "provenance/bridge/test_engine_probe.py",
   "provenance/bridge/model_benchmark.py",
   "provenance/bridge/test_model_benchmark.py",
   "provenance/bridge/stt_adapter.py",
@@ -337,7 +343,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -742,6 +748,20 @@ foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobil
   }
 }
 
+$engineProbeText = Get-Content -LiteralPath (Join-PackagePath "bridge/engine_probe.py") -Raw
+foreach ($pattern in @("stackchan.engine-probe.v1", "run_probe", "probe_model_profiles", "probe_stt", "probe_tts", "ENGINE_PROBE.md", "engine_probe.json", "--run-model-smoke")) {
+  if ($engineProbeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/engine_probe.py missing engine probe support: $pattern"
+  }
+}
+
+$engineProbeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_engine_probe.py") -Raw
+foreach ($pattern in @("EngineProbeTests", "test_unconfigured_probe_reports_clear_summary", "test_fake_engines_can_pass_smoke_probe", "test_write_outputs_includes_json_and_markdown", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND")) {
+  if ($engineProbeTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_engine_probe.py missing engine probe test coverage: $pattern"
+  }
+}
+
 $modelBenchmarkText = Get-Content -LiteralPath (Join-PackagePath "bridge/model_benchmark.py") -Raw
 foreach ($pattern in @("stackchan.model-benchmark.v1", "RUNNER_PROFILES", "run_benchmark", "write_outputs", "MODEL_BENCHMARK.md", "model_benchmark.json", "dry-run-no-runner-configured", "approx_tokens_per_sec")) {
   if ($modelBenchmarkText -notmatch [regex]::Escape($pattern)) {
@@ -813,7 +833,7 @@ foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reache
 }
 
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "local_runner.py", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "hardware_simulator.py", "virtual Stackchan")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "local_runner.py", "engine_probe.py", "ENGINE_PROBE.md", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "hardware_simulator.py", "virtual Stackchan")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
@@ -830,6 +850,13 @@ $hardwareSimulationRunnerText = Get-Content -LiteralPath (Join-PackagePath "tool
 foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "hardware_simulator.py", "--out-dir", "output/hardware-sim/latest", "Hardware simulation report")) {
   if ($hardwareSimulationRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_hardware_simulation.ps1 missing hardware simulation runner logic: $pattern"
+  }
+}
+
+$engineProbeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_engine_probe.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "engine_probe.py", "--out-dir", "output/engine-probe/latest", "--run-model-smoke", "Engine probe report")) {
+  if ($engineProbeRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_engine_probe.ps1 missing engine probe runner logic: $pattern"
   }
 }
 
@@ -1331,14 +1358,14 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/character_harness.py", "--model-response", "tokens per second", "Do not fine-tune first")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/character_harness.py", "bridge/engine_probe.py", "ENGINE_PROBE.md", "--model-response", "tokens per second", "Do not fine-tune first")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "LAN bridge loop", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "engine readiness probe", "LAN bridge loop", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }

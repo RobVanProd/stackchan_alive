@@ -240,6 +240,8 @@ $bridgePackageFiles = @(
   "test_reference_bridge.py",
   "local_runner.py",
   "test_local_runner.py",
+  "engine_probe.py",
+  "test_engine_probe.py",
   "model_benchmark.py",
   "test_model_benchmark.py",
   "stt_adapter.py",
@@ -333,6 +335,8 @@ $releaseTools = @(
   "tools/run_character_harness_tests.ps1",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
+  "tools/run_engine_probe.cmd",
+  "tools/run_engine_probe.ps1",
   "tools/run_hardware_simulation.cmd",
   "tools/run_hardware_simulation.ps1",
   "tools/send_speech_mouth_demo.cmd",
@@ -780,6 +784,8 @@ $manifest = [ordered]@{
     "tools/run_character_harness_tests.ps1",
     "tools/run_bridge_reference_tests.cmd",
     "tools/run_bridge_reference_tests.ps1",
+    "tools/run_engine_probe.cmd",
+    "tools/run_engine_probe.ps1",
     "tools/run_hardware_simulation.cmd",
     "tools/run_hardware_simulation.ps1",
     "tools/send_speech_mouth_demo.cmd",
@@ -833,6 +839,8 @@ $manifest = [ordered]@{
     "provenance/bridge/test_reference_bridge.py",
     "provenance/bridge/local_runner.py",
     "provenance/bridge/test_local_runner.py",
+    "provenance/bridge/engine_probe.py",
+    "provenance/bridge/test_engine_probe.py",
     "provenance/bridge/model_benchmark.py",
     "provenance/bridge/test_model_benchmark.py",
     "provenance/bridge/stt_adapter.py",
@@ -1070,6 +1078,11 @@ Commit: $commit
 This is a device-ready prerelease package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
 Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+
+Engine readiness quick check:
+
+- Run ``tools/run_engine_probe.cmd -Json`` to check whether local model, STT, and TTS commands are configured.
+- Run ``tools/run_engine_probe.cmd -RunModelSmoke -Json`` after exporting a runner command to capture the first real smoke result. This is setup evidence; full model selection still requires ``bridge/model_benchmark.py --require-runner``.
 
 No-hardware simulation quick check:
 
