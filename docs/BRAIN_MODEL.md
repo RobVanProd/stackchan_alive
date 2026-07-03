@@ -107,18 +107,23 @@ python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma
 This is still a scaffold, not a complete STT/TTS stack. It accepts wake-gated control frames
 and runs the runner/validator/memory path on `utterance_end`. It also accepts bounded binary
 PCM uploads after `utterance_start`, can hand one-turn audio to a configured local STT command
-through stdin, and clears raw audio at `utterance_end` or `cancel`:
+through stdin, can hand response text to a configured local TTS command for mouth timing, and
+clears raw audio at `utterance_end` or `cancel`:
 
 ```powershell
 $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
 python bridge/lan_service.py --stt-command "python path\to\local_stt.py"
+$env:STACKCHAN_TTS_COMMAND = "python path\to\local_tts.py"
+python bridge/lan_service.py --tts-command "python path\to\local_tts.py" --tts-voice rvc-bright
 ```
 
-The command must return transcript text or JSON containing `transcript`, `text`, or
-`spoken_text`. If no STT command is configured, include `text` or `transcript` on
+The STT command must return transcript text or JSON containing `transcript`, `text`, or
+`spoken_text`. The TTS command must return metadata JSON containing compact `beats` or
+speech-envelope-sidecar-style `frames`; the LAN service uses that metadata for existing
+`audio` mouth frames. If no STT command is configured, include `text` or `transcript` on
 `utterance_end` to explicitly stand in for the transcript while the binary upload path is
-exercised. Selecting and measuring the real local STT engine, dynamic TTS audio download, and
-real viseme/audio chunk streaming remain separate follow-up gates.
+exercised. Selecting and measuring the real local STT/TTS engines, binary audio transport,
+and real audio chunk streaming remain separate follow-up gates.
 
 Render a validated model-style response through the deterministic bridge frames:
 

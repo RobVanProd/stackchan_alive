@@ -17,12 +17,14 @@ from lan_service import (
 )
 from reference_bridge import PROTOCOL, load_bridge_memory
 from stt_adapter import STT_COMMAND_ENV
+from tts_adapter import TTS_COMMAND_ENV
 
 RUNNER_ENV = {
     "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND": "",
     "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND": "",
     "STACKCHAN_GEMMA4_E4B_GGUF_COMMAND": "",
     "STACKCHAN_MODEL_COMMAND": "",
+    TTS_COMMAND_ENV: "",
 }
 
 
@@ -183,6 +185,64 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(8000, frames[0]["audio_sample_rate"])
         self.assertEqual("response_start", frames[1]["type"])
         self.assertEqual("react", frames[1]["intent"])
+
+    def test_configured_tts_command_replaces_response_mouth_beats(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_tts.py"
+            script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import os",
+                        "import sys",
+                        "text = sys.stdin.buffer.read().decode('utf-8')",
+                        "assert 'Hello' in text or 'awake' in text",
+                        "assert os.environ['STACKCHAN_TTS_TEXT_BYTES'] == str(len(text.encode('utf-8')))",
+                        "assert os.environ['STACKCHAN_TTS_VOICE'] == 'rvc-bright'",
+                        "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_bytes':222,'beats':[{'env':0.21,'viseme':'ah','duration_ms':30},{'env':0.63,'viseme':'ee','duration_ms':40}]}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            with patch.dict(os.environ, RUNNER_ENV, clear=False):
+                session = LanBridgeSession(
+                    LanBridgeConfig(runner_case="greeting", tts_command=command, tts_voice="rvc-bright")
+                )
+                frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 8, "text": "Hello"}))
+
+        response_start = next(frame for frame in frames if frame["type"] == "response_start")
+        audio_frames = [frame for frame in frames if frame["type"] == "audio"]
+        self.assertEqual("cli", response_start["tts_command_source"])
+        self.assertEqual("rvc-bright", response_start["tts_voice"])
+        self.assertEqual(2, response_start["tts_beats"])
+        self.assertEqual(70, response_start["tts_duration_ms"])
+        self.assertEqual("wav", response_start["tts_audio_format"])
+        self.assertEqual(22050, response_start["tts_sample_rate"])
+        self.assertEqual(222, response_start["tts_audio_bytes"])
+        self.assertEqual(2, len(audio_frames))
+        self.assertEqual(0.21, audio_frames[0]["env"])
+        self.assertEqual("ah", audio_frames[0]["viseme"])
+        self.assertEqual(30, audio_frames[0]["duration_ms"])
+        self.assertEqual("ee", audio_frames[1]["viseme"])
+        self.assertTrue(audio_frames[1]["final"])
+
+    def test_tts_command_failure_reports_error_and_keeps_fallback_beats(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "broken_tts.py"
+            script.write_text("import sys\nsys.stdin.buffer.read()\nprint('tts nope', file=sys.stderr)\nsys.exit(9)\n")
+            command = f'"{sys.executable}" "{script}"'
+
+            with patch.dict(os.environ, RUNNER_ENV, clear=False):
+                session = LanBridgeSession(LanBridgeConfig(runner_case="greeting", tts_command=command))
+                frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 10, "text": "Hello"}))
+
+        self.assertEqual("error", frames[0]["type"])
+        self.assertEqual("tts_error", frames[0]["code"])
+        self.assertIn("exit 9", frames[0]["detail"])
+        self.assertEqual("thinking", frames[1]["type"])
+        self.assertTrue(any(frame["type"] == "audio" and frame["final"] for frame in frames))
 
     def test_text_audio_payload_uses_base64_for_dev_clients(self):
         session = LanBridgeSession(LanBridgeConfig())

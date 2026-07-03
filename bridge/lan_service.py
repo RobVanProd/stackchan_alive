@@ -8,12 +8,13 @@ import base64
 import hashlib
 import json
 import socket
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from reference_bridge import (
+    AudioBeat,
     PROTOCOL,
     BridgeMemory,
     bridge_frames,
@@ -22,6 +23,7 @@ from reference_bridge import (
     turn_from_character_response,
 )
 from stt_adapter import DEFAULT_STT_TIMEOUT_MS, SttConfigurationError, SttExecutionError, transcribe_pcm
+from tts_adapter import DEFAULT_TTS_TIMEOUT_MS, DEFAULT_TTS_VOICE, TtsConfigurationError, TtsExecutionError, synthesize_speech
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -44,6 +46,9 @@ class LanBridgeConfig:
     runner_timeout_ms: int = 60000
     stt_command: str = ""
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
+    tts_command: str = ""
+    tts_voice: str = DEFAULT_TTS_VOICE
+    tts_timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS
     max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
     memory_file: Path | None = None
     once: bool = False
@@ -329,13 +334,53 @@ class LanBridgeSession:
             session=self.session,
             seq=seq,
         )
+        tts_summary: dict[str, object] = {}
+        tts_error = ""
+        try:
+            tts = synthesize_speech(
+                turn.text,
+                command=self.config.tts_command,
+                voice=self.config.tts_voice,
+                timeout_ms=self.config.tts_timeout_ms,
+            )
+            turn = replace(
+                turn,
+                beats=tuple(
+                    AudioBeat(beat.env, beat.viseme, beat.duration_ms, beat.final) for beat in tts.beats
+                ),
+            )
+            tts_summary = {
+                "tts_elapsed_ms": round(tts.elapsed_ms, 2),
+                "tts_command_source": tts.command_source,
+                "tts_voice": tts.voice,
+                "tts_beats": len(tts.beats),
+                "tts_duration_ms": tts.duration_ms,
+            }
+            if tts.audio_format:
+                tts_summary["tts_audio_format"] = tts.audio_format
+            if tts.sample_rate:
+                tts_summary["tts_sample_rate"] = tts.sample_rate
+            if tts.audio_bytes:
+                tts_summary["tts_audio_bytes"] = tts.audio_bytes
+        except TtsConfigurationError:
+            pass
+        except (TtsExecutionError, ValueError) as exc:
+            tts_error = str(exc)
         self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
         if has_audio:
             frames[0].update(audio_summary)
+        if tts_summary:
+            for frame in frames:
+                if frame.get("type") == "response_start":
+                    frame.update(tts_summary)
+                    break
+        prefix_errors: list[dict[str, object]] = []
         if validation.issues:
-            frames.insert(0, error_frame("character_validation", ",".join(validation.issues)))
-        return frames
+            prefix_errors.append(error_frame("character_validation", ",".join(validation.issues)))
+        if tts_error:
+            prefix_errors.append(error_frame("tts_error", tts_error))
+        return prefix_errors + frames
 
 
 def read_http_request(conn: socket.socket) -> bytes:
@@ -399,6 +444,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
     parser.add_argument("--stt-command", default="")
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
+    parser.add_argument("--tts-command", default="")
+    parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
+    parser.add_argument("--tts-timeout-ms", type=int, default=DEFAULT_TTS_TIMEOUT_MS)
     parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--reset-memory", action="store_true")
@@ -420,6 +468,9 @@ def main() -> int:
         runner_timeout_ms=args.runner_timeout_ms,
         stt_command=args.stt_command,
         stt_timeout_ms=args.stt_timeout_ms,
+        tts_command=args.tts_command,
+        tts_voice=args.tts_voice,
+        tts_timeout_ms=args.tts_timeout_ms,
         max_audio_bytes=args.max_audio_bytes,
         memory_file=args.memory_file,
     )

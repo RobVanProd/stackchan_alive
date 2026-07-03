@@ -30,7 +30,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, bounded binary PCM upload, and local STT command adapter exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, select/measure the real STT engine, then add dynamic TTS/audio streaming. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, bounded binary PCM upload, local STT command adapter, and local TTS mouth-timing adapter exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, select/measure real STT/TTS engines, then add binary audio transport. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -66,13 +66,17 @@ Keep each item independently shippable and package-verified.
    - On transcript-backed or STT-backed `utterance_end`, the service runs the local runner
      wrapper, validates Character Lock JSON, applies host memory, and streams normalized
      `thinking`, `response_start`, `audio`, and `response_end` frames.
-   - Selecting/measuring the real STT engine, downloaded audio chunks, and dynamic TTS
-     streaming remain the next P7 bridge gates.
+   - A configured local TTS command can receive response text on stdin and replace the
+     deterministic mouth beats with returned TTS metadata.
+   - Selecting/measuring real STT/TTS engines and adding downloaded binary audio chunks remain
+     the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.
 
 4. Dynamic TTS sidecar path.
-   - Bridge streams response text plus audio/envelope/viseme timing.
+   - Bridge streams response text plus TTS-derived envelope/viseme timing.
    - Firmware keeps using the existing mouth-envelope path.
+   - Binary audio transport to firmware is still future work; generated audio remains
+     host-local until that transport is implemented.
    - Voice-source provenance remains blocking for any consumer-ready build.
 
 5. End-to-end demo gate.
