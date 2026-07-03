@@ -195,6 +195,7 @@ Copy-Item -LiteralPath "docs/VOICE_PERSONALITY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json" -Destination $docsDir
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
+Copy-Item -LiteralPath "data/expressions.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
@@ -584,6 +585,7 @@ $manifest = [ordered]@{
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
+  expressionProfiles = "data/expressions.yaml"
   voicePersona = "data/voice_persona.yaml"
   voiceSourceProvenanceTemplate = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
   voiceSourceProvenance = "data/voice_source_provenance.yaml"

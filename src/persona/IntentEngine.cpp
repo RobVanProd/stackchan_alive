@@ -33,6 +33,10 @@ void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   nextDemoEventMs_ = event.timestampMs + 10000;
 }
 
+void IntentEngine::applyCircadian(uint8_t hourOfDay) {
+  emotion_.applyCircadian(hourOfDay);
+}
+
 void IntentEngine::applyAmbient(float lux, uint8_t hourOfDay) {
   emotion_.applyAmbient(lux, hourOfDay);
 }

@@ -113,6 +113,21 @@ void test_ambient_bright_day_reduces_fatigue_and_lifts_arousal() {
   TEST_ASSERT_GREATER_THAN_FLOAT(tiredArousal, model.profile().arousal);
 }
 
+void test_circadian_evening_raises_fatigue_and_morning_recovers() {
+  EmotionModel model;
+  model.reset();
+
+  const float initialArousal = model.profile().arousal;
+  model.applyCircadian(22);
+
+  const float nightFatigue = model.profile().fatigue;
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, nightFatigue);
+  TEST_ASSERT_LESS_THAN_FLOAT(initialArousal, model.profile().arousal);
+
+  model.applyCircadian(7);
+  TEST_ASSERT_LESS_THAN_FLOAT(nightFatigue, model.profile().fatigue);
+}
+
 void test_mood_decay_returns_toward_baseline() {
   EmotionModel model;
   model.reset();
@@ -497,6 +512,26 @@ void test_idle_life_micro_expression_is_deterministic() {
   TEST_ASSERT_FLOAT_WITHIN(0.0001f, first.telemetry().microExpression, second.telemetry().microExpression);
 }
 
+void test_idle_life_yawn_uses_fatigue_and_reduced_motion() {
+  IdleLife fullMotion;
+  IdleLife reducedMotion;
+  fullMotion.reset(0);
+  reducedMotion.reset(0);
+
+  RobotFrame full = makeNeutralFrame();
+  RobotFrame reduced = makeNeutralFrame();
+  full.emotion.fatigue = 0.90f;
+  reduced.emotion.fatigue = 0.90f;
+
+  fullMotion.apply(full, 4800, false);
+  reducedMotion.apply(reduced, 4800, true);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, full.face.mouthOpen);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.80f, full.face.eyeOpen);
+  TEST_ASSERT_GREATER_THAN_FLOAT(reduced.face.mouthOpen * 2.0f, full.face.mouthOpen);
+  TEST_ASSERT_GREATER_THAN_FLOAT(reducedMotion.telemetry().yawn * 2.0f, fullMotion.telemetry().yawn);
+}
+
 void test_intent_engine_reduced_motion_dampens_idle_life() {
   IntentEngine fullMotion;
   IntentEngine reducedMotion;
@@ -519,6 +554,17 @@ void test_intent_engine_applies_ambient_context() {
   engine.begin();
   engine.setDemoEnabled(false, 0);
   engine.applyAmbient(5.0f, 22);
+
+  const RobotFrame frame = engine.update(250);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, frame.emotion.fatigue);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.20f, frame.emotion.arousal);
+}
+
+void test_intent_engine_applies_circadian_context() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+  engine.applyCircadian(23);
 
   const RobotFrame frame = engine.update(250);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, frame.emotion.fatigue);
@@ -629,6 +675,23 @@ void test_sensor_adapter_parses_ambient_context_commands() {
   TEST_ASSERT_EQUAL_UINT8(10, control.ambient.hourOfDay);
 
   TEST_ASSERT_FALSE(parseBenchControlLine("ambient lux 40 hour 25", 4050, &control));
+}
+
+void test_sensor_adapter_parses_circadian_context_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("time 22", 4060, &control));
+  TEST_ASSERT_FALSE(control.hasEvent);
+  TEST_ASSERT_FALSE(control.hasSpeech);
+  TEST_ASSERT_FALSE(control.hasAmbient);
+  TEST_ASSERT_TRUE(control.hasCircadian);
+  TEST_ASSERT_EQUAL_UINT8(22, control.hourOfDay);
+  TEST_ASSERT_EQUAL_STRING("circadian_context", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("circadian hour 7", 4070, &control));
+  TEST_ASSERT_TRUE(control.hasCircadian);
+  TEST_ASSERT_EQUAL_UINT8(7, control.hourOfDay);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("time 24", 4080, &control));
 }
 
 void test_sensor_adapter_parses_reduced_motion_commands() {
@@ -933,6 +996,7 @@ int main() {
   RUN_TEST(test_wake_word_increases_arousal_and_focus);
   RUN_TEST(test_ambient_dark_night_increases_fatigue);
   RUN_TEST(test_ambient_bright_day_reduces_fatigue_and_lifts_arousal);
+  RUN_TEST(test_circadian_evening_raises_fatigue_and_morning_recovers);
   RUN_TEST(test_mood_decay_returns_toward_baseline);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
@@ -956,8 +1020,10 @@ int main() {
   RUN_TEST(test_idle_life_breathing_moves_face_and_body_together);
   RUN_TEST(test_idle_life_reduced_motion_dampens_offsets);
   RUN_TEST(test_idle_life_micro_expression_is_deterministic);
+  RUN_TEST(test_idle_life_yawn_uses_fatigue_and_reduced_motion);
   RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
   RUN_TEST(test_intent_engine_applies_ambient_context);
+  RUN_TEST(test_intent_engine_applies_circadian_context);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_status_without_event);
@@ -965,6 +1031,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_speech_envelope_command);
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_sensor_adapter_parses_ambient_context_commands);
+  RUN_TEST(test_sensor_adapter_parses_circadian_context_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
   RUN_TEST(test_sensor_adapter_parses_demo_enable_commands);

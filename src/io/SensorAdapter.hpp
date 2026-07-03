@@ -33,9 +33,11 @@ struct BenchControl {
   bool hasMotionEnable = false;
   bool hasDemoEnable = false;
   bool hasAmbient = false;
+  bool hasCircadian = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
+  uint8_t hourOfDay = 12;
   CharacterMode mode = CharacterMode::Idle;
   RobotEvent event;
   BenchSpeechEnvelope speech;
