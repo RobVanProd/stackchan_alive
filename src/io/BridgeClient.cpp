@@ -242,6 +242,7 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
 
   if (std::strcmp(type, "error") == 0) {
     telemetry_.state = BridgeClientState::Error;
+    clearAudioStream();
     output.type = BridgeClientOutputType::Error;
     output.event.type = EventType::Error;
     readStringField(jsonLine, "code", output.error, sizeof(output.error));
@@ -521,6 +522,7 @@ bool BridgeClient::failTimeout(uint32_t nowMs) {
   telemetry_.timeouts++;
   telemetry_.state = BridgeClientState::Error;
   telemetry_.lastMessageMs = nowMs;
+  clearAudioStream();
   BridgeClientOutput output;
   output.type = BridgeClientOutputType::Error;
   output.event.type = EventType::Error;
