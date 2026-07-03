@@ -108,11 +108,13 @@ of sharing.
 
 ## Migration plan (small PRs, each shippable)
 
-Current implementation status: Spark now exists under `personas/spark`; the bridge prompt,
-character harness, red-team dry-run harness, and firmware `SpeechPlanner` line table load
-from that pack. The red-team gate is corpus/validator-ready, but it still requires a
-configured real runner before it can pass as model evidence. Later PRs still need broader
-codegen coverage for earcon, expression, behavior, and voice assets.
+Current implementation status: Spark now exists under `personas/spark` as the active
+reference pack, and Glow now exists under `personas/glow` as the quieter second pack that
+proves the pack seam is not Spark-specific. The bridge prompt, character harness, firmware
+`SpeechPlanner` line table, and red-team dry-run harness load from persona packs. The
+red-team gate is corpus/validator-ready, but it still requires a configured real runner
+before it can pass as model evidence. Later PRs still need broader codegen coverage for
+earcon, expression, behavior, and voice assets.
 
 1. **Extract Spark:** create `personas/spark/` from CHARACTER_LOCK.md, `voice_persona.yaml`,
    `expressions.yaml`, and the strings currently in `SpeechPlanner.cpp` /
@@ -123,14 +125,14 @@ codegen coverage for earcon, expression, behavior, and voice assets.
    delete the inline prose.
 4. **Parameterize the character harness** by pack (foundation rules stay compiled in).
 5. **Pack validator tool + CI job** (`verify_persona_pack` on `personas/*` every PR).
-6. **Ship a second pack** — e.g. a quiet, shy, slow-blinking observer persona. This is the
-   real test: the second pack is what proves the seams are in the right places. Expect it
-   to flush out hardcoded Spark-isms the extraction missed; fix them by moving data, not
-   by adding conditionals.
+6. **Ship a second pack:** done with `personas/glow`, a calm, slower, soft-earcon observer
+   persona. Keep using Glow as the regression pack whenever new persona-controlled surface
+   area lands. If hardcoded Spark-isms appear, fix them by moving data into the pack, not by
+   adding conditionals.
 7. Extend codegen coverage as later phases land (earcon params, behavior tuning,
    circadian schedule), so new persona surface area lands pack-native instead of
    hardcoded.
 
-Steps 1-5 can run entirely in parallel with the hardware bring-up track in
+Steps 1-6 can run entirely in parallel with the hardware bring-up track in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — this is host/build tooling and pure-logic firmware
 refactoring, all covered by the existing test suites.

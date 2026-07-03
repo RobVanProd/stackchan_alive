@@ -18,6 +18,7 @@ from local_runner import (
     RunnerExecutionError,
     run_runner_profile,
 )
+from persona_pack import DEFAULT_PERSONA_ID, load_and_validate_persona_pack
 
 SCHEMA = "stackchan.model-benchmark.v1"
 DEFAULT_OUT_DIR = Path("output/model-benchmark/latest")
@@ -59,10 +60,12 @@ def benchmark_case(
     command: str = "",
     require_runner: bool = False,
     timeout_ms: int = 60000,
+    persona_id: str = DEFAULT_PERSONA_ID,
 ) -> dict[str, Any]:
     profile_meta = RUNNER_PROFILES[profile]
     base: dict[str, Any] = {
         "profile": profile,
+        "persona": persona_id,
         "model": profile_meta["model"],
         "runtime": profile_meta["runtime"],
         "case": case_name,
@@ -79,6 +82,7 @@ def benchmark_case(
             command=command,
             require_runner=require_runner,
             timeout_ms=timeout_ms,
+            persona_id=persona_id,
         )
     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
         base["error"] = str(exc)
@@ -247,9 +251,11 @@ def run_benchmark(
     min_pass_rate: float = DEFAULT_MIN_PASS_RATE,
     max_median_ms: float = DEFAULT_MAX_MEDIAN_MS,
     min_tokens_per_sec: float = DEFAULT_MIN_TOKENS_PER_SEC,
+    persona_id: str = DEFAULT_PERSONA_ID,
 ) -> dict[str, Any]:
     selected_profiles = resolve_profiles(profiles or [])
     selected_cases = resolve_cases(cases or [])
+    persona = load_and_validate_persona_pack(persona_id)
     if command.strip() and len(selected_profiles) != 1:
         raise ValueError("--command can only be used with exactly one --profile")
 
@@ -263,6 +269,7 @@ def run_benchmark(
                     command=command,
                     require_runner=require_runner,
                     timeout_ms=timeout_ms,
+                    persona_id=persona.pack_id,
                 )
             )
 
@@ -271,6 +278,7 @@ def run_benchmark(
         "generated_at": utc_timestamp(),
         "profiles_requested": selected_profiles,
         "cases_requested": selected_cases,
+        "persona": persona.pack_id,
         "require_runner": require_runner,
         "summary": summarize_results(
             results,
@@ -289,6 +297,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         f"Schema: `{report['schema']}`",
         f"Generated: `{report['generated_at']}`",
+        f"Persona: `{report.get('persona', DEFAULT_PERSONA_ID)}`",
         f"Status: `{summary['status']}`",
         "",
         "This report measures the P7 Character Lock prompt suite through `bridge/local_runner.py`.",
@@ -377,6 +386,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--command", default="", help="Optional command for a single selected profile.")
     parser.add_argument("--require-runner", action="store_true", help="Fail rows instead of using deterministic fallback.")
     parser.add_argument("--timeout-ms", type=int, default=60000)
+    parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Persona pack id or path. Defaults to spark.")
     parser.add_argument("--min-pass-rate", type=float, default=DEFAULT_MIN_PASS_RATE)
     parser.add_argument("--max-median-ms", type=float, default=DEFAULT_MAX_MEDIAN_MS)
     parser.add_argument("--min-tokens-per-sec", type=float, default=DEFAULT_MIN_TOKENS_PER_SEC)
@@ -394,6 +404,7 @@ def main() -> int:
             command=args.command,
             require_runner=args.require_runner,
             timeout_ms=args.timeout_ms,
+            persona_id=args.persona,
             min_pass_rate=args.min_pass_rate,
             max_median_ms=args.max_median_ms,
             min_tokens_per_sec=args.min_tokens_per_sec,

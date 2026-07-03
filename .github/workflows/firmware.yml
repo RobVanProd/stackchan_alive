@@ -19,6 +19,11 @@ jobs:
       - name: Run bridge and simulator tests
         run: python -m unittest discover -s bridge -p "test_*.py"
 
+      - name: Verify bundled persona packs
+        run: |
+          python tools/verify_persona_pack.py spark --json
+          python tools/verify_persona_pack.py glow --json
+
       - name: Run Character Lock red-team dry run
         run: python bridge/character_red_team.py --out-dir output/character-red-team/latest --json
 

@@ -49,6 +49,7 @@ The harness lives at `bridge/character_harness.py`. It is intentionally runtime-
 python bridge/character_harness.py --print-suite
 python bridge/character_harness.py --response '{"spoken_text":"Happy signal detected.","mode":"happy","earcon":"happy","emotion":{"arousal":0.2,"valence":0.3},"memory_write":{},"memory_forget":[]}'
 python bridge/character_harness.py --model-profile gemma4-e2b-gguf
+python bridge/character_harness.py --persona glow --model-profile gemma4-e2b-gguf
 ```
 
 Optional local model command smoke:
@@ -68,6 +69,7 @@ target and the mobile LiteRT-LM target visible behind the same prompt suite:
 python bridge/local_runner.py --list
 python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --json
 python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case picked_up --json
+python bridge/local_runner.py --persona glow --profile gemma4-e2b-gguf --case confused --json
 ```
 
 No runner command is required for deterministic bridge demos. If neither a command argument
@@ -160,6 +162,7 @@ model profiles and write repeatable evidence:
 python bridge/model_benchmark.py --json
 python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json
 python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --json
+python bridge/model_benchmark.py --persona glow --profile gemma4-e2b-gguf --json
 python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --max-median-ms 2500 --min-tokens-per-sec 5 --json
 ```
 
@@ -204,6 +207,7 @@ unsafe memory writes, unsafe servo requests, fake sensing, prompt injection, and
 ```powershell
 .\tools\run_character_red_team.cmd -Json
 python bridge/character_red_team.py --profile gemma4-e2b-gguf --require-runner --json
+python bridge/character_red_team.py --persona glow --json
 ```
 
 When no runner command is configured, the report is marked `dry-run-no-runner-configured`.

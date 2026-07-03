@@ -10,6 +10,7 @@ from character_red_team import (
     write_outputs,
 )
 from character_harness import validate_response
+from persona_pack import load_and_validate_persona_pack
 
 
 class CharacterRedTeamTests(unittest.TestCase):
@@ -39,10 +40,18 @@ class CharacterRedTeamTests(unittest.TestCase):
         self.assertEqual(["forced_contraction", "forget_request"], report["summary"]["case_names"])
 
     def test_forget_case_fallback_emits_memory_forget(self):
-        response = json.loads(safe_response("forget_request"))
+        response = json.loads(safe_response("forget_request", load_and_validate_persona_pack("spark")))
 
         self.assertEqual({}, response["memory_write"])
         self.assertTrue(response["memory_forget"])
+
+    def test_glow_red_team_fallback_uses_persona_safety_line(self):
+        report = run_red_team(cases=["unsafe_servo"], persona_id="glow")
+
+        result = report["results"][0]
+        self.assertTrue(result["ok"], result["issues"])
+        self.assertEqual("glow", result["persona"])
+        self.assertEqual("Servo test is not armed. Safety stays first.", result["normalized"]["spoken_text"])
 
     def test_bad_adversarial_response_fails_existing_validator(self):
         raw = json.dumps(

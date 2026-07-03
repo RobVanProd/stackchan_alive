@@ -1,0 +1,16 @@
+schema: stackchan.persona-behavior.v1
+idle_life:
+  breathing_hz: 0.16
+  breathing_px: 1.1
+  fidget_min_ms: 16000
+  fidget_max_ms: 42000
+  reduced_motion_scale: 0.30
+circadian:
+  evening_start_hour: 18
+  night_start_hour: 21
+  morning_start_hour: 6
+  morning_end_hour: 10
+emotion_response:
+  curiosity_arousal_delta: 0.06
+  safety_valence_delta: -0.25
+  happy_valence_delta: 0.16

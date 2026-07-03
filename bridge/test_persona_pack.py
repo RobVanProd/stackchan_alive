@@ -33,6 +33,28 @@ class PersonaPackTests(unittest.TestCase):
         self.assertNotIn("Short Circuit", prompt)
         self.assertNotIn("Number 5", prompt)
 
+    def test_glow_pack_loads_as_second_persona(self):
+        pack = load_and_validate_persona_pack("glow")
+
+        self.assertEqual("glow", pack.pack_id)
+        self.assertEqual("Stackchan Glow", pack.display_name)
+        self.assertEqual("Hello. Stackchan Glow is online. Quiet sensors ready.", pack.spoken_line("boot")["text"])
+        self.assertEqual("safety", pack.spoken_line("safety")["earcon"])
+        self.assertLess(pack.earcons["earcons"]["wake"]["base_hz"], 600)
+
+    def test_glow_prompt_uses_template_slots_without_clone_markers(self):
+        pack = load_and_validate_persona_pack("glow")
+
+        prompt = pack.render_prompt(memory_lines=("turns_seen: 3", "project.topic: quiet mode"), context_markers=("case: soft greeting",))
+
+        self.assertIn("You are Stackchan Glow", prompt)
+        self.assertIn("Reply only as JSON", prompt)
+        self.assertIn("project.topic: quiet mode", prompt)
+        self.assertIn("case: soft greeting", prompt)
+        self.assertNotIn("Johnny", prompt)
+        self.assertNotIn("Short Circuit", prompt)
+        self.assertNotIn("Number 5", prompt)
+
     def test_validator_rejects_loosened_caps_and_bad_safety_line(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "loose"

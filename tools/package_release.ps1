@@ -300,6 +300,10 @@ $personaStatus | Set-Content -Path $personaStatusPath -Encoding UTF8
 if ($personaStatusExit -ne 0) {
   throw "Persona pack verification failed."
 }
+$glowPersonaStatus = & $personaVerifierPython tools/verify_persona_pack.py glow --json
+if ($LASTEXITCODE -ne 0) {
+  throw "Glow persona pack verification failed: $glowPersonaStatus"
+}
 
 $characterRedTeamOutDir = Join-Path $outDir "character-red-team"
 $characterRedTeamPython = Get-StackchanPreviewPython
@@ -742,6 +746,7 @@ $manifest = [ordered]@{
   johnnyAlivePathway = "docs/JOHNNY_ALIVE_PATHWAY.md"
   personaPacksGuide = "docs/PERSONA_PACKS.md"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
+  includedPersonaPacks = @("spark", "glow")
   activePersona = "spark"
   activePersonaPack = "personas/spark"
   activePersonaVerification = "persona_pack_status.json"
@@ -962,6 +967,13 @@ $manifest = [ordered]@{
     "provenance/personas/spark/expressions.yaml",
     "provenance/personas/spark/earcons.yaml",
     "provenance/personas/spark/voice.yaml",
+    "provenance/personas/glow/pack.yaml",
+    "provenance/personas/glow/character.yaml",
+    "provenance/personas/glow/prompt.md",
+    "provenance/personas/glow/behavior.yaml",
+    "provenance/personas/glow/expressions.yaml",
+    "provenance/personas/glow/earcons.yaml",
+    "provenance/personas/glow/voice.yaml",
     "provenance/src/main.cpp",
     "provenance/src/persona/SpeechPlanner.hpp",
     "provenance/src/persona/SpeechPlanner.cpp",

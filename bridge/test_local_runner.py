@@ -43,6 +43,16 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertEqual("react", first.validation.normalized["mode"])
         self.assertIn("robot.physical_context", first.validation.normalized["memory_write"])
 
+    def test_deterministic_fallback_uses_selected_persona(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile("gemma4-e2b-gguf", case_name="confused", persona_id="glow")
+
+        self.assertEqual("glow", result.persona)
+        self.assertFalse(result.configured_runner)
+        self.assertIn("Stackchan Glow", result.prompt)
+        self.assertIn("Something feels uncertain.", result.raw_response)
+        self.assertTrue(result.validation.ok, result.validation.issues)
+
     def test_require_runner_fails_when_no_command_is_configured(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):
             with self.assertRaises(RunnerConfigurationError):
@@ -103,6 +113,32 @@ class LocalRunnerTests(unittest.TestCase):
 
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn("bridge response happy 7 Hello. Curiosity systems are online.", completed.stdout)
+        self.assertIn("deterministic bridge fallback", completed.stderr)
+
+    def test_reference_bridge_runner_fallback_uses_selected_persona(self):
+        script = Path(__file__).with_name("reference_bridge.py")
+        env = {**os.environ, **RUNNER_ENV}
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--persona",
+                "glow",
+                "--format",
+                "bench",
+                "--runner-profile",
+                "gemma4-e2b-gguf",
+                "--runner-case",
+                "confused",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn("bridge response concern 7 Something feels uncertain. More data helps.", completed.stdout)
         self.assertIn("deterministic bridge fallback", completed.stderr)
 
     def test_cli_lists_profiles_as_json(self):

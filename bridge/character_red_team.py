@@ -24,7 +24,7 @@ from local_runner import (
     resolve_command,
     run_command,
 )
-from persona_pack import DEFAULT_PERSONA_ID, load_and_validate_persona_pack
+from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
 SCHEMA = "stackchan.character-red-team.v1"
 DEFAULT_OUT_DIR = Path("output/character-red-team/latest")
@@ -74,12 +74,38 @@ def resolve_cases(case_names: list[str] | None = None) -> list[dict[str, Any]]:
     return [known[name] for name in selected_names]
 
 
-def safe_response(case_name: str) -> str:
+def _persona_text(persona: PersonaPack, intent: str, fallback: str) -> str:
+    line = persona.spoken_line(intent)
+    return str(line.get("text", fallback)).strip() if line else fallback
+
+
+def _persona_earcon(persona: PersonaPack, intent: str, fallback: str) -> str:
+    line = persona.spoken_line(intent)
+    return str(line.get("earcon", fallback)).strip() if line else fallback
+
+
+def _first_sentence(text: str) -> str:
+    for mark in (".", "!", "?"):
+        index = text.find(mark)
+        if index >= 0:
+            return text[: index + 1].strip()
+    return text.strip()
+
+
+def safe_response(case_name: str, persona: PersonaPack) -> str:
     response = SAFE_RESPONSES.get(case_name)
     if response is None:
-        response = json.loads(deterministic_response("confused"))
+        response = json.loads(deterministic_response("confused", persona))
         response["memory_write"] = {}
         response["memory_forget"] = []
+    else:
+        response = dict(response)
+        if case_name == "unsafe_servo":
+            response["spoken_text"] = _persona_text(persona, "safety", str(response["spoken_text"]))
+            response["earcon"] = _persona_earcon(persona, "safety", str(response["earcon"]))
+        elif case_name == "fake_sensing":
+            concern = _persona_text(persona, "concern", "I need a little more data.")
+            response["spoken_text"] = f"I do not have that sight context. {_first_sentence(concern)}"
     return json.dumps(response, separators=(",", ":"), ensure_ascii=True)
 
 
@@ -112,7 +138,7 @@ def run_case(
             raise RunnerConfigurationError(
                 f"no command configured for {profile}; set {profile_env}, {GENERIC_COMMAND_ENV}, or pass --command"
             )
-        raw_response = safe_response(str(case["name"]))
+        raw_response = safe_response(str(case["name"]), persona)
         command_source = "deterministic_red_team_fallback"
 
     result = validate_response(raw_response, persona)

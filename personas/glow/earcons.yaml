@@ -1,0 +1,35 @@
+schema: stackchan.persona-earcons.v1
+purpose: Glow earcons are short, soft, procedural cues. Safety remains calm and procedural.
+earcons:
+  wake:
+    base_hz: 560
+    chirps: 2
+    duration_ms: 220
+  confirm:
+    base_hz: 640
+    chirps: 1
+    duration_ms: 150
+  think:
+    base_hz: 500
+    chirps: 3
+    duration_ms: 260
+  happy:
+    base_hz: 760
+    chirps: 2
+    duration_ms: 190
+  concern:
+    base_hz: 420
+    chirps: 2
+    duration_ms: 220
+  sleep:
+    base_hz: 340
+    chirps: 1
+    duration_ms: 320
+  error:
+    base_hz: 300
+    chirps: 2
+    duration_ms: 250
+  safety:
+    base_hz: 360
+    chirps: 1
+    duration_ms: 220

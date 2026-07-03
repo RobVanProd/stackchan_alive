@@ -22,6 +22,7 @@ Inspect the deterministic persona prompt and local memory context that the futur
 
 ```powershell
 python bridge/reference_bridge.py --format prompt --name Rob --topic voice --physical-context "room is dark"
+python bridge/reference_bridge.py --persona glow --format prompt --name Rob --topic quiet-mode
 ```
 
 Validate model output against the locked character schema:
@@ -29,6 +30,7 @@ Validate model output against the locked character schema:
 ```powershell
 python bridge/character_harness.py --print-suite
 python bridge/character_harness.py --model-profile gemma4-e2b-litert-lm
+python bridge/character_harness.py --persona glow --model-profile gemma4-e2b-litert-lm
 ```
 
 Run adversarial Character Lock cases:
@@ -36,6 +38,7 @@ Run adversarial Character Lock cases:
 ```powershell
 python bridge/character_red_team.py --json
 python bridge/character_red_team.py --profile gemma4-e2b-gguf --require-runner --json
+python bridge/character_red_team.py --persona glow --json
 ```
 
 The dry run proves the corpus and validator path. A real brain candidate must run the same
@@ -48,6 +51,7 @@ Character Lock response, so bridge demos stay repeatable:
 python bridge/local_runner.py --list
 python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --json
 python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case picked_up --json
+python bridge/local_runner.py --persona glow --profile gemma4-e2b-gguf --case confused --json
 ```
 
 Run the batch benchmark harness to compare the GGUF, LiteRT-LM, and fallback profiles across
@@ -56,6 +60,7 @@ the Character Lock prompt suite:
 ```powershell
 python bridge/model_benchmark.py --json
 python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --json
+python bridge/model_benchmark.py --persona glow --profile gemma4-e2b-gguf --json
 ```
 
 The default output goes to `output/model-benchmark/latest/model_benchmark.json` and

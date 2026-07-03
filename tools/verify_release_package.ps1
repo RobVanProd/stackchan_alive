@@ -175,6 +175,13 @@ $requiredFiles = @(
   "personas/spark/expressions.yaml",
   "personas/spark/earcons.yaml",
   "personas/spark/voice.yaml",
+  "personas/glow/pack.yaml",
+  "personas/glow/character.yaml",
+  "personas/glow/prompt.md",
+  "personas/glow/behavior.yaml",
+  "personas/glow/expressions.yaml",
+  "personas/glow/earcons.yaml",
+  "personas/glow/voice.yaml",
   "persona_pack_status.json",
   "character-red-team/CHARACTER_RED_TEAM.md",
   "character-red-team/character_red_team.json",
@@ -397,7 +404,14 @@ $requiredFiles = @(
   "provenance/personas/spark/behavior.yaml",
   "provenance/personas/spark/expressions.yaml",
   "provenance/personas/spark/earcons.yaml",
-  "provenance/personas/spark/voice.yaml"
+  "provenance/personas/spark/voice.yaml",
+  "provenance/personas/glow/pack.yaml",
+  "provenance/personas/glow/character.yaml",
+  "provenance/personas/glow/prompt.md",
+  "provenance/personas/glow/behavior.yaml",
+  "provenance/personas/glow/expressions.yaml",
+  "provenance/personas/glow/earcons.yaml",
+  "provenance/personas/glow/voice.yaml"
 )
 
 foreach ($file in $requiredFiles) {
@@ -572,9 +586,14 @@ foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.
     throw "docs/README.md missing character red-team guidance: $pattern"
   }
 }
+foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "verify_persona_pack.cmd glow --Json")) {
+  if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
+  }
+}
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
@@ -842,7 +861,7 @@ foreach ($pattern in @("stackchan.character-red-team.v1", "RED_TEAM_SUITE", "run
 }
 
 $characterRedTeamTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_red_team.py") -Raw
-foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_bad_adversarial_response_fails_existing_validator", "test_report_outputs_json_and_markdown")) {
+foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_glow_red_team_fallback_uses_persona_safety_line", "test_bad_adversarial_response_fails_existing_validator", "test_report_outputs_json_and_markdown")) {
   if ($characterRedTeamTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_character_red_team.py missing red-team test coverage: $pattern"
   }
@@ -883,7 +902,7 @@ foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "valida
 }
 
 $personaPackTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_persona_pack.py") -Raw
-foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_validator_rejects_loosened_caps_and_bad_safety_line")) {
+foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line")) {
   if ($personaPackTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_persona_pack.py missing persona pack test coverage: $pattern"
   }
@@ -903,6 +922,20 @@ foreach ($pattern in @("display_name: Stackchan Spark", "max_chars: 140", "contr
   }
 }
 
+$glowPackText = Get-Content -LiteralPath (Join-PackagePath "personas/glow/pack.yaml") -Raw
+foreach ($pattern in @("schema: stackchan.persona-pack.v1", "id: glow", "character: character.yaml", "prompt: prompt.md", "voice: voice.yaml")) {
+  if ($glowPackText -notmatch [regex]::Escape($pattern)) {
+    throw "personas/glow/pack.yaml missing Glow pack field: $pattern"
+  }
+}
+
+$glowCharacterText = Get-Content -LiteralPath (Join-PackagePath "personas/glow/character.yaml") -Raw
+foreach ($pattern in @("display_name: Stackchan Glow", "max_chars: 140", "contractions: forbidden", "Servo test is not armed. Safety stays first.", "earcon: safety", "Never claim to be alive or human")) {
+  if ($glowCharacterText -notmatch [regex]::Escape($pattern)) {
+    throw "personas/glow/character.yaml missing Glow character rule: $pattern"
+  }
+}
+
 $personaStatus = Get-Content -LiteralPath (Join-PackagePath "persona_pack_status.json") -Raw | ConvertFrom-Json
 if (-not $personaStatus.ok) {
   throw "persona_pack_status.json does not report ok=true"
@@ -919,7 +952,7 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
 }
 
 $localRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/local_runner.py") -Raw
-foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback")) {
+foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback", "persona_id", "--persona")) {
   if ($localRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/local_runner.py missing local runner support: $pattern"
   }
@@ -954,7 +987,7 @@ foreach ($pattern in @("LiteRtLmContractSmokeTests", "test_build_report_exercise
 }
 
 $localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
-foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_command_runner_measures_speed_and_validates_json", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "gemma4-e2b-litert-lm")) {
   if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_local_runner.py missing local runner test coverage: $pattern"
   }
@@ -975,7 +1008,7 @@ foreach ($pattern in @("EngineProbeTests", "test_unconfigured_probe_reports_clea
 }
 
 $modelBenchmarkText = Get-Content -LiteralPath (Join-PackagePath "bridge/model_benchmark.py") -Raw
-foreach ($pattern in @("stackchan.model-benchmark.v1", "RUNNER_PROFILES", "run_benchmark", "write_outputs", "MODEL_BENCHMARK.md", "model_benchmark.json", "dry-run-no-runner-configured", "approx_tokens_per_sec", "candidate_gate", "DEFAULT_MIN_PASS_RATE", "--min-pass-rate", "recommended_profile")) {
+foreach ($pattern in @("stackchan.model-benchmark.v1", "RUNNER_PROFILES", "run_benchmark", "write_outputs", "MODEL_BENCHMARK.md", "model_benchmark.json", "dry-run-no-runner-configured", "approx_tokens_per_sec", "candidate_gate", "DEFAULT_MIN_PASS_RATE", "--min-pass-rate", "--persona", "recommended_profile")) {
   if ($modelBenchmarkText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/model_benchmark.py missing model benchmark support: $pattern"
   }
@@ -1370,6 +1403,13 @@ if ($manifest.personaPacksGuide -ne "docs/PERSONA_PACKS.md") {
 
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
   throw "Manifest voicePersonalityGuide mismatch: $($manifest.voicePersonalityGuide)"
+}
+
+$includedPersonaPacks = @($manifest.includedPersonaPacks)
+foreach ($personaId in @("spark", "glow")) {
+  if ($includedPersonaPacks -notcontains $personaId) {
+    throw "Manifest includedPersonaPacks missing persona: $personaId"
+  }
 }
 
 if ($manifest.activePersona -ne "spark") {

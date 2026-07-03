@@ -47,6 +47,13 @@ Check whether this host has local model/STT/TTS engines configured:
 Re-run with `-RunModelSmoke` after exporting a real runner command. The probe is setup
 evidence only; full brain selection still requires a non-dry-run model benchmark.
 
+Validate the bundled Character OS persona packs:
+
+```powershell
+.\tools\verify_persona_pack.cmd --Json
+.\tools\verify_persona_pack.cmd glow --Json
+```
+
 Run the batch model benchmark after the runner command is configured:
 
 ```powershell
