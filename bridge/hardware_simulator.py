@@ -23,6 +23,7 @@ DEFAULT_TIMEOUT_MS = 2000
 DISPLAY_FRAME_MS = 33
 MAX_AUDIO_STREAM_CHUNK_BYTES = 4096
 AUDIO_DOWNLINK_TEST_BYTES = 5000
+DOWNLINK_CHECKSUM_SEED = 2166136261
 
 
 Frame = dict[str, object] | bytes
@@ -56,6 +57,21 @@ class VirtualHardwareTelemetry:
     audio_stream_chunk_bytes_max: int = 0
     audio_stream_chunks_expected: int = 0
     audio_stream_chunks_received: int = 0
+    bridge_downlink_ready: bool = False
+    bridge_downlink_active: bool = False
+    bridge_downlink_streams: int = 0
+    bridge_downlink_completed: int = 0
+    bridge_downlink_aborted: int = 0
+    bridge_downlink_chunks: int = 0
+    bridge_downlink_bytes: int = 0
+    bridge_downlink_errors: int = 0
+    bridge_downlink_checksum: int = 0
+    bridge_downlink_last_seq: int = 0
+    bridge_downlink_expected_bytes: int = 0
+    bridge_downlink_expected_chunks: int = 0
+    bridge_downlink_received_bytes: int = 0
+    bridge_downlink_received_chunks: int = 0
+    bridge_downlink_last_payload_bytes: int = 0
     response_text: str = ""
     boot_count: int = 0
     display_ready: bool = False
@@ -100,6 +116,21 @@ class VirtualHardwareTelemetry:
             "audio_stream_chunk_bytes_max": self.audio_stream_chunk_bytes_max,
             "audio_stream_chunks_expected": self.audio_stream_chunks_expected,
             "audio_stream_chunks_received": self.audio_stream_chunks_received,
+            "bridge_downlink_ready": self.bridge_downlink_ready,
+            "bridge_downlink_active": self.bridge_downlink_active,
+            "bridge_downlink_streams": self.bridge_downlink_streams,
+            "bridge_downlink_completed": self.bridge_downlink_completed,
+            "bridge_downlink_aborted": self.bridge_downlink_aborted,
+            "bridge_downlink_chunks": self.bridge_downlink_chunks,
+            "bridge_downlink_bytes": self.bridge_downlink_bytes,
+            "bridge_downlink_errors": self.bridge_downlink_errors,
+            "bridge_downlink_checksum": self.bridge_downlink_checksum,
+            "bridge_downlink_last_seq": self.bridge_downlink_last_seq,
+            "bridge_downlink_expected_bytes": self.bridge_downlink_expected_bytes,
+            "bridge_downlink_expected_chunks": self.bridge_downlink_expected_chunks,
+            "bridge_downlink_received_bytes": self.bridge_downlink_received_bytes,
+            "bridge_downlink_received_chunks": self.bridge_downlink_received_chunks,
+            "bridge_downlink_last_payload_bytes": self.bridge_downlink_last_payload_bytes,
             "response_text": self.response_text,
             "boot_count": self.boot_count,
             "display_ready": self.display_ready,
@@ -181,6 +212,7 @@ class VirtualStackchanHardware:
             self._record_error("audio_stream_left_open")
         if self.telemetry.bridge_state in {"Thinking", "Responding"}:
             self._record_error("response_left_active")
+        self._serial_runtime_status()
 
     def ok(self) -> bool:
         return not self.issues and self.telemetry.parse_errors == 0 and self.telemetry.timeouts == 0
@@ -209,6 +241,18 @@ class VirtualStackchanHardware:
                 self._record_issue("speaker_playback_not_started")
             if self.telemetry.speaker_frames_submitted != self.telemetry.audio_stream_chunks_expected:
                 self._record_issue("speaker_frame_count_mismatch")
+            if self.telemetry.bridge_downlink_streams != 1:
+                self._record_issue("bridge_downlink_stream_count_mismatch")
+            if self.telemetry.bridge_downlink_completed != 1:
+                self._record_issue("bridge_downlink_completion_mismatch")
+            if self.telemetry.bridge_downlink_chunks != self.telemetry.audio_stream_chunks_expected:
+                self._record_issue("bridge_downlink_chunk_count_mismatch")
+            if self.telemetry.bridge_downlink_bytes != self.telemetry.audio_stream_bytes_expected:
+                self._record_issue("bridge_downlink_byte_count_mismatch")
+            if self.telemetry.bridge_downlink_active:
+                self._record_issue("bridge_downlink_left_active")
+            if self.telemetry.bridge_downlink_errors != 0:
+                self._record_issue("bridge_downlink_error_count_nonzero")
             if self.telemetry.mouth_display_frames <= 0:
                 self._record_issue("mouth_never_rendered_during_audio")
         if scenario == "arrival-rehearsal":
@@ -220,6 +264,14 @@ class VirtualStackchanHardware:
                 self._record_issue("control_events_not_covered")
             if self.telemetry.speaker_playback_starts < 1:
                 self._record_issue("arrival_speaker_stream_not_exercised")
+            if self.telemetry.bridge_downlink_streams < 1:
+                self._record_issue("arrival_bridge_downlink_not_exercised")
+            if self.telemetry.bridge_downlink_completed < 1:
+                self._record_issue("arrival_bridge_downlink_not_completed")
+            if self.telemetry.bridge_downlink_chunks < 1 or self.telemetry.bridge_downlink_bytes < 1:
+                self._record_issue("arrival_bridge_downlink_payload_missing")
+            if self.telemetry.bridge_downlink_errors != 0:
+                self._record_issue("arrival_bridge_downlink_error_count_nonzero")
             if self.telemetry.mouth_display_frames <= 0:
                 self._record_issue("arrival_mouth_display_not_exercised")
             if self.telemetry.power_cycles < 1:
@@ -338,6 +390,7 @@ class VirtualStackchanHardware:
             self._set_face_mode("error")
             if self.active_stream is not None:
                 self.telemetry.audio_streams_aborted += 1
+                self._abort_downlink()
                 self.active_stream = None
             self.mouth_env = 0.0
             self.speech_active = False
@@ -368,6 +421,18 @@ class VirtualStackchanHardware:
             self.active_stream = None
             self._record_error("audio_stream_chunk_too_large")
             return
+        next_bytes = self.active_stream.received_bytes + len(payload)
+        next_chunks = self.active_stream.received_chunks + 1
+        if self.active_stream.expected_bytes and next_bytes > self.active_stream.expected_bytes:
+            self._fail_downlink()
+            self.active_stream = None
+            self._record_error("audio_stream_payload_bytes_overrun")
+            return
+        if self.active_stream.expected_chunks and next_chunks > self.active_stream.expected_chunks:
+            self._fail_downlink()
+            self.active_stream = None
+            self._record_error("audio_stream_payload_chunks_overrun")
+            return
         self.active_stream.received_bytes += len(payload)
         self.active_stream.received_chunks += 1
         self.telemetry.audio_stream_bytes_received += len(payload)
@@ -376,6 +441,7 @@ class VirtualStackchanHardware:
         )
         self.telemetry.audio_stream_chunks_received += 1
         self.telemetry.speaker_frames_submitted += 1
+        self._accept_downlink_chunk(payload)
         self._serial(
             "[bridge] type=audio_binary "
             f"state={self.telemetry.bridge_state} seq={self.active_stream.seq} bytes={len(payload)}"
@@ -405,6 +471,7 @@ class VirtualStackchanHardware:
         )
         self.telemetry.audio_stream_chunks_expected += stream.expected_chunks
         self.telemetry.speaker_playback_starts += 1
+        self._start_downlink(stream)
         self.telemetry.bridge_state = "Responding"
         self._serial(
             "[bridge] type=audio_stream_start "
@@ -420,15 +487,21 @@ class VirtualStackchanHardware:
         stream = self.active_stream
         end_bytes = max(0, _int(frame.get("audio_bytes"), stream.expected_bytes))
         end_chunks = max(0, _int(frame.get("chunks"), stream.expected_chunks))
+        downlink_end_failed = False
         if end_bytes != stream.expected_bytes:
             self._record_error("audio_stream_end_bytes_mismatch")
+            downlink_end_failed = True
         if end_chunks != stream.expected_chunks:
             self._record_error("audio_stream_end_chunks_mismatch")
+            downlink_end_failed = True
         if stream.received_bytes != stream.expected_bytes:
             self._record_error("audio_stream_payload_bytes_mismatch")
+            downlink_end_failed = True
         if stream.received_chunks != stream.expected_chunks:
             self._record_error("audio_stream_payload_chunks_mismatch")
+            downlink_end_failed = True
         self.telemetry.audio_streams_ended += 1
+        self._end_downlink(failed=downlink_end_failed)
         self._serial(
             "[bridge] type=audio_stream_end "
             f"state=Responding seq={stream.seq} bytes={stream.received_bytes} chunks={stream.received_chunks}"
@@ -561,6 +634,8 @@ class VirtualStackchanHardware:
         self.telemetry.boot_count += 1
         self.telemetry.display_ready = True
         self.telemetry.speaker_ready = True
+        self.telemetry.bridge_downlink_ready = True
+        self.telemetry.bridge_downlink_active = False
         self.telemetry.bridge_state = "Disconnected"
         self._set_face_mode("idle")
         self.display_next_ms = self.now_ms
@@ -574,6 +649,7 @@ class VirtualStackchanHardware:
     def _power_cycle(self) -> None:
         if self.active_stream is not None:
             self._record_issue("power_cycle_with_audio_stream_active")
+            self._abort_downlink()
             self.active_stream = None
         self.telemetry.power_cycles += 1
         self.telemetry.bridge_ready = False
@@ -623,6 +699,73 @@ class VirtualStackchanHardware:
     def _serial(self, line: str) -> None:
         self.serial_lines.append(f"{self.now_ms:06d} {line}")
 
+    def _start_downlink(self, stream: ActiveAudioStream) -> None:
+        if not self.telemetry.bridge_downlink_ready or self.telemetry.bridge_downlink_active:
+            self._fail_downlink()
+            return
+        self.telemetry.bridge_downlink_active = True
+        self.telemetry.bridge_downlink_streams += 1
+        self.telemetry.bridge_downlink_last_seq = stream.seq
+        self.telemetry.bridge_downlink_expected_bytes = stream.expected_bytes
+        self.telemetry.bridge_downlink_expected_chunks = stream.expected_chunks
+        self.telemetry.bridge_downlink_received_bytes = 0
+        self.telemetry.bridge_downlink_received_chunks = 0
+        self.telemetry.bridge_downlink_last_payload_bytes = 0
+        self.telemetry.bridge_downlink_checksum = 0
+
+    def _accept_downlink_chunk(self, payload: bytes) -> None:
+        if not self.telemetry.bridge_downlink_ready or not self.telemetry.bridge_downlink_active:
+            self._fail_downlink()
+            return
+        self.telemetry.bridge_downlink_chunks += 1
+        self.telemetry.bridge_downlink_bytes += len(payload)
+        self.telemetry.bridge_downlink_received_bytes += len(payload)
+        self.telemetry.bridge_downlink_received_chunks += 1
+        self.telemetry.bridge_downlink_last_payload_bytes = len(payload)
+        self.telemetry.bridge_downlink_checksum = _update_downlink_checksum(
+            self.telemetry.bridge_downlink_checksum,
+            payload,
+        )
+
+    def _end_downlink(self, failed: bool) -> None:
+        if not self.telemetry.bridge_downlink_ready or not self.telemetry.bridge_downlink_active:
+            self._fail_downlink()
+            return
+        if failed:
+            self._fail_downlink()
+        else:
+            self.telemetry.bridge_downlink_completed += 1
+        self.telemetry.bridge_downlink_active = False
+
+    def _abort_downlink(self) -> None:
+        if self.telemetry.bridge_downlink_active:
+            self.telemetry.bridge_downlink_aborted += 1
+        self.telemetry.bridge_downlink_active = False
+
+    def _fail_downlink(self) -> None:
+        self.telemetry.bridge_downlink_errors += 1
+
+    def _serial_runtime_status(self) -> None:
+        self._serial(
+            "[runtime] "
+            f"bridge_ready={int(self.telemetry.bridge_ready)} "
+            f"bridge_state={self.telemetry.bridge_state} "
+            f"bridge_messages={self.telemetry.inbound_messages} "
+            f"bridge_outputs={self.telemetry.outputs_queued} "
+            f"bridge_parse_errors={self.telemetry.parse_errors} "
+            f"bridge_audio_stream_bytes_received={self.telemetry.audio_stream_bytes_received} "
+            f"bridge_audio_stream_chunks={self.telemetry.audio_stream_chunks_received} "
+            f"bridge_audio_stream_errors={self.telemetry.audio_streams_aborted + self.telemetry.parse_errors} "
+            f"bridge_downlink_ready={int(self.telemetry.bridge_downlink_ready)} "
+            f"bridge_downlink_active={int(self.telemetry.bridge_downlink_active)} "
+            f"bridge_downlink_streams={self.telemetry.bridge_downlink_streams} "
+            f"bridge_downlink_completed={self.telemetry.bridge_downlink_completed} "
+            f"bridge_downlink_chunks={self.telemetry.bridge_downlink_chunks} "
+            f"bridge_downlink_bytes={self.telemetry.bridge_downlink_bytes} "
+            f"bridge_downlink_errors={self.telemetry.bridge_downlink_errors} "
+            f"bridge_timeouts={self.telemetry.timeouts}"
+        )
+
 
 def _int(value: object, default: int = 0) -> int:
     try:
@@ -636,6 +779,14 @@ def _float(value: object, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _update_downlink_checksum(checksum: int, payload: bytes) -> int:
+    result = DOWNLINK_CHECKSUM_SEED if checksum == 0 else checksum
+    for value in payload:
+        result ^= value
+        result = (result * 16777619) & 0xFFFFFFFF
+    return result
 
 
 def full_audio_downlink_frames() -> list[Frame]:
@@ -903,6 +1054,11 @@ def write_outputs(output_dir: Path, scenarios: Iterable[str]) -> dict[str, objec
                 f"- Controls: {telemetry['control_events']} total / {telemetry['core_inputs']} CoreS3 inputs",
                 f"- Audio streams: {telemetry['audio_streams_started']} started / {telemetry['audio_streams_ended']} ended",
                 f"- Audio bytes: {telemetry['audio_stream_bytes_received']} received",
+                f"- Bridge downlink: {telemetry['bridge_downlink_streams']} streams / "
+                f"{telemetry['bridge_downlink_completed']} completed / "
+                f"{telemetry['bridge_downlink_chunks']} chunks / "
+                f"{telemetry['bridge_downlink_bytes']} bytes / "
+                f"{telemetry['bridge_downlink_errors']} errors",
                 f"- Speaker frames: {telemetry['speaker_frames_submitted']}",
                 f"- Boots / power cycles: {telemetry['boot_count']} / {telemetry['power_cycles']}",
                 f"- Issues: {', '.join(report['issues']) if report['issues'] else 'none'}",

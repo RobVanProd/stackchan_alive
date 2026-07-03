@@ -108,6 +108,9 @@ Keep each item independently shippable and package-verified.
    - The `audio-downlink` and `arrival-rehearsal` scenarios now exercise the 4096-byte
      firmware chunk limit with a synthetic 5000-byte downlink split into 4096-byte and
      904-byte chunks.
+   - Simulator JSON and serial-like `[runtime]` logs now include firmware-mirrored
+     `bridge_downlink_*` counters, giving arrival-day hardware runs a direct no-hardware
+     baseline for downlink streams, completions, chunks, bytes, and errors.
    - Native firmware tests now enforce the same recovery contract: bridge `error` and
      timeout paths clear open audio-stream state before accepting the next bridge session.
    - `offline-command-fallback` keeps the virtual bridge disconnected while CoreS3 input and
