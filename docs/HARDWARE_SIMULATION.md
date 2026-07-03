@@ -16,6 +16,10 @@ By default it writes:
 - `output/hardware-sim/latest/HARDWARE_SIMULATION.md`
 - one serial-like log per scenario
 
+GitHub Actions also runs the bridge test suite and this simulator on every PR/push through
+the `bridge-tests` job, then uploads `output/hardware-sim/latest/` as the
+`hardware-simulation` artifact.
+
 The simulator currently checks:
 
 - deterministic reference bridge frames from `bridge/reference_bridge.py`
