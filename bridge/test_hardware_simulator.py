@@ -45,6 +45,30 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertEqual(9, report["telemetry"]["audio_stream_bytes_received"])
         self.assertEqual(3, report["telemetry"]["audio_stream_chunks_expected"])
         self.assertEqual(3, report["telemetry"]["audio_stream_chunks_received"])
+        self.assertEqual(1, report["telemetry"]["speaker_playback_starts"])
+        self.assertEqual(3, report["telemetry"]["speaker_frames_submitted"])
+        self.assertGreater(report["telemetry"]["mouth_display_frames"], 0)
+
+    def test_arrival_rehearsal_exercises_virtual_device_shell(self):
+        hardware = run_simulation("arrival-rehearsal")
+        report = hardware.report("arrival-rehearsal")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertTrue(telemetry["display_ready"])
+        self.assertGreater(telemetry["display_frames"], 0)
+        self.assertEqual(telemetry["display_frames"], telemetry["display_label_frames"])
+        self.assertLessEqual(telemetry["display_frame_gap_max_ms"], 40)
+        self.assertEqual(5, telemetry["core_inputs"])
+        self.assertGreaterEqual(telemetry["control_events"], 7)
+        self.assertEqual(1, telemetry["speaker_playback_starts"])
+        self.assertEqual(3, telemetry["speaker_frames_submitted"])
+        self.assertGreater(telemetry["mouth_display_frames"], 0)
+        self.assertEqual(2, telemetry["boot_count"])
+        self.assertEqual(1, telemetry["power_cycles"])
+        self.assertEqual("Ready", telemetry["bridge_state"])
+        for mode in ("listen", "think", "react", "speak", "concern", "happy", "idle"):
+            self.assertIn(mode, telemetry["modes_seen"])
 
     def test_binary_without_audio_stream_fails(self):
         hardware = VirtualStackchanHardware()

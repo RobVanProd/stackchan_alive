@@ -135,6 +135,10 @@ Run the virtual hardware proxy while the physical unit is unavailable:
 .\tools\run_hardware_simulation.cmd
 ```
 
+The default simulation includes a pre-arrival device-shell rehearsal for bridge ordering,
+virtual CoreS3 inputs, display frame ticks, mouth/speaker stream counters, and power-cycle
+recovery. It is still not a substitute for real hardware evidence.
+
 If native host tests cannot find `gcc` / `g++`, run:
 
 ```powershell

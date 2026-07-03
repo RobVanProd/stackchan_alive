@@ -22,7 +22,11 @@ The matching host-side reference lives in `bridge/reference_bridge.py`. It emits
 
 When hardware is unavailable, `tools/run_hardware_simulation.cmd` runs a virtual Stackchan
 proxy over the same bridge frames and writes serial-like logs plus JSON telemetry for frame
-ordering, mouth timing, binary TTS audio stream accounting, and timeout checks.
+ordering, mouth timing, binary TTS audio stream accounting, timeout checks, and a pre-arrival
+device-shell rehearsal. The rehearsal covers virtual display ticks, label persistence,
+CoreS3 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, speaker stream counters,
+mouth-display activity, and power-cycle recovery. It is still a proxy; real device media and
+soak evidence remain separate gates.
 
 For P7 model work, the host-side model does not send raw Character Lock JSON to the device.
 The bridge validates that JSON with `bridge/character_harness.py`, applies safe memory
