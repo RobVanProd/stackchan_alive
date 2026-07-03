@@ -26,6 +26,7 @@ If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd
 
 ```powershell
 .\RUN_PACKAGE_VERIFY.cmd
+.\RUN_HARDWARE_SIM_BASELINE.cmd
 .\RUN_DISPLAY_ONLY.cmd
 .\RUN_SPEECH_MOUTH_DEMO.cmd
 .\RUN_SPEAK_ALL_INTENTS.cmd
@@ -34,6 +35,7 @@ If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd
 Expected evidence:
 
 - `logs/package_verify.log`
+- `simulation/hardware-sim/latest/hardware_simulation.json` and `logs/hardware_simulation_baseline.log` if the no-hardware baseline was run before the unit arrived
 - `HOSTED_MEDIA_REFERENCE.md` if a verified share was available
 - display-only serial log
 - `logs/speech_mouth_demo_serial.log` from the required speech-mouth demo helper
@@ -50,6 +52,11 @@ Hard stop if:
 - any servo moves during display-only firmware
 
 After the face is visible, send `status` in the serial monitor once. It should immediately print `[heartbeat]` plus `[system]` heap and task stack telemetry; save that line in the display-only serial log.
+
+If the robot is not on the bench yet, run `RUN_HARDWARE_SIM_BASELINE.cmd` first. It captures
+the no-hardware virtual Stackchan baseline, including the fake mic/STT/model/TTS/speaker
+loop, under `simulation/hardware-sim/latest/` for later comparison. It is not hardware
+evidence.
 
 Import the display photo or video into the packet:
 
@@ -127,7 +134,7 @@ Import the speaker recording into the packet. Use `-Type Audio` for phone videos
 
 ## 5. Progress Check Before Promotion
 
-Open `BENCH_STATUS.md` in the evidence packet first. It gives the current next action and command. Then open `NEXT_STEPS.md` for the full run order covering package verification, display, servo, soak, speaker recording, progress checks, rollout status, and promotion gates.
+Open `BENCH_STATUS.md` in the evidence packet first. It gives the current next action and command. Then open `NEXT_STEPS.md` for the full run order covering package verification, optional simulation baseline, display, servo, soak, speaker recording, progress checks, rollout status, and promotion gates.
 
 Run this repeatedly while collecting evidence:
 

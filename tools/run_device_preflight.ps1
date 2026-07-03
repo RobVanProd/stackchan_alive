@@ -1679,6 +1679,7 @@ function Assert-ArrivalPacketScaffoldGate {
       "metadata.json",
       "logs/package_verify.log",
       "RUN_PLAY_LEAD_VOICE.cmd",
+      "RUN_HARDWARE_SIM_BASELINE.cmd",
       "RUN_DISPLAY_ONLY.cmd",
       "RUN_SPEECH_MOUTH_DEMO.cmd",
       "RUN_SPEAK_ALL_INTENTS.cmd",
@@ -1713,6 +1714,18 @@ function Assert-ArrivalPacketScaffoldGate {
     if ([string]$metadata.voiceLeadAudition.referenceFile -ne "reference_audio/stackchan_rvc_bright_robot.wav") {
       throw "Arrival packet lead reference mismatch: $($metadata.voiceLeadAudition.referenceFile)"
     }
+    if ($null -eq $metadata.simulationBaseline) {
+      throw "Arrival packet metadata missing simulationBaseline"
+    }
+    if ([string]$metadata.simulationBaseline.command -ne "RUN_HARDWARE_SIM_BASELINE.cmd") {
+      throw "Arrival packet simulation baseline command mismatch: $($metadata.simulationBaseline.command)"
+    }
+    if ([string]$metadata.simulationBaseline.report -ne "simulation/hardware-sim/latest/hardware_simulation.json") {
+      throw "Arrival packet simulation baseline report mismatch: $($metadata.simulationBaseline.report)"
+    }
+    if ([string]$metadata.simulationBaseline.evidenceRole -notmatch "comparison baseline") {
+      throw "Arrival packet simulation baseline role should stay non-evidence: $($metadata.simulationBaseline.evidenceRole)"
+    }
     foreach ($field in @(
       @("pitch", "2"),
       @("index_rate", "0.62"),
@@ -1739,6 +1752,8 @@ function Assert-ArrivalPacketScaffoldGate {
 
     $nextSteps = Get-Content -LiteralPath (Join-Path $evidenceRoot "NEXT_STEPS.md") -Raw
     Assert-TextContains $nextSteps "RUN_PACKAGE_VERIFY.cmd"
+    Assert-TextContains $nextSteps "RUN_HARDWARE_SIM_BASELINE.cmd"
+    Assert-TextContains $nextSteps "pre-arrival rehearsal only"
     Assert-TextContains $nextSteps "RUN_SPEAK_ALL_INTENTS.cmd"
     Assert-TextContains $nextSteps "BENCH_STATUS.md"
     Assert-TextContains $nextSteps "RUN_CONSUMER_PROMOTION_CHECK.cmd"

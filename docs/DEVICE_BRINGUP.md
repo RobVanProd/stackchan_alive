@@ -13,8 +13,13 @@ Use this when the Stack-chan hardware arrives.
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
-It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
+It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 Open `BENCH_STATUS.md` first for the current next action, then `NEXT_STEPS.md` for the full bench run order and hard stops before servo motion, audio review, and consumer promotion.
+
+Before the physical unit is connected, `RUN_HARDWARE_SIM_BASELINE.cmd` saves the virtual
+Stackchan proxy report under `simulation/hardware-sim/latest/` and
+`logs/hardware_simulation_baseline.log`. This is a comparison baseline only; it does not
+replace display, mic, speaker, servo, soak, or promotion evidence.
 
 Use this one-step preparation helper instead when you want package verification, display-flash dry-run, and evidence packet creation together:
 
