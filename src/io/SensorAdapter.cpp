@@ -1,6 +1,7 @@
 #include "io/SensorAdapter.hpp"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -484,6 +485,203 @@ bool fillCommandEvent(char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchCo
   return true;
 }
 
+void copyBridgeLine(BenchControl* controlOut, const char* line) {
+  BenchControl parsed;
+  parsed.hasBridge = true;
+  parsed.command = "bridge_control";
+  strncpy(parsed.bridge.controlLine, line, sizeof(parsed.bridge.controlLine) - 1);
+  parsed.bridge.controlLine[sizeof(parsed.bridge.controlLine) - 1] = '\0';
+  *controlOut = parsed;
+}
+
+const char* bridgeIntentToken(SpeechIntent intent) {
+  switch (intent) {
+    case SpeechIntent::Happy:
+      return "happy";
+    case SpeechIntent::Concern:
+      return "concern";
+    case SpeechIntent::Think:
+      return "think";
+    case SpeechIntent::Listen:
+      return "listen";
+    case SpeechIntent::Sleep:
+      return "sleep";
+    case SpeechIntent::Safety:
+      return "safety";
+    case SpeechIntent::Error:
+      return "error";
+    case SpeechIntent::Boot:
+    case SpeechIntent::Idle:
+    case SpeechIntent::Attend:
+    case SpeechIntent::Speak:
+    case SpeechIntent::React:
+    case SpeechIntent::None:
+      break;
+  }
+  return "speak";
+}
+
+const char* bridgeVisemeToken(BenchSpeechViseme viseme) {
+  switch (viseme) {
+    case BenchSpeechViseme::Ah:
+      return "ah";
+    case BenchSpeechViseme::Oh:
+      return "oh";
+    case BenchSpeechViseme::Ee:
+      return "ee";
+    case BenchSpeechViseme::Neutral:
+      return "neutral";
+  }
+  return "neutral";
+}
+
+bool parseUintToken(const char* token, uint32_t* valueOut) {
+  if (token == nullptr || valueOut == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const unsigned long parsed = strtoul(token, &end, 10);
+  if (end == token) {
+    return false;
+  }
+  *valueOut = static_cast<uint32_t>(parsed);
+  return true;
+}
+
+void appendTextToken(char* out, size_t outSize, const char* token) {
+  if (out == nullptr || outSize == 0 || token == nullptr || token[0] == '\0') {
+    return;
+  }
+
+  const size_t used = strlen(out);
+  if (used + 1 >= outSize) {
+    return;
+  }
+  if (used > 0) {
+    out[used] = ' ';
+    out[used + 1] = '\0';
+  }
+  strncat(out, token, outSize - strlen(out) - 1);
+}
+
+bool fillBridgeControl(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  if (tokens == nullptr || tokenCount == 0 || tokens[0] == nullptr) {
+    return false;
+  }
+
+  char line[192] = {};
+  if (strcmp(tokens[0], "hello") == 0 || strcmp(tokens[0], "connect") == 0) {
+    const char* session = tokenCount >= 2 ? tokens[1] : "bench";
+    snprintf(line, sizeof(line), "{\"type\":\"hello\",\"session\":\"%s\"}", session);
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "listen") == 0 || strcmp(tokens[0], "listening") == 0) {
+    snprintf(line, sizeof(line), "{\"type\":\"listening\"}");
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "think") == 0 || strcmp(tokens[0], "thinking") == 0) {
+    uint32_t seq = 1;
+    if (tokenCount >= 2) {
+      parseUintToken(tokens[1], &seq);
+    }
+    snprintf(line, sizeof(line), "{\"type\":\"thinking\",\"seq\":%lu}", static_cast<unsigned long>(seq));
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "response") == 0 || strcmp(tokens[0], "response_start") == 0 ||
+      strcmp(tokens[0], "say") == 0) {
+    SpeechIntent intent = SpeechIntent::Speak;
+    uint8_t textStart = 1;
+    if (tokenCount >= 2 && parseSpeechIntentToken(tokens[1], &intent)) {
+      textStart = 2;
+    }
+    uint32_t seq = 1;
+    if (textStart < tokenCount && parseUintToken(tokens[textStart], &seq)) {
+      textStart++;
+    }
+
+    char text[80] = {};
+    for (uint8_t i = textStart; i < tokenCount; ++i) {
+      appendTextToken(text, sizeof(text), tokens[i]);
+    }
+    if (text[0] == '\0') {
+      strncpy(text, "hello i am awake", sizeof(text) - 1);
+    }
+
+    snprintf(line,
+             sizeof(line),
+             "{\"type\":\"response_start\",\"seq\":%lu,\"intent\":\"%s\",\"arousal\":0.55,\"valence\":0.60,\"text\":\"%s\"}",
+             static_cast<unsigned long>(seq),
+             bridgeIntentToken(intent),
+             text);
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "audio") == 0 || strcmp(tokens[0], "mouth") == 0) {
+    if (tokenCount < 2) {
+      return false;
+    }
+    float envelope = 0.0f;
+    if (!parseStrength(tokens[1], &envelope)) {
+      return false;
+    }
+    BenchSpeechViseme viseme = BenchSpeechViseme::Ah;
+    if (tokenCount >= 3 && !parseViseme(tokens[2], &viseme)) {
+      return false;
+    }
+    uint16_t durationMs = 20;
+    if (tokenCount >= 4) {
+      parseDurationMs(tokens[3], &durationMs);
+      durationMs = static_cast<uint16_t>(constrain(static_cast<long>(durationMs), 10L, 200L));
+    }
+    const bool finalChunk = tokenCount >= 5 &&
+                            (strcmp(tokens[4], "final") == 0 || strcmp(tokens[4], "end") == 0 ||
+                             strcmp(tokens[4], "true") == 0 || strcmp(tokens[4], "1") == 0);
+    snprintf(line,
+             sizeof(line),
+             "{\"type\":\"audio\",\"seq\":1,\"env\":%.2f,\"viseme\":\"%s\",\"duration_ms\":%u,\"final\":%s}",
+             envelope,
+             bridgeVisemeToken(viseme),
+             durationMs,
+             finalChunk ? "true" : "false");
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "end") == 0 || strcmp(tokens[0], "response_end") == 0 ||
+      strcmp(tokens[0], "done") == 0) {
+    uint32_t seq = 1;
+    if (tokenCount >= 2) {
+      parseUintToken(tokens[1], &seq);
+    }
+    snprintf(line, sizeof(line), "{\"type\":\"response_end\",\"seq\":%lu}", static_cast<unsigned long>(seq));
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "heartbeat") == 0 || strcmp(tokens[0], "ping") == 0) {
+    snprintf(line, sizeof(line), "{\"type\":\"heartbeat\"}");
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  if (strcmp(tokens[0], "error") == 0 || strcmp(tokens[0], "fail") == 0) {
+    const char* code = tokenCount >= 2 ? tokens[1] : "bench_error";
+    snprintf(line, sizeof(line), "{\"type\":\"error\",\"code\":\"%s\"}", code);
+    copyBridgeLine(controlOut, line);
+    return true;
+  }
+
+  return false;
+}
+
 bool fillVisionEvent(const char* first, char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchControl* controlOut) {
   BenchControl parsed;
   parsed.hasEvent = true;
@@ -882,7 +1080,7 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return false;
   }
 
-  char normalized[96] = {};
+  char normalized[192] = {};
   normalizeLine(line, normalized, sizeof(normalized));
 
   char* first = strtok(normalized, " \t");
@@ -896,12 +1094,19 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return fillStatus(controlOut);
   }
 
-  char* second = strtok(nullptr, " \t");
-  char* third = strtok(nullptr, " \t");
-  char* fourth = strtok(nullptr, " \t");
-  char* fifth = strtok(nullptr, " \t");
-  char* sixth = strtok(nullptr, " \t");
-  char* seventh = strtok(nullptr, " \t");
+  char* tokens[12] = {};
+  uint8_t tokenCount = 0;
+  while (tokenCount < 12) {
+    char* tokenPart = strtok(nullptr, " \t");
+    if (tokenPart == nullptr) {
+      break;
+    }
+    tokens[tokenCount++] = tokenPart;
+  }
+
+  char* second = tokenCount >= 1 ? tokens[0] : nullptr;
+  char* third = tokenCount >= 2 ? tokens[1] : nullptr;
+  char* fourth = tokenCount >= 3 ? tokens[2] : nullptr;
 
   bool forceMode = false;
   bool forceEvent = false;
@@ -925,11 +1130,8 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return fillFromSpeech(second, third, fourth, nowMs, controlOut);
   }
 
-  char* ambientTokens[] = {second, third, fourth, fifth, sixth, seventh};
-  uint8_t ambientTokenCount = 0;
-  while (ambientTokenCount < 6 && ambientTokens[ambientTokenCount] != nullptr) {
-    ambientTokenCount++;
-  }
+  char** ambientTokens = tokens;
+  const uint8_t ambientTokenCount = tokenCount;
   if (strcmp(first, "ambient") == 0 || strcmp(first, "light") == 0 ||
       strcmp(first, "lux") == 0 || strcmp(first, "amb") == 0) {
     return fillAmbient(first, ambientTokens, ambientTokenCount, controlOut);
@@ -941,6 +1143,10 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   if (strcmp(first, "command") == 0 || strcmp(first, "cmd") == 0 ||
       strcmp(first, "multinet") == 0 || strcmp(first, "phrase") == 0) {
     return fillCommandEvent(ambientTokens, ambientTokenCount, nowMs, controlOut);
+  }
+  if (strcmp(first, "bridge") == 0 || strcmp(first, "conversation") == 0 ||
+      strcmp(first, "conv") == 0) {
+    return fillBridgeControl(ambientTokens, ambientTokenCount, controlOut);
   }
   if (strcmp(first, "speak") == 0 || strcmp(first, "say") == 0 ||
       strcmp(first, "speechcue") == 0 || strcmp(first, "cue") == 0) {
@@ -1051,6 +1257,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
   Serial.println(F("[control] help: command <1-5|go_to_sleep|wake_up|look_at_me|stop_moving|how_do_you_feel>"));
   Serial.println(F("[control] help: speak <boot|idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety>"));
+  Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));
