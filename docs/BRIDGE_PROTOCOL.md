@@ -25,8 +25,10 @@ proxy over the same bridge frames and writes serial-like logs plus JSON telemetr
 ordering, mouth timing, binary TTS audio stream accounting, timeout checks, and a pre-arrival
 device-shell rehearsal. The rehearsal covers virtual display ticks, label persistence,
 CoreS3 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, speaker stream counters,
-mouth-display activity, and power-cycle recovery. It is still a proxy; real device media and
-soak evidence remain separate gates.
+mouth-display activity, and power-cycle recovery. The default simulation also includes
+`bridge-kill-recovery`, which aborts an in-flight TTS stream after a bridge error, emits the
+offline fallback prompt, reconnects, and proves the next response can return to `Ready`. It is
+still a proxy; real device media and soak evidence remain separate gates.
 
 For P7 model work, the host-side model does not send raw Character Lock JSON to the device.
 The bridge validates that JSON with `bridge/character_harness.py`, applies safe memory

@@ -36,11 +36,15 @@ class VirtualHardwareTelemetry:
     outputs_queued: int = 0
     parse_errors: int = 0
     timeouts: int = 0
+    bridge_errors: int = 0
+    bridge_recoveries: int = 0
+    offline_fallback_prompts: int = 0
     speech_frames: int = 0
     speech_final_frames: int = 0
     mouth_peak: float = 0.0
     audio_streams_started: int = 0
     audio_streams_ended: int = 0
+    audio_streams_aborted: int = 0
     audio_stream_bytes_expected: int = 0
     audio_stream_bytes_received: int = 0
     audio_stream_chunks_expected: int = 0
@@ -71,11 +75,15 @@ class VirtualHardwareTelemetry:
             "outputs_queued": self.outputs_queued,
             "parse_errors": self.parse_errors,
             "timeouts": self.timeouts,
+            "bridge_errors": self.bridge_errors,
+            "bridge_recoveries": self.bridge_recoveries,
+            "offline_fallback_prompts": self.offline_fallback_prompts,
             "speech_frames": self.speech_frames,
             "speech_final_frames": self.speech_final_frames,
             "mouth_peak": round(self.mouth_peak, 3),
             "audio_streams_started": self.audio_streams_started,
             "audio_streams_ended": self.audio_streams_ended,
+            "audio_streams_aborted": self.audio_streams_aborted,
             "audio_stream_bytes_expected": self.audio_stream_bytes_expected,
             "audio_stream_bytes_received": self.audio_stream_bytes_received,
             "audio_stream_chunks_expected": self.audio_stream_chunks_expected,
@@ -207,6 +215,19 @@ class VirtualStackchanHardware:
             for mode in ("listen", "think", "react", "speak", "concern", "happy", "idle"):
                 if mode not in self.telemetry.modes_seen:
                     self._record_issue(f"arrival_mode_not_seen:{mode}")
+        if scenario == "bridge-kill-recovery":
+            if self.telemetry.bridge_errors != 1:
+                self._record_issue("bridge_kill_error_not_observed")
+            if self.telemetry.offline_fallback_prompts != 1:
+                self._record_issue("offline_fallback_prompt_not_observed")
+            if self.telemetry.bridge_recoveries != 1:
+                self._record_issue("bridge_recovery_not_observed")
+            if self.telemetry.bridge_state != "Ready":
+                self._record_issue("bridge_kill_did_not_recover_ready")
+            if "error" not in self.telemetry.modes_seen:
+                self._record_issue("bridge_kill_error_mode_not_seen")
+            if self.telemetry.speech_frames <= 0:
+                self._record_issue("bridge_kill_recovery_response_not_spoken")
 
     def _process_text(self, frame: dict[str, object]) -> None:
         frame_type = str(frame.get("type", "")).strip().lower()
@@ -215,6 +236,8 @@ class VirtualStackchanHardware:
         self.last_activity_ms = self.now_ms
 
         if frame_type == "hello":
+            if self.telemetry.bridge_state == "Error":
+                self.telemetry.bridge_recoveries += 1
             self.telemetry.bridge_ready = True
             self.telemetry.bridge_state = "Ready"
             self._set_face_mode("idle")
@@ -267,8 +290,15 @@ class VirtualStackchanHardware:
             return
         if frame_type == "error":
             self.telemetry.bridge_state = "Error"
+            self.telemetry.bridge_errors += 1
+            self._set_face_mode("error")
+            if self.active_stream is not None:
+                self.telemetry.audio_streams_aborted += 1
+                self.active_stream = None
+            self.mouth_env = 0.0
+            self.speech_active = False
             self._serial(f"[bridge] type=error state=Error code={frame.get('code', 'bridge_error')}")
-            self.issues.append(str(frame.get("code") or "bridge_error"))
+            self._offline_fallback(str(frame.get("code") or "bridge_error"))
             return
         if frame_type == "control_input":
             self._process_control_input(frame)
@@ -448,6 +478,14 @@ class VirtualStackchanHardware:
         self._serial("[system] power_cycle requested source=virtual_hardware")
         self._boot()
 
+    def _offline_fallback(self, code: str) -> None:
+        self.telemetry.offline_fallback_prompts += 1
+        self._serial(
+            "[speech] "
+            f"seq={self.telemetry.active_seq} intent=error earcon=warn "
+            f'text="I need a little more data." bridge_error={code}'
+        )
+
     def _render_until(self, now_ms: int) -> None:
         while self.display_next_ms <= now_ms:
             if self.display_last_frame_ms is not None:
@@ -554,6 +592,47 @@ def arrival_rehearsal_frames() -> list[Frame]:
     return frames
 
 
+def bridge_kill_recovery_frames() -> list[Frame]:
+    recovery_turn = BridgeTurn(
+        session="bridge-kill-recovery",
+        seq=52,
+        intent="happy",
+        text="I am back online. Systems steady.",
+        beats=(
+            AudioBeat(0.22, "neutral", 50),
+            AudioBeat(0.58, "ah", 70),
+            AudioBeat(0.70, "ee", 70),
+            AudioBeat(0.10, "neutral", 50, True),
+        ),
+    )
+    return [
+        {"type": "hello", "protocol": "stackchan.bridge.v1", "session": "bridge-kill"},
+        {"type": "listening"},
+        {"type": "thinking", "seq": 51},
+        {
+            "type": "response_start",
+            "seq": 51,
+            "intent": "think",
+            "arousal": 0.55,
+            "valence": 0.45,
+            "text": "Working on that.",
+        },
+        {
+            "type": "audio_stream_start",
+            "seq": 51,
+            "format": "wav",
+            "sample_rate": 22050,
+            "audio_bytes": 9,
+            "chunk_bytes": 3,
+            "chunks": 3,
+        },
+        b"abc",
+        {"type": "error", "seq": 51, "code": "bridge_closed"},
+        {"type": "hello", "protocol": "stackchan.bridge.v1", "session": "bridge-kill-retry"},
+        *list(bridge_frames(recovery_turn))[1:],
+    ]
+
+
 def reference_frames() -> list[Frame]:
     return list(bridge_frames(BridgeTurn(session="sim", seq=7)))
 
@@ -606,6 +685,8 @@ def scenario_frames(name: str) -> tuple[list[Frame], int | None]:
         return full_audio_downlink_frames(), None
     if name == "arrival-rehearsal":
         return arrival_rehearsal_frames(), None
+    if name == "bridge-kill-recovery":
+        return bridge_kill_recovery_frames(), None
     if name == "timeout":
         return timeout_frames(), DEFAULT_TIMEOUT_MS + 10
     raise ValueError(f"unknown scenario: {name}")
@@ -697,8 +778,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scenario",
         action="append",
-        choices=("reference", "lan-text", "audio-downlink", "arrival-rehearsal", "timeout"),
-        help="Scenario to run. Defaults to reference, lan-text, audio-downlink, and arrival-rehearsal.",
+        choices=("reference", "lan-text", "audio-downlink", "arrival-rehearsal", "bridge-kill-recovery", "timeout"),
+        help=(
+            "Scenario to run. Defaults to reference, lan-text, audio-downlink, "
+            "arrival-rehearsal, and bridge-kill-recovery."
+        ),
     )
     parser.add_argument("--out-dir", type=Path, help="Optional directory for JSON and serial-like logs.")
     parser.add_argument("--json", action="store_true", help="Print summary JSON to stdout.")
@@ -707,7 +791,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
-    scenarios = args.scenario or ["reference", "lan-text", "audio-downlink", "arrival-rehearsal"]
+    scenarios = args.scenario or [
+        "reference",
+        "lan-text",
+        "audio-downlink",
+        "arrival-rehearsal",
+        "bridge-kill-recovery",
+    ]
     if args.out_dir:
         summary = write_outputs(args.out_dir, scenarios)
     else:

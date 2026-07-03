@@ -26,17 +26,24 @@ The simulator currently checks:
 - LAN text turn output from `bridge/lan_service.py`
 - binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`,
   including byte/chunk accounting before firmware speaker playback is wired
-- firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts, and timeout handling
+- firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts,
+  recoverable bridge-error handling, and timeout handling
 - a virtual CoreS3 shell: boot/display readiness, 30 fps display ticks, persistent label
   drawing, CoreS3 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, speaker
   stream submission counters, mouth-display activity during speech, and a power-cycle
   recovery rehearsal
 
-The default run includes `reference`, `lan-text`, `audio-downlink`, and `arrival-rehearsal`.
+The default run includes `reference`, `lan-text`, `audio-downlink`, `arrival-rehearsal`, and
+`bridge-kill-recovery`.
 The `arrival-rehearsal` scenario is the best no-hardware proxy before the unit arrives: it
 pushes virtual button/touch events, shakes/puts down the robot through the safety path,
 streams a tiny synthetic TTS payload, verifies mouth/display activity, then power-cycles and
 expects the virtual bridge to return to `Ready`.
+
+The `bridge-kill-recovery` scenario simulates a LAN bridge dropping mid-response while a
+binary TTS stream is open. The virtual device must abort that stream, emit one offline
+fallback prompt, accept a new `hello`, speak a recovery turn, and end back in `Ready` with no
+parse errors or timeout.
 
 It intentionally does not claim real LCD, speaker, microphone, camera, capacitive touch, IMU,
 servo, heat, battery, USB power, Wi-Fi, or soak behavior. Those remain real hardware gates in
@@ -52,6 +59,12 @@ To run the pre-arrival device-shell rehearsal:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario arrival-rehearsal -Json
+```
+
+To run the bridge-kill recovery rehearsal:
+
+```powershell
+.\tools\run_hardware_simulation.cmd -Scenario bridge-kill-recovery -Json
 ```
 
 To inspect a failure-mode scenario:
