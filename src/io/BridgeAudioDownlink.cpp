@@ -104,6 +104,7 @@ bool BridgeAudioDownlink::end(const BridgeAudioStream& stream, uint32_t nowMs) {
   const bool bytesMatch = activeStream_.audioBytes == 0 || telemetry_.receivedBytes == activeStream_.audioBytes;
   const bool chunksMatch = activeStream_.chunks == 0 || telemetry_.receivedChunks == activeStream_.chunks;
   if (!seqMatches || !bytesMatch || !chunksMatch) {
+    stopPlayback(nowMs);
     clearActive();
     return fail(kErrorEndMismatch);
   }

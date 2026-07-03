@@ -31,8 +31,10 @@ checks, offline command fallback, and a pre-arrival device-shell rehearsal. The 
 rehearsal runs virtual wake input through the LAN bridge output path, checks first-audio
 latency against the 2.5 s budget, verifies mouth frames, and returns to `Ready`. The
 device-shell rehearsal covers virtual display ticks, label persistence, CoreS3
-tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, speaker stream counters,
-mouth-display activity, and power-cycle recovery. The default simulation also includes
+tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, PCM16 speaker handoff counters,
+mouth-display activity, and power-cycle recovery. The audio-downlink simulation also mirrors
+`bridge_downlink_playback_*` telemetry, including the unsupported-format path. The default
+simulation also includes
 `bridge-kill-recovery`, which aborts an in-flight TTS stream after a bridge error, emits the
 offline fallback prompt, reconnects, and proves the next response can return to `Ready`, plus
 `offline-command-fallback`, which keeps the bridge disconnected while local commands still

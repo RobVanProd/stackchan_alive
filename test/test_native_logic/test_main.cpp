@@ -2573,6 +2573,41 @@ void test_bridge_audio_downlink_counts_unsupported_playback_format_without_faili
   TEST_ASSERT_EQUAL_UINT32(0, downlink.telemetry().playbackErrors);
 }
 
+void test_bridge_audio_downlink_stops_playback_on_end_mismatch() {
+  CountingBridgeDownlinkSink sink;
+  BridgeAudioDownlink downlink;
+  TEST_ASSERT_TRUE(downlink.begin(true, &sink));
+
+  BridgeAudioStream stream;
+  stream.seq = 21;
+  stream.sampleRate = 22050;
+  stream.audioBytes = 4;
+  stream.chunkBytes = 4;
+  stream.chunks = 1;
+  strncpy(stream.format, "pcm16", sizeof(stream.format) - 1);
+  TEST_ASSERT_TRUE(downlink.start(stream, 980));
+
+  const uint8_t payload[] = {0x00, 0x00};
+  BridgeAudioStreamChunk chunk;
+  chunk.seq = 21;
+  chunk.index = 1;
+  chunk.bytes = sizeof(payload);
+  chunk.payloadBytes = sizeof(payload);
+  chunk.receivedBytes = sizeof(payload);
+  chunk.finalChunk = true;
+  chunk.payload = payload;
+  TEST_ASSERT_TRUE(downlink.submitChunk(chunk, 990));
+  TEST_ASSERT_TRUE(downlink.telemetry().playbackActive);
+
+  TEST_ASSERT_FALSE(downlink.end(stream, 1000));
+  TEST_ASSERT_FALSE(downlink.telemetry().active);
+  TEST_ASSERT_FALSE(downlink.telemetry().playbackActive);
+  TEST_ASSERT_EQUAL_UINT32(0, downlink.telemetry().streamsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().errors);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().playbackStops);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.stopCalls);
+}
+
 void test_bridge_audio_downlink_rejects_invalid_payload_and_aborts() {
   BridgeAudioDownlink downlink;
   TEST_ASSERT_TRUE(downlink.begin());
@@ -2861,6 +2896,7 @@ int main() {
   RUN_TEST(test_bridge_audio_downlink_consumes_bridge_payload_output);
   RUN_TEST(test_bridge_audio_downlink_hands_pcm16_chunks_to_playback_sink);
   RUN_TEST(test_bridge_audio_downlink_counts_unsupported_playback_format_without_failing_stream);
+  RUN_TEST(test_bridge_audio_downlink_stops_playback_on_end_mismatch);
   RUN_TEST(test_bridge_audio_downlink_rejects_invalid_payload_and_aborts);
   RUN_TEST(test_bridge_client_recovers_after_error_aborts_audio_stream);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);

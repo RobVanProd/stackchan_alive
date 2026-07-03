@@ -28,11 +28,12 @@ The simulator currently checks:
   LAN bridge response, visible thinking, mouth/lip-sync frames, latency budget, and return to
   `Ready`
 - binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`,
-  including 4096-byte chunk-limit enforcement and byte/chunk accounting before firmware
-  speaker playback is wired
+  including 4096-byte chunk-limit enforcement and byte/chunk accounting
 - firmware-mirrored `bridge_downlink_*` counters for the audio downlink consumer, written to
   JSON and to the serial-like `[runtime]` line so simulator output can be compared directly
   with arrival-day firmware serial logs
+- firmware-mirrored `bridge_downlink_playback_*` counters for decoded PCM16 streams, proving
+  the virtual speaker handoff separately from the transport counters
 - firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts,
   recoverable bridge-error handling, and timeout handling
 - an offline command fallback: no bridge session, CoreS3 wake input, P4-style commands,
@@ -43,17 +44,19 @@ The simulator currently checks:
   recovery rehearsal
 
 The default run includes `reference`, `lan-text`, `conversation-rehearsal`, `audio-downlink`,
-`arrival-rehearsal`, `bridge-kill-recovery`, and `offline-command-fallback`.
+`audio-downlink-unsupported`, `arrival-rehearsal`, `bridge-kill-recovery`, and
+`offline-command-fallback`.
 The `conversation-rehearsal` scenario is the no-hardware P7 demo proxy: a virtual wake input
 starts a turn, the simulator marks utterance end, the LAN bridge emits `listening`,
 `thinking`, `response_start`, `audio`, and `response_end`, and the virtual device checks that
 first audio arrives within the 2.5 s LAN budget before returning to `Ready`.
 The `arrival-rehearsal` scenario is the best no-hardware proxy before the unit arrives: it
 pushes virtual button/touch events, shakes/puts down the robot through the safety path,
-streams a synthetic 5000-byte TTS payload as 4096-byte and 904-byte downlink chunks,
-verifies `bridge_downlink_streams`, `bridge_downlink_completed`, `bridge_downlink_chunks`,
-`bridge_downlink_bytes`, mouth/display activity, then power-cycles and expects the virtual
-bridge to return to `Ready`.
+streams a synthetic decoded PCM16 5000-byte TTS payload as 4096-byte and 904-byte downlink
+chunks, verifies `bridge_downlink_streams`, `bridge_downlink_completed`,
+`bridge_downlink_chunks`, `bridge_downlink_bytes`, `bridge_downlink_playback_starts`,
+`bridge_downlink_playback_chunks`, `bridge_downlink_playback_bytes`, mouth/display activity,
+then power-cycles and expects the virtual bridge to return to `Ready`.
 
 The `bridge-kill-recovery` scenario simulates a LAN bridge dropping mid-response while a
 binary TTS stream is open. The virtual device must abort that stream, emit one offline
@@ -73,6 +76,12 @@ To run only one scenario:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario audio-downlink
+```
+
+To verify unsupported container formats still transport but do not claim speaker playback:
+
+```powershell
+.\tools\run_hardware_simulation.cmd -Scenario audio-downlink-unsupported -Json
 ```
 
 To run the pre-arrival device-shell rehearsal:

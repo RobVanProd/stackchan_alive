@@ -144,7 +144,9 @@ fallback, a conversation rehearsal, and a pre-arrival device-shell rehearsal. Th
 rehearsal simulates virtual wake input, LAN bridge response frames, first-audio latency,
 mouth-display activity, and return to `Ready`. The device-shell rehearsal simulates virtual
 display ticks, label persistence, CoreS3 tap/hold/BtnA/BtnB/BtnC inputs, motion safety
-toggles, speaker stream counters, mouth-display activity, and power-cycle recovery. The
+toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle recovery. The
+audio-downlink scenarios mirror `bridge_downlink_playback_*` telemetry and verify that
+unsupported container formats are transported without claiming speaker playback. The
 default run also includes `bridge-kill-recovery`: a dropped bridge during an open TTS stream
 must produce one offline fallback prompt, reconnect, speak a recovery turn, and return to
 `Ready`, plus `offline-command-fallback`: local CoreS3/command-map behavior must request

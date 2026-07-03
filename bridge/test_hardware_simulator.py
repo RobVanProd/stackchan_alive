@@ -72,6 +72,14 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertEqual(2, report["telemetry"]["speaker_frames_submitted"])
         self.assertTrue(report["telemetry"]["bridge_downlink_ready"])
         self.assertFalse(report["telemetry"]["bridge_downlink_active"])
+        self.assertTrue(report["telemetry"]["bridge_downlink_playback_ready"])
+        self.assertFalse(report["telemetry"]["bridge_downlink_playback_active"])
+        self.assertEqual(1, report["telemetry"]["bridge_downlink_playback_starts"])
+        self.assertEqual(2, report["telemetry"]["bridge_downlink_playback_chunks"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, report["telemetry"]["bridge_downlink_playback_bytes"])
+        self.assertEqual(1, report["telemetry"]["bridge_downlink_playback_stops"])
+        self.assertEqual(0, report["telemetry"]["bridge_downlink_playback_unsupported"])
+        self.assertEqual(0, report["telemetry"]["bridge_downlink_playback_errors"])
         self.assertEqual(1, report["telemetry"]["bridge_downlink_streams"])
         self.assertEqual(1, report["telemetry"]["bridge_downlink_completed"])
         self.assertEqual(2, report["telemetry"]["bridge_downlink_chunks"])
@@ -80,6 +88,30 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertGreater(report["telemetry"]["bridge_downlink_checksum"], 0)
         self.assertGreater(report["telemetry"]["mouth_display_frames"], 0)
         self.assertTrue(any("bridge_downlink_bytes=5000" in line for line in hardware.serial_lines))
+        self.assertTrue(any("bridge_downlink_playback_bytes=5000" in line for line in hardware.serial_lines))
+
+    def test_audio_downlink_unsupported_format_keeps_transport_but_skips_playback(self):
+        hardware = run_simulation("audio-downlink-unsupported")
+        report = hardware.report("audio-downlink-unsupported")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertEqual(1, telemetry["audio_streams_started"])
+        self.assertEqual(1, telemetry["audio_streams_ended"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, telemetry["audio_stream_bytes_received"])
+        self.assertEqual(0, telemetry["speaker_playback_starts"])
+        self.assertEqual(0, telemetry["speaker_frames_submitted"])
+        self.assertTrue(telemetry["bridge_downlink_playback_ready"])
+        self.assertFalse(telemetry["bridge_downlink_playback_active"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_starts"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_chunks"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_bytes"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_stops"])
+        self.assertEqual(1, telemetry["bridge_downlink_playback_unsupported"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_errors"])
+        self.assertEqual(1, telemetry["bridge_downlink_completed"])
+        self.assertEqual(2, telemetry["bridge_downlink_chunks"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, telemetry["bridge_downlink_bytes"])
 
     def test_arrival_rehearsal_exercises_virtual_device_shell(self):
         hardware = run_simulation("arrival-rehearsal")
@@ -97,6 +129,13 @@ class HardwareSimulatorTests(unittest.TestCase):
         self.assertEqual(2, telemetry["speaker_frames_submitted"])
         self.assertTrue(telemetry["bridge_downlink_ready"])
         self.assertFalse(telemetry["bridge_downlink_active"])
+        self.assertTrue(telemetry["bridge_downlink_playback_ready"])
+        self.assertFalse(telemetry["bridge_downlink_playback_active"])
+        self.assertEqual(1, telemetry["bridge_downlink_playback_starts"])
+        self.assertEqual(2, telemetry["bridge_downlink_playback_chunks"])
+        self.assertEqual(AUDIO_DOWNLINK_TEST_BYTES, telemetry["bridge_downlink_playback_bytes"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_unsupported"])
+        self.assertEqual(0, telemetry["bridge_downlink_playback_errors"])
         self.assertEqual(1, telemetry["bridge_downlink_streams"])
         self.assertEqual(1, telemetry["bridge_downlink_completed"])
         self.assertEqual(2, telemetry["bridge_downlink_chunks"])
@@ -224,7 +263,7 @@ class HardwareSimulatorTests(unittest.TestCase):
 
     def test_summary_and_output_files_are_written(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            summary = write_outputs(Path(temp_dir), ["reference", "audio-downlink"])
+            summary = write_outputs(Path(temp_dir), ["reference", "audio-downlink", "audio-downlink-unsupported"])
             report_path = Path(temp_dir) / "hardware_simulation.json"
             markdown_path = Path(temp_dir) / "HARDWARE_SIMULATION.md"
             serial_path = Path(temp_dir) / "audio-downlink.serial.log"
@@ -233,6 +272,7 @@ class HardwareSimulatorTests(unittest.TestCase):
             self.assertTrue(markdown_path.exists())
             self.assertTrue(serial_path.exists())
             self.assertIn("Bridge downlink:", markdown_path.read_text(encoding="utf-8"))
+            self.assertIn("Downlink playback:", markdown_path.read_text(encoding="utf-8"))
             self.assertIn("bridge_downlink_streams=1", serial_path.read_text(encoding="utf-8"))
 
         self.assertEqual("pass", summary["status"])

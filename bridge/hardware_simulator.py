@@ -24,6 +24,7 @@ DISPLAY_FRAME_MS = 33
 MAX_AUDIO_STREAM_CHUNK_BYTES = 4096
 AUDIO_DOWNLINK_TEST_BYTES = 5000
 DOWNLINK_CHECKSUM_SEED = 2166136261
+PLAYABLE_DOWNLINK_FORMATS = {"pcm16", "s16le", "raw16", "pcm_s16le"}
 
 
 Frame = dict[str, object] | bytes
@@ -72,6 +73,14 @@ class VirtualHardwareTelemetry:
     bridge_downlink_received_bytes: int = 0
     bridge_downlink_received_chunks: int = 0
     bridge_downlink_last_payload_bytes: int = 0
+    bridge_downlink_playback_ready: bool = False
+    bridge_downlink_playback_active: bool = False
+    bridge_downlink_playback_starts: int = 0
+    bridge_downlink_playback_chunks: int = 0
+    bridge_downlink_playback_bytes: int = 0
+    bridge_downlink_playback_stops: int = 0
+    bridge_downlink_playback_unsupported: int = 0
+    bridge_downlink_playback_errors: int = 0
     response_text: str = ""
     boot_count: int = 0
     display_ready: bool = False
@@ -131,6 +140,14 @@ class VirtualHardwareTelemetry:
             "bridge_downlink_received_bytes": self.bridge_downlink_received_bytes,
             "bridge_downlink_received_chunks": self.bridge_downlink_received_chunks,
             "bridge_downlink_last_payload_bytes": self.bridge_downlink_last_payload_bytes,
+            "bridge_downlink_playback_ready": self.bridge_downlink_playback_ready,
+            "bridge_downlink_playback_active": self.bridge_downlink_playback_active,
+            "bridge_downlink_playback_starts": self.bridge_downlink_playback_starts,
+            "bridge_downlink_playback_chunks": self.bridge_downlink_playback_chunks,
+            "bridge_downlink_playback_bytes": self.bridge_downlink_playback_bytes,
+            "bridge_downlink_playback_stops": self.bridge_downlink_playback_stops,
+            "bridge_downlink_playback_unsupported": self.bridge_downlink_playback_unsupported,
+            "bridge_downlink_playback_errors": self.bridge_downlink_playback_errors,
             "response_text": self.response_text,
             "boot_count": self.boot_count,
             "display_ready": self.display_ready,
@@ -241,6 +258,20 @@ class VirtualStackchanHardware:
                 self._record_issue("speaker_playback_not_started")
             if self.telemetry.speaker_frames_submitted != self.telemetry.audio_stream_chunks_expected:
                 self._record_issue("speaker_frame_count_mismatch")
+            if not self.telemetry.bridge_downlink_playback_ready:
+                self._record_issue("bridge_downlink_playback_not_ready")
+            if self.telemetry.bridge_downlink_playback_active:
+                self._record_issue("bridge_downlink_playback_left_active")
+            if self.telemetry.bridge_downlink_playback_starts != 1:
+                self._record_issue("bridge_downlink_playback_start_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_chunks != self.telemetry.audio_stream_chunks_expected:
+                self._record_issue("bridge_downlink_playback_chunk_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_bytes != self.telemetry.audio_stream_bytes_expected:
+                self._record_issue("bridge_downlink_playback_byte_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_unsupported != 0:
+                self._record_issue("bridge_downlink_playback_unsupported_nonzero")
+            if self.telemetry.bridge_downlink_playback_errors != 0:
+                self._record_issue("bridge_downlink_playback_error_count_nonzero")
             if self.telemetry.bridge_downlink_streams != 1:
                 self._record_issue("bridge_downlink_stream_count_mismatch")
             if self.telemetry.bridge_downlink_completed != 1:
@@ -255,6 +286,33 @@ class VirtualStackchanHardware:
                 self._record_issue("bridge_downlink_error_count_nonzero")
             if self.telemetry.mouth_display_frames <= 0:
                 self._record_issue("mouth_never_rendered_during_audio")
+        if scenario == "audio-downlink-unsupported":
+            if self.telemetry.speaker_playback_starts != 0:
+                self._record_issue("unsupported_speaker_playback_started")
+            if self.telemetry.speaker_frames_submitted != 0:
+                self._record_issue("unsupported_speaker_frames_submitted")
+            if not self.telemetry.bridge_downlink_playback_ready:
+                self._record_issue("unsupported_bridge_downlink_playback_not_ready")
+            if self.telemetry.bridge_downlink_playback_active:
+                self._record_issue("unsupported_bridge_downlink_playback_left_active")
+            if self.telemetry.bridge_downlink_playback_starts != 0:
+                self._record_issue("unsupported_bridge_downlink_playback_started")
+            if self.telemetry.bridge_downlink_playback_chunks != 0:
+                self._record_issue("unsupported_bridge_downlink_playback_chunks_nonzero")
+            if self.telemetry.bridge_downlink_playback_bytes != 0:
+                self._record_issue("unsupported_bridge_downlink_playback_bytes_nonzero")
+            if self.telemetry.bridge_downlink_playback_unsupported != 1:
+                self._record_issue("unsupported_bridge_downlink_playback_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_errors != 0:
+                self._record_issue("unsupported_bridge_downlink_playback_error_count_nonzero")
+            if self.telemetry.bridge_downlink_completed != 1:
+                self._record_issue("unsupported_bridge_downlink_completion_mismatch")
+            if self.telemetry.bridge_downlink_chunks != self.telemetry.audio_stream_chunks_expected:
+                self._record_issue("unsupported_bridge_downlink_chunk_count_mismatch")
+            if self.telemetry.bridge_downlink_bytes != self.telemetry.audio_stream_bytes_expected:
+                self._record_issue("unsupported_bridge_downlink_byte_count_mismatch")
+            if self.telemetry.bridge_downlink_errors != 0:
+                self._record_issue("unsupported_bridge_downlink_error_count_nonzero")
         if scenario == "arrival-rehearsal":
             if self.telemetry.boot_count < 2:
                 self._record_issue("power_cycle_reboot_not_observed")
@@ -264,6 +322,16 @@ class VirtualStackchanHardware:
                 self._record_issue("control_events_not_covered")
             if self.telemetry.speaker_playback_starts < 1:
                 self._record_issue("arrival_speaker_stream_not_exercised")
+            if self.telemetry.bridge_downlink_playback_starts < 1:
+                self._record_issue("arrival_bridge_downlink_playback_not_exercised")
+            if self.telemetry.bridge_downlink_playback_chunks < 1:
+                self._record_issue("arrival_bridge_downlink_playback_chunks_missing")
+            if self.telemetry.bridge_downlink_playback_bytes < 1:
+                self._record_issue("arrival_bridge_downlink_playback_bytes_missing")
+            if self.telemetry.bridge_downlink_playback_unsupported != 0:
+                self._record_issue("arrival_bridge_downlink_playback_unsupported_nonzero")
+            if self.telemetry.bridge_downlink_playback_errors != 0:
+                self._record_issue("arrival_bridge_downlink_playback_error_count_nonzero")
             if self.telemetry.bridge_downlink_streams < 1:
                 self._record_issue("arrival_bridge_downlink_not_exercised")
             if self.telemetry.bridge_downlink_completed < 1:
@@ -440,7 +508,6 @@ class VirtualStackchanHardware:
             self.telemetry.audio_stream_chunk_bytes_max, len(payload)
         )
         self.telemetry.audio_stream_chunks_received += 1
-        self.telemetry.speaker_frames_submitted += 1
         self._accept_downlink_chunk(payload)
         self._serial(
             "[bridge] type=audio_binary "
@@ -470,7 +537,6 @@ class VirtualStackchanHardware:
             self.telemetry.audio_stream_chunk_bytes_declared, stream.chunk_bytes
         )
         self.telemetry.audio_stream_chunks_expected += stream.expected_chunks
-        self.telemetry.speaker_playback_starts += 1
         self._start_downlink(stream)
         self.telemetry.bridge_state = "Responding"
         self._serial(
@@ -636,6 +702,8 @@ class VirtualStackchanHardware:
         self.telemetry.speaker_ready = True
         self.telemetry.bridge_downlink_ready = True
         self.telemetry.bridge_downlink_active = False
+        self.telemetry.bridge_downlink_playback_ready = self.telemetry.speaker_ready
+        self.telemetry.bridge_downlink_playback_active = False
         self.telemetry.bridge_state = "Disconnected"
         self._set_face_mode("idle")
         self.display_next_ms = self.now_ms
@@ -712,6 +780,7 @@ class VirtualStackchanHardware:
         self.telemetry.bridge_downlink_received_chunks = 0
         self.telemetry.bridge_downlink_last_payload_bytes = 0
         self.telemetry.bridge_downlink_checksum = 0
+        self._start_downlink_playback(stream)
 
     def _accept_downlink_chunk(self, payload: bytes) -> None:
         if not self.telemetry.bridge_downlink_ready or not self.telemetry.bridge_downlink_active:
@@ -726,24 +795,53 @@ class VirtualStackchanHardware:
             self.telemetry.bridge_downlink_checksum,
             payload,
         )
+        self._accept_downlink_playback_chunk(payload)
 
     def _end_downlink(self, failed: bool) -> None:
         if not self.telemetry.bridge_downlink_ready or not self.telemetry.bridge_downlink_active:
             self._fail_downlink()
             return
         if failed:
+            self._stop_downlink_playback()
             self._fail_downlink()
         else:
             self.telemetry.bridge_downlink_completed += 1
+            self._stop_downlink_playback()
         self.telemetry.bridge_downlink_active = False
 
     def _abort_downlink(self) -> None:
         if self.telemetry.bridge_downlink_active:
             self.telemetry.bridge_downlink_aborted += 1
+        self._stop_downlink_playback()
         self.telemetry.bridge_downlink_active = False
 
     def _fail_downlink(self) -> None:
         self.telemetry.bridge_downlink_errors += 1
+
+    def _start_downlink_playback(self, stream: ActiveAudioStream) -> None:
+        self.telemetry.bridge_downlink_playback_active = False
+        if not self.telemetry.bridge_downlink_playback_ready:
+            self.telemetry.bridge_downlink_playback_errors += 1
+            return
+        if stream.format not in PLAYABLE_DOWNLINK_FORMATS or stream.sample_rate <= 0:
+            self.telemetry.bridge_downlink_playback_unsupported += 1
+            return
+        self.telemetry.bridge_downlink_playback_active = True
+        self.telemetry.bridge_downlink_playback_starts += 1
+        self.telemetry.speaker_playback_starts += 1
+
+    def _accept_downlink_playback_chunk(self, payload: bytes) -> None:
+        if not self.telemetry.bridge_downlink_playback_active:
+            return
+        self.telemetry.bridge_downlink_playback_chunks += 1
+        self.telemetry.bridge_downlink_playback_bytes += len(payload)
+        self.telemetry.speaker_frames_submitted += 1
+
+    def _stop_downlink_playback(self) -> None:
+        if not self.telemetry.bridge_downlink_playback_active:
+            return
+        self.telemetry.bridge_downlink_playback_active = False
+        self.telemetry.bridge_downlink_playback_stops += 1
 
     def _serial_runtime_status(self) -> None:
         self._serial(
@@ -763,6 +861,13 @@ class VirtualStackchanHardware:
             f"bridge_downlink_chunks={self.telemetry.bridge_downlink_chunks} "
             f"bridge_downlink_bytes={self.telemetry.bridge_downlink_bytes} "
             f"bridge_downlink_errors={self.telemetry.bridge_downlink_errors} "
+            f"bridge_downlink_playback_ready={int(self.telemetry.bridge_downlink_playback_ready)} "
+            f"bridge_downlink_playback_active={int(self.telemetry.bridge_downlink_playback_active)} "
+            f"bridge_downlink_playback_starts={self.telemetry.bridge_downlink_playback_starts} "
+            f"bridge_downlink_playback_chunks={self.telemetry.bridge_downlink_playback_chunks} "
+            f"bridge_downlink_playback_bytes={self.telemetry.bridge_downlink_playback_bytes} "
+            f"bridge_downlink_playback_unsupported={self.telemetry.bridge_downlink_playback_unsupported} "
+            f"bridge_downlink_playback_errors={self.telemetry.bridge_downlink_playback_errors} "
             f"bridge_timeouts={self.telemetry.timeouts}"
         )
 
@@ -789,7 +894,7 @@ def _update_downlink_checksum(checksum: int, payload: bytes) -> int:
     return result
 
 
-def full_audio_downlink_frames() -> list[Frame]:
+def full_audio_downlink_frames(audio_format: str = "pcm16") -> list[Frame]:
     payload = bytes(index % 251 for index in range(AUDIO_DOWNLINK_TEST_BYTES))
     chunks = [
         payload[index : index + MAX_AUDIO_STREAM_CHUNK_BYTES]
@@ -816,7 +921,7 @@ def full_audio_downlink_frames() -> list[Frame]:
                     {
                         "type": "audio_stream_start",
                         "seq": turn.seq,
-                        "format": "wav",
+                        "format": audio_format,
                         "sample_rate": 22050,
                         "audio_bytes": len(payload),
                         "chunk_bytes": MAX_AUDIO_STREAM_CHUNK_BYTES,
@@ -968,6 +1073,8 @@ def scenario_frames(name: str) -> tuple[list[Frame], int | None]:
         return conversation_rehearsal_frames(), None
     if name == "audio-downlink":
         return full_audio_downlink_frames(), None
+    if name == "audio-downlink-unsupported":
+        return full_audio_downlink_frames("wav"), None
     if name == "arrival-rehearsal":
         return arrival_rehearsal_frames(), None
     if name == "bridge-kill-recovery":
@@ -1059,6 +1166,11 @@ def write_outputs(output_dir: Path, scenarios: Iterable[str]) -> dict[str, objec
                 f"{telemetry['bridge_downlink_chunks']} chunks / "
                 f"{telemetry['bridge_downlink_bytes']} bytes / "
                 f"{telemetry['bridge_downlink_errors']} errors",
+                f"- Downlink playback: {telemetry['bridge_downlink_playback_starts']} starts / "
+                f"{telemetry['bridge_downlink_playback_chunks']} chunks / "
+                f"{telemetry['bridge_downlink_playback_bytes']} bytes / "
+                f"{telemetry['bridge_downlink_playback_unsupported']} unsupported / "
+                f"{telemetry['bridge_downlink_playback_errors']} errors",
                 f"- Speaker frames: {telemetry['speaker_frames_submitted']}",
                 f"- Boots / power cycles: {telemetry['boot_count']} / {telemetry['power_cycles']}",
                 f"- Issues: {', '.join(report['issues']) if report['issues'] else 'none'}",
@@ -1080,6 +1192,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "lan-text",
             "conversation-rehearsal",
             "audio-downlink",
+            "audio-downlink-unsupported",
             "arrival-rehearsal",
             "bridge-kill-recovery",
             "offline-command-fallback",
@@ -1087,8 +1200,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
         help=(
             "Scenario to run. Defaults to reference, lan-text, conversation-rehearsal, "
-            "audio-downlink, arrival-rehearsal, bridge-kill-recovery, and "
-            "offline-command-fallback."
+            "audio-downlink, audio-downlink-unsupported, arrival-rehearsal, "
+            "bridge-kill-recovery, and offline-command-fallback."
         ),
     )
     parser.add_argument("--out-dir", type=Path, help="Optional directory for JSON and serial-like logs.")
@@ -1103,6 +1216,7 @@ def main() -> int:
         "lan-text",
         "conversation-rehearsal",
         "audio-downlink",
+        "audio-downlink-unsupported",
         "arrival-rehearsal",
         "bridge-kill-recovery",
         "offline-command-fallback",
