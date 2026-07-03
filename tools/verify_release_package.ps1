@@ -120,6 +120,7 @@ $requiredFiles = @(
   "voice_source_status.json",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
+  "docs/PRIVACY.md",
   "docs/PRODUCTION_READINESS.md",
   "docs/README.md",
   "docs/RELEASE_PROCESS.md",
@@ -874,6 +875,10 @@ if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
   throw "Manifest voicePersonalityGuide mismatch: $($manifest.voicePersonalityGuide)"
 }
 
+if ($manifest.privacyModel -ne "docs/PRIVACY.md") {
+  throw "Manifest privacyModel mismatch: $($manifest.privacyModel)"
+}
+
 if ($manifest.expressionProfiles -ne "data/expressions.yaml") {
   throw "Manifest expressionProfiles mismatch: $($manifest.expressionProfiles)"
 }
@@ -1164,6 +1169,13 @@ $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOC
 foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "offline matrix")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
+  }
+}
+
+$privacyModel = Get-Content -LiteralPath (Join-PackagePath "docs/PRIVACY.md") -Raw
+foreach ($pattern in @("wake-word gated", "Audio leaves the device", "local/LAN-first", "no hardcoded secrets", "preferred_name", "recent_topics", "physical_context", "bridge_messages", "bridge_timeouts", "degrade offline", "VOICE_PERSONALITY.md", "RVC")) {
+  if ($privacyModel -notmatch [regex]::Escape($pattern)) {
+    throw "PRIVACY.md missing expected privacy boundary: $pattern"
   }
 }
 
