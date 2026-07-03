@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -378,6 +380,56 @@ class VirtualStackchanHardware:
             for mode in ("listen", "think", "happy", "idle"):
                 if mode not in self.telemetry.modes_seen:
                     self._record_issue(f"conversation_mode_not_seen:{mode}")
+        if scenario == "conversation-tts-downlink":
+            if self.telemetry.conversation_turns != 1:
+                self._record_issue("conversation_tts_turn_not_observed")
+            if self.telemetry.conversation_first_audio_latency_ms <= 0:
+                self._record_issue("conversation_tts_first_audio_latency_missing")
+            if self.telemetry.conversation_first_audio_latency_ms > 2500:
+                self._record_issue("conversation_tts_first_audio_latency_over_budget")
+            if self.telemetry.bridge_state != "Ready":
+                self._record_issue("conversation_tts_did_not_return_ready")
+            if self.telemetry.mouth_display_frames <= 0:
+                self._record_issue("conversation_tts_mouth_display_not_exercised")
+            if self.telemetry.audio_streams_started != 1:
+                self._record_issue("conversation_tts_audio_stream_start_count_mismatch")
+            if self.telemetry.audio_streams_ended != 1:
+                self._record_issue("conversation_tts_audio_stream_end_count_mismatch")
+            if self.telemetry.audio_stream_bytes_received != AUDIO_DOWNLINK_TEST_BYTES:
+                self._record_issue("conversation_tts_audio_byte_count_mismatch")
+            if self.telemetry.audio_stream_chunks_received != 2:
+                self._record_issue("conversation_tts_audio_chunk_count_mismatch")
+            if self.telemetry.speaker_playback_starts != 1:
+                self._record_issue("conversation_tts_speaker_playback_not_started")
+            if self.telemetry.speaker_frames_submitted != 2:
+                self._record_issue("conversation_tts_speaker_frame_count_mismatch")
+            if self.telemetry.bridge_downlink_streams != 1:
+                self._record_issue("conversation_tts_downlink_stream_count_mismatch")
+            if self.telemetry.bridge_downlink_completed != 1:
+                self._record_issue("conversation_tts_downlink_completion_mismatch")
+            if self.telemetry.bridge_downlink_chunks != 2:
+                self._record_issue("conversation_tts_downlink_chunk_count_mismatch")
+            if self.telemetry.bridge_downlink_bytes != AUDIO_DOWNLINK_TEST_BYTES:
+                self._record_issue("conversation_tts_downlink_byte_count_mismatch")
+            if self.telemetry.bridge_downlink_errors != 0:
+                self._record_issue("conversation_tts_downlink_error_count_nonzero")
+            if not self.telemetry.bridge_downlink_playback_ready:
+                self._record_issue("conversation_tts_downlink_playback_not_ready")
+            if self.telemetry.bridge_downlink_playback_active:
+                self._record_issue("conversation_tts_downlink_playback_left_active")
+            if self.telemetry.bridge_downlink_playback_starts != 1:
+                self._record_issue("conversation_tts_downlink_playback_start_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_chunks != 2:
+                self._record_issue("conversation_tts_downlink_playback_chunk_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_bytes != AUDIO_DOWNLINK_TEST_BYTES:
+                self._record_issue("conversation_tts_downlink_playback_byte_count_mismatch")
+            if self.telemetry.bridge_downlink_playback_unsupported != 0:
+                self._record_issue("conversation_tts_downlink_playback_unsupported_nonzero")
+            if self.telemetry.bridge_downlink_playback_errors != 0:
+                self._record_issue("conversation_tts_downlink_playback_error_count_nonzero")
+            for mode in ("listen", "think", "happy", "idle"):
+                if mode not in self.telemetry.modes_seen:
+                    self._record_issue(f"conversation_tts_mode_not_seen:{mode}")
         if scenario == "offline-command-fallback":
             if self.telemetry.bridge_ready:
                 self._record_issue("offline_bridge_unexpectedly_ready")
@@ -1011,6 +1063,15 @@ def conversation_rehearsal_frames() -> list[Frame]:
     return frames
 
 
+def conversation_tts_downlink_frames() -> list[Frame]:
+    frames: list[Frame] = [
+        {"type": "control_input", "input": "btn_a"},
+        {"type": "conversation_marker", "marker": "utterance_end"},
+    ]
+    frames.extend(lan_tts_downlink_frames())
+    return frames
+
+
 def offline_command_fallback_frames() -> list[Frame]:
     return [
         {"type": "control_input", "input": "btn_a"},
@@ -1025,8 +1086,8 @@ def reference_frames() -> list[Frame]:
     return list(bridge_frames(BridgeTurn(session="sim", seq=7)))
 
 
-def lan_text_frames() -> list[Frame]:
-    old_env = {
+def bridge_command_env() -> dict[str, str | None]:
+    return {
         key: os.environ.get(key)
         for key in (
             "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND",
@@ -1036,10 +1097,28 @@ def lan_text_frames() -> list[Frame]:
             "STACKCHAN_TTS_COMMAND",
         )
     }
+
+
+def restore_bridge_command_env(old_env: dict[str, str | None]) -> None:
+    for key, value in old_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def lan_text_frames(tts_command: str = "") -> list[Frame]:
+    old_env = bridge_command_env()
     try:
         for key in old_env:
             os.environ[key] = ""
-        session = LanBridgeSession(LanBridgeConfig(runner_case="greeting"))
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                runner_case="greeting",
+                tts_command=tts_command,
+                downlink_audio_chunk_bytes=MAX_AUDIO_STREAM_CHUNK_BYTES,
+            )
+        )
         frames: list[Frame] = []
         frames.extend(session.handle_text(json.dumps({"type": "hello", "device_id": "stackchan-sim"})))
         frames.extend(session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000})))
@@ -1050,11 +1129,47 @@ def lan_text_frames() -> list[Frame]:
         )
         return frames
     finally:
-        for key, value in old_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        restore_bridge_command_env(old_env)
+
+
+def lan_tts_downlink_frames() -> list[Frame]:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        script = Path(temp_dir) / "fake_tts_wav.py"
+        script.write_text(
+            "\n".join(
+                [
+                    "import base64",
+                    "import io",
+                    "import json",
+                    "import sys",
+                    "import wave",
+                    "text = sys.stdin.buffer.read().decode('utf-8')",
+                    "samples = bytearray()",
+                    "for index in range(2500):",
+                    "    sample = ((index * 137) % 24000) - 12000",
+                    "    samples.extend(int(sample).to_bytes(2, 'little', signed=True))",
+                    "buffer = io.BytesIO()",
+                    "with wave.open(buffer, 'wb') as wav:",
+                    "    wav.setnchannels(1)",
+                    "    wav.setsampwidth(2)",
+                    "    wav.setframerate(22050)",
+                    "    wav.writeframes(bytes(samples))",
+                    "print(json.dumps({",
+                    "    'audio_format': 'wav',",
+                    "    'audio_b64': base64.b64encode(buffer.getvalue()).decode('ascii'),",
+                    "    'beats': [",
+                    "        {'env': 0.20, 'viseme': 'neutral', 'duration_ms': 40},",
+                    "        {'env': 0.72, 'viseme': 'ah', 'duration_ms': 70},",
+                    "        {'env': 0.58, 'viseme': 'ee', 'duration_ms': 60},",
+                    "        {'env': 0.12, 'viseme': 'neutral', 'duration_ms': 40},",
+                    "    ],",
+                    "}))",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        command = f'"{sys.executable}" "{script}"'
+        return lan_text_frames(tts_command=command)
 
 
 def timeout_frames() -> list[Frame]:
@@ -1071,6 +1186,8 @@ def scenario_frames(name: str) -> tuple[list[Frame], int | None]:
         return lan_text_frames(), None
     if name == "conversation-rehearsal":
         return conversation_rehearsal_frames(), None
+    if name == "conversation-tts-downlink":
+        return conversation_tts_downlink_frames(), None
     if name == "audio-downlink":
         return full_audio_downlink_frames(), None
     if name == "audio-downlink-unsupported":
@@ -1191,6 +1308,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "reference",
             "lan-text",
             "conversation-rehearsal",
+            "conversation-tts-downlink",
             "audio-downlink",
             "audio-downlink-unsupported",
             "arrival-rehearsal",
@@ -1200,7 +1318,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
         help=(
             "Scenario to run. Defaults to reference, lan-text, conversation-rehearsal, "
-            "audio-downlink, audio-downlink-unsupported, arrival-rehearsal, "
+            "conversation-tts-downlink, audio-downlink, audio-downlink-unsupported, arrival-rehearsal, "
             "bridge-kill-recovery, and offline-command-fallback."
         ),
     )
@@ -1215,6 +1333,7 @@ def main() -> int:
         "reference",
         "lan-text",
         "conversation-rehearsal",
+        "conversation-tts-downlink",
         "audio-downlink",
         "audio-downlink-unsupported",
         "arrival-rehearsal",

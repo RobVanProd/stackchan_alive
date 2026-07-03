@@ -143,7 +143,10 @@ It consumes the same bridge frames as the firmware parser and checks response st
 speech-envelope frames, binary TTS audio stream accounting, timeout behavior, offline command
 fallback, a conversation rehearsal, and a pre-arrival device-shell rehearsal. The conversation
 rehearsal simulates virtual wake input, LAN bridge response frames, first-audio latency,
-mouth-display activity, and return to `Ready`. The device-shell rehearsal simulates virtual
+mouth-display activity, and return to `Ready`. The `conversation-tts-downlink` rehearsal adds
+a fake WAV-producing local TTS command, verifies bridge-side WAV-to-PCM16 normalization, streams
+the decoded PCM16 as binary downlink chunks, and checks virtual M5 speaker handoff counters.
+The device-shell rehearsal simulates virtual
 display ticks, label persistence, CoreS3 tap/hold/BtnA/BtnB/BtnC inputs, motion safety
 toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle recovery. The
 audio-downlink scenarios mirror `bridge_downlink_playback_*` telemetry and verify that

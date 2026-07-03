@@ -105,6 +105,9 @@ Keep each item independently shippable and package-verified.
    - The default simulator run includes `conversation-rehearsal`, which drives virtual wake
      input through the LAN bridge path, checks first-audio latency against the 2.5 s budget,
      verifies mouth frames, and returns to `Ready`.
+   - It also includes `conversation-tts-downlink`, which uses a fake WAV-producing local TTS
+     command to verify bridge-side WAV-to-PCM16 normalization, binary downlink framing,
+     virtual M5 speaker handoff counters, mouth activity, and return to `Ready`.
    - The default simulator run also includes `arrival-rehearsal`, which models virtual
      CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
      safety toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle
@@ -131,10 +134,10 @@ Keep each item independently shippable and package-verified.
    - GitHub Actions runs the bridge tests, engine readiness probe, and simulator in the
      `bridge-tests` job, then uploads both the engine-probe and hardware-simulation report
      artifacts for each PR/push.
-   - This catches bridge ordering, conversation timing, timeout, mouth-frame, input-mapping,
-     offline command fallback, reboot-recovery, bridge-kill recovery, and binary stream
-     regressions before the physical device arrives. It does not replace real display,
-     speaker, mic, camera, touch, IMU,
+   - This catches bridge ordering, conversation timing, LAN TTS downlink, timeout,
+     mouth-frame, input-mapping, offline command fallback, reboot-recovery, bridge-kill
+     recovery, and binary stream regressions before the physical device arrives. It does not
+     replace real display, speaker, mic, camera, touch, IMU,
      servo, heat, power, or soak evidence.
 
 6. End-to-end demo gate.
