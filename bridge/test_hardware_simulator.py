@@ -70,6 +70,25 @@ class HardwareSimulatorTests(unittest.TestCase):
         for mode in ("listen", "think", "react", "speak", "concern", "happy", "idle"):
             self.assertIn(mode, telemetry["modes_seen"])
 
+    def test_bridge_kill_recovery_uses_offline_fallback_and_returns_ready(self):
+        hardware = run_simulation("bridge-kill-recovery")
+        report = hardware.report("bridge-kill-recovery")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertEqual(1, telemetry["bridge_errors"])
+        self.assertEqual(1, telemetry["offline_fallback_prompts"])
+        self.assertEqual(1, telemetry["bridge_recoveries"])
+        self.assertEqual("Ready", telemetry["bridge_state"])
+        self.assertEqual("idle", telemetry["face_mode"])
+        self.assertIn("error", telemetry["modes_seen"])
+        self.assertEqual(1, telemetry["audio_streams_aborted"])
+        self.assertGreaterEqual(telemetry["speech_frames"], 4)
+        self.assertEqual(0, telemetry["parse_errors"])
+        self.assertEqual(0, telemetry["timeouts"])
+        self.assertTrue(any("intent=error" in line for line in hardware.serial_lines))
+        self.assertTrue(any("bridge_closed" in line for line in hardware.serial_lines))
+
     def test_binary_without_audio_stream_fails(self):
         hardware = VirtualStackchanHardware()
         hardware.process(b"abc", at_ms=0)

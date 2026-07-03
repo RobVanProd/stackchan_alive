@@ -91,13 +91,17 @@ Keep each item independently shippable and package-verified.
      CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
      safety toggles, speaker stream counters, mouth-display activity, and power-cycle
      recovery before the physical unit arrives.
+   - It also includes `bridge-kill-recovery`, which aborts an in-flight TTS stream after a
+     bridge error, emits one offline fallback prompt, reconnects, speaks a recovery turn, and
+     returns to `Ready` without a timeout or parse failure.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
    - GitHub Actions runs the bridge tests and simulator in the `bridge-tests` job and
      uploads the simulation report artifact for each PR/push.
-   - This catches bridge ordering, timeout, mouth-frame, input-mapping, reboot-recovery, and
-     binary stream regressions before the physical device arrives. It does not replace real
-     display, speaker, mic, camera, touch, IMU, servo, heat, power, or soak evidence.
+   - This catches bridge ordering, timeout, mouth-frame, input-mapping, reboot-recovery,
+     bridge-kill recovery, and binary stream regressions before the physical device arrives.
+     It does not replace real display, speaker, mic, camera, touch, IMU, servo, heat, power,
+     or soak evidence.
 
 6. End-to-end demo gate.
    - Wake or bench start, listen, visible thinking, in-character spoken response, lip-sync,

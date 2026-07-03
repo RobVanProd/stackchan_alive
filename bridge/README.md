@@ -125,8 +125,10 @@ It consumes the same bridge frames as the firmware parser and checks response st
 speech-envelope frames, binary TTS audio stream accounting, timeout behavior, and a
 pre-arrival device-shell rehearsal. The rehearsal simulates virtual display ticks, label
 persistence, CoreS3 tap/hold/BtnA/BtnB/BtnC inputs, motion safety toggles, speaker stream
-counters, mouth-display activity, and power-cycle recovery. This is a simulation proxy only;
-real hardware evidence is still required.
+counters, mouth-display activity, and power-cycle recovery. The default run also includes
+`bridge-kill-recovery`: a dropped bridge during an open TTS stream must produce one offline
+fallback prompt, reconnect, speak a recovery turn, and return to `Ready`. This is a
+simulation proxy only; real hardware evidence is still required.
 
 Try the deterministic response planner with user text:
 
