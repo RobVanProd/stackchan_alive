@@ -154,5 +154,7 @@ See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the current
 
 Voice and personality direction is defined in [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md), with the machine-readable profile in [data/voice_persona.yaml](data/voice_persona.yaml). Prototype Stackchan Spark audition samples are generated under `docs/media/voice/` with `tools/render_voice_samples.cmd`; run `tools/open_voice_audition.cmd` to open the local MP3 audition page. The current review-only RVC MP3 direction is checked in under `media/voice/rvc/`; open `media/voice/rvc/RVC_AUDITION.html` directly or run `tools/open_voice_audition.cmd -Rvc`. To audition every checked-in MP3 from one local page, run `tools/open_voice_audition.cmd -All`.
 
+Bridge privacy rules are documented in [docs/PRIVACY.md](docs/PRIVACY.md): audio leaves the device only after wake-word gated activation, the current reference bridge is local/deterministic, and bridge memory stays minimal and resettable.
+
 Release packaging is documented in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
 Hardware rollout tracking is in [docs/ROLLOUT_CHECKLIST.md](docs/ROLLOUT_CHECKLIST.md).

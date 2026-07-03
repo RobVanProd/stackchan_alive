@@ -212,6 +212,7 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/PRIVACY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ARRIVAL_DAY_RUNBOOK.md" -Destination (Join-Path $outDir "ARRIVAL_DAY_RUNBOOK.md")
 Copy-Item -LiteralPath "docs/RELEASE_QUICKSTART.md" -Destination (Join-Path $outDir "QUICKSTART.md")
@@ -640,6 +641,7 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
+  privacyModel = "docs/PRIVACY.md"
   expressionProfiles = "data/expressions.yaml"
   voicePersona = "data/voice_persona.yaml"
   voiceSourceProvenanceTemplate = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md"
