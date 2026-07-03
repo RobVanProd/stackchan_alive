@@ -758,6 +758,8 @@ $manifest = [ordered]@{
     "provenance/src/persona/EarconSynth.cpp",
     "provenance/src/io/CameraAdapter.hpp",
     "provenance/src/io/CameraAdapter.cpp",
+    "provenance/src/io/SpeechAdapter.hpp",
+    "provenance/src/io/SpeechAdapter.cpp",
     "provenance/test/fixtures/audio/speech_right.wav",
     "provenance/test/fixtures/audio/speech_left.wav",
     "provenance/test/fixtures/audio/music_center.wav",

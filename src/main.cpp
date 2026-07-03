@@ -10,6 +10,7 @@
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
+#include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "persona/IntentEngine.hpp"
@@ -28,6 +29,7 @@ StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
 SensorAdapter gSensors;
 CameraAdapter gCamera;
+SpeechAdapter gSpeechAdapter;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
@@ -222,6 +224,18 @@ const __FlashStringHelper* speechEarconName(SpeechEarcon earcon) {
   return F("none");
 }
 
+const __FlashStringHelper* promptSourceName(PromptSource source) {
+  switch (source) {
+    case PromptSource::PackagedPrompt:
+      return F("packaged_prompt");
+    case PromptSource::HostBridge:
+      return F("host_bridge");
+    case PromptSource::None:
+      break;
+  }
+  return F("none");
+}
+
 void printBootMarker() {
   Serial.print(F("[boot] stackchan_alive mode="));
   Serial.print(firmwareMode());
@@ -274,7 +288,16 @@ void printRuntimeStatus() {
   Serial.print(F(" camera_active="));
   Serial.print(camera.active ? 1 : 0);
   Serial.print(F(" camera_events="));
-  Serial.println(camera.eventsPublished);
+  Serial.print(camera.eventsPublished);
+  const SpeechAdapterTelemetry& speechOut = gSpeechAdapter.telemetry();
+  Serial.print(F(" speech_adapter_ready="));
+  Serial.print(speechOut.ready ? 1 : 0);
+  Serial.print(F(" speech_adapter_hw="));
+  Serial.print(speechOut.hardwareEnabled ? 1 : 0);
+  Serial.print(F(" speech_cues="));
+  Serial.print(speechOut.cuesQueued);
+  Serial.print(F(" speech_earcons="));
+  Serial.println(speechOut.earconsRendered);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -293,6 +316,31 @@ void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
   Serial.print(F(" text=\""));
   Serial.print(cue.text);
   Serial.println(F("\""));
+}
+
+void printSpeechPlayback(const SpeechPlaybackPlan& plan) {
+  Serial.print(F("[speech_audio] seq="));
+  Serial.print(plan.seq);
+  Serial.print(F(" queued_ms="));
+  Serial.print(plan.queuedAtMs);
+  Serial.print(F(" intent="));
+  Serial.print(speechIntentName(plan.intent));
+  Serial.print(F(" source="));
+  Serial.print(promptSourceName(plan.promptSource));
+  Serial.print(F(" prompt_id="));
+  Serial.print(plan.promptId);
+  Serial.print(F(" prompt_chars="));
+  Serial.print(plan.promptChars);
+  Serial.print(F(" earcon="));
+  Serial.print(speechEarconName(plan.earcon));
+  Serial.print(F(" earcon_delay_ms="));
+  Serial.print(plan.earconDelayMs);
+  Serial.print(F(" earcon_samples="));
+  Serial.print(plan.earconRender.samplesWritten);
+  Serial.print(F(" earcon_peak="));
+  Serial.print(plan.earconRender.peakAbs);
+  Serial.print(F(" earcon_checksum="));
+  Serial.println(plan.earconRender.checksum, HEX);
 }
 
 void printBenchControl(const BenchControl& control) {
@@ -577,6 +625,9 @@ void IntentTask(void* pv) {
     if (frame.speechSeq != 0 && frame.speechSeq != lastSpeechSeq && frame.speech.shouldSpeak()) {
       lastSpeechSeq = frame.speechSeq;
       printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);
+      if (gSpeechAdapter.handleCue(frame.speech, frame.speechSeq, frame.emotion, frame.timestampMs)) {
+        printSpeechPlayback(gSpeechAdapter.lastPlan());
+      }
     }
     publishFrame(frame);
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.intentPeriodMs));
@@ -607,6 +658,7 @@ void setup() {
 
   gSensors.begin();
   gCamera.begin();
+  gSpeechAdapter.begin(false);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();

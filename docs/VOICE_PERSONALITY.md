@@ -89,6 +89,7 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - `SpeechCue` carries text, priority, a typed earcon, and a phrase-timing offset so host playback can place matching beeps or boops without hard-coded phrase tables
 - a speech adapter selects the TTS source, face mode, and the actual earcon waveform for each typed cue
 - `persona/EarconSynth` renders each typed `SpeechEarcon` into a short deterministic PCM chirp/boop with no allocation; hardware playback can consume this directly before or between spoken prompts
+- `io/SpeechAdapter` consumes `SpeechCue`, selects the packaged prompt ID, renders the earcon plan, and reports `[speech_audio]` telemetry; the later AW88298/I2S layer should play that same plan rather than reinterpreting cues
 - TTS generation can run off-device at first
 - packaged WAV/MP3 prompts can be used for hardware soak tests
 - hardware evidence should include at least one speaker/audio check before consumer promotion
