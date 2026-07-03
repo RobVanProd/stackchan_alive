@@ -108,8 +108,9 @@ Keep each item independently shippable and package-verified.
      and return to idle.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
-   - GitHub Actions runs the bridge tests and simulator in the `bridge-tests` job and
-     uploads the simulation report artifact for each PR/push.
+   - GitHub Actions runs the bridge tests, engine readiness probe, and simulator in the
+     `bridge-tests` job, then uploads both the engine-probe and hardware-simulation report
+     artifacts for each PR/push.
    - This catches bridge ordering, conversation timing, timeout, mouth-frame, input-mapping,
      offline command fallback, reboot-recovery, bridge-kill recovery, and binary stream
      regressions before the physical device arrives. It does not replace real display,
