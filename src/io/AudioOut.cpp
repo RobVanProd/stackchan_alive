@@ -24,13 +24,15 @@ float clamp01(float value) {
 
 }  // namespace
 
-bool AudioOut::begin(bool hardwareEnabled) {
+bool AudioOut::begin(bool hardwareEnabled, AudioOutSpeakerSink* speakerSink) {
   telemetry_ = AudioOutTelemetry {};
   lastRequest_ = AudioOutPlaybackRequest {};
   playback_ = PlaybackState {};
+  speakerSink_ = speakerSink;
   telemetry_.ready = true;
   telemetry_.hardwareEnabled = hardwareEnabled;
-  telemetry_.taskPinnedToCore0 = false;
+  telemetry_.hardwareReady = hardwareEnabled && speakerSink_ != nullptr && speakerSink_->begin() && speakerSink_->isReady();
+  telemetry_.taskPinnedToCore0 = telemetry_.hardwareReady;
   return true;
 }
 
@@ -65,6 +67,7 @@ bool AudioOut::enqueue(const AudioOutPlaybackRequest& request) {
   telemetry_.playbackDurationMs = playback_.durationMs;
   telemetry_.sidecarFrameMs = playback_.timing.frameMs;
   telemetry_.sidecarFrames = playback_.timing.frames;
+  startHardwarePlayback(request);
   return true;
 }
 
@@ -86,6 +89,7 @@ bool AudioOut::pollSpeechFrame(uint32_t nowMs, AudioOutSpeechFrame* frameOut) {
       playback_.active = false;
       telemetry_.playbackActive = false;
       telemetry_.duckActive = false;
+      stopHardwarePlayback();
       return false;
     }
 
@@ -100,6 +104,7 @@ bool AudioOut::pollSpeechFrame(uint32_t nowMs, AudioOutSpeechFrame* frameOut) {
     frameOut->seq = playback_.seq;
     frameOut->timestampMs = nowMs;
     frameOut->clear = true;
+    stopHardwarePlayback();
     return true;
   }
 
@@ -110,7 +115,8 @@ bool AudioOut::pollSpeechFrame(uint32_t nowMs, AudioOutSpeechFrame* frameOut) {
   playback_.lastFrameIndex = static_cast<int32_t>(frameIndex);
 
   float envelope = envelopeForFrame(playback_.timing, frameIndex);
-  if (playback_.duckUntilMs > nowMs) {
+  const bool ducked = playback_.duckUntilMs > nowMs;
+  if (ducked) {
     envelope *= 0.34f;
   }
   envelope = clamp01(envelope);
@@ -127,6 +133,7 @@ bool AudioOut::pollSpeechFrame(uint32_t nowMs, AudioOutSpeechFrame* frameOut) {
   telemetry_.speechFramesEmitted++;
   telemetry_.lastEnvelope = envelope;
   telemetry_.lastViseme = viseme;
+  submitHardwareFrame(*frameOut, ducked);
   return true;
 }
 
@@ -139,6 +146,54 @@ bool AudioOut::duck(uint32_t nowMs) {
   telemetry_.duckActive = true;
   telemetry_.duckEvents++;
   return true;
+}
+
+void AudioOut::startHardwarePlayback(const AudioOutPlaybackRequest& request) {
+  telemetry_.hardwarePlaybackActive = false;
+  if (!telemetry_.hardwareEnabled || !telemetry_.hardwareReady || speakerSink_ == nullptr || !playback_.active) {
+    return;
+  }
+
+  if (!speakerSink_->start(request, playback_.promptStartMs, playback_.durationMs)) {
+    telemetry_.hardwareFrameDrops++;
+    return;
+  }
+
+  telemetry_.hardwarePlaybackActive = true;
+  telemetry_.hardwareStarts++;
+}
+
+void AudioOut::submitHardwareFrame(const AudioOutSpeechFrame& frame, bool ducked) {
+  if (!telemetry_.hardwarePlaybackActive || speakerSink_ == nullptr) {
+    return;
+  }
+
+  AudioOutHardwareFrame hardwareFrame;
+  hardwareFrame.active = frame.active;
+  hardwareFrame.clear = frame.clear;
+  hardwareFrame.ducked = ducked;
+  hardwareFrame.envelope = frame.envelope;
+  hardwareFrame.viseme = frame.viseme;
+  hardwareFrame.seq = frame.seq;
+  hardwareFrame.timestampMs = frame.timestampMs;
+  hardwareFrame.durationMs = frame.durationMs;
+
+  if (speakerSink_->writeFrame(hardwareFrame)) {
+    telemetry_.hardwareFramesSubmitted++;
+  } else {
+    telemetry_.hardwareFrameDrops++;
+  }
+}
+
+void AudioOut::stopHardwarePlayback() {
+  if (!telemetry_.hardwarePlaybackActive) {
+    return;
+  }
+  if (speakerSink_ != nullptr) {
+    speakerSink_->stop();
+  }
+  telemetry_.hardwarePlaybackActive = false;
+  telemetry_.hardwareStops++;
 }
 
 AudioOut::SidecarTiming AudioOut::resolveSidecar(const AudioOutPlaybackRequest& request) {

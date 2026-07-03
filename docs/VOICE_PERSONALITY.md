@@ -90,8 +90,8 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - a speech adapter selects the TTS source, face mode, and the actual earcon waveform for each typed cue
 - `persona/EarconSynth` renders each typed `SpeechEarcon` into a short deterministic PCM chirp/boop with no allocation; hardware playback can consume this directly before or between spoken prompts
 - `io/SpeechPromptBank` owns the packaged prompt metadata for each spoken intent, including the prompt ID, Stackchan Spark WAV path, and generated speech-envelope sidecar path
-- `io/SpeechAdapter` consumes `SpeechCue`, selects the packaged prompt asset, renders the earcon plan, and reports `[speech_audio]` telemetry; the later AW88298/I2S layer should play that same plan rather than reinterpreting cues
-- `io/AudioOut` owns the speaker-path playback request boundary, packaged-prompt sidecar timing, mouth-frame streaming, barge-in ducking, and `[audio_out]` telemetry; hardware is disabled by default until the AW88298/I2S task is wired, but the runtime already feeds synchronized mouth frames from the selected prompt sidecar
+- `io/SpeechAdapter` consumes `SpeechCue`, selects the packaged prompt asset, renders the earcon plan, and reports `[speech_audio]` telemetry; the AW88298/M5 speaker layer consumes that same plan rather than reinterpreting cues
+- `io/AudioOut` owns the speaker-path playback request boundary, packaged-prompt sidecar timing, mouth-frame streaming, M5 speaker carrier output, barge-in ducking, and `[audio_out]` telemetry; packaged WAV file playback still needs flash/SD storage wiring, but the display firmware already feeds synchronized mouth frames and audible sidecar-shaped output from the selected prompt sidecar
 - TTS generation can run off-device at first
 - packaged WAV/MP3 prompts and `media/voice/sidecars/*.speech_envelope.json` files can be used for hardware soak tests and synced mouth playback
 - hardware evidence should include at least one speaker/audio check before consumer promotion

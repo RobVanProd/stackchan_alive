@@ -17,6 +17,10 @@
 #include "persona/IntentEngine.hpp"
 #include "persona/StateMatrix.hpp"
 
+#ifndef STACKCHAN_ENABLE_SPEAKER
+#define STACKCHAN_ENABLE_SPEAKER 0
+#endif
+
 using namespace stackchan;
 
 namespace {
@@ -56,6 +60,122 @@ struct MotionControlInput {
   bool hasMotionEnable = false;
   bool motionEnabled = true;
 };
+
+class M5SpeakerAudioSink : public AudioOutSpeakerSink {
+ public:
+  bool begin() override {
+    if (!M5.Speaker.begin()) {
+      ready_ = false;
+      return false;
+    }
+    M5.Speaker.setVolume(96);
+    M5.Speaker.setChannelVolume(kChannel, 255);
+    ready_ = true;
+    return true;
+  }
+
+  bool start(const AudioOutPlaybackRequest& request, uint32_t promptStartMs, uint32_t durationMs) override {
+    (void)request;
+    (void)promptStartMs;
+    (void)durationMs;
+    if (!ready_) {
+      return false;
+    }
+    M5.Speaker.stop(kChannel);
+    active_ = true;
+    phase_ = 0;
+    phaseFifth_ = 0;
+    noise_ = 0x1234abcd;
+    return true;
+  }
+
+  bool writeFrame(const AudioOutHardwareFrame& frame) override {
+    if (!ready_ || !active_) {
+      return false;
+    }
+    if (frame.clear || !frame.active) {
+      stop();
+      return true;
+    }
+
+    renderFrame(frame);
+    return M5.Speaker.playRaw(samples_, kSamplesPerFrame, kSampleRate, false, 1, kChannel, false);
+  }
+
+  void stop() override {
+    if (!ready_) {
+      return;
+    }
+    M5.Speaker.stop(kChannel);
+    active_ = false;
+  }
+
+  bool isReady() const override {
+    return ready_;
+  }
+
+ private:
+  static constexpr int kChannel = 0;
+  static constexpr uint32_t kSampleRate = 22050;
+  static constexpr size_t kSamplesPerFrame = 441;
+
+  static uint32_t frequencyForViseme(AudioOutViseme viseme) {
+    switch (viseme) {
+      case AudioOutViseme::Ah:
+        return 190;
+      case AudioOutViseme::Oh:
+        return 145;
+      case AudioOutViseme::Ee:
+        return 260;
+      case AudioOutViseme::Neutral:
+        return 115;
+    }
+    return 160;
+  }
+
+  void renderFrame(const AudioOutHardwareFrame& frame) {
+    const uint32_t baseFrequency = frequencyForViseme(frame.viseme);
+    const uint32_t fifthFrequency = (baseFrequency * 3u) / 2u;
+    const int32_t gain = static_cast<int32_t>(frame.envelope * (frame.ducked ? 2600.0f : 7200.0f));
+    const uint32_t sampleHold = frame.viseme == AudioOutViseme::Neutral ? 13u : 7u;
+
+    for (size_t i = 0; i < kSamplesPerFrame; ++i) {
+      phase_ += baseFrequency;
+      if (phase_ >= kSampleRate) {
+        phase_ -= kSampleRate;
+      }
+      phaseFifth_ += fifthFrequency;
+      if (phaseFifth_ >= kSampleRate) {
+        phaseFifth_ -= kSampleRate;
+      }
+
+      if ((i % sampleHold) == 0) {
+        noise_ = noise_ * 1664525u + 1013904223u;
+        heldNoise_ = static_cast<int32_t>((noise_ >> 23) & 0x1ffu) - 256;
+      }
+
+      const int32_t saw = (static_cast<int32_t>(phase_) * 2 * 32767 / static_cast<int32_t>(kSampleRate)) - 32767;
+      const int32_t fifth = phaseFifth_ < (kSampleRate / 2u) ? 6000 : -6000;
+      int32_t sample = ((saw / 5) + fifth + heldNoise_ * 12) * gain / 8192;
+      if (sample > 32767) {
+        sample = 32767;
+      } else if (sample < -32768) {
+        sample = -32768;
+      }
+      samples_[i] = static_cast<int16_t>(sample);
+    }
+  }
+
+  bool ready_ = false;
+  bool active_ = false;
+  uint32_t phase_ = 0;
+  uint32_t phaseFifth_ = 0;
+  uint32_t noise_ = 0x1234abcd;
+  int32_t heldNoise_ = 0;
+  int16_t samples_[kSamplesPerFrame] {};
+};
+
+M5SpeakerAudioSink gSpeakerSink;
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_ENABLE_SERVOS
@@ -329,6 +449,8 @@ void printRuntimeStatus() {
   Serial.print(audioOut.ready ? 1 : 0);
   Serial.print(F(" audio_out_hw="));
   Serial.print(audioOut.hardwareEnabled ? 1 : 0);
+  Serial.print(F(" audio_out_hw_ready="));
+  Serial.print(audioOut.hardwareReady ? 1 : 0);
   Serial.print(F(" audio_out_core0="));
   Serial.print(audioOut.taskPinnedToCore0 ? 1 : 0);
   Serial.print(F(" audio_out_requests="));
@@ -338,7 +460,11 @@ void printRuntimeStatus() {
   Serial.print(F(" audio_out_frames="));
   Serial.print(audioOut.speechFramesEmitted);
   Serial.print(F(" audio_out_ducks="));
-  Serial.println(audioOut.duckEvents);
+  Serial.print(audioOut.duckEvents);
+  Serial.print(F(" audio_out_hw_frames="));
+  Serial.print(audioOut.hardwareFramesSubmitted);
+  Serial.print(F(" audio_out_hw_drops="));
+  Serial.println(audioOut.hardwareFrameDrops);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -407,6 +533,12 @@ void printAudioOutPlayback(const AudioOutPlaybackRequest& request) {
   Serial.print(gAudioOut.telemetry().sidecarFrameMs);
   Serial.print(F(" playback_ms="));
   Serial.print(gAudioOut.telemetry().playbackDurationMs);
+  Serial.print(F(" hw_ready="));
+  Serial.print(gAudioOut.telemetry().hardwareReady ? 1 : 0);
+  Serial.print(F(" hw_playing="));
+  Serial.print(gAudioOut.telemetry().hardwarePlaybackActive ? 1 : 0);
+  Serial.print(F(" hw_starts="));
+  Serial.print(gAudioOut.telemetry().hardwareStarts);
   Serial.print(F(" duck_on_barge_in="));
   Serial.println(request.duckOnBargeIn ? 1 : 0);
 }
@@ -750,7 +882,7 @@ void setup() {
 
   gSensors.begin();
   gCamera.begin();
-  gAudioOut.begin(false);
+  gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   gSpeechAdapter.begin(false, &gAudioOut);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);

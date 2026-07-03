@@ -1895,6 +1895,100 @@ void test_audio_out_ducks_active_playback_for_barge_in() {
   TEST_ASSERT_LESS_THAN_FLOAT(normalEnvelope, frame.envelope);
 }
 
+class CountingAudioOutSink : public AudioOutSpeakerSink {
+ public:
+  bool begin() override {
+    beginCalls++;
+    ready = true;
+    return true;
+  }
+
+  bool start(const AudioOutPlaybackRequest& request, uint32_t promptStartMs, uint32_t durationMs) override {
+    startCalls++;
+    active = true;
+    lastSeq = request.seq;
+    lastPromptStartMs = promptStartMs;
+    lastDurationMs = durationMs;
+    lastPromptId = request.promptId;
+    return true;
+  }
+
+  bool writeFrame(const AudioOutHardwareFrame& frame) override {
+    frameCalls++;
+    lastFrame = frame;
+    return frameWriteResult;
+  }
+
+  void stop() override {
+    stopCalls++;
+    active = false;
+  }
+
+  bool isReady() const override {
+    return ready;
+  }
+
+  bool ready = false;
+  bool active = false;
+  bool frameWriteResult = true;
+  uint32_t beginCalls = 0;
+  uint32_t startCalls = 0;
+  uint32_t frameCalls = 0;
+  uint32_t stopCalls = 0;
+  uint32_t lastSeq = 0;
+  uint32_t lastPromptStartMs = 0;
+  uint32_t lastDurationMs = 0;
+  const char* lastPromptId = "";
+  AudioOutHardwareFrame lastFrame;
+};
+
+void test_audio_out_feeds_enabled_hardware_speaker_sink() {
+  CountingAudioOutSink sink;
+  AudioOut audio;
+  TEST_ASSERT_TRUE(audio.begin(true, &sink));
+  TEST_ASSERT_TRUE(audio.telemetry().hardwareEnabled);
+  TEST_ASSERT_TRUE(audio.telemetry().hardwareReady);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.beginCalls);
+
+  AudioOutPlaybackRequest request;
+  request.seq = 45;
+  request.queuedAtMs = 3000;
+  request.source = AudioOutSource::PackagedPrompt;
+  request.promptId = "boot_awake";
+  request.wavPath = "media/voice/stackchan_spark_greeting.wav";
+  request.sidecarPath = "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json";
+  request.earconDelayMs = 40;
+  request.hasPrompt = true;
+
+  TEST_ASSERT_TRUE(audio.enqueue(request));
+  TEST_ASSERT_TRUE(audio.telemetry().hardwarePlaybackActive);
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().hardwareStarts);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.startCalls);
+  TEST_ASSERT_EQUAL_UINT32(45, sink.lastSeq);
+  TEST_ASSERT_EQUAL_UINT32(3040, sink.lastPromptStartMs);
+  TEST_ASSERT_EQUAL_UINT32(6313, sink.lastDurationMs);
+  TEST_ASSERT_EQUAL_STRING("boot_awake", sink.lastPromptId);
+
+  AudioOutSpeechFrame frame;
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(3040, &frame));
+  TEST_ASSERT_EQUAL_UINT32(1, sink.frameCalls);
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().hardwareFramesSubmitted);
+  TEST_ASSERT_EQUAL_UINT32(45, sink.lastFrame.seq);
+  TEST_ASSERT_TRUE(sink.lastFrame.active);
+  TEST_ASSERT_FALSE(sink.lastFrame.ducked);
+
+  TEST_ASSERT_TRUE(audio.duck(3060));
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(3060, &frame));
+  TEST_ASSERT_EQUAL_UINT32(2, sink.frameCalls);
+  TEST_ASSERT_TRUE(sink.lastFrame.ducked);
+
+  TEST_ASSERT_TRUE(audio.pollSpeechFrame(9400, &frame));
+  TEST_ASSERT_TRUE(frame.clear);
+  TEST_ASSERT_FALSE(audio.telemetry().hardwarePlaybackActive);
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().hardwareStops);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.stopCalls);
+}
+
 void test_speech_adapter_queues_audio_out_request() {
   AudioOut audio;
   SpeechAdapter adapter;
@@ -2079,6 +2173,7 @@ int main() {
   RUN_TEST(test_audio_out_accepts_packaged_prompt_requests);
   RUN_TEST(test_audio_out_streams_packaged_sidecar_mouth_frames);
   RUN_TEST(test_audio_out_ducks_active_playback_for_barge_in);
+  RUN_TEST(test_audio_out_feeds_enabled_hardware_speaker_sink);
   RUN_TEST(test_speech_adapter_queues_audio_out_request);
   RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);

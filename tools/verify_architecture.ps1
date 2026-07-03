@@ -206,11 +206,13 @@ Assert-FileContains (Expand-SourcePath "src/io/SensorAdapter.cpp") "touch_click_
 Assert-FileContains (Expand-SourcePath "src/io/SensorAdapter.cpp") "button_a_listen" "SensorAdapter must own button input mapping."
 
 Assert-PlatformioFlag "stackchan" "-D STACKCHAN_ENABLE_SERVOS=0"
+Assert-PlatformioFlag "stackchan" "-D STACKCHAN_ENABLE_SPEAKER=1"
 Assert-PlatformioFlag "stackchan" "-O3"
 Assert-PlatformioFlag "stackchan" "-ffast-math"
 Assert-PlatformioFlag "stackchan" "-fno-math-errno"
 Assert-PlatformioFlag "stackchan" "-D CORE_DEBUG_LEVEL=0"
 Assert-PlatformioFlag "stackchan_servo_calibration" "-D STACKCHAN_ENABLE_SERVOS=1"
+Assert-PlatformioFlag "stackchan_servo_calibration" "-D STACKCHAN_ENABLE_SPEAKER=0"
 Assert-PlatformioFlag "stackchan_servo_calibration" "-O3"
 Assert-PlatformioFlag "stackchan_servo_calibration" "-ffast-math"
 Assert-PlatformioFlag "stackchan_servo_calibration" "-fno-math-errno"
