@@ -814,7 +814,7 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "utterance_start", "utterance_end", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
@@ -828,14 +828,14 @@ foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_
 }
 
 $lanSmokeText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_smoke.py") -Raw
-foreach ($pattern in @("stackchan.lan-smoke.v1", "SmokeServer", "SmokeClient", "encode_client_frame", "build_report", "LAN_SMOKE.md", "lan_smoke.json", "audio-loop", "fake_stt", "fake_tts", "binary_downlink_byte_mismatch")) {
+foreach ($pattern in @("stackchan.lan-smoke.v1", "SmokeServer", "SmokeClient", "encode_client_frame", "build_report", "LAN_SMOKE.md", "lan_smoke.json", "audio-loop", "thinking-latency", "frame_timings", "THINKING_LATENCY_MAX_MS", "validate_thinking_latency", "fake_stt", "fake_tts", "binary_downlink_byte_mismatch")) {
   if ($lanSmokeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_smoke.py missing LAN smoke support: $pattern"
   }
 }
 
 $lanSmokeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_smoke.py") -Raw
-foreach ($pattern in @("LanSmokeTests", "test_client_frames_are_masked_for_server_protocol_path", "test_build_report_exercises_text_and_audio_socket_paths", "test_write_outputs_creates_json_markdown_and_per_scenario_reports", "test_smoke_report_does_not_leak_configured_runner_environment")) {
+foreach ($pattern in @("LanSmokeTests", "test_client_frames_are_masked_for_server_protocol_path", "test_build_report_exercises_text_and_audio_socket_paths", "test_write_outputs_creates_json_markdown_and_per_scenario_reports", "test_smoke_report_does_not_leak_configured_runner_environment", "thinking-latency", "frame_timings")) {
   if ($lanSmokeTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_lan_smoke.py missing LAN smoke test coverage: $pattern"
   }
@@ -884,14 +884,14 @@ foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reache
 }
 
 $prearrivalSimCheckText = Get-Content -LiteralPath (Join-PackagePath "bridge/prearrival_sim_check.py") -Raw
-foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "build_lan_smoke_report", "write_lan_smoke_outputs", "lan_bridge_smoke", "lan-websocket-smoke", "lan-smoke/LAN_SMOKE.md", "proxy-pass-engines-unconfigured", "pending-device")) {
+foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "build_lan_smoke_report", "write_lan_smoke_outputs", "lan_bridge_smoke", "lan-websocket-smoke", "lan-smoke/LAN_SMOKE.md", "thinking_latency", "Thinking latency", "proxy-pass-engines-unconfigured", "pending-device")) {
   if ($prearrivalSimCheckText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/prearrival_sim_check.py missing pre-arrival simulation check support: $pattern"
   }
 }
 
 $prearrivalSimCheckTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_prearrival_sim_check.py") -Raw
-foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_write_report_includes_machine_and_human_outputs", "lan_bridge_smoke", "lan-smoke", "LAN WebSocket Smoke", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_write_report_includes_machine_and_human_outputs", "lan_bridge_smoke", "thinking_latency", "lan-smoke", "LAN WebSocket Smoke", "Thinking latency", "gemma4-e2b-litert-lm")) {
   if ($prearrivalSimCheckTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_prearrival_sim_check.py missing pre-arrival simulation test coverage: $pattern"
   }

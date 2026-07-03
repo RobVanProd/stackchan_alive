@@ -29,6 +29,7 @@ class PrearrivalSimCheckTests(unittest.TestCase):
         self.assertEqual("proxy-pass-engines-unconfigured", report["readiness_class"])
         self.assertEqual("pass", report["hardware_simulation"]["status"])
         self.assertEqual("pass", report["lan_bridge_smoke"]["status"])
+        self.assertEqual("pass", report["lan_bridge_smoke"]["highlights"]["thinking_latency"]["status"])
         self.assertEqual("unconfigured", report["engine_readiness"]["status"])
         self.assertFalse(report["promotion_ready"])
 
@@ -49,6 +50,7 @@ class PrearrivalSimCheckTests(unittest.TestCase):
             self.assertIn("Stackchan Pre-Arrival Simulation Check", markdown)
             self.assertIn("Conversation audio loop", markdown)
             self.assertIn("LAN WebSocket Smoke", markdown)
+            self.assertIn("Thinking latency", markdown)
             self.assertIn("gemma4-e2b-litert-lm", markdown)
 
 

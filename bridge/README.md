@@ -98,7 +98,8 @@ python bridge/lan_smoke.py --out-dir output/lan-smoke/latest --json
 
 It writes `LAN_SMOKE.md/json`, starts a temporary local WebSocket bridge, performs a real
 handshake, sends a transcript-backed text turn, then sends a fake mic PCM upload through fake
-STT/TTS and validates the binary PCM16 downlink sequence.
+STT/TTS, validates the binary PCM16 downlink sequence, and checks `thinking-latency` so the
+face can show visible thinking before delayed speech finishes.
 
 Audio-only turns can use a local STT command:
 

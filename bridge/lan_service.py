@@ -266,7 +266,7 @@ class LanBridgeSession:
         if self.config.memory_file:
             save_bridge_memory(self.config.memory_file, self.memory)
 
-    def handle_text(self, text: str) -> list[dict[str, object] | bytes]:
+    def handle_text(self, text: str, *, suppress_thinking: bool = False) -> list[dict[str, object] | bytes]:
         try:
             message = json.loads(text)
         except json.JSONDecodeError:
@@ -289,8 +289,26 @@ class LanBridgeSession:
         if message_type == "utterance_audio":
             return self._handle_text_audio(message)
         if message_type == "utterance_end":
-            return self._handle_utterance_end(message)
+            return self._handle_utterance_end(message, suppress_thinking=suppress_thinking)
         return [error_frame("unsupported_message", message_type)]
+
+    def early_thinking_frame(self, text: str) -> dict[str, object] | None:
+        try:
+            message = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(message, dict):
+            return None
+        if str(message.get("type", "")).strip().lower() != "utterance_end":
+            return None
+        try:
+            seq = int(message.get("seq") or self.next_seq)
+        except (TypeError, ValueError):
+            seq = self.next_seq
+        frame: dict[str, object] = {"type": "thinking", "seq": seq}
+        if self.audio.bytes_received > 0 or self.audio.active:
+            frame.update(self.audio.summary())
+        return frame
 
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
         try:
@@ -309,7 +327,9 @@ class LanBridgeSession:
             return [error_frame("audio_payload_invalid", "pcm_b64 is not valid base64")]
         return self.handle_binary(payload)
 
-    def _handle_utterance_end(self, message: dict[str, Any]) -> list[dict[str, object] | bytes]:
+    def _handle_utterance_end(
+        self, message: dict[str, Any], *, suppress_thinking: bool = False
+    ) -> list[dict[str, object] | bytes]:
         seq = int(message.get("seq") or self.next_seq)
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
@@ -397,8 +417,14 @@ class LanBridgeSession:
             tts_error = str(exc)
         self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
+        if suppress_thinking:
+            frames = [frame for frame in frames if frame.get("type") != "thinking"]
         if has_audio:
-            frames[0].update(audio_summary)
+            audio_frame_type = "response_start" if suppress_thinking else "thinking"
+            for frame in frames:
+                if frame.get("type") == audio_frame_type:
+                    frame.update(audio_summary)
+                    break
         if tts_summary:
             for frame in frames:
                 if frame.get("type") == "response_start":
@@ -440,7 +466,11 @@ def handle_connection(conn: socket.socket, config: LanBridgeConfig, memory: Brid
             conn.sendall(encode_ws_frame(payload, opcode=0xA))
             continue
         if opcode == 0x1:
-            frames = session.handle_text(payload.decode("utf-8"))
+            text = payload.decode("utf-8")
+            early_frame = session.early_thinking_frame(text)
+            if early_frame is not None:
+                conn.sendall(encode_ws_text(frame_to_text(early_frame)))
+            frames = session.handle_text(text, suppress_thinking=early_frame is not None)
         elif opcode == 0x2:
             frames = session.handle_binary(payload)
         else:

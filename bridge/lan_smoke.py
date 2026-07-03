@@ -32,8 +32,10 @@ from tts_adapter import DEFAULT_TTS_VOICE, TTS_COMMAND_ENV
 
 SCHEMA = "stackchan.lan-smoke.v1"
 DEFAULT_OUT_DIR = Path("output/lan-smoke/latest")
-DEFAULT_SCENARIOS = ("text-turn", "audio-loop")
+DEFAULT_SCENARIOS = ("text-turn", "audio-loop", "thinking-latency")
 CLIENT_MASK = b"\x37\xfa\x21\x3d"
+THINKING_LATENCY_MAX_MS = 200.0
+DELAYED_RESPONSE_MIN_MS = 250.0
 ENV_KEYS_TO_CLEAR = (
     GENERIC_COMMAND_ENV,
     STT_COMMAND_ENV,
@@ -67,6 +69,7 @@ class ScenarioResult:
     issues: list[str] = field(default_factory=list)
     frames: list[dict[str, Any]] = field(default_factory=list)
     frame_sequence: list[str] = field(default_factory=list)
+    frame_timings: list[dict[str, Any]] = field(default_factory=list)
     binary_frames: int = 0
     binary_bytes: int = 0
     elapsed_ms: float = 0.0
@@ -85,6 +88,7 @@ class ScenarioResult:
             "issues": list(self.issues),
             "frame_types": [frame.get("type", "") for frame in self.frames],
             "frame_sequence": list(self.frame_sequence),
+            "frame_timings": list(self.frame_timings),
             "text_frames": len(self.frames),
             "binary_frames": self.binary_frames,
             "binary_bytes": self.binary_bytes,
@@ -253,7 +257,7 @@ def write_fake_stt(path: Path, transcript: str = "I picked you up gently.") -> s
     return f'"{sys.executable}" "{path}"'
 
 
-def write_fake_tts(path: Path) -> str:
+def write_fake_tts(path: Path, sleep_ms: int = 0) -> str:
     audio = base64.b64encode((b"stackchan-audio-" * 240)[:3200]).decode("ascii")
     beats = [
         {"env": 0.18, "viseme": "ah", "duration_ms": 40},
@@ -267,9 +271,11 @@ def write_fake_tts(path: Path) -> str:
                 "import json",
                 "import os",
                 "import sys",
+                "import time",
                 "text = sys.stdin.buffer.read().decode('utf-8')",
                 "if not text.strip():",
                 "    raise SystemExit('missing TTS text')",
+                f"time.sleep({max(0, int(sleep_ms))} / 1000.0)",
                 f"audio_b64 = {audio!r}",
                 f"beats = {json.dumps(beats, separators=(',', ':'))!r}",
                 "print(json.dumps({'audio_format':'pcm16','sample_rate':22050,'audio_b64':audio_b64,'beats':json.loads(beats)}))",
@@ -285,13 +291,16 @@ def append_received(result: ScenarioResult, received: ReceivedFrame) -> None:
         result.binary_frames += 1
         result.binary_bytes += len(received.payload)
         result.frame_sequence.append(f"binary:{len(received.payload)}")
+        result.frame_timings.append({"type": "binary", "elapsed_ms": round(received.elapsed_ms, 2)})
         return
     if not received.is_text:
         result.fail(f"unexpected_opcode_{received.opcode}")
         return
     frame = received.text_payload()
     result.frames.append(frame)
-    result.frame_sequence.append(str(frame.get("type", "")))
+    frame_type = str(frame.get("type", ""))
+    result.frame_sequence.append(frame_type)
+    result.frame_timings.append({"type": frame_type, "elapsed_ms": round(received.elapsed_ms, 2)})
     if frame.get("type") == "response_start":
         result.response_text = str(frame.get("text", ""))
 
@@ -370,6 +379,38 @@ def run_audio_loop(host: str, base_config: LanBridgeConfig, temp_dir: Path) -> S
     return result
 
 
+def run_thinking_latency(host: str, base_config: LanBridgeConfig, temp_dir: Path) -> ScenarioResult:
+    result = ScenarioResult(scenario="thinking-latency")
+    start = time.perf_counter()
+    config = LanBridgeConfig(
+        host=base_config.host,
+        runner_profile=base_config.runner_profile,
+        runner_case="greeting",
+        tts_command=write_fake_tts(temp_dir / "fake_tts_slow.py", sleep_ms=350),
+        tts_voice=DEFAULT_TTS_VOICE,
+        downlink_audio_chunk_bytes=1024,
+        max_audio_bytes=base_config.max_audio_bytes,
+    )
+    with SmokeServer(config) as server:
+        port = server.port()
+        with SmokeClient(host, port) as client:
+            result.handshake_status = "accepted"
+            client.send_text({"type": "hello", "device_id": "stackchan-smoke"})
+            append_received(result, client.read())
+            client.send_text({"type": "utterance_start", "seq": 13, "sample_rate": 16000})
+            append_received(result, client.read())
+            result.frame_timings.clear()
+            client.started = time.perf_counter()
+            client.send_text({"type": "utterance_end", "seq": 13, "text": "Hello Stackchan."})
+            append_received(result, client.read())
+            for frame in client.read_many({"response_end"}):
+                append_received(result, frame)
+        result.server_errors.extend(server.errors)
+    result.elapsed_ms = (time.perf_counter() - start) * 1000.0
+    validate_thinking_latency(result)
+    return result
+
+
 def validate_common(result: ScenarioResult) -> None:
     if result.server_errors:
         result.fail("server_errors_present")
@@ -395,12 +436,13 @@ def validate_text_turn(result: ScenarioResult) -> None:
 def validate_audio_loop(result: ScenarioResult) -> None:
     validate_common(result)
     thinking = require_frame(result, "thinking") or {}
+    response_start = require_frame(result, "response_start") or {}
     stream_start = require_frame(result, "audio_stream_start") or {}
     stream_end = require_frame(result, "audio_stream_end") or {}
     require_order(result, ("response_start", "audio_stream_start", "audio_stream_end", "response_end"))
     if int(thinking.get("audio_bytes", 0)) <= 0:
         result.fail("missing_uploaded_audio_telemetry")
-    if str(thinking.get("stt_command_source", "")) != "cli":
+    if str(response_start.get("stt_command_source", "")) != "cli":
         result.fail("fake_stt_not_used")
     expected_bytes = int(stream_start.get("audio_bytes", 0))
     if expected_bytes <= 0:
@@ -409,6 +451,20 @@ def validate_audio_loop(result: ScenarioResult) -> None:
         result.fail("binary_downlink_byte_mismatch")
     if stream_end.get("audio_bytes") != stream_start.get("audio_bytes"):
         result.fail("audio_stream_end_mismatch")
+
+
+def validate_thinking_latency(result: ScenarioResult) -> None:
+    validate_common(result)
+    if result.frame_sequence[:3] != ["hello", "listening", "thinking"]:
+        result.fail("thinking_not_first_after_utterance_end")
+    thinking = next((item for item in result.frame_timings if item.get("type") == "thinking"), {})
+    response_end = next((item for item in result.frame_timings if item.get("type") == "response_end"), {})
+    thinking_ms = float(thinking.get("elapsed_ms", THINKING_LATENCY_MAX_MS + 1.0))
+    response_end_ms = float(response_end.get("elapsed_ms", 0.0))
+    if thinking_ms > THINKING_LATENCY_MAX_MS:
+        result.fail("thinking_latency_too_slow")
+    if response_end_ms < DELAYED_RESPONSE_MIN_MS:
+        result.fail("delayed_response_not_observed")
 
 
 def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEFAULT_SCENARIOS) -> dict[str, Any]:
@@ -422,6 +478,8 @@ def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEF
                 results.append(run_text_turn(config.host, config))
             elif scenario == "audio-loop":
                 results.append(run_audio_loop(config.host, config, temp_dir))
+            elif scenario == "thinking-latency":
+                results.append(run_thinking_latency(config.host, config, temp_dir))
             else:
                 result = ScenarioResult(scenario=scenario, status="fail")
                 result.issues.append("unknown_scenario")
@@ -472,6 +530,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     for scenario in report["scenarios"]:
         frame_sequence = ", ".join(f"`{item}`" for item in scenario.get("frame_sequence", []))
         lines.append(f"- `{scenario['scenario']}` frame sequence: {frame_sequence}")
+        timings = {item.get("type"): item.get("elapsed_ms") for item in scenario.get("frame_timings", [])}
+        if scenario.get("scenario") == "thinking-latency":
+            lines.append(
+                "- `thinking-latency` measured "
+                f"`thinking` at {timings.get('thinking', 'n/a')} ms and "
+                f"`response_end` at {timings.get('response_end', 'n/a')} ms after `utterance_end`."
+            )
         if scenario.get("issues"):
             issues = ", ".join(f"`{item}`" for item in scenario["issues"])
             lines.append(f"- `{scenario['scenario']}` issues: {issues}")

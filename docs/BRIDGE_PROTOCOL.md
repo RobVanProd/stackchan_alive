@@ -79,9 +79,11 @@ The maintained socket-level smoke check is `tools/run_lan_smoke.cmd`:
 ```
 
 It writes `output/lan-smoke/latest/LAN_SMOKE.md/json`, starts a temporary local WebSocket
-server, performs the real handshake, validates the text-turn frame order, then sends fake mic
-PCM through fake STT/TTS and checks `audio_stream_start`, binary chunks, and
-`audio_stream_end` before `response_end`.
+server, performs the real handshake, validates the text-turn frame order, sends fake mic
+PCM through fake STT/TTS, checks `audio_stream_start`, binary chunks, and
+`audio_stream_end` before `response_end`, and measures the `thinking-latency` scenario.
+For LAN socket clients, `thinking` is emitted immediately on `utterance_end` before slow
+STT/model/TTS work runs; the final response suppresses the duplicate `thinking` frame.
 
 ```powershell
 $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"

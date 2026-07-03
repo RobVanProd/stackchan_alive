@@ -103,6 +103,11 @@ def lan_smoke_highlights(lan_report: dict[str, Any]) -> dict[str, Any]:
     scenarios = {scenario.get("scenario", ""): scenario for scenario in lan_report.get("scenarios", [])}
     text_turn = scenarios.get("text-turn", {})
     audio_loop = scenarios.get("audio-loop", {})
+    thinking_latency = scenarios.get("thinking-latency", {})
+    thinking_timings = {
+        timing.get("type", ""): timing.get("elapsed_ms")
+        for timing in thinking_latency.get("frame_timings", [])
+    }
     return {
         "text_turn": {
             "status": text_turn.get("status", "missing"),
@@ -115,6 +120,11 @@ def lan_smoke_highlights(lan_report: dict[str, Any]) -> dict[str, Any]:
             "binary_frames": audio_loop.get("binary_frames", 0),
             "binary_bytes": audio_loop.get("binary_bytes", 0),
             "response_text": audio_loop.get("response_text", ""),
+        },
+        "thinking_latency": {
+            "status": thinking_latency.get("status", "missing"),
+            "thinking_ms": thinking_timings.get("thinking", "missing"),
+            "response_end_ms": thinking_timings.get("response_end", "missing"),
         },
     }
 
@@ -300,6 +310,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"text frames `{lan_highlights['audio_loop']['text_frames']}`, "
         f"binary frames `{lan_highlights['audio_loop']['binary_frames']}`, "
         f"binary bytes `{lan_highlights['audio_loop']['binary_bytes']}`.",
+        f"- Thinking latency: `{lan_highlights['thinking_latency']['status']}`, "
+        f"thinking `{lan_highlights['thinking_latency']['thinking_ms']} ms`, "
+        f"response end `{lan_highlights['thinking_latency']['response_end_ms']} ms` after `utterance_end`.",
         "",
         "## Engine Readiness",
         "",

@@ -117,6 +117,9 @@ Keep each item independently shippable and package-verified.
      fake local STT command, exercises the Character Lock/model response path, generates fake
      WAV TTS, normalizes it to PCM16 downlink audio, checks virtual speaker counters, and
      returns to `Ready`.
+   - The LAN smoke report includes `thinking-latency`, which sends `thinking` immediately on
+     `utterance_end`, delays fake TTS, and records per-frame timing so visible thinking is
+     proven before slow spoken output finishes.
    - The default simulator run also includes `arrival-rehearsal`, which models virtual
      CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
      safety toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle
@@ -154,8 +157,9 @@ Keep each item independently shippable and package-verified.
      simulator, and pre-arrival check in the `bridge-tests` job, then uploads engine-probe,
      lan-bridge-smoke, hardware-simulation, and prearrival-simulation-check artifacts for
      each PR/push.
-   - This catches bridge ordering, conversation timing, LAN STT/TTS audio-loop ordering, LAN
-     TTS downlink, timeout, mouth-frame, input-mapping, offline command fallback,
+   - This catches bridge ordering, conversation timing, LAN visible-thinking latency, LAN
+     STT/TTS audio-loop ordering, LAN TTS downlink, timeout, mouth-frame, input-mapping,
+     offline command fallback,
      reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical
      device arrives. It does not
      replace real display, speaker, mic, camera, touch, IMU,
