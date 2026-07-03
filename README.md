@@ -1,144 +1,143 @@
-# Stackchan
+# Stackchan Alive
 
-Procedural character runtime for Stack-chan on ESP32-S3/CoreS3-class hardware.
+Stackchan Alive is a procedural character runtime for a Stack-chan-style tabletop robot on
+M5Stack CoreS3 / ESP32-S3-class hardware. The goal is a small robot that feels awake:
+it blinks, breathes, looks around, reacts to events, speaks with synchronized mouth motion,
+and eventually holds short in-character conversations through a local companion bridge.
 
-The initial design source is in [docs/stackchan_procedural_runtime_design.pdf](docs/stackchan_procedural_runtime_design.pdf).
+The face, motion, speech cues, and bridge protocol are all generated procedurally. There are
+no face sprite sheets or character-image assets in the runtime.
 
-## Shape
+![Stackchan Alive preview](docs/media/stackchan_alive_preview.png)
 
-- `persona/`: emotion, intent, and frame snapshots.
-- `motion/`: springs, blink/saccade timing, actuator ownership, and safety limits.
-- `face/`: expression-to-geometry mapping and display rendering boundary.
-- `io/`: board, servo, display, and sensor adapters.
+## Project Status
 
-Only the motion task writes servos. Higher-level code publishes `RobotFrame` snapshots through a single-slot FreeRTOS queue.
+Status as of July 2026: **device-ready prerelease scaffold, not consumer-ready**.
 
-## Build
+What is working in the repository now:
 
-This project is set up for PlatformIO:
+- Procedural face runtime with authored expressions, blink/saccade/breathing layers, speech-reactive mouth motion, and preview artifacts.
+- Display-only and servo-calibration firmware builds for `m5stack-cores3`.
+- Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
+- Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
+- Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
+- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, and Gemma 4 E2B / LiteRT-LM model guidance.
+- Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
 
-```powershell
-pio run
-```
+What is still gated:
 
-Servos are disabled by default with `STACKCHAN_ENABLE_SERVOS=0`. The display should run first; only use `stackchan_servo_calibration` after following [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md).
+- Real hardware evidence for display, speaker, servo calibration, soak, power-cycle recovery, and target-speaker audio.
+- Real camera, microphone, touch, proximity, and IMU producer bring-up beyond the bench/event boundaries.
+- Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
+- GitHub Actions as rollout evidence. The workflows exist, but hosted jobs currently fail before executing steps in this account, so local validation is being recorded on PRs.
+
+See [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the promotion gates.
+
+## What This Is
+
+Stackchan Alive is primarily a real-time character runtime:
+
+- `persona/`: emotion, intent, speech planning, command mapping, and frame snapshots.
+- `face/`: expression mapping, layered animation, and procedural rendering.
+- `motion/`: spring dynamics, actuator ownership, and safety limits.
+- `io/`: display, audio, bridge, camera, sensor, speech, and servo adapters.
+- `bridge/`: host-side reference bridge, character harness, and memory scaffold.
+- `tools/`: preview, packaging, release, hardware-evidence, and verification helpers.
+
+Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`
+snapshots; new sensors and bridge code must not touch actuators directly.
+
+The initial procedural runtime design source is in
+[docs/stackchan_procedural_runtime_design.pdf](docs/stackchan_procedural_runtime_design.pdf).
+
+## Roadmap
+
+The current roadmap is the "Johnny Alive" path:
+
+1. Ambient life: breathing, gaze life, micro-expressions, circadian/ambient context.
+2. Physical senses: touch, proximity, pickup, shake, putdown, tilt.
+3. Hearing: sound saliency, VAD, sound direction, orient reflex.
+4. Wake/commands: offline wake word and fixed command grammar.
+5. Sight: face detection, gaze tracking, eye contact, search behavior.
+6. Voice: local prompts, earcons, synchronized mouth motion, speaker evidence.
+7. Brain bridge: local/LAN STT/LLM/TTS loop with character-locked responses.
+8. Continuity: longer-term familiarity and character polish.
+
+Most phases already have deterministic firmware or bench-test scaffolding. Hardware adapters
+and evidence are being filled in behind those boundaries.
+
+## Voice And Character
+
+The intended voice is an original "Stackchan Spark" robot voice: bright, curious, slightly
+electronic, and clear on a small speaker. Johnny 5 is only a creative reference for optimistic
+classic robot energy; this project must not clone, quote, or train from named character
+voices, actors, soundboards, or non-consented sources.
+
+Useful docs:
+
+- [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md): voice target, personality rules, and source guardrails.
+- [docs/CHARACTER_LOCK.md](docs/CHARACTER_LOCK.md): P7 bridge persona, response schema, and memory rules.
+- [docs/BRAIN_MODEL.md](docs/BRAIN_MODEL.md): Gemma 4 E2B / LiteRT-LM model target and harness gate.
+
+Prototype voice auditions:
+
+- Stackchan Spark samples: `docs/media/voice/VOICE_AUDITION.html`
+- Review-only RVC samples: `media/voice/rvc/RVC_AUDITION.html`
+- Open the RVC page with `tools/open_voice_audition.cmd -Rvc`
+- Open all checked-in MP3 auditions with `tools/open_voice_audition.cmd -All`
+
+RVC assets under `media/voice/rvc` are not production-approved. They are direction samples
+behind the voice-source provenance gate.
+
+## Privacy Boundary
+
+The current bridge is deterministic and local. It does not record audio, upload audio, call a
+cloud speech service, or call an LLM.
+
+The intended production bridge is wake-gated: audio may leave the device only after local
+wake-word or explicit activation, and bridge memory stays host-side and resettable. If Wi-Fi
+or the bridge is unavailable, Stackchan must keep local expressions, safety behavior, packaged
+prompts, and offline commands working.
+
+See [docs/PRIVACY.md](docs/PRIVACY.md).
+
+## Quick Start
+
+Install PlatformIO, then build the display-only firmware:
 
 ```powershell
 pio run -e stackchan
+```
+
+Build the servo-calibration firmware only after reading the bring-up guide:
+
+```powershell
 pio run -e stackchan_servo_calibration
 ```
 
-Run host logic tests and embedded test-firmware compile checks:
+Run host/native tests and embedded compile checks:
 
 ```powershell
 pio test -e native_logic
 pio test -e stackchan --without-uploading --without-testing
 ```
 
-Run the no-hardware device preflight before flashing or handing off a package:
+Run the no-hardware preflight before flashing or packaging:
 
 ```powershell
 .\tools\run_device_preflight.cmd
 ```
 
-The preflight checks tool availability, dependency pins, flash-helper safety gates, local-share evidence capture, speech-envelope sidecar generation/dry streaming, tests, and both firmware builds.
-If native host tests cannot find `gcc`/`g++`, run `.\tools\check_native_toolchain.cmd` for searched paths and install guidance.
-
-Create an auditable prerelease package:
+If native host tests cannot find `gcc` / `g++`, run:
 
 ```powershell
-.\tools\package_release.cmd -Version <version>
-```
-
-The package includes firmware binaries, preview media, an expression QA sheet, docs, checksums, dependency provenance, a machine-readable dependency lock, readiness reports, and copied build inputs.
-By default the package command refuses to run from a dirty source worktree so the manifest commit matches the code and configuration; regenerated preview media is treated as a release artifact.
-
-Verify the package before sharing or publishing, or include it in the preflight:
-
-```powershell
-.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
-.\tools\run_device_preflight.cmd -PackageZip output\release\stackchan_alive_<version>.zip
-```
-
-Flash the exact display-only firmware binary from a verified release package:
-
-```powershell
-.\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware display_only -Monitor
-```
-
-Publish a verified prerelease manually when GitHub Actions is unavailable:
-
-```powershell
-.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
-```
-
-Audit the published GitHub release assets:
-
-```powershell
-.\tools\verify_published_release.cmd -Version <version>
-```
-
-Export a concise post-publish audit that verifies the release, refreshes GitHub Actions status, and summarizes remaining rollout blockers. Add `-UploadToRelease` to attach `RELEASE_AUDIT.md/json` to the GitHub release:
-
-```powershell
-.\tools\audit_published_release.cmd -Version <version>
-```
-
-Stage a local handoff page for the ZIP, ZIP SHA256 sidecar, preview image, expression sheet, and video, optionally with a Cloudflare tunnel:
-
-```powershell
-.\tools\share_release.cmd -Version <version>
-.\tools\share_release.cmd -Version <version> -OpenLocal
-.\tools\share_release.cmd -Version <version> -Lan
-.\tools\share_release.cmd -Version <version> -CloudflareTunnel
-.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
-```
-
-Use `-OpenLocal` to open the host-only page on this Windows machine after the readiness probe passes. Use `-Lan` when another device on the same Wi-Fi/LAN needs to open the page; it binds to all interfaces, probes the server through loopback, and prints ranked same-network URL candidates while avoiding common virtual adapters. For this Windows machine, use the printed host-only URL or run `output\share\<version>\OPEN_LOCAL_SHARE.cmd`. The share folder also writes `LAN_TROUBLESHOOTING.md` and `share_probe_report.json` with adapter metadata and host-side reachability probes for each candidate.
-When `cloudflared` is available, the tunnel command prints the public `trycloudflare.com` URL and writes it to `output\share\<version>\PUBLIC_URL.txt`. Local-only shares are still first-class: `verify_share_release.cmd` records the verified URL in `share_verification_report.json`, and the evidence packet writes `share\VERIFIED_URL.txt` even when no public tunnel exists. `-DownloadCloudflared` places a local copy under `output\tools` when `cloudflared` is not installed on PATH.
-From an extracted release package, `.\tools\share_release.cmd -CloudflareTunnel -DownloadCloudflared` infers the release version from `release_manifest.json`.
-The share folder also includes `share_status.json` with `loopbackUrl`, `localUrl`, `lanUrls`, LAN diagnostics, host probe results, `OPEN_LOCAL_SHARE.cmd`, plus `STOP_SHARING.cmd` for stopping the local server and tunnel. To clean up every share server started by this repo, run `.\tools\stop_share.cmd -All`; it only stops processes that still match share metadata under `output\share`.
-For a static integrity check after `share_release.cmd -NoServe`, run `.\tools\verify_share_release.cmd -Version <version> -Offline`. Offline mode writes `share_static_verification_report.json` with an `offline-static:` URL marker and does not count as hosted-media evidence. Run the normal verifier against a local, LAN, or Cloudflare URL before using a share page as evidence.
-Verify the active local or Cloudflare share before sending it:
-
-```powershell
-.\tools\verify_share_release.cmd -Version <version> -RequirePublicUrl
-```
-
-Omit `-RequirePublicUrl` when the reviewer is on the same machine or LAN and you intentionally want to pin a local verified share.
-
-Start a device-arrival evidence packet:
-
-```powershell
-.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
-```
-
-When `-PackageZip` is provided, the evidence packet copies the ZIP and writes `logs/package_verify.log`. The hardware evidence verifier requires that package proof by default before promotion.
-The packet also writes `BENCH_STATUS.md/json` plus `RUN_*.cmd` files for the exact flash, soak, package verification, progress summary, and evidence verification commands for that release and port.
-
-To run the package verification, display-flash dry-run, and evidence packet creation in one no-hardware-safe step:
-
-```powershell
-.\tools\prepare_device_arrival.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
-```
-
-If you only have the extracted release ZIP, run the same helper from inside the extracted folder:
-
-```powershell
-.\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
-```
-
-Release ZIPs include `QUICKSTART.md` at the package root with the arrival-day operator flow.
-
-Verify the completed hardware evidence before promotion:
-
-```powershell
-.\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
+.\tools\check_native_toolchain.cmd
 ```
 
 ## Preview Media
 
-Generate a hardware-free preview image, GIF, and MP4:
+Generate the hardware-free preview image, GIF, MP4, expression sheet, and speech preview:
 
 ```powershell
 python -m pip install -r requirements-preview.txt
@@ -146,15 +145,62 @@ python tools/render_preview.py
 ```
 
 Outputs are written to `docs/media/`.
-The generator also writes `stackchan_alive_expression_sheet.png`, a six-pose visual QA sheet for idle, listen, think, happy, concern, and sleep expressions.
 
-## Readiness
+## Release And Evidence Flow
 
-See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the current proof level and the hardware gates required before consumer rollout.
+Create a verified prerelease package:
 
-Voice and personality direction is defined in [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md), with the machine-readable profile in [data/voice_persona.yaml](data/voice_persona.yaml). Prototype Stackchan Spark audition samples are generated under `docs/media/voice/` with `tools/render_voice_samples.cmd`; run `tools/open_voice_audition.cmd` to open the local MP3 audition page. The current review-only RVC MP3 direction is checked in under `media/voice/rvc/`; open `media/voice/rvc/RVC_AUDITION.html` directly or run `tools/open_voice_audition.cmd -Rvc`. To audition every checked-in MP3 from one local page, run `tools/open_voice_audition.cmd -All`.
+```powershell
+.\tools\package_release.cmd -Version <version>
+.\tools\verify_release_package.cmd -Version <version> -ZipPath output\release\stackchan_alive_<version>.zip
+```
 
-Bridge privacy rules are documented in [docs/PRIVACY.md](docs/PRIVACY.md): audio leaves the device only after wake-word gated activation, the current reference bridge is local/deterministic, and bridge memory stays minimal and resettable.
+Share the package locally or through a tunnel:
 
-Release packaging is documented in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
-Hardware rollout tracking is in [docs/ROLLOUT_CHECKLIST.md](docs/ROLLOUT_CHECKLIST.md).
+```powershell
+.\tools\share_release.cmd -Version <version> -OpenLocal
+.\tools\share_release.cmd -Version <version> -Lan
+.\tools\share_release.cmd -Version <version> -CloudflareTunnel -DownloadCloudflared
+```
+
+Publish a verified prerelease manually when hosted Actions cannot run:
+
+```powershell
+.\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
+.\tools\audit_published_release.cmd -Version <version>
+```
+
+Start a hardware evidence packet when the device is connected:
+
+```powershell
+.\tools\start_hardware_evidence.cmd -ReleaseTag <version> -PackageZip output\release\stackchan_alive_<version>.zip -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+```
+
+Verify completed evidence before promotion:
+
+```powershell
+.\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
+.\tools\verify_consumer_promotion.cmd -PackageZip output\release\stackchan_alive_<version>.zip -EvidenceRoot output\hardware-evidence\<packet-folder>
+```
+
+Release details live in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md). Arrival-day
+operator instructions live in [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md) and
+[docs/ARRIVAL_DAY_RUNBOOK.md](docs/ARRIVAL_DAY_RUNBOOK.md).
+
+## Safety
+
+- Servos are disabled in the default display-only build.
+- Servo calibration is a separate environment and requires explicit `-ConfirmServoRisk` in the release flash helper.
+- Motion commands flow through the existing motion-control queue and safety limits.
+- Do not promote a release as consumer-ready until the hardware evidence and production voice-source gates pass.
+
+## Use And Contributions
+
+This repository is now public for development visibility. Treat it as prerelease robotics
+software: expect hardware-specific tuning, evidence gates, and safety review before real-world
+use.
+
+No project license file is declared yet. Until one is added, do not assume redistribution or
+commercial-use rights beyond normal public repository viewing and contribution discussion.
+Keep PRs small, testable, and aligned with the roadmap in
+[docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md).
