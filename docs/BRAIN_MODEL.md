@@ -108,7 +108,8 @@ This is still a scaffold, not a complete STT/TTS stack. It accepts wake-gated co
 and runs the runner/validator/memory path on `utterance_end`. It also accepts bounded binary
 PCM uploads after `utterance_start`, can hand one-turn audio to a configured local STT command
 through stdin, can hand response text to a configured local TTS command for mouth timing, and
-clears raw audio at `utterance_end` or `cancel`:
+can downlink optional TTS audio bytes as binary WebSocket chunks. It clears raw input audio at
+`utterance_end` or `cancel`:
 
 ```powershell
 $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
@@ -119,11 +120,12 @@ python bridge/lan_service.py --tts-command "python path\to\local_tts.py" --tts-v
 
 The STT command must return transcript text or JSON containing `transcript`, `text`, or
 `spoken_text`. The TTS command must return metadata JSON containing compact `beats` or
-speech-envelope-sidecar-style `frames`; the LAN service uses that metadata for existing
-`audio` mouth frames. If no STT command is configured, include `text` or `transcript` on
+speech-envelope-sidecar-style `frames`; it may also include `audio_b64`. The LAN service uses
+the metadata for existing `audio` mouth frames and sends `audio_b64` as `audio_stream_start`,
+binary WebSocket chunks, and `audio_stream_end`. If no STT command is configured, include `text` or `transcript` on
 `utterance_end` to explicitly stand in for the transcript while the binary upload path is
-exercised. Selecting and measuring the real local STT/TTS engines, binary audio transport,
-and real audio chunk streaming remain separate follow-up gates.
+exercised. Selecting and measuring the real local STT/TTS engines and wiring downlinked chunks
+into speaker playback remain separate follow-up gates.
 
 Render a validated model-style response through the deterministic bridge frames:
 

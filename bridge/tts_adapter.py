@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import os
 import subprocess
@@ -17,6 +19,7 @@ DEFAULT_TTS_VOICE = "stackchan-rvc-bright-robot"
 TTS_COMMAND_ENV = "STACKCHAN_TTS_COMMAND"
 VALID_VISEMES = {"neutral", "ah", "oh", "ee"}
 MAX_TTS_BEATS = 800
+MAX_TTS_AUDIO_BYTES = 2 * 1024 * 1024
 
 
 class TtsConfigurationError(RuntimeError):
@@ -54,6 +57,7 @@ class TtsResult:
     sample_rate: int = 0
     audio_bytes: int = 0
     audio_path: str = ""
+    audio_data: bytes = b""
 
     @property
     def duration_ms(self) -> int:
@@ -70,6 +74,7 @@ class TtsResult:
             "sample_rate": self.sample_rate,
             "audio_bytes": self.audio_bytes,
             "audio_path": self.audio_path,
+            "audio_payload_bytes": len(self.audio_data),
             "duration_ms": self.duration_ms,
         }
 
@@ -173,13 +178,29 @@ def normalize_tts_output(raw_output: bytes) -> tuple[tuple[TtsBeat, ...], dict[s
     if not beats:
         raise TtsExecutionError("tts command produced no usable mouth beats")
 
+    audio_data = decode_audio_payload(parsed)
+    reported_audio_bytes = max(0, int(clamp(parsed.get("audio_bytes", parsed.get("audioBytes", 0)), 0, 100 * 1024 * 1024)))
     metadata = {
         "audio_format": str(parsed.get("audio_format") or parsed.get("format") or "").strip()[:32],
         "sample_rate": max(0, int(clamp(parsed.get("sample_rate", parsed.get("sampleRate", 0)), 0, 192000))),
-        "audio_bytes": max(0, int(clamp(parsed.get("audio_bytes", parsed.get("audioBytes", 0)), 0, 100 * 1024 * 1024))),
+        "audio_bytes": len(audio_data) if audio_data else reported_audio_bytes,
         "audio_path": str(parsed.get("audio_path") or parsed.get("sourceWav") or parsed.get("path") or "").strip()[:260],
+        "audio_data": audio_data,
     }
     return beats, metadata
+
+
+def decode_audio_payload(parsed: dict[str, object]) -> bytes:
+    encoded = str(parsed.get("audio_b64") or parsed.get("audioBase64") or "").strip()
+    if not encoded:
+        return b""
+    try:
+        audio = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise TtsExecutionError("tts audio_b64 is not valid base64") from exc
+    if len(audio) > MAX_TTS_AUDIO_BYTES:
+        raise TtsExecutionError(f"tts audio payload exceeds {MAX_TTS_AUDIO_BYTES} bytes")
+    return audio
 
 
 def run_tts_command(command: str, text: str, voice: str, timeout_ms: int) -> tuple[tuple[TtsBeat, ...], dict[str, object], float]:
@@ -234,6 +255,7 @@ def synthesize_speech(
         sample_rate=int(metadata["sample_rate"]),
         audio_bytes=int(metadata["audio_bytes"]),
         audio_path=str(metadata["audio_path"]),
+        audio_data=bytes(metadata["audio_data"]),
     )
 
 

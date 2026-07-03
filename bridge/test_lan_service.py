@@ -11,6 +11,7 @@ from lan_service import (
     LanBridgeConfig,
     LanBridgeSession,
     build_handshake_response,
+    encode_ws_frame,
     encode_ws_text,
     prompt_case_for_text,
     websocket_accept_value,
@@ -53,6 +54,9 @@ class LanServiceTests(unittest.TestCase):
 
     def test_server_text_frame_encoding_is_unmasked(self):
         self.assertEqual(b"\x81\x02hi", encode_ws_text("hi"))
+
+    def test_server_binary_frame_encoding_is_unmasked(self):
+        self.assertEqual(b"\x82\x03abc", encode_ws_frame(b"abc", opcode=0x2))
 
     def test_prompt_case_can_follow_utterance_text(self):
         self.assertEqual("picked_up", prompt_case_for_text("I picked you up", "", "greeting"))
@@ -195,11 +199,12 @@ class LanServiceTests(unittest.TestCase):
                         "import json",
                         "import os",
                         "import sys",
+                        "import base64",
                         "text = sys.stdin.buffer.read().decode('utf-8')",
                         "assert 'Hello' in text or 'awake' in text",
                         "assert os.environ['STACKCHAN_TTS_TEXT_BYTES'] == str(len(text.encode('utf-8')))",
                         "assert os.environ['STACKCHAN_TTS_VOICE'] == 'rvc-bright'",
-                        "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_bytes':222,'beats':[{'env':0.21,'viseme':'ah','duration_ms':30},{'env':0.63,'viseme':'ee','duration_ms':40}]}))",
+                        "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_b64':base64.b64encode(b'abcdefg').decode('ascii'),'beats':[{'env':0.21,'viseme':'ah','duration_ms':30},{'env':0.63,'viseme':'ee','duration_ms':40}]}))",
                     ]
                 ),
                 encoding="utf-8",
@@ -208,19 +213,33 @@ class LanServiceTests(unittest.TestCase):
 
             with patch.dict(os.environ, RUNNER_ENV, clear=False):
                 session = LanBridgeSession(
-                    LanBridgeConfig(runner_case="greeting", tts_command=command, tts_voice="rvc-bright")
+                    LanBridgeConfig(
+                        runner_case="greeting",
+                        tts_command=command,
+                        tts_voice="rvc-bright",
+                        downlink_audio_chunk_bytes=3,
+                    )
                 )
                 frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 8, "text": "Hello"}))
 
-        response_start = next(frame for frame in frames if frame["type"] == "response_start")
-        audio_frames = [frame for frame in frames if frame["type"] == "audio"]
+        response_start = next(frame for frame in frames if isinstance(frame, dict) and frame["type"] == "response_start")
+        stream_start = next(frame for frame in frames if isinstance(frame, dict) and frame["type"] == "audio_stream_start")
+        stream_end = next(frame for frame in frames if isinstance(frame, dict) and frame["type"] == "audio_stream_end")
+        binary_frames = [frame for frame in frames if isinstance(frame, bytes)]
+        audio_frames = [frame for frame in frames if isinstance(frame, dict) and frame["type"] == "audio"]
         self.assertEqual("cli", response_start["tts_command_source"])
         self.assertEqual("rvc-bright", response_start["tts_voice"])
         self.assertEqual(2, response_start["tts_beats"])
         self.assertEqual(70, response_start["tts_duration_ms"])
         self.assertEqual("wav", response_start["tts_audio_format"])
         self.assertEqual(22050, response_start["tts_sample_rate"])
-        self.assertEqual(222, response_start["tts_audio_bytes"])
+        self.assertEqual(7, response_start["tts_audio_bytes"])
+        self.assertEqual(7, response_start["tts_audio_payload_bytes"])
+        self.assertEqual(["abc", "def", "g"], [chunk.decode("ascii") for chunk in binary_frames])
+        self.assertEqual(3, stream_start["chunk_bytes"])
+        self.assertEqual(3, stream_start["chunks"])
+        self.assertEqual(7, stream_start["audio_bytes"])
+        self.assertEqual(3, stream_end["chunks"])
         self.assertEqual(2, len(audio_frames))
         self.assertEqual(0.21, audio_frames[0]["env"])
         self.assertEqual("ah", audio_frames[0]["viseme"])

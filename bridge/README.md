@@ -89,15 +89,17 @@ python bridge/lan_service.py --host 127.0.0.1 --port 8765 --tts-command "python 
 The command receives response text on stdin and these environment variables:
 `STACKCHAN_TTS_TEXT_BYTES`, `STACKCHAN_TTS_VOICE`, and
 `STACKCHAN_TTS_OUTPUT=stackchan.tts-metadata.v1`. It must print metadata JSON with either
-`beats` or a speech-envelope-sidecar-style `frames` array. The LAN service uses those beats
-for `audio` mouth frames. Actual binary audio download remains a later bridge transport step.
+`beats` or a speech-envelope-sidecar-style `frames` array. It may also include `audio_b64`.
+The LAN service uses the beats for `audio` mouth frames and sends `audio_b64` as
+`audio_stream_start`, binary WebSocket chunks, and `audio_stream_end`. Firmware currently
+parses the stream metadata; speaker playback from downlinked chunks is still future work.
 
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded
 upload telemetry and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
 or STT-backed turn, it validates Character
-Lock JSON, applies host memory, and streams `thinking`, `response_start`, `audio`, and
-`response_end` frames back to the client.
+Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
+stream chunks, `audio` mouth frames, and `response_end` frames back to the client.
 
 Try the deterministic response planner with user text:
 

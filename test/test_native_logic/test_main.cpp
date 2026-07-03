@@ -2239,6 +2239,40 @@ void test_bridge_client_parses_audio_frames_for_mouth_sync() {
   TEST_ASSERT_TRUE(output.audio.finalChunk);
 }
 
+void test_bridge_client_parses_audio_stream_metadata() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":12,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":7,\"chunk_bytes\":3,\"chunks\":3}",
+      520));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(12, output.stream.seq);
+  TEST_ASSERT_EQUAL_STRING("wav", output.stream.format);
+  TEST_ASSERT_EQUAL_UINT32(22050, output.stream.sampleRate);
+  TEST_ASSERT_EQUAL_UINT32(7, output.stream.audioBytes);
+  TEST_ASSERT_EQUAL_UINT32(3, output.stream.chunkBytes);
+  TEST_ASSERT_EQUAL_UINT32(3, output.stream.chunks);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamsStarted);
+  TEST_ASSERT_EQUAL_UINT32(7, bridge.telemetry().audioStreamBytes);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Responding), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_end\",\"seq\":12,\"audio_bytes\":7,\"chunks\":3}",
+      540));
+
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamEnd), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(12, output.stream.seq);
+  TEST_ASSERT_EQUAL_UINT32(7, output.stream.audioBytes);
+  TEST_ASSERT_EQUAL_UINT32(3, output.stream.chunks);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamsEnded);
+}
+
 void test_bridge_client_reports_parse_errors_without_allocating() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -2409,6 +2443,7 @@ int main() {
   RUN_TEST(test_bridge_client_accepts_all_character_lock_intents);
   RUN_TEST(test_serial_bridge_response_preserves_attend_intent);
   RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
+  RUN_TEST(test_bridge_client_parses_audio_stream_metadata);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   RUN_TEST(test_bridge_client_times_out_active_session_once);
   RUN_TEST(test_bridge_client_accepts_serial_bridge_transcript);

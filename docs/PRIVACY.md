@@ -5,7 +5,7 @@ This document defines the privacy boundary for the P7 bridge work. It separates 
 ## Current State
 
 - The firmware is a real-time character runtime. It owns display animation, local modes, motion status, servo safety, packaged prompts, and bridge telemetry.
-- The current P7 reference bridge and LAN service are deterministic and local by default. The LAN service can accept wake-gated binary PCM frames for bridge-loop testing, pass one-turn raw PCM to an operator-configured local STT command, and pass response text to an operator-configured local TTS command for mouth timing. It does not call a cloud speech service, call an LLM, or persist raw audio.
+- The current P7 reference bridge and LAN service are deterministic and local by default. The LAN service can accept wake-gated binary PCM frames for bridge-loop testing, pass one-turn raw PCM to an operator-configured local STT command, pass response text to an operator-configured local TTS command for mouth timing, and downlink optional TTS audio bytes over the same LAN WebSocket session. It does not call a cloud speech service, call an LLM, or persist raw audio.
 - Packaged prompt playback and the current voice audition assets are local repository artifacts. Review-only RVC audition samples remain governed by `docs/VOICE_PERSONALITY.md` and the voice-source provenance gates before any consumer distribution.
 - There are no hardcoded secrets in the firmware or reference bridge. Any future bridge credential belongs in host configuration outside the firmware image and outside release artifacts.
 
@@ -22,9 +22,9 @@ The intended production flow is:
 
 The current LAN service implements the beginning of that flow: bounded PCM upload after
 `utterance_start`, upload telemetry, an optional local STT command adapter, an optional local
-TTS metadata adapter for mouth timing, explicit transcript fields on `utterance_end` for
-deterministic tests, and raw-audio clearing at the end of the turn. Audio-only turns return
-`stt_not_implemented` unless an STT command is configured.
+TTS metadata adapter for mouth timing, optional binary TTS audio downlink, explicit transcript
+fields on `utterance_end` for deterministic tests, and raw-audio clearing at the end of the
+turn. Audio-only turns return `stt_not_implemented` unless an STT command is configured.
 
 If Wi-Fi or the bridge is unavailable, Stackchan must degrade offline. On-device commands, local expressions, safety behavior, and packaged prompts still work. A missing bridge must not create a dead state.
 
@@ -45,7 +45,7 @@ The minimum bridge memory scaffold is intentionally small:
 - `physical_context`
 - `turns_seen`
 
-The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering. The LAN service may keep raw PCM in an in-memory bounded buffer only during one active utterance; that buffer is cleared at `utterance_end` or `cancel`. If an STT command is configured, that one-turn PCM is passed to the command on stdin with sample-rate metadata in environment variables. If a TTS command is configured, response text is passed to the command on stdin and the command returns mouth-timing metadata. Operators should keep these commands local and avoid transcript/audio logging unless explicitly collecting evidence. Generated TTS audio files remain host-local until binary audio transport and storage rules are implemented and documented.
+The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering. The LAN service may keep raw PCM in an in-memory bounded buffer only during one active utterance; that buffer is cleared at `utterance_end` or `cancel`. If an STT command is configured, that one-turn PCM is passed to the command on stdin with sample-rate metadata in environment variables. If a TTS command is configured, response text is passed to the command on stdin and the command may return mouth-timing metadata plus audio bytes for LAN downlink. Operators should keep these commands local and avoid transcript/audio logging unless explicitly collecting evidence. Generated TTS audio bytes should remain within the configured LAN session and should not be persisted unless evidence collection explicitly requires it.
 
 ## Evidence Requirements
 
@@ -54,7 +54,7 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - Wake-word gated activation before bridge audio handoff.
 - Offline behavior when bridge or Wi-Fi is disabled.
 - No hardcoded secrets in firmware, bridge source, or packaged release artifacts.
-- Serial counters for `bridge_messages`, `bridge_outputs`, `bridge_parse_errors`, and `bridge_timeouts`.
+- Serial counters for `bridge_messages`, `bridge_outputs`, `bridge_parse_errors`, `bridge_audio_streams`, `bridge_audio_stream_bytes`, and `bridge_timeouts`.
 - Timeout recovery that clears `bridge_active` and returns the face to local behavior.
 - Voice-source status showing RVC review assets and production voice gates are still separated.
 

@@ -1,5 +1,6 @@
 import json
 import os
+import base64
 import sys
 import tempfile
 import unittest
@@ -70,6 +71,34 @@ class TtsAdapterTests(unittest.TestCase):
         self.assertTrue(beats[-1].final)
         self.assertEqual(48000, metadata["sample_rate"])
         self.assertEqual("output.wav", metadata["audio_path"])
+
+    def test_optional_audio_b64_is_decoded_and_counted(self):
+        payload = b"RIFFtiny"
+        beats, metadata = normalize_tts_output(
+            json.dumps(
+                {
+                    "audio_format": "wav",
+                    "sample_rate": 22050,
+                    "audio_b64": base64.b64encode(payload).decode("ascii"),
+                    "beats": [{"env": 0.4, "viseme": "ah", "duration_ms": 20}],
+                }
+            ).encode()
+        )
+
+        self.assertEqual(1, len(beats))
+        self.assertEqual(payload, metadata["audio_data"])
+        self.assertEqual(len(payload), metadata["audio_bytes"])
+
+    def test_invalid_audio_b64_is_an_execution_error(self):
+        with self.assertRaises(TtsExecutionError):
+            normalize_tts_output(
+                json.dumps(
+                    {
+                        "audio_b64": "not base64",
+                        "beats": [{"env": 0.4, "viseme": "ah", "duration_ms": 20}],
+                    }
+                ).encode()
+            )
 
     def test_tts_command_receives_text_and_voice_environment(self):
         with tempfile.TemporaryDirectory() as temp_dir:
