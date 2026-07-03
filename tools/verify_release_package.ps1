@@ -132,6 +132,9 @@ $requiredFiles = @(
   "data/voice_source_provenance.yaml",
   "data/voice_rvc_base.yaml",
   "data/voice_rvc_base_metadata.json",
+  "bridge/README.md",
+  "bridge/reference_bridge.py",
+  "bridge/test_reference_bridge.py",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -230,6 +233,8 @@ $requiredFiles = @(
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
   "tools/run_device_preflight.ps1",
+  "tools/run_bridge_reference_tests.cmd",
+  "tools/run_bridge_reference_tests.ps1",
   "tools/send_speech_mouth_demo.cmd",
   "tools/send_speech_mouth_demo.ps1",
   "tools/send_speak_all_intents_demo.cmd",
@@ -286,7 +291,10 @@ $requiredFiles = @(
   "provenance/src/io/SpeechAdapter.hpp",
   "provenance/src/io/SpeechAdapter.cpp",
   "provenance/release.yml",
-  "provenance/requirements-preview.txt"
+  "provenance/requirements-preview.txt",
+  "provenance/bridge/README.md",
+  "provenance/bridge/reference_bridge.py",
+  "provenance/bridge/test_reference_bridge.py"
 )
 
 foreach ($file in $requiredFiles) {
@@ -654,6 +662,27 @@ $bridgeReplaySenderText = Get-Content -LiteralPath (Join-PackagePath "tools/send
 foreach ($pattern in @("TranscriptPath", "PrintOnly", "ReadBackMs", "[bridge-replay] >", "[bridge-replay] <", "bridge hello bench", "bridge thinking 7", "bridge response happy 7", "bridge audio 0.72 ee", "bridge end 7", "Bridge replay demo complete")) {
   if ($bridgeReplaySenderText -notmatch [regex]::Escape($pattern)) {
     throw "tools/send_bridge_replay_demo.ps1 missing bridge replay logic: $pattern"
+  }
+}
+
+$bridgeReferenceText = Get-Content -LiteralPath (Join-PackagePath "bridge/reference_bridge.py") -Raw
+foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
+  if ($bridgeReferenceText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/reference_bridge.py missing reference bridge logic: $pattern"
+  }
+}
+
+$bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
+foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "bridge response happy 7")) {
+  if ($bridgeReferenceTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_reference_bridge.py missing reference bridge test coverage: $pattern"
+  }
+}
+
+$bridgeReferenceTestRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_bridge_reference_tests.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "unittest discover", "bridge", "test_*.py")) {
+  if ($bridgeReferenceTestRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_bridge_reference_tests.ps1 missing reference bridge test runner logic: $pattern"
   }
 }
 
