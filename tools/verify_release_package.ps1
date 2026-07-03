@@ -667,21 +667,21 @@ foreach ($pattern in @("TranscriptPath", "PrintOnly", "ReadBackMs", "[bridge-rep
 }
 
 $bridgeReferenceText = Get-Content -LiteralPath (Join-PackagePath "bridge/reference_bridge.py") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "BridgeMemory", "BRIDGE_SYSTEM_PROMPT", "build_persona_prompt", "spoken_physical_context", "plan_turn", "remember_user_text", "physical_context", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
+foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "BridgeMemory", "BRIDGE_SYSTEM_PROMPT", "build_persona_prompt", "spoken_physical_context", "plan_turn", "remember_user_text", "load_bridge_memory", "save_bridge_memory", "reset_bridge_memory", "--memory-file", "--save-memory", "--reset-memory", "physical_context", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
   if ($bridgeReferenceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/reference_bridge.py missing reference bridge logic: $pattern"
   }
 }
 
 $bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
-foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_topics_and_physical_context", "test_plan_turn_couples_memory_to_response", "bridge response happy 7")) {
+foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_topics_and_physical_context", "test_plan_turn_couples_memory_to_response", "test_memory_store_round_trips_minimal_fields", "test_memory_store_reset_deletes_file", "bridge response happy 7")) {
   if ($bridgeReferenceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_reference_bridge.py missing reference bridge test coverage: $pattern"
   }
 }
 
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }

@@ -39,7 +39,7 @@ The minimum bridge memory scaffold is intentionally small:
 - `physical_context`
 - `turns_seen`
 
-The current scaffold does not perform biometric identification and does not persist private audio. Memory should be resettable and deletable from the bridge host before consumer rollout.
+The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering.
 
 ## Evidence Requirements
 

@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Iterable, Iterator, Literal
 
 PROTOCOL = "stackchan.bridge.v1"
@@ -57,6 +58,47 @@ class BridgeMemory:
     recent_topics: tuple[str, ...] = ()
     physical_context: tuple[str, ...] = ()
     turns_seen: int = 0
+
+    @staticmethod
+    def _items(value: object) -> tuple[str, ...]:
+        if not isinstance(value, list):
+            return ()
+        return tuple(str(item).strip() for item in value if str(item).strip())[-MAX_MEMORY_ITEMS:]
+
+    @classmethod
+    def from_dict(cls, data: object) -> "BridgeMemory":
+        if not isinstance(data, dict):
+            return cls()
+        return cls(
+            preferred_name=str(data.get("preferred_name", "")).strip()[:32],
+            recent_topics=cls._items(data.get("recent_topics", [])),
+            physical_context=cls._items(data.get("physical_context", [])),
+            turns_seen=max(0, int(data.get("turns_seen", 0) or 0)),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "preferred_name": self.preferred_name,
+            "recent_topics": list(self.recent_topics),
+            "physical_context": list(self.physical_context),
+            "turns_seen": self.turns_seen,
+        }
+
+    def with_overrides(
+        self,
+        *,
+        preferred_name: str = "",
+        recent_topics: Iterable[str] = (),
+        physical_context: Iterable[str] = (),
+    ) -> "BridgeMemory":
+        topics = [*self.recent_topics, *(topic.strip() for topic in recent_topics if topic.strip())]
+        physical = [*self.physical_context, *(item.strip() for item in physical_context if item.strip())]
+        return replace(
+            self,
+            preferred_name=preferred_name.strip()[:32] or self.preferred_name,
+            recent_topics=tuple(dict.fromkeys(topics))[-MAX_MEMORY_ITEMS:],
+            physical_context=tuple(dict.fromkeys(physical))[-MAX_MEMORY_ITEMS:],
+        )
 
     def remember_user_text(self, user_text: str) -> "BridgeMemory":
         text = " ".join(user_text.strip().split())
@@ -129,16 +171,32 @@ def spoken_physical_context(context: str) -> str:
     }.get(context, context)
 
 
-def plan_turn(user_text: str, memory: BridgeMemory, seq: int = 7) -> BridgeTurn:
-    updated = memory.remember_user_text(user_text)
-    prefix = f"Hello {updated.preferred_name}. " if updated.preferred_name else ""
-    if updated.physical_context:
-        response = f"{prefix}{spoken_physical_context(updated.physical_context[-1])}. I noticed that. I am steady now."
-        intent = "concern" if "shook" in updated.physical_context[-1] else "happy"
+def load_bridge_memory(path: Path) -> BridgeMemory:
+    if not path.exists():
+        return BridgeMemory()
+    return BridgeMemory.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def save_bridge_memory(path: Path, memory: BridgeMemory) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(memory.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def reset_bridge_memory(path: Path) -> BridgeMemory:
+    if path.exists():
+        path.unlink()
+    return BridgeMemory()
+
+
+def plan_turn_from_memory(memory: BridgeMemory, seq: int = 7) -> BridgeTurn:
+    prefix = f"Hello {memory.preferred_name}. " if memory.preferred_name else ""
+    if memory.physical_context:
+        response = f"{prefix}{spoken_physical_context(memory.physical_context[-1])}. I noticed that. I am steady now."
+        intent = "concern" if "shook" in memory.physical_context[-1] else "happy"
         arousal = 0.62
         valence = 0.52
-    elif updated.recent_topics:
-        response = f"{prefix}I remember {updated.recent_topics[-1]}. Curiosity level rising."
+    elif memory.recent_topics:
+        response = f"{prefix}I remember {memory.recent_topics[-1]}. Curiosity level rising."
         intent = "think"
         arousal = 0.58
         valence = 0.55
@@ -148,6 +206,10 @@ def plan_turn(user_text: str, memory: BridgeMemory, seq: int = 7) -> BridgeTurn:
         arousal = 0.55
         valence = 0.60
     return BridgeTurn(seq=seq, intent=intent, text=response, arousal=arousal, valence=valence)
+
+
+def plan_turn(user_text: str, memory: BridgeMemory, seq: int = 7) -> BridgeTurn:
+    return plan_turn_from_memory(memory.remember_user_text(user_text), seq=seq)
 
 
 def bridge_frames(turn: BridgeTurn) -> Iterator[dict[str, object]]:
@@ -223,6 +285,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name", default="")
     parser.add_argument("--topic", action="append", default=[])
     parser.add_argument("--physical-context", action="append", default=[])
+    parser.add_argument("--memory-file", type=Path, help="Optional local JSON memory store for the host bridge.")
+    parser.add_argument("--save-memory", action="store_true", help="Persist memory after applying --user-text.")
+    parser.add_argument("--reset-memory", action="store_true", help="Delete the local memory store before rendering.")
     parser.add_argument("--arousal", type=float, default=0.55)
     parser.add_argument("--valence", type=float, default=0.60)
     return parser
@@ -230,18 +295,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
-    memory = BridgeMemory(
+    memory = BridgeMemory()
+    if args.memory_file:
+        memory = reset_bridge_memory(args.memory_file) if args.reset_memory else load_bridge_memory(args.memory_file)
+    memory = memory.with_overrides(
         preferred_name=args.name,
-        recent_topics=tuple(args.topic[-MAX_MEMORY_ITEMS:]),
-        physical_context=tuple(args.physical_context[-MAX_MEMORY_ITEMS:]),
+        recent_topics=args.topic[-MAX_MEMORY_ITEMS:],
+        physical_context=args.physical_context[-MAX_MEMORY_ITEMS:],
     )
     seq = max(1, int(args.seq))
     if args.format == "prompt":
-        print(build_persona_prompt(memory.remember_user_text(args.user_text)))
+        memory = memory.remember_user_text(args.user_text)
+        if args.memory_file and args.save_memory:
+            save_bridge_memory(args.memory_file, memory)
+        print(build_persona_prompt(memory))
         return 0
 
     if args.text == DEFAULT_TEXT and args.intent == "happy" and args.user_text != DEFAULT_USER_TEXT:
-        turn = plan_turn(args.user_text, memory, seq=seq)
+        memory = memory.remember_user_text(args.user_text)
+        if args.memory_file and args.save_memory:
+            save_bridge_memory(args.memory_file, memory)
+        turn = plan_turn_from_memory(memory, seq=seq)
         turn = replace(turn, session=args.session)
     else:
         turn = BridgeTurn(
