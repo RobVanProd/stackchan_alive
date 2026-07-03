@@ -32,6 +32,31 @@ surprise:
   mouth_open: 0.35
   brow_tilt: 0.22
   pupil_scale: 1.12
+picked_up:
+  perceptual_purpose: lift reflex; wide eyes and small worried mouth while body is moving
+  eye_open: 1.08
+  mouth_open: 0.30
+  mouth_smile: -0.20
+  brow_tilt: 0.18
+shaken:
+  perceptual_purpose: safety/startle reflex; high arousal, negative valence, motion hold
+  eye_open: 1.05
+  squint: 0.35
+  mouth_open: 0.42
+  mouth_smile: -0.55
+  brow_tilt: -0.22
+put_down:
+  perceptual_purpose: relief after being set down; arousal settles and valence recovers
+  eye_open: 0.82
+  eye_smile: 0.22
+  mouth_smile: 0.22
+  face_y: 0.5
+tilted:
+  perceptual_purpose: orientation mismatch; face tries to stay level while eyes track gravity
+  eye_open: 0.95
+  pupil_x: 0.18
+  pupil_y: -0.08
+  mouth_smile: -0.12
 circadian:
   evening_start_hour: 18
   night_start_hour: 21

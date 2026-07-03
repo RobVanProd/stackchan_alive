@@ -24,9 +24,23 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       emotion_.valence += 0.10f * s;
       break;
     case EventType::UserNear:
-    case EventType::UserTouched:
       emotion_.focus += 0.20f * s;
       emotion_.arousal += 0.15f * s;
+      break;
+    case EventType::UserTouched:
+      emotion_.focus += 0.20f * s;
+      emotion_.arousal += 0.10f * s;
+      if (event.hasPayload && event.y < -0.45f) {
+        emotion_.arousal -= 0.10f * s;
+        emotion_.valence += 0.12f * s;
+      } else if (event.hasPayload && event.y > 0.35f) {
+        emotion_.valence += 0.16f * s;
+      } else if (s > 0.80f) {
+        emotion_.valence -= 0.08f * s;
+        emotion_.arousal += 0.08f * s;
+      } else {
+        emotion_.valence += 0.06f * s;
+      }
       break;
     case EventType::WakeWord:
       emotion_.arousal += 0.30f * s;
@@ -49,6 +63,26 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       emotion_.valence -= 0.35f * s;
       emotion_.arousal += 0.20f * s;
       emotion_.focus = 0.40f;
+      break;
+    case EventType::PickedUp:
+      emotion_.arousal += 0.28f * s;
+      emotion_.focus += 0.20f * s;
+      emotion_.valence -= 0.08f * s;
+      break;
+    case EventType::Shaken:
+      emotion_.arousal += 0.45f * s;
+      emotion_.valence -= 0.32f * s;
+      emotion_.focus = 0.35f;
+      break;
+    case EventType::PutDown:
+      emotion_.arousal -= 0.12f * s;
+      emotion_.valence += 0.10f * s;
+      emotion_.focus += 0.08f * s;
+      break;
+    case EventType::Tilted:
+      emotion_.arousal += 0.16f * s;
+      emotion_.focus += 0.10f * s;
+      emotion_.valence -= 0.04f * s;
       break;
     case EventType::Boot:
     case EventType::UserSpeaking:

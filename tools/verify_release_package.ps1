@@ -287,7 +287,7 @@ foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PA
 }
 
 $deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
-foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "help", "speech clear", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
   if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
@@ -451,14 +451,14 @@ foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub A
 }
 
 $sensorAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SensorAdapter.cpp") -Raw
-foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos off|on", "demo off|on", "safe stop|panic", "safe resume|restore", "ambient <lux> <hour>", "time <0-23>", "fillStatus", "fillMotionEnable", "fillDemoEnable", "fillSafeStop", "fillSafeResume", "fillAmbient", "fillCircadian", "parseLux", "parseHour", "wantsStatus", "hasMotionEnable", "motionEnabled", "hasDemoEnable", "demoEnabled", "hasAmbient", "hasCircadian", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "motion_stop", "motion_resume", "demo_off", "demo_on", "safe_stop", "safe_resume", "ambient_context", "circadian_context", "parseOnOff", "hasReducedMotion")) {
+foreach ($pattern in @("[control] help: status", "motion stop|resume", "servos off|on", "demo off|on", "safe stop|panic", "safe resume|restore", "ambient <lux> <hour>", "time <0-23>", "touch cheek|forehead", "pickup [strength]", "shake [strength]", "putdown", "tilt <x> <y> <z>", "fillStatus", "fillMotionEnable", "fillDemoEnable", "fillSafeStop", "fillSafeResume", "fillAmbient", "fillCircadian", "fillPhysicalEvent", "parsePayloadValue", "PickedUp", "Shaken", "PutDown", "Tilted", "event_shaken_hold", "event_put_down_resume", "proximity_near", "touch_payload", "parseLux", "parseHour", "wantsStatus", "hasMotionEnable", "motionEnabled", "hasDemoEnable", "demoEnabled", "hasAmbient", "hasCircadian", "status", "telemetry", "health", "reduced on|off", "motion reduced on|off", "reduced_motion_on", "reduced_motion_off", "motion_stop", "motion_resume", "demo_off", "demo_on", "safe_stop", "safe_resume", "ambient_context", "circadian_context", "parseOnOff", "hasReducedMotion")) {
   if ($sensorAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/SensorAdapter.cpp missing bench serial command support: $pattern"
   }
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "payload_x=", "payload_y=", "payload_z=", "picked_up", "shaken", "put_down", "tilted", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
@@ -1003,7 +1003,7 @@ foreach ($pattern in @("schema: stackchan.voice-persona.v1", "profile_id: stackc
 }
 
 $expressionData = Get-Content -LiteralPath (Join-PackagePath "data/expressions.yaml") -Raw
-foreach ($pattern in @("drowsy:", "yawn:", "surprise:", "circadian:", "perceptual_purpose", "duration_ms: 1200", "evening_start_hour", "night_start_hour", "morning_start_hour")) {
+foreach ($pattern in @("drowsy:", "yawn:", "surprise:", "picked_up:", "shaken:", "put_down:", "tilted:", "circadian:", "perceptual_purpose", "duration_ms: 1200", "evening_start_hour", "night_start_hour", "morning_start_hour", "motion hold", "orientation mismatch")) {
   if ($expressionData -notmatch [regex]::Escape($pattern)) {
     throw "expressions.yaml missing expected P1 circadian/yawn expression data: $pattern"
   }
