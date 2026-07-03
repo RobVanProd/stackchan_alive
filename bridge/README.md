@@ -60,6 +60,18 @@ $env:STACKCHAN_GEMMA4_E2B_GGUF_COMMAND = "ollama run hf.co/google/gemma-4-E2B-it
 python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --require-runner --json
 ```
 
+Probe local engine readiness before a benchmark:
+
+```powershell
+python bridge/engine_probe.py --json
+python bridge/engine_probe.py --run-model-smoke --json
+```
+
+The probe writes `output/engine-probe/latest/engine_probe.json` and
+`output/engine-probe/latest/ENGINE_PROBE.md`. It checks configured model, STT, and TTS
+commands and reports `unconfigured` instead of failing when a new host has no engines
+installed yet.
+
 Render a validated model-style response through the deterministic bridge:
 
 ```powershell

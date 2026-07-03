@@ -14,6 +14,15 @@ Run the no-hardware virtual Stackchan proxy while the physical unit is unavailab
 .\tools\run_hardware_simulation.cmd
 ```
 
+Check whether this host has local model/STT/TTS engines configured:
+
+```powershell
+.\tools\run_engine_probe.cmd -Json
+```
+
+Re-run with `-RunModelSmoke` after exporting a real runner command. The probe is setup
+evidence only; full brain selection still requires a non-dry-run model benchmark.
+
 ## Remote Review Link
 
 From an extracted release package:
