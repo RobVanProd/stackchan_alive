@@ -4,7 +4,10 @@ Protocol: `stackchan.bridge.v1`
 
 The bridge is the P7 boundary between the real-time firmware and a LAN companion service. The firmware owns wake/listen/think/speak choreography, face, motion, earcons, and safety. The bridge owns STT, LLM text generation, memory, and dynamic TTS rendering.
 
-Control frames are newline-delimited UTF-8 JSON. Audio upload/download frames will be binary WebSocket frames in a later PR; this first firmware slice only defines the typed control messages and a deterministic parser.
+Firmware bench replay uses newline-delimited UTF-8 JSON. The LAN bridge service uses
+WebSocket text frames for control and binary WebSocket frames for uploaded PCM. Downloaded
+audio chunks remain future work; current `audio` response frames carry mouth/envelope timing
+only.
 
 For hardware bench replay before the LAN companion exists, run:
 
@@ -40,24 +43,27 @@ The first LAN service scaffold lives at `bridge/lan_service.py`:
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
 ```
 
-This service is intentionally text-control only. It performs the WebSocket handshake, accepts
-device-side JSON text frames, runs the same local runner/validator/memory path on
-`utterance_end`, and streams normalized bridge JSON text frames back to the client. Binary
-PCM upload and downloaded audio chunks are still future P7 work; binary frames currently
-return `binary_audio_not_implemented` instead of blocking the session.
+This service performs the WebSocket handshake, accepts device-side JSON text frames, accepts
+binary PCM frames after `utterance_start`, runs the same local runner/validator/memory path on
+`utterance_end`, and streams normalized bridge JSON text frames back to the client. Until real
+STT lands, audio-only turns return `stt_not_implemented`; include `text` or `transcript` on
+`utterance_end` to test the runner path with a wake-gated binary upload.
 
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.
 - `utterance_start`: wake-gated user speech has started.
-- `utterance_audio`: binary PCM frame follows on the audio channel.
-- `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work.
+- `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
+- `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. Until STT lands, a `text` or `transcript` field is the explicit placeholder transcript.
 - `cancel`: barge-in or local safety state interrupted playback.
 
 Example:
 
 ```json
 {"type":"hello","protocol":"stackchan.bridge.v1","device_id":"stackchan-001","sample_rate":16000}
+{"type":"utterance_start","seq":41,"sample_rate":16000}
+<binary WebSocket frame: signed 16-bit mono PCM>
+{"type":"utterance_end","seq":41,"transcript":"Hello Stackchan."}
 ```
 
 ## Bridge To Device
@@ -90,5 +96,7 @@ output.
 
 - Wake-word gating happens before audio leaves the device.
 - Firmware must never block face, motion, or intent tasks while waiting for bridge traffic.
+- The bridge upload buffer is bounded and raw PCM is cleared at `utterance_end`; host memory
+  may store summaries and validated memory fields, never raw audio.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

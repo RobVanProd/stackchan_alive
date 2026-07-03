@@ -1,6 +1,9 @@
 # Stackchan Reference Bridge
 
-This directory contains the first host-side reference for the P7 conversation bridge. It is intentionally small: no STT, LLM, TTS, network, or cloud dependency yet. Its job is to generate deterministic `stackchan.bridge.v1` control frames that the firmware bridge client already accepts through the serial bench path.
+This directory contains the first host-side reference for the P7 conversation bridge. It is
+intentionally small: no STT, LLM, TTS, or cloud dependency yet. Its job is to generate and
+serve deterministic `stackchan.bridge.v1` control frames that the firmware bridge client
+already accepts through the serial bench path and the local LAN scaffold.
 
 Run the built-in demo as bridge JSON:
 
@@ -56,15 +59,17 @@ Render the local runner wrapper through the same bridge frames:
 python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
 ```
 
-Run the first local LAN WebSocket bridge. This is a text-control scaffold around the same
-frame schema; binary audio streaming is still a later P7 step:
+Run the local LAN WebSocket bridge:
 
 ```powershell
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
 ```
 
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
-JSON text frames. On `utterance_end`, it runs the local runner wrapper, validates Character
+JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded
+upload telemetry and clears raw audio at `utterance_end`. Until real STT lands, audio-only
+turns return `stt_not_implemented`; include `text` or `transcript` on `utterance_end` to drive
+the runner path while testing binary upload. On a transcript-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, `audio`, and
 `response_end` frames back to the client.
 

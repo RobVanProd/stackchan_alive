@@ -5,7 +5,7 @@ This document defines the privacy boundary for the P7 bridge work. It separates 
 ## Current State
 
 - The firmware is a real-time character runtime. It owns display animation, local modes, motion status, servo safety, packaged prompts, and bridge telemetry.
-- The current P7 reference bridge is deterministic and local. It does not record audio, upload audio, call a cloud speech service, or call an LLM.
+- The current P7 reference bridge and LAN service are deterministic and local. The LAN service can accept wake-gated binary PCM frames for bridge-loop testing, but it does not call a cloud speech service, call an LLM, or persist raw audio.
 - Packaged prompt playback and the current voice audition assets are local repository artifacts. Review-only RVC audition samples remain governed by `docs/VOICE_PERSONALITY.md` and the voice-source provenance gates before any consumer distribution.
 - There are no hardcoded secrets in the firmware or reference bridge. Any future bridge credential belongs in host configuration outside the firmware image and outside release artifacts.
 
@@ -19,6 +19,11 @@ The intended production flow is:
 2. The device sends audio or envelope data to the bridge over a local/LAN-first connection.
 3. The bridge performs STT, LLM, TTS, and any memory lookup.
 4. The device receives `stackchan.bridge.v1` response events and returns to local-only behavior after the response ends or times out.
+
+The current LAN service implements only the beginning of that flow: bounded PCM upload after
+`utterance_start`, upload telemetry, explicit placeholder transcripts on `utterance_end`, and
+raw-audio clearing at the end of the turn. Audio-only turns return `stt_not_implemented`
+until a real STT adapter lands.
 
 If Wi-Fi or the bridge is unavailable, Stackchan must degrade offline. On-device commands, local expressions, safety behavior, and packaged prompts still work. A missing bridge must not create a dead state.
 
@@ -39,7 +44,7 @@ The minimum bridge memory scaffold is intentionally small:
 - `physical_context`
 - `turns_seen`
 
-The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering.
+The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering. The LAN service may keep raw PCM in an in-memory bounded buffer only during one active utterance; that buffer is cleared at `utterance_end` or `cancel`.
 
 ## Evidence Requirements
 
