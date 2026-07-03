@@ -37,8 +37,10 @@ class IntentEngine {
   uint32_t lastUpdateMs_ = 0;
   uint32_t lastSpeechCueMs_ = 0;
   uint32_t activeSpeechUntilMs_ = 0;
+  uint32_t soundOrientUntilMs_ = 0;
   bool demoEnabled_ = true;
   bool reducedMotion_ = false;
+  float soundAzimuthNorm_ = 0.0f;
   SpeechIntent lastSpeechIntent_ = SpeechIntent::None;
   SpeechCue activeSpeech_;
 
@@ -46,6 +48,7 @@ class IntentEngine {
   void updateSpeechCue(uint32_t nowMs);
   void activateSpeechCue(const SpeechCue& cue, uint32_t nowMs);
   MotionTargets motionForMode(uint32_t nowMs) const;
+  void applySoundOrientation(RobotFrame& frame, uint32_t nowMs) const;
 };
 
 }  // namespace stackchan

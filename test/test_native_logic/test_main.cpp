@@ -9,6 +9,7 @@
 #include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
+#include "persona/AudioSaliency.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/IdleLife.hpp"
 #include "persona/IntentEngine.hpp"
@@ -157,6 +158,28 @@ void test_physical_events_shape_emotion() {
   TEST_ASSERT_LESS_THAN_FLOAT(0.20f, shaken.profile().valence);
 }
 
+void test_audio_events_shape_attention_and_startle() {
+  EmotionModel sound;
+  sound.reset();
+  RobotEvent event;
+  event.type = EventType::SoundDirection;
+  event.strength = 0.8f;
+  event.hasPayload = true;
+  event.x = -0.50f;
+  event.z = 0.8f;
+  sound.applyEvent(event);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.85f, sound.profile().focus);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.25f, sound.profile().arousal);
+
+  EmotionModel loud;
+  loud.reset();
+  event.type = EventType::LoudNoise;
+  event.strength = 1.0f;
+  loud.applyEvent(event);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.50f, loud.profile().arousal);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.35f, loud.profile().valence);
+}
+
 void test_mood_decay_returns_toward_baseline() {
   EmotionModel model;
   model.reset();
@@ -173,6 +196,42 @@ void test_mood_decay_returns_toward_baseline() {
 
   TEST_ASSERT_LESS_THAN_FLOAT(arousalAfterEvent, model.profile().arousal);
   TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(0.0f, model.profile().fatigue);
+}
+
+void test_audio_saliency_detects_speech_direction_and_habituation() {
+  AudioSaliency saliency;
+  saliency.reset(0.02f);
+
+  AudioSaliencyResult first = saliency.process({100, 0.06f, 0.32f, 0.12f});
+  TEST_ASSERT_TRUE(first.salient);
+  TEST_ASSERT_TRUE(first.speechActive);
+  TEST_ASSERT_TRUE(first.speechStarted);
+  TEST_ASSERT_GREATER_THAN_FLOAT(45.0f, first.azimuthDeg);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, first.habituation);
+
+  AudioSaliencyResult repeated = saliency.process({900, 0.06f, 0.32f, 0.12f});
+  TEST_ASSERT_TRUE(repeated.speechActive);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.50f, repeated.habituation);
+
+  AudioSaliencyResult novel = saliency.process({2300, 0.34f, 0.05f, 0.11f});
+  TEST_ASSERT_TRUE(novel.salient);
+  TEST_ASSERT_TRUE(novel.speechActive);
+  TEST_ASSERT_LESS_THAN_FLOAT(-45.0f, novel.azimuthDeg);
+
+  AudioSaliencyResult quiet = saliency.process({2600, 0.012f, 0.014f, 0.01f});
+  TEST_ASSERT_FALSE(quiet.speechActive);
+  TEST_ASSERT_TRUE(quiet.speechEnded);
+}
+
+void test_audio_saliency_marks_loud_noise_without_speech_band() {
+  AudioSaliency saliency;
+  saliency.reset(0.03f);
+
+  AudioSaliencyResult result = saliency.process({100, 0.90f, 0.84f, 0.70f});
+  TEST_ASSERT_TRUE(result.salient);
+  TEST_ASSERT_TRUE(result.loudNoise);
+  TEST_ASSERT_FALSE(result.speechActive);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.80f, result.level);
 }
 
 void test_positive_valence_smiles() {
@@ -600,6 +659,28 @@ void test_intent_engine_applies_circadian_context() {
   TEST_ASSERT_LESS_THAN_FLOAT(0.20f, frame.emotion.arousal);
 }
 
+void test_intent_engine_orients_toward_sound_event() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+
+  const RobotFrame before = engine.update(100);
+
+  RobotEvent event;
+  event.type = EventType::SoundDirection;
+  event.timestampMs = 150;
+  event.strength = 0.8f;
+  event.hasPayload = true;
+  event.x = 0.50f;
+  event.z = 0.8f;
+  engine.applyEvent(event, CharacterMode::Attend);
+
+  const RobotFrame oriented = engine.update(200);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(oriented.mode));
+  TEST_ASSERT_GREATER_THAN_FLOAT(before.face.pupilX + 0.10f, oriented.face.pupilX);
+  TEST_ASSERT_GREATER_THAN_FLOAT(before.motion.yawDeg + 5.0f, oriented.motion.yawDeg);
+}
+
 void test_sensor_adapter_parses_serial_mode_command() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("mode listen 0.75", 1234, &control));
@@ -721,6 +802,33 @@ void test_sensor_adapter_parses_circadian_context_commands() {
   TEST_ASSERT_EQUAL_UINT8(7, control.hourOfDay);
 
   TEST_ASSERT_FALSE(parseBenchControlLine("time 24", 4080, &control));
+}
+
+void test_sensor_adapter_parses_audio_awareness_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("sound dir=-45 level=0.70", 4081, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SoundDirection), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.50f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.70f, control.event.z);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.70f, control.event.strength);
+  TEST_ASSERT_EQUAL_STRING("sound_direction", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("sound 30 0.40", 4082, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SoundDirection), static_cast<int>(control.event.type));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.333f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.40f, control.event.strength);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("noise level=0.90", 4083, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::React), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::LoudNoise), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.90f, control.event.z);
+  TEST_ASSERT_EQUAL_STRING("loud_noise", control.command);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("sound level 0.50", 4084, &control));
 }
 
 void test_sensor_adapter_parses_physical_sense_commands() {
@@ -1083,7 +1191,10 @@ int main() {
   RUN_TEST(test_ambient_bright_day_reduces_fatigue_and_lifts_arousal);
   RUN_TEST(test_circadian_evening_raises_fatigue_and_morning_recovers);
   RUN_TEST(test_physical_events_shape_emotion);
+  RUN_TEST(test_audio_events_shape_attention_and_startle);
   RUN_TEST(test_mood_decay_returns_toward_baseline);
+  RUN_TEST(test_audio_saliency_detects_speech_direction_and_habituation);
+  RUN_TEST(test_audio_saliency_marks_loud_noise_without_speech_band);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
   RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);
@@ -1110,6 +1221,7 @@ int main() {
   RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
   RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_intent_engine_applies_circadian_context);
+  RUN_TEST(test_intent_engine_orients_toward_sound_event);
   RUN_TEST(test_sensor_adapter_parses_serial_mode_command);
   RUN_TEST(test_sensor_adapter_parses_help_without_event);
   RUN_TEST(test_sensor_adapter_parses_status_without_event);
@@ -1118,6 +1230,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_sensor_adapter_parses_ambient_context_commands);
   RUN_TEST(test_sensor_adapter_parses_circadian_context_commands);
+  RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
