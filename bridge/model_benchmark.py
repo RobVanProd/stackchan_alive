@@ -21,6 +21,9 @@ from local_runner import (
 
 SCHEMA = "stackchan.model-benchmark.v1"
 DEFAULT_OUT_DIR = Path("output/model-benchmark/latest")
+DEFAULT_MIN_PASS_RATE = 0.95
+DEFAULT_MAX_MEDIAN_MS = 2500.0
+DEFAULT_MIN_TOKENS_PER_SEC = 5.0
 
 
 def utc_timestamp() -> str:
@@ -101,43 +104,110 @@ def benchmark_case(
     return base
 
 
-def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+def candidate_decision(profile_summary: dict[str, Any], thresholds: dict[str, float]) -> dict[str, Any]:
+    blockers: list[str] = []
+    cases = int(profile_summary["cases"])
+    configured_cases = int(profile_summary["configured_runner_cases"])
+    pass_rate = float(profile_summary["pass_rate"])
+    median_elapsed_ms = profile_summary.get("median_elapsed_ms")
+    median_tokens_per_sec = profile_summary.get("median_tokens_per_sec")
+
+    if cases < len(PROMPT_SUITE):
+        blockers.append("not_full_prompt_suite")
+    if configured_cases != cases:
+        blockers.append("not_all_cases_used_configured_runner")
+    if profile_summary["status"] == "error":
+        blockers.append("error_cases_present")
+    if profile_summary["status"] == "validation-fail":
+        blockers.append("validation_failures_present")
+    if pass_rate < thresholds["min_pass_rate"]:
+        blockers.append("pass_rate_below_threshold")
+    if median_elapsed_ms is None:
+        blockers.append("missing_latency")
+    elif float(median_elapsed_ms) > thresholds["max_median_ms"]:
+        blockers.append("median_elapsed_over_budget")
+    if median_tokens_per_sec is None:
+        blockers.append("missing_tokens_per_sec")
+    elif float(median_tokens_per_sec) < thresholds["min_tokens_per_sec"]:
+        blockers.append("tokens_per_sec_below_threshold")
+
+    ready = not blockers
+    status = "candidate-pass" if ready else "candidate-fail"
+    if not ready and configured_cases == 0:
+        status = "candidate-dry-run"
+    elif not ready and profile_summary["status"] == "error":
+        status = "candidate-error"
+
+    return {
+        "status": status,
+        "ready": ready,
+        "blockers": blockers,
+        "thresholds": dict(thresholds),
+    }
+
+
+def summarize_results(
+    results: list[dict[str, Any]],
+    *,
+    min_pass_rate: float = DEFAULT_MIN_PASS_RATE,
+    max_median_ms: float = DEFAULT_MAX_MEDIAN_MS,
+    min_tokens_per_sec: float = DEFAULT_MIN_TOKENS_PER_SEC,
+) -> dict[str, Any]:
     total = len(results)
     ok_count = sum(1 for result in results if result.get("ok"))
     configured_count = sum(1 for result in results if result.get("configured_runner"))
     error_count = sum(1 for result in results if result.get("error"))
     validation_failures = total - ok_count - error_count
     profile_summaries: dict[str, dict[str, Any]] = {}
+    thresholds = {
+        "min_pass_rate": round(max(0.0, min(1.0, float(min_pass_rate))), 3),
+        "max_median_ms": round(max(1.0, float(max_median_ms)), 2),
+        "min_tokens_per_sec": round(max(0.0, float(min_tokens_per_sec)), 2),
+    }
 
     for profile in RUNNER_PROFILES:
-      profile_results = [result for result in results if result["profile"] == profile]
-      if not profile_results:
-          continue
-      latencies = [float(result["elapsed_ms"]) for result in profile_results if "elapsed_ms" in result]
-      tokens_per_sec = [
-          float(result["approx_tokens_per_sec"]) for result in profile_results if "approx_tokens_per_sec" in result
-      ]
-      profile_ok = sum(1 for result in profile_results if result.get("ok"))
-      profile_configured = sum(1 for result in profile_results if result.get("configured_runner"))
-      profile_status = "pass"
-      if any(result.get("error") for result in profile_results):
-          profile_status = "error"
-      elif profile_ok != len(profile_results):
-          profile_status = "validation-fail"
-      elif profile_configured == 0:
-          profile_status = "dry-run"
+        profile_results = [result for result in results if result["profile"] == profile]
+        if not profile_results:
+            continue
+        latencies = [float(result["elapsed_ms"]) for result in profile_results if "elapsed_ms" in result]
+        tokens_per_sec = [
+            float(result["approx_tokens_per_sec"]) for result in profile_results if "approx_tokens_per_sec" in result
+        ]
+        profile_ok = sum(1 for result in profile_results if result.get("ok"))
+        profile_configured = sum(1 for result in profile_results if result.get("configured_runner"))
+        profile_status = "pass"
+        if any(result.get("error") for result in profile_results):
+            profile_status = "error"
+        elif profile_ok != len(profile_results):
+            profile_status = "validation-fail"
+        elif profile_configured == 0:
+            profile_status = "dry-run"
 
-      profile_summaries[profile] = {
-          "status": profile_status,
-          "cases": len(profile_results),
-          "ok": profile_ok,
-          "configured_runner_cases": profile_configured,
-          "pass_rate": round(profile_ok / max(len(profile_results), 1), 3),
-      }
-      if latencies:
-          profile_summaries[profile]["median_elapsed_ms"] = round(median(latencies), 2)
-      if tokens_per_sec:
-          profile_summaries[profile]["median_tokens_per_sec"] = round(median(tokens_per_sec), 2)
+        profile_summaries[profile] = {
+            "status": profile_status,
+            "cases": len(profile_results),
+            "ok": profile_ok,
+            "configured_runner_cases": profile_configured,
+            "pass_rate": round(profile_ok / max(len(profile_results), 1), 3),
+        }
+        if latencies:
+            profile_summaries[profile]["median_elapsed_ms"] = round(median(latencies), 2)
+        if tokens_per_sec:
+            profile_summaries[profile]["median_tokens_per_sec"] = round(median(tokens_per_sec), 2)
+
+    candidate_profiles: dict[str, dict[str, Any]] = {}
+    for profile, profile_summary in profile_summaries.items():
+        candidate_profiles[profile] = candidate_decision(profile_summary, thresholds)
+
+    ready_profiles = [
+        profile for profile, decision in candidate_profiles.items() if bool(decision.get("ready"))
+    ]
+    recommended_profile = ""
+    if ready_profiles:
+        recommended_profile = min(
+            ready_profiles,
+            key=lambda profile: float(profile_summaries[profile].get("median_elapsed_ms", 999999.0)),
+        )
 
     if error_count:
         status = "error"
@@ -157,6 +227,13 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "validation_failure_cases": validation_failures,
         "pass_rate": round(ok_count / max(total, 1), 3),
         "profiles": profile_summaries,
+        "candidate_gate": {
+            "status": "pass" if ready_profiles else "no-candidate",
+            "thresholds": thresholds,
+            "ready_profiles": ready_profiles,
+            "recommended_profile": recommended_profile,
+            "profiles": candidate_profiles,
+        },
     }
 
 
@@ -167,6 +244,9 @@ def run_benchmark(
     command: str = "",
     require_runner: bool = False,
     timeout_ms: int = 60000,
+    min_pass_rate: float = DEFAULT_MIN_PASS_RATE,
+    max_median_ms: float = DEFAULT_MAX_MEDIAN_MS,
+    min_tokens_per_sec: float = DEFAULT_MIN_TOKENS_PER_SEC,
 ) -> dict[str, Any]:
     selected_profiles = resolve_profiles(profiles or [])
     selected_cases = resolve_cases(cases or [])
@@ -192,7 +272,12 @@ def run_benchmark(
         "profiles_requested": selected_profiles,
         "cases_requested": selected_cases,
         "require_runner": require_runner,
-        "summary": summarize_results(results),
+        "summary": summarize_results(
+            results,
+            min_pass_rate=min_pass_rate,
+            max_median_ms=max_median_ms,
+            min_tokens_per_sec=min_tokens_per_sec,
+        ),
         "results": results,
     }
 
@@ -226,6 +311,29 @@ def render_markdown(report: dict[str, Any]) -> str:
                 tps=profile_summary.get("median_tokens_per_sec", "n/a"),
             )
         )
+
+    candidate_gate = summary["candidate_gate"]
+    lines.extend(
+        [
+            "",
+            "## Candidate Gate",
+            "",
+            f"- Status: `{candidate_gate['status']}`",
+            f"- Recommended profile: `{candidate_gate.get('recommended_profile') or 'none'}`",
+            (
+                "- Thresholds: "
+                f"pass rate `{candidate_gate['thresholds']['min_pass_rate']}`, "
+                f"median ms `<= {candidate_gate['thresholds']['max_median_ms']}`, "
+                f"tokens/sec `>= {candidate_gate['thresholds']['min_tokens_per_sec']}`"
+            ),
+            "",
+            "| Profile | Candidate | Blockers |",
+            "|---|---:|---|",
+        ]
+    )
+    for profile, decision in candidate_gate["profiles"].items():
+        blockers = ", ".join(decision.get("blockers", [])) or "none"
+        lines.append(f"| {profile} | {decision['status']} | {blockers} |")
 
     lines.extend(["", "## Cases", ""])
     for result in report["results"]:
@@ -269,6 +377,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--command", default="", help="Optional command for a single selected profile.")
     parser.add_argument("--require-runner", action="store_true", help="Fail rows instead of using deterministic fallback.")
     parser.add_argument("--timeout-ms", type=int, default=60000)
+    parser.add_argument("--min-pass-rate", type=float, default=DEFAULT_MIN_PASS_RATE)
+    parser.add_argument("--max-median-ms", type=float, default=DEFAULT_MAX_MEDIAN_MS)
+    parser.add_argument("--min-tokens-per-sec", type=float, default=DEFAULT_MIN_TOKENS_PER_SEC)
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--json", action="store_true", help="Print the full benchmark report as JSON.")
     return parser
@@ -283,6 +394,9 @@ def main() -> int:
             command=args.command,
             require_runner=args.require_runner,
             timeout_ms=args.timeout_ms,
+            min_pass_rate=args.min_pass_rate,
+            max_median_ms=args.max_median_ms,
+            min_tokens_per_sec=args.min_tokens_per_sec,
         )
     except ValueError as exc:
         print(str(exc))

@@ -22,6 +22,7 @@ What is working in the repository now:
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
+- Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
@@ -177,6 +178,16 @@ The probe writes `output/engine-probe/latest/engine_probe.json` and
 STT, and TTS commands are installed or exported.
 The LiteRT smoke writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and checks
 the mobile runner wrapper contract without claiming real model speed.
+
+Run the batch brain benchmark after a real model runner is configured:
+
+```powershell
+python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json
+```
+
+The report writes `summary.candidate_gate` with blockers, `ready_profiles`, and
+`recommended_profile`. A dry run is still useful harness evidence, but it is not a selected
+brain candidate.
 
 If native host tests cannot find `gcc` / `g++`, run:
 

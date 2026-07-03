@@ -44,6 +44,18 @@ Check whether this host has local model/STT/TTS engines configured:
 Re-run with `-RunModelSmoke` after exporting a real runner command. The probe is setup
 evidence only; full brain selection still requires a non-dry-run model benchmark.
 
+Run the batch model benchmark after the runner command is configured:
+
+```powershell
+python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json
+```
+
+The report writes `output/model-benchmark/latest/MODEL_BENCHMARK.md/json` with
+`summary.candidate_gate`, per-profile blockers, `ready_profiles`, and
+`recommended_profile`. A default brain candidate requires the full prompt suite, configured
+runner rows, 95 percent pass rate, median latency at or below 2.5 s, and at least 5
+approximate tokens per second.
+
 Check the mobile LiteRT-LM runner contract:
 
 ```powershell

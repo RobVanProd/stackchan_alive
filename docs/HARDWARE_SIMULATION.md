@@ -4,6 +4,20 @@
 the bench, the closest useful proxy is a deterministic virtual device that exercises the
 same bridge protocol order the firmware consumes plus a small CoreS3 device shell.
 
+Hardware-level simulator check, last reviewed 2026-07-03:
+
+- Wokwi can run ESP32-S3 Arduino/ESP-IDF projects and custom firmware, so it is worth
+  revisiting for small display/input sketches:
+  https://docs.wokwi.com/guides/esp32 and
+  https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/third-party-tools/wokwi.html
+- Espressif's QEMU path is useful for ESP-IDF CPU, memory, and selected peripheral debugging:
+  https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/tools/qemu.html
+- Neither path is currently the promotion proxy for Stackchan: Alive because the acceptance
+  risk is the whole CoreS3 character loop: M5 display rendering, bridge frame ordering,
+  binary audio downlink, speaker handoff, servo safety, recovery, and evidence artifacts. Use
+  the maintained virtual Stackchan simulator below as the default pre-arrival proxy, then
+  compare against real device logs when the hardware arrives.
+
 Run the no-hardware simulator from the repo root:
 
 ```powershell

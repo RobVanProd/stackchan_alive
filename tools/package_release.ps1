@@ -1112,7 +1112,8 @@ Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.j
 Engine readiness quick check:
 
 - Run ``tools/run_engine_probe.cmd -Json`` to check whether local model, STT, and TTS commands are configured.
-- Run ``tools/run_engine_probe.cmd -RunModelSmoke -Json`` after exporting a runner command to capture the first real smoke result. This is setup evidence; full model selection still requires ``bridge/model_benchmark.py --require-runner``.
+- Run ``tools/run_engine_probe.cmd -RunModelSmoke -Json`` after exporting a runner command to capture the first real smoke result. This is setup evidence; full model selection still requires ``bridge/model_benchmark.py --require-runner`` with a passing ``summary.candidate_gate`` and recorded ``recommended_profile``.
+- Run ``python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json`` after the real runner is configured to write ``MODEL_BENCHMARK.md/json`` with candidate blockers, ``ready_profiles``, and the fastest ready profile recommendation.
 - For the mobile/low-footprint brain path, configure ``STACKCHAN_LITERT_LM_COMMAND`` and use ``bridge/litert_lm_stackchan_wrapper.py`` as ``STACKCHAN_GEMMA4_E2B_LITERT_COMMAND`` before running the LiteRT-LM profile benchmark.
 
 No-hardware simulation quick check:

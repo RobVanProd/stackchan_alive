@@ -59,6 +59,9 @@ Keep each item independently shippable and package-verified.
      not model speed evidence.
    - `bridge/model_benchmark.py` runs the prompt suite across profiles and writes
      `model_benchmark.json` plus `MODEL_BENCHMARK.md`.
+   - The benchmark report now writes `summary.candidate_gate`, including per-profile
+     blockers, `ready_profiles`, and `recommended_profile`, so the fastest small model is a
+     recorded decision rather than a manual read of raw rows.
    - Next: install/run the selected Gemma 4 E2B target on the host, re-run the engine probe
      with `--run-model-smoke`, and record a non-dry-run benchmark with speed and Character
      Lock pass evidence.
@@ -166,6 +169,11 @@ Keep each item independently shippable and package-verified.
      device arrives. It does not
      replace real display, speaker, mic, camera, touch, IMU,
      servo, heat, power, or soak evidence.
+   - Hardware-level simulator options remain secondary: Wokwi can run ESP32-S3 / M5Stack
+     CoreS3-style Arduino or ESP-IDF sketches, and Espressif QEMU can help with low-level
+     ESP-IDF CPU/memory/peripheral debugging, but neither currently replaces this repo's
+     maintained virtual Stackchan proxy for the full bridge/display/audio/servo evidence
+     path.
 
 6. End-to-end demo gate.
    - Wake or bench start, listen, visible thinking, in-character spoken response, lip-sync,

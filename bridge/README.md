@@ -51,6 +51,10 @@ python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner
 The default output goes to `output/model-benchmark/latest/model_benchmark.json` and
 `output/model-benchmark/latest/MODEL_BENCHMARK.md`. If every row uses
 `deterministic_fallback`, the report is a harness dry run, not real model speed evidence.
+The JSON summary also includes `candidate_gate` with threshold settings, per-profile
+blockers, `ready_profiles`, and `recommended_profile`; a default brain candidate requires the
+full prompt suite, a configured runner for every row, at least 95 percent pass rate, median
+latency at or below 2.5 s, and at least 5 approximate tokens per second.
 
 To smoke a real local runner, pass a command or set the profile environment variable. The
 prompt is passed on stdin and the command must print one Character Lock JSON object:
