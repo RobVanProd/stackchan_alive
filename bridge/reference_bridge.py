@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterable, Iterator, Literal
 
 from character_harness import HarnessResult, validate_response
+from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 
 PROTOCOL = "stackchan.bridge.v1"
 DEFAULT_SESSION = "bench"
@@ -381,6 +382,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reset-memory", action="store_true", help="Delete the local memory store before rendering.")
     parser.add_argument("--model-response", help="Validated Character Lock JSON response to render through the bridge.")
     parser.add_argument("--model-response-file", type=Path, help="File containing one Character Lock JSON response.")
+    parser.add_argument("--runner-profile", choices=sorted(RUNNER_PROFILES), help="Run or dry-run a local model profile.")
+    parser.add_argument("--runner-case", default="greeting", help="Prompt-suite case for --runner-profile.")
+    parser.add_argument("--runner-command", default="", help="Optional local model command for --runner-profile.")
+    parser.add_argument("--require-runner", action="store_true", help="Fail if --runner-profile has no configured command.")
+    parser.add_argument("--runner-timeout-ms", type=int, default=60000)
     parser.add_argument("--arousal", type=float, default=0.55)
     parser.add_argument("--valence", type=float, default=0.60)
     return parser
@@ -407,6 +413,32 @@ def main() -> int:
     raw_model_response = args.model_response
     if args.model_response_file:
         raw_model_response = args.model_response_file.read_text(encoding="utf-8")
+    if args.runner_profile:
+        if raw_model_response is not None:
+            print("--runner-profile cannot be combined with --model-response or --model-response-file", file=sys.stderr)
+            return 2
+        try:
+            runner = run_runner_profile(
+                args.runner_profile,
+                case_name=args.runner_case,
+                command=args.runner_command,
+                require_runner=args.require_runner,
+                timeout_ms=args.runner_timeout_ms,
+            )
+        except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        if not runner.configured_runner:
+            print(
+                f"No local runner configured for {args.runner_profile}; using deterministic bridge fallback.",
+                file=sys.stderr,
+            )
+        elif runner.approx_tokens_per_sec is not None:
+            print(
+                f"Runner {args.runner_profile} produced {runner.approx_tokens_per_sec:.2f} approximate tokens/sec.",
+                file=sys.stderr,
+            )
+        raw_model_response = runner.raw_response
 
     if raw_model_response is not None:
         turn, memory, validation = turn_from_character_response(raw_model_response, memory, session=args.session, seq=seq)

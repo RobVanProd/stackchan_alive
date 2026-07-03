@@ -27,10 +27,33 @@ python bridge/character_harness.py --print-suite
 python bridge/character_harness.py --model-profile gemma4-e2b-litert-lm
 ```
 
+Run the local model wrapper. With no configured runner it returns a deterministic valid
+Character Lock response, so bridge demos stay repeatable:
+
+```powershell
+python bridge/local_runner.py --list
+python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --json
+python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case picked_up --json
+```
+
+To smoke a real local runner, pass a command or set the profile environment variable. The
+prompt is passed on stdin and the command must print one Character Lock JSON object:
+
+```powershell
+$env:STACKCHAN_GEMMA4_E2B_GGUF_COMMAND = "ollama run hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --require-runner --json
+```
+
 Render a validated model-style response through the deterministic bridge:
 
 ```powershell
 python bridge/reference_bridge.py --format bench --model-response '{"spoken_text":"Looking at you now.","mode":"attend","earcon":"confirm","emotion":{"arousal":0.2,"valence":0.1},"memory_write":{"user.name":"Rob"},"memory_forget":[]}'
+```
+
+Render the local runner wrapper through the same bridge frames:
+
+```powershell
+python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
 ```
 
 Try the deterministic response planner with user text:
