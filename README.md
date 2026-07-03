@@ -21,7 +21,7 @@ What is working in the repository now:
 - Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
-- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, and a no-hardware virtual Stackchan simulator.
+- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
 
 What is still gated:
@@ -92,8 +92,9 @@ behind the voice-source provenance gate.
 
 ## Privacy Boundary
 
-The current bridge is deterministic and local. It does not record audio, upload audio, call a
-cloud speech service, or call an LLM.
+The default bridge path is deterministic and local. It does not persist audio, call a cloud
+speech service, or call a hosted LLM. The LAN scaffold can accept bounded wake-gated PCM
+frames for local STT testing, then clears the raw audio at `utterance_end` or `cancel`.
 
 The intended production bridge is wake-gated: audio may leave the device only after local
 wake-word or explicit activation, and bridge memory stays host-side and resettable. If Wi-Fi
@@ -135,10 +136,10 @@ Run the virtual hardware proxy while the physical unit is unavailable:
 .\tools\run_hardware_simulation.cmd
 ```
 
-The default simulation includes a pre-arrival device-shell rehearsal for bridge ordering,
-virtual CoreS3 inputs, display frame ticks, conversation timing, mouth/speaker stream
-counters, power-cycle recovery, and bridge-kill recovery. It is still not a substitute for
-real hardware evidence.
+The default simulation includes a pre-arrival device-shell rehearsal plus a fake
+mic/STT/model/TTS/speaker loop for bridge ordering, virtual CoreS3 inputs, display frame
+ticks, conversation timing, mouth/speaker stream counters, power-cycle recovery, and
+bridge-kill recovery. It is still not a substitute for real hardware evidence.
 
 Check local model/STT/TTS engine readiness:
 

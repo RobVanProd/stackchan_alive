@@ -108,6 +108,10 @@ Keep each item independently shippable and package-verified.
    - It also includes `conversation-tts-downlink`, which uses a fake WAV-producing local TTS
      command to verify bridge-side WAV-to-PCM16 normalization, binary downlink framing,
      virtual M5 speaker handoff counters, mouth activity, and return to `Ready`.
+   - It also includes `conversation-audio-loop`, which uploads bounded fake mic PCM, runs a
+     fake local STT command, exercises the Character Lock/model response path, generates fake
+     WAV TTS, normalizes it to PCM16 downlink audio, checks virtual speaker counters, and
+     returns to `Ready`.
    - The default simulator run also includes `arrival-rehearsal`, which models virtual
      CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
      safety toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle
@@ -134,9 +138,10 @@ Keep each item independently shippable and package-verified.
    - GitHub Actions runs the bridge tests, engine readiness probe, and simulator in the
      `bridge-tests` job, then uploads both the engine-probe and hardware-simulation report
      artifacts for each PR/push.
-   - This catches bridge ordering, conversation timing, LAN TTS downlink, timeout,
-     mouth-frame, input-mapping, offline command fallback, reboot-recovery, bridge-kill
-     recovery, and binary stream regressions before the physical device arrives. It does not
+   - This catches bridge ordering, conversation timing, LAN STT/TTS audio-loop ordering, LAN
+     TTS downlink, timeout, mouth-frame, input-mapping, offline command fallback,
+     reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical
+     device arrives. It does not
      replace real display, speaker, mic, camera, touch, IMU,
      servo, heat, power, or soak evidence.
 
