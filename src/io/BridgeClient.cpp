@@ -170,6 +170,9 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     readUintField(jsonLine, "chunk_bytes", &output.stream.chunkBytes);
     readUintField(jsonLine, "chunks", &output.stream.chunks);
     readStringField(jsonLine, "format", output.stream.format, sizeof(output.stream.format));
+    if (output.stream.chunkBytes > kBridgeAudioStreamChunkPayloadMax) {
+      return failAudioStream("audio_stream_chunk_too_large");
+    }
     activeStream_ = output.stream;
     activeStreamBytesReceived_ = 0;
     activeStreamChunksReceived_ = 0;
@@ -268,6 +271,9 @@ bool BridgeClient::submitBinaryFrame(const uint8_t* payload, size_t length, uint
   if (payload == nullptr || length == 0 || length > 0xffffffffu) {
     return failAudioStream("invalid_audio_stream_chunk");
   }
+  if (length > kBridgeAudioStreamChunkPayloadMax) {
+    return failAudioStream("audio_stream_chunk_too_large");
+  }
 
   const uint32_t chunkBytes = static_cast<uint32_t>(length);
   const uint32_t nextBytes = activeStreamBytesReceived_ + chunkBytes;
@@ -296,8 +302,11 @@ bool BridgeClient::submitBinaryFrame(const uint8_t* payload, size_t length, uint
   output.streamChunk.seq = activeStream_.seq;
   output.streamChunk.index = nextChunks;
   output.streamChunk.bytes = chunkBytes;
+  output.streamChunk.payloadBytes = chunkBytes;
   output.streamChunk.receivedBytes = nextBytes;
   output.streamChunk.checksum = activeStreamChecksum_;
+  std::memcpy(streamChunkPayload_, payload, length);
+  output.streamChunk.payload = streamChunkPayload_;
 
   const bool expectedBytesDone = activeStream_.audioBytes != 0 && nextBytes >= activeStream_.audioBytes;
   const bool expectedChunksDone = activeStream_.chunks != 0 && nextChunks >= activeStream_.chunks;

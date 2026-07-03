@@ -168,12 +168,12 @@ The STT command must return transcript text or JSON containing `transcript`, `te
 `spoken_text`. The TTS command must return metadata JSON containing compact `beats` or
 speech-envelope-sidecar-style `frames`; it may also include `audio_b64`. The LAN service uses
 the metadata for existing `audio` mouth frames and sends `audio_b64` as `audio_stream_start`,
-binary WebSocket chunks, and `audio_stream_end`; firmware now accounts those chunks and
-rejects missing or mismatched stream totals before speaker playback is wired. If no STT
-command is configured, include `text` or `transcript` on
-`utterance_end` to explicitly stand in for the transcript while the binary upload path is
-exercised. Selecting and measuring the real local STT/TTS engines and wiring downlinked chunks
-into speaker playback remain separate follow-up gates.
+binary WebSocket chunks, and `audio_stream_end`. Firmware accounts those chunks, keeps the
+current bounded chunk payload available through bridge outputs before speaker playback is
+wired, and rejects missing or mismatched stream totals. If no STT command is configured,
+include `text` or `transcript` on `utterance_end` to explicitly stand in for the transcript
+while the binary upload path is exercised. Selecting and measuring the real local STT/TTS
+engines and wiring downlinked chunks into speaker playback remain separate follow-up gates.
 
 Render a validated model-style response through the deterministic bridge frames:
 

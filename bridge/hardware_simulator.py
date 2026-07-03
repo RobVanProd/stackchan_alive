@@ -21,6 +21,8 @@ from reference_bridge import AudioBeat, BridgeTurn, bridge_frames
 SIM_SCHEMA = "stackchan.hardware-sim.v1"
 DEFAULT_TIMEOUT_MS = 2000
 DISPLAY_FRAME_MS = 33
+MAX_AUDIO_STREAM_CHUNK_BYTES = 4096
+AUDIO_DOWNLINK_TEST_BYTES = 5000
 
 
 Frame = dict[str, object] | bytes
@@ -50,6 +52,8 @@ class VirtualHardwareTelemetry:
     audio_streams_aborted: int = 0
     audio_stream_bytes_expected: int = 0
     audio_stream_bytes_received: int = 0
+    audio_stream_chunk_bytes_declared: int = 0
+    audio_stream_chunk_bytes_max: int = 0
     audio_stream_chunks_expected: int = 0
     audio_stream_chunks_received: int = 0
     response_text: str = ""
@@ -92,6 +96,8 @@ class VirtualHardwareTelemetry:
             "audio_streams_aborted": self.audio_streams_aborted,
             "audio_stream_bytes_expected": self.audio_stream_bytes_expected,
             "audio_stream_bytes_received": self.audio_stream_bytes_received,
+            "audio_stream_chunk_bytes_declared": self.audio_stream_chunk_bytes_declared,
+            "audio_stream_chunk_bytes_max": self.audio_stream_chunk_bytes_max,
             "audio_stream_chunks_expected": self.audio_stream_chunks_expected,
             "audio_stream_chunks_received": self.audio_stream_chunks_received,
             "response_text": self.response_text,
@@ -116,6 +122,7 @@ class VirtualHardwareTelemetry:
 class ActiveAudioStream:
     seq: int = 0
     expected_bytes: int = 0
+    chunk_bytes: int = 0
     expected_chunks: int = 0
     received_bytes: int = 0
     received_chunks: int = 0
@@ -357,9 +364,16 @@ class VirtualStackchanHardware:
         if self.active_stream is None:
             self._record_error("binary_without_audio_stream")
             return
+        if len(payload) > MAX_AUDIO_STREAM_CHUNK_BYTES:
+            self.active_stream = None
+            self._record_error("audio_stream_chunk_too_large")
+            return
         self.active_stream.received_bytes += len(payload)
         self.active_stream.received_chunks += 1
         self.telemetry.audio_stream_bytes_received += len(payload)
+        self.telemetry.audio_stream_chunk_bytes_max = max(
+            self.telemetry.audio_stream_chunk_bytes_max, len(payload)
+        )
         self.telemetry.audio_stream_chunks_received += 1
         self.telemetry.speaker_frames_submitted += 1
         self._serial(
@@ -371,9 +385,14 @@ class VirtualStackchanHardware:
         if self.active_stream is not None:
             self._record_error("nested_audio_stream")
             return
+        chunk_bytes = max(0, _int(frame.get("chunk_bytes"), 0))
+        if chunk_bytes > MAX_AUDIO_STREAM_CHUNK_BYTES:
+            self._record_error("audio_stream_chunk_too_large")
+            return
         stream = ActiveAudioStream(
             seq=_int(frame.get("seq"), self.telemetry.active_seq),
             expected_bytes=max(0, _int(frame.get("audio_bytes"), 0)),
+            chunk_bytes=chunk_bytes,
             expected_chunks=max(0, _int(frame.get("chunks"), 0)),
             format=str(frame.get("format") or "binary")[:16],
             sample_rate=max(0, _int(frame.get("sample_rate"), 0)),
@@ -381,13 +400,17 @@ class VirtualStackchanHardware:
         self.active_stream = stream
         self.telemetry.audio_streams_started += 1
         self.telemetry.audio_stream_bytes_expected += stream.expected_bytes
+        self.telemetry.audio_stream_chunk_bytes_declared = max(
+            self.telemetry.audio_stream_chunk_bytes_declared, stream.chunk_bytes
+        )
         self.telemetry.audio_stream_chunks_expected += stream.expected_chunks
         self.telemetry.speaker_playback_starts += 1
         self.telemetry.bridge_state = "Responding"
         self._serial(
             "[bridge] type=audio_stream_start "
             f"state=Responding seq={stream.seq} format={stream.format} bytes={stream.expected_bytes} "
-            f"chunks={stream.expected_chunks} sample_rate={stream.sample_rate}"
+            f"chunk_bytes={stream.chunk_bytes} chunks={stream.expected_chunks} "
+            f"sample_rate={stream.sample_rate}"
         )
 
     def _end_audio_stream(self, frame: dict[str, object]) -> None:
@@ -616,6 +639,11 @@ def _float(value: object, default: float = 0.0) -> float:
 
 
 def full_audio_downlink_frames() -> list[Frame]:
+    payload = bytes(index % 251 for index in range(AUDIO_DOWNLINK_TEST_BYTES))
+    chunks = [
+        payload[index : index + MAX_AUDIO_STREAM_CHUNK_BYTES]
+        for index in range(0, len(payload), MAX_AUDIO_STREAM_CHUNK_BYTES)
+    ]
     turn = BridgeTurn(
         session="sim",
         seq=11,
@@ -639,14 +667,17 @@ def full_audio_downlink_frames() -> list[Frame]:
                         "seq": turn.seq,
                         "format": "wav",
                         "sample_rate": 22050,
-                        "audio_bytes": 9,
-                        "chunk_bytes": 3,
-                        "chunks": 3,
+                        "audio_bytes": len(payload),
+                        "chunk_bytes": MAX_AUDIO_STREAM_CHUNK_BYTES,
+                        "chunks": len(chunks),
                     },
-                    b"abc",
-                    b"def",
-                    b"ghi",
-                    {"type": "audio_stream_end", "seq": turn.seq, "audio_bytes": 9, "chunks": 3},
+                    *chunks,
+                    {
+                        "type": "audio_stream_end",
+                        "seq": turn.seq,
+                        "audio_bytes": len(payload),
+                        "chunks": len(chunks),
+                    },
                 ]
             )
     return frames

@@ -14,6 +14,7 @@ constexpr size_t kBridgeSessionIdMax = 32;
 constexpr size_t kBridgeTextMax = 160;
 constexpr size_t kBridgeErrorMax = 64;
 constexpr size_t kBridgeAudioFormatMax = 16;
+constexpr size_t kBridgeAudioStreamChunkPayloadMax = 4096;
 
 enum class BridgeClientState : uint8_t {
   Offline,
@@ -76,9 +77,11 @@ struct BridgeAudioStreamChunk {
   uint32_t seq = 0;
   uint32_t index = 0;
   uint32_t bytes = 0;
+  uint32_t payloadBytes = 0;
   uint32_t receivedBytes = 0;
   uint32_t checksum = 0;
   bool finalChunk = false;
+  const uint8_t* payload = nullptr;
 };
 
 struct BridgeClientOutput {
@@ -152,6 +155,7 @@ class BridgeClient {
   BridgeClientTelemetry telemetry_;
   BridgeClientOutput pending_;
   BridgeAudioStream activeStream_;
+  uint8_t streamChunkPayload_[kBridgeAudioStreamChunkPayloadMax] = {};
   uint32_t activeStreamBytesReceived_ = 0;
   uint32_t activeStreamChunksReceived_ = 0;
   uint32_t activeStreamChecksum_ = 0;

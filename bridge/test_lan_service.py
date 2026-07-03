@@ -10,6 +10,7 @@ from unittest.mock import patch
 from lan_service import (
     LanBridgeConfig,
     LanBridgeSession,
+    audio_downlink_frames,
     build_handshake_response,
     encode_ws_frame,
     encode_ws_text,
@@ -65,6 +66,20 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("forget", prompt_case_for_text("Forget that note", "", "greeting"))
         self.assertEqual("greeting", prompt_case_for_text("Hello", "", "greeting"))
         self.assertEqual("picked_up", prompt_case_for_text("Hello", "picked_up", "greeting"))
+
+    def test_audio_downlink_clamps_chunks_to_firmware_payload_limit(self):
+        class FakeTts:
+            audio_data = b"x" * 5000
+            audio_format = "wav"
+            sample_rate = 22050
+
+        frames = audio_downlink_frames(7, FakeTts(), 8192)
+        binary_frames = [frame for frame in frames if isinstance(frame, bytes)]
+
+        self.assertEqual("audio_stream_start", frames[0]["type"])
+        self.assertEqual(4096, frames[0]["chunk_bytes"])
+        self.assertEqual(2, frames[0]["chunks"])
+        self.assertEqual([4096, 904], [len(frame) for frame in binary_frames])
 
     def test_session_maps_device_messages_to_bridge_frames(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):

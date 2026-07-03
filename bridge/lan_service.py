@@ -30,6 +30,7 @@ MAX_TEXT_BYTES = 65535
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
+MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 
 
 class WebSocketProtocolError(RuntimeError):
@@ -220,7 +221,7 @@ def audio_downlink_frames(seq: int, tts, chunk_bytes: int) -> list[dict[str, obj
     audio = getattr(tts, "audio_data", b"")
     if not audio:
         return []
-    safe_chunk_bytes = max(1, min(8192, int(chunk_bytes or DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES)))
+    safe_chunk_bytes = max(1, min(MAX_DOWNLINK_AUDIO_CHUNK_BYTES, int(chunk_bytes or DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES)))
     chunks = [audio[index : index + safe_chunk_bytes] for index in range(0, len(audio), safe_chunk_bytes)]
     frames: list[dict[str, object] | bytes] = [
         {

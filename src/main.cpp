@@ -810,6 +810,8 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
     Serial.print(output.streamChunk.index);
     Serial.print(F(" chunk_bytes="));
     Serial.print(output.streamChunk.bytes);
+    Serial.print(F(" payload_bytes="));
+    Serial.print(output.streamChunk.payloadBytes);
     Serial.print(F(" received_bytes="));
     Serial.print(output.streamChunk.receivedBytes);
     Serial.print(F(" checksum="));
