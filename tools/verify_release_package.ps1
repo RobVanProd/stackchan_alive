@@ -827,14 +827,14 @@ foreach ($pattern in @("EngineProbeTests", "test_unconfigured_probe_reports_clea
 }
 
 $modelBenchmarkText = Get-Content -LiteralPath (Join-PackagePath "bridge/model_benchmark.py") -Raw
-foreach ($pattern in @("stackchan.model-benchmark.v1", "RUNNER_PROFILES", "run_benchmark", "write_outputs", "MODEL_BENCHMARK.md", "model_benchmark.json", "dry-run-no-runner-configured", "approx_tokens_per_sec")) {
+foreach ($pattern in @("stackchan.model-benchmark.v1", "RUNNER_PROFILES", "run_benchmark", "write_outputs", "MODEL_BENCHMARK.md", "model_benchmark.json", "dry-run-no-runner-configured", "approx_tokens_per_sec", "candidate_gate", "DEFAULT_MIN_PASS_RATE", "--min-pass-rate", "recommended_profile")) {
   if ($modelBenchmarkText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/model_benchmark.py missing model benchmark support: $pattern"
   }
 }
 
 $modelBenchmarkTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_model_benchmark.py") -Raw
-foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_marks_dry_run_without_runner", "test_real_command_result_records_speed", "test_outputs_include_json_and_markdown_summary", "test_cli_writes_report")) {
+foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_marks_dry_run_without_runner", "test_real_command_result_records_speed", "test_full_suite_real_command_can_pass_candidate_gate", "test_outputs_include_json_and_markdown_summary", "test_cli_writes_report", "candidate-dry-run", "candidate-pass")) {
   if ($modelBenchmarkTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_model_benchmark.py missing model benchmark test coverage: $pattern"
   }
@@ -1457,7 +1457,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
@@ -1478,14 +1478,14 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "LAN bridge smoke report", "LAN bridge loop", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }

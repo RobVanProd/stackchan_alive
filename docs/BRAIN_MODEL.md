@@ -160,6 +160,7 @@ model profiles and write repeatable evidence:
 python bridge/model_benchmark.py --json
 python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json
 python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --json
+python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --max-median-ms 2500 --min-tokens-per-sec 5 --json
 ```
 
 The harness writes:
@@ -171,6 +172,17 @@ When no runner command is configured, the report is marked
 `dry-run-no-runner-configured`; that proves the prompt/validator path still works, but it is
 not speed evidence. A profile only becomes a real candidate once its rows use a configured
 runner command and still pass Character Lock validation.
+
+Each report now includes `summary.candidate_gate` with the selected thresholds, per-profile
+blockers, `ready_profiles`, and `recommended_profile`. The default gate requires the full
+prompt suite, every row backed by a configured runner, pass rate at or above `0.95`, median
+latency at or below `2500` ms, and median throughput at or above `5` approximate tokens per
+second. Override those only when recording why the host or demo scenario needs a different
+budget:
+
+```powershell
+python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --min-pass-rate 0.95 --max-median-ms 2500 --min-tokens-per-sec 5 --json
+```
 
 The same path is exposed as a local WebSocket service for P7 LAN-loop testing:
 
@@ -234,10 +246,13 @@ JSON, the harness normalizes it, and the reference bridge renders the existing
 
 A model target becomes the default bridge brain only when it passes:
 
-- 95 percent or better valid JSON on the prompt suite.
+- `summary.candidate_gate.status == "pass"` from a non-dry-run `bridge/model_benchmark.py`
+  report.
+- 95 percent or better valid JSON on the full prompt suite.
 - 95 percent or better character-lock score.
 - Zero clone/catchphrase violations.
 - Zero forbidden memory writes.
-- Median decode fast enough for short responses on the intended host.
+- Median decode at or below 2.5 s for short responses on the intended host.
+- Median throughput at or above 5 approximate tokens per second.
 - Fallback recovery produces a valid concern response for malformed output.
 
