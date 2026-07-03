@@ -5,17 +5,12 @@
 
 #include "persona/EarconSynth.hpp"
 #include "persona/StateMatrix.hpp"
+#include "io/SpeechPromptBank.hpp"
 
 namespace stackchan {
 
 constexpr size_t kSpeechAdapterEarconBufferSamples =
     (static_cast<size_t>(kEarconSampleRate) * kEarconMaxDurationMs) / 1000u;
-
-enum class PromptSource : uint8_t {
-  None,
-  PackagedPrompt,
-  HostBridge,
-};
 
 struct SpeechPlaybackPlan {
   uint32_t seq = 0;
@@ -25,6 +20,8 @@ struct SpeechPlaybackPlan {
   PromptSource promptSource = PromptSource::None;
   const char* promptText = "";
   const char* promptId = "";
+  const char* promptWavPath = "";
+  const char* promptSidecarPath = "";
   uint16_t promptChars = 0;
   uint16_t earconDelayMs = 0;
   EarconRenderResult earconRender;
@@ -61,8 +58,6 @@ class SpeechAdapter {
   }
 
  private:
-  static const char* promptIdForIntent(SpeechIntent intent);
-  static PromptSource sourceForIntent(SpeechIntent intent);
   static uint16_t promptLength(const char* text);
   static float earconIntensity(const EmotionalProfile& emotion, const SpeechCue& cue);
 
