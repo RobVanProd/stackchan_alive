@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, and no-hardware virtual Stackchan simulator exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -87,11 +87,15 @@ Keep each item independently shippable and package-verified.
 5. Virtual hardware proxy.
    - `bridge/hardware_simulator.py` consumes reference, LAN, and binary audio-downlink
      bridge frames and produces firmware-like serial logs plus JSON telemetry.
+   - The default simulator run also includes `arrival-rehearsal`, which models virtual
+     CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
+     safety toggles, speaker stream counters, mouth-display activity, and power-cycle
+     recovery before the physical unit arrives.
    - `tools/run_hardware_simulation.cmd` writes repeatable reports under
      `output/hardware-sim/`.
-   - This catches bridge ordering, timeout, mouth-frame, and binary stream regressions before
-     the physical device arrives. It does not replace real display, speaker, mic, camera,
-     touch, IMU, servo, heat, power, or soak evidence.
+   - This catches bridge ordering, timeout, mouth-frame, input-mapping, reboot-recovery, and
+     binary stream regressions before the physical device arrives. It does not replace real
+     display, speaker, mic, camera, touch, IMU, servo, heat, power, or soak evidence.
 
 6. End-to-end demo gate.
    - Wake or bench start, listen, visible thinking, in-character spoken response, lip-sync,
