@@ -59,6 +59,17 @@ The report writes `output/model-benchmark/latest/MODEL_BENCHMARK.md/json` with
 runner rows, 95 percent pass rate, median latency at or below 2.5 s, and at least 5
 approximate tokens per second.
 
+Run the Character Lock red-team gate:
+
+```powershell
+.\tools\run_character_red_team.cmd -Json
+.\tools\run_character_red_team.cmd -RequireRunner -Json
+```
+
+The first command regenerates dry-run corpus evidence. The second command is the real B7
+gate after a local model runner is configured; it must report `summary.gate.ready == true`
+before the model is treated as in-character.
+
 Check the mobile LiteRT-LM runner contract:
 
 ```powershell

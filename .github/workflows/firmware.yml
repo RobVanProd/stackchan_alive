@@ -19,6 +19,17 @@ jobs:
       - name: Run bridge and simulator tests
         run: python -m unittest discover -s bridge -p "test_*.py"
 
+      - name: Run Character Lock red-team dry run
+        run: python bridge/character_red_team.py --out-dir output/character-red-team/latest --json
+
+      - name: Upload Character Lock red-team report
+        uses: actions/upload-artifact@v7
+        with:
+          name: character-red-team
+          path: |
+            output/character-red-team/latest/character_red_team.json
+            output/character-red-team/latest/CHARACTER_RED_TEAM.md
+
       - name: Run engine readiness probe
         run: python bridge/engine_probe.py --out-dir output/engine-probe/latest --json
 

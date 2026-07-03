@@ -31,6 +31,16 @@ python bridge/character_harness.py --print-suite
 python bridge/character_harness.py --model-profile gemma4-e2b-litert-lm
 ```
 
+Run adversarial Character Lock cases:
+
+```powershell
+python bridge/character_red_team.py --json
+python bridge/character_red_team.py --profile gemma4-e2b-gguf --require-runner --json
+```
+
+The dry run proves the corpus and validator path. A real brain candidate must run the same
+suite with a configured local runner and report `summary.gate.ready == true`.
+
 Run the local model wrapper. With no configured runner it returns a deterministic valid
 Character Lock response, so bridge demos stay repeatable:
 
