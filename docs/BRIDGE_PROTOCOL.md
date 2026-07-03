@@ -22,6 +22,18 @@ writes/forgets on the host, and then emits normalized `response_start` and `audi
 Use `bridge/reference_bridge.py --model-response ...` to exercise that seam without a local
 runner.
 
+Use `bridge/local_runner.py` when a local GGUF or LiteRT-LM runner is available, or when a
+deterministic runner fallback is enough for firmware/bench testing:
+
+```powershell
+python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --json
+python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
+```
+
+The wrapper measures approximate tokens per second only when a real command is configured.
+Without one, it emits a fixed valid Character Lock response so the firmware bridge path stays
+repeatable.
+
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.

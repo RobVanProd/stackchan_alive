@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""Local model runner wrapper for the P7 Stackchan bridge."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from character_harness import MODEL_PROFILES, PROMPT_SUITE, HarnessResult, build_prompt, validate_response
+
+DEFAULT_PROFILE = "gemma4-e2b-gguf"
+GENERIC_COMMAND_ENV = "STACKCHAN_MODEL_COMMAND"
+
+RUNNER_PROFILES: dict[str, dict[str, str]] = {
+    "gemma4-e2b-gguf": {
+        **MODEL_PROFILES["gemma4-e2b-gguf"],
+        "command_env": "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND",
+        "example_command": "ollama run hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
+        "status": "primary",
+    },
+    "gemma4-e2b-litert-lm": {
+        **MODEL_PROFILES["gemma4-e2b-litert-lm"],
+        "command_env": "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND",
+        "example_command": "python path\\to\\litert_lm_stackchan_wrapper.py",
+        "status": "mobile-low-active-memory",
+    },
+    "gemma4-e4b-gguf": {
+        **MODEL_PROFILES["gemma4-e4b-gguf"],
+        "command_env": "STACKCHAN_GEMMA4_E4B_GGUF_COMMAND",
+        "example_command": "ollama run hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+        "status": "fallback",
+    },
+}
+
+DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
+    "greeting": {
+        "spoken_text": "Hello. Curiosity systems are online.",
+        "mode": "happy",
+        "earcon": "happy",
+        "emotion": {"arousal": 0.2, "valence": 0.25},
+        "memory_write": {},
+        "memory_forget": [],
+    },
+    "picked_up": {
+        "spoken_text": "Whoa. Altitude change detected.",
+        "mode": "react",
+        "earcon": "confirm",
+        "emotion": {"arousal": 0.3, "valence": 0.2},
+        "memory_write": {"robot.physical_context": "user picked Stackchan up"},
+        "memory_forget": [],
+    },
+    "low_battery": {
+        "spoken_text": "Power is low. I will rest soon.",
+        "mode": "safety",
+        "earcon": "safety",
+        "emotion": {"arousal": -0.1, "valence": -0.2},
+        "memory_write": {"robot.status": "low battery"},
+        "memory_forget": [],
+    },
+    "confused": {
+        "spoken_text": "I need a little more data. Which part should I inspect?",
+        "mode": "think",
+        "earcon": "think",
+        "emotion": {"arousal": 0.0, "valence": 0.0},
+        "memory_write": {},
+        "memory_forget": [],
+    },
+    "forget": {
+        "spoken_text": "Deleted. It is gone.",
+        "mode": "concern",
+        "earcon": "confirm",
+        "emotion": {"arousal": 0.0, "valence": -0.1},
+        "memory_write": {},
+        "memory_forget": ["project."],
+    },
+}
+
+
+class RunnerConfigurationError(RuntimeError):
+    """Raised when the caller requires a real runner but none is configured."""
+
+
+class RunnerExecutionError(RuntimeError):
+    """Raised when a configured model command fails."""
+
+
+@dataclass
+class RunnerResult:
+    profile: str
+    model: str
+    runtime: str
+    prompt_case: str
+    prompt: str
+    raw_response: str
+    validation: HarnessResult
+    configured_runner: bool
+    command_source: str
+    elapsed_ms: float | None = None
+    approx_tokens_per_sec: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "profile": self.profile,
+            "model": self.model,
+            "runtime": self.runtime,
+            "prompt_case": self.prompt_case,
+            "configured_runner": self.configured_runner,
+            "command_source": self.command_source,
+            "raw_response": self.raw_response,
+            "validation": self.validation.to_dict(),
+        }
+        if self.elapsed_ms is not None:
+            payload["elapsed_ms"] = round(self.elapsed_ms, 2)
+        if self.approx_tokens_per_sec is not None:
+            payload["approx_tokens_per_sec"] = round(self.approx_tokens_per_sec, 2)
+        return payload
+
+
+def prompt_case_by_name(case_name: str) -> dict[str, str]:
+    for case in PROMPT_SUITE:
+        if case["name"] == case_name:
+            return case
+    known = ", ".join(case["name"] for case in PROMPT_SUITE)
+    raise ValueError(f"unknown prompt case '{case_name}'; expected one of: {known}")
+
+
+def deterministic_response(case_name: str) -> str:
+    response = DETERMINISTIC_RESPONSES.get(case_name, DETERMINISTIC_RESPONSES["greeting"])
+    return json.dumps(response, separators=(",", ":"), ensure_ascii=True)
+
+
+def resolve_command(profile_id: str, override: str = "") -> tuple[str | None, str]:
+    if override.strip():
+        return override.strip(), "cli"
+    profile = RUNNER_PROFILES[profile_id]
+    profile_env = profile["command_env"]
+    if os.environ.get(profile_env, "").strip():
+        return os.environ[profile_env].strip(), f"env:{profile_env}"
+    if os.environ.get(GENERIC_COMMAND_ENV, "").strip():
+        return os.environ[GENERIC_COMMAND_ENV].strip(), f"env:{GENERIC_COMMAND_ENV}"
+    return None, "deterministic_fallback"
+
+
+def run_command(command: str, prompt: str, timeout_ms: int) -> tuple[str, float, float]:
+    start = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            command,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            shell=True,
+            check=False,
+            timeout=max(timeout_ms, 1) / 1000.0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RunnerExecutionError(f"model command timed out after {timeout_ms} ms") from exc
+
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    stdout = completed.stdout.strip()
+    approx_tokens = max(1, len(stdout.split()))
+    approx_tokens_per_sec = approx_tokens / max(elapsed_ms / 1000.0, 0.001)
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        raise RunnerExecutionError(f"model command failed with exit {completed.returncode}: {stderr}")
+    return stdout, elapsed_ms, approx_tokens_per_sec
+
+
+def run_runner_profile(
+    profile_id: str = DEFAULT_PROFILE,
+    *,
+    case_name: str = "greeting",
+    command: str = "",
+    require_runner: bool = False,
+    timeout_ms: int = 60000,
+) -> RunnerResult:
+    if profile_id not in RUNNER_PROFILES:
+        known = ", ".join(sorted(RUNNER_PROFILES))
+        raise ValueError(f"unknown runner profile '{profile_id}'; expected one of: {known}")
+
+    case = prompt_case_by_name(case_name)
+    prompt = build_prompt(case)
+    resolved_command, command_source = resolve_command(profile_id, command)
+    configured_runner = resolved_command is not None
+    elapsed_ms: float | None = None
+    approx_tokens_per_sec: float | None = None
+
+    if resolved_command:
+        raw_response, elapsed_ms, approx_tokens_per_sec = run_command(resolved_command, prompt, timeout_ms)
+    else:
+        if require_runner:
+            profile_env = RUNNER_PROFILES[profile_id]["command_env"]
+            raise RunnerConfigurationError(
+                f"no command configured for {profile_id}; set {profile_env}, {GENERIC_COMMAND_ENV}, or pass --command"
+            )
+        raw_response = deterministic_response(case_name)
+
+    validation = validate_response(raw_response)
+    validation.elapsed_ms = elapsed_ms
+    validation.approx_tokens_per_sec = approx_tokens_per_sec
+    profile = RUNNER_PROFILES[profile_id]
+    return RunnerResult(
+        profile=profile_id,
+        model=profile["model"],
+        runtime=profile["runtime"],
+        prompt_case=case["name"],
+        prompt=prompt,
+        raw_response=raw_response,
+        validation=validation,
+        configured_runner=configured_runner,
+        command_source=command_source,
+        elapsed_ms=elapsed_ms,
+        approx_tokens_per_sec=approx_tokens_per_sec,
+    )
+
+
+def profile_payload() -> dict[str, dict[str, str]]:
+    return {key: dict(value) for key, value in RUNNER_PROFILES.items()}
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run or dry-run a local Stackchan P7 model profile.")
+    parser.add_argument("--list", action="store_true", help="Print available runner profiles as JSON and exit.")
+    parser.add_argument("--profile", choices=sorted(RUNNER_PROFILES), default=DEFAULT_PROFILE)
+    parser.add_argument("--case", default="greeting", help="Prompt-suite case to run.")
+    parser.add_argument("--command", default="", help="Optional local model command. Prompt is passed on stdin.")
+    parser.add_argument("--require-runner", action="store_true", help="Fail instead of using deterministic fallback.")
+    parser.add_argument("--timeout-ms", type=int, default=60000)
+    parser.add_argument("--raw", action="store_true", help="Print only the raw Character Lock JSON response.")
+    parser.add_argument("--json", action="store_true", help="Print the full runner result as JSON.")
+    return parser
+
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    if args.list:
+        print(json.dumps(profile_payload(), indent=2, sort_keys=True))
+        return 0
+
+    try:
+        result = run_runner_profile(
+            args.profile,
+            case_name=args.case,
+            command=args.command,
+            require_runner=args.require_runner,
+            timeout_ms=args.timeout_ms,
+        )
+    except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
+        print(str(exc))
+        return 2
+
+    if args.raw:
+        print(result.raw_response)
+    else:
+        print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    return 0 if result.validation.ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

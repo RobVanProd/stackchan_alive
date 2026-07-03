@@ -1,0 +1,123 @@
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from local_runner import (
+    RunnerConfigurationError,
+    profile_payload,
+    run_runner_profile,
+)
+
+RUNNER_ENV = {
+    "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND": "",
+    "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND": "",
+    "STACKCHAN_GEMMA4_E4B_GGUF_COMMAND": "",
+    "STACKCHAN_MODEL_COMMAND": "",
+}
+
+
+class LocalRunnerTests(unittest.TestCase):
+    def test_profiles_keep_primary_and_mobile_targets_visible(self):
+        profiles = profile_payload()
+
+        self.assertIn("gemma4-e2b-gguf", profiles)
+        self.assertIn("gemma4-e2b-litert-lm", profiles)
+        self.assertEqual("primary", profiles["gemma4-e2b-gguf"]["status"])
+        self.assertEqual("mobile-low-active-memory", profiles["gemma4-e2b-litert-lm"]["status"])
+        self.assertIn("command_env", profiles["gemma4-e2b-gguf"])
+
+    def test_deterministic_fallback_is_valid_without_runner_command(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            first = run_runner_profile("gemma4-e2b-gguf", case_name="picked_up")
+            second = run_runner_profile("gemma4-e2b-gguf", case_name="picked_up")
+
+        self.assertFalse(first.configured_runner)
+        self.assertEqual("deterministic_fallback", first.command_source)
+        self.assertEqual(first.raw_response, second.raw_response)
+        self.assertTrue(first.validation.ok, first.validation.issues)
+        self.assertEqual("react", first.validation.normalized["mode"])
+        self.assertIn("robot.physical_context", first.validation.normalized["memory_write"])
+
+    def test_require_runner_fails_when_no_command_is_configured(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            with self.assertRaises(RunnerConfigurationError):
+                run_runner_profile("gemma4-e2b-gguf", case_name="greeting", require_runner=True)
+
+    def test_command_runner_measures_speed_and_validates_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_model.py"
+            script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import sys",
+                        "sys.stdin.read()",
+                        "print(json.dumps({",
+                        "  'spoken_text': 'Signal received. I am thinking now.',",
+                        "  'mode': 'think',",
+                        "  'earcon': 'think',",
+                        "  'emotion': {'arousal': 0.1, 'valence': 0.0},",
+                        "  'memory_write': {'project.note': 'runner smoke'},",
+                        "  'memory_forget': []",
+                        "}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            result = run_runner_profile("gemma4-e2b-gguf", case_name="greeting", command=command)
+
+        self.assertTrue(result.configured_runner)
+        self.assertEqual("cli", result.command_source)
+        self.assertIsNotNone(result.elapsed_ms)
+        self.assertIsNotNone(result.approx_tokens_per_sec)
+        self.assertGreater(result.approx_tokens_per_sec, 0.0)
+        self.assertTrue(result.validation.ok, result.validation.issues)
+        self.assertEqual("think", result.validation.normalized["mode"])
+
+    def test_reference_bridge_can_render_runner_fallback_to_bench(self):
+        script = Path(__file__).with_name("reference_bridge.py")
+        env = {**os.environ, **RUNNER_ENV}
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--format",
+                "bench",
+                "--runner-profile",
+                "gemma4-e2b-gguf",
+                "--runner-case",
+                "greeting",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn("bridge response happy 7 Hello. Curiosity systems are online.", completed.stdout)
+        self.assertIn("deterministic bridge fallback", completed.stderr)
+
+    def test_cli_lists_profiles_as_json(self):
+        script = Path(__file__).with_name("local_runner.py")
+        completed = subprocess.run(
+            [sys.executable, str(script), "--list"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertIn("gemma4-e2b-gguf", payload)
+
+
+if __name__ == "__main__":
+    unittest.main()

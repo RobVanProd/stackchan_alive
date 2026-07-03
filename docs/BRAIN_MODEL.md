@@ -59,13 +59,54 @@ python bridge/character_harness.py --model-profile gemma4-e2b-gguf --model-comma
 
 The command receives the prompt on stdin and must print one JSON object. This lets the same harness test Ollama, llama.cpp wrappers, and a future LiteRT-LM wrapper without changing the bridge validator.
 
+## Local Runner Wrapper
+
+The first P7 runner wrapper lives at `bridge/local_runner.py`. It keeps the primary GGUF
+target and the mobile LiteRT-LM target visible behind the same prompt suite:
+
+```powershell
+python bridge/local_runner.py --list
+python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --json
+python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case picked_up --json
+```
+
+No runner command is required for deterministic bridge demos. If neither a command argument
+nor an environment variable is set, the wrapper emits a fixed valid Character Lock response
+for the selected prompt case. That fallback is only a bridge/harness stabilizer; it is not a
+model benchmark.
+
+Use one of these command sources to run a real local model:
+
+- `--command "<runner command>"`
+- `STACKCHAN_GEMMA4_E2B_GGUF_COMMAND`
+- `STACKCHAN_GEMMA4_E2B_LITERT_COMMAND`
+- `STACKCHAN_GEMMA4_E4B_GGUF_COMMAND`
+- generic fallback: `STACKCHAN_MODEL_COMMAND`
+
+Example GGUF smoke:
+
+```powershell
+$env:STACKCHAN_GEMMA4_E2B_GGUF_COMMAND = "ollama run hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --require-runner --json
+```
+
+The runner result records validation output, elapsed milliseconds, and approximate tokens per
+second whenever a configured command is used. The same wrapper can feed device frames through
+the reference bridge:
+
+```powershell
+python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
+```
+
 Render a validated model-style response through the deterministic bridge frames:
 
 ```powershell
 python bridge/reference_bridge.py --format bench --model-response '{"spoken_text":"Looking at you now.","mode":"attend","earcon":"confirm","emotion":{"arousal":0.2,"valence":0.1},"memory_write":{"user.name":"Rob"},"memory_forget":[]}'
 ```
 
-This is the current P7 integration seam: the model speaks Character Lock JSON, the harness normalizes it, and the reference bridge renders the existing `stackchan.bridge.v1` device frames.
+This is the current P7 integration seam: the model or runner wrapper speaks Character Lock
+JSON, the harness normalizes it, and the reference bridge renders the existing
+`stackchan.bridge.v1` device frames.
 
 ## Acceptance Gate
 
