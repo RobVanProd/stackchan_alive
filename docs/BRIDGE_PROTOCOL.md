@@ -7,7 +7,7 @@ The bridge is the P7 boundary between the real-time firmware and a LAN companion
 Firmware bench replay uses newline-delimited UTF-8 JSON. The LAN bridge service uses
 WebSocket text frames for control and binary WebSocket frames for uploaded PCM. Downloaded
 audio chunks remain future work; current `audio` response frames carry mouth/envelope timing
-only.
+only, optionally sourced from host TTS metadata.
 
 For hardware bench replay before the LAN companion exists, run:
 
@@ -60,6 +60,19 @@ The STT command receives raw signed 16-bit mono PCM on stdin with
 `stt_not_implemented`; include `text` or `transcript` on `utterance_end` to test the runner
 path while bypassing STT.
 
+Response mouth timing can use a configured local TTS command:
+
+```powershell
+$env:STACKCHAN_TTS_COMMAND = "python path\to\local_tts.py"
+python bridge/lan_service.py --tts-command "python path\to\local_tts.py" --tts-voice rvc-bright
+```
+
+The TTS command receives response text on stdin with `STACKCHAN_TTS_TEXT_BYTES`,
+`STACKCHAN_TTS_VOICE`, and `STACKCHAN_TTS_OUTPUT=stackchan.tts-metadata.v1` in its
+environment. It must print metadata JSON with either compact `beats` or
+speech-envelope-sidecar-style `frames`. The service maps those beats into existing `audio`
+frames; it does not download binary audio to firmware yet.
+
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.
@@ -83,7 +96,7 @@ Example:
 - `listening`: bridge is receiving user speech.
 - `thinking`: bridge is processing; firmware emits `ThinkingStarted`.
 - `response_start`: response metadata is ready; firmware emits `ResponseStarted`.
-- `audio`: one mouth/audio timing frame. `env` is normalized `[0,1]`; `viseme` is `neutral`, `ah`, `oh`, or `ee`.
+- `audio`: one mouth/audio timing frame. `env` is normalized `[0,1]`; `viseme` is `neutral`, `ah`, `oh`, or `ee`. If a local TTS command is configured, these frames come from its returned beat metadata.
 - `response_end`: bridge finished the response; firmware emits `ResponseEnded`.
 - `heartbeat`: keepalive; no user-facing output.
 - `error`: recoverable bridge failure; firmware emits `Error` and falls back to packaged prompts.
@@ -110,5 +123,8 @@ output.
 - The bridge upload buffer is bounded and raw PCM is cleared at `utterance_end` or `cancel`.
   A configured local STT command may receive the one-turn PCM on stdin. Host memory may store
   summaries and validated memory fields, never raw audio.
+- A configured local TTS command may receive response text on stdin and return mouth timing
+  metadata. Generated audio files remain host-local until a later binary audio transport is
+  implemented and documented.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

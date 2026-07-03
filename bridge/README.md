@@ -79,6 +79,19 @@ The command receives raw signed 16-bit mono PCM on stdin and these environment v
 `stt_not_implemented`; include `text` or `transcript` on `utterance_end` to bypass STT while
 testing.
 
+Response mouth timing can use a local TTS command:
+
+```powershell
+$env:STACKCHAN_TTS_COMMAND = "python path\to\local_tts.py"
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --tts-command "python path\to\local_tts.py" --tts-voice rvc-bright
+```
+
+The command receives response text on stdin and these environment variables:
+`STACKCHAN_TTS_TEXT_BYTES`, `STACKCHAN_TTS_VOICE`, and
+`STACKCHAN_TTS_OUTPUT=stackchan.tts-metadata.v1`. It must print metadata JSON with either
+`beats` or a speech-envelope-sidecar-style `frames` array. The LAN service uses those beats
+for `audio` mouth frames. Actual binary audio download remains a later bridge transport step.
+
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded
 upload telemetry and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
