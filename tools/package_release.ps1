@@ -301,6 +301,8 @@ $releaseTools = @(
   "tools/run_device_preflight.ps1",
   "tools/send_speech_mouth_demo.cmd",
   "tools/send_speech_mouth_demo.ps1",
+  "tools/send_speak_all_intents_demo.cmd",
+  "tools/send_speak_all_intents_demo.ps1",
   "tools/share_release.cmd",
   "tools/share_release.ps1",
   "tools/start_hardware_evidence.cmd",
@@ -731,6 +733,8 @@ $manifest = [ordered]@{
     "tools/run_device_preflight.ps1",
     "tools/send_speech_mouth_demo.cmd",
     "tools/send_speech_mouth_demo.ps1",
+    "tools/send_speak_all_intents_demo.cmd",
+    "tools/send_speak_all_intents_demo.ps1",
     "tools/share_release.cmd",
     "tools/share_release.ps1",
     "tools/start_hardware_evidence.cmd",
@@ -857,7 +861,7 @@ $readinessReport = [ordered]@{
   )
   hardwareGates = @(
     [ordered]@{ gate = "display-only-flash"; status = "pending-device"; requiredEvidence = "display-only serial log, real photo/video, 10-minute idle observation" },
-    [ordered]@{ gate = "speech-mouth-demo-evidence"; status = "pending-device"; requiredEvidence = "logs/speech_mouth_demo_serial.log with streamed speech envelope commands, speech clear, and completion" },
+    [ordered]@{ gate = "speech-mouth-demo-evidence"; status = "pending-device"; requiredEvidence = "logs/speech_mouth_demo_serial.log with streamed speech envelope commands, speech clear, and completion; logs/speak_all_intents_serial.log with every packaged speech intent, earcon, and audio-output handoff" },
     [ordered]@{ gate = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ gate = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat and runtime health markers" },
     [ordered]@{ gate = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
@@ -897,7 +901,7 @@ $acceptanceChecklist = [ordered]@{
   )
   hardwareAcceptanceRequired = @(
     [ordered]@{ requirement = "display-only-flash"; status = "pending-device"; requiredEvidence = "display-only serial log, real photo/video, 10-minute idle observation" },
-    [ordered]@{ requirement = "speech-mouth-demo-evidence"; status = "pending-device"; requiredEvidence = "logs/speech_mouth_demo_serial.log with streamed speech envelope commands, speech clear, and completion" },
+    [ordered]@{ requirement = "speech-mouth-demo-evidence"; status = "pending-device"; requiredEvidence = "logs/speech_mouth_demo_serial.log with streamed speech envelope commands, speech clear, and completion; logs/speak_all_intents_serial.log with every packaged speech intent, earcon, and audio-output handoff" },
     [ordered]@{ requirement = "servo-calibration"; status = "pending-device"; requiredEvidence = "supervised servo log, yaw classification, calibration values" },
     [ordered]@{ requirement = "mixed-mode-soak"; status = "pending-device"; requiredEvidence = "30-minute soak log with heartbeat and runtime health markers" },
     [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
@@ -938,7 +942,7 @@ Consumer rollout: blocked pending hardware validation
 ## Still Required Before Consumer Rollout
 
 - [ ] Display-only flash with serial log, real photo/video, and 10-minute idle observation
-- [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion
+- [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff
 - [ ] Supervised servo calibration with yaw classification and calibration values
 - [ ] 30-minute mixed idle/listen/think/speak soak with heartbeat and runtime health markers
 - [ ] Power-cycle recovery: USB power-cycle observation marked pass
@@ -973,7 +977,7 @@ Consumer rollout: blocked pending hardware validation
 ## Pending Device Evidence
 
 - Display-only flash, visible procedural face, and 10-minute idle run.
-- Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion.
+- Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff.
 - Supervised servo calibration, yaw classification, and calibration values.
 - 30-minute mixed idle/listen/think/speak soak.
 - Power-cycle recovery: USB power-cycle observation marked pass.
@@ -1009,7 +1013,7 @@ Voice audition quick check:
 Hardware validation is still required before consumer rollout:
 
 1. Display-only flash and 10-minute idle run.
-2. Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion.
+2. Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff.
 3. Supervised servo-enable test.
 4. Yaw classification and calibration.
 5. 30-minute mixed idle/listen/speak soak.

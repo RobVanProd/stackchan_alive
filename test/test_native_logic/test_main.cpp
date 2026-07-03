@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -1279,6 +1280,59 @@ void test_sensor_adapter_parses_spoken_command_bench_events() {
   TEST_ASSERT_FALSE(parseBenchControlLine("command unknown", 4084, &control));
 }
 
+void test_sensor_adapter_parses_direct_speech_intent_cues() {
+  const SpeechIntent intents[] = {
+      SpeechIntent::Boot,
+      SpeechIntent::Idle,
+      SpeechIntent::Attend,
+      SpeechIntent::Listen,
+      SpeechIntent::Think,
+      SpeechIntent::Speak,
+      SpeechIntent::React,
+      SpeechIntent::Happy,
+      SpeechIntent::Concern,
+      SpeechIntent::Sleep,
+      SpeechIntent::Error,
+      SpeechIntent::Safety,
+  };
+  const char* names[] = {
+      "boot",
+      "idle",
+      "attend",
+      "listen",
+      "think",
+      "speak",
+      "react",
+      "happy",
+      "concern",
+      "sleep",
+      "error",
+      "safety",
+  };
+
+  for (size_t i = 0; i < sizeof(intents) / sizeof(intents[0]); ++i) {
+    char command[32] = {};
+    snprintf(command, sizeof(command), "speak %s", names[i]);
+    BenchControl control;
+    TEST_ASSERT_TRUE(parseBenchControlLine(command, 4090 + static_cast<uint32_t>(i), &control));
+    TEST_ASSERT_FALSE(control.hasEvent);
+    TEST_ASSERT_TRUE(control.hasSpeechCue);
+    TEST_ASSERT_EQUAL(static_cast<int>(intents[i]), static_cast<int>(control.speechCue.intent));
+    TEST_ASSERT_TRUE(control.speechCue.shouldSpeak());
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SpeechEarcon::None), static_cast<int>(control.speechCue.earcon));
+    TEST_ASSERT_EQUAL_STRING("speak_intent", control.command);
+  }
+
+  BenchControl speakMode;
+  TEST_ASSERT_TRUE(parseBenchControlLine("speak 0.5", 4104, &speakMode));
+  TEST_ASSERT_TRUE(speakMode.hasEvent);
+  TEST_ASSERT_FALSE(speakMode.hasSpeechCue);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak), static_cast<int>(speakMode.mode));
+
+  BenchControl unknown;
+  TEST_ASSERT_FALSE(parseBenchControlLine("speak unknown", 4105, &unknown));
+}
+
 void test_sensor_adapter_parses_audio_awareness_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("sound dir=-45 level=0.70", 4081, &control));
@@ -1932,6 +1986,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_circadian_context_commands);
   RUN_TEST(test_sensor_adapter_parses_face_tracking_commands);
   RUN_TEST(test_sensor_adapter_parses_spoken_command_bench_events);
+  RUN_TEST(test_sensor_adapter_parses_direct_speech_intent_cues);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
