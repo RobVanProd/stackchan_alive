@@ -31,6 +31,28 @@ struct AudioOutPlaybackRequest {
   bool duckOnBargeIn = true;
 };
 
+struct AudioOutHardwareFrame {
+  bool active = false;
+  bool clear = false;
+  bool ducked = false;
+  float envelope = 0.0f;
+  AudioOutViseme viseme = AudioOutViseme::Neutral;
+  uint32_t seq = 0;
+  uint32_t timestampMs = 0;
+  uint16_t durationMs = 80;
+};
+
+class AudioOutSpeakerSink {
+ public:
+  virtual ~AudioOutSpeakerSink() = default;
+
+  virtual bool begin() = 0;
+  virtual bool start(const AudioOutPlaybackRequest& request, uint32_t promptStartMs, uint32_t durationMs) = 0;
+  virtual bool writeFrame(const AudioOutHardwareFrame& frame) = 0;
+  virtual void stop() = 0;
+  virtual bool isReady() const = 0;
+};
+
 struct AudioOutSpeechFrame {
   bool active = false;
   bool clear = false;
@@ -44,14 +66,20 @@ struct AudioOutSpeechFrame {
 struct AudioOutTelemetry {
   bool ready = false;
   bool hardwareEnabled = false;
+  bool hardwareReady = false;
   bool taskPinnedToCore0 = false;
   bool playbackActive = false;
   bool duckActive = false;
+  bool hardwarePlaybackActive = false;
   uint32_t requestsQueued = 0;
   uint32_t requestsDropped = 0;
   uint32_t playbackCompleted = 0;
   uint32_t speechFramesEmitted = 0;
   uint32_t duckEvents = 0;
+  uint32_t hardwareStarts = 0;
+  uint32_t hardwareFramesSubmitted = 0;
+  uint32_t hardwareFrameDrops = 0;
+  uint32_t hardwareStops = 0;
   uint32_t lastSeq = 0;
   uint32_t playbackSeq = 0;
   uint32_t playbackStartedMs = 0;
@@ -70,7 +98,7 @@ struct AudioOutTelemetry {
 
 class AudioOut {
  public:
-  bool begin(bool hardwareEnabled = false);
+  bool begin(bool hardwareEnabled = false, AudioOutSpeakerSink* speakerSink = nullptr);
   bool enqueue(const AudioOutPlaybackRequest& request);
   bool pollSpeechFrame(uint32_t nowMs, AudioOutSpeechFrame* frameOut);
   bool duck(uint32_t nowMs);
@@ -107,10 +135,14 @@ class AudioOut {
   static SidecarTiming resolveSidecar(const AudioOutPlaybackRequest& request);
   static float envelopeForFrame(const SidecarTiming& timing, uint32_t frameIndex);
   static AudioOutViseme visemeForFrame(const SidecarTiming& timing, uint32_t frameIndex, float envelope);
+  void startHardwarePlayback(const AudioOutPlaybackRequest& request);
+  void submitHardwareFrame(const AudioOutSpeechFrame& frame, bool ducked);
+  void stopHardwarePlayback();
 
   AudioOutTelemetry telemetry_;
   AudioOutPlaybackRequest lastRequest_;
   PlaybackState playback_;
+  AudioOutSpeakerSink* speakerSink_ = nullptr;
 };
 
 }  // namespace stackchan

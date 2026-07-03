@@ -43,8 +43,8 @@ If you only have the extracted release ZIP, run the same helper from inside the 
 Expected result: the CoreS3 display shows the procedural face and serial logs include dry-run servo mode.
 Display telemetry should print about every 5 seconds with `frame_ms_avg`, `frame_ms_max`, `fps_window`, `frame_budget_us=33333`, and `slow_frames`.
 Face animator telemetry should also print about every 5 seconds with `[face]`, `blink_count`, `saccade_count`, `gesture_active`, `speech_active`, and `speech_env`.
-Speech cue telemetry should print `[speech]` lines with `seq`, `intent`, `earcon`, `earcon_delay_ms`, and `text` whenever the persona emits a new cue. The speech output adapter should then print `[speech_audio]` with `source=packaged_prompt`, `prompt_id`, `prompt_wav`, `prompt_sidecar`, `earcon_samples`, `earcon_peak`, and `earcon_checksum` so the P6 prompt/earcon handoff is visible before speaker playback is enabled. The audio-output boundary should also print `[audio_out]` with `seq`, `source`, `prompt_id`, `wav`, `sidecar`, `earcon_samples`, `sidecar_frames`, `sidecar_frame_ms`, `playback_ms`, and `duck_on_barge_in`. The display mouth is driven by the packaged sidecar timing while playback is active; if a `UserSpeaking` event arrives during playback, `AudioOut` ducks the mouth/audio envelope so barge-in is visible before the AW88298 speaker task is enabled. Packaged prompt sidecars live under `media/voice/sidecars/` in the release packet and are generated from the Stackchan Spark WAV prompts during packaging.
-Heartbeat telemetry should include `[system]`, `heap_free`, `heap_min`, and task stack high-water marks for loop, motion, face, and intent tasks. Runtime status should include `[runtime]`, `motion_enabled`, `demo_enabled`, `reduced_motion`, `speech_active`, `speech_env`, `camera_ready`, `camera_hw`, `camera_active`, `camera_events`, `speech_adapter_ready`, `speech_adapter_hw`, `speech_cues`, `speech_earcons`, `audio_out_ready`, `audio_out_hw`, `audio_out_core0`, `audio_out_requests`, `audio_out_playing`, `audio_out_frames`, and `audio_out_ducks`. Camera hardware capture is compiled off by default until the GC0308/ESP-DL producer is enabled; the P5 camera adapter still owns the same `FaceDetected`/`FaceLost` event boundary used by the `facepos` bench commands.
+Speech cue telemetry should print `[speech]` lines with `seq`, `intent`, `earcon`, `earcon_delay_ms`, and `text` whenever the persona emits a new cue. The speech output adapter should then print `[speech_audio]` with `source=packaged_prompt`, `prompt_id`, `prompt_wav`, `prompt_sidecar`, `earcon_samples`, `earcon_peak`, and `earcon_checksum` so the P6 prompt/earcon handoff is visible. The audio-output boundary should also print `[audio_out]` with `seq`, `source`, `prompt_id`, `wav`, `sidecar`, `earcon_samples`, `sidecar_frames`, `sidecar_frame_ms`, `playback_ms`, `hw_ready`, `hw_playing`, `hw_starts`, and `duck_on_barge_in`. The display mouth and M5 speaker carrier are driven by the packaged sidecar timing while playback is active; if a `UserSpeaking` event arrives during playback, `AudioOut` ducks the mouth/audio envelope so barge-in is visible and audible before full packaged-WAV storage playback is enabled. Packaged prompt sidecars live under `media/voice/sidecars/` in the release packet and are generated from the Stackchan Spark WAV prompts during packaging.
+Heartbeat telemetry should include `[system]`, `heap_free`, `heap_min`, and task stack high-water marks for loop, motion, face, and intent tasks. Runtime status should include `[runtime]`, `motion_enabled`, `demo_enabled`, `reduced_motion`, `speech_active`, `speech_env`, `camera_ready`, `camera_hw`, `camera_active`, `camera_events`, `speech_adapter_ready`, `speech_adapter_hw`, `speech_cues`, `speech_earcons`, `audio_out_ready`, `audio_out_hw`, `audio_out_hw_ready`, `audio_out_core0`, `audio_out_requests`, `audio_out_playing`, `audio_out_frames`, `audio_out_ducks`, `audio_out_hw_frames`, and `audio_out_hw_drops`. Camera hardware capture is compiled off by default until the GC0308/ESP-DL producer is enabled; the P5 camera adapter still owns the same `FaceDetected`/`FaceLost` event boundary used by the `facepos` bench commands.
 
 The firmware also accepts deterministic serial bench controls at `115200` baud. Send one command per line to force a mode/event and verify face transitions plus `[speech]` cue telemetry without waiting for the random demo scheduler:
 
@@ -137,6 +137,7 @@ Servos are disabled by default in `platformio.ini`:
 
 ```ini
 -D STACKCHAN_ENABLE_SERVOS=0
+-D STACKCHAN_ENABLE_SPEAKER=1
 ```
 
 Use the default display-only environment first:
@@ -152,6 +153,8 @@ Check the servo upload command without touching the device:
 ```
 
 Only use the servo calibration environment after the display-only build runs and the body is on a clear surface:
+
+The servo-calibration firmware keeps `STACKCHAN_ENABLE_SPEAKER=0` so calibration and motion-risk checks do not produce speaker output. The display-only firmware keeps speaker output enabled and should report `audio_out_hw_ready=1` if the M5 speaker path initializes.
 
 ```powershell
 .\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3
