@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, and no-hardware virtual Stackchan simulator exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, and no-hardware virtual Stackchan simulator exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -52,8 +52,10 @@ Keep each item independently shippable and package-verified.
      milliseconds plus approximate tokens per second.
    - When no runner is configured, the wrapper emits deterministic valid Character Lock JSON
      so bridge demos and firmware bench replay remain repeatable.
-   - Next: install/run the selected Gemma 4 E2B target on the host and record harness speed
-     and character-lock pass evidence.
+   - `bridge/model_benchmark.py` runs the prompt suite across profiles and writes
+     `model_benchmark.json` plus `MODEL_BENCHMARK.md`.
+   - Next: install/run the selected Gemma 4 E2B target on the host and record a non-dry-run
+     benchmark with speed and Character Lock pass evidence.
 
 3. LAN bridge loop.
    - `bridge/lan_service.py` runs a local WebSocket service around the same frame schema.

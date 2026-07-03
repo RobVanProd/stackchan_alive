@@ -232,13 +232,28 @@ Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
-Copy-Item -LiteralPath "bridge/README.md" -Destination $bridgeDir
-Copy-Item -LiteralPath "bridge/character_harness.py" -Destination $bridgeDir
-Copy-Item -LiteralPath "bridge/test_character_harness.py" -Destination $bridgeDir
-Copy-Item -LiteralPath "bridge/reference_bridge.py" -Destination $bridgeDir
-Copy-Item -LiteralPath "bridge/test_reference_bridge.py" -Destination $bridgeDir
-Copy-Item -LiteralPath "bridge/hardware_simulator.py" -Destination $bridgeDir
-Copy-Item -LiteralPath "bridge/test_hardware_simulator.py" -Destination $bridgeDir
+$bridgePackageFiles = @(
+  "README.md",
+  "character_harness.py",
+  "test_character_harness.py",
+  "reference_bridge.py",
+  "test_reference_bridge.py",
+  "local_runner.py",
+  "test_local_runner.py",
+  "model_benchmark.py",
+  "test_model_benchmark.py",
+  "stt_adapter.py",
+  "test_stt_adapter.py",
+  "tts_adapter.py",
+  "test_tts_adapter.py",
+  "lan_service.py",
+  "test_lan_service.py",
+  "hardware_simulator.py",
+  "test_hardware_simulator.py"
+)
+foreach ($bridgeFile in $bridgePackageFiles) {
+  Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
+}
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
   -VoiceSourceProvenancePath (Join-Path $dataDir "voice_source_provenance.yaml") `
@@ -816,6 +831,16 @@ $manifest = [ordered]@{
     "provenance/bridge/README.md",
     "provenance/bridge/reference_bridge.py",
     "provenance/bridge/test_reference_bridge.py",
+    "provenance/bridge/local_runner.py",
+    "provenance/bridge/test_local_runner.py",
+    "provenance/bridge/model_benchmark.py",
+    "provenance/bridge/test_model_benchmark.py",
+    "provenance/bridge/stt_adapter.py",
+    "provenance/bridge/test_stt_adapter.py",
+    "provenance/bridge/tts_adapter.py",
+    "provenance/bridge/test_tts_adapter.py",
+    "provenance/bridge/lan_service.py",
+    "provenance/bridge/test_lan_service.py",
     "provenance/bridge/hardware_simulator.py",
     "provenance/bridge/test_hardware_simulator.py",
     "provenance/firmware.yml",

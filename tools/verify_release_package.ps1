@@ -142,6 +142,16 @@ $requiredFiles = @(
   "bridge/test_character_harness.py",
   "bridge/reference_bridge.py",
   "bridge/test_reference_bridge.py",
+  "bridge/local_runner.py",
+  "bridge/test_local_runner.py",
+  "bridge/model_benchmark.py",
+  "bridge/test_model_benchmark.py",
+  "bridge/stt_adapter.py",
+  "bridge/test_stt_adapter.py",
+  "bridge/tts_adapter.py",
+  "bridge/test_tts_adapter.py",
+  "bridge/lan_service.py",
+  "bridge/test_lan_service.py",
   "bridge/hardware_simulator.py",
   "bridge/test_hardware_simulator.py",
   "firmware/display_only/bootloader.bin",
@@ -308,6 +318,16 @@ $requiredFiles = @(
   "provenance/bridge/README.md",
   "provenance/bridge/reference_bridge.py",
   "provenance/bridge/test_reference_bridge.py",
+  "provenance/bridge/local_runner.py",
+  "provenance/bridge/test_local_runner.py",
+  "provenance/bridge/model_benchmark.py",
+  "provenance/bridge/test_model_benchmark.py",
+  "provenance/bridge/stt_adapter.py",
+  "provenance/bridge/test_stt_adapter.py",
+  "provenance/bridge/tts_adapter.py",
+  "provenance/bridge/test_tts_adapter.py",
+  "provenance/bridge/lan_service.py",
+  "provenance/bridge/test_lan_service.py",
   "provenance/bridge/hardware_simulator.py",
   "provenance/bridge/test_hardware_simulator.py"
 )
@@ -708,6 +728,76 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
   }
 }
 
+$localRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/local_runner.py") -Raw
+foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback")) {
+  if ($localRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/local_runner.py missing local runner support: $pattern"
+  }
+}
+
+$localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
+foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_command_runner_measures_speed_and_validates_json", "gemma4-e2b-litert-lm")) {
+  if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_local_runner.py missing local runner test coverage: $pattern"
+  }
+}
+
+$modelBenchmarkText = Get-Content -LiteralPath (Join-PackagePath "bridge/model_benchmark.py") -Raw
+foreach ($pattern in @("stackchan.model-benchmark.v1", "RUNNER_PROFILES", "run_benchmark", "write_outputs", "MODEL_BENCHMARK.md", "model_benchmark.json", "dry-run-no-runner-configured", "approx_tokens_per_sec")) {
+  if ($modelBenchmarkText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/model_benchmark.py missing model benchmark support: $pattern"
+  }
+}
+
+$modelBenchmarkTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_model_benchmark.py") -Raw
+foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_marks_dry_run_without_runner", "test_real_command_result_records_speed", "test_outputs_include_json_and_markdown_summary", "test_cli_writes_report")) {
+  if ($modelBenchmarkTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_model_benchmark.py missing model benchmark test coverage: $pattern"
+  }
+}
+
+$lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "utterance_start", "utterance_end", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes")) {
+  if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
+  }
+}
+
+$lanServiceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_service.py") -Raw
+foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats")) {
+  if ($lanServiceTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_lan_service.py missing LAN bridge service test coverage: $pattern"
+  }
+}
+
+$sttAdapterText = Get-Content -LiteralPath (Join-PackagePath "bridge/stt_adapter.py") -Raw
+foreach ($pattern in @("STACKCHAN_AUDIO_SAMPLE_RATE", "STACKCHAN_AUDIO_FORMAT", "STACKCHAN_AUDIO_BYTES", "run_stt_command", "normalize_transcript")) {
+  if ($sttAdapterText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/stt_adapter.py missing STT adapter support: $pattern"
+  }
+}
+
+$sttAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_stt_adapter.py") -Raw
+foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_an_execution_error")) {
+  if ($sttAdapterTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_stt_adapter.py missing STT adapter test coverage: $pattern"
+  }
+}
+
+$ttsAdapterText = Get-Content -LiteralPath (Join-PackagePath "bridge/tts_adapter.py") -Raw
+foreach ($pattern in @("STACKCHAN_TTS_TEXT_BYTES", "STACKCHAN_TTS_VOICE", "STACKCHAN_TTS_OUTPUT", "normalize_tts_output", "audio_b64", "stackchan.tts-metadata.v1")) {
+  if ($ttsAdapterText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/tts_adapter.py missing TTS adapter support: $pattern"
+  }
+}
+
+$ttsAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_tts_adapter.py") -Raw
+foreach ($pattern in @("TtsAdapterTests", "test_compact_beat_output_normalizes_and_marks_final", "test_sidecar_frame_output_uses_frame_timing", "test_optional_audio_b64_is_decoded_and_counted", "test_tts_command_receives_text_and_voice_environment")) {
+  if ($ttsAdapterTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_tts_adapter.py missing TTS adapter test coverage: $pattern"
+  }
+}
+
 $hardwareSimulatorText = Get-Content -LiteralPath (Join-PackagePath "bridge/hardware_simulator.py") -Raw
 foreach ($pattern in @("stackchan.hardware-sim.v1", "VirtualStackchanHardware", "full_audio_downlink_frames", "lan_text_frames", "audio_stream_start", "audio_stream_end", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "bridge_timeout", "hardware_simulation.json", "HARDWARE_SIMULATION.md")) {
   if ($hardwareSimulatorText -notmatch [regex]::Escape($pattern)) {
@@ -723,7 +813,7 @@ foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reache
 }
 
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "gemma4-e2b-litert-lm", "hardware_simulator.py", "virtual Stackchan")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "local_runner.py", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "hardware_simulator.py", "virtual Stackchan")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
