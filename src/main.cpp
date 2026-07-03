@@ -109,6 +109,14 @@ const __FlashStringHelper* eventTypeName(EventType type) {
       return F("idle_timeout");
     case EventType::Error:
       return F("error");
+    case EventType::PickedUp:
+      return F("picked_up");
+    case EventType::Shaken:
+      return F("shaken");
+    case EventType::PutDown:
+      return F("put_down");
+    case EventType::Tilted:
+      return F("tilted");
   }
   return F("unknown");
 }
@@ -271,6 +279,14 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(eventTypeName(control.event.type));
     Serial.print(F(" strength="));
     Serial.print(control.event.strength, 2);
+    if (control.event.hasPayload) {
+      Serial.print(F(" payload_x="));
+      Serial.print(control.event.x, 2);
+      Serial.print(F(" payload_y="));
+      Serial.print(control.event.y, 2);
+      Serial.print(F(" payload_z="));
+      Serial.print(control.event.z, 2);
+    }
   }
   if (control.hasSpeech) {
     Serial.print(F(" speech_clear="));

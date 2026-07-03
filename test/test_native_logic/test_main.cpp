@@ -128,6 +128,35 @@ void test_circadian_evening_raises_fatigue_and_morning_recovers() {
   TEST_ASSERT_LESS_THAN_FLOAT(nightFatigue, model.profile().fatigue);
 }
 
+void test_physical_events_shape_emotion() {
+  EmotionModel forehead;
+  forehead.reset();
+  RobotEvent event;
+  event.type = EventType::UserTouched;
+  event.strength = 1.0f;
+  event.hasPayload = true;
+  event.y = -0.75f;
+  forehead.applyEvent(event);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.50f, forehead.profile().valence);
+  TEST_ASSERT_FLOAT_WITHIN(0.02f, 0.20f, forehead.profile().arousal);
+
+  EmotionModel poke;
+  poke.reset();
+  event.hasPayload = false;
+  event.strength = 1.0f;
+  poke.applyEvent(event);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.45f, poke.profile().valence);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.30f, poke.profile().arousal);
+
+  EmotionModel shaken;
+  shaken.reset();
+  event.type = EventType::Shaken;
+  event.strength = 1.0f;
+  shaken.applyEvent(event);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.60f, shaken.profile().arousal);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.20f, shaken.profile().valence);
+}
+
 void test_mood_decay_returns_toward_baseline() {
   EmotionModel model;
   model.reset();
@@ -694,6 +723,62 @@ void test_sensor_adapter_parses_circadian_context_commands() {
   TEST_ASSERT_FALSE(parseBenchControlLine("time 24", 4080, &control));
 }
 
+void test_sensor_adapter_parses_physical_sense_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("touch cheek", 4090, &control));
+  TEST_ASSERT_TRUE(control.hasEvent);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::React), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::UserTouched), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.55f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.55f, control.event.y);
+  TEST_ASSERT_EQUAL_STRING("touch_payload", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("touch forehead", 4100, &control));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.75f, control.event.y);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("touch 0.25 -0.60 0.75", 4110, &control));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.25f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.60f, control.event.y);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.75f, control.event.strength);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("proximity 0.85", 4120, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::UserNear), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.85f, control.event.z);
+  TEST_ASSERT_EQUAL_STRING("proximity_near", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("pickup 0.80", 4130, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::PickedUp), static_cast<int>(control.event.type));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.80f, control.event.strength);
+  TEST_ASSERT_EQUAL_STRING("event_picked_up", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("shake 1.0", 4140, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Error), static_cast<int>(control.mode));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::Shaken), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_FALSE(control.motionEnabled);
+  TEST_ASSERT_EQUAL_STRING("event_shaken_hold", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("putdown", 4150, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::PutDown), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.hasMotionEnable);
+  TEST_ASSERT_TRUE(control.motionEnabled);
+  TEST_ASSERT_EQUAL_STRING("event_put_down_resume", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("tilt x=0.40 y=-0.20 z=0.90", 4160, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::Tilted), static_cast<int>(control.event.type));
+  TEST_ASSERT_TRUE(control.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.40f, control.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.20f, control.event.y);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.90f, control.event.z);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("tilt x 0.1 y banana z 0.2", 4170, &control));
+}
+
 void test_sensor_adapter_parses_reduced_motion_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("reduced on", 4100, &control));
@@ -997,6 +1082,7 @@ int main() {
   RUN_TEST(test_ambient_dark_night_increases_fatigue);
   RUN_TEST(test_ambient_bright_day_reduces_fatigue_and_lifts_arousal);
   RUN_TEST(test_circadian_evening_raises_fatigue_and_morning_recovers);
+  RUN_TEST(test_physical_events_shape_emotion);
   RUN_TEST(test_mood_decay_returns_toward_baseline);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
@@ -1032,6 +1118,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_speech_clear_and_rejects_unknown_viseme);
   RUN_TEST(test_sensor_adapter_parses_ambient_context_commands);
   RUN_TEST(test_sensor_adapter_parses_circadian_context_commands);
+  RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
   RUN_TEST(test_sensor_adapter_parses_motion_stop_commands);
   RUN_TEST(test_sensor_adapter_parses_demo_enable_commands);

@@ -96,7 +96,10 @@ void normalizeLine(const char* line, char* out, size_t outSize) {
     if (ch == '=' || ch == ':' || ch == ',' || ch == '\r' || ch == '\n') {
       ch = ' ';
     } else if (ch == '-') {
-      ch = '_';
+      const char next = static_cast<char>(line[i + 1]);
+      if (!isdigit(static_cast<unsigned char>(next)) && next != '.') {
+        ch = '_';
+      }
     }
     out[i] = ch;
   }
@@ -156,6 +159,20 @@ bool parseHour(const char* token, uint8_t* hourOut) {
     return false;
   }
   *hourOut = static_cast<uint8_t>(parsed);
+  return true;
+}
+
+bool parsePayloadValue(const char* token, float* valueOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const float parsed = strtof(token, &end);
+  if (end == token) {
+    return false;
+  }
+  *valueOut = constrain(parsed, -1.0f, 1.0f);
   return true;
 }
 
@@ -242,6 +259,149 @@ bool fillCircadian(char** tokens, uint8_t tokenCount, BenchControl* controlOut) 
   parsed.command = "circadian_context";
   *controlOut = parsed;
   return true;
+}
+
+bool fillPhysicalEvent(const char* first, char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasEvent = true;
+  parsed.event.timestampMs = nowMs;
+  parsed.event.strength = 1.0f;
+
+  if (strcmp(first, "touch") == 0 || strcmp(first, "touched") == 0 ||
+      strcmp(first, "poke") == 0 || strcmp(first, "pat") == 0) {
+    if (strcmp(first, "poke") == 0) {
+      parsed.event.strength = 1.0f;
+      parsed.event.hasPayload = true;
+      parsed.event.y = 0.0f;
+    } else if (strcmp(first, "pat") == 0) {
+      parsed.event.strength = 0.65f;
+      parsed.event.hasPayload = true;
+      parsed.event.y = -0.75f;
+    }
+
+    if (tokenCount >= 1 && tokens[0] != nullptr) {
+      if (strcmp(tokens[0], "cheek") == 0 || strcmp(tokens[0], "right_cheek") == 0) {
+        parsed.event.hasPayload = true;
+        parsed.event.x = 0.55f;
+        parsed.event.y = 0.55f;
+      } else if (strcmp(tokens[0], "left_cheek") == 0) {
+        parsed.event.hasPayload = true;
+        parsed.event.x = -0.55f;
+        parsed.event.y = 0.55f;
+      } else if (strcmp(tokens[0], "forehead") == 0 || strcmp(tokens[0], "head") == 0) {
+        parsed.event.hasPayload = true;
+        parsed.event.x = 0.0f;
+        parsed.event.y = -0.75f;
+      } else if (strcmp(tokens[0], "poke") == 0) {
+        parsed.event.strength = 1.0f;
+      } else if (tokenCount >= 2 && parsePayloadValue(tokens[0], &parsed.event.x) &&
+                 parsePayloadValue(tokens[1], &parsed.event.y)) {
+        parsed.event.hasPayload = true;
+        if (tokenCount >= 3) {
+          parseStrength(tokens[2], &parsed.event.strength);
+        }
+      } else {
+        return false;
+      }
+    }
+
+    parsed.mode = CharacterMode::React;
+    parsed.event.type = EventType::UserTouched;
+    parsed.command = parsed.event.hasPayload ? "touch_payload" : "event_touch";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "proximity") == 0 || strcmp(first, "prox") == 0) {
+    if (tokenCount >= 1 && !parseStrength(tokens[0], &parsed.event.strength)) {
+      return false;
+    }
+    parsed.mode = CharacterMode::Attend;
+    parsed.event.type = EventType::UserNear;
+    parsed.event.hasPayload = true;
+    parsed.event.z = parsed.event.strength;
+    parsed.command = "proximity_near";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "pickup") == 0 || strcmp(first, "pickedup") == 0 ||
+      strcmp(first, "picked_up") == 0 || strcmp(first, "lift") == 0 ||
+      strcmp(first, "lifted") == 0) {
+    if (tokenCount >= 1) {
+      parseStrength(tokens[0], &parsed.event.strength);
+    }
+    parsed.mode = CharacterMode::React;
+    parsed.event.type = EventType::PickedUp;
+    parsed.event.hasPayload = true;
+    parsed.event.z = 1.0f;
+    parsed.command = "event_picked_up";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "shake") == 0 || strcmp(first, "shaken") == 0) {
+    if (tokenCount >= 1) {
+      parseStrength(tokens[0], &parsed.event.strength);
+    }
+    parsed.mode = CharacterMode::Error;
+    parsed.event.type = EventType::Shaken;
+    parsed.event.hasPayload = true;
+    parsed.event.z = parsed.event.strength;
+    parsed.hasMotionEnable = true;
+    parsed.motionEnabled = false;
+    parsed.command = "event_shaken_hold";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "putdown") == 0 || strcmp(first, "put_down") == 0 ||
+      strcmp(first, "settled") == 0) {
+    parsed.mode = CharacterMode::Attend;
+    parsed.event.type = EventType::PutDown;
+    parsed.event.hasPayload = true;
+    parsed.event.z = 0.0f;
+    parsed.hasMotionEnable = true;
+    parsed.motionEnabled = true;
+    parsed.command = "event_put_down_resume";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "tilt") == 0 || strcmp(first, "tilted") == 0) {
+    bool hasX = false;
+    bool hasY = false;
+    bool hasZ = false;
+    if (tokenCount >= 3 && parsePayloadValue(tokens[0], &parsed.event.x) &&
+        parsePayloadValue(tokens[1], &parsed.event.y) &&
+        parsePayloadValue(tokens[2], &parsed.event.z)) {
+      hasX = true;
+      hasY = true;
+      hasZ = true;
+    }
+    for (uint8_t i = 0; i + 1 < tokenCount; ++i) {
+      if (strcmp(tokens[i], "x") == 0) {
+        hasX = parsePayloadValue(tokens[i + 1], &parsed.event.x) || hasX;
+      } else if (strcmp(tokens[i], "y") == 0) {
+        hasY = parsePayloadValue(tokens[i + 1], &parsed.event.y) || hasY;
+      } else if (strcmp(tokens[i], "z") == 0) {
+        hasZ = parsePayloadValue(tokens[i + 1], &parsed.event.z) || hasZ;
+      } else if (strcmp(tokens[i], "strength") == 0 || strcmp(tokens[i], "level") == 0) {
+        parseStrength(tokens[i + 1], &parsed.event.strength);
+      }
+    }
+    if (!hasX || !hasY || !hasZ) {
+      return false;
+    }
+    parsed.mode = CharacterMode::React;
+    parsed.event.type = EventType::Tilted;
+    parsed.event.hasPayload = true;
+    parsed.command = "event_tilted";
+    *controlOut = parsed;
+    return true;
+  }
+
+  return false;
 }
 
 bool parseOnOff(const char* token, bool* valueOut) {
@@ -461,6 +621,7 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   char* fourth = strtok(nullptr, " \t");
   char* fifth = strtok(nullptr, " \t");
   char* sixth = strtok(nullptr, " \t");
+  char* seventh = strtok(nullptr, " \t");
 
   bool forceMode = false;
   bool forceEvent = false;
@@ -484,9 +645,9 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return fillFromSpeech(second, third, fourth, nowMs, controlOut);
   }
 
-  char* ambientTokens[] = {second, third, fourth, fifth, sixth};
+  char* ambientTokens[] = {second, third, fourth, fifth, sixth, seventh};
   uint8_t ambientTokenCount = 0;
-  while (ambientTokenCount < 5 && ambientTokens[ambientTokenCount] != nullptr) {
+  while (ambientTokenCount < 6 && ambientTokens[ambientTokenCount] != nullptr) {
     ambientTokenCount++;
   }
   if (strcmp(first, "ambient") == 0 || strcmp(first, "light") == 0 ||
@@ -496,6 +657,17 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   if (strcmp(first, "time") == 0 || strcmp(first, "hour") == 0 ||
       strcmp(first, "clock") == 0 || strcmp(first, "circadian") == 0) {
     return fillCircadian(ambientTokens, ambientTokenCount, controlOut);
+  }
+  if (strcmp(first, "touch") == 0 || strcmp(first, "touched") == 0 ||
+      strcmp(first, "poke") == 0 || strcmp(first, "pat") == 0 ||
+      strcmp(first, "proximity") == 0 || strcmp(first, "prox") == 0 ||
+      strcmp(first, "pickup") == 0 || strcmp(first, "pickedup") == 0 ||
+      strcmp(first, "picked_up") == 0 || strcmp(first, "lift") == 0 ||
+      strcmp(first, "lifted") == 0 || strcmp(first, "shake") == 0 ||
+      strcmp(first, "shaken") == 0 || strcmp(first, "putdown") == 0 ||
+      strcmp(first, "put_down") == 0 || strcmp(first, "settled") == 0 ||
+      strcmp(first, "tilt") == 0 || strcmp(first, "tilted") == 0) {
+    return fillPhysicalEvent(first, ambientTokens, ambientTokenCount, nowMs, controlOut);
   }
 
   if (strcmp(first, "reduced") == 0 || strcmp(first, "reduced_motion") == 0 ||
@@ -572,6 +744,8 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
   Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
   Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
+  Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));
+  Serial.println(F("[control] help: pickup [strength]; shake [strength]; putdown; tilt <x> <y> <z>"));
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));
