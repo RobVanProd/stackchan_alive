@@ -8,7 +8,7 @@ import base64
 import hashlib
 import json
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,8 @@ from reference_bridge import (
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
+DEFAULT_SAMPLE_RATE = 16000
+DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 
 
 class WebSocketProtocolError(RuntimeError):
@@ -39,8 +41,71 @@ class LanBridgeConfig:
     runner_command: str = ""
     require_runner: bool = False
     runner_timeout_ms: int = 60000
+    max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
     memory_file: Path | None = None
     once: bool = False
+
+
+@dataclass
+class AudioUpload:
+    sample_rate: int = DEFAULT_SAMPLE_RATE
+    active: bool = False
+    bytes_received: int = 0
+    chunks: int = 0
+    truncated: bool = False
+    buffer: bytearray = field(default_factory=bytearray)
+
+    def start(self, sample_rate: object = DEFAULT_SAMPLE_RATE) -> None:
+        self.clear()
+        try:
+            parsed_rate = int(sample_rate)
+        except (TypeError, ValueError):
+            parsed_rate = DEFAULT_SAMPLE_RATE
+        self.sample_rate = max(8000, min(48000, parsed_rate))
+        self.active = True
+
+    def clear(self) -> None:
+        self.active = False
+        self.bytes_received = 0
+        self.chunks = 0
+        self.truncated = False
+        self.buffer.clear()
+
+    def append(self, payload: bytes, max_bytes: int) -> None:
+        if not self.active:
+            raise WebSocketProtocolError("audio received before utterance_start")
+        self.chunks += 1
+        allowed = max(0, int(max_bytes) - self.bytes_received)
+        self.bytes_received += len(payload)
+        if len(payload) > allowed:
+            self.truncated = True
+        if allowed > 0:
+            self.buffer.extend(payload[:allowed])
+
+    @property
+    def stored_bytes(self) -> int:
+        return len(self.buffer)
+
+    @property
+    def duration_ms(self) -> int:
+        if self.sample_rate <= 0:
+            return 0
+        return int((self.bytes_received / 2) / self.sample_rate * 1000)
+
+    def summary(self) -> dict[str, object]:
+        return {
+            "audio_bytes": self.bytes_received,
+            "audio_stored_bytes": self.stored_bytes,
+            "audio_chunks": self.chunks,
+            "audio_sample_rate": self.sample_rate,
+            "audio_duration_ms": self.duration_ms,
+            "audio_truncated": self.truncated,
+        }
+
+    def finish_and_clear(self) -> dict[str, object]:
+        summary = self.summary()
+        self.clear()
+        return summary
 
 
 def websocket_accept_value(client_key: str) -> str:
@@ -162,6 +227,7 @@ class LanBridgeSession:
         self.memory = memory if memory is not None else BridgeMemory()
         self.session = "lan"
         self.next_seq = 1
+        self.audio = AudioUpload()
 
     def _save_memory(self) -> None:
         if self.config.memory_file:
@@ -182,22 +248,48 @@ class LanBridgeSession:
         if message_type == "heartbeat":
             return [{"type": "heartbeat"}]
         if message_type == "utterance_start":
-            return [{"type": "listening"}]
+            self.audio.start(message.get("sample_rate", DEFAULT_SAMPLE_RATE))
+            return [{"type": "listening", **self.audio.summary()}]
         if message_type == "cancel":
+            self.audio.clear()
             return [error_frame("cancelled")]
         if message_type == "utterance_audio":
-            return [error_frame("binary_audio_not_implemented", "text-only P7 LAN scaffold")]
+            return self._handle_text_audio(message)
         if message_type == "utterance_end":
             return self._handle_utterance_end(message)
         return [error_frame("unsupported_message", message_type)]
 
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
-        return [error_frame("binary_audio_not_implemented", f"{len(payload)} bytes ignored")]
+        try:
+            self.audio.append(payload, self.config.max_audio_bytes)
+        except WebSocketProtocolError as exc:
+            return [error_frame("audio_without_utterance", str(exc))]
+        return [{"type": "heartbeat", **self.audio.summary()}]
+
+    def _handle_text_audio(self, message: dict[str, Any]) -> list[dict[str, object]]:
+        encoded = str(message.get("pcm_b64") or message.get("audio_b64") or "").strip()
+        if not encoded:
+            return [error_frame("audio_payload_missing", "send binary WebSocket PCM or pcm_b64")]
+        try:
+            payload = base64.b64decode(encoded, validate=True)
+        except (ValueError, base64.binascii.Error):
+            return [error_frame("audio_payload_invalid", "pcm_b64 is not valid base64")]
+        return self.handle_binary(payload)
 
     def _handle_utterance_end(self, message: dict[str, Any]) -> list[dict[str, object]]:
         seq = int(message.get("seq") or self.next_seq)
         self.next_seq = max(self.next_seq, seq + 1)
-        user_text = " ".join(str(message.get("text", "")).split())
+        user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
+        audio_summary = self.audio.finish_and_clear()
+        has_audio = int(audio_summary["audio_bytes"]) > 0
+        if has_audio and not user_text:
+            return [
+                error_frame(
+                    "stt_not_implemented",
+                    f"received {audio_summary['audio_bytes']} PCM bytes; provide transcript until STT lands",
+                )
+                | audio_summary
+            ]
         if user_text:
             self.memory = self.memory.remember_user_text(user_text)
 
@@ -222,6 +314,8 @@ class LanBridgeSession:
         )
         self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
+        if has_audio:
+            frames[0].update(audio_summary)
         if validation.issues:
             frames.insert(0, error_frame("character_validation", ",".join(validation.issues)))
         return frames
@@ -286,6 +380,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-command", default="")
     parser.add_argument("--require-runner", action="store_true")
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
+    parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--reset-memory", action="store_true")
     return parser
@@ -304,6 +399,7 @@ def main() -> int:
         runner_command=args.runner_command,
         require_runner=args.require_runner,
         runner_timeout_ms=args.runner_timeout_ms,
+        max_audio_bytes=args.max_audio_bytes,
         memory_file=args.memory_file,
     )
     serve(config)

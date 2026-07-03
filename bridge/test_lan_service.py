@@ -1,5 +1,6 @@
 import json
 import os
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -68,7 +69,7 @@ class LanServiceTests(unittest.TestCase):
             )
 
         self.assertEqual([{"type": "hello", "protocol": PROTOCOL, "session": "stackchan-001"}], hello)
-        self.assertEqual([{"type": "listening"}], listening)
+        self.assertEqual("listening", listening[0]["type"])
         self.assertEqual("thinking", response[0]["type"])
         self.assertEqual("response_start", response[1]["type"])
         self.assertEqual("react", response[1]["intent"])
@@ -91,17 +92,68 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("Rob", loaded.preferred_name)
         self.assertIn("bridge", loaded.recent_topics)
 
+    def test_binary_audio_upload_tracks_telemetry_and_requires_transcript_for_now(self):
+        session = LanBridgeSession(LanBridgeConfig(max_audio_bytes=6))
+
+        listening = session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
+        first = session.handle_binary(b"\x01\x00\x02\x00")
+        second = session.handle_binary(b"\x03\x00\x04\x00")
+        error = session.handle_text(json.dumps({"type": "utterance_end", "seq": 2}))
+
+        self.assertEqual("listening", listening[0]["type"])
+        self.assertEqual(16000, listening[0]["audio_sample_rate"])
+        self.assertEqual("heartbeat", first[0]["type"])
+        self.assertEqual(4, first[0]["audio_bytes"])
+        self.assertEqual(4, first[0]["audio_stored_bytes"])
+        self.assertEqual("heartbeat", second[0]["type"])
+        self.assertEqual(8, second[0]["audio_bytes"])
+        self.assertEqual(6, second[0]["audio_stored_bytes"])
+        self.assertTrue(second[0]["audio_truncated"])
+        self.assertEqual("stt_not_implemented", error[0]["code"])
+        self.assertEqual(8, error[0]["audio_bytes"])
+        self.assertFalse(session.audio.active)
+        self.assertEqual(0, session.audio.bytes_received)
+
+    def test_binary_audio_with_placeholder_transcript_runs_runner(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            session = LanBridgeSession(LanBridgeConfig(runner_case="greeting"))
+
+            session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 8000}))
+            upload = session.handle_binary(b"\x01\x00\x02\x00")
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 3, "transcript": "I picked you up."})
+            )
+
+        self.assertEqual("heartbeat", upload[0]["type"])
+        self.assertEqual("thinking", frames[0]["type"])
+        self.assertEqual(4, frames[0]["audio_bytes"])
+        self.assertEqual(8000, frames[0]["audio_sample_rate"])
+        self.assertEqual("response_start", frames[1]["type"])
+        self.assertEqual("react", frames[1]["intent"])
+
+    def test_text_audio_payload_uses_base64_for_dev_clients(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        payload = base64.b64encode(b"\x01\x00\x02\x00").decode("ascii")
+
+        session.handle_text(json.dumps({"type": "utterance_start"}))
+        upload = session.handle_text(json.dumps({"type": "utterance_audio", "pcm_b64": payload}))
+
+        self.assertEqual("heartbeat", upload[0]["type"])
+        self.assertEqual(4, upload[0]["audio_bytes"])
+
     def test_bad_messages_return_error_frames(self):
         session = LanBridgeSession(LanBridgeConfig())
 
         malformed = session.handle_text("{not json")
         unsupported = session.handle_text(json.dumps({"type": "mystery"}))
         binary = session.handle_binary(b"1234")
+        invalid_audio = session.handle_text(json.dumps({"type": "utterance_audio", "pcm_b64": "not base64"}))
 
         self.assertEqual("error", malformed[0]["type"])
         self.assertEqual("malformed_json", malformed[0]["code"])
         self.assertEqual("unsupported_message", unsupported[0]["code"])
-        self.assertEqual("binary_audio_not_implemented", binary[0]["code"])
+        self.assertEqual("audio_without_utterance", binary[0]["code"])
+        self.assertEqual("audio_payload_invalid", invalid_audio[0]["code"])
 
 
 if __name__ == "__main__":

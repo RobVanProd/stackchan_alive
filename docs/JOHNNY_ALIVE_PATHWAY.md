@@ -30,7 +30,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, and text-control LAN service scaffold exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, then add binary audio/STT/TTS streaming. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, LAN service scaffold, and bounded binary PCM upload exist. | Measure a real Gemma 4 E2B GGUF/LiteRT-LM runner, then add STT and dynamic TTS/audio streaming. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -56,13 +56,17 @@ Keep each item independently shippable and package-verified.
 
 3. LAN bridge loop.
    - `bridge/lan_service.py` runs a local WebSocket service around the same frame schema.
-   - The current scaffold is text-control only: `hello`, `utterance_start`, `utterance_end`,
-     `heartbeat`, and `cancel`.
-   - On `utterance_end`, the service runs the local runner wrapper, validates Character Lock
-     JSON, applies host memory, and streams normalized `thinking`, `response_start`, `audio`,
-     and `response_end` frames.
-   - Binary audio upload, STT, downloaded audio chunks, and dynamic TTS streaming remain the
-     next P7 bridge gates.
+   - It accepts control frames: `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and
+     `cancel`.
+   - It accepts bounded binary PCM frames after `utterance_start`, reports upload telemetry,
+     and clears raw PCM at `utterance_end`.
+   - Until STT lands, `utterance_end` needs an explicit `text` or `transcript` field to stand
+     in for recognition output.
+   - On transcript-backed `utterance_end`, the service runs the local runner wrapper, validates
+     Character Lock JSON, applies host memory, and streams normalized `thinking`,
+     `response_start`, `audio`, and `response_end` frames.
+   - Real STT, downloaded audio chunks, and dynamic TTS streaming remain the next P7 bridge
+     gates.
    - Do not move real-time face or motion ownership off firmware.
 
 4. Dynamic TTS sidecar path.
