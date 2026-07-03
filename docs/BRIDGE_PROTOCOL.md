@@ -34,6 +34,18 @@ The wrapper measures approximate tokens per second only when a real command is c
 Without one, it emits a fixed valid Character Lock response so the firmware bridge path stays
 repeatable.
 
+The first LAN service scaffold lives at `bridge/lan_service.py`:
+
+```powershell
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
+```
+
+This service is intentionally text-control only. It performs the WebSocket handshake, accepts
+device-side JSON text frames, runs the same local runner/validator/memory path on
+`utterance_end`, and streams normalized bridge JSON text frames back to the client. Binary
+PCM upload and downloaded audio chunks are still future P7 work; binary frames currently
+return `binary_audio_not_implemented` instead of blocking the session.
+
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.

@@ -56,6 +56,18 @@ Render the local runner wrapper through the same bridge frames:
 python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
 ```
 
+Run the first local LAN WebSocket bridge. This is a text-control scaffold around the same
+frame schema; binary audio streaming is still a later P7 step:
+
+```powershell
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
+```
+
+The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
+JSON text frames. On `utterance_end`, it runs the local runner wrapper, validates Character
+Lock JSON, applies host memory, and streams `thinking`, `response_start`, `audio`, and
+`response_end` frames back to the client.
+
 Try the deterministic response planner with user text:
 
 ```powershell

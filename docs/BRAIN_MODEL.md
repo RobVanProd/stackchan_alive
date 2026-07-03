@@ -98,6 +98,16 @@ the reference bridge:
 python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
 ```
 
+The same path is exposed as a local WebSocket service for P7 LAN-loop testing:
+
+```powershell
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
+```
+
+This is a text-control scaffold only. It accepts wake-gated control frames and runs the
+runner/validator/memory path on `utterance_end`. Real STT audio upload, dynamic TTS audio
+download, and viseme/audio chunk streaming remain separate follow-up gates.
+
 Render a validated model-style response through the deterministic bridge frames:
 
 ```powershell
