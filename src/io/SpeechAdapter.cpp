@@ -23,8 +23,11 @@ bool SpeechAdapter::handleCue(const SpeechCue& cue, uint32_t seq, const Emotiona
   plan.intent = cue.intent;
   plan.earcon = cue.earcon;
   plan.promptText = cue.text;
-  plan.promptId = promptIdForIntent(cue.intent);
-  plan.promptSource = sourceForIntent(cue.intent);
+  const SpeechPromptAsset& prompt = SpeechPromptBank::find(cue.intent);
+  plan.promptId = prompt.id;
+  plan.promptSource = prompt.source;
+  plan.promptWavPath = prompt.wavPath;
+  plan.promptSidecarPath = prompt.sidecarPath;
   plan.promptChars = promptLength(cue.text);
   plan.earconDelayMs = cue.earconDelayMs;
   plan.hasPrompt = plan.promptSource != PromptSource::None && plan.promptChars > 0;
@@ -48,41 +51,6 @@ bool SpeechAdapter::handleCue(const SpeechCue& cue, uint32_t seq, const Emotiona
   telemetry_.lastEarconPeakAbs = plan.earconRender.peakAbs;
   telemetry_.lastPromptChars = plan.promptChars;
   return true;
-}
-
-const char* SpeechAdapter::promptIdForIntent(SpeechIntent intent) {
-  switch (intent) {
-    case SpeechIntent::Boot:
-      return "boot_awake";
-    case SpeechIntent::Idle:
-      return "idle_curiosity";
-    case SpeechIntent::Attend:
-    case SpeechIntent::Listen:
-      return "listen_attention";
-    case SpeechIntent::Think:
-      return "think_processing";
-    case SpeechIntent::Speak:
-      return "speak_new_information";
-    case SpeechIntent::React:
-      return "react_display_ready";
-    case SpeechIntent::Happy:
-      return "happy_signal";
-    case SpeechIntent::Concern:
-      return "concern_more_data";
-    case SpeechIntent::Sleep:
-      return "sleep_systems_quiet";
-    case SpeechIntent::Error:
-      return "error_small_problem";
-    case SpeechIntent::Safety:
-      return "safety_servo_not_armed";
-    case SpeechIntent::None:
-      break;
-  }
-  return "";
-}
-
-PromptSource SpeechAdapter::sourceForIntent(SpeechIntent intent) {
-  return intent == SpeechIntent::None ? PromptSource::None : PromptSource::PackagedPrompt;
 }
 
 uint16_t SpeechAdapter::promptLength(const char* text) {

@@ -130,8 +130,10 @@ foreach ($file in $faceArtifactFiles) {
 
 $voiceMediaDir = Join-Path $mediaDir "voice"
 $voiceRvcMediaDir = Join-Path $voiceMediaDir "rvc"
+$voiceSidecarDir = Join-Path $voiceMediaDir "sidecars"
 New-Item -ItemType Directory -Force -Path $voiceMediaDir | Out-Null
 New-Item -ItemType Directory -Force -Path $voiceRvcMediaDir | Out-Null
+New-Item -ItemType Directory -Force -Path $voiceSidecarDir | Out-Null
 $voiceMediaFiles = @(
   "docs/media/voice/stackchan_spark_greeting.wav",
   "docs/media/voice/stackchan_spark_thinking.wav",
@@ -149,6 +151,28 @@ foreach ($file in $voiceMediaFiles) {
     throw "Missing voice artifact: $file"
   }
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
+}
+
+$packagedPromptSidecars = @(
+  @{ Wav = "stackchan_spark_greeting.wav"; Sidecar = "stackchan_spark_greeting.speech_envelope.json" },
+  @{ Wav = "stackchan_spark_thinking.wav"; Sidecar = "stackchan_spark_thinking.speech_envelope.json" },
+  @{ Wav = "stackchan_spark_safety.wav"; Sidecar = "stackchan_spark_safety.speech_envelope.json" }
+)
+
+foreach ($prompt in $packagedPromptSidecars) {
+  $promptWavPath = Join-Path $voiceMediaDir $prompt.Wav
+  $promptSidecarPath = Join-Path $voiceSidecarDir $prompt.Sidecar
+  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1") `
+    -InputWav $promptWavPath `
+    -OutputJson $promptSidecarPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Packaged prompt sidecar generation failed for $($prompt.Wav)."
+  }
+  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_speech_envelope_sidecar.ps1") `
+    -Path $promptSidecarPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Packaged prompt sidecar verification failed for $($prompt.Sidecar)."
+  }
 }
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "render_rvc_audition_mp3s.ps1") `
@@ -635,6 +659,9 @@ $manifest = [ordered]@{
     "media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
     "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
     "media/voice/stackchan_spark_thinking.mp3",
+    "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json",
+    "media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json",
+    "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json",
     "media/voice/VOICE_SAMPLES.md",
     "media/voice/VOICE_AUDITION.html",
     "media/voice/rvc/README.md",
@@ -758,6 +785,8 @@ $manifest = [ordered]@{
     "provenance/src/persona/EarconSynth.cpp",
     "provenance/src/io/CameraAdapter.hpp",
     "provenance/src/io/CameraAdapter.cpp",
+    "provenance/src/io/SpeechPromptBank.hpp",
+    "provenance/src/io/SpeechPromptBank.cpp",
     "provenance/src/io/SpeechAdapter.hpp",
     "provenance/src/io/SpeechAdapter.cpp",
     "provenance/test/fixtures/audio/speech_right.wav",

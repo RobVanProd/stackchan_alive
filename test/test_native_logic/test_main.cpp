@@ -1700,6 +1700,8 @@ void test_speech_adapter_prepares_packaged_prompt_and_earcon() {
   TEST_ASSERT_EQUAL_UINT32(7, plan.seq);
   TEST_ASSERT_EQUAL(static_cast<int>(PromptSource::PackagedPrompt), static_cast<int>(plan.promptSource));
   TEST_ASSERT_EQUAL_STRING("boot_awake", plan.promptId);
+  TEST_ASSERT_EQUAL_STRING("media/voice/stackchan_spark_greeting.wav", plan.promptWavPath);
+  TEST_ASSERT_EQUAL_STRING("media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json", plan.promptSidecarPath);
   TEST_ASSERT_EQUAL_STRING(cue.text, plan.promptText);
   TEST_ASSERT_TRUE(plan.hasPrompt);
   TEST_ASSERT_TRUE(plan.hasEarcon);
@@ -1708,6 +1710,39 @@ void test_speech_adapter_prepares_packaged_prompt_and_earcon() {
   TEST_ASSERT_GREATER_THAN_INT16(2000, plan.earconRender.peakAbs);
   TEST_ASSERT_EQUAL_UINT32(1, adapter.telemetry().cuesQueued);
   TEST_ASSERT_EQUAL_UINT32(1, adapter.telemetry().earconsRendered);
+}
+
+void test_speech_prompt_bank_covers_all_spoken_intents_with_sidecars() {
+  const SpeechIntent intents[] = {
+      SpeechIntent::Boot,
+      SpeechIntent::Idle,
+      SpeechIntent::Attend,
+      SpeechIntent::Listen,
+      SpeechIntent::Think,
+      SpeechIntent::Speak,
+      SpeechIntent::React,
+      SpeechIntent::Happy,
+      SpeechIntent::Concern,
+      SpeechIntent::Sleep,
+      SpeechIntent::Error,
+      SpeechIntent::Safety,
+  };
+
+  for (SpeechIntent intent : intents) {
+    const SpeechPromptAsset& asset = SpeechPromptBank::find(intent);
+    TEST_ASSERT_EQUAL(static_cast<int>(PromptSource::PackagedPrompt), static_cast<int>(asset.source));
+    TEST_ASSERT_NOT_NULL(asset.id);
+    TEST_ASSERT_NOT_NULL(asset.wavPath);
+    TEST_ASSERT_NOT_NULL(asset.sidecarPath);
+    TEST_ASSERT_TRUE(asset.id[0] != '\0');
+    TEST_ASSERT_TRUE(asset.wavPath[0] != '\0');
+    TEST_ASSERT_TRUE(asset.sidecarPath[0] != '\0');
+  }
+
+  size_t count = 0;
+  const SpeechPromptAsset* assets = SpeechPromptBank::assets(count);
+  TEST_ASSERT_NOT_NULL(assets);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(intents) / sizeof(intents[0]), count);
 }
 
 void test_speech_adapter_rejects_empty_or_uninitialized_cues() {
@@ -1858,6 +1893,7 @@ int main() {
   RUN_TEST(test_earcon_synth_is_deterministic_and_respects_intensity);
   RUN_TEST(test_earcon_synth_reports_truncation_without_allocation);
   RUN_TEST(test_speech_adapter_prepares_packaged_prompt_and_earcon);
+  RUN_TEST(test_speech_prompt_bank_covers_all_spoken_intents_with_sidecars);
   RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);

@@ -329,6 +329,10 @@ void printSpeechPlayback(const SpeechPlaybackPlan& plan) {
   Serial.print(promptSourceName(plan.promptSource));
   Serial.print(F(" prompt_id="));
   Serial.print(plan.promptId);
+  Serial.print(F(" prompt_wav="));
+  Serial.print(plan.promptWavPath);
+  Serial.print(F(" prompt_sidecar="));
+  Serial.print(plan.promptSidecarPath);
   Serial.print(F(" prompt_chars="));
   Serial.print(plan.promptChars);
   Serial.print(F(" earcon="));
