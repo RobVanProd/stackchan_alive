@@ -6,15 +6,19 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Iterator, Literal
+
+from character_harness import HarnessResult, validate_response
 
 PROTOCOL = "stackchan.bridge.v1"
 DEFAULT_SESSION = "bench"
 DEFAULT_TEXT = "Hello. I am Stackchan, and I am awake."
 DEFAULT_USER_TEXT = "Hello Stackchan."
 MAX_MEMORY_ITEMS = 4
+BRIDGE_INTENTS = {"boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
 
 BRIDGE_SYSTEM_PROMPT = """You are Stackchan Spark, a small tabletop robot companion.
 Speak in short, concrete lines with curious, earnest, safety-aware energy.
@@ -60,10 +64,26 @@ class BridgeMemory:
     turns_seen: int = 0
 
     @staticmethod
+    def _clean_item(value: object, max_len: int = 96) -> str:
+        return " ".join(str(value).strip().split())[:max_len]
+
+    @staticmethod
+    def _dedupe_tail(values: Iterable[str]) -> tuple[str, ...]:
+        items: list[str] = []
+        for value in values:
+            item = BridgeMemory._clean_item(value)
+            if not item:
+                continue
+            if item in items:
+                items.remove(item)
+            items.append(item)
+        return tuple(items[-MAX_MEMORY_ITEMS:])
+
+    @staticmethod
     def _items(value: object) -> tuple[str, ...]:
         if not isinstance(value, list):
             return ()
-        return tuple(str(item).strip() for item in value if str(item).strip())[-MAX_MEMORY_ITEMS:]
+        return BridgeMemory._dedupe_tail(str(item) for item in value)
 
     @classmethod
     def from_dict(cls, data: object) -> "BridgeMemory":
@@ -91,13 +111,53 @@ class BridgeMemory:
         recent_topics: Iterable[str] = (),
         physical_context: Iterable[str] = (),
     ) -> "BridgeMemory":
-        topics = [*self.recent_topics, *(topic.strip() for topic in recent_topics if topic.strip())]
-        physical = [*self.physical_context, *(item.strip() for item in physical_context if item.strip())]
         return replace(
             self,
             preferred_name=preferred_name.strip()[:32] or self.preferred_name,
-            recent_topics=tuple(dict.fromkeys(topics))[-MAX_MEMORY_ITEMS:],
-            physical_context=tuple(dict.fromkeys(physical))[-MAX_MEMORY_ITEMS:],
+            recent_topics=self._dedupe_tail((*self.recent_topics, *recent_topics)),
+            physical_context=self._dedupe_tail((*self.physical_context, *physical_context)),
+        )
+
+    @staticmethod
+    def _forget_matches(forget_key: str, namespace: str) -> bool:
+        key = forget_key.strip().lower().rstrip("*").rstrip(".")
+        return key == namespace or key.startswith(f"{namespace}.")
+
+    def apply_character_memory(self, normalized: dict[str, object]) -> "BridgeMemory":
+        preferred_name = self.preferred_name
+        topics = list(self.recent_topics)
+        physical = list(self.physical_context)
+
+        writes = normalized.get("memory_write", {})
+        if isinstance(writes, dict):
+            for raw_key, raw_value in writes.items():
+                key = str(raw_key).strip().lower()
+                value = self._clean_item(raw_value)
+                if not value:
+                    continue
+                if key in ("user.name", "user.preferred_name", "user.greeting"):
+                    preferred_name = value[:32]
+                elif key.startswith("project.") or (key.startswith("user.") and "topic" in key):
+                    topics.append(value)
+                elif key.startswith("robot."):
+                    physical.append(value)
+
+        forgets = normalized.get("memory_forget", [])
+        if isinstance(forgets, list):
+            for raw_forget in forgets:
+                forget = str(raw_forget)
+                if self._forget_matches(forget, "user"):
+                    preferred_name = ""
+                if self._forget_matches(forget, "project"):
+                    topics = []
+                if self._forget_matches(forget, "robot"):
+                    physical = []
+
+        return replace(
+            self,
+            preferred_name=preferred_name,
+            recent_topics=self._dedupe_tail(topics),
+            physical_context=self._dedupe_tail(physical),
         )
 
     def remember_user_text(self, user_text: str) -> "BridgeMemory":
@@ -212,6 +272,37 @@ def plan_turn(user_text: str, memory: BridgeMemory, seq: int = 7) -> BridgeTurn:
     return plan_turn_from_memory(memory.remember_user_text(user_text), seq=seq)
 
 
+def bridge_intent_from_mode(mode: object) -> str:
+    intent = str(mode).strip().lower()
+    return intent if intent in BRIDGE_INTENTS else "speak"
+
+
+def turn_from_character_response(
+    raw_response: str,
+    memory: BridgeMemory,
+    *,
+    session: str = DEFAULT_SESSION,
+    seq: int = 7,
+) -> tuple[BridgeTurn, BridgeMemory, HarnessResult]:
+    result = validate_response(raw_response)
+    normalized = result.normalized
+    updated_memory = memory.apply_character_memory(normalized)
+    emotion = normalized.get("emotion", {})
+    if not isinstance(emotion, dict):
+        emotion = {}
+    arousal = clamp01(0.5 + float(emotion.get("arousal", 0.0)))
+    valence = max(-1.0, min(1.0, float(emotion.get("valence", 0.0))))
+    turn = BridgeTurn(
+        session=session,
+        seq=max(1, int(seq)),
+        intent=bridge_intent_from_mode(normalized.get("mode", "speak")),
+        text=str(normalized.get("spoken_text", DEFAULT_TEXT)),
+        arousal=arousal,
+        valence=valence,
+    )
+    return turn, updated_memory, result
+
+
 def bridge_frames(turn: BridgeTurn) -> Iterator[dict[str, object]]:
     """Yield bridge-to-device frames in firmware order."""
 
@@ -288,6 +379,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-file", type=Path, help="Optional local JSON memory store for the host bridge.")
     parser.add_argument("--save-memory", action="store_true", help="Persist memory after applying --user-text.")
     parser.add_argument("--reset-memory", action="store_true", help="Delete the local memory store before rendering.")
+    parser.add_argument("--model-response", help="Validated Character Lock JSON response to render through the bridge.")
+    parser.add_argument("--model-response-file", type=Path, help="File containing one Character Lock JSON response.")
     parser.add_argument("--arousal", type=float, default=0.55)
     parser.add_argument("--valence", type=float, default=0.60)
     return parser
@@ -311,7 +404,17 @@ def main() -> int:
         print(build_persona_prompt(memory))
         return 0
 
-    if args.text == DEFAULT_TEXT and args.intent == "happy" and args.user_text != DEFAULT_USER_TEXT:
+    raw_model_response = args.model_response
+    if args.model_response_file:
+        raw_model_response = args.model_response_file.read_text(encoding="utf-8")
+
+    if raw_model_response is not None:
+        turn, memory, validation = turn_from_character_response(raw_model_response, memory, session=args.session, seq=seq)
+        if validation.issues:
+            print("Character validation issues: " + ", ".join(validation.issues), file=sys.stderr)
+        if args.memory_file and args.save_memory:
+            save_bridge_memory(args.memory_file, memory)
+    elif args.text == DEFAULT_TEXT and args.intent == "happy" and args.user_text != DEFAULT_USER_TEXT:
         memory = memory.remember_user_text(args.user_text)
         if args.memory_file and args.save_memory:
             save_bridge_memory(args.memory_file, memory)

@@ -3,6 +3,7 @@
 - `DEVICE_BRINGUP.md`: hardware-arrival flashing, evidence, and safety flow.
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
+- `JOHNNY_ALIVE_PATHWAY.md`: current roadmap status and next implementation path from the Johnny Alive source plan.
 - `PRODUCTION_READINESS.md`: current proof level and consumer rollout gates.
 - `PRIVACY.md`: P7 bridge privacy boundary, wake-word gated audio rules, and memory limits.
 - `RELEASE_PROCESS.md`: package, publish, share, and audit process.

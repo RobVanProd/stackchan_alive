@@ -2165,6 +2165,61 @@ void test_bridge_client_maps_thinking_and_response_events() {
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
 }
 
+void test_bridge_client_accepts_all_character_lock_intents() {
+  struct IntentCase {
+    const char* token;
+    SpeechIntent intent;
+  };
+  const IntentCase cases[] = {
+      {"boot", SpeechIntent::Boot},
+      {"idle", SpeechIntent::Idle},
+      {"attend", SpeechIntent::Attend},
+      {"listen", SpeechIntent::Listen},
+      {"think", SpeechIntent::Think},
+      {"speak", SpeechIntent::Speak},
+      {"react", SpeechIntent::React},
+      {"happy", SpeechIntent::Happy},
+      {"concern", SpeechIntent::Concern},
+      {"sleep", SpeechIntent::Sleep},
+      {"error", SpeechIntent::Error},
+      {"safety", SpeechIntent::Safety},
+  };
+
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+    BridgeClient bridge;
+    TEST_ASSERT_TRUE(bridge.begin());
+
+    char line[160] = {};
+    std::snprintf(line,
+                  sizeof(line),
+                  "{\"type\":\"response_start\",\"seq\":%u,\"intent\":\"%s\",\"text\":\"test\"}",
+                  static_cast<unsigned>(i + 1),
+                  cases[i].token);
+    TEST_ASSERT_TRUE(bridge.submitControlLine(line, 300 + static_cast<uint32_t>(i)));
+
+    BridgeClientOutput output;
+    TEST_ASSERT_TRUE(bridge.poll(&output));
+    TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseStart), static_cast<int>(output.type));
+    TEST_ASSERT_EQUAL(static_cast<int>(cases[i].intent), static_cast<int>(output.response.intent));
+  }
+}
+
+void test_serial_bridge_response_preserves_attend_intent() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge response attend 9 Looking at you now.", 4250, &control));
+  TEST_ASSERT_TRUE(control.hasBridge);
+
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  TEST_ASSERT_TRUE(bridge.submitControlLine(control.bridge.controlLine, 4251));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseStart), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Attend), static_cast<int>(output.response.intent));
+  TEST_ASSERT_EQUAL_STRING("looking at you now.", output.response.text);
+}
+
 void test_bridge_client_parses_audio_frames_for_mouth_sync() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -2351,6 +2406,8 @@ int main() {
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);
   RUN_TEST(test_bridge_client_accepts_session_hello);
   RUN_TEST(test_bridge_client_maps_thinking_and_response_events);
+  RUN_TEST(test_bridge_client_accepts_all_character_lock_intents);
+  RUN_TEST(test_serial_bridge_response_preserves_attend_intent);
   RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   RUN_TEST(test_bridge_client_times_out_active_session_once);

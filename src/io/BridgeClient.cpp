@@ -295,10 +295,15 @@ SpeechIntent BridgeClient::intentFromString(const char* value) {
   if (value == nullptr) {
     return SpeechIntent::Speak;
   }
+  if (std::strcmp(value, "boot") == 0) return SpeechIntent::Boot;
+  if (std::strcmp(value, "idle") == 0) return SpeechIntent::Idle;
+  if (std::strcmp(value, "attend") == 0) return SpeechIntent::Attend;
+  if (std::strcmp(value, "listen") == 0) return SpeechIntent::Listen;
+  if (std::strcmp(value, "think") == 0) return SpeechIntent::Think;
+  if (std::strcmp(value, "speak") == 0) return SpeechIntent::Speak;
+  if (std::strcmp(value, "react") == 0) return SpeechIntent::React;
   if (std::strcmp(value, "happy") == 0) return SpeechIntent::Happy;
   if (std::strcmp(value, "concern") == 0) return SpeechIntent::Concern;
-  if (std::strcmp(value, "think") == 0) return SpeechIntent::Think;
-  if (std::strcmp(value, "listen") == 0) return SpeechIntent::Listen;
   if (std::strcmp(value, "sleep") == 0) return SpeechIntent::Sleep;
   if (std::strcmp(value, "safety") == 0) return SpeechIntent::Safety;
   if (std::strcmp(value, "error") == 0) return SpeechIntent::Error;

@@ -212,6 +212,7 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRIVACY.md" -Destination $docsDir
@@ -647,6 +648,7 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
+  johnnyAlivePathway = "docs/JOHNNY_ALIVE_PATHWAY.md"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
   privacyModel = "docs/PRIVACY.md"

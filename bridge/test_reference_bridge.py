@@ -15,6 +15,7 @@ from reference_bridge import (
     render_jsonl,
     reset_bridge_memory,
     save_bridge_memory,
+    turn_from_character_response,
 )
 
 
@@ -92,6 +93,65 @@ class ReferenceBridgeTests(unittest.TestCase):
 
             self.assertEqual(BridgeMemory(), reset)
             self.assertFalse(path.exists())
+
+    def test_character_response_feeds_bridge_turn_and_memory(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Looking at you now. Signal locked.",
+                "mode": "attend",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.3, "valence": 0.2},
+                "memory_write": {
+                    "user.name": "Rob",
+                    "project.note": "voice tuning",
+                    "robot.physical_context": "room is dark",
+                },
+                "memory_forget": [],
+            }
+        )
+
+        turn, memory, result = turn_from_character_response(raw, BridgeMemory(), session="model", seq=33)
+
+        self.assertTrue(result.ok, result.issues)
+        self.assertEqual("model", turn.session)
+        self.assertEqual(33, turn.seq)
+        self.assertEqual("attend", turn.intent)
+        self.assertEqual("Looking at you now. Signal locked.", turn.text)
+        self.assertEqual(0.8, turn.arousal)
+        self.assertEqual(0.2, turn.valence)
+        self.assertEqual("Rob", memory.preferred_name)
+        self.assertIn("voice tuning", memory.recent_topics)
+        self.assertIn("room is dark", memory.physical_context)
+
+    def test_character_response_forget_wins_over_memory(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Deleted. It is gone.",
+                "mode": "concern",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.0, "valence": -0.1},
+                "memory_write": {"project.note": "bracket color"},
+                "memory_forget": ["user.name", "project."],
+            }
+        )
+        starting = BridgeMemory(preferred_name="Rob", recent_topics=("voice",), physical_context=("room is dark",))
+
+        turn, memory, result = turn_from_character_response(raw, starting, seq=44)
+
+        self.assertTrue(result.ok, result.issues)
+        self.assertEqual("concern", turn.intent)
+        self.assertEqual("", memory.preferred_name)
+        self.assertEqual((), memory.recent_topics)
+        self.assertEqual(("room is dark",), memory.physical_context)
+
+    def test_malformed_character_response_still_renders_fallback(self):
+        turn, memory, result = turn_from_character_response("{not json", BridgeMemory(preferred_name="Rob"), seq=45)
+
+        self.assertFalse(result.ok)
+        self.assertIn("malformed_json", result.issues)
+        self.assertEqual("concern", turn.intent)
+        self.assertIn("lost my train", turn.text)
+        self.assertEqual("Rob", memory.preferred_name)
 
 
 if __name__ == "__main__":
