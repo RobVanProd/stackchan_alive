@@ -73,6 +73,7 @@ Open the newest evidence packet folder and run:
 .\RUN_PACKAGE_VERIFY.cmd
 .\RUN_DISPLAY_ONLY.cmd
 .\RUN_SPEECH_MOUTH_DEMO.cmd
+.\RUN_SPEAK_ALL_INTENTS.cmd
 ```
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
@@ -114,7 +115,7 @@ For speech-reactive mouth bench tests from an actual WAV, generate a 50 Hz sidec
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
 ```
 
-Inside a generated evidence packet, `RUN_SPEECH_MOUTH_DEMO.cmd` does this automatically for the copied lead RVC audition and writes the generated sidecar under `speech/`.
+Inside a generated evidence packet, `RUN_SPEECH_MOUTH_DEMO.cmd` does this automatically for the copied lead RVC audition and writes the generated sidecar under `speech/`. Run `RUN_SPEAK_ALL_INTENTS.cmd` next to capture `logs/speak_all_intents_serial.log` with every packaged speech intent, earcon, and `[audio_out]` handoff.
 
 The packet copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json` from the verified release package. Review those reports before promotion; they should stay blocked until the production voice source and RVC rights gates are explicitly cleared.
 

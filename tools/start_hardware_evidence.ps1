@@ -514,6 +514,7 @@ $packageVerified = $false
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/speech_mouth_demo_serial.log",
+  "logs/speak_all_intents_serial.log",
   "logs/servo_calibration_serial.log",
   "logs/soak_serial.log"
 )
@@ -744,6 +745,7 @@ $displayLog = Quote-PowerShellArgument (Join-Path $logsDir "display_only_serial.
 $servoLog = Quote-PowerShellArgument (Join-Path $logsDir "servo_calibration_serial.log")
 $soakLog = Quote-PowerShellArgument (Join-Path $logsDir "soak_serial.log")
 $speechDemoLog = Quote-PowerShellArgument (Join-Path $logsDir "speech_mouth_demo_serial.log")
+$speakAllLog = Quote-PowerShellArgument (Join-Path $logsDir "speak_all_intents_serial.log")
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
 $speechDemoBody = "& '.\tools\send_speech_mouth_demo.ps1'$portArg"
@@ -755,6 +757,7 @@ if ($voiceLeadInfo) {
   $speechDemoBody = "& '.\tools\generate_speech_envelope_sidecar.ps1' -InputWav $leadAudioArg -OutputJson $leadSidecarArg; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }; & '.\tools\verify_speech_envelope_sidecar.ps1' -Path $leadSidecarArg -MinFrames 50 -MinMaxEnvelope 0.35; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }; & '.\tools\send_speech_mouth_demo.ps1'$portArg -SidecarPath $leadSidecarArg"
 }
 $speechDemoCommand = "& { $speechDemoBody } 2>&1 | Tee-Object -FilePath $speechDemoLog"
+$speakAllCommand = "& '.\tools\send_speak_all_intents_demo.ps1'$portArg 2>&1 | Tee-Object -FilePath $speakAllLog"
 $verifyCommand = "& '.\tools\verify_release_package.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $verifyPackageArg -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 if ($AllowDirtyPackage) {
   $verifyCommand += " -AllowDirtyPackage"
@@ -793,6 +796,7 @@ $commandFiles = [ordered]@{
   "RUN_PLAY_LEAD_VOICE.cmd" = New-PowerShellCommandFile $playLeadCommand
   "RUN_DISPLAY_ONLY.cmd" = New-PowerShellCommandFile $displayCommand
   "RUN_SPEECH_MOUTH_DEMO.cmd" = New-PowerShellCommandFile $speechDemoCommand
+  "RUN_SPEAK_ALL_INTENTS.cmd" = New-PowerShellCommandFile $speakAllCommand
   "RUN_SERVO_CALIBRATION.cmd" = New-PowerShellCommandFile $servoCommand
   "RUN_SOAK_MONITOR.cmd" = New-PowerShellCommandFile $soakCommand
   "RUN_PACKAGE_VERIFY.cmd" = New-PowerShellCommandFile $verifyCommand
@@ -830,16 +834,17 @@ $nextSteps = @(
   "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
   "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
   "3. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
-  "4. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
-  "5. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
-  "6. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
-  "7. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
-  "8. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
-  "9. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-  "10. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
-  "11. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
-  "12. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
-  "13. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "4. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
+  "5. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+  "6. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+  "7. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+  "8. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+  "9. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+  "10. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+  "11. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "12. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "13. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+  "14. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
   "",
   "## Gates Still Expected",
   "",
@@ -899,6 +904,12 @@ $readme = @(
   "    $speechDemoCommand",
   "",
   "    .\RUN_SPEECH_MOUTH_DEMO.cmd",
+  "",
+  "Speak all packaged intents:",
+  "",
+  "    $speakAllCommand",
+  "",
+  "    .\RUN_SPEAK_ALL_INTENTS.cmd",
   "",
   "Servo calibration flash:",
   "",
@@ -1013,6 +1024,7 @@ $requiredRecords = @(
   "RUN_PLAY_LEAD_VOICE.cmd",
   "RUN_DISPLAY_ONLY.cmd",
   "RUN_SPEECH_MOUTH_DEMO.cmd",
+  "RUN_SPEAK_ALL_INTENTS.cmd",
   "RUN_SERVO_CALIBRATION.cmd",
   "RUN_SOAK_MONITOR.cmd",
   "RUN_PACKAGE_VERIFY.cmd",

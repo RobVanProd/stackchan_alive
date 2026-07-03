@@ -285,6 +285,7 @@ $voiceGateInfo = $null
 $requiredLogs = @(
   "logs/display_only_serial.log",
   "logs/speech_mouth_demo_serial.log",
+  "logs/speak_all_intents_serial.log",
   "logs/servo_calibration_serial.log",
   "logs/soak_serial.log"
 )
@@ -412,16 +413,18 @@ Copy-Item -LiteralPath "docs/PRODUCTION_READINESS.md" -Destination (Join-Path $o
   "",
   "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
   "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
-  "3. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
-  "4. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
-  "5. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
-  "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
-  "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
-  "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-  "9. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
-  "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
-  "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
-  "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "3. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
+  "4. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
+  "5. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+  "6. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+  "7. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+  "8. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+  "9. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+  "10. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+  "11. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+  "12. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+  "13. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+  "14. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
   "",
   "## Gates Still Expected",
   "",
@@ -572,6 +575,37 @@ $initialBenchStatus | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $ou
   "synthetic diagnostic speech-mouth log: not real hardware evidence"
 ) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
 
+$speechIntentNames = @("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")
+$speechEarcons = @{
+  boot = "wake"
+  idle = "think"
+  attend = "confirm"
+  listen = "wake"
+  think = "think"
+  speak = "confirm"
+  react = "confirm"
+  happy = "happy"
+  concern = "concern"
+  sleep = "sleep"
+  error = "error"
+  safety = "safety"
+}
+$speakAllLines = @("[speak-all] > demo off")
+$speakSeq = 10
+foreach ($intentName in $speechIntentNames) {
+  $earcon = $speechEarcons[$intentName]
+  $atMs = 4000 + ($speakSeq * 120)
+  $speakAllLines += "[speak-all] > speak $intentName"
+  $speakAllLines += "[speak-all] < [control] command=speak_intent cue_intent=$intentName cue_earcon=$earcon at_ms=$atMs"
+  $speakAllLines += "[speak-all] < [speech] seq=$speakSeq at_ms=$($atMs + 10) intent=$intentName priority=240 earcon=$earcon earcon_delay_ms=60 text=`"Synthetic packaged prompt for $intentName.`""
+  $speakAllLines += "[speak-all] < [speech_audio] seq=$speakSeq source=packaged_prompt prompt_id=$intentName prompt_wav=media/voice/stackchan_spark_greeting.wav prompt_sidecar=media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json earcon_delay_ms=60 earcon_samples=1600 earcon_peak=4100 earcon_checksum=ABCD$speakSeq"
+  $speakAllLines += "[speak-all] < [audio_out] seq=$speakSeq source=packaged_prompt prompt_id=$intentName wav=media/voice/stackchan_spark_greeting.wav sidecar=media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json earcon_samples=1600 duck_on_barge_in=1"
+  $speakSeq++
+}
+$speakAllLines += "[speak-all] Speak-all-intents demo complete."
+$speakAllLines += "synthetic diagnostic speak-all-intents log: not real hardware evidence"
+$speakAllLines | Set-Content -Path (Join-Path $logsDir "speak_all_intents_serial.log") -Encoding UTF8
+
 @(
   "[boot] stackchan_alive mode=servo_calibration serial=v1",
   "[display] M5 display renderer ready",
@@ -624,6 +658,8 @@ $rolloutStatusCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 $commandFiles = @{
   "RUN_PLAY_LEAD_VOICE.cmd" = "echo Synthetic diagnostic packet. Use a real hardware packet for target speaker playback."
   "RUN_DISPLAY_ONLY.cmd" = "echo Synthetic diagnostic packet. Do not flash hardware from this fixture."
+  "RUN_SPEECH_MOUTH_DEMO.cmd" = "echo Synthetic diagnostic packet. Speech-mouth log already generated."
+  "RUN_SPEAK_ALL_INTENTS.cmd" = "echo Synthetic diagnostic packet. Speak-all-intents log already generated."
   "RUN_SERVO_CALIBRATION.cmd" = "echo Synthetic diagnostic packet. Do not move servos from this fixture."
   "RUN_SOAK_MONITOR.cmd" = "echo Synthetic diagnostic packet. Do not use as a real soak log."
   "RUN_PACKAGE_VERIFY.cmd" = $verifyPackageCommand
@@ -674,6 +710,8 @@ $metadata = [ordered]@{
     "calibration/calibration.yaml",
     "RUN_PLAY_LEAD_VOICE.cmd",
     "RUN_DISPLAY_ONLY.cmd",
+    "RUN_SPEECH_MOUTH_DEMO.cmd",
+    "RUN_SPEAK_ALL_INTENTS.cmd",
     "RUN_SERVO_CALIBRATION.cmd",
     "RUN_SOAK_MONITOR.cmd",
     "RUN_PACKAGE_VERIFY.cmd",

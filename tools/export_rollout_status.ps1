@@ -69,14 +69,22 @@ function Get-SpeechMouthDemoEvidenceStatus {
   param([string]$EvidenceRoot)
 
   $logPath = Join-Path $EvidenceRoot "logs/speech_mouth_demo_serial.log"
+  $speakAllLogPath = Join-Path $EvidenceRoot "logs/speak_all_intents_serial.log"
   if (-not (Test-Path -LiteralPath $logPath)) {
     return [ordered]@{
       status = "pending"
       evidence = "logs/speech_mouth_demo_serial.log is missing"
     }
   }
+  if (-not (Test-Path -LiteralPath $speakAllLogPath)) {
+    return [ordered]@{
+      status = "pending"
+      evidence = "logs/speak_all_intents_serial.log is missing"
+    }
+  }
 
   $text = Get-Content -LiteralPath $logPath -Raw
+  $speakAllText = Get-Content -LiteralPath $speakAllLogPath -Raw
   $missing = New-Object System.Collections.Generic.List[string]
   if ($text -notmatch "\[demo\]\s+>\s+speech\s+[0-9]") {
     $missing.Add("streamed speech envelope command") | Out-Null
@@ -87,17 +95,31 @@ function Get-SpeechMouthDemoEvidenceStatus {
   if ($text -notmatch "\[demo\]\s+Speech mouth demo complete\.") {
     $missing.Add("completion marker") | Out-Null
   }
+  foreach ($intentName in @("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")) {
+    if ($speakAllText -notmatch "\[speak-all\]\s+>\s+speak\s+$intentName\b") {
+      $missing.Add("speak-all $intentName command") | Out-Null
+    }
+    if ($speakAllText -notmatch "\[control\]\s+command=speak_intent.*cue_intent=$intentName.*cue_earcon=\w+") {
+      $missing.Add("speak-all $intentName cue") | Out-Null
+    }
+  }
+  if ($speakAllText -notmatch "\[audio_out\]\s+seq=\d+\s+source=packaged_prompt\s+prompt_id=") {
+    $missing.Add("packaged prompt audio-output handoff") | Out-Null
+  }
+  if ($speakAllText -notmatch "\[speak-all\]\s+Speak-all-intents demo complete\.") {
+    $missing.Add("speak-all completion marker") | Out-Null
+  }
 
   if ($missing.Count -gt 0) {
     return [ordered]@{
       status = "pending"
-      evidence = "logs/speech_mouth_demo_serial.log missing $($missing -join ', ')"
+      evidence = "speech evidence logs missing $($missing -join ', ')"
     }
   }
 
   return [ordered]@{
     status = "pass"
-    evidence = "logs/speech_mouth_demo_serial.log proves streamed speech envelope, clear, and completion"
+    evidence = "logs/speech_mouth_demo_serial.log and logs/speak_all_intents_serial.log prove streamed speech envelope, packaged speech intents, earcons, and audio-output handoff"
   }
 }
 
@@ -191,8 +213,8 @@ function Get-RolloutNextAction {
   if ($null -ne $speechMouthGate -and [string]$speechMouthGate.status -ne "pass" -and $null -ne $EvidenceSummary -and -not [string]::IsNullOrWhiteSpace([string]$EvidenceSummary.root)) {
     return [ordered]@{
       owner = "hardware"
-      action = "Run the speech-mouth demo while display-only firmware is connected, then refresh progress and rollout status."
-      command = "RUN_SPEECH_MOUTH_DEMO.cmd"
+      action = "Run the speech-mouth and speak-all-intents demos while display-only firmware is connected, then refresh progress and rollout status."
+      command = "RUN_SPEECH_MOUTH_DEMO.cmd; RUN_SPEAK_ALL_INTENTS.cmd"
       reason = [string]$speechMouthGate.evidence
     }
   }

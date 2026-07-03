@@ -127,6 +127,15 @@ function Get-BenchNextAction {
     }
   }
 
+  $speakAllFinding = Get-FirstFindingLike @("logs/speak_all_intents_serial\.log", "speak-all-intents", "speak-all packaged speech")
+  if (-not [string]::IsNullOrWhiteSpace($speakAllFinding)) {
+    return [ordered]@{
+      action = "Run the speak-all-intents demo while display-only firmware is still connected."
+      command = "RUN_SPEAK_ALL_INTENTS.cmd"
+      reason = $speakAllFinding
+    }
+  }
+
   $servoFinding = Get-FirstFindingLike @("logs/servo_calibration_serial\.log", "servo-calibration boot marker", "servo hardware-enable marker", "Yaw classification", "yaw_mode", "calibration/calibration\.yaml", "Calibration changes", "Pitch behavior")
   if (-not [string]::IsNullOrWhiteSpace($servoFinding)) {
     return [ordered]@{
@@ -261,6 +270,7 @@ foreach ($file in @(
   "RELEASE_ACCEPTANCE.md",
   "release_acceptance.json",
   "RUN_PLAY_LEAD_VOICE.cmd",
+  "RUN_SPEAK_ALL_INTENTS.cmd",
   "calibration/calibration.yaml"
 )) {
   [void](Test-RequiredFile $file)
@@ -433,6 +443,7 @@ if (Test-Path -LiteralPath (Join-EvidencePath "AUDIO_REVIEW.md")) {
 Test-RequiredFile "logs/package_verify.log" | Out-Null
 Test-RequiredFile "logs/display_only_serial.log" 128 | Out-Null
 Test-RequiredFile "logs/speech_mouth_demo_serial.log" 128 | Out-Null
+Test-RequiredFile "logs/speak_all_intents_serial.log" 128 | Out-Null
 Test-RequiredFile "logs/servo_calibration_serial.log" 128 | Out-Null
 Test-RequiredFile "logs/soak_serial.log" 128 | Out-Null
 
@@ -448,6 +459,13 @@ Test-TextPattern "logs/display_only_serial.log" "\[system\]\s+heap_free=\d+\s+he
 Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech\s+[0-9]" "speech mouth demo envelope commands"
 Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech clear" "speech mouth demo clear command"
 Test-TextPattern "logs/speech_mouth_demo_serial.log" "\[demo\]\s+Speech mouth demo complete\." "speech mouth demo completion"
+$speechIntentNames = @("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")
+foreach ($intentName in $speechIntentNames) {
+  Test-TextPattern "logs/speak_all_intents_serial.log" "\[speak-all\]\s+>\s+speak\s+$intentName\b" "speak-all-intents command for $intentName"
+  Test-TextPattern "logs/speak_all_intents_serial.log" "\[control\]\s+command=speak_intent.*cue_intent=$intentName.*cue_earcon=\w+" "speak-all packaged speech cue for $intentName"
+}
+Test-TextPattern "logs/speak_all_intents_serial.log" "\[audio_out\]\s+seq=\d+\s+source=packaged_prompt\s+prompt_id=" "speak-all packaged prompt audio-output handoff"
+Test-TextPattern "logs/speak_all_intents_serial.log" "\[speak-all\]\s+Speak-all-intents demo complete\." "speak-all-intents completion"
 Test-TextPattern "logs/servo_calibration_serial.log" "\[boot\]\s+stackchan_alive\s+mode=servo_calibration\s+serial=v1" "servo-calibration boot marker"
 Test-TextPattern "logs/servo_calibration_serial.log" "\[servo\]\s+enabling StackchanSERVO hardware output" "servo hardware-enable marker"
 Test-TextPattern "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=(display_only|servo_calibration)\s+uptime_ms=\d+" "runtime heartbeat marker"
@@ -458,6 +476,7 @@ Test-TextPattern "logs/soak_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\
 
 Test-TextPattern "NEXT_STEPS.md" "RUN_PACKAGE_VERIFY\.cmd" "package verify run order"
 Test-TextPattern "NEXT_STEPS.md" "RUN_PROGRESS_CHECK\.cmd" "progress check run order"
+Test-TextPattern "NEXT_STEPS.md" "RUN_SPEAK_ALL_INTENTS\.cmd" "speak-all-intents run order"
 Test-TextPattern "NEXT_STEPS.md" "Generated source WAVs alone do not count" "real-device audio warning"
 Test-TextPattern "NEXT_STEPS.md" "RUN_CONSUMER_PROMOTION_CHECK\.cmd" "consumer promotion gate"
 

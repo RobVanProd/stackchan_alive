@@ -489,7 +489,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $nextStepsText = Get-Content -LiteralPath (Join-EvidencePath "NEXT_STEPS.md") -Raw
-foreach ($pattern in @("Stackchan Evidence Next Steps", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_ADD_MEDIA.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Generated source WAVs alone do not count", "Do not run servo calibration unless the body is clear", "production voice-source provenance")) {
+foreach ($pattern in @("Stackchan Evidence Next Steps", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_ADD_MEDIA.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Generated source WAVs alone do not count", "Do not run servo calibration unless the body is clear", "production voice-source provenance")) {
   if ($nextStepsText -notmatch [regex]::Escape($pattern)) {
     throw "NEXT_STEPS.md missing expected operator guidance: $pattern"
   }
@@ -587,6 +587,13 @@ Assert-LogContains "logs/display_only_serial.log" "\[system\]\s+heap_free=\d+\s+
 Assert-LogContains "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech\s+[0-9]" "speech mouth demo envelope commands"
 Assert-LogContains "logs/speech_mouth_demo_serial.log" "\[demo\]\s+>\s+speech clear" "speech mouth demo clear command"
 Assert-LogContains "logs/speech_mouth_demo_serial.log" "\[demo\]\s+Speech mouth demo complete\." "speech mouth demo completion"
+$speechIntentNames = @("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")
+foreach ($intentName in $speechIntentNames) {
+  Assert-LogContains "logs/speak_all_intents_serial.log" "\[speak-all\]\s+>\s+speak\s+$intentName\b" "speak-all command for $intentName"
+  Assert-LogContains "logs/speak_all_intents_serial.log" "\[control\]\s+command=speak_intent.*cue_intent=$intentName.*cue_earcon=\w+" "speak-all control cue for $intentName"
+}
+Assert-LogContains "logs/speak_all_intents_serial.log" "\[audio_out\]\s+seq=\d+\s+source=packaged_prompt\s+prompt_id=" "speak-all packaged prompt audio-output handoff"
+Assert-LogContains "logs/speak_all_intents_serial.log" "\[speak-all\]\s+Speak-all-intents demo complete\." "speak-all completion"
 Assert-LogContains "logs/servo_calibration_serial.log" "\[boot\]\s+stackchan_alive\s+mode=servo_calibration\s+serial=v1" "servo-calibration boot marker"
 Assert-LogContains "logs/servo_calibration_serial.log" "\[servo\]\s+enabling StackchanSERVO hardware output" "servo hardware-enable marker"
 Assert-LogContains "logs/soak_serial.log" "\[heartbeat\]\s+stackchan_alive\s+mode=(display_only|servo_calibration)\s+uptime_ms=\d+" "runtime heartbeat marker"

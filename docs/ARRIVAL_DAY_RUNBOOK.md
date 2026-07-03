@@ -28,6 +28,7 @@ If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd
 .\RUN_PACKAGE_VERIFY.cmd
 .\RUN_DISPLAY_ONLY.cmd
 .\RUN_SPEECH_MOUTH_DEMO.cmd
+.\RUN_SPEAK_ALL_INTENTS.cmd
 ```
 
 Expected evidence:
@@ -36,6 +37,7 @@ Expected evidence:
 - `HOSTED_MEDIA_REFERENCE.md` if a verified share was available
 - display-only serial log
 - `logs/speech_mouth_demo_serial.log` from the required speech-mouth demo helper
+- `logs/speak_all_intents_serial.log` from the required packaged speech-intent helper
 - photo or video showing the procedural face
 - observation note that servos stayed in dry-run mode
 - `AUDIO_REVIEW.md` started with the sample you plan to play later
@@ -64,6 +66,7 @@ Optional speech-mouth sidecar check from the extracted release folder:
 ```
 
 Evidence packets created from a verified package wire `RUN_SPEECH_MOUTH_DEMO.cmd` to the copied lead audition automatically. It generates `speech/lead_voice.speech_envelope.json`, verifies it, then streams that envelope so the mouth check follows the selected RVC review voice instead of the built-in fallback pattern.
+Run `RUN_SPEAK_ALL_INTENTS.cmd` after that helper while display-only firmware is still connected. It sends `speak <intent>` for every packaged speech intent and captures prompt, earcon, and `[audio_out]` handoff telemetry in `logs/speak_all_intents_serial.log`.
 
 ## 3. Supervised Servo Calibration
 

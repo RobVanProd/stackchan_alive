@@ -85,6 +85,39 @@ function Write-PreflightReport {
   $script:PreflightReportWritten = $true
 }
 
+function Write-SyntheticSpeakAllIntentsLog {
+  param([string]$Path)
+
+  $intentNames = @("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")
+  $earcons = @{
+    boot = "wake"
+    idle = "think"
+    attend = "confirm"
+    listen = "wake"
+    think = "think"
+    speak = "confirm"
+    react = "confirm"
+    happy = "happy"
+    concern = "concern"
+    sleep = "sleep"
+    error = "error"
+    safety = "safety"
+  }
+  $lines = @("[speak-all] > demo off")
+  $seq = 10
+  foreach ($intentName in $intentNames) {
+    $earcon = $earcons[$intentName]
+    $lines += "[speak-all] > speak $intentName"
+    $lines += "[speak-all] < [control] command=speak_intent cue_intent=$intentName cue_earcon=$earcon at_ms=$($seq * 100)"
+    $lines += "[speak-all] < [speech] seq=$seq at_ms=$($seq * 100 + 10) intent=$intentName priority=240 earcon=$earcon earcon_delay_ms=60 text=`"Synthetic packaged prompt for $intentName.`""
+    $lines += "[speak-all] < [speech_audio] seq=$seq source=packaged_prompt prompt_id=$intentName prompt_wav=media/voice/stackchan_spark_greeting.wav prompt_sidecar=media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json earcon_delay_ms=60 earcon_samples=1600 earcon_peak=4100 earcon_checksum=ABCD$seq"
+    $lines += "[speak-all] < [audio_out] seq=$seq source=packaged_prompt prompt_id=$intentName wav=media/voice/stackchan_spark_greeting.wav sidecar=media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json earcon_samples=1600 duck_on_barge_in=1"
+    $seq++
+  }
+  $lines += "[speak-all] Speak-all-intents demo complete."
+  $lines | Set-Content -Path $Path -Encoding UTF8
+}
+
 function Invoke-Step {
   param(
     [string]$Name,
@@ -999,16 +1032,18 @@ function Write-SyntheticNextSteps {
     "",
     "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
     "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
-    "3. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
-    "4. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
-    "5. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
-    "6. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
-    "7. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
-    "8. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
-    "9. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
-    "10. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
-    "11. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
-    "12. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+    "3. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
+    "4. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
+    "5. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
+    "6. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
+    "7. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
+    "8. Run ``RUN_SOAK_MONITOR.cmd`` for at least 30 minutes and record the result in ``OBSERVATIONS.md``.",
+    "9. Run ``RUN_PLAY_LEAD_VOICE.cmd`` as the playback reference, record the target speaker path, then add the recording with ``RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav``.",
+    "10. Complete ``AUDIO_REVIEW.md`` with real-device speaker results. Generated source WAVs alone do not count.",
+    "11. Run ``RUN_PROGRESS_CHECK.cmd`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
+    "12. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
+    "13. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
+    "14. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
     "",
     "## Gates Still Expected",
     "",
@@ -1294,6 +1329,7 @@ function Assert-HardwareEvidenceMediaGate {
       "[demo] Speech mouth demo complete.",
       "synthetic speech-mouth log line for verifier coverage."
     ) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
+    Write-SyntheticSpeakAllIntentsLog -Path (Join-Path $logsDir "speak_all_intents_serial.log")
     @(
       "[boot] stackchan_alive mode=servo_calibration serial=v1",
       "[display] M5 display renderer ready",
@@ -1329,6 +1365,7 @@ function Assert-HardwareEvidenceMediaGate {
       requiredLogs = @(
         "logs/display_only_serial.log",
         "logs/speech_mouth_demo_serial.log",
+        "logs/speak_all_intents_serial.log",
         "logs/servo_calibration_serial.log",
         "logs/soak_serial.log"
       )
@@ -1484,6 +1521,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       "[demo] Speech mouth demo complete.",
       "synthetic speech-mouth log line for verifier coverage."
     ) | Set-Content -Path (Join-Path $logsDir "speech_mouth_demo_serial.log") -Encoding UTF8
+    Write-SyntheticSpeakAllIntentsLog -Path (Join-Path $logsDir "speak_all_intents_serial.log")
     @(
       "[boot] stackchan_alive mode=servo_calibration serial=v1",
       "[display] M5 display renderer ready",
@@ -1516,6 +1554,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
       requiredLogs = @(
         "logs/display_only_serial.log",
         "logs/speech_mouth_demo_serial.log",
+        "logs/speak_all_intents_serial.log",
         "logs/servo_calibration_serial.log",
         "logs/soak_serial.log"
       )
@@ -1641,6 +1680,8 @@ function Assert-ArrivalPacketScaffoldGate {
       "logs/package_verify.log",
       "RUN_PLAY_LEAD_VOICE.cmd",
       "RUN_DISPLAY_ONLY.cmd",
+      "RUN_SPEECH_MOUTH_DEMO.cmd",
+      "RUN_SPEAK_ALL_INTENTS.cmd",
       "RUN_SERVO_CALIBRATION.cmd",
       "RUN_SOAK_MONITOR.cmd",
       "RUN_PACKAGE_VERIFY.cmd",
@@ -1698,6 +1739,7 @@ function Assert-ArrivalPacketScaffoldGate {
 
     $nextSteps = Get-Content -LiteralPath (Join-Path $evidenceRoot "NEXT_STEPS.md") -Raw
     Assert-TextContains $nextSteps "RUN_PACKAGE_VERIFY.cmd"
+    Assert-TextContains $nextSteps "RUN_SPEAK_ALL_INTENTS.cmd"
     Assert-TextContains $nextSteps "BENCH_STATUS.md"
     Assert-TextContains $nextSteps "RUN_CONSUMER_PROMOTION_CHECK.cmd"
     Assert-TextContains $nextSteps "Generated source WAVs alone do not count"
@@ -1866,6 +1908,17 @@ function Assert-SpeechEnvelopeSidecarGate {
     Assert-TextContains $streamResult.Text "mode speak 1.0"
     Assert-TextContains $streamResult.Text "speech clear"
     Assert-TextContains $streamResult.Text "PrintOnly complete"
+
+    $speakAllResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "send_speak_all_intents_demo.ps1"),
+      "-PrintOnly"
+    )
+    if ($speakAllResult.ExitCode -ne 0) {
+      throw "Speak-all-intents dry stream failed:$([Environment]::NewLine)$($speakAllResult.Text)"
+    }
+    Assert-TextContains $speakAllResult.Text "[speak-all] > speak boot"
+    Assert-TextContains $speakAllResult.Text "[speak-all] > speak safety"
+    Assert-TextContains $speakAllResult.Text "PrintOnly complete"
     $global:LASTEXITCODE = 0
   } finally {
     if (Test-Path -LiteralPath $fixtureRoot) {

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "io/SpeechPromptBank.hpp"
 #include "persona/CommandMap.hpp"
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -216,6 +217,116 @@ bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
     return true;
   }
   return false;
+}
+
+bool parseSpeechIntentToken(const char* token, SpeechIntent* intentOut) {
+  if (token == nullptr || intentOut == nullptr) {
+    return false;
+  }
+  if (strcmp(token, "boot") == 0 || strcmp(token, "awake") == 0) {
+    *intentOut = SpeechIntent::Boot;
+    return true;
+  }
+  if (strcmp(token, "idle") == 0 || strcmp(token, "curiosity") == 0) {
+    *intentOut = SpeechIntent::Idle;
+    return true;
+  }
+  if (strcmp(token, "attend") == 0 || strcmp(token, "attention") == 0) {
+    *intentOut = SpeechIntent::Attend;
+    return true;
+  }
+  if (strcmp(token, "listen") == 0 || strcmp(token, "wake") == 0) {
+    *intentOut = SpeechIntent::Listen;
+    return true;
+  }
+  if (strcmp(token, "think") == 0 || strcmp(token, "thinking") == 0) {
+    *intentOut = SpeechIntent::Think;
+    return true;
+  }
+  if (strcmp(token, "speak") == 0 || strcmp(token, "talk") == 0 || strcmp(token, "response") == 0) {
+    *intentOut = SpeechIntent::Speak;
+    return true;
+  }
+  if (strcmp(token, "react") == 0 || strcmp(token, "display") == 0) {
+    *intentOut = SpeechIntent::React;
+    return true;
+  }
+  if (strcmp(token, "happy") == 0 || strcmp(token, "joy") == 0) {
+    *intentOut = SpeechIntent::Happy;
+    return true;
+  }
+  if (strcmp(token, "concern") == 0 || strcmp(token, "worried") == 0) {
+    *intentOut = SpeechIntent::Concern;
+    return true;
+  }
+  if (strcmp(token, "sleep") == 0 || strcmp(token, "sleepy") == 0) {
+    *intentOut = SpeechIntent::Sleep;
+    return true;
+  }
+  if (strcmp(token, "error") == 0 || strcmp(token, "problem") == 0) {
+    *intentOut = SpeechIntent::Error;
+    return true;
+  }
+  if (strcmp(token, "safety") == 0 || strcmp(token, "safe") == 0) {
+    *intentOut = SpeechIntent::Safety;
+    return true;
+  }
+  return false;
+}
+
+SpeechEarcon earconForSpeechIntent(SpeechIntent intent) {
+  switch (intent) {
+    case SpeechIntent::Boot:
+    case SpeechIntent::Listen:
+      return SpeechEarcon::Wake;
+    case SpeechIntent::Idle:
+    case SpeechIntent::Think:
+      return SpeechEarcon::Think;
+    case SpeechIntent::Attend:
+    case SpeechIntent::Speak:
+    case SpeechIntent::React:
+      return SpeechEarcon::Confirm;
+    case SpeechIntent::Happy:
+      return SpeechEarcon::Happy;
+    case SpeechIntent::Concern:
+      return SpeechEarcon::Concern;
+    case SpeechIntent::Sleep:
+      return SpeechEarcon::Sleep;
+    case SpeechIntent::Error:
+      return SpeechEarcon::Error;
+    case SpeechIntent::Safety:
+      return SpeechEarcon::Safety;
+    case SpeechIntent::None:
+      break;
+  }
+  return SpeechEarcon::None;
+}
+
+bool fillSpeechIntentCue(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  if (tokens == nullptr || tokenCount == 0 || tokens[0] == nullptr) {
+    return false;
+  }
+
+  SpeechIntent intent = SpeechIntent::None;
+  if (!parseSpeechIntentToken(tokens[0], &intent)) {
+    return false;
+  }
+
+  const SpeechPromptAsset& asset = SpeechPromptBank::find(intent);
+  if (asset.source == PromptSource::None || asset.transcript[0] == '\0') {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasSpeechCue = true;
+  parsed.speechCue.intent = intent;
+  parsed.speechCue.text = asset.transcript;
+  parsed.speechCue.priority = 240;
+  parsed.speechCue.earcon = earconForSpeechIntent(intent);
+  parsed.speechCue.earconDelayMs = 60;
+  parsed.command = "speak_intent";
+  *controlOut = parsed;
+  return true;
 }
 
 bool fillAudioEvent(const char* first, char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchControl* controlOut) {
@@ -831,6 +942,16 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "multinet") == 0 || strcmp(first, "phrase") == 0) {
     return fillCommandEvent(ambientTokens, ambientTokenCount, nowMs, controlOut);
   }
+  if (strcmp(first, "speak") == 0 || strcmp(first, "say") == 0 ||
+      strcmp(first, "speechcue") == 0 || strcmp(first, "cue") == 0) {
+    if (fillSpeechIntentCue(ambientTokens, ambientTokenCount, controlOut)) {
+      return true;
+    }
+    float ignoredStrength = 0.0f;
+    if (strcmp(first, "speak") != 0 || (second != nullptr && !parseStrength(second, &ignoredStrength))) {
+      return false;
+    }
+  }
   if (strcmp(first, "facepos") == 0 || strcmp(first, "face_pos") == 0 ||
       strcmp(first, "facelost") == 0 ||
       strcmp(first, "face_lost") == 0 || strcmp(first, "lostface") == 0) {
@@ -929,6 +1050,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
   Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
   Serial.println(F("[control] help: command <1-5|go_to_sleep|wake_up|look_at_me|stop_moving|how_do_you_feel>"));
+  Serial.println(F("[control] help: speak <boot|idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety>"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));
