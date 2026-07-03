@@ -120,7 +120,9 @@ $requiredFiles = @(
   "voice_source_status.json",
   "docs/BRAIN_MODEL.md",
   "docs/CHARACTER_LOCK.md",
+  "docs/GAP_ANALYSIS.md",
   "docs/JOHNNY_ALIVE_PATHWAY.md",
+  "docs/PERSONA_PACKS.md",
   "docs/HARDWARE_SIMULATION.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
@@ -140,6 +142,8 @@ $requiredFiles = @(
   "bridge/README.md",
   "bridge/character_harness.py",
   "bridge/test_character_harness.py",
+  "bridge/persona_pack.py",
+  "bridge/test_persona_pack.py",
   "bridge/reference_bridge.py",
   "bridge/test_reference_bridge.py",
   "bridge/local_runner.py",
@@ -162,6 +166,14 @@ $requiredFiles = @(
   "bridge/test_hardware_simulator.py",
   "bridge/prearrival_sim_check.py",
   "bridge/test_prearrival_sim_check.py",
+  "personas/spark/pack.yaml",
+  "personas/spark/character.yaml",
+  "personas/spark/prompt.md",
+  "personas/spark/behavior.yaml",
+  "personas/spark/expressions.yaml",
+  "personas/spark/earcons.yaml",
+  "personas/spark/voice.yaml",
+  "persona_pack_status.json",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -269,6 +281,9 @@ $requiredFiles = @(
   "tools/run_device_preflight.ps1",
   "tools/run_character_harness_tests.cmd",
   "tools/run_character_harness_tests.ps1",
+  "tools/verify_persona_pack.cmd",
+  "tools/verify_persona_pack.ps1",
+  "tools/verify_persona_pack.py",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
@@ -343,6 +358,8 @@ $requiredFiles = @(
   "provenance/release.yml",
   "provenance/requirements-preview.txt",
   "provenance/bridge/README.md",
+  "provenance/bridge/persona_pack.py",
+  "provenance/bridge/test_persona_pack.py",
   "provenance/bridge/reference_bridge.py",
   "provenance/bridge/test_reference_bridge.py",
   "provenance/bridge/local_runner.py",
@@ -364,7 +381,14 @@ $requiredFiles = @(
   "provenance/bridge/hardware_simulator.py",
   "provenance/bridge/test_hardware_simulator.py",
   "provenance/bridge/prearrival_sim_check.py",
-  "provenance/bridge/test_prearrival_sim_check.py"
+  "provenance/bridge/test_prearrival_sim_check.py",
+  "provenance/personas/spark/pack.yaml",
+  "provenance/personas/spark/character.yaml",
+  "provenance/personas/spark/prompt.md",
+  "provenance/personas/spark/behavior.yaml",
+  "provenance/personas/spark/expressions.yaml",
+  "provenance/personas/spark/earcons.yaml",
+  "provenance/personas/spark/voice.yaml"
 )
 
 foreach ($file in $requiredFiles) {
@@ -755,14 +779,14 @@ foreach ($pattern in @("TranscriptPath", "PrintOnly", "ReadBackMs", "[bridge-rep
 }
 
 $bridgeReferenceText = Get-Content -LiteralPath (Join-PackagePath "bridge/reference_bridge.py") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "BridgeMemory", "BRIDGE_SYSTEM_PROMPT", "build_persona_prompt", "spoken_physical_context", "plan_turn", "remember_user_text", "apply_character_memory", "turn_from_character_response", "validate_response", "load_bridge_memory", "save_bridge_memory", "reset_bridge_memory", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "physical_context", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
+foreach ($pattern in @("stackchan.bridge.v1", "BridgeTurn", "AudioBeat", "BridgeMemory", "BRIDGE_SYSTEM_PROMPT", "build_persona_prompt", "load_and_validate_persona_pack", "--persona", "spoken_physical_context", "plan_turn", "remember_user_text", "apply_character_memory", "turn_from_character_response", "validate_response", "load_bridge_memory", "save_bridge_memory", "reset_bridge_memory", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "physical_context", "bridge_frames", "render_jsonl", "render_bench", "bridge hello", "bridge audio", "response_start", "response_end")) {
   if ($bridgeReferenceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/reference_bridge.py missing reference bridge logic: $pattern"
   }
 }
 
 $characterHarnessText = Get-Content -LiteralPath (Join-PackagePath "bridge/character_harness.py") -Raw
-foreach ($pattern in @("ALLOWED_MODES", "ALLOWED_EARCONS", "MODEL_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "validate_response", "FALLBACK_RESPONSE", "memory_write", "model-command")) {
+foreach ($pattern in @("ALLOWED_MODES", "ALLOWED_EARCONS", "MODEL_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "validate_response", "load_and_validate_persona_pack", "--persona", "FALLBACK_RESPONSE", "memory_write", "model-command")) {
   if ($characterHarnessText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/character_harness.py missing character harness support: $pattern"
   }
@@ -773,6 +797,42 @@ foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_char
   if ($characterHarnessTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_character_harness.py missing character harness test coverage: $pattern"
   }
+}
+
+$personaPackLoaderText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
+foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened")) {
+  if ($personaPackLoaderText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/persona_pack.py missing persona pack support: $pattern"
+  }
+}
+
+$personaPackTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_persona_pack.py") -Raw
+foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_validator_rejects_loosened_caps_and_bad_safety_line")) {
+  if ($personaPackTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_persona_pack.py missing persona pack test coverage: $pattern"
+  }
+}
+
+$sparkPackText = Get-Content -LiteralPath (Join-PackagePath "personas/spark/pack.yaml") -Raw
+foreach ($pattern in @("schema: stackchan.persona-pack.v1", "id: spark", "character: character.yaml", "prompt: prompt.md", "voice: voice.yaml")) {
+  if ($sparkPackText -notmatch [regex]::Escape($pattern)) {
+    throw "personas/spark/pack.yaml missing Spark pack field: $pattern"
+  }
+}
+
+$sparkCharacterText = Get-Content -LiteralPath (Join-PackagePath "personas/spark/character.yaml") -Raw
+foreach ($pattern in @("display_name: Stackchan Spark", "max_chars: 140", "contractions: forbidden", "Servo test is not armed. Safety first.", "earcon: safety", "Never claim to be alive or human")) {
+  if ($sparkCharacterText -notmatch [regex]::Escape($pattern)) {
+    throw "personas/spark/character.yaml missing Spark character rule: $pattern"
+  }
+}
+
+$personaStatus = Get-Content -LiteralPath (Join-PackagePath "persona_pack_status.json") -Raw | ConvertFrom-Json
+if (-not $personaStatus.ok) {
+  throw "persona_pack_status.json does not report ok=true"
+}
+if ($personaStatus.persona -ne "spark") {
+  throw "persona_pack_status.json persona mismatch: $($personaStatus.persona)"
 }
 
 $bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
@@ -1198,12 +1258,32 @@ if ($manifest.characterLock -ne "docs/CHARACTER_LOCK.md") {
   throw "Manifest characterLock mismatch: $($manifest.characterLock)"
 }
 
+if ($manifest.gapAnalysis -ne "docs/GAP_ANALYSIS.md") {
+  throw "Manifest gapAnalysis mismatch: $($manifest.gapAnalysis)"
+}
+
 if ($manifest.johnnyAlivePathway -ne "docs/JOHNNY_ALIVE_PATHWAY.md") {
   throw "Manifest johnnyAlivePathway mismatch: $($manifest.johnnyAlivePathway)"
 }
 
+if ($manifest.personaPacksGuide -ne "docs/PERSONA_PACKS.md") {
+  throw "Manifest personaPacksGuide mismatch: $($manifest.personaPacksGuide)"
+}
+
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
   throw "Manifest voicePersonalityGuide mismatch: $($manifest.voicePersonalityGuide)"
+}
+
+if ($manifest.activePersona -ne "spark") {
+  throw "Manifest activePersona mismatch: $($manifest.activePersona)"
+}
+
+if ($manifest.activePersonaPack -ne "personas/spark") {
+  throw "Manifest activePersonaPack mismatch: $($manifest.activePersonaPack)"
+}
+
+if ($manifest.activePersonaVerification -ne "persona_pack_status.json") {
+  throw "Manifest activePersonaVerification mismatch: $($manifest.activePersonaVerification)"
 }
 
 if ($manifest.privacyModel -ne "docs/PRIVACY.md") {

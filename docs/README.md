@@ -4,7 +4,9 @@
 - `HARDWARE_SIMULATION.md`: no-hardware virtual Stackchan proxy, pre-arrival simulation check, and sim-vs-hardware comparison workflow.
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
+- `GAP_ANALYSIS.md`: current implementation audit, ranked hardware/transport gaps, and recommended bottom-half order.
 - `JOHNNY_ALIVE_PATHWAY.md`: current roadmap status and next implementation path from the Johnny Alive source plan.
+- `PERSONA_PACKS.md`: swappable Character OS persona-pack format, foundation/persona split, and migration plan.
 - `PRODUCTION_READINESS.md`: current proof level and consumer rollout gates.
 - `PRIVACY.md`: P7 bridge privacy boundary, wake-word gated audio rules, and memory limits.
 - `RELEASE_PROCESS.md`: package, publish, share, and audit process.

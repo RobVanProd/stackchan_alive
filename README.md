@@ -24,6 +24,7 @@ What is working in the repository now:
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
+- Spark persona pack scaffold under `personas/spark`, with bridge prompt loading and a pack verifier for the first swappable Character OS layer.
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
@@ -37,7 +38,10 @@ What is still gated:
 - Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.
 
 See [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
-[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the promotion gates.
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the promotion gates. The
+current implementation audit and persona-pack plan live in
+[docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) and
+[docs/PERSONA_PACKS.md](docs/PERSONA_PACKS.md).
 
 ## What This Is
 
@@ -48,6 +52,7 @@ Stackchan: Alive is primarily a real-time character OS:
 - `motion/`: spring dynamics, actuator ownership, and safety limits.
 - `io/`: display, audio, bridge, camera, sensor, speech, and servo adapters.
 - `bridge/`: host-side reference bridge, character harness, and memory scaffold.
+- `personas/`: swappable Character OS persona packs. `personas/spark` is the reference pack.
 - `tools/`: preview, hardware simulation, packaging, release, hardware-evidence, and verification helpers.
 
 Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`
@@ -90,6 +95,7 @@ Useful docs:
 
 - [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md): voice target, personality rules, and source guardrails.
 - [docs/CHARACTER_LOCK.md](docs/CHARACTER_LOCK.md): P7 bridge persona, response schema, and memory rules.
+- [docs/PERSONA_PACKS.md](docs/PERSONA_PACKS.md): swappable persona-pack format and migration plan.
 - [docs/BRAIN_MODEL.md](docs/BRAIN_MODEL.md): Gemma 4 E2B / LiteRT-LM model target and harness gate.
 
 Prototype voice auditions:
@@ -144,6 +150,12 @@ Run the no-hardware preflight before flashing or packaging:
 
 ```powershell
 .\tools\run_device_preflight.cmd
+```
+
+Validate the active Spark persona pack:
+
+```powershell
+.\tools\verify_persona_pack.cmd --Json
 ```
 
 Run the virtual hardware proxy while the physical unit is unavailable:

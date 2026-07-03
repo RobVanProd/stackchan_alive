@@ -8,7 +8,7 @@ This project can produce a pre-device review release now and a hardware-validate
 .\tools\package_release.cmd -Version <version>
 ```
 
-The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the voice/personality profile, voice-source provenance template, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, promotion verifiers, a manifest that names the readiness/media/voice artifacts, and SHA256 checksums.
+The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the active persona pack under `personas/spark`, `persona_pack_status.json`, voice-source provenance template, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, promotion verifiers, a manifest that names the readiness/media/voice/persona artifacts, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
 
