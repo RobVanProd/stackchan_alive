@@ -19,6 +19,17 @@ jobs:
       - name: Run bridge and simulator tests
         run: python -m unittest discover -s bridge -p "test_*.py"
 
+      - name: Run engine readiness probe
+        run: python bridge/engine_probe.py --out-dir output/engine-probe/latest --json
+
+      - name: Upload engine readiness probe
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-probe
+          path: |
+            output/engine-probe/latest/engine_probe.json
+            output/engine-probe/latest/ENGINE_PROBE.md
+
       - name: Run hardware simulation report
         run: python bridge/hardware_simulator.py --out-dir output/hardware-sim/latest --json
 

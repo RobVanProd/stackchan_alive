@@ -115,6 +115,9 @@ The probe writes:
 - `output/engine-probe/latest/engine_probe.json`
 - `output/engine-probe/latest/ENGINE_PROBE.md`
 
+GitHub Actions also runs the probe in the `bridge-tests` job and uploads the report as the
+`engine-probe` artifact on each PR/push.
+
 `unconfigured` means the bridge software is present but no real local engine command is
 available yet. That is useful setup evidence, not model speed evidence. A real P7 candidate
 still needs a non-dry-run `bridge/model_benchmark.py --require-runner` report after the
