@@ -14,6 +14,16 @@ Run the no-hardware virtual Stackchan proxy while the physical unit is unavailab
 .\tools\run_hardware_simulation.cmd
 ```
 
+Run the combined pre-arrival proxy report:
+
+```powershell
+.\tools\run_prearrival_sim_check.cmd
+```
+
+It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json`. A passing report
+means the virtual CoreS3/LAN/audio proxy is still healthy; it does not replace device
+evidence.
+
 Check whether this host has local model/STT/TTS engines configured:
 
 ```powershell

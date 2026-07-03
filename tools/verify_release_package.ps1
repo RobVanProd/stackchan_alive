@@ -156,6 +156,8 @@ $requiredFiles = @(
   "bridge/test_lan_service.py",
   "bridge/hardware_simulator.py",
   "bridge/test_hardware_simulator.py",
+  "bridge/prearrival_sim_check.py",
+  "bridge/test_prearrival_sim_check.py",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -260,6 +262,8 @@ $requiredFiles = @(
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
   "tools/run_engine_probe.ps1",
+  "tools/run_prearrival_sim_check.cmd",
+  "tools/run_prearrival_sim_check.ps1",
   "tools/run_hardware_simulation.cmd",
   "tools/run_hardware_simulation.ps1",
   "tools/compare_hardware_sim_baseline.cmd",
@@ -339,7 +343,9 @@ $requiredFiles = @(
   "provenance/bridge/lan_service.py",
   "provenance/bridge/test_lan_service.py",
   "provenance/bridge/hardware_simulator.py",
-  "provenance/bridge/test_hardware_simulator.py"
+  "provenance/bridge/test_hardware_simulator.py",
+  "provenance/bridge/prearrival_sim_check.py",
+  "provenance/bridge/test_prearrival_sim_check.py"
 )
 
 foreach ($file in $requiredFiles) {
@@ -347,7 +353,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -518,7 +524,7 @@ foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows"
 }
 
 $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_preflight.ps1") -Raw
-foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Assert-HardwareSimComparisonGate", "Check hardware simulation comparator", "SIM_HARDWARE_COMPARE.json", "stackchan.hardware-sim-compare.v1", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Speech mouth demo complete", "Speak-all-intents demo complete", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "completed only in a real evidence packet", "reduced_motion_on", "[face] reduced_motion=1", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
+foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Check pre-arrival simulation report", "run_prearrival_sim_check.ps1", "Assert-HardwareSimComparisonGate", "Check hardware simulation comparator", "SIM_HARDWARE_COMPARE.json", "stackchan.hardware-sim-compare.v1", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Speech mouth demo complete", "Speak-all-intents demo complete", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "completed only in a real evidence packet", "reduced_motion_on", "[face] reduced_motion=1", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
   }
@@ -857,8 +863,22 @@ foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reache
   }
 }
 
+$prearrivalSimCheckText = Get-Content -LiteralPath (Join-PackagePath "bridge/prearrival_sim_check.py") -Raw
+foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "proxy-pass-engines-unconfigured", "pending-device")) {
+  if ($prearrivalSimCheckText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/prearrival_sim_check.py missing pre-arrival simulation check support: $pattern"
+  }
+}
+
+$prearrivalSimCheckTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_prearrival_sim_check.py") -Raw
+foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_write_report_includes_machine_and_human_outputs", "gemma4-e2b-litert-lm")) {
+  if ($prearrivalSimCheckTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_prearrival_sim_check.py missing pre-arrival simulation test coverage: $pattern"
+  }
+}
+
 $bridgeReferenceReadmeText = Get-Content -LiteralPath (Join-PackagePath "bridge/README.md") -Raw
-foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "local_runner.py", "engine_probe.py", "ENGINE_PROBE.md", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "hardware_simulator.py", "virtual Stackchan")) {
+foreach ($pattern in @("--format prompt", "--user-text", "--name Rob", "--topic voice", "--physical-context", "--memory-file", "--save-memory", "--reset-memory", "--model-response", "character_harness.py", "local_runner.py", "engine_probe.py", "ENGINE_PROBE.md", "model_benchmark.py", "MODEL_BENCHMARK.md", "gemma4-e2b-litert-lm", "lan_service.py", "hardware_simulator.py", "virtual Stackchan", "prearrival_sim_check.py", "PREARRIVAL_SIM_CHECK.md/json")) {
   if ($bridgeReferenceReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/README.md missing reference bridge prompt/memory guidance: $pattern"
   }
@@ -875,6 +895,13 @@ $hardwareSimulationRunnerText = Get-Content -LiteralPath (Join-PackagePath "tool
 foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "hardware_simulator.py", "--out-dir", "output/hardware-sim/latest", "Hardware simulation report")) {
   if ($hardwareSimulationRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_hardware_simulation.ps1 missing hardware simulation runner logic: $pattern"
+  }
+}
+
+$prearrivalSimCheckRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_prearrival_sim_check.ps1") -Raw
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "prearrival_sim_check.py", "--out-dir", "output/prearrival-sim/latest", "--run-model-smoke", "Pre-arrival simulation check failed")) {
+  if ($prearrivalSimCheckRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_prearrival_sim_check.ps1 missing pre-arrival simulation runner logic: $pattern"
   }
 }
 
@@ -1369,7 +1396,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }

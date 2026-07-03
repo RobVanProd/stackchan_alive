@@ -43,6 +43,19 @@ jobs:
             output/hardware-sim/latest/*.serial.log
             output/hardware-sim/latest/*.json
 
+      - name: Run pre-arrival simulation check
+        run: python bridge/prearrival_sim_check.py --out-dir output/prearrival-sim/latest --json
+
+      - name: Upload pre-arrival simulation check
+        uses: actions/upload-artifact@v7
+        with:
+          name: prearrival-simulation-check
+          path: |
+            output/prearrival-sim/latest/prearrival_sim_check.json
+            output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md
+            output/prearrival-sim/latest/hardware-sim/**
+            output/prearrival-sim/latest/engine-probe/**
+
   native-tests:
     runs-on: ubuntu-latest
     steps:

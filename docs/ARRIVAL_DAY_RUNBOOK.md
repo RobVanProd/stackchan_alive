@@ -62,6 +62,11 @@ the no-hardware virtual Stackchan baseline, including the fake mic/STT/model/TTS
 loop, under `simulation/hardware-sim/latest/` for later comparison. It is not hardware
 evidence.
 
+From the repo or release package, `tools/run_prearrival_sim_check.cmd` is the quick
+pre-arrival proxy. It writes `PREARRIVAL_SIM_CHECK.md/json` with simulator status and
+engine-readiness status, making it clear what is already passing before the unit is on the
+bench.
+
 Import the display photo or video into the packet:
 
 ```powershell
