@@ -26,6 +26,7 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status and hosted-runner allocation must allow jobs to start before they can be used as rollout evidence. Promotion evidence requires both required workflows, `Firmware` and `Release`, to be observed for the matching commit; one green workflow is not enough if the other is missing.
 - Production voice-source provenance is explicitly tracked; current generated WAVs are review samples until `data/voice_source_provenance.yaml` is completed with licensed or owned source evidence.
 - Release packages include `VOICE_SOURCE_STATUS.md` and `voice_source_status.json`, which summarize the blocked production-voice gates from the provenance YAML and template.
+- The LiteRT-LM/mobile brain path has a wrapper contract, but real LiteRT-LM runner speed, memory, and Character Lock compliance are not proven until a configured runner benchmark passes.
 - Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.
 - Servo output is disabled by default until hardware calibration.
@@ -40,6 +41,7 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Mechanical limits under load.
 - Long-running thermal and power behavior.
 - Camera, mic, touch, and proximity integration.
+- Real LiteRT-LM/mobile runner speed and memory behavior.
 
 ## Consumer Rollout Gate
 

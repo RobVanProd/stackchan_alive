@@ -240,6 +240,8 @@ $bridgePackageFiles = @(
   "test_reference_bridge.py",
   "local_runner.py",
   "test_local_runner.py",
+  "litert_lm_stackchan_wrapper.py",
+  "test_litert_lm_stackchan_wrapper.py",
   "engine_probe.py",
   "test_engine_probe.py",
   "model_benchmark.py",
@@ -839,6 +841,8 @@ $manifest = [ordered]@{
     "provenance/bridge/test_reference_bridge.py",
     "provenance/bridge/local_runner.py",
     "provenance/bridge/test_local_runner.py",
+    "provenance/bridge/litert_lm_stackchan_wrapper.py",
+    "provenance/bridge/test_litert_lm_stackchan_wrapper.py",
     "provenance/bridge/engine_probe.py",
     "provenance/bridge/test_engine_probe.py",
     "provenance/bridge/model_benchmark.py",
@@ -1083,6 +1087,7 @@ Engine readiness quick check:
 
 - Run ``tools/run_engine_probe.cmd -Json`` to check whether local model, STT, and TTS commands are configured.
 - Run ``tools/run_engine_probe.cmd -RunModelSmoke -Json`` after exporting a runner command to capture the first real smoke result. This is setup evidence; full model selection still requires ``bridge/model_benchmark.py --require-runner``.
+- For the mobile/low-footprint brain path, configure ``STACKCHAN_LITERT_LM_COMMAND`` and use ``bridge/litert_lm_stackchan_wrapper.py`` as ``STACKCHAN_GEMMA4_E2B_LITERT_COMMAND`` before running the LiteRT-LM profile benchmark.
 
 No-hardware simulation quick check:
 

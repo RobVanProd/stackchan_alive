@@ -163,6 +163,18 @@ Try the deterministic response planner with user text:
 python bridge/reference_bridge.py --format bench --user-text "My name is Rob and I picked you up to check the servo voice."
 ```
 
+Use the LiteRT-LM/mobile adapter when a real low-footprint runner is available:
+
+```powershell
+$env:STACKCHAN_LITERT_LM_COMMAND = "python path\to\real_litert_runner.py --model path\to\gemma-4-E2B-it-litert-lm"
+$env:STACKCHAN_GEMMA4_E2B_LITERT_COMMAND = "python bridge\litert_lm_stackchan_wrapper.py"
+python bridge/local_runner.py --profile gemma4-e2b-litert-lm --require-runner --json
+```
+
+The adapter reads the Stackchan prompt on stdin, forwards it to the configured LiteRT-LM
+command, skips command logs, validates the first JSON object as Character Lock output, and
+prints normalized JSON back to the runner.
+
 Persist the minimal local memory store on the bridge host:
 
 ```powershell

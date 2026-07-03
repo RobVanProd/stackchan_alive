@@ -744,9 +744,23 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
 }
 
 $localRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/local_runner.py") -Raw
-foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback")) {
+foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback")) {
   if ($localRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/local_runner.py missing local runner support: $pattern"
+  }
+}
+
+$litertWrapperText = Get-Content -LiteralPath (Join-PackagePath "bridge/litert_lm_stackchan_wrapper.py") -Raw
+foreach ($pattern in @("STACKCHAN_LITERT_LM_COMMAND", "extract_first_json_object", "validate_response", "metadata-json", "stackchan.litert-lm-wrapper.v1")) {
+  if ($litertWrapperText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/litert_lm_stackchan_wrapper.py missing LiteRT-LM wrapper support: $pattern"
+  }
+}
+
+$litertWrapperTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_litert_lm_stackchan_wrapper.py") -Raw
+foreach ($pattern in @("LiteRtLmStackchanWrapperTests", "test_extract_first_json_object_ignores_logs_and_braces_in_strings", "test_run_wrapper_uses_configured_command_and_prints_character_json", "test_env_command_is_used_when_cli_command_is_empty")) {
+  if ($litertWrapperTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_litert_lm_stackchan_wrapper.py missing LiteRT-LM wrapper test coverage: $pattern"
   }
 }
 
@@ -1367,7 +1381,7 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/character_harness.py", "bridge/engine_probe.py", "ENGINE_PROBE.md", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/engine_probe.py", "ENGINE_PROBE.md", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }

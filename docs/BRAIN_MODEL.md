@@ -90,6 +90,20 @@ $env:STACKCHAN_GEMMA4_E2B_GGUF_COMMAND = "ollama run hf.co/google/gemma-4-E2B-it
 python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --require-runner --json
 ```
 
+Example LiteRT-LM/mobile smoke:
+
+```powershell
+$env:STACKCHAN_LITERT_LM_COMMAND = "python path\to\real_litert_runner.py --model path\to\gemma-4-E2B-it-litert-lm"
+$env:STACKCHAN_GEMMA4_E2B_LITERT_COMMAND = "python bridge\litert_lm_stackchan_wrapper.py"
+python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case greeting --require-runner --json
+```
+
+`bridge/litert_lm_stackchan_wrapper.py` is the stable low-footprint runner boundary. It reads
+the Stackchan Character Lock prompt on stdin, runs `STACKCHAN_LITERT_LM_COMMAND` or
+`--command` with that prompt on stdin, skips non-JSON logs, validates the first real JSON
+object with `bridge/character_harness.py`, and prints only normalized Character Lock JSON for
+`bridge/local_runner.py`.
+
 The runner result records validation output, elapsed milliseconds, and approximate tokens per
 second whenever a configured command is used. The same wrapper can feed device frames through
 the reference bridge:
