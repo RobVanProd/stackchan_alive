@@ -31,7 +31,7 @@ Latency targets from the roadmap remain active:
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
-| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, then wire downlinked chunks into speaker playback. |
+| P7 Brain bridge | Firmware bridge parser, deterministic host bridge, memory store, privacy model, model guide, character harness, model-response bridge path, local runner wrapper, model benchmark harness, engine readiness probe, LAN service scaffold, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter, binary TTS audio downlink scaffold, firmware downlink consumer telemetry, and no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal exist. | Run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, select/measure real STT/TTS engines, then wire decoded downlinked chunks into speaker playback. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
 ## Current P7 Sequence
@@ -77,10 +77,10 @@ Keep each item independently shippable and package-verified.
      deterministic mouth beats with returned TTS metadata.
    - If the TTS command returns `audio_b64`, the LAN service sends stream metadata plus binary
      WebSocket chunks. Firmware parses the stream metadata, copies the current chunk into a
-     bounded `BridgeClient` buffer exposed through bridge outputs, and accounts chunk payloads
-     for telemetry.
-   - Selecting/measuring real STT/TTS engines and wiring downlinked chunks into speaker
-     playback remain the next P7 bridge gates.
+     bounded `BridgeClient` buffer exposed through bridge outputs, feeds it to the downlink
+     consumer, and accounts chunk payloads for telemetry.
+   - Selecting/measuring real STT/TTS engines and wiring decoded downlinked chunks into
+     speaker playback remain the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.
 
 4. Dynamic TTS sidecar path.
@@ -88,7 +88,8 @@ Keep each item independently shippable and package-verified.
    - Firmware keeps using the existing mouth-envelope path.
    - Binary audio transport to firmware has a LAN scaffold; generated audio can travel as
      chunks and firmware keeps the current accepted chunk payload available to the output
-     handler, but firmware speaker playback from those chunks is still future work.
+     handler/downlink consumer, but decoded firmware speaker playback from those chunks is
+     still future work.
    - Voice-source provenance remains blocking for any consumer-ready build.
 
 5. Virtual hardware proxy.

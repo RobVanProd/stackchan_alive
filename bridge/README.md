@@ -118,9 +118,9 @@ The command receives response text on stdin and these environment variables:
 The LAN service uses the beats for `audio` mouth frames and sends `audio_b64` as
 `audio_stream_start`, binary WebSocket chunks, and `audio_stream_end`. Firmware currently
 parses the stream metadata, copies each accepted chunk into a bounded `BridgeClient` buffer,
-exposes the current payload through `BridgeClientOutput`, accounts received chunk bytes, and
-rejects mismatched stream totals; speaker playback from downlinked chunks is still future
-work.
+exposes the current payload through `BridgeClientOutput`, feeds it to the downlink consumer
+for checksum/telemetry validation, accounts received chunk bytes, and rejects mismatched
+stream totals; decoded speaker playback from downlinked chunks is still future work.
 
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded

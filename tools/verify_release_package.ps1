@@ -307,6 +307,8 @@ $requiredFiles = @(
   "provenance/src/io/CameraAdapter.cpp",
   "provenance/src/io/BridgeClient.hpp",
   "provenance/src/io/BridgeClient.cpp",
+  "provenance/src/io/BridgeAudioDownlink.hpp",
+  "provenance/src/io/BridgeAudioDownlink.cpp",
   "provenance/src/persona/SpeechPlanner.hpp",
   "provenance/src/persona/SpeechPlanner.cpp",
   "provenance/src/persona/EarconSynth.hpp",
@@ -563,6 +565,13 @@ foreach ($pattern in @("BridgeClient::begin", "BridgeClient::update", "BridgeCli
   }
 }
 
+$bridgeAudioDownlinkText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeAudioDownlink.cpp") -Raw
+foreach ($pattern in @("BridgeAudioDownlink::begin", "BridgeAudioDownlink::start", "BridgeAudioDownlink::submitChunk", "BridgeAudioDownlink::end", "BridgeAudioDownlink::abort", "kBridgeAudioStreamChunkPayloadMax", "payloadBytes", "chunksAccepted", "bytesAccepted", "streamsCompleted", "streamsAborted", "updateChecksum")) {
+  if ($bridgeAudioDownlinkText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeAudioDownlink.cpp missing P7 downlink-consumer support: $pattern"
+  }
+}
+
 $earconSynthText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/EarconSynth.cpp") -Raw
 foreach ($pattern in @("EarconSynth::render", "EarconSynth::expectedDurationMs", "SpeechEarcon::Wake", "SpeechEarcon::Confirm", "SpeechEarcon::Think", "SpeechEarcon::Happy", "SpeechEarcon::Concern", "SpeechEarcon::Sleep", "SpeechEarcon::Error", "SpeechEarcon::Safety", "checksum", "truncated", "sinf")) {
   if ($earconSynthText -notmatch [regex]::Escape($pattern)) {
@@ -592,7 +601,7 @@ foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "Spee
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "gBridge", "gBridge.update", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_timeouts=", "[bridge]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "gBridge", "gBridgeAudioDownlink", "gBridge.update", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_timeouts=", "[bridge]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled=", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
@@ -1372,7 +1381,7 @@ foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Seq
 }
 
 $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "offline matrix")) {
+foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "offline matrix")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }

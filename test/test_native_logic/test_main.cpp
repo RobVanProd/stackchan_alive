@@ -11,6 +11,7 @@
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
 #include "io/AudioOut.hpp"
+#include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -2398,6 +2399,72 @@ void test_bridge_client_rejects_oversized_audio_stream_chunk() {
   TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
 }
 
+void test_bridge_audio_downlink_consumes_bridge_payload_output() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeAudioDownlink downlink;
+  TEST_ASSERT_TRUE(downlink.begin());
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":17,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":4,\"chunk_bytes\":4,\"chunks\":1}",
+      700));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+  TEST_ASSERT_TRUE(downlink.start(output.stream, 700));
+
+  const uint8_t chunk[] = {9, 8, 7, 6};
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk, sizeof(chunk), 710));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_TRUE(downlink.submitChunk(output.streamChunk, 710));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"audio_stream_end\",\"seq\":17,\"audio_bytes\":4,\"chunks\":1}", 720));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamEnd), static_cast<int>(output.type));
+  TEST_ASSERT_TRUE(downlink.end(output.stream, 720));
+
+  const BridgeAudioDownlinkTelemetry& telemetry = downlink.telemetry();
+  TEST_ASSERT_FALSE(telemetry.active);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.streamsStarted);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.streamsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.chunksAccepted);
+  TEST_ASSERT_EQUAL_UINT32(4, telemetry.bytesAccepted);
+  TEST_ASSERT_EQUAL_UINT32(4, telemetry.lastPayloadBytes);
+  TEST_ASSERT_GREATER_THAN_UINT32(0, telemetry.checksum);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.errors);
+}
+
+void test_bridge_audio_downlink_rejects_invalid_payload_and_aborts() {
+  BridgeAudioDownlink downlink;
+  TEST_ASSERT_TRUE(downlink.begin());
+
+  BridgeAudioStream stream;
+  stream.seq = 18;
+  stream.audioBytes = 4;
+  stream.chunkBytes = 4;
+  stream.chunks = 1;
+  strncpy(stream.format, "wav", sizeof(stream.format) - 1);
+  TEST_ASSERT_TRUE(downlink.start(stream, 800));
+
+  BridgeAudioStreamChunk chunk;
+  chunk.seq = 18;
+  chunk.index = 1;
+  chunk.bytes = 4;
+  chunk.payloadBytes = 4;
+  chunk.payload = nullptr;
+
+  TEST_ASSERT_FALSE(downlink.submitChunk(chunk, 810));
+  TEST_ASSERT_TRUE(downlink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().errors);
+  downlink.abort(820, 42);
+  TEST_ASSERT_FALSE(downlink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, downlink.telemetry().streamsAborted);
+  TEST_ASSERT_EQUAL_UINT32(42, downlink.telemetry().lastErrorCode);
+}
+
 void test_bridge_client_recovers_after_error_aborts_audio_stream() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -2655,6 +2722,8 @@ int main() {
   RUN_TEST(test_bridge_client_rejects_binary_without_audio_stream);
   RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
   RUN_TEST(test_bridge_client_rejects_oversized_audio_stream_chunk);
+  RUN_TEST(test_bridge_audio_downlink_consumes_bridge_payload_output);
+  RUN_TEST(test_bridge_audio_downlink_rejects_invalid_payload_and_aborts);
   RUN_TEST(test_bridge_client_recovers_after_error_aborts_audio_stream);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   RUN_TEST(test_bridge_client_times_out_active_session_once);
