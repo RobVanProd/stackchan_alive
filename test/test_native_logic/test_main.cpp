@@ -1334,6 +1334,33 @@ void test_sensor_adapter_parses_direct_speech_intent_cues() {
   TEST_ASSERT_FALSE(parseBenchControlLine("speak unknown", 4105, &unknown));
 }
 
+void test_sensor_adapter_parses_bridge_conversation_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge hello session42", 4110, &control));
+  TEST_ASSERT_TRUE(control.hasBridge);
+  TEST_ASSERT_EQUAL_STRING("bridge_control", control.command);
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"hello\",\"session\":\"session42\"}", control.bridge.controlLine);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge thinking 42", 4111, &control));
+  TEST_ASSERT_TRUE(control.hasBridge);
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"thinking\",\"seq\":42}", control.bridge.controlLine);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge response happy 42 hello i am awake", 4112, &control));
+  TEST_ASSERT_TRUE(control.hasBridge);
+  TEST_ASSERT_NOT_NULL(std::strstr(control.bridge.controlLine, "\"type\":\"response_start\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(control.bridge.controlLine, "\"intent\":\"happy\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(control.bridge.controlLine, "\"text\":\"hello i am awake\""));
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge audio 0.70 ee 20 final", 4113, &control));
+  TEST_ASSERT_TRUE(control.hasBridge);
+  TEST_ASSERT_NOT_NULL(std::strstr(control.bridge.controlLine, "\"type\":\"audio\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(control.bridge.controlLine, "\"viseme\":\"ee\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(control.bridge.controlLine, "\"final\":true"));
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge end 42", 4114, &control));
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"response_end\",\"seq\":42}", control.bridge.controlLine);
+}
+
 void test_sensor_adapter_parses_audio_awareness_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("sound dir=-45 level=0.70", 4081, &control));
@@ -2172,6 +2199,34 @@ void test_bridge_client_reports_parse_errors_without_allocating() {
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
 }
 
+void test_bridge_client_accepts_serial_bridge_transcript() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  const char* commands[] = {
+      "bridge hello bench",
+      "bridge thinking 5",
+      "bridge response happy 5 hello stackchan friend",
+      "bridge audio 0.55 ah 20",
+      "bridge end 5",
+  };
+
+  BridgeClientOutput output;
+  for (size_t i = 0; i < sizeof(commands) / sizeof(commands[0]); ++i) {
+    BenchControl control;
+    TEST_ASSERT_TRUE(parseBenchControlLine(commands[i], 8000 + static_cast<uint32_t>(i), &control));
+    TEST_ASSERT_TRUE(control.hasBridge);
+    TEST_ASSERT_TRUE(bridge.submitControlLine(control.bridge.controlLine, 9000 + static_cast<uint32_t>(i)));
+    TEST_ASSERT_TRUE(bridge.poll(&output));
+  }
+
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseEnd), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseEnded), static_cast<int>(output.event.type));
+  TEST_ASSERT_EQUAL_UINT32(5, bridge.telemetry().inboundMessages);
+  TEST_ASSERT_EQUAL_UINT32(5, bridge.telemetry().outputsQueued);
+  TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().parseErrors);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -2235,6 +2290,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_face_tracking_commands);
   RUN_TEST(test_sensor_adapter_parses_spoken_command_bench_events);
   RUN_TEST(test_sensor_adapter_parses_direct_speech_intent_cues);
+  RUN_TEST(test_sensor_adapter_parses_bridge_conversation_commands);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
@@ -2267,5 +2323,6 @@ int main() {
   RUN_TEST(test_bridge_client_maps_thinking_and_response_events);
   RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
+  RUN_TEST(test_bridge_client_accepts_serial_bridge_transcript);
   return UNITY_END();
 }

@@ -8,6 +8,7 @@
 #include "config/RobotConfig.hpp"
 #include "face/ProceduralFace.hpp"
 #include "io/AudioOut.hpp"
+#include "io/BridgeClient.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -43,6 +44,7 @@ SensorAdapter gSensors;
 CameraAdapter gCamera;
 AudioOut gAudioOut;
 SpeechAdapter gSpeechAdapter;
+BridgeClient gBridge;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
@@ -200,6 +202,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink {
 };
 
 M5SpeakerAudioSink gSpeakerSink;
+char gBridgeSpeechText[kBridgeTextMax] = {};
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_ENABLE_SERVOS
@@ -284,6 +287,24 @@ bool isAudioTelemetryEvent(EventType type) {
 
 CharacterMode visionModeForEvent(EventType type) {
   return type == EventType::FaceLost ? CharacterMode::Idle : CharacterMode::Attend;
+}
+
+CharacterMode bridgeModeForEvent(EventType type) {
+  switch (type) {
+    case EventType::UserSpeaking:
+      return CharacterMode::Listen;
+    case EventType::ThinkingStarted:
+      return CharacterMode::Think;
+    case EventType::ResponseStarted:
+      return CharacterMode::Speak;
+    case EventType::ResponseEnded:
+      return CharacterMode::Attend;
+    case EventType::Error:
+      return CharacterMode::Error;
+    default:
+      break;
+  }
+  return CharacterMode::Attend;
 }
 
 const __FlashStringHelper* speechVisemeName(SpeechViseme viseme) {
@@ -406,6 +427,73 @@ const __FlashStringHelper* audioOutSourceName(AudioOutSource source) {
   return F("none");
 }
 
+const __FlashStringHelper* bridgeOutputTypeName(BridgeClientOutputType type) {
+  switch (type) {
+    case BridgeClientOutputType::SessionReady:
+      return F("session_ready");
+    case BridgeClientOutputType::Event:
+      return F("event");
+    case BridgeClientOutputType::ResponseStart:
+      return F("response_start");
+    case BridgeClientOutputType::AudioFrame:
+      return F("audio");
+    case BridgeClientOutputType::ResponseEnd:
+      return F("response_end");
+    case BridgeClientOutputType::Error:
+      return F("error");
+    case BridgeClientOutputType::None:
+      break;
+  }
+  return F("none");
+}
+
+const __FlashStringHelper* bridgeStateName(BridgeClientState state) {
+  switch (state) {
+    case BridgeClientState::Offline:
+      return F("offline");
+    case BridgeClientState::Connecting:
+      return F("connecting");
+    case BridgeClientState::Ready:
+      return F("ready");
+    case BridgeClientState::Listening:
+      return F("listening");
+    case BridgeClientState::Thinking:
+      return F("thinking");
+    case BridgeClientState::Responding:
+      return F("responding");
+    case BridgeClientState::Error:
+      return F("error");
+  }
+  return F("unknown");
+}
+
+SpeechEarcon earconForIntent(SpeechIntent intent) {
+  switch (intent) {
+    case SpeechIntent::Boot:
+    case SpeechIntent::Listen:
+      return SpeechEarcon::Wake;
+    case SpeechIntent::Idle:
+    case SpeechIntent::Think:
+      return SpeechEarcon::Think;
+    case SpeechIntent::Happy:
+      return SpeechEarcon::Happy;
+    case SpeechIntent::Concern:
+      return SpeechEarcon::Concern;
+    case SpeechIntent::Sleep:
+      return SpeechEarcon::Sleep;
+    case SpeechIntent::Error:
+      return SpeechEarcon::Error;
+    case SpeechIntent::Safety:
+      return SpeechEarcon::Safety;
+    case SpeechIntent::Attend:
+    case SpeechIntent::Speak:
+    case SpeechIntent::React:
+    case SpeechIntent::None:
+      break;
+  }
+  return SpeechEarcon::Confirm;
+}
+
 void printBootMarker() {
   Serial.print(F("[boot] stackchan_alive mode="));
   Serial.print(firmwareMode());
@@ -488,7 +576,18 @@ void printRuntimeStatus() {
   Serial.print(F(" audio_out_hw_frames="));
   Serial.print(audioOut.hardwareFramesSubmitted);
   Serial.print(F(" audio_out_hw_drops="));
-  Serial.println(audioOut.hardwareFrameDrops);
+  Serial.print(audioOut.hardwareFrameDrops);
+  const BridgeClientTelemetry& bridge = gBridge.telemetry();
+  Serial.print(F(" bridge_ready="));
+  Serial.print(bridge.ready ? 1 : 0);
+  Serial.print(F(" bridge_state="));
+  Serial.print(bridgeStateName(bridge.state));
+  Serial.print(F(" bridge_messages="));
+  Serial.print(bridge.inboundMessages);
+  Serial.print(F(" bridge_outputs="));
+  Serial.print(bridge.outputsQueued);
+  Serial.print(F(" bridge_parse_errors="));
+  Serial.println(bridge.parseErrors);
 }
 
 void printSpeechCue(const SpeechCue& cue, uint32_t speechSeq, uint32_t nowMs) {
@@ -624,8 +723,57 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" cue_earcon="));
     Serial.print(speechEarconName(control.speechCue.earcon));
   }
+  if (control.hasBridge) {
+    Serial.print(F(" bridge_line=\""));
+    Serial.print(control.bridge.controlLine);
+    Serial.print(F("\""));
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
+}
+
+void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
+  Serial.print(F("[bridge] type="));
+  Serial.print(bridgeOutputTypeName(output.type));
+  Serial.print(F(" state="));
+  Serial.print(bridgeStateName(gBridge.telemetry().state));
+  Serial.print(F(" seq="));
+  Serial.print(output.response.seq != 0 ? output.response.seq : output.audio.seq);
+  Serial.print(F(" at_ms="));
+  Serial.print(nowMs);
+  if (output.type == BridgeClientOutputType::Event ||
+      output.type == BridgeClientOutputType::ResponseStart ||
+      output.type == BridgeClientOutputType::ResponseEnd ||
+      output.type == BridgeClientOutputType::Error) {
+    Serial.print(F(" event="));
+    Serial.print(eventTypeName(output.event.type));
+  }
+  if (output.type == BridgeClientOutputType::ResponseStart) {
+    Serial.print(F(" intent="));
+    Serial.print(speechIntentName(output.response.intent));
+    Serial.print(F(" text=\""));
+    Serial.print(output.response.text);
+    Serial.print(F("\""));
+  }
+  if (output.type == BridgeClientOutputType::AudioFrame) {
+    Serial.print(F(" env="));
+    Serial.print(output.audio.envelope, 2);
+    Serial.print(F(" viseme="));
+    Serial.print(speechVisemeName(toSpeechViseme(output.audio.viseme)));
+    Serial.print(F(" duration_ms="));
+    Serial.print(output.audio.durationMs);
+    Serial.print(F(" final="));
+    Serial.print(output.audio.finalChunk ? 1 : 0);
+  }
+  if (output.type == BridgeClientOutputType::SessionReady) {
+    Serial.print(F(" session="));
+    Serial.print(output.sessionId);
+  }
+  if (output.type == BridgeClientOutputType::Error) {
+    Serial.print(F(" code="));
+    Serial.print(output.error);
+  }
+  Serial.println();
 }
 
 void printAudioTelemetry(const RobotEvent& event, uint32_t frameMs) {
@@ -701,6 +849,20 @@ void publishAudioOutSpeechFrame(uint32_t nowMs) {
   xQueueOverwrite(gSpeechQueue, &input);
 }
 
+void publishBridgeSpeechFrame(const BridgeAudioChunk& audio, uint32_t nowMs) {
+  if (gSpeechQueue == nullptr) {
+    return;
+  }
+
+  FaceSpeechInput input;
+  input.clear = audio.finalChunk && audio.envelope <= 0.01f;
+  input.envelope = audio.envelope;
+  input.viseme = toSpeechViseme(audio.viseme);
+  input.timestampMs = nowMs;
+  input.durationMs = audio.finalChunk ? 80 : audio.durationMs;
+  xQueueOverwrite(gSpeechQueue, &input);
+}
+
 void publishFaceControl(const BenchControl& control) {
   if (gFaceControlQueue == nullptr || !control.hasReducedMotion) {
     return;
@@ -721,6 +883,44 @@ void publishMotionControl(const BenchControl& control) {
   input.hasMotionEnable = true;
   input.motionEnabled = control.motionEnabled;
   xQueueOverwrite(gMotionControlQueue, &input);
+}
+
+void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
+  printBridgeOutput(output, nowMs);
+
+  if (output.type == BridgeClientOutputType::Event ||
+      output.type == BridgeClientOutputType::ResponseEnd ||
+      output.type == BridgeClientOutputType::Error) {
+    gIntent.applyEvent(output.event, bridgeModeForEvent(output.event.type));
+    if (output.event.type == EventType::UserSpeaking) {
+      gAudioOut.duck(nowMs);
+    }
+  }
+
+  if (output.type == BridgeClientOutputType::ResponseStart) {
+    gIntent.applyEvent(output.event, CharacterMode::Speak);
+    strncpy(gBridgeSpeechText, output.response.text, sizeof(gBridgeSpeechText) - 1);
+    gBridgeSpeechText[sizeof(gBridgeSpeechText) - 1] = '\0';
+
+    SpeechCue cue;
+    cue.intent = output.response.intent;
+    cue.text = gBridgeSpeechText;
+    cue.priority = 250;
+    cue.earcon = earconForIntent(output.response.intent);
+    cue.earconDelayMs = 40;
+    gIntent.queueSpeechCue(cue, nowMs);
+  }
+
+  if (output.type == BridgeClientOutputType::AudioFrame) {
+    publishBridgeSpeechFrame(output.audio, nowMs);
+  }
+}
+
+void pollBridgeOutputs(uint32_t nowMs) {
+  BridgeClientOutput output;
+  while (gBridge.poll(&output)) {
+    handleBridgeOutput(output, nowMs);
+  }
 }
 
 void publishFrame(const RobotFrame& frame) {
@@ -857,9 +1057,13 @@ void IntentTask(void* pv) {
       if (control.hasSpeechCue) {
         gIntent.queueSpeechCue(control.speechCue, millis());
       }
+      if (control.hasBridge) {
+        gBridge.submitControlLine(control.bridge.controlLine, millis());
+      }
       publishSpeechInput(control);
       publishFaceControl(control);
       publishMotionControl(control);
+      pollBridgeOutputs(millis());
       printBenchControl(control);
     }
 
@@ -908,6 +1112,7 @@ void setup() {
   gCamera.begin();
   gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   gSpeechAdapter.begin(false, &gAudioOut);
+  gBridge.begin();
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();

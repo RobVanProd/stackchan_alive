@@ -6,6 +6,10 @@
 
 namespace stackchan {
 
+namespace {
+constexpr const char* kBridgeProtocolMarker = "stackchan.bridge.v1";
+}
+
 bool BridgeClient::begin(const BridgeClientConfig& config) {
   telemetry_ = BridgeClientTelemetry {};
   pending_ = BridgeClientOutput {};
@@ -13,7 +17,8 @@ bool BridgeClient::begin(const BridgeClientConfig& config) {
   config_ = config;
 
   telemetry_.configured = config_.deviceId != nullptr && config_.deviceId[0] != '\0' &&
-                          config_.protocolVersion != nullptr && config_.protocolVersion[0] != '\0';
+                          config_.protocolVersion != nullptr &&
+                          std::strcmp(config_.protocolVersion, kBridgeProtocolMarker) == 0;
   telemetry_.ready = telemetry_.configured;
   telemetry_.taskPinnedToCore0 = true;
   telemetry_.state = telemetry_.ready ? BridgeClientState::Offline : BridgeClientState::Error;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "io/BridgeClient.hpp"
 #include "persona/EventBus.hpp"
 #include "persona/StateMatrix.hpp"
 
@@ -24,6 +25,10 @@ struct BenchAmbientReading {
   uint8_t hourOfDay = 12;
 };
 
+struct BenchBridgeControl {
+  char controlLine[192] = {};
+};
+
 struct BenchControl {
   bool wantsHelp = false;
   bool wantsStatus = false;
@@ -35,6 +40,7 @@ struct BenchControl {
   bool hasAmbient = false;
   bool hasCircadian = false;
   bool hasSpeechCue = false;
+  bool hasBridge = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
@@ -43,6 +49,7 @@ struct BenchControl {
   RobotEvent event;
   BenchSpeechEnvelope speech;
   BenchAmbientReading ambient;
+  BenchBridgeControl bridge;
   SpeechCue speechCue;
   const char* command = "";
 };
@@ -58,7 +65,7 @@ class SensorAdapter {
  private:
   void printHelp() const;
 
-  char line_[96] = {};
+  char line_[192] = {};
   uint8_t lineLength_ = 0;
 };
 
