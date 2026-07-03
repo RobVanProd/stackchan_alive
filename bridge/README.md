@@ -93,7 +93,8 @@ The command receives response text on stdin and these environment variables:
 `beats` or a speech-envelope-sidecar-style `frames` array. It may also include `audio_b64`.
 The LAN service uses the beats for `audio` mouth frames and sends `audio_b64` as
 `audio_stream_start`, binary WebSocket chunks, and `audio_stream_end`. Firmware currently
-parses the stream metadata; speaker playback from downlinked chunks is still future work.
+parses the stream metadata, accounts received chunk bytes, and rejects mismatched stream
+totals; speaker playback from downlinked chunks is still future work.
 
 The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
 JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded

@@ -70,7 +70,7 @@ Keep each item independently shippable and package-verified.
    - A configured local TTS command can receive response text on stdin and replace the
      deterministic mouth beats with returned TTS metadata.
    - If the TTS command returns `audio_b64`, the LAN service sends stream metadata plus binary
-     WebSocket chunks. Firmware parses the stream metadata for telemetry.
+     WebSocket chunks. Firmware parses the stream metadata and accounts chunk payloads for telemetry.
    - Selecting/measuring real STT/TTS engines and wiring downlinked chunks into speaker
      playback remain the next P7 bridge gates.
    - Do not move real-time face or motion ownership off firmware.

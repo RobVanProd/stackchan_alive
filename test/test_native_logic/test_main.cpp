@@ -2259,7 +2259,40 @@ void test_bridge_client_parses_audio_stream_metadata() {
   TEST_ASSERT_EQUAL_UINT32(3, output.stream.chunks);
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamsStarted);
   TEST_ASSERT_EQUAL_UINT32(7, bridge.telemetry().audioStreamBytes);
+  TEST_ASSERT_EQUAL_UINT32(3, bridge.telemetry().audioStreamChunksExpected);
+  TEST_ASSERT_TRUE(bridge.telemetry().audioStreamActive);
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Responding), static_cast<int>(bridge.telemetry().state));
+
+  const uint8_t chunk0[] = {1, 2, 3};
+  const uint8_t chunk1[] = {4, 5, 6};
+  const uint8_t chunk2[] = {7};
+
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk0, sizeof(chunk0), 525));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(12, output.streamChunk.seq);
+  TEST_ASSERT_EQUAL_UINT32(1, output.streamChunk.index);
+  TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.bytes);
+  TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.receivedBytes);
+  TEST_ASSERT_FALSE(output.streamChunk.finalChunk);
+
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk1, sizeof(chunk1), 530));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(2, output.streamChunk.index);
+  TEST_ASSERT_EQUAL_UINT32(6, output.streamChunk.receivedBytes);
+  TEST_ASSERT_FALSE(output.streamChunk.finalChunk);
+
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk2, sizeof(chunk2), 535));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.index);
+  TEST_ASSERT_EQUAL_UINT32(1, output.streamChunk.bytes);
+  TEST_ASSERT_EQUAL_UINT32(7, output.streamChunk.receivedBytes);
+  TEST_ASSERT_TRUE(output.streamChunk.finalChunk);
+  TEST_ASSERT_GREATER_THAN_UINT32(0, output.streamChunk.checksum);
+  TEST_ASSERT_EQUAL_UINT32(7, bridge.telemetry().audioStreamBytesReceived);
+  TEST_ASSERT_EQUAL_UINT32(3, bridge.telemetry().audioStreamChunksReceived);
 
   TEST_ASSERT_TRUE(bridge.submitControlLine(
       "{\"type\":\"audio_stream_end\",\"seq\":12,\"audio_bytes\":7,\"chunks\":3}",
@@ -2271,6 +2304,53 @@ void test_bridge_client_parses_audio_stream_metadata() {
   TEST_ASSERT_EQUAL_UINT32(7, output.stream.audioBytes);
   TEST_ASSERT_EQUAL_UINT32(3, output.stream.chunks);
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamsEnded);
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
+  TEST_ASSERT_GREATER_THAN_UINT32(0, bridge.telemetry().audioStreamChecksum);
+}
+
+void test_bridge_client_rejects_binary_without_audio_stream() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  const uint8_t chunk[] = {1, 2, 3};
+  TEST_ASSERT_FALSE(bridge.submitBinaryFrame(chunk, sizeof(chunk), 600));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("binary_without_audio_stream", output.error);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().parseErrors);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamErrors);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
+}
+
+void test_bridge_client_rejects_truncated_audio_stream() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":14,\"format\":\"wav\",\"sample_rate\":22050,"
+      "\"audio_bytes\":7,\"chunk_bytes\":3,\"chunks\":3}",
+      620));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+
+  const uint8_t chunk[] = {1, 2, 3};
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk, sizeof(chunk), 625));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+
+  TEST_ASSERT_FALSE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_end\",\"seq\":14,\"audio_bytes\":7,\"chunks\":3}",
+      640));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("audio_stream_payload_bytes_mismatch", output.error);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().parseErrors);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamErrors);
+  TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
 }
 
 void test_bridge_client_reports_parse_errors_without_allocating() {
@@ -2444,6 +2524,8 @@ int main() {
   RUN_TEST(test_serial_bridge_response_preserves_attend_intent);
   RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
   RUN_TEST(test_bridge_client_parses_audio_stream_metadata);
+  RUN_TEST(test_bridge_client_rejects_binary_without_audio_stream);
+  RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
   RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   RUN_TEST(test_bridge_client_times_out_active_session_once);
   RUN_TEST(test_bridge_client_accepts_serial_bridge_transcript);

@@ -32,6 +32,7 @@ enum class BridgeClientOutputType : uint8_t {
   ResponseStart,
   AudioFrame,
   AudioStreamStart,
+  AudioStreamChunk,
   AudioStreamEnd,
   ResponseEnd,
   Error,
@@ -71,12 +72,22 @@ struct BridgeAudioStream {
   char format[kBridgeAudioFormatMax] = {};
 };
 
+struct BridgeAudioStreamChunk {
+  uint32_t seq = 0;
+  uint32_t index = 0;
+  uint32_t bytes = 0;
+  uint32_t receivedBytes = 0;
+  uint32_t checksum = 0;
+  bool finalChunk = false;
+};
+
 struct BridgeClientOutput {
   BridgeClientOutputType type = BridgeClientOutputType::None;
   RobotEvent event;
   BridgeResponseChunk response;
   BridgeAudioChunk audio;
   BridgeAudioStream stream;
+  BridgeAudioStreamChunk streamChunk;
   char sessionId[kBridgeSessionIdMax] = {};
   char error[kBridgeErrorMax] = {};
 };
@@ -95,6 +106,12 @@ struct BridgeClientTelemetry {
   uint32_t audioStreamsStarted = 0;
   uint32_t audioStreamsEnded = 0;
   uint32_t audioStreamBytes = 0;
+  uint32_t audioStreamBytesReceived = 0;
+  uint32_t audioStreamChunksExpected = 0;
+  uint32_t audioStreamChunksReceived = 0;
+  uint32_t audioStreamErrors = 0;
+  uint32_t audioStreamChecksum = 0;
+  bool audioStreamActive = false;
   uint32_t lastSeq = 0;
   uint32_t lastMessageMs = 0;
 };
@@ -107,6 +124,7 @@ class BridgeClient {
 
   bool update(uint32_t nowMs);
   bool submitControlLine(const char* jsonLine, uint32_t nowMs);
+  bool submitBinaryFrame(const uint8_t* payload, size_t length, uint32_t nowMs);
   bool poll(BridgeClientOutput* outputOut);
 
   const BridgeClientTelemetry& telemetry() const {
@@ -125,13 +143,20 @@ class BridgeClient {
   static void copyBounded(char* out, size_t outSize, const char* value);
 
   void queueOutput(const BridgeClientOutput& output);
+  void clearAudioStream();
+  bool failAudioStream(const char* reason);
   bool failParse(const char* reason);
   bool failTimeout(uint32_t nowMs);
 
   BridgeClientConfig config_;
   BridgeClientTelemetry telemetry_;
   BridgeClientOutput pending_;
+  BridgeAudioStream activeStream_;
+  uint32_t activeStreamBytesReceived_ = 0;
+  uint32_t activeStreamChunksReceived_ = 0;
+  uint32_t activeStreamChecksum_ = 0;
   bool hasPending_ = false;
+  bool audioStreamActive_ = false;
 };
 
 }  // namespace stackchan
