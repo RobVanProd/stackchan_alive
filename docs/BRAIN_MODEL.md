@@ -98,6 +98,27 @@ the reference bridge:
 python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-gguf --runner-case greeting
 ```
 
+## Batch Benchmark Evidence
+
+Use `bridge/model_benchmark.py` to run the Character Lock prompt suite across the configured
+model profiles and write repeatable evidence:
+
+```powershell
+python bridge/model_benchmark.py --json
+python bridge/model_benchmark.py --profile gemma4-e2b-gguf --require-runner --json
+python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --json
+```
+
+The harness writes:
+
+- `output/model-benchmark/latest/model_benchmark.json`
+- `output/model-benchmark/latest/MODEL_BENCHMARK.md`
+
+When no runner command is configured, the report is marked
+`dry-run-no-runner-configured`; that proves the prompt/validator path still works, but it is
+not speed evidence. A profile only becomes a real candidate once its rows use a configured
+runner command and still pass Character Lock validation.
+
 The same path is exposed as a local WebSocket service for P7 LAN-loop testing:
 
 ```powershell

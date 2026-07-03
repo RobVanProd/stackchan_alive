@@ -40,6 +40,18 @@ python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --json
 python bridge/local_runner.py --profile gemma4-e2b-litert-lm --case picked_up --json
 ```
 
+Run the batch benchmark harness to compare the GGUF, LiteRT-LM, and fallback profiles across
+the Character Lock prompt suite:
+
+```powershell
+python bridge/model_benchmark.py --json
+python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --json
+```
+
+The default output goes to `output/model-benchmark/latest/model_benchmark.json` and
+`output/model-benchmark/latest/MODEL_BENCHMARK.md`. If every row uses
+`deterministic_fallback`, the report is a harness dry run, not real model speed evidence.
+
 To smoke a real local runner, pass a command or set the profile environment variable. The
 prompt is passed on stdin and the command must print one Character Lock JSON object:
 
