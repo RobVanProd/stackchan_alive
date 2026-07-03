@@ -1,14 +1,14 @@
-# Stackchan Alive
+# Stackchan: Alive
 
-Stackchan Alive is a procedural character runtime for a Stack-chan-style tabletop robot on
-M5Stack CoreS3 / ESP32-S3-class hardware. The goal is a small robot that feels awake:
-it blinks, breathes, looks around, reacts to events, speaks with synchronized mouth motion,
-and eventually holds short in-character conversations through a local companion bridge.
+Stackchan: Alive is a character OS for a Stackchan-style tabletop robot on M5Stack CoreS3 /
+ESP32-S3-class hardware. The goal is a small robot that feels awake: it blinks, breathes,
+looks around, reacts to events, speaks with synchronized mouth motion, and eventually holds
+short in-character conversations through a local companion bridge.
 
 The face, motion, speech cues, and bridge protocol are all generated procedurally. There are
 no face sprite sheets or character-image assets in the runtime.
 
-![Stackchan Alive preview](docs/media/stackchan_alive_preview.png)
+![Stackchan: Alive preview](docs/media/stackchan_alive_preview.png)
 
 ## Project Status
 
@@ -21,7 +21,7 @@ What is working in the repository now:
 - Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
-- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, and Gemma 4 E2B / LiteRT-LM model guidance.
+- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, and a no-hardware virtual Stackchan simulator.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
 
 What is still gated:
@@ -36,14 +36,14 @@ See [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live ro
 
 ## What This Is
 
-Stackchan Alive is primarily a real-time character runtime:
+Stackchan: Alive is primarily a real-time character OS:
 
 - `persona/`: emotion, intent, speech planning, command mapping, and frame snapshots.
 - `face/`: expression mapping, layered animation, and procedural rendering.
 - `motion/`: spring dynamics, actuator ownership, and safety limits.
 - `io/`: display, audio, bridge, camera, sensor, speech, and servo adapters.
 - `bridge/`: host-side reference bridge, character harness, and memory scaffold.
-- `tools/`: preview, packaging, release, hardware-evidence, and verification helpers.
+- `tools/`: preview, hardware simulation, packaging, release, hardware-evidence, and verification helpers.
 
 Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`
 snapshots; new sensors and bridge code must not touch actuators directly.
@@ -129,6 +129,12 @@ Run the no-hardware preflight before flashing or packaging:
 .\tools\run_device_preflight.cmd
 ```
 
+Run the virtual hardware proxy while the physical unit is unavailable:
+
+```powershell
+.\tools\run_hardware_simulation.cmd
+```
+
 If native host tests cannot find `gcc` / `g++`, run:
 
 ```powershell
@@ -196,7 +202,7 @@ operator instructions live in [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md) a
 
 ## Use And Contributions
 
-This repository is now public for development visibility. Treat it as prerelease robotics
+This repository is now public for development visibility. Treat Stackchan: Alive as prerelease robotics
 software: expect hardware-specific tuning, evidence gates, and safety review before real-world
 use.
 

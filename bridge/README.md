@@ -1,6 +1,7 @@
-# Stackchan Reference Bridge
+# Stackchan: Alive Reference Bridge
 
-This directory contains the first host-side reference for the P7 conversation bridge. It is
+This directory contains the host-side bridge reference for Stackchan: Alive, the character OS
+layer for Stackchan hardware. It is
 intentionally small: no cloud dependency, no bundled LLM, and no bundled TTS yet. Its job is to generate and
 serve deterministic `stackchan.bridge.v1` control frames that the firmware bridge client
 already accepts through the serial bench path and the local LAN scaffold.
@@ -100,6 +101,16 @@ upload telemetry and clears raw audio at `utterance_end` or `cancel`. On a trans
 or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
 stream chunks, `audio` mouth frames, and `response_end` frames back to the client.
+
+Run the no-hardware virtual Stackchan proxy:
+
+```powershell
+python bridge/hardware_simulator.py --out-dir output/hardware-sim/latest --json
+```
+
+It consumes the same bridge frames as the firmware parser and checks response state, face mode,
+speech-envelope frames, binary TTS audio stream accounting, and timeout behavior. This is a
+simulation proxy only; real hardware evidence is still required.
 
 Try the deterministic response planner with user text:
 

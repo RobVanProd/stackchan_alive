@@ -296,7 +296,7 @@ if (-not $releaseExists) {
     gh release create $Version `
       @baseReleaseAssets `
       --repo $Repo `
-      --title "Stackchan Alive $Version" `
+      --title "Stackchan: Alive $Version" `
       --notes-file (Join-Path $packageRoot "RELEASE_NOTES.md") `
       --prerelease
     }

@@ -1984,6 +1984,10 @@ Invoke-Step "Check speech envelope sidecar tooling" {
   Assert-SpeechEnvelopeSidecarGate
 }
 
+Invoke-Step "Check hardware simulation proxy" {
+  & (Join-Path $PSScriptRoot "run_hardware_simulation.ps1") -OutputDir (Join-Path $ReportDir "hardware-sim")
+}
+
 Invoke-Step "Check preview media quality" {
   & (Join-Path $PSScriptRoot "verify_preview_media.ps1")
 }

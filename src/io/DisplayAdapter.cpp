@@ -216,7 +216,7 @@ void DisplayAdapter::flush() {
   }
   canvas_->setTextColor(kAccent, kBg);
   canvas_->setTextDatum(middle_center);
-  canvas_->drawString("Stackchan Alive", 160, 220);
+  canvas_->drawString("Stackchan: Alive", 160, 220);
   canvas_->pushSprite(0, 0);
   M5.Display.waitDisplay();
   frameCount_++;

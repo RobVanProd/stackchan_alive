@@ -124,7 +124,7 @@ if frame_count < 240:
 if len(set(sample_hashes)) < 4:
     fail("Idle GIF does not show enough frame-to-frame life")
 if min(accent_counts or [0]) < 40:
-    fail("Idle GIF does not keep the Stackchan Alive label visible")
+    fail("Idle GIF does not keep the Stackchan: Alive label visible")
 
 print(json.dumps({
     "artifactsRoot": str(root),

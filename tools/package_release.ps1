@@ -213,6 +213,7 @@ Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/HARDWARE_SIMULATION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRIVACY.md" -Destination $docsDir
@@ -236,6 +237,8 @@ Copy-Item -LiteralPath "bridge/character_harness.py" -Destination $bridgeDir
 Copy-Item -LiteralPath "bridge/test_character_harness.py" -Destination $bridgeDir
 Copy-Item -LiteralPath "bridge/reference_bridge.py" -Destination $bridgeDir
 Copy-Item -LiteralPath "bridge/test_reference_bridge.py" -Destination $bridgeDir
+Copy-Item -LiteralPath "bridge/hardware_simulator.py" -Destination $bridgeDir
+Copy-Item -LiteralPath "bridge/test_hardware_simulator.py" -Destination $bridgeDir
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
   -VoiceSourceProvenancePath (Join-Path $dataDir "voice_source_provenance.yaml") `
@@ -315,6 +318,8 @@ $releaseTools = @(
   "tools/run_character_harness_tests.ps1",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
+  "tools/run_hardware_simulation.cmd",
+  "tools/run_hardware_simulation.ps1",
   "tools/send_speech_mouth_demo.cmd",
   "tools/send_speech_mouth_demo.ps1",
   "tools/send_speak_all_intents_demo.cmd",
@@ -760,6 +765,8 @@ $manifest = [ordered]@{
     "tools/run_character_harness_tests.ps1",
     "tools/run_bridge_reference_tests.cmd",
     "tools/run_bridge_reference_tests.ps1",
+    "tools/run_hardware_simulation.cmd",
+    "tools/run_hardware_simulation.ps1",
     "tools/send_speech_mouth_demo.cmd",
     "tools/send_speech_mouth_demo.ps1",
     "tools/send_speak_all_intents_demo.cmd",
@@ -809,6 +816,8 @@ $manifest = [ordered]@{
     "provenance/bridge/README.md",
     "provenance/bridge/reference_bridge.py",
     "provenance/bridge/test_reference_bridge.py",
+    "provenance/bridge/hardware_simulator.py",
+    "provenance/bridge/test_hardware_simulator.py",
     "provenance/firmware.yml",
     "provenance/release.yml",
     "provenance/data/commands.yaml",
@@ -1029,13 +1038,18 @@ Recommended arrival command from the extracted package:
 "@ | Set-Content -Path (Join-Path $outDir "READINESS_REPORT.md") -Encoding UTF8
 
 @"
-# Stackchan Alive $Version
+# Stackchan: Alive $Version
 
 Commit: $commit
 
-This is a device-ready prerelease package. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
+This is a device-ready prerelease package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+
+No-hardware simulation quick check:
+
+- Run ``tools/run_hardware_simulation.cmd`` to exercise the virtual Stackchan bridge proxy before the physical unit is available.
+- The simulator proves bridge frame ordering, LAN text turns, speech-envelope handoff, binary TTS audio stream accounting, and timeout failure behavior. It does not replace real hardware evidence.
 
 Voice audition quick check:
 

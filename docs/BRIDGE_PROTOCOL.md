@@ -20,6 +20,10 @@ Use `-PrintOnly` to inspect the deterministic transcript without opening a seria
 
 The matching host-side reference lives in `bridge/reference_bridge.py`. It emits the same frames as newline-delimited JSON (`--format jsonl`) or firmware bench commands (`--format bench`) so the bridge protocol, serial replay helper, and firmware parser can be tested from one deterministic transcript. It also exposes the first deterministic persona prompt and local memory context (`--format prompt`, `--user-text`) that the future LAN STT/LLM/TTS service will replace behind the same frame schema.
 
+When hardware is unavailable, `tools/run_hardware_simulation.cmd` runs a virtual Stackchan
+proxy over the same bridge frames and writes serial-like logs plus JSON telemetry for frame
+ordering, mouth timing, binary TTS audio stream accounting, and timeout checks.
+
 For P7 model work, the host-side model does not send raw Character Lock JSON to the device.
 The bridge validates that JSON with `bridge/character_harness.py`, applies safe memory
 writes/forgets on the host, and then emits normalized `response_start` and `audio` frames.
