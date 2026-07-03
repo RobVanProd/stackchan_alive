@@ -117,6 +117,10 @@ const __FlashStringHelper* eventTypeName(EventType type) {
       return F("put_down");
     case EventType::Tilted:
       return F("tilted");
+    case EventType::SoundDirection:
+      return F("sound_direction");
+    case EventType::LoudNoise:
+      return F("loud_noise");
   }
   return F("unknown");
 }

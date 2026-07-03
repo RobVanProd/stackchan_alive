@@ -84,6 +84,16 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       emotion_.focus += 0.10f * s;
       emotion_.valence -= 0.04f * s;
       break;
+    case EventType::SoundDirection:
+      emotion_.arousal += 0.12f * s;
+      emotion_.focus += 0.22f * s;
+      emotion_.valence += 0.03f * s;
+      break;
+    case EventType::LoudNoise:
+      emotion_.arousal += 0.34f * s;
+      emotion_.focus += 0.18f * s;
+      emotion_.valence -= 0.18f * s;
+      break;
     case EventType::Boot:
     case EventType::UserSpeaking:
     case EventType::SpeechEnded:

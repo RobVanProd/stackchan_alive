@@ -176,6 +176,20 @@ bool parsePayloadValue(const char* token, float* valueOut) {
   return true;
 }
 
+bool parseAzimuthDeg(const char* token, float* valueOut) {
+  if (token == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const float parsed = strtof(token, &end);
+  if (end == token) {
+    return false;
+  }
+  *valueOut = constrain(parsed, -90.0f, 90.0f);
+  return true;
+}
+
 bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
   if (token == nullptr || token[0] == '\0') {
     return false;
@@ -197,6 +211,76 @@ bool parseViseme(const char* token, BenchSpeechViseme* visemeOut) {
     *visemeOut = BenchSpeechViseme::Neutral;
     return true;
   }
+  return false;
+}
+
+bool fillAudioEvent(const char* first, char** tokens, uint8_t tokenCount, uint32_t nowMs, BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasEvent = true;
+  parsed.event.timestampMs = nowMs;
+  parsed.event.strength = 1.0f;
+
+  if (strcmp(first, "sound") == 0 || strcmp(first, "audio") == 0 ||
+      strcmp(first, "voice") == 0) {
+    float azimuthDeg = 0.0f;
+    float level = 0.65f;
+    bool hasDirection = false;
+
+    if (tokenCount >= 1 && parseAzimuthDeg(tokens[0], &azimuthDeg)) {
+      hasDirection = true;
+      if (tokenCount >= 2) {
+        parseStrength(tokens[1], &level);
+      }
+    }
+
+    for (uint8_t i = 0; i + 1 < tokenCount; ++i) {
+      if (strcmp(tokens[i], "dir") == 0 || strcmp(tokens[i], "direction") == 0 ||
+          strcmp(tokens[i], "az") == 0 || strcmp(tokens[i], "azimuth") == 0 ||
+          strcmp(tokens[i], "deg") == 0) {
+        hasDirection = parseAzimuthDeg(tokens[i + 1], &azimuthDeg) || hasDirection;
+      } else if (strcmp(tokens[i], "level") == 0 || strcmp(tokens[i], "strength") == 0 ||
+                 strcmp(tokens[i], "energy") == 0) {
+        parseStrength(tokens[i + 1], &level);
+      }
+    }
+
+    if (!hasDirection) {
+      return false;
+    }
+
+    parsed.mode = CharacterMode::Attend;
+    parsed.event.type = EventType::SoundDirection;
+    parsed.event.strength = level;
+    parsed.event.hasPayload = true;
+    parsed.event.x = azimuthDeg / 90.0f;
+    parsed.event.z = level;
+    parsed.command = "sound_direction";
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(first, "noise") == 0 || strcmp(first, "loud") == 0 ||
+      strcmp(first, "bang") == 0 || strcmp(first, "clap") == 0) {
+    float level = 1.0f;
+    if (tokenCount >= 1) {
+      parseStrength(tokens[0], &level);
+    }
+    for (uint8_t i = 0; i + 1 < tokenCount; ++i) {
+      if (strcmp(tokens[i], "level") == 0 || strcmp(tokens[i], "strength") == 0 ||
+          strcmp(tokens[i], "energy") == 0) {
+        parseStrength(tokens[i + 1], &level);
+      }
+    }
+    parsed.mode = CharacterMode::React;
+    parsed.event.type = EventType::LoudNoise;
+    parsed.event.strength = level;
+    parsed.event.hasPayload = true;
+    parsed.event.z = level;
+    parsed.command = "loud_noise";
+    *controlOut = parsed;
+    return true;
+  }
+
   return false;
 }
 
@@ -658,6 +742,12 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "clock") == 0 || strcmp(first, "circadian") == 0) {
     return fillCircadian(ambientTokens, ambientTokenCount, controlOut);
   }
+  if (strcmp(first, "sound") == 0 || strcmp(first, "audio") == 0 ||
+      strcmp(first, "voice") == 0 || strcmp(first, "noise") == 0 ||
+      strcmp(first, "loud") == 0 || strcmp(first, "bang") == 0 ||
+      strcmp(first, "clap") == 0) {
+    return fillAudioEvent(first, ambientTokens, ambientTokenCount, nowMs, controlOut);
+  }
   if (strcmp(first, "touch") == 0 || strcmp(first, "touched") == 0 ||
       strcmp(first, "poke") == 0 || strcmp(first, "pat") == 0 ||
       strcmp(first, "proximity") == 0 || strcmp(first, "prox") == 0 ||
@@ -744,6 +834,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: speech <0.0-1.0> <ah|oh|ee|neutral> [duration_ms]; speech clear"));
   Serial.println(F("[control] help: ambient <lux> <hour>; ambient lux <lux> hour <0-23>"));
   Serial.println(F("[control] help: time <0-23>; circadian hour <0-23>"));
+  Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));
   Serial.println(F("[control] help: pickup [strength]; shake [strength]; putdown; tilt <x> <y> <z>"));
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));

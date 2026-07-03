@@ -57,6 +57,18 @@ tilted:
   pupil_x: 0.18
   pupil_y: -0.08
   mouth_smile: -0.12
+sound_direction:
+  perceptual_purpose: orient reflex; eyes lead toward a salient off-axis voice before head follow-through
+  eye_open: 0.96
+  pupil_x: 0.35
+  face_x: 3.0
+  yaw_bias_deg: 16.0
+loud_noise:
+  perceptual_purpose: startle reflex; sudden broadband sound spikes arousal and briefly pulls into React mode
+  eye_open: 1.08
+  mouth_open: 0.32
+  mouth_smile: -0.22
+  brow_tilt: 0.24
 circadian:
   evening_start_hour: 18
   night_start_hour: 21

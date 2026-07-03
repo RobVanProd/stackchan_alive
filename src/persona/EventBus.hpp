@@ -21,6 +21,8 @@ enum class EventType : uint8_t {
   Shaken,
   PutDown,
   Tilted,
+  SoundDirection,
+  LoudNoise,
 };
 
 struct RobotEvent {

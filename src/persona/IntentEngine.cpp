@@ -19,8 +19,10 @@ void IntentEngine::begin() {
   lastUpdateMs_ = millis();
   lastSpeechCueMs_ = 0;
   activeSpeechUntilMs_ = 0;
+  soundOrientUntilMs_ = 0;
   demoEnabled_ = true;
   reducedMotion_ = false;
+  soundAzimuthNorm_ = 0.0f;
   lastSpeechIntent_ = SpeechIntent::None;
   activeSpeech_ = SpeechCue {};
   idleLife_.reset(lastUpdateMs_);
@@ -30,6 +32,12 @@ void IntentEngine::begin() {
 void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   mode_ = mode;
   emotion_.applyEvent(event);
+  if (event.type == EventType::SoundDirection && event.hasPayload) {
+    soundAzimuthNorm_ = constrain(event.x, -1.0f, 1.0f);
+    soundOrientUntilMs_ = event.timestampMs + 1800;
+  } else if (event.type == EventType::LoudNoise) {
+    soundOrientUntilMs_ = event.timestampMs + 500;
+  }
   nextDemoEventMs_ = event.timestampMs + 10000;
 }
 
@@ -68,6 +76,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   frame.motion = motionForMode(nowMs);
   frame.face = expression_.map(frame.emotion, mode_);
   idleLife_.apply(frame, nowMs, reducedMotion_);
+  applySoundOrientation(frame, nowMs);
   if (nowMs < activeSpeechUntilMs_ && activeSpeech_.shouldSpeak()) {
     frame.speech = activeSpeech_;
     frame.speechSeq = speechSeq_;
@@ -153,6 +162,21 @@ MotionTargets IntentEngine::motionForMode(uint32_t nowMs) const {
   }
 
   return motion;
+}
+
+void IntentEngine::applySoundOrientation(RobotFrame& frame, uint32_t nowMs) const {
+  if (nowMs >= soundOrientUntilMs_) {
+    return;
+  }
+
+  const float remaining = (soundOrientUntilMs_ - nowMs) / 1800.0f;
+  const float gain = constrain(remaining, 0.0f, 1.0f);
+  const float gaze = soundAzimuthNorm_ * gain;
+  frame.face.pupilX += gaze * 0.35f;
+  frame.face.faceX += gaze * 3.0f;
+  if (frame.motion.yawMode == YawMode::Angle) {
+    frame.motion.yawDeg += gaze * 16.0f;
+  }
 }
 
 }  // namespace stackchan
