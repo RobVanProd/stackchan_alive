@@ -184,6 +184,16 @@ budget:
 python bridge/model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --min-pass-rate 0.95 --max-median-ms 2500 --min-tokens-per-sec 5 --json
 ```
 
+The combined pre-arrival proxy can include the same benchmark gate when the real runner is
+available:
+
+```powershell
+.\tools\run_prearrival_sim_check.cmd -RunModelBenchmark -Json
+```
+
+That writes `output/prearrival-sim/latest/model-benchmark/MODEL_BENCHMARK.md/json` and adds a
+`model-benchmark-candidate` gate to `PREARRIVAL_SIM_CHECK.md/json`.
+
 The same path is exposed as a local WebSocket service for P7 LAN-loop testing:
 
 ```powershell

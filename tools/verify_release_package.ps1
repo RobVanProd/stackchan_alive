@@ -175,6 +175,13 @@ $requiredFiles = @(
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
   "media/stackchan_alive_speech_preview.gif",
+  "media/diagrams/01-system-overview.png",
+  "media/diagrams/02-firmware-task-architecture.png",
+  "media/diagrams/03-persona-engine.png",
+  "media/diagrams/04-face-runtime.png",
+  "media/diagrams/05-motion-servo-safety.png",
+  "media/diagrams/06-brain-bridge-protocol.png",
+  "media/diagrams/08-io-abstraction-builds.png",
   "artifacts/face/phase_a_idle_10s.gif",
   "artifacts/face/phase_a_blink_filmstrip_50ms.png",
   "artifacts/face/phase_a_unlabeled_expression_sheet.png",
@@ -365,7 +372,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -520,6 +527,11 @@ $repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -
 foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing RVC audition discoverability guidance: $pattern"
+  }
+}
+foreach ($pattern in @("01-system-overview.png", "02-firmware-task-architecture.png", "03-persona-engine.png", "04-face-runtime.png", "05-motion-servo-safety.png", "06-brain-bridge-protocol.png", "08-io-abstraction-builds.png")) {
+  if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/README.md missing architecture diagram reference: $pattern"
   }
 }
 
@@ -911,14 +923,14 @@ foreach ($pattern in @("HardwareSimulatorTests", "test_reference_scenario_reache
 }
 
 $prearrivalSimCheckText = Get-Content -LiteralPath (Join-PackagePath "bridge/prearrival_sim_check.py") -Raw
-foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "build_lan_smoke_report", "write_lan_smoke_outputs", "lan_bridge_smoke", "lan-websocket-smoke", "lan-smoke/LAN_SMOKE.md", "thinking_latency", "Thinking latency", "proxy-pass-engines-unconfigured", "pending-device")) {
+foreach ($pattern in @("stackchan.prearrival-sim-check.v1", "build_report", "PREARRIVAL_SIM_CHECK.md", "prearrival_sim_check.json", "run_probe", "write_hardware_outputs", "build_lan_smoke_report", "write_lan_smoke_outputs", "run_benchmark", "write_model_benchmark_outputs", "model-benchmark-candidate", "Model Benchmark", "lan_bridge_smoke", "lan-websocket-smoke", "lan-smoke/LAN_SMOKE.md", "thinking_latency", "Thinking latency", "proxy-pass-engines-unconfigured", "pending-device")) {
   if ($prearrivalSimCheckText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/prearrival_sim_check.py missing pre-arrival simulation check support: $pattern"
   }
 }
 
 $prearrivalSimCheckTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_prearrival_sim_check.py") -Raw
-foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_write_report_includes_machine_and_human_outputs", "lan_bridge_smoke", "thinking_latency", "lan-smoke", "LAN WebSocket Smoke", "Thinking latency", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("PrearrivalSimCheckTests", "test_unconfigured_engines_do_not_fail_hardware_proxy", "test_optional_model_benchmark_records_candidate_gate", "test_write_report_includes_machine_and_human_outputs", "model-benchmark-candidate", "lan_bridge_smoke", "thinking_latency", "lan-smoke", "LAN WebSocket Smoke", "Thinking latency", "gemma4-e2b-litert-lm")) {
   if ($prearrivalSimCheckTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_prearrival_sim_check.py missing pre-arrival simulation test coverage: $pattern"
   }
@@ -946,7 +958,7 @@ foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPytho
 }
 
 $prearrivalSimCheckRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_prearrival_sim_check.ps1") -Raw
-foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "prearrival_sim_check.py", "--out-dir", "output/prearrival-sim/latest", "--run-model-smoke", "Pre-arrival simulation check failed")) {
+foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPython", "prearrival_sim_check.py", "--out-dir", "output/prearrival-sim/latest", "--run-model-smoke", "--run-model-benchmark", "Pre-arrival simulation check failed")) {
   if ($prearrivalSimCheckRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_prearrival_sim_check.ps1 missing pre-arrival simulation runner logic: $pattern"
   }
@@ -994,6 +1006,13 @@ Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
 Assert-File "media/stackchan_alive_preview.mp4" 1000
 Assert-File "media/stackchan_alive_speech_preview.gif" 1000
+Assert-File "media/diagrams/01-system-overview.png" 1000
+Assert-File "media/diagrams/02-firmware-task-architecture.png" 1000
+Assert-File "media/diagrams/03-persona-engine.png" 1000
+Assert-File "media/diagrams/04-face-runtime.png" 1000
+Assert-File "media/diagrams/05-motion-servo-safety.png" 1000
+Assert-File "media/diagrams/06-brain-bridge-protocol.png" 1000
+Assert-File "media/diagrams/08-io-abstraction-builds.png" 1000
 Assert-File "artifacts/face/phase_a_idle_10s.gif" 100000
 Assert-File "artifacts/face/phase_a_blink_filmstrip_50ms.png" 1000
 Assert-File "artifacts/face/phase_a_unlabeled_expression_sheet.png" 1000
@@ -1038,6 +1057,13 @@ Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
 Assert-Bytes "media/stackchan_alive_speech_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
+Assert-Bytes "media/diagrams/01-system-overview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/diagrams/02-firmware-task-architecture.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/diagrams/03-persona-engine.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/diagrams/04-face-runtime.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/diagrams/05-motion-servo-safety.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/diagrams/06-brain-bridge-protocol.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/diagrams/08-io-abstraction-builds.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "artifacts/face/phase_a_idle_10s.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "artifacts/face/phase_a_blink_filmstrip_50ms.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "artifacts/face/phase_a_unlabeled_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
@@ -1222,6 +1248,13 @@ $expectedMediaArtifacts = @(
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_speech_preview.gif",
+  "media/diagrams/01-system-overview.png",
+  "media/diagrams/02-firmware-task-architecture.png",
+  "media/diagrams/03-persona-engine.png",
+  "media/diagrams/04-face-runtime.png",
+  "media/diagrams/05-motion-servo-safety.png",
+  "media/diagrams/06-brain-bridge-protocol.png",
+  "media/diagrams/08-io-abstraction-builds.png",
   "artifacts/face/phase_a_idle_10s.gif",
   "artifacts/face/phase_a_blink_filmstrip_50ms.png",
   "artifacts/face/phase_a_unlabeled_expression_sheet.png",
@@ -1457,7 +1490,7 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }

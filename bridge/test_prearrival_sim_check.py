@@ -31,7 +31,26 @@ class PrearrivalSimCheckTests(unittest.TestCase):
         self.assertEqual("pass", report["lan_bridge_smoke"]["status"])
         self.assertEqual("pass", report["lan_bridge_smoke"]["highlights"]["thinking_latency"]["status"])
         self.assertEqual("unconfigured", report["engine_readiness"]["status"])
+        self.assertFalse(report["model_benchmark"]["run"])
+        self.assertEqual("not-run", report["model_benchmark"]["candidate_status"])
+        benchmark_gate = next(gate for gate in report["gates"] if gate["gate"] == "model-benchmark-candidate")
+        self.assertEqual("not-run", benchmark_gate["status"])
         self.assertFalse(report["promotion_ready"])
+
+    def test_optional_model_benchmark_records_candidate_gate(self):
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, ENGINE_ENV, clear=False):
+            report = build_report(
+                Path(temp_dir),
+                profiles=["gemma4-e2b-gguf"],
+                run_model_benchmark=True,
+            )
+
+        self.assertTrue(report["model_benchmark"]["run"])
+        self.assertEqual("dry-run-no-runner-configured", report["model_benchmark"]["status"])
+        self.assertEqual("no-candidate", report["model_benchmark"]["candidate_status"])
+        benchmark_gate = next(gate for gate in report["gates"] if gate["gate"] == "model-benchmark-candidate")
+        self.assertEqual("no-candidate", benchmark_gate["status"])
+        self.assertIn("summary.candidate_gate", report["next_action"])
 
     def test_write_report_includes_machine_and_human_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, ENGINE_ENV, clear=False):
@@ -51,6 +70,7 @@ class PrearrivalSimCheckTests(unittest.TestCase):
             self.assertIn("Conversation audio loop", markdown)
             self.assertIn("LAN WebSocket Smoke", markdown)
             self.assertIn("Thinking latency", markdown)
+            self.assertIn("Model Benchmark", markdown)
             self.assertIn("gemma4-e2b-litert-lm", markdown)
 
 

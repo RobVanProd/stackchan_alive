@@ -20,6 +20,9 @@ from hardware_simulator import write_outputs as write_hardware_outputs
 from lan_smoke import SCHEMA as LAN_SMOKE_SCHEMA
 from lan_smoke import build_report as build_lan_smoke_report
 from lan_smoke import write_outputs as write_lan_smoke_outputs
+from model_benchmark import SCHEMA as MODEL_BENCHMARK_SCHEMA
+from model_benchmark import run_benchmark
+from model_benchmark import write_outputs as write_model_benchmark_outputs
 
 SCHEMA = "stackchan.prearrival-sim-check.v1"
 DEFAULT_OUT_DIR = Path("output/prearrival-sim/latest")
@@ -172,11 +175,45 @@ def classify(
     )
 
 
+def model_benchmark_summary(benchmark_report: dict[str, Any] | None, benchmark_dir: Path) -> dict[str, Any]:
+    if benchmark_report is None:
+        return {
+            "run": False,
+            "schema": MODEL_BENCHMARK_SCHEMA,
+            "status": "not-run",
+            "candidate_status": "not-run",
+            "recommended_profile": "",
+            "ready_profiles": [],
+            "report_dir": str(benchmark_dir),
+        }
+
+    summary = benchmark_report.get("summary", {})
+    candidate_gate = summary.get("candidate_gate", {})
+    return {
+        "run": True,
+        "schema": benchmark_report.get("schema", MODEL_BENCHMARK_SCHEMA),
+        "status": summary.get("status", "unknown"),
+        "candidate_status": candidate_gate.get("status", "unknown"),
+        "recommended_profile": candidate_gate.get("recommended_profile", ""),
+        "ready_profiles": candidate_gate.get("ready_profiles", []),
+        "report_dir": str(benchmark_dir),
+    }
+
+
+def model_benchmark_gate_status(summary: dict[str, Any]) -> str:
+    if not summary.get("run"):
+        return "not-run"
+    if summary.get("candidate_status") == "pass":
+        return "pass"
+    return "no-candidate"
+
+
 def build_report(
     out_dir: Path = DEFAULT_OUT_DIR,
     *,
     profiles: list[str] | None = None,
     run_model_smoke: bool = False,
+    run_model_benchmark: bool = False,
     stt_command: str = "",
     tts_command: str = "",
     tts_voice: str = DEFAULT_TTS_VOICE,
@@ -184,6 +221,7 @@ def build_report(
     hardware_dir = out_dir / "hardware-sim"
     lan_smoke_dir = out_dir / "lan-smoke"
     engine_dir = out_dir / "engine-probe"
+    benchmark_dir = out_dir / "model-benchmark"
     selected_profiles = profiles or list(DEFAULT_PROFILES)
 
     hardware_summary = write_hardware_outputs(hardware_dir, DEFAULT_SCENARIOS)
@@ -197,9 +235,16 @@ def build_report(
         tts_voice=tts_voice,
     )
     write_engine_outputs(engine_report, engine_dir)
+    benchmark_report = None
+    if run_model_benchmark:
+        benchmark_report = run_benchmark(selected_profiles, None)
+        write_model_benchmark_outputs(benchmark_report, benchmark_dir)
 
     status, readiness_class, next_action = classify(hardware_summary, lan_smoke_report, engine_report)
     engine_summary = engine_report.get("summary", {})
+    benchmark_summary = model_benchmark_summary(benchmark_report, benchmark_dir)
+    if status == "pass" and run_model_benchmark and benchmark_summary["candidate_status"] != "pass":
+        next_action = "Inspect model-benchmark/MODEL_BENCHMARK.md and configure a real runner until summary.candidate_gate passes."
     report = {
         "schema": SCHEMA,
         "generated_at": utc_timestamp(),
@@ -230,6 +275,7 @@ def build_report(
             "report_dir": str(engine_dir),
             "run_model_smoke": run_model_smoke,
         },
+        "model_benchmark": benchmark_summary,
         "gates": [
             {
                 "gate": "virtual-cores3-lan-audio-proxy",
@@ -245,6 +291,11 @@ def build_report(
                 "gate": "local-engine-setup",
                 "status": engine_summary.get("status", "unknown"),
                 "evidence": "engine-probe/engine_probe.json",
+            },
+            {
+                "gate": "model-benchmark-candidate",
+                "status": model_benchmark_gate_status(benchmark_summary),
+                "evidence": "model-benchmark/model_benchmark.json and model-benchmark/MODEL_BENCHMARK.md when -RunModelBenchmark is used",
             },
             {
                 "gate": "real-device-evidence",
@@ -265,6 +316,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     hardware = report["hardware_simulation"]
     lan_smoke = report["lan_bridge_smoke"]
     engine = report["engine_readiness"]
+    benchmark = report["model_benchmark"]
     highlights = hardware["highlights"]
     lan_highlights = lan_smoke["highlights"]
     lines = [
@@ -334,6 +386,21 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Model Benchmark",
+            "",
+            f"- Run: `{str(benchmark['run']).lower()}`",
+            f"- Status: `{benchmark['status']}`",
+            f"- Candidate status: `{benchmark['candidate_status']}`",
+            f"- Recommended profile: `{benchmark.get('recommended_profile') or 'none'}`",
+            f"- Ready profiles: `{', '.join(benchmark.get('ready_profiles', [])) or 'none'}`",
+            f"- Report directory: `{benchmark['report_dir']}`",
+            "",
+            "Run with `-RunModelBenchmark` to write `model-benchmark/MODEL_BENCHMARK.md/json` beside this report.",
+        ]
+    )
+    lines.extend(
+        [
+            "",
             "## Gates",
             "",
         ]
@@ -369,6 +436,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--profile", action="append", choices=sorted(RUNNER_PROFILES), help="Model profile to probe. Repeatable.")
     parser.add_argument("--run-model-smoke", action="store_true", help="Run one real model smoke case for configured profiles.")
+    parser.add_argument("--run-model-benchmark", action="store_true", help="Run the full model benchmark candidate gate.")
     parser.add_argument("--stt-command", default="", help="Override STT command for this check.")
     parser.add_argument("--tts-command", default="", help="Override TTS command for this check.")
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
@@ -382,6 +450,7 @@ def main() -> int:
         args.out_dir,
         profiles=args.profile,
         run_model_smoke=args.run_model_smoke,
+        run_model_benchmark=args.run_model_benchmark,
         stt_command=args.stt_command,
         tts_command=args.tts_command,
         tts_voice=args.tts_voice,

@@ -2,6 +2,7 @@ param(
   [string]$OutputDir = "",
   [string[]]$Profile = @(),
   [switch]$RunModelSmoke,
+  [switch]$RunModelBenchmark,
   [string]$SttCommand = "",
   [string]$TtsCommand = "",
   [string]$TtsVoice = "",
@@ -33,6 +34,10 @@ foreach ($item in $Profile) {
 
 if ($RunModelSmoke) {
   $args += "--run-model-smoke"
+}
+
+if ($RunModelBenchmark) {
+  $args += "--run-model-benchmark"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($SttCommand)) {

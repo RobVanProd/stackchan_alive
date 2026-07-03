@@ -34,6 +34,9 @@ It writes `output/prearrival-sim/latest/PREARRIVAL_SIM_CHECK.md/json` plus neste
 `hardware-sim/`, `lan-smoke/`, and `engine-probe/` reports. The hardware simulator and LAN
 smoke report must pass; model/STT/TTS commands may still be `unconfigured` while the physical
 unit is pending.
+Use `-RunModelBenchmark` after a real model runner command is configured to add nested
+`model-benchmark/MODEL_BENCHMARK.md/json` output and a `model-benchmark-candidate` gate to
+the same pre-arrival report.
 
 For the socket-level LAN bridge proxy, run:
 
