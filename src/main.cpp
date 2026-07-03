@@ -8,6 +8,7 @@
 #include "config/RobotConfig.hpp"
 #include "face/ProceduralFace.hpp"
 #include "io/AudioOut.hpp"
+#include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
@@ -43,6 +44,7 @@ DisplayAdapter gDisplay;
 SensorAdapter gSensors;
 CameraAdapter gCamera;
 AudioOut gAudioOut;
+BridgeAudioDownlink gBridgeAudioDownlink;
 SpeechAdapter gSpeechAdapter;
 BridgeClient gBridge;
 ActuationEngine gActuation(gConfig);
@@ -606,6 +608,21 @@ void printRuntimeStatus() {
   Serial.print(bridge.audioStreamErrors);
   Serial.print(F(" bridge_audio_stream_active="));
   Serial.print(bridge.audioStreamActive ? 1 : 0);
+  const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
+  Serial.print(F(" bridge_downlink_ready="));
+  Serial.print(downlink.ready ? 1 : 0);
+  Serial.print(F(" bridge_downlink_active="));
+  Serial.print(downlink.active ? 1 : 0);
+  Serial.print(F(" bridge_downlink_streams="));
+  Serial.print(downlink.streamsStarted);
+  Serial.print(F(" bridge_downlink_completed="));
+  Serial.print(downlink.streamsCompleted);
+  Serial.print(F(" bridge_downlink_chunks="));
+  Serial.print(downlink.chunksAccepted);
+  Serial.print(F(" bridge_downlink_bytes="));
+  Serial.print(downlink.bytesAccepted);
+  Serial.print(F(" bridge_downlink_errors="));
+  Serial.print(downlink.errors);
   Serial.print(F(" bridge_timeouts="));
   Serial.println(bridge.timeouts);
 }
@@ -968,6 +985,20 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   if (output.type == BridgeClientOutputType::AudioFrame) {
     publishBridgeSpeechFrame(output.audio, nowMs);
   }
+
+  if (output.type == BridgeClientOutputType::AudioStreamStart) {
+    gBridgeAudioDownlink.start(output.stream, nowMs);
+  }
+  if (output.type == BridgeClientOutputType::AudioStreamChunk) {
+    gBridgeAudioDownlink.submitChunk(output.streamChunk, nowMs);
+  }
+  if (output.type == BridgeClientOutputType::AudioStreamEnd) {
+    gBridgeAudioDownlink.end(output.stream, nowMs);
+  }
+  if (output.type == BridgeClientOutputType::Error ||
+      output.type == BridgeClientOutputType::ResponseEnd) {
+    gBridgeAudioDownlink.abort(nowMs);
+  }
 }
 
 void pollBridgeOutputs(uint32_t nowMs) {
@@ -1166,6 +1197,7 @@ void setup() {
   gSensors.begin();
   gCamera.begin();
   gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
+  gBridgeAudioDownlink.begin();
   gSpeechAdapter.begin(false, &gAudioOut);
   gBridge.begin();
   gActuation.begin(&gServo);
