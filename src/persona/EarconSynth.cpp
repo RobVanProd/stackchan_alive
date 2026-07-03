@@ -1,5 +1,7 @@
 #include "persona/EarconSynth.hpp"
 
+#include "PersonaEarcons.hpp"
+
 #include <math.h>
 
 namespace stackchan {
@@ -141,7 +143,8 @@ float toneEnvelope(uint32_t index, uint32_t total, uint32_t fadeSamples) {
   return static_cast<float>(edge) / static_cast<float>(fadeSamples);
 }
 
-void renderTone(const EarconTone& tone,
+template <typename Tone>
+void renderTone(const Tone& tone,
                 int16_t* out,
                 size_t maxSamples,
                 const EarconRenderConfig& config,
@@ -167,6 +170,29 @@ void renderGap(uint8_t gapMs, int16_t* out, size_t maxSamples, uint16_t sampleRa
   }
 }
 
+template <typename Pattern>
+void renderPattern(const Pattern& pattern,
+                   int16_t* out,
+                   size_t maxSamples,
+                   const EarconRenderConfig& config,
+                   EarconRenderResult& result) {
+  for (uint8_t i = 0; i < pattern.count; ++i) {
+    renderTone(pattern.tones[i], out, maxSamples, config, result);
+    if (pattern.tones[i].gapMs > 0) {
+      renderGap(pattern.tones[i].gapMs, out, maxSamples, result.sampleRate, result);
+    }
+  }
+}
+
+template <typename Pattern>
+uint16_t durationForPattern(const Pattern& pattern) {
+  uint16_t total = 0;
+  for (uint8_t i = 0; i < pattern.count; ++i) {
+    total = static_cast<uint16_t>(total + pattern.tones[i].durationMs + pattern.tones[i].gapMs);
+  }
+  return total;
+}
+
 }  // namespace
 
 EarconRenderResult EarconSynth::render(SpeechEarcon earcon,
@@ -182,24 +208,31 @@ EarconRenderResult EarconSynth::render(SpeechEarcon earcon,
 
   EarconRenderConfig activeConfig = config;
   activeConfig.sampleRate = result.sampleRate;
-  const EarconPattern pattern = patternFor(earcon);
-  for (uint8_t i = 0; i < pattern.count; ++i) {
-    renderTone(pattern.tones[i], out, maxSamples, activeConfig, result);
-    if (pattern.tones[i].gapMs > 0) {
-      renderGap(pattern.tones[i].gapMs, out, maxSamples, result.sampleRate, result);
+  if (generated_persona::kUsePersonaEarconPatterns) {
+    const generated_persona::PersonaEarconPattern generatedPattern = generated_persona::earconPatternFor(earcon);
+    if (generatedPattern.count > 0) {
+      renderPattern(generatedPattern, out, maxSamples, activeConfig, result);
+      result.durationMs = static_cast<uint16_t>((result.samplesWritten * 1000u) / result.sampleRate);
+      return result;
     }
   }
+
+  const EarconPattern pattern = patternFor(earcon);
+  renderPattern(pattern, out, maxSamples, activeConfig, result);
   result.durationMs = static_cast<uint16_t>((result.samplesWritten * 1000u) / result.sampleRate);
   return result;
 }
 
 uint16_t EarconSynth::expectedDurationMs(SpeechEarcon earcon) {
-  const EarconPattern pattern = patternFor(earcon);
-  uint16_t total = 0;
-  for (uint8_t i = 0; i < pattern.count; ++i) {
-    total = static_cast<uint16_t>(total + pattern.tones[i].durationMs + pattern.tones[i].gapMs);
+  if (generated_persona::kUsePersonaEarconPatterns) {
+    const generated_persona::PersonaEarconPattern generatedPattern = generated_persona::earconPatternFor(earcon);
+    if (generatedPattern.count > 0) {
+      return durationForPattern(generatedPattern);
+    }
   }
-  return total;
+
+  const EarconPattern pattern = patternFor(earcon);
+  return durationForPattern(pattern);
 }
 
 }  // namespace stackchan

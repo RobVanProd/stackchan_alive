@@ -548,7 +548,7 @@ foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contr
 }
 
 $firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
-foreach ($pattern in @("Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
+foreach ($pattern in @("Verify bundled persona packs", "verify_persona_pack.py glow", "Compile native logic with Glow persona", "STACKCHAN_PERSONA: glow", "Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
   }
@@ -586,14 +586,14 @@ foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.
     throw "docs/README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "verify_persona_pack.cmd glow --Json")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line and earcon codegen", "verify_persona_pack.cmd glow --Json")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "Speech lines and earcon params")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
@@ -676,7 +676,7 @@ foreach ($pattern in @("BridgeAudioDownlink::begin", "BridgeAudioDownlink::start
 }
 
 $earconSynthText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/EarconSynth.cpp") -Raw
-foreach ($pattern in @("EarconSynth::render", "EarconSynth::expectedDurationMs", "SpeechEarcon::Wake", "SpeechEarcon::Confirm", "SpeechEarcon::Think", "SpeechEarcon::Happy", "SpeechEarcon::Concern", "SpeechEarcon::Sleep", "SpeechEarcon::Error", "SpeechEarcon::Safety", "checksum", "truncated", "sinf")) {
+foreach ($pattern in @("PersonaEarcons.hpp", "generated_persona::kUsePersonaEarconPatterns", "generated_persona::earconPatternFor", "renderPattern", "durationForPattern", "EarconSynth::render", "EarconSynth::expectedDurationMs", "SpeechEarcon::Wake", "SpeechEarcon::Confirm", "SpeechEarcon::Think", "SpeechEarcon::Happy", "SpeechEarcon::Concern", "SpeechEarcon::Sleep", "SpeechEarcon::Error", "SpeechEarcon::Safety", "checksum", "truncated", "sinf")) {
   if ($earconSynthText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/persona/EarconSynth.cpp missing P6 earcon synth support: $pattern"
   }
@@ -791,7 +791,7 @@ foreach ($pattern in @("FirmwareVoiceAssets.hpp", "stackchan_spark_greeting.wav"
 }
 
 $personaAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_persona_assets.py") -Raw
-foreach ($pattern in @("PersonaSpeechLines.hpp", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
+foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
   if ($personaAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_generate_persona_assets.py missing persona speech generation logic: $pattern"
   }

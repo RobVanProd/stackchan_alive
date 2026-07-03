@@ -24,7 +24,7 @@ What is working in the repository now:
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
 - P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
-- Spark and Glow persona packs under `personas/`, with bridge prompt loading, firmware speech-line codegen, CI validation, and pack verification for the first swappable Character OS layer.
+- Spark and Glow persona packs under `personas/`, with bridge prompt loading, firmware speech-line and earcon codegen, CI validation, and pack verification for the first swappable Character OS layer.
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.

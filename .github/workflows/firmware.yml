@@ -111,6 +111,11 @@ jobs:
       - name: Run native logic tests
         run: pio test -e native_logic
 
+      - name: Compile native logic with Glow persona
+        run: pio test -e native_logic --without-testing
+        env:
+          STACKCHAN_PERSONA: glow
+
   build:
     runs-on: windows-latest
     steps:
