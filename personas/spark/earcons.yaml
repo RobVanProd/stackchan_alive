@@ -1,0 +1,35 @@
+schema: stackchan.persona-earcons.v1
+purpose: Spark earcons are short, bright, procedural cues. Safety remains calm and procedural.
+earcons:
+  wake:
+    base_hz: 740
+    chirps: 2
+    duration_ms: 180
+  confirm:
+    base_hz: 880
+    chirps: 1
+    duration_ms: 120
+  think:
+    base_hz: 660
+    chirps: 3
+    duration_ms: 220
+  happy:
+    base_hz: 1040
+    chirps: 2
+    duration_ms: 160
+  concern:
+    base_hz: 520
+    chirps: 2
+    duration_ms: 180
+  sleep:
+    base_hz: 440
+    chirps: 1
+    duration_ms: 260
+  error:
+    base_hz: 360
+    chirps: 2
+    duration_ms: 220
+  safety:
+    base_hz: 420
+    chirps: 1
+    duration_ms: 180

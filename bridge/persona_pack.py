@@ -1,0 +1,438 @@
+#!/usr/bin/env python3
+"""Persona-pack loading and validation for Stackchan character OS packs."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable
+
+PACK_SCHEMA = "stackchan.persona-pack.v1"
+CHARACTER_SCHEMA = "stackchan.persona-character.v1"
+DEFAULT_PERSONA_ID = "spark"
+
+FOUNDATION_MAX_CHARS = 140
+FOUNDATION_MAX_SENTENCES = 2
+FOUNDATION_ALLOWED_MODES = {"idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
+FOUNDATION_ALLOWED_EARCONS = {"none", "wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety"}
+FOUNDATION_MEMORY_PREFIXES = ("user.", "project.", "robot.")
+FOUNDATION_DENIED_MEMORY_TERMS = (
+    "password",
+    "passcode",
+    "secret",
+    "token",
+    "api key",
+    "credit card",
+    "bank",
+    "diagnosis",
+    "doctor",
+    "therapy",
+    "girlfriend",
+    "boyfriend",
+    "wife",
+    "husband",
+    "raw audio",
+)
+FOUNDATION_FORBIDDEN_TERMS = ("johnny", "short circuit", "number 5", "need more input")
+REQUIRED_PACK_FILES = ("character", "prompt", "behavior", "expressions", "earcons", "voice")
+REQUIRED_SPOKEN_LINES = ("boot", "listen", "think", "speak", "sleep", "safety", "error", "happy", "concern")
+
+
+class PersonaPackError(ValueError):
+    """Raised when a persona pack cannot be loaded or validated."""
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _strip_inline_comment(line: str) -> str:
+    in_quote = ""
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char in ("'", '"'):
+            if not in_quote:
+                in_quote = char
+            elif in_quote == char:
+                in_quote = ""
+        elif char == "#" and not in_quote:
+            return line[:index].rstrip()
+    return line.rstrip()
+
+
+def _prepare_yaml_lines(text: str) -> list[tuple[int, str]]:
+    lines: list[tuple[int, str]] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        line = _strip_inline_comment(raw.rstrip())
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if "\t" in line[:indent]:
+            raise PersonaPackError("tabs are not supported in persona YAML")
+        lines.append((indent, line.strip()))
+    return lines
+
+
+def _parse_scalar(value: str) -> object:
+    value = value.strip()
+    if value == "":
+        return ""
+    if value[0:1] in ("'", '"') and value[-1:] == value[0]:
+        try:
+            return json.loads(value) if value[0] == '"' else value[1:-1]
+        except json.JSONDecodeError as exc:
+            raise PersonaPackError(f"invalid quoted scalar: {value}") from exc
+    lowered = value.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if lowered in ("null", "none"):
+        return None
+    if value.startswith("[") or value.startswith("{"):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise PersonaPackError(f"invalid inline JSON scalar: {value}") from exc
+    if re.fullmatch(r"[-+]?\d+", value):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    if re.fullmatch(r"[-+]?(?:\d+\.\d*|\d*\.\d+)", value):
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    return value
+
+
+def _parse_mapping_entry(text: str) -> tuple[str, object | None, bool]:
+    key, sep, rest = text.partition(":")
+    if not sep:
+        raise PersonaPackError(f"expected mapping entry, got: {text}")
+    key = key.strip()
+    if not key:
+        raise PersonaPackError(f"empty mapping key in: {text}")
+    rest = rest.strip()
+    if rest:
+        return key, _parse_scalar(rest), True
+    return key, None, False
+
+
+def _parse_block(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[object, int]:
+    if index >= len(lines):
+        return {}, index
+    if lines[index][0] < indent:
+        return {}, index
+    is_list = lines[index][1].startswith("- ")
+    if is_list:
+        items: list[object] = []
+        while index < len(lines):
+            line_indent, text = lines[index]
+            if line_indent < indent:
+                break
+            if line_indent != indent:
+                raise PersonaPackError(f"unexpected list indentation: {text}")
+            if not text.startswith("- "):
+                break
+            rest = text[2:].strip()
+            index += 1
+            if rest:
+                items.append(_parse_scalar(rest))
+            else:
+                value, index = _parse_block(lines, index, indent + 2)
+                items.append(value)
+        return items, index
+
+    values: dict[str, object] = {}
+    while index < len(lines):
+        line_indent, text = lines[index]
+        if line_indent < indent:
+            break
+        if line_indent != indent:
+            raise PersonaPackError(f"unexpected mapping indentation: {text}")
+        if text.startswith("- "):
+            break
+        key, value, has_value = _parse_mapping_entry(text)
+        index += 1
+        if has_value:
+            values[key] = value
+        else:
+            child, index = _parse_block(lines, index, indent + 2)
+            values[key] = child
+    return values, index
+
+
+def load_yaml_subset(path: Path) -> dict[str, object]:
+    lines = _prepare_yaml_lines(path.read_text(encoding="utf-8"))
+    if not lines:
+        return {}
+    result, index = _parse_block(lines, 0, lines[0][0])
+    if index != len(lines):
+        raise PersonaPackError(f"unparsed YAML content in {path}")
+    if not isinstance(result, dict):
+        raise PersonaPackError(f"{path} must contain a mapping at the root")
+    return result
+
+
+def list_text(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item).strip() for item in value if str(item).strip())
+
+
+def mapping(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def int_value(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@dataclass(frozen=True)
+class PersonaPack:
+    root: Path
+    manifest: dict[str, object]
+    character: dict[str, object]
+    prompt_template: str
+    behavior: dict[str, object]
+    expressions: dict[str, object]
+    earcons: dict[str, object]
+    voice: dict[str, object]
+
+    @property
+    def pack_id(self) -> str:
+        return str(self.manifest.get("id", "")).strip()
+
+    @property
+    def display_name(self) -> str:
+        return str(self.character.get("display_name", self.manifest.get("name", self.pack_id))).strip()
+
+    @property
+    def speech_style(self) -> dict[str, object]:
+        return mapping(self.character.get("speech_style"))
+
+    @property
+    def max_chars(self) -> int:
+        return min(FOUNDATION_MAX_CHARS, int_value(self.speech_style.get("max_chars"), FOUNDATION_MAX_CHARS))
+
+    @property
+    def max_sentences(self) -> int:
+        return min(FOUNDATION_MAX_SENTENCES, int_value(self.speech_style.get("max_sentences"), FOUNDATION_MAX_SENTENCES))
+
+    @property
+    def avoid_terms(self) -> tuple[str, ...]:
+        return tuple(term.lower() for term in list_text(self.speech_style.get("avoid")))
+
+    @property
+    def forbidden_terms(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((*FOUNDATION_FORBIDDEN_TERMS, *list_text(self.character.get("forbidden_terms")))))
+
+    @property
+    def memory_denied_terms(self) -> tuple[str, ...]:
+        memory = mapping(self.character.get("memory"))
+        return tuple(dict.fromkeys((*FOUNDATION_DENIED_MEMORY_TERMS, *list_text(memory.get("denied_terms")))))
+
+    @property
+    def memory_prefixes(self) -> tuple[str, ...]:
+        memory = mapping(self.character.get("memory"))
+        configured = list_text(memory.get("allowed_prefixes"))
+        if not configured:
+            return FOUNDATION_MEMORY_PREFIXES
+        return tuple(prefix for prefix in configured if prefix in FOUNDATION_MEMORY_PREFIXES)
+
+    @property
+    def spoken_lines(self) -> dict[str, object]:
+        return mapping(self.character.get("spoken_lines"))
+
+    def spoken_line(self, intent: str) -> dict[str, object]:
+        return mapping(self.spoken_lines.get(intent))
+
+    def character_rules(self) -> str:
+        rules = list_text(self.character.get("prompt_rules"))
+        if not rules:
+            return ""
+        return "\n".join(f"- {rule}" for rule in rules)
+
+    def bridge_system_prompt(self) -> str:
+        return self.render_prompt(memory_lines=("turns_seen: 0",), context_markers=()).split("\n\nCurrent local memory:", 1)[0].strip()
+
+    def render_prompt(self, *, memory_lines: Iterable[str], context_markers: Iterable[str] = ()) -> str:
+        memory = "\n".join(f"- {line}" for line in memory_lines) or "- turns_seen: 0"
+        markers = "\n".join(f"- {line}" for line in context_markers) or "- none"
+        prompt = self.prompt_template
+        prompt = prompt.replace("{{character_rules}}", self.character_rules())
+        prompt = prompt.replace("{{memory}}", memory)
+        prompt = prompt.replace("{{context_markers}}", markers)
+        return prompt.strip()
+
+
+def resolve_pack_path(persona: str | Path | None, root: Path | None = None) -> Path:
+    base = root or repo_root()
+    if persona is None or str(persona).strip() == "":
+        persona = DEFAULT_PERSONA_ID
+    path = Path(persona)
+    if path.exists():
+        return path.resolve()
+    if path.suffix:
+        return (base / path).resolve()
+    return (base / "personas" / str(persona)).resolve()
+
+
+def load_persona_pack(persona: str | Path | None = None, root: Path | None = None) -> PersonaPack:
+    pack_root = resolve_pack_path(persona, root)
+    manifest_path = pack_root / "pack.yaml"
+    if not manifest_path.exists():
+        raise PersonaPackError(f"persona pack manifest not found: {manifest_path}")
+    manifest = load_yaml_subset(manifest_path)
+    files = mapping(manifest.get("files"))
+    character_path = pack_root / str(files.get("character", "character.yaml"))
+    prompt_path = pack_root / str(files.get("prompt", "prompt.md"))
+    behavior_path = pack_root / str(files.get("behavior", "behavior.yaml"))
+    expressions_path = pack_root / str(files.get("expressions", "expressions.yaml"))
+    earcons_path = pack_root / str(files.get("earcons", "earcons.yaml"))
+    voice_path = pack_root / str(files.get("voice", "voice.yaml"))
+    for path in (character_path, prompt_path, behavior_path, expressions_path, earcons_path, voice_path):
+        if not path.exists():
+            raise PersonaPackError(f"persona pack file not found: {path}")
+    return PersonaPack(
+        root=pack_root,
+        manifest=manifest,
+        character=load_yaml_subset(character_path),
+        prompt_template=prompt_path.read_text(encoding="utf-8"),
+        behavior=load_yaml_subset(behavior_path),
+        expressions=load_yaml_subset(expressions_path),
+        earcons=load_yaml_subset(earcons_path),
+        voice=load_yaml_subset(voice_path),
+    )
+
+
+def contains_any(text: str, patterns: Iterable[str]) -> str:
+    lowered = text.lower()
+    for pattern in patterns:
+        if pattern and pattern.lower() in lowered:
+            return pattern
+    return ""
+
+
+def validate_pack(pack: PersonaPack) -> list[str]:
+    issues: list[str] = []
+    if pack.manifest.get("schema") != PACK_SCHEMA:
+        issues.append("pack_schema_invalid")
+    if pack.character.get("schema") != CHARACTER_SCHEMA:
+        issues.append("character_schema_invalid")
+    if not pack.pack_id:
+        issues.append("pack_id_missing")
+    files = mapping(pack.manifest.get("files"))
+    for key in REQUIRED_PACK_FILES:
+        if key not in files:
+            issues.append(f"pack_file_missing:{key}")
+    if "{{character_rules}}" not in pack.prompt_template:
+        issues.append("prompt_missing_character_rules_slot")
+    if "{{memory}}" not in pack.prompt_template:
+        issues.append("prompt_missing_memory_slot")
+    if "{{context_markers}}" not in pack.prompt_template:
+        issues.append("prompt_missing_context_markers_slot")
+    configured_max_chars = int_value(pack.speech_style.get("max_chars"), FOUNDATION_MAX_CHARS)
+    configured_max_sentences = int_value(pack.speech_style.get("max_sentences"), FOUNDATION_MAX_SENTENCES)
+    if configured_max_chars > FOUNDATION_MAX_CHARS:
+        issues.append("max_chars_loosened")
+    if configured_max_sentences > FOUNDATION_MAX_SENTENCES:
+        issues.append("max_sentences_loosened")
+    if str(pack.speech_style.get("contractions", "")).lower() != "forbidden":
+        issues.append("contractions_not_forbidden")
+    configured_prefixes = set(list_text(mapping(pack.character.get("memory")).get("allowed_prefixes")))
+    if configured_prefixes - set(FOUNDATION_MEMORY_PREFIXES):
+        issues.append("memory_prefixes_loosened")
+    for term in FOUNDATION_DENIED_MEMORY_TERMS:
+        if term not in pack.memory_denied_terms:
+            issues.append(f"memory_denied_term_missing:{term}")
+    for intent in REQUIRED_SPOKEN_LINES:
+        line = pack.spoken_line(intent)
+        if not line:
+            issues.append(f"spoken_line_missing:{intent}")
+            continue
+        text = str(line.get("text", "")).strip()
+        if not text:
+            issues.append(f"spoken_line_text_missing:{intent}")
+        if len(text) > pack.max_chars:
+            issues.append(f"spoken_line_too_long:{intent}")
+        if contains_any(text, pack.forbidden_terms):
+            issues.append(f"spoken_line_forbidden_term:{intent}")
+        earcon = str(line.get("earcon", "none")).lower()
+        if earcon not in FOUNDATION_ALLOWED_EARCONS:
+            issues.append(f"spoken_line_bad_earcon:{intent}")
+    safety = pack.spoken_line("safety")
+    if safety and str(safety.get("earcon", "")).lower() != "safety":
+        issues.append("safety_line_must_use_safety_earcon")
+    rendered_prompt = pack.render_prompt(memory_lines=("turns_seen: 0",))
+    if contains_any(rendered_prompt, FOUNDATION_FORBIDDEN_TERMS):
+        issues.append("prompt_contains_clone_marker")
+    if "Reply only as JSON" not in rendered_prompt:
+        issues.append("prompt_missing_json_contract")
+    return issues
+
+
+def load_and_validate_persona_pack(persona: str | Path | None = None, root: Path | None = None) -> PersonaPack:
+    pack = load_persona_pack(persona, root)
+    issues = validate_pack(pack)
+    if issues:
+        raise PersonaPackError("; ".join(issues))
+    return pack
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Validate a Stackchan persona pack.")
+    parser.add_argument("persona", nargs="?", default=DEFAULT_PERSONA_ID, help="Pack id or path. Defaults to spark.")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable validation output.")
+    return parser
+
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    try:
+        pack = load_persona_pack(args.persona)
+        issues = validate_pack(pack)
+    except PersonaPackError as exc:
+        payload = {"ok": False, "issues": [str(exc)], "persona": args.persona}
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"Persona pack invalid: {exc}")
+        return 1
+    payload = {
+        "ok": not issues,
+        "issues": issues,
+        "persona": pack.pack_id,
+        "display_name": pack.display_name,
+        "path": str(pack.root),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    elif issues:
+        print(f"Persona pack {pack.pack_id} invalid:")
+        for issue in issues:
+            print(f"- {issue}")
+    else:
+        print(f"Persona pack {pack.pack_id} valid: {pack.display_name}")
+    return 0 if not issues else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

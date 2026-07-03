@@ -1,0 +1,19 @@
+schema: stackchan.persona-pack.v1
+id: spark
+name: Stackchan Spark
+version: 0.1.0
+author: RobVanProd
+license: project-internal-review
+description: Reference Stackchan:Alive character OS persona. Curious, concise, bright, and safety-aware.
+provenance:
+  character_lock: ../../docs/CHARACTER_LOCK.md
+  voice_policy: ../../data/voice_source_provenance.yaml
+  voice_persona_source: ../../data/voice_persona.yaml
+  expression_source: ../../data/expressions.yaml
+files:
+  character: character.yaml
+  prompt: prompt.md
+  behavior: behavior.yaml
+  expressions: expressions.yaml
+  earcons: earcons.yaml
+  voice: voice.yaml

@@ -231,7 +231,9 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/PERSONA_PACKS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/HARDWARE_SIMULATION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
@@ -255,6 +257,8 @@ $bridgePackageFiles = @(
   "README.md",
   "character_harness.py",
   "test_character_harness.py",
+  "persona_pack.py",
+  "test_persona_pack.py",
   "reference_bridge.py",
   "test_reference_bridge.py",
   "local_runner.py",
@@ -282,6 +286,17 @@ $bridgePackageFiles = @(
 )
 foreach ($bridgeFile in $bridgePackageFiles) {
   Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
+}
+
+Copy-Item -LiteralPath "personas" -Destination (Join-Path $outDir "personas") -Recurse
+
+$personaVerifierPython = Get-StackchanPreviewPython
+$personaStatus = & $personaVerifierPython tools/verify_persona_pack.py spark --json
+$personaStatusExit = $LASTEXITCODE
+$personaStatusPath = Join-Path $outDir "persona_pack_status.json"
+$personaStatus | Set-Content -Path $personaStatusPath -Encoding UTF8
+if ($personaStatusExit -ne 0) {
+  throw "Persona pack verification failed."
 }
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
@@ -360,6 +375,9 @@ $releaseTools = @(
   "tools/run_device_preflight.ps1",
   "tools/run_character_harness_tests.cmd",
   "tools/run_character_harness_tests.ps1",
+  "tools/verify_persona_pack.cmd",
+  "tools/verify_persona_pack.ps1",
+  "tools/verify_persona_pack.py",
   "tools/run_bridge_reference_tests.cmd",
   "tools/run_bridge_reference_tests.ps1",
   "tools/run_engine_probe.cmd",
@@ -427,6 +445,7 @@ Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenance
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
+Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
 $dataProvenanceDir = Join-Path $provenanceDir "data"
 New-Item -ItemType Directory -Force -Path $dataProvenanceDir | Out-Null
 Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataProvenanceDir
@@ -707,8 +726,13 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
+  gapAnalysis = "docs/GAP_ANALYSIS.md"
   johnnyAlivePathway = "docs/JOHNNY_ALIVE_PATHWAY.md"
+  personaPacksGuide = "docs/PERSONA_PACKS.md"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
+  activePersona = "spark"
+  activePersonaPack = "personas/spark"
+  activePersonaVerification = "persona_pack_status.json"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
   privacyModel = "docs/PRIVACY.md"
   expressionProfiles = "data/expressions.yaml"
@@ -883,6 +907,8 @@ $manifest = [ordered]@{
     "provenance/platformio.ini",
     "provenance/requirements-preview.txt",
     "provenance/bridge/README.md",
+    "provenance/bridge/persona_pack.py",
+    "provenance/bridge/test_persona_pack.py",
     "provenance/bridge/reference_bridge.py",
     "provenance/bridge/test_reference_bridge.py",
     "provenance/bridge/local_runner.py",
@@ -910,6 +936,13 @@ $manifest = [ordered]@{
     "provenance/firmware.yml",
     "provenance/release.yml",
     "provenance/data/commands.yaml",
+    "provenance/personas/spark/pack.yaml",
+    "provenance/personas/spark/character.yaml",
+    "provenance/personas/spark/prompt.md",
+    "provenance/personas/spark/behavior.yaml",
+    "provenance/personas/spark/expressions.yaml",
+    "provenance/personas/spark/earcons.yaml",
+    "provenance/personas/spark/voice.yaml",
     "provenance/src/main.cpp",
     "provenance/src/persona/SpeechPlanner.hpp",
     "provenance/src/persona/SpeechPlanner.cpp",

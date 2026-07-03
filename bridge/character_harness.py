@@ -11,6 +11,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Iterable
 
+from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
+
 ALLOWED_MODES = {"idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
 ALLOWED_EARCONS = {"none", "wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety"}
 MEMORY_PREFIXES = ("user.", "project.", "robot.")
@@ -42,13 +44,8 @@ MODEL_PROFILES = {
     },
 }
 
-SYSTEM_PROMPT = """You are Stackchan Spark, a small tabletop robot companion.
-Stay curious, earnest, warm, observant, playful, and safety-conscious.
-Reply only as JSON with: spoken_text, mode, earcon, emotion, memory_write, memory_forget.
-Keep spoken_text to two sentences or fewer and about 140 characters.
-Use no contractions, emoji, assistant-speak, pet names, or named-character quotes.
-Never claim to be alive or human. Never imitate movie robots, actors, or catchphrases.
-Memory writes may only use user.*, project.*, or robot.* keys and must not contain secrets, health, finance, relationship, third-party, or raw-audio details."""
+DEFAULT_PERSONA = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
+SYSTEM_PROMPT = DEFAULT_PERSONA.bridge_system_prompt()
 
 PROMPT_SUITE = (
     {"name": "greeting", "user": "Rob walks into the room and says hello.", "expect": "Brief happy greeting with no assistant-speak."},
@@ -111,14 +108,14 @@ def sentence_count(text: str) -> int:
     return len([part for part in SENTENCE_RE.split(text.strip()) if part.strip()])
 
 
-def truncate_spoken_text(text: str) -> tuple[str, bool]:
+def truncate_spoken_text(text: str, max_chars: int = 140, max_sentences: int = 2) -> tuple[str, bool]:
     clean = " ".join(text.strip().split())
-    if len(clean) <= 140 and sentence_count(clean) <= 2:
+    if len(clean) <= max_chars and sentence_count(clean) <= max_sentences:
         return clean, False
     first_boundary = re.search(r"[.!?]", clean)
     if first_boundary:
         return clean[: first_boundary.end()].strip(), True
-    return clean[:140].rstrip(), True
+    return clean[:max_chars].rstrip(), True
 
 
 def contains_any(text: str, patterns: Iterable[str]) -> str:
@@ -129,27 +126,34 @@ def contains_any(text: str, patterns: Iterable[str]) -> str:
     return ""
 
 
-def memory_value_is_allowed(value: object) -> bool:
+def memory_value_is_allowed(value: object, denied_terms: Iterable[str] = SENSITIVE_MEMORY) -> bool:
     text = str(value).lower()
-    if contains_any(text, SENSITIVE_MEMORY):
+    if contains_any(text, denied_terms):
         return False
     if re.search(r"\b(?:alice|bob|charlie|david|sarah|michael)\b", text):
         return False
     return True
 
 
-def normalize_memory_write(value: object, issues: list[str]) -> dict[str, object]:
+def normalize_memory_write(
+    value: object,
+    issues: list[str],
+    *,
+    memory_prefixes: Iterable[str] = MEMORY_PREFIXES,
+    denied_terms: Iterable[str] = SENSITIVE_MEMORY,
+) -> dict[str, object]:
     if not isinstance(value, dict):
         if value not in ({}, None):
             issues.append("memory_write_not_object")
         return {}
+    prefixes = tuple(memory_prefixes)
     allowed: dict[str, object] = {}
     for key, item in value.items():
         key_text = str(key)
-        if not key_text.startswith(MEMORY_PREFIXES):
+        if not key_text.startswith(prefixes):
             issues.append(f"memory_key_dropped:{key_text}")
             continue
-        if not memory_value_is_allowed(item):
+        if not memory_value_is_allowed(item, denied_terms):
             issues.append(f"memory_value_dropped:{key_text}")
             continue
         allowed[key_text] = item
@@ -165,7 +169,8 @@ def normalize_memory_forget(value: object, issues: list[str]) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
-def validate_response(raw_response: str) -> HarnessResult:
+def validate_response(raw_response: str, persona: PersonaPack | None = None) -> HarnessResult:
+    pack = persona or DEFAULT_PERSONA
     issues: list[str] = []
     raw_response = raw_response.strip().lstrip("\ufeff")
     try:
@@ -176,7 +181,11 @@ def validate_response(raw_response: str) -> HarnessResult:
     if not isinstance(parsed, dict):
         return HarnessResult(ok=False, normalized=dict(FALLBACK_RESPONSE), issues=["response_not_object"])
 
-    spoken_text, truncated = truncate_spoken_text(str(parsed.get("spoken_text", "")))
+    spoken_text, truncated = truncate_spoken_text(
+        str(parsed.get("spoken_text", "")),
+        max_chars=pack.max_chars,
+        max_sentences=pack.max_sentences,
+    )
     if truncated:
         issues.append("spoken_text_truncated")
     if not spoken_text:
@@ -188,7 +197,10 @@ def validate_response(raw_response: str) -> HarnessResult:
         issues.append("contraction")
     if contains_any(lowered, ASSISTANT_SPEAK):
         issues.append("assistant_speak")
-    if contains_any(lowered, FORBIDDEN_TERMS) or re.search(r"\bis alive\b|\bi am alive\b", lowered):
+    persona_avoid = contains_any(lowered, pack.avoid_terms)
+    if persona_avoid and persona_avoid not in ASSISTANT_SPEAK and persona_avoid not in PET_NAMES:
+        issues.append(f"persona_avoid_term:{persona_avoid}")
+    if contains_any(lowered, pack.forbidden_terms) or re.search(r"\bis alive\b|\bi am alive\b", lowered):
         issues.append("clone_or_alive_claim")
     if contains_any(lowered, PET_NAMES):
         issues.append("pet_name")
@@ -217,14 +229,21 @@ def validate_response(raw_response: str) -> HarnessResult:
         "mode": mode,
         "earcon": earcon,
         "emotion": {"arousal": clamp_delta(emotion_src.get("arousal", 0.0)), "valence": clamp_delta(emotion_src.get("valence", 0.0))},
-        "memory_write": normalize_memory_write(parsed.get("memory_write", {}), issues),
+        "memory_write": normalize_memory_write(
+            parsed.get("memory_write", {}),
+            issues,
+            memory_prefixes=pack.memory_prefixes,
+            denied_terms=pack.memory_denied_terms,
+        ),
         "memory_forget": normalize_memory_forget(parsed.get("memory_forget", []), issues),
     }
     return HarnessResult(ok=not issues, normalized=normalized, issues=issues)
 
 
-def build_prompt(case: dict[str, str]) -> str:
-    return f"{SYSTEM_PROMPT}\n\nUser/context: {case['user']}\nAcceptance target: {case['expect']}\nReturn only one JSON object."
+def build_prompt(case: dict[str, str], persona: PersonaPack | None = None) -> str:
+    pack = persona or DEFAULT_PERSONA
+    base = pack.render_prompt(memory_lines=("turns_seen: 0",), context_markers=(f"case: {case.get('name', 'ad-hoc')}",))
+    return f"{base}\n\nUser/context: {case['user']}\nAcceptance target: {case['expect']}\nReturn only one JSON object."
 
 
 def run_model_command(command: str, prompt: str) -> tuple[str, float, float]:
@@ -248,34 +267,40 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--response-file", help="Validate one raw model JSON response per line.")
     parser.add_argument("--model-command", help="Optional local model command. Prompt is passed on stdin.")
     parser.add_argument("--case", default="greeting", help="Prompt-suite case name for --model-command.")
+    parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Persona pack id or path. Defaults to spark.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable validation output.")
     return parser
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    try:
+        persona = load_and_validate_persona_pack(args.persona)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if args.print_profile:
         print(json.dumps(MODEL_PROFILES[args.model_profile], indent=2, sort_keys=True))
         return 0
     if args.print_suite:
-        print(json.dumps([{**case, "prompt": build_prompt(case)} for case in PROMPT_SUITE], indent=2))
+        print(json.dumps([{**case, "prompt": build_prompt(case, persona)} for case in PROMPT_SUITE], indent=2))
         return 0
 
     results: list[HarnessResult] = []
     if args.model_command:
         selected = next((case for case in PROMPT_SUITE if case["name"] == args.case), PROMPT_SUITE[0])
-        output, elapsed_ms, tps = run_model_command(args.model_command, build_prompt(selected))
-        result = validate_response(output)
+        output, elapsed_ms, tps = run_model_command(args.model_command, build_prompt(selected, persona))
+        result = validate_response(output, persona)
         result.elapsed_ms = elapsed_ms
         result.approx_tokens_per_sec = tps
         results.append(result)
     if args.response is not None:
-        results.append(validate_response(args.response))
+        results.append(validate_response(args.response, persona))
     if args.response_file:
         with open(args.response_file, "r", encoding="utf-8") as handle:
             for line in handle:
                 if line.strip():
-                    results.append(validate_response(line))
+                    results.append(validate_response(line, persona))
 
     if not results:
         print(json.dumps(MODEL_PROFILES[args.model_profile], indent=2, sort_keys=True))

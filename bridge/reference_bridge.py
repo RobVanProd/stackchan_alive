@@ -13,6 +13,7 @@ from typing import Iterable, Iterator, Literal
 
 from character_harness import HarnessResult, validate_response
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
+from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
 PROTOCOL = "stackchan.bridge.v1"
 DEFAULT_SESSION = "bench"
@@ -21,11 +22,8 @@ DEFAULT_USER_TEXT = "Hello Stackchan."
 MAX_MEMORY_ITEMS = 4
 BRIDGE_INTENTS = {"boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
 
-BRIDGE_SYSTEM_PROMPT = """You are Stackchan Spark, a small tabletop robot companion.
-Speak in short, concrete lines with curious, earnest, safety-aware energy.
-Use sensory context when it is present, but do not pretend to sense things not provided.
-Never impersonate named movie robots, actors, or copyrighted catchphrases.
-Avoid sarcasm-first replies and long monologues."""
+DEFAULT_PERSONA = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
+BRIDGE_SYSTEM_PROMPT = DEFAULT_PERSONA.bridge_system_prompt()
 
 Viseme = Literal["neutral", "ah", "oh", "ee"]
 
@@ -218,9 +216,9 @@ def clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def build_persona_prompt(memory: BridgeMemory) -> str:
-    context = "\n".join(f"- {line}" for line in memory.context_lines())
-    return f"{BRIDGE_SYSTEM_PROMPT}\n\nCurrent local memory:\n{context}"
+def build_persona_prompt(memory: BridgeMemory, persona: PersonaPack | None = None) -> str:
+    pack = persona or DEFAULT_PERSONA
+    return pack.render_prompt(memory_lines=memory.context_lines())
 
 
 def spoken_physical_context(context: str) -> str:
@@ -387,6 +385,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-command", default="", help="Optional local model command for --runner-profile.")
     parser.add_argument("--require-runner", action="store_true", help="Fail if --runner-profile has no configured command.")
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
+    parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Persona pack id or path. Defaults to spark.")
     parser.add_argument("--arousal", type=float, default=0.55)
     parser.add_argument("--valence", type=float, default=0.60)
     return parser
@@ -394,6 +393,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    try:
+        persona = load_and_validate_persona_pack(args.persona)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     memory = BridgeMemory()
     if args.memory_file:
         memory = reset_bridge_memory(args.memory_file) if args.reset_memory else load_bridge_memory(args.memory_file)
@@ -407,7 +411,7 @@ def main() -> int:
         memory = memory.remember_user_text(args.user_text)
         if args.memory_file and args.save_memory:
             save_bridge_memory(args.memory_file, memory)
-        print(build_persona_prompt(memory))
+        print(build_persona_prompt(memory, persona))
         return 0
 
     raw_model_response = args.model_response
