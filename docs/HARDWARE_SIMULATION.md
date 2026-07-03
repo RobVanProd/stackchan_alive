@@ -20,7 +20,8 @@ The simulator currently checks:
 
 - deterministic reference bridge frames from `bridge/reference_bridge.py`
 - LAN text turn output from `bridge/lan_service.py`
-- binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`
+- binary TTS audio downlink framing: `audio_stream_start`, binary chunks, `audio_stream_end`,
+  including byte/chunk accounting before firmware speaker playback is wired
 - firmware-like bridge states, face mode handoff, speech-envelope frames, audio byte counts, and timeout handling
 
 It intentionally does not claim display, speaker, microphone, camera, touch, IMU, servo, heat,

@@ -7,8 +7,8 @@ The bridge is the P7 boundary between the real-time firmware and a LAN companion
 Firmware bench replay uses newline-delimited UTF-8 JSON. The LAN bridge service uses
 WebSocket text frames for control, binary WebSocket frames for uploaded PCM, and optional
 binary WebSocket frames for downlinked TTS audio chunks. Current firmware parses downlink
-stream metadata and still uses `audio` response frames for mouth/envelope timing; speaker
-playback from downlinked chunks is a later hardware path.
+stream metadata, accounts binary chunk payloads, and still uses `audio` response frames for
+mouth/envelope timing; speaker playback from downlinked chunks is a later hardware path.
 
 For hardware bench replay before the LAN companion exists, run:
 
@@ -104,7 +104,9 @@ Example:
 - `response_start`: response metadata is ready; firmware emits `ResponseStarted`.
 - `audio_stream_start`: optional metadata for a following binary TTS audio downlink.
 - Binary WebSocket frame: optional raw TTS audio chunk. Format is declared by the preceding
-  `audio_stream_start` frame.
+  `audio_stream_start` frame. Firmware records chunk count, byte count, and a rolling
+  checksum; it rejects chunks without an active stream and rejects mismatched totals at
+  `audio_stream_end`.
 - `audio_stream_end`: optional end marker for the TTS audio downlink.
 - `audio`: one mouth/audio timing frame. `env` is normalized `[0,1]`; `viseme` is `neutral`, `ah`, `oh`, or `ee`. If a local TTS command is configured, these frames come from its returned beat metadata.
 - `response_end`: bridge finished the response; firmware emits `ResponseEnded`.
@@ -138,7 +140,7 @@ output.
   summaries and validated memory fields, never raw audio.
 - A configured local TTS command may receive response text on stdin and return mouth timing
   metadata plus optional `audio_b64`. The LAN service can downlink that audio as binary
-  WebSocket chunks. Firmware currently records stream metadata; downlinked-chunk speaker
-  playback remains a separate hardware path.
+  WebSocket chunks. Firmware currently records stream metadata and chunk accounting;
+  downlinked-chunk speaker playback remains a separate hardware path.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

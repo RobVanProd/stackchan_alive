@@ -439,6 +439,8 @@ const __FlashStringHelper* bridgeOutputTypeName(BridgeClientOutputType type) {
       return F("audio");
     case BridgeClientOutputType::AudioStreamStart:
       return F("audio_stream_start");
+    case BridgeClientOutputType::AudioStreamChunk:
+      return F("audio_stream_chunk");
     case BridgeClientOutputType::AudioStreamEnd:
       return F("audio_stream_end");
     case BridgeClientOutputType::ResponseEnd:
@@ -596,6 +598,14 @@ void printRuntimeStatus() {
   Serial.print(bridge.audioStreamsStarted);
   Serial.print(F(" bridge_audio_stream_bytes="));
   Serial.print(bridge.audioStreamBytes);
+  Serial.print(F(" bridge_audio_stream_bytes_received="));
+  Serial.print(bridge.audioStreamBytesReceived);
+  Serial.print(F(" bridge_audio_stream_chunks="));
+  Serial.print(bridge.audioStreamChunksReceived);
+  Serial.print(F(" bridge_audio_stream_errors="));
+  Serial.print(bridge.audioStreamErrors);
+  Serial.print(F(" bridge_audio_stream_active="));
+  Serial.print(bridge.audioStreamActive ? 1 : 0);
   Serial.print(F(" bridge_timeouts="));
   Serial.println(bridge.timeouts);
 }
@@ -752,6 +762,9 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   if (seq == 0) {
     seq = output.stream.seq;
   }
+  if (seq == 0) {
+    seq = output.streamChunk.seq;
+  }
   Serial.print(seq);
   Serial.print(F(" at_ms="));
   Serial.print(nowMs);
@@ -791,6 +804,18 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
     Serial.print(output.stream.chunkBytes);
     Serial.print(F(" chunks="));
     Serial.print(output.stream.chunks);
+  }
+  if (output.type == BridgeClientOutputType::AudioStreamChunk) {
+    Serial.print(F(" chunk_index="));
+    Serial.print(output.streamChunk.index);
+    Serial.print(F(" chunk_bytes="));
+    Serial.print(output.streamChunk.bytes);
+    Serial.print(F(" received_bytes="));
+    Serial.print(output.streamChunk.receivedBytes);
+    Serial.print(F(" checksum="));
+    Serial.print(output.streamChunk.checksum, HEX);
+    Serial.print(F(" final="));
+    Serial.print(output.streamChunk.finalChunk ? 1 : 0);
   }
   if (output.type == BridgeClientOutputType::SessionReady) {
     Serial.print(F(" session="));

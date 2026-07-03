@@ -8,6 +8,7 @@ namespace stackchan {
 
 namespace {
 constexpr const char* kBridgeProtocolMarker = "stackchan.bridge.v1";
+constexpr uint32_t kAudioStreamChecksumSeed = 2166136261u;
 
 bool isTimeoutState(BridgeClientState state) {
   return state == BridgeClientState::Connecting ||
@@ -15,12 +16,22 @@ bool isTimeoutState(BridgeClientState state) {
          state == BridgeClientState::Thinking ||
          state == BridgeClientState::Responding;
 }
+
+uint32_t updateAudioStreamChecksum(uint32_t checksum, const uint8_t* payload, size_t length) {
+  uint32_t result = checksum == 0 ? kAudioStreamChecksumSeed : checksum;
+  for (size_t i = 0; i < length; ++i) {
+    result ^= payload[i];
+    result *= 16777619u;
+  }
+  return result;
+}
 }
 
 bool BridgeClient::begin(const BridgeClientConfig& config) {
   telemetry_ = BridgeClientTelemetry {};
   pending_ = BridgeClientOutput {};
   hasPending_ = false;
+  clearAudioStream();
   config_ = config;
 
   telemetry_.configured = config_.deviceId != nullptr && config_.deviceId[0] != '\0' &&
@@ -47,6 +58,7 @@ void BridgeClient::markDisconnected(uint32_t nowMs) {
   telemetry_.state = BridgeClientState::Offline;
   telemetry_.lastMessageMs = nowMs;
   hasPending_ = false;
+  clearAudioStream();
 }
 
 bool BridgeClient::update(uint32_t nowMs) {
@@ -147,6 +159,9 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
   }
 
   if (std::strcmp(type, "audio_stream_start") == 0) {
+    if (audioStreamActive_) {
+      return failAudioStream("nested_audio_stream");
+    }
     telemetry_.state = BridgeClientState::Responding;
     output.type = BridgeClientOutputType::AudioStreamStart;
     output.stream.seq = seq;
@@ -155,23 +170,61 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     readUintField(jsonLine, "chunk_bytes", &output.stream.chunkBytes);
     readUintField(jsonLine, "chunks", &output.stream.chunks);
     readStringField(jsonLine, "format", output.stream.format, sizeof(output.stream.format));
+    activeStream_ = output.stream;
+    activeStreamBytesReceived_ = 0;
+    activeStreamChunksReceived_ = 0;
+    activeStreamChecksum_ = kAudioStreamChecksumSeed;
+    audioStreamActive_ = true;
+    telemetry_.audioStreamActive = true;
     telemetry_.audioStreamsStarted++;
     telemetry_.audioStreamBytes += output.stream.audioBytes;
+    telemetry_.audioStreamChunksExpected += output.stream.chunks;
     queueOutput(output);
     return true;
   }
 
   if (std::strcmp(type, "audio_stream_end") == 0) {
+    if (!audioStreamActive_) {
+      return failAudioStream("audio_stream_end_without_start");
+    }
+    if (activeStream_.seq != 0 && seq != 0 && activeStream_.seq != seq) {
+      return failAudioStream("audio_stream_seq_mismatch");
+    }
+
     output.type = BridgeClientOutputType::AudioStreamEnd;
-    output.stream.seq = seq;
-    readUintField(jsonLine, "audio_bytes", &output.stream.audioBytes);
-    readUintField(jsonLine, "chunks", &output.stream.chunks);
+    output.stream = activeStream_;
+
+    uint32_t endBytes = activeStream_.audioBytes;
+    uint32_t endChunks = activeStream_.chunks;
+    const bool hasEndBytes = readUintField(jsonLine, "audio_bytes", &endBytes);
+    const bool hasEndChunks = readUintField(jsonLine, "chunks", &endChunks);
+    output.stream.audioBytes = endBytes;
+    output.stream.chunks = endChunks;
+
+    if (hasEndBytes && activeStream_.audioBytes != 0 && endBytes != activeStream_.audioBytes) {
+      return failAudioStream("audio_stream_end_bytes_mismatch");
+    }
+    if (hasEndChunks && activeStream_.chunks != 0 && endChunks != activeStream_.chunks) {
+      return failAudioStream("audio_stream_end_chunks_mismatch");
+    }
+    if (activeStream_.audioBytes != 0 && activeStreamBytesReceived_ != activeStream_.audioBytes) {
+      return failAudioStream("audio_stream_payload_bytes_mismatch");
+    }
+    if (activeStream_.chunks != 0 && activeStreamChunksReceived_ != activeStream_.chunks) {
+      return failAudioStream("audio_stream_payload_chunks_mismatch");
+    }
+
     telemetry_.audioStreamsEnded++;
+    telemetry_.audioStreamChecksum = activeStreamChecksum_;
+    clearAudioStream();
     queueOutput(output);
     return true;
   }
 
   if (std::strcmp(type, "response_end") == 0) {
+    if (audioStreamActive_) {
+      return failAudioStream("response_end_before_audio_stream_end");
+    }
     telemetry_.state = BridgeClientState::Ready;
     output.type = BridgeClientOutputType::ResponseEnd;
     output.event.type = EventType::ResponseEnded;
@@ -197,6 +250,64 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
   }
 
   return failParse("unknown_type");
+}
+
+bool BridgeClient::submitBinaryFrame(const uint8_t* payload, size_t length, uint32_t nowMs) {
+  if (!telemetry_.ready) {
+    return false;
+  }
+
+  telemetry_.inboundMessages++;
+  telemetry_.lastMessageMs = nowMs;
+  telemetry_.lastSeq = audioStreamActive_ ? activeStream_.seq : telemetry_.lastSeq;
+
+  if (!audioStreamActive_) {
+    return failAudioStream("binary_without_audio_stream");
+  }
+  if (payload == nullptr || length == 0 || length > 0xffffffffu) {
+    return failAudioStream("invalid_audio_stream_chunk");
+  }
+
+  const uint32_t chunkBytes = static_cast<uint32_t>(length);
+  const uint32_t nextBytes = activeStreamBytesReceived_ + chunkBytes;
+  const uint32_t nextChunks = activeStreamChunksReceived_ + 1u;
+
+  if (nextBytes < activeStreamBytesReceived_ ||
+      (activeStream_.audioBytes != 0 && nextBytes > activeStream_.audioBytes)) {
+    return failAudioStream("audio_stream_payload_bytes_overrun");
+  }
+  if (nextChunks < activeStreamChunksReceived_ ||
+      (activeStream_.chunks != 0 && nextChunks > activeStream_.chunks)) {
+    return failAudioStream("audio_stream_payload_chunks_overrun");
+  }
+
+  activeStreamBytesReceived_ = nextBytes;
+  activeStreamChunksReceived_ = nextChunks;
+  activeStreamChecksum_ = updateAudioStreamChecksum(activeStreamChecksum_, payload, length);
+
+  telemetry_.audioStreamBytesReceived += chunkBytes;
+  telemetry_.audioStreamChunksReceived++;
+  telemetry_.audioStreamChecksum = activeStreamChecksum_;
+
+  BridgeClientOutput output;
+  output.type = BridgeClientOutputType::AudioStreamChunk;
+  output.stream = activeStream_;
+  output.streamChunk.seq = activeStream_.seq;
+  output.streamChunk.index = nextChunks;
+  output.streamChunk.bytes = chunkBytes;
+  output.streamChunk.receivedBytes = nextBytes;
+  output.streamChunk.checksum = activeStreamChecksum_;
+
+  const bool expectedBytesDone = activeStream_.audioBytes != 0 && nextBytes >= activeStream_.audioBytes;
+  const bool expectedChunksDone = activeStream_.chunks != 0 && nextChunks >= activeStream_.chunks;
+  if (activeStream_.audioBytes != 0 && activeStream_.chunks != 0) {
+    output.streamChunk.finalChunk = expectedBytesDone && expectedChunksDone;
+  } else {
+    output.streamChunk.finalChunk = expectedBytesDone || expectedChunksDone;
+  }
+
+  queueOutput(output);
+  return true;
 }
 
 bool BridgeClient::poll(BridgeClientOutput* outputOut) {
@@ -378,6 +489,21 @@ void BridgeClient::queueOutput(const BridgeClientOutput& output) {
   pending_ = output;
   hasPending_ = true;
   telemetry_.outputsQueued++;
+}
+
+void BridgeClient::clearAudioStream() {
+  activeStream_ = BridgeAudioStream {};
+  activeStreamBytesReceived_ = 0;
+  activeStreamChunksReceived_ = 0;
+  activeStreamChecksum_ = 0;
+  audioStreamActive_ = false;
+  telemetry_.audioStreamActive = false;
+}
+
+bool BridgeClient::failAudioStream(const char* reason) {
+  telemetry_.audioStreamErrors++;
+  clearAudioStream();
+  return failParse(reason);
 }
 
 bool BridgeClient::failParse(const char* reason) {
