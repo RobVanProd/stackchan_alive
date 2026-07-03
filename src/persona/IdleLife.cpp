@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <math.h>
 
+#include "PersonaBehavior.hpp"
+
 namespace stackchan {
 
 namespace {
@@ -20,14 +22,21 @@ void IdleLife::reset(uint32_t nowMs) {
 }
 
 void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
-  const float motionScale = reducedMotion ? 0.30f : 1.0f;
+  const float motionScale = reducedMotion ? generated_persona::kReducedMotionScale : 1.0f;
   const bool sleeping = frame.mode == CharacterMode::Sleep;
   const float arousal = clampValue(frame.emotion.arousal, 0.0f, 1.0f);
   const float fatigue = clampValue(frame.emotion.fatigue, 0.0f, 1.0f);
   const float focus = clampValue(frame.emotion.focus, 0.0f, 1.0f);
 
-  const float breathHz = sleeping ? 0.12f : clampValue(0.16f + arousal * 0.10f - fatigue * 0.04f, 0.10f, 0.28f);
-  const float breathAmp = (sleeping ? 1.15f : clampValue(0.90f + fatigue * 0.70f - arousal * 0.30f, 0.45f, 1.45f)) * motionScale;
+  const float breathHz = sleeping ? clampValue(generated_persona::kIdleBreathingHz * 0.60f, 0.10f, 0.20f)
+                                  : clampValue(generated_persona::kIdleBreathingHz - 0.04f + arousal * 0.10f -
+                                                   fatigue * 0.04f,
+                                               0.10f, 0.28f);
+  const float breathAmp = (sleeping ? generated_persona::kIdleBreathingPx * 0.77f
+                                    : clampValue(generated_persona::kIdleBreathingPx *
+                                                     (0.60f + fatigue * 0.45f - arousal * 0.20f),
+                                                 0.45f, 1.80f)) *
+                          motionScale;
   const float breath = sinf(static_cast<float>(nowMs) * 0.001f * kTwoPi * breathHz);
   const float breathY = breath * breathAmp;
   const float pitchBob = -breath * (sleeping ? 0.22f : 0.38f) * motionScale;
@@ -77,7 +86,10 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
 
 void IdleLife::scheduleNextMicroExpression(uint32_t nowMs) {
   const uint32_t h = hash32(nowMs + 0x9e3779b9UL);
-  nextMicroExpressionMs_ = nowMs + 3600 + (h % 2600);
+  const uint32_t minMs = generated_persona::kIdleFidgetMinMs;
+  const uint32_t maxMs = max(generated_persona::kIdleFidgetMaxMs, minMs);
+  const uint32_t spanMs = maxMs > minMs ? maxMs - minMs : 0;
+  nextMicroExpressionMs_ = nowMs + minMs + (spanMs > 0 ? h % spanMs : 0);
   microKind_ = static_cast<uint8_t>((h >> 8) % 3);
 }
 

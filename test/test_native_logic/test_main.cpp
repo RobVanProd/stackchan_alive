@@ -19,6 +19,7 @@
 #include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
+#include "PersonaBehavior.hpp"
 #include "persona/AudioSaliency.hpp"
 #include "persona/CommandMap.hpp"
 #include "persona/EarconSynth.hpp"
@@ -743,6 +744,19 @@ void test_idle_life_breathing_moves_face_and_body_together() {
   TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, fabsf(frame.face.faceY));
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, fabsf(frame.motion.pitchDeg));
   TEST_ASSERT_GREATER_THAN_FLOAT(0.90f, frame.face.pupilScale);
+}
+
+void test_persona_behavior_codegen_exposes_idle_life_tuning() {
+  TEST_ASSERT_EQUAL_STRING("spark", generated_persona::kBehaviorPersonaId);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.20f, generated_persona::kIdleBreathingHz);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.50f, generated_persona::kIdleBreathingPx);
+  TEST_ASSERT_EQUAL_UINT32(10000, generated_persona::kIdleFidgetMinMs);
+  TEST_ASSERT_EQUAL_UINT32(30000, generated_persona::kIdleFidgetMaxMs);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.30f, generated_persona::kReducedMotionScale);
+  TEST_ASSERT_EQUAL_UINT8(18, generated_persona::kEveningStartHour);
+  TEST_ASSERT_EQUAL_UINT8(21, generated_persona::kNightStartHour);
+  TEST_ASSERT_EQUAL_UINT8(6, generated_persona::kMorningStartHour);
+  TEST_ASSERT_EQUAL_UINT8(10, generated_persona::kMorningEndHour);
 }
 
 void test_idle_life_reduced_motion_dampens_offsets() {
@@ -2828,6 +2842,7 @@ int main() {
   RUN_TEST(test_intent_engine_emits_deduped_speech_cue_on_external_event);
   RUN_TEST(test_intent_engine_demo_can_be_disabled_and_resumed);
   RUN_TEST(test_idle_life_breathing_moves_face_and_body_together);
+  RUN_TEST(test_persona_behavior_codegen_exposes_idle_life_tuning);
   RUN_TEST(test_idle_life_reduced_motion_dampens_offsets);
   RUN_TEST(test_idle_life_micro_expression_is_deterministic);
   RUN_TEST(test_idle_life_yawn_uses_fatigue_and_reduced_motion);
