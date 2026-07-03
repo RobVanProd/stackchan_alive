@@ -29,6 +29,7 @@ WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
+DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 
 
 class WebSocketProtocolError(RuntimeError):
@@ -49,6 +50,7 @@ class LanBridgeConfig:
     tts_command: str = ""
     tts_voice: str = DEFAULT_TTS_VOICE
     tts_timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS
+    downlink_audio_chunk_bytes: int = DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES
     max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
     memory_file: Path | None = None
     once: bool = False
@@ -214,6 +216,28 @@ def error_frame(code: str, detail: str = "") -> dict[str, object]:
     return frame
 
 
+def audio_downlink_frames(seq: int, tts, chunk_bytes: int) -> list[dict[str, object] | bytes]:
+    audio = getattr(tts, "audio_data", b"")
+    if not audio:
+        return []
+    safe_chunk_bytes = max(1, min(8192, int(chunk_bytes or DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES)))
+    chunks = [audio[index : index + safe_chunk_bytes] for index in range(0, len(audio), safe_chunk_bytes)]
+    frames: list[dict[str, object] | bytes] = [
+        {
+            "type": "audio_stream_start",
+            "seq": seq,
+            "format": tts.audio_format or "binary",
+            "sample_rate": tts.sample_rate,
+            "audio_bytes": len(audio),
+            "chunk_bytes": safe_chunk_bytes,
+            "chunks": len(chunks),
+        }
+    ]
+    frames.extend(chunks)
+    frames.append({"type": "audio_stream_end", "seq": seq, "audio_bytes": len(audio), "chunks": len(chunks)})
+    return frames
+
+
 def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
     if requested:
         return requested
@@ -241,7 +265,7 @@ class LanBridgeSession:
         if self.config.memory_file:
             save_bridge_memory(self.config.memory_file, self.memory)
 
-    def handle_text(self, text: str) -> list[dict[str, object]]:
+    def handle_text(self, text: str) -> list[dict[str, object] | bytes]:
         try:
             message = json.loads(text)
         except json.JSONDecodeError:
@@ -284,7 +308,7 @@ class LanBridgeSession:
             return [error_frame("audio_payload_invalid", "pcm_b64 is not valid base64")]
         return self.handle_binary(payload)
 
-    def _handle_utterance_end(self, message: dict[str, Any]) -> list[dict[str, object]]:
+    def _handle_utterance_end(self, message: dict[str, Any]) -> list[dict[str, object] | bytes]:
         seq = int(message.get("seq") or self.next_seq)
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
@@ -335,6 +359,7 @@ class LanBridgeSession:
             seq=seq,
         )
         tts_summary: dict[str, object] = {}
+        downlink_frames: list[dict[str, object] | bytes] = []
         tts_error = ""
         try:
             tts = synthesize_speech(
@@ -362,6 +387,9 @@ class LanBridgeSession:
                 tts_summary["tts_sample_rate"] = tts.sample_rate
             if tts.audio_bytes:
                 tts_summary["tts_audio_bytes"] = tts.audio_bytes
+            if tts.audio_data:
+                tts_summary["tts_audio_payload_bytes"] = len(tts.audio_data)
+                downlink_frames = audio_downlink_frames(seq, tts, self.config.downlink_audio_chunk_bytes)
         except TtsConfigurationError:
             pass
         except (TtsExecutionError, ValueError) as exc:
@@ -374,6 +402,9 @@ class LanBridgeSession:
             for frame in frames:
                 if frame.get("type") == "response_start":
                     frame.update(tts_summary)
+                    if downlink_frames:
+                        index = frames.index(frame)
+                        frames[index + 1:index + 1] = downlink_frames
                     break
         prefix_errors: list[dict[str, object]] = []
         if validation.issues:
@@ -414,7 +445,10 @@ def handle_connection(conn: socket.socket, config: LanBridgeConfig, memory: Brid
         else:
             frames = [error_frame("unsupported_websocket_opcode", str(opcode))]
         for frame in frames:
-            conn.sendall(encode_ws_text(frame_to_text(frame)))
+            if isinstance(frame, bytes):
+                conn.sendall(encode_ws_frame(frame, opcode=0x2))
+            else:
+                conn.sendall(encode_ws_text(frame_to_text(frame)))
     return session.memory
 
 
@@ -447,6 +481,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tts-command", default="")
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
     parser.add_argument("--tts-timeout-ms", type=int, default=DEFAULT_TTS_TIMEOUT_MS)
+    parser.add_argument("--downlink-audio-chunk-bytes", type=int, default=DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES)
     parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--reset-memory", action="store_true")
@@ -471,6 +506,7 @@ def main() -> int:
         tts_command=args.tts_command,
         tts_voice=args.tts_voice,
         tts_timeout_ms=args.tts_timeout_ms,
+        downlink_audio_chunk_bytes=args.downlink_audio_chunk_bytes,
         max_audio_bytes=args.max_audio_bytes,
         memory_file=args.memory_file,
     )

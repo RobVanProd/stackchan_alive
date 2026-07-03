@@ -5,9 +5,10 @@ Protocol: `stackchan.bridge.v1`
 The bridge is the P7 boundary between the real-time firmware and a LAN companion service. The firmware owns wake/listen/think/speak choreography, face, motion, earcons, and safety. The bridge owns STT, LLM text generation, memory, and dynamic TTS rendering.
 
 Firmware bench replay uses newline-delimited UTF-8 JSON. The LAN bridge service uses
-WebSocket text frames for control and binary WebSocket frames for uploaded PCM. Downloaded
-audio chunks remain future work; current `audio` response frames carry mouth/envelope timing
-only, optionally sourced from host TTS metadata.
+WebSocket text frames for control, binary WebSocket frames for uploaded PCM, and optional
+binary WebSocket frames for downlinked TTS audio chunks. Current firmware parses downlink
+stream metadata and still uses `audio` response frames for mouth/envelope timing; speaker
+playback from downlinked chunks is a later hardware path.
 
 For hardware bench replay before the LAN companion exists, run:
 
@@ -71,7 +72,8 @@ The TTS command receives response text on stdin with `STACKCHAN_TTS_TEXT_BYTES`,
 `STACKCHAN_TTS_VOICE`, and `STACKCHAN_TTS_OUTPUT=stackchan.tts-metadata.v1` in its
 environment. It must print metadata JSON with either compact `beats` or
 speech-envelope-sidecar-style `frames`. The service maps those beats into existing `audio`
-frames; it does not download binary audio to firmware yet.
+frames. If the command includes `audio_b64`, the service sends `audio_stream_start`, binary
+WebSocket chunks, and `audio_stream_end` around the same response.
 
 ## Device To Bridge
 
@@ -96,6 +98,10 @@ Example:
 - `listening`: bridge is receiving user speech.
 - `thinking`: bridge is processing; firmware emits `ThinkingStarted`.
 - `response_start`: response metadata is ready; firmware emits `ResponseStarted`.
+- `audio_stream_start`: optional metadata for a following binary TTS audio downlink.
+- Binary WebSocket frame: optional raw TTS audio chunk. Format is declared by the preceding
+  `audio_stream_start` frame.
+- `audio_stream_end`: optional end marker for the TTS audio downlink.
 - `audio`: one mouth/audio timing frame. `env` is normalized `[0,1]`; `viseme` is `neutral`, `ah`, `oh`, or `ee`. If a local TTS command is configured, these frames come from its returned beat metadata.
 - `response_end`: bridge finished the response; firmware emits `ResponseEnded`.
 - `heartbeat`: keepalive; no user-facing output.
@@ -107,6 +113,9 @@ Example response:
 ```json
 {"type":"thinking","seq":41}
 {"type":"response_start","seq":41,"intent":"happy","arousal":0.62,"valence":0.72,"text":"Hello. I am awake and looking."}
+{"type":"audio_stream_start","seq":41,"format":"wav","sample_rate":22050,"audio_bytes":4096,"chunk_bytes":4096,"chunks":1}
+<binary WebSocket frame: TTS audio bytes>
+{"type":"audio_stream_end","seq":41,"audio_bytes":4096,"chunks":1}
 {"type":"audio","seq":41,"env":0.58,"viseme":"ee","duration_ms":20}
 {"type":"response_end","seq":41}
 ```
@@ -124,7 +133,8 @@ output.
   A configured local STT command may receive the one-turn PCM on stdin. Host memory may store
   summaries and validated memory fields, never raw audio.
 - A configured local TTS command may receive response text on stdin and return mouth timing
-  metadata. Generated audio files remain host-local until a later binary audio transport is
-  implemented and documented.
+  metadata plus optional `audio_b64`. The LAN service can downlink that audio as binary
+  WebSocket chunks. Firmware currently records stream metadata; downlinked-chunk speaker
+  playback remains a separate hardware path.
 - Any `error`, disconnect, or timeout returns to the offline matrix: on-device commands and packaged prompts still work. Runtime telemetry reports `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
 - Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.

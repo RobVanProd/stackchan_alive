@@ -146,6 +146,31 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     return true;
   }
 
+  if (std::strcmp(type, "audio_stream_start") == 0) {
+    telemetry_.state = BridgeClientState::Responding;
+    output.type = BridgeClientOutputType::AudioStreamStart;
+    output.stream.seq = seq;
+    readUintField(jsonLine, "sample_rate", &output.stream.sampleRate);
+    readUintField(jsonLine, "audio_bytes", &output.stream.audioBytes);
+    readUintField(jsonLine, "chunk_bytes", &output.stream.chunkBytes);
+    readUintField(jsonLine, "chunks", &output.stream.chunks);
+    readStringField(jsonLine, "format", output.stream.format, sizeof(output.stream.format));
+    telemetry_.audioStreamsStarted++;
+    telemetry_.audioStreamBytes += output.stream.audioBytes;
+    queueOutput(output);
+    return true;
+  }
+
+  if (std::strcmp(type, "audio_stream_end") == 0) {
+    output.type = BridgeClientOutputType::AudioStreamEnd;
+    output.stream.seq = seq;
+    readUintField(jsonLine, "audio_bytes", &output.stream.audioBytes);
+    readUintField(jsonLine, "chunks", &output.stream.chunks);
+    telemetry_.audioStreamsEnded++;
+    queueOutput(output);
+    return true;
+  }
+
   if (std::strcmp(type, "response_end") == 0) {
     telemetry_.state = BridgeClientState::Ready;
     output.type = BridgeClientOutputType::ResponseEnd;

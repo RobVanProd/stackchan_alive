@@ -13,6 +13,7 @@ namespace stackchan {
 constexpr size_t kBridgeSessionIdMax = 32;
 constexpr size_t kBridgeTextMax = 160;
 constexpr size_t kBridgeErrorMax = 64;
+constexpr size_t kBridgeAudioFormatMax = 16;
 
 enum class BridgeClientState : uint8_t {
   Offline,
@@ -30,6 +31,8 @@ enum class BridgeClientOutputType : uint8_t {
   Event,
   ResponseStart,
   AudioFrame,
+  AudioStreamStart,
+  AudioStreamEnd,
   ResponseEnd,
   Error,
 };
@@ -59,11 +62,21 @@ struct BridgeAudioChunk {
   bool finalChunk = false;
 };
 
+struct BridgeAudioStream {
+  uint32_t seq = 0;
+  uint32_t sampleRate = 0;
+  uint32_t audioBytes = 0;
+  uint32_t chunkBytes = 0;
+  uint32_t chunks = 0;
+  char format[kBridgeAudioFormatMax] = {};
+};
+
 struct BridgeClientOutput {
   BridgeClientOutputType type = BridgeClientOutputType::None;
   RobotEvent event;
   BridgeResponseChunk response;
   BridgeAudioChunk audio;
+  BridgeAudioStream stream;
   char sessionId[kBridgeSessionIdMax] = {};
   char error[kBridgeErrorMax] = {};
 };
@@ -79,6 +92,9 @@ struct BridgeClientTelemetry {
   uint32_t parseErrors = 0;
   uint32_t timeouts = 0;
   uint32_t heartbeats = 0;
+  uint32_t audioStreamsStarted = 0;
+  uint32_t audioStreamsEnded = 0;
+  uint32_t audioStreamBytes = 0;
   uint32_t lastSeq = 0;
   uint32_t lastMessageMs = 0;
 };
