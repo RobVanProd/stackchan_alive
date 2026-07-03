@@ -11,6 +11,7 @@
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
 #include "io/AudioOut.hpp"
+#include "io/BridgeClient.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
@@ -2087,6 +2088,90 @@ void test_speech_planner_avoids_character_clone_markers() {
   }
 }
 
+void test_bridge_client_accepts_session_hello() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  bridge.markConnecting(100);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Connecting), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"hello\",\"session\":\"abc123\"}", 120));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("abc123", output.sessionId);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().inboundMessages);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().outputsQueued);
+}
+
+void test_bridge_client_maps_thinking_and_response_events() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"thinking\",\"seq\":41}", 200));
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Event), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::ThinkingStarted), static_cast<int>(output.event.type));
+  TEST_ASSERT_EQUAL_UINT32(200, output.event.timestampMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Thinking), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"response_start\",\"seq\":41,\"intent\":\"happy\",\"arousal\":0.62,\"valence\":0.72,"
+      "\"text\":\"Hello. I am awake.\"}",
+      260));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseStart), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(output.event.type));
+  TEST_ASSERT_EQUAL_UINT32(41, output.response.seq);
+  TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Happy), static_cast<int>(output.response.intent));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.62f, output.response.arousal);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.72f, output.response.valence);
+  TEST_ASSERT_EQUAL_STRING("Hello. I am awake.", output.response.text);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Responding), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"response_end\",\"seq\":41}", 420));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseEnd), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseEnded), static_cast<int>(output.event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+}
+
+void test_bridge_client_parses_audio_frames_for_mouth_sync() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_TRUE(
+      bridge.submitControlLine("{\"type\":\"audio\",\"seq\":7,\"env\":1.25,\"viseme\":\"ee\",\"duration_ms\":240,"
+                               "\"final\":true}",
+                               500));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioFrame), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(7, output.audio.seq);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, output.audio.envelope);
+  TEST_ASSERT_EQUAL(static_cast<int>(AudioOutViseme::Ee), static_cast<int>(output.audio.viseme));
+  TEST_ASSERT_EQUAL_UINT16(200, output.audio.durationMs);
+  TEST_ASSERT_TRUE(output.audio.finalChunk);
+}
+
+void test_bridge_client_reports_parse_errors_without_allocating() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_FALSE(bridge.submitControlLine("{\"type\":\"mystery\"}", 700));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::Error), static_cast<int>(output.event.type));
+  TEST_ASSERT_EQUAL_STRING("unknown_type", output.error);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().parseErrors);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -2178,5 +2263,9 @@ int main() {
   RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);
+  RUN_TEST(test_bridge_client_accepts_session_hello);
+  RUN_TEST(test_bridge_client_maps_thinking_and_response_events);
+  RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
+  RUN_TEST(test_bridge_client_reports_parse_errors_without_allocating);
   return UNITY_END();
 }

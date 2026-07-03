@@ -119,6 +119,7 @@ $requiredFiles = @(
   "release_manifest.json",
   "voice_source_status.json",
   "docs/DEVICE_BRINGUP.md",
+  "docs/BRIDGE_PROTOCOL.md",
   "docs/PRODUCTION_READINESS.md",
   "docs/README.md",
   "docs/RELEASE_PROCESS.md",
@@ -1102,6 +1103,13 @@ $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY
 foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "persona/EarconSynth", "io/SpeechAdapter", "io/AudioOut", "generated firmware WAV playback", "mouth-frame streaming", "M5 speaker carrier fallback", "barge-in ducking", "[speech_audio]", 'typed `SpeechEarcon`', "no allocation", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
+  }
+}
+
+$bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
+foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "offline matrix")) {
+  if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
+    throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }
 }
 
