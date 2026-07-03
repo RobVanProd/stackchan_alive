@@ -56,9 +56,10 @@ $mediaDir = Join-Path $outDir "media"
 $faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
 $dataDir = Join-Path $outDir "data"
+$bridgeDir = Join-Path $outDir "bridge"
 $provenanceDir = Join-Path $outDir "provenance"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $provenanceDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $provenanceDir, $toolsDir | Out-Null
 
 function Copy-FirmwareSet {
   param(
@@ -226,6 +227,9 @@ Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
+Copy-Item -LiteralPath "bridge/README.md" -Destination $bridgeDir
+Copy-Item -LiteralPath "bridge/reference_bridge.py" -Destination $bridgeDir
+Copy-Item -LiteralPath "bridge/test_reference_bridge.py" -Destination $bridgeDir
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
   -VoiceSourceProvenancePath (Join-Path $dataDir "voice_source_provenance.yaml") `
@@ -301,6 +305,8 @@ $releaseTools = @(
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
   "tools/run_device_preflight.ps1",
+  "tools/run_bridge_reference_tests.cmd",
+  "tools/run_bridge_reference_tests.ps1",
   "tools/send_speech_mouth_demo.cmd",
   "tools/send_speech_mouth_demo.ps1",
   "tools/send_speak_all_intents_demo.cmd",
@@ -353,6 +359,7 @@ Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
+Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
 $dataProvenanceDir = Join-Path $provenanceDir "data"
 New-Item -ItemType Directory -Force -Path $dataProvenanceDir | Out-Null
 Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataProvenanceDir
@@ -737,6 +744,8 @@ $manifest = [ordered]@{
     "tools/prepare_device_arrival.ps1",
     "tools/run_device_preflight.cmd",
     "tools/run_device_preflight.ps1",
+    "tools/run_bridge_reference_tests.cmd",
+    "tools/run_bridge_reference_tests.ps1",
     "tools/send_speech_mouth_demo.cmd",
     "tools/send_speech_mouth_demo.ps1",
     "tools/send_speak_all_intents_demo.cmd",
@@ -783,6 +792,9 @@ $manifest = [ordered]@{
   provenanceFiles = @(
     "provenance/platformio.ini",
     "provenance/requirements-preview.txt",
+    "provenance/bridge/README.md",
+    "provenance/bridge/reference_bridge.py",
+    "provenance/bridge/test_reference_bridge.py",
     "provenance/firmware.yml",
     "provenance/release.yml",
     "provenance/data/commands.yaml",
