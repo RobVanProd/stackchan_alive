@@ -108,6 +108,10 @@ of sharing.
 
 ## Migration plan (small PRs, each shippable)
 
+Current implementation status: Spark now exists under `personas/spark`; the bridge prompt,
+character harness, and firmware `SpeechPlanner` line table load from that pack. Later PRs
+still need broader codegen coverage for earcon, expression, behavior, and voice assets.
+
 1. **Extract Spark:** create `personas/spark/` from CHARACTER_LOCK.md, `voice_persona.yaml`,
    `expressions.yaml`, and the strings currently in `SpeechPlanner.cpp` /
    `reference_bridge.py`. No behavior change; Spark is now data.

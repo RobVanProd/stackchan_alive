@@ -266,6 +266,7 @@ $requiredFiles = @(
   "tools/generate_speech_envelope_sidecar.cmd",
   "tools/generate_speech_envelope_sidecar.ps1",
   "tools/generate_speech_envelope_sidecar.py",
+  "tools/platformio_generate_persona_assets.py",
   "tools/platformio_generate_voice_assets.py",
   "tools/verify_speech_envelope_sidecar.cmd",
   "tools/verify_speech_envelope_sidecar.ps1",
@@ -747,6 +748,20 @@ $firmwareVoiceAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "t
 foreach ($pattern in @("FirmwareVoiceAssets.hpp", "stackchan_spark_greeting.wav", "stackchan_spark_thinking.wav", "stackchan_spark_safety.wav", "FirmwareVoiceAsset", "env.Append", "CPPPATH")) {
   if ($firmwareVoiceAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_generate_voice_assets.py missing firmware voice asset generation logic: $pattern"
+  }
+}
+
+$personaAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_persona_assets.py") -Raw
+foreach ($pattern in @("PersonaSpeechLines.hpp", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
+  if ($personaAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/platformio_generate_persona_assets.py missing persona speech generation logic: $pattern"
+  }
+}
+
+$platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]")) {
+  if ($platformioText -notmatch [regex]::Escape($pattern)) {
+    throw "platformio.ini missing persona generator wiring: $pattern"
   }
 }
 
