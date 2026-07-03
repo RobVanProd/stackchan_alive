@@ -60,11 +60,13 @@ speech 0.8 ah
 speech 0.5 oh
 speech 0.7 ee 900
 speech clear
+ambient 12 22
+ambient lux 700 hour 10
 status
 help
 ```
 
-An optional strength value in `[0.0, 1.0]` may follow mode/event commands, for example `mode listen 0.75`. Speech commands use `speech <envelope> <ah|oh|ee|neutral> [duration_ms]`; the duration defaults to 600 ms and is clamped to 50-2000 ms. Send `status`, `telemetry`, or `health` to print immediate `[heartbeat]`, `[system]`, and `[runtime]` telemetry without waiting for the periodic heartbeat. Send `help` or `?` to print the command summary on serial. Each accepted command logs `[control] command=... mode=... event=... strength=... at_ms=...` and holds off demo events briefly so the commanded state remains observable. For long deterministic checks, send `demo off` to stop random demo events and `demo on` or `demo resume` to restart them.
+An optional strength value in `[0.0, 1.0]` may follow mode/event commands, for example `mode listen 0.75`. Speech commands use `speech <envelope> <ah|oh|ee|neutral> [duration_ms]`; the duration defaults to 600 ms and is clamped to 50-2000 ms. Ambient commands use `ambient <lux> <hour>` or `ambient lux <lux> hour <0-23>` to simulate light/RTC context before the physical sensor path is connected. Low lux at night increases fatigue and lowers arousal; bright daytime light makes Stackchan a little more alert. Send `status`, `telemetry`, or `health` to print immediate `[heartbeat]`, `[system]`, and `[runtime]` telemetry without waiting for the periodic heartbeat. Send `help` or `?` to print the command summary on serial. Each accepted command logs `[control] command=... mode=... event=... strength=... ambient_lux=... hour=... at_ms=...` when those fields apply and holds off demo events briefly so the commanded state remains observable. For long deterministic checks, send `demo off` to stop random demo events and `demo on` or `demo resume` to restart them.
 
 The same bench path also listens to CoreS3 inputs: screen tap = React/UserTouched, screen hold = Listen/UserNear, BtnA = Listen, BtnB = Think, and BtnC = Speak. These input events log the same `[control]` telemetry as serial commands.
 

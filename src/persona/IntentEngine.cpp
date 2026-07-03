@@ -33,6 +33,10 @@ void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   nextDemoEventMs_ = event.timestampMs + 10000;
 }
 
+void IntentEngine::applyAmbient(float lux, uint8_t hourOfDay) {
+  emotion_.applyAmbient(lux, hourOfDay);
+}
+
 void IntentEngine::setDemoEnabled(bool enabled, uint32_t nowMs) {
   demoEnabled_ = enabled;
   if (enabled) {

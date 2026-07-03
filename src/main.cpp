@@ -294,6 +294,12 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" demo_enabled="));
     Serial.print(control.demoEnabled ? 1 : 0);
   }
+  if (control.hasAmbient) {
+    Serial.print(F(" ambient_lux="));
+    Serial.print(control.ambient.lux, 1);
+    Serial.print(F(" hour="));
+    Serial.print(control.ambient.hourOfDay);
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -443,6 +449,9 @@ void IntentTask(void* pv) {
       }
       if (control.hasReducedMotion) {
         gIntent.setReducedMotion(control.reducedMotion);
+      }
+      if (control.hasAmbient) {
+        gIntent.applyAmbient(control.ambient.lux, control.ambient.hourOfDay);
       }
       publishSpeechInput(control);
       publishFaceControl(control);
