@@ -306,6 +306,8 @@ $requiredFiles = @(
   "tools/check_hardware_evidence_progress.ps1",
   "tools/test_android_apk_install_evidence_contract.cmd",
   "tools/test_android_apk_install_evidence_contract.ps1",
+  "tools/test_android_probe_evidence_progress_contract.cmd",
+  "tools/test_android_probe_evidence_progress_contract.ps1",
   "tools/test_android_rollout_status_contract.cmd",
   "tools/test_android_rollout_status_contract.ps1",
   "tools/test_strict_android_apk_evidence_contract.cmd",
@@ -532,6 +534,13 @@ $androidApkInstallEvidenceContractText = Get-Content -LiteralPath (Join-PackageP
 foreach ($pattern in @("check_hardware_evidence_progress.ps1", "stackchan.android-apk-install.v1", "BENCH_STATUS.json", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence report status: installed", "Assert-ReportLacksFinding", "Android APK install evidence contract tests passed")) {
   if ($androidApkInstallEvidenceContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_apk_install_evidence_contract.ps1 missing APK install evidence coverage: $pattern"
+  }
+}
+
+$androidProbeEvidenceProgressContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_probe_evidence_progress_contract.ps1") -Raw
+foreach ($pattern in @("check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "report schema mismatch", "report did not pass", "Android companion logcat capture report status: captured", "Android probe evidence progress contract tests passed")) {
+  if ($androidProbeEvidenceProgressContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_probe_evidence_progress_contract.ps1 missing Android probe progress evidence coverage: $pattern"
   }
 }
 
