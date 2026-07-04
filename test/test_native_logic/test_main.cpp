@@ -3097,6 +3097,136 @@ void test_bridge_websocket_close_marks_bridge_disconnected() {
   TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().closeFramesDecoded);
 }
 
+void test_bridge_websocket_routes_endpoint_control_to_pending_response() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl endpointControl;
+  TEST_ASSERT_TRUE(endpointControl.begin(registry));
+
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 540));
+  transport.attachEndpointControl(&endpointControl);
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      545));
+
+  const char* endpointHello =
+      "{\"type\":\"endpoint_hello\",\"protocol\":\"stackchan.bridge.v1\","
+      "\"endpoint_id\":\"phone-rob-01\",\"endpoint_name\":\"Rob's Phone\","
+      "\"endpoint_kind\":\"android\",\"priority\":60,"
+      "\"capabilities\":[\"settings\",\"llm\",\"tts\"]}";
+  uint8_t frame[320] = {};
+  const size_t frameBytes = encodeServerWebSocketText(endpointHello, frame, sizeof(frame));
+  TEST_ASSERT_GREATER_THAN_UINT32(0, frameBytes);
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, frameBytes, 550));
+
+  TEST_ASSERT_TRUE(transport.hasPendingTextResponse());
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().textFramesDecoded);
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().endpointControlFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().endpointControlResponsesQueued);
+  TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().inboundMessages);
+  TEST_ASSERT_TRUE(registry.isTrusted("phone-rob-01"));
+
+  char response[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(transport.popPendingTextResponse(response, sizeof(response)));
+  TEST_ASSERT_FALSE(transport.hasPendingTextResponse());
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"endpoint_hello_result\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"endpoint_id\":\"phone-rob-01\""));
+}
+
+void test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl endpointControl;
+  TEST_ASSERT_TRUE(endpointControl.begin(registry));
+
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 560));
+  transport.attachEndpointControl(&endpointControl);
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      565));
+
+  const char* status = "{\"type\":\"owner_status\",\"protocol\":\"stackchan.bridge.v1\"}";
+  uint8_t serverFrame[160] = {};
+  const size_t serverFrameBytes = encodeServerWebSocketText(status, serverFrame, sizeof(serverFrame));
+  TEST_ASSERT_TRUE(transport.submitBytes(serverFrame, serverFrameBytes, 570));
+  TEST_ASSERT_TRUE(transport.hasPendingTextResponse());
+
+  const uint8_t maskKey[4] = {0x10, 0x20, 0x30, 0x40};
+  uint8_t clientFrame[kBridgeEndpointControlResponseMax + 16] = {};
+  const size_t clientFrameBytes =
+      transport.encodePendingTextResponseFrame(maskKey, clientFrame, sizeof(clientFrame));
+  TEST_ASSERT_GREATER_THAN_UINT32(0, clientFrameBytes);
+  TEST_ASSERT_FALSE(transport.hasPendingTextResponse());
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().outgoingTextFramesEncoded);
+  TEST_ASSERT_EQUAL_HEX8(0x81, clientFrame[0]);
+  TEST_ASSERT_TRUE((clientFrame[1] & 0x80) != 0);
+
+  const size_t payloadLength = clientFrame[1] == (0x80 | 126)
+                                   ? (static_cast<size_t>(clientFrame[2]) << 8) | clientFrame[3]
+                                   : static_cast<size_t>(clientFrame[1] & 0x7f);
+  const size_t maskOffset = clientFrame[1] == (0x80 | 126) ? 4u : 2u;
+  TEST_ASSERT_EQUAL_HEX8(maskKey[0], clientFrame[maskOffset + 0]);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[1], clientFrame[maskOffset + 1]);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[2], clientFrame[maskOffset + 2]);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[3], clientFrame[maskOffset + 3]);
+  TEST_ASSERT_GREATER_THAN_UINT32(0, payloadLength);
+
+  char decoded[kBridgeEndpointControlResponseMax] = {};
+  const size_t payloadOffset = maskOffset + 4u;
+  TEST_ASSERT_LESS_THAN(sizeof(decoded), payloadLength + 1u);
+  for (size_t i = 0; i < payloadLength; ++i) {
+    decoded[i] = static_cast<char>(clientFrame[payloadOffset + i] ^ maskKey[i % 4u]);
+  }
+  decoded[payloadLength] = '\0';
+  TEST_ASSERT_NOT_NULL(std::strstr(decoded, "\"type\":\"owner_status\""));
+}
+
+void test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl endpointControl;
+  TEST_ASSERT_TRUE(endpointControl.begin(registry));
+
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 580));
+  transport.attachEndpointControl(&endpointControl);
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      585));
+
+  const char* hello = "{\"type\":\"hello\",\"protocol\":\"stackchan.bridge.v1\",\"session\":\"ws-bridge\"}";
+  uint8_t frame[160] = {};
+  const size_t frameBytes = encodeServerWebSocketText(hello, frame, sizeof(frame));
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, frameBytes, 590));
+
+  TEST_ASSERT_FALSE(transport.hasPendingTextResponse());
+  TEST_ASSERT_EQUAL_UINT32(0, transport.telemetry().endpointControlFrames);
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("ws-bridge", output.sessionId);
+}
+
 BridgeEndpointRecord makeBridgeEndpoint(const char* id,
                                         BridgeEndpointKind kind,
                                         uint8_t priority,
@@ -3770,6 +3900,9 @@ int main() {
   RUN_TEST(test_bridge_websocket_decodes_binary_downlink_chunks);
   RUN_TEST(test_bridge_websocket_rejects_masked_server_frames);
   RUN_TEST(test_bridge_websocket_close_marks_bridge_disconnected);
+  RUN_TEST(test_bridge_websocket_routes_endpoint_control_to_pending_response);
+  RUN_TEST(test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame);
+  RUN_TEST(test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client);
   RUN_TEST(test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints);
   RUN_TEST(test_bridge_endpoint_registry_explicit_claim_overrides_current_owner);
   RUN_TEST(test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint);

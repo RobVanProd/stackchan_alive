@@ -15,6 +15,9 @@ constexpr const char* kAcceptHeader = "sec-websocket-accept:";
 bool BridgeWebSocketTransport::begin(BridgeClient& bridge, uint32_t nowMs) {
   bridge_ = &bridge;
   telemetry_ = BridgeWebSocketTransportTelemetry {};
+  hasPendingTextResponse_ = false;
+  pendingTextResponse_[0] = '\0';
+  endpointResponse_[0] = '\0';
   resetDecoder();
   if (!bridge_->telemetry().ready) {
     return fail("bridge_client_not_ready");
@@ -26,9 +29,18 @@ bool BridgeWebSocketTransport::begin(BridgeClient& bridge, uint32_t nowMs) {
 
 void BridgeWebSocketTransport::reset() {
   BridgeClient* bridge = bridge_;
+  BridgeEndpointControl* endpointControl = endpointControl_;
   telemetry_ = BridgeWebSocketTransportTelemetry {};
   bridge_ = bridge;
+  endpointControl_ = endpointControl;
+  hasPendingTextResponse_ = false;
+  pendingTextResponse_[0] = '\0';
+  endpointResponse_[0] = '\0';
   resetDecoder();
+}
+
+void BridgeWebSocketTransport::attachEndpointControl(BridgeEndpointControl* endpointControl) {
+  endpointControl_ = endpointControl;
 }
 
 bool BridgeWebSocketTransport::acceptHandshakeResponse(const char* response,
@@ -131,6 +143,36 @@ bool BridgeWebSocketTransport::submitBytes(const uint8_t* data, size_t length, u
   }
 
   return true;
+}
+
+bool BridgeWebSocketTransport::hasPendingTextResponse() const {
+  return hasPendingTextResponse_;
+}
+
+bool BridgeWebSocketTransport::popPendingTextResponse(char* out, size_t outSize) {
+  if (!hasPendingTextResponse_ || out == nullptr || outSize == 0) {
+    return false;
+  }
+  copyBounded(out, outSize, pendingTextResponse_);
+  hasPendingTextResponse_ = false;
+  pendingTextResponse_[0] = '\0';
+  return out[0] != '\0';
+}
+
+size_t BridgeWebSocketTransport::encodePendingTextResponseFrame(const uint8_t maskKey[4],
+                                                               uint8_t* out,
+                                                               size_t outSize) {
+  if (!hasPendingTextResponse_) {
+    return 0;
+  }
+  const size_t bytes = encodeClientTextFrame(pendingTextResponse_, maskKey, out, outSize);
+  if (bytes == 0) {
+    return 0;
+  }
+  hasPendingTextResponse_ = false;
+  pendingTextResponse_[0] = '\0';
+  telemetry_.outgoingTextFramesEncoded++;
+  return bytes;
 }
 
 size_t BridgeWebSocketTransport::buildHandshakeRequest(char* out,
@@ -345,11 +387,7 @@ bool BridgeWebSocketTransport::dispatchFrame(uint32_t nowMs) {
   if (opcode_ == static_cast<uint8_t>(BridgeWebSocketOpcode::Text)) {
     telemetry_.textFramesDecoded++;
     payload_[payloadLength_] = '\0';
-    if (bridge_ != nullptr &&
-        !bridge_->submitControlLine(reinterpret_cast<const char*>(payload_), nowMs)) {
-      telemetry_.bridgeSubmitsRejected++;
-    }
-    return true;
+    return routeTextFrame(nowMs);
   }
 
   if (opcode_ == static_cast<uint8_t>(BridgeWebSocketOpcode::Binary)) {
@@ -380,6 +418,44 @@ bool BridgeWebSocketTransport::dispatchFrame(uint32_t nowMs) {
   }
 
   return fail("unsupported_websocket_opcode");
+}
+
+bool BridgeWebSocketTransport::routeTextFrame(uint32_t nowMs) {
+  const char* text = reinterpret_cast<const char*>(payload_);
+  if (endpointControl_ != nullptr) {
+    endpointResponse_[0] = '\0';
+    const BridgeEndpointControlResult result = endpointControl_->submitControlLine(
+        text, endpointResponse_, sizeof(endpointResponse_), nowMs);
+    if (result != BridgeEndpointControlResult::Ignored) {
+      telemetry_.endpointControlFrames++;
+      if (endpointResponse_[0] != '\0') {
+        queuePendingTextResponse(endpointResponse_);
+      }
+      return true;
+    }
+  }
+
+  if (bridge_ != nullptr && !bridge_->submitControlLine(text, nowMs)) {
+    telemetry_.bridgeSubmitsRejected++;
+  }
+  return true;
+}
+
+void BridgeWebSocketTransport::queuePendingTextResponse(const char* response) {
+  if (response == nullptr || response[0] == '\0') {
+    return;
+  }
+  if (hasPendingTextResponse_) {
+    telemetry_.endpointControlResponsesDropped++;
+    return;
+  }
+  copyBounded(pendingTextResponse_, sizeof(pendingTextResponse_), response);
+  if (pendingTextResponse_[0] == '\0') {
+    telemetry_.endpointControlResponsesDropped++;
+    return;
+  }
+  hasPendingTextResponse_ = true;
+  telemetry_.endpointControlResponsesQueued++;
 }
 
 bool BridgeWebSocketTransport::fail(const char* reason) {

@@ -19,8 +19,11 @@ Preferences backend for nonvolatile storage. The running CoreS3 firmware now ini
 registry/store/control objects at boot, loads persisted trusted endpoints, attaches the
 store to endpoint control, periodically updates endpoint health, exposes endpoint telemetry
 on `[runtime]`, and can print endpoint-control responses over the serial bench path. It
-still needs the production Wi-Fi/TCP task to feed these adapters, send their responses over
-the network, and collect live PC/mobile handoff evidence. Once frames reach
+also routes endpoint-control WebSocket text frames before normal conversation frames, queues
+the bounded JSON response, and can encode that response as a masked client text frame for
+the future socket writer. It still needs the production Wi-Fi/TCP task to feed these
+adapters, write queued responses over the network socket, and collect live PC/mobile handoff
+evidence. Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
 through `BridgeClientOutput`, feeds that payload to the firmware downlink consumer for
