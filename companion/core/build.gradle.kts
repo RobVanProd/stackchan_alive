@@ -27,6 +27,9 @@ kotlin {
             implementation(libs.ktor.server.cio)
             implementation(libs.ktor.server.websockets)
         }
+        named("desktopMain").dependencies {
+            implementation(libs.jmdns)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
