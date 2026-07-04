@@ -28,6 +28,17 @@ After a real model runner command is configured, add `-RunModelBenchmark` to inc
 `model-benchmark/MODEL_BENCHMARK.md/json` and the `model-benchmark-candidate` gate in the
 same pre-arrival report.
 
+Check that the companion source/package still carries the v1 plan, protocol fixture
+provenance, Android/desktop modules, CI hooks, and pending hardware gates:
+
+```powershell
+.\tools\check_companion_v1_readiness.cmd
+```
+
+The expected source-ready state is `source-ready-pending-hardware`; physical robot,
+target-phone, C8 distribution, and production voice-source gates remain pending until
+their real evidence is captured.
+
 Run the socket-level LAN bridge smoke report:
 
 ```powershell

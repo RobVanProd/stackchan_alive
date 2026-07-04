@@ -36,10 +36,15 @@ Build the debug APK from the source checkout first unless a signed release APK i
 available:
 
 ```powershell
+.\tools\check_companion_v1_readiness.cmd
 .\tools\check_android_toolchain.cmd
 cd companion
 .\gradlew.bat :app-android:assembleDebug
 ```
+
+The companion readiness check verifies the v1 companion plan, protocol fixtures, KMP
+source tree, CI hooks, Android foreground service, and pending hardware gates before
+phone-specific APK evidence starts.
 
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.

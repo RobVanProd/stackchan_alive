@@ -424,6 +424,8 @@ $releaseTools = @(
   "tools/check_native_toolchain.ps1",
   "tools/check_android_toolchain.cmd",
   "tools/check_android_toolchain.ps1",
+  "tools/check_companion_v1_readiness.cmd",
+  "tools/check_companion_v1_readiness.ps1",
   "tools/preview_python_resolver.ps1",
   "tools/render_preview.py",
   "tools/audit_published_release.cmd",
@@ -573,6 +575,7 @@ Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenance
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
+Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
 Copy-Item -LiteralPath "test" -Destination (Join-Path $provenanceDir "test") -Recurse
 Copy-SourceTree -SourceRoot "companion" -DestinationRoot (Join-Path $provenanceDir "companion") -ExcludedDirectoryNames @("build", ".gradle", ".kotlin")
@@ -957,6 +960,8 @@ $manifest = [ordered]@{
     "tools/check_native_toolchain.ps1",
     "tools/check_android_toolchain.cmd",
     "tools/check_android_toolchain.ps1",
+    "tools/check_companion_v1_readiness.cmd",
+    "tools/check_companion_v1_readiness.ps1",
     "tools/preview_python_resolver.ps1",
     "tools/render_preview.py",
     "tools/render_rvc_auditions.ps1",
@@ -1085,6 +1090,8 @@ $manifest = [ordered]@{
     "provenance/platformio.ini",
     "provenance/requirements-preview.txt",
     "provenance/bridge/README.md",
+    "provenance/bridge/export_protocol_fixtures.py",
+    "provenance/bridge/test_protocol_fixtures.py",
     "provenance/bridge/persona_pack.py",
     "provenance/bridge/test_persona_pack.py",
     "provenance/bridge/character_red_team.py",
@@ -1113,6 +1120,12 @@ $manifest = [ordered]@{
     "provenance/bridge/test_hardware_simulator.py",
     "provenance/bridge/prearrival_sim_check.py",
     "provenance/bridge/test_prearrival_sim_check.py",
+    "provenance/protocol-fixtures/endpoint_hello.json",
+    "provenance/protocol-fixtures/owner_status.json",
+    "provenance/protocol-fixtures/settings_get.json",
+    "provenance/protocol-fixtures/settings_set.json",
+    "provenance/protocol-fixtures/invalid/missing_type.json",
+    "provenance/protocol-fixtures/invalid/wrong_protocol.json",
     "provenance/firmware.yml",
     "provenance/release.yml",
     "provenance/data/commands.yaml",
