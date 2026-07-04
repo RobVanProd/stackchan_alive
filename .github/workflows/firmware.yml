@@ -167,7 +167,7 @@ jobs:
             setup_linux_packaging: false
             shell: bash
             install_android_command: |
-              yes | sdkmanager --licenses
+              yes | sdkmanager --licenses || true
               sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
             command: |
               cd companion
@@ -182,7 +182,7 @@ jobs:
             setup_linux_packaging: true
             shell: bash
             install_android_command: |
-              yes | sdkmanager --licenses
+              yes | sdkmanager --licenses || true
               sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
             command: |
               cd companion
@@ -195,7 +195,7 @@ jobs:
             setup_linux_packaging: false
             shell: bash
             install_android_command: |
-              yes | sdkmanager --licenses
+              yes | sdkmanager --licenses || true
               sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
             command: |
               cd companion
