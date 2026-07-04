@@ -13,7 +13,7 @@ Use this when the Stack-chan hardware arrives.
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
-It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_SIM_HARDWARE_COMPARE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_BRIDGE_REPLAY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
+It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_SIM_HARDWARE_COMPARE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_BRIDGE_REPLAY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_ANDROID_APK_INSTALL.cmd`, `RUN_ANDROID_UDP_BEACON_PROBE.cmd`, `RUN_ANDROID_COMPANION_PROBE.cmd`, `RUN_ANDROID_LOGCAT_CAPTURE.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 Open `BENCH_STATUS.md` first for the current next action, then `NEXT_STEPS.md` for the full bench run order and hard stops before servo motion, audio review, and consumer promotion.
 
 Before the physical unit is connected, `RUN_HARDWARE_SIM_BASELINE.cmd` saves the virtual
@@ -35,6 +35,22 @@ When changing the P7 bridge service, also run `tools/run_lan_smoke.cmd`. It writ
 `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the real local WebSocket handshake,
 deterministic text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink path, and
 visible `thinking-latency` timing without hardware.
+
+If the Android phone is the companion bridge host, use the packet helpers before the robot
+session test:
+
+```powershell
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
+.\RUN_ANDROID_UDP_BEACON_PROBE.cmd
+.\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
+```
+
+`RUN_ANDROID_APK_INSTALL.cmd` records the APK SHA256 and installed package version under
+`android/apk-install/`. The UDP and companion probes record same-LAN discovery and
+`endpoint_hello` evidence under `android/udp-beacon-probe/` and
+`android/companion-probe/`. If the Android service stops, crashes, loses foreground status,
+or fails during screen-off soak, run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` immediately and attach
+`android/logcat/`.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the
