@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lan_service import (
+    BridgeControlState,
     LanBridgeConfig,
     LanBridgeSession,
     audio_downlink_frames,
@@ -99,6 +100,172 @@ class LanServiceTests(unittest.TestCase):
         self.assertIn("Altitude change detected", response[1]["text"])
         self.assertEqual("response_end", response[-1]["type"])
         self.assertIn("user picked Stackchan up", session.memory.physical_context)
+
+    def test_endpoint_controls_track_owner_settings_and_forget(self):
+        state = BridgeControlState()
+        session = LanBridgeSession(LanBridgeConfig(runner_profile="gemma4-e2b-litert-lm"), control_state=state)
+
+        endpoint = session.handle_text(
+            json.dumps(
+                {
+                    "type": "endpoint_hello",
+                    "endpoint_id": "phone-rob-01",
+                    "endpoint_name": "Rob's Phone",
+                    "endpoint_kind": "android",
+                    "priority": 60,
+                    "supports_binary_audio": True,
+                    "capabilities": ["settings", "llm", "tts", "settings"],
+                }
+            )
+        )
+        claim = session.handle_text(json.dumps({"type": "claim_brain", "endpoint_id": "phone-rob-01"}))
+        settings = session.handle_text(json.dumps({"type": "settings_get", "domains": ["bridge", "display"]}))
+        settings_set = session.handle_text(
+            json.dumps(
+                {
+                    "type": "settings_set",
+                    "version": settings[0]["version"],
+                    "settings": {"display": {"reduced_motion": True}},
+                }
+            )
+        )
+        locked = session.handle_text(
+            json.dumps(
+                {
+                    "type": "settings_set",
+                    "version": settings_set[0]["version"],
+                    "settings": {"privacy": {"wake_gate_required": False}},
+                }
+            )
+        )
+        diagnostics = session.handle_text(json.dumps({"type": "diagnostics_request", "domains": ["bridge", "model"]}))
+        trusted = session.handle_text(json.dumps({"type": "trusted_endpoints"}))
+        forgotten = session.handle_text(json.dumps({"type": "forget_endpoint", "endpoint_id": "phone-rob-01"}))
+
+        self.assertEqual("endpoint_hello_result", endpoint[0]["type"])
+        self.assertEqual("phone-rob-01", endpoint[0]["endpoint_id"])
+        self.assertEqual(["settings", "llm", "tts"], endpoint[0]["capabilities"])
+        self.assertEqual("owner_status", claim[0]["type"])
+        self.assertEqual("phone-rob-01", claim[0]["active_brain_owner"])
+        self.assertEqual("android", claim[0]["owner_kind"])
+        self.assertEqual("settings_snapshot", settings[0]["type"])
+        self.assertEqual("phone-rob-01", settings[0]["settings"]["bridge"]["active_brain_owner"])
+        self.assertFalse(settings[0]["settings"]["display"]["reduced_motion"])
+        self.assertEqual("settings_result", settings_set[0]["type"])
+        self.assertTrue(settings_set[0]["ok"])
+        self.assertEqual(settings[0]["version"] + 1, settings_set[0]["version"])
+        self.assertEqual("safety_locked_setting", locked[0]["code"])
+        self.assertIn("privacy.wake_gate_required", locked[0]["locked"])
+        self.assertEqual("diagnostics_snapshot", diagnostics[0]["type"])
+        self.assertEqual("phone-rob-01", diagnostics[0]["bridge"]["active_brain_owner"])
+        self.assertEqual("gemma4-e2b-litert-lm", diagnostics[0]["model"]["profile"])
+        self.assertEqual("trusted_endpoints_result", trusted[0]["type"])
+        self.assertEqual(1, len(trusted[0]["endpoints"]))
+        self.assertEqual("forget_endpoint_result", forgotten[0]["type"])
+        self.assertTrue(forgotten[0]["ok"])
+        self.assertEqual("", forgotten[0]["active_brain_owner"])
+        self.assertEqual(0, forgotten[0]["trusted_endpoint_count"])
+
+    def test_endpoint_control_state_survives_sequential_sessions(self):
+        state = BridgeControlState()
+        first = LanBridgeSession(LanBridgeConfig(), control_state=state)
+        second = LanBridgeSession(LanBridgeConfig(), control_state=state)
+
+        first.handle_text(
+            json.dumps(
+                {
+                    "type": "endpoint_hello",
+                    "endpoint_id": "pc-studio-01",
+                    "endpoint_kind": "pc",
+                    "priority": 80,
+                    "capabilities": ["settings", "stt", "llm", "tts"],
+                }
+            )
+        )
+        first.handle_text(json.dumps({"type": "claim_brain", "endpoint_id": "pc-studio-01"}))
+        owner = second.handle_text(json.dumps({"type": "owner_status"}))
+        second.handle_text(
+            json.dumps(
+                {
+                    "type": "endpoint_hello",
+                    "endpoint_id": "phone-rob-01",
+                    "endpoint_kind": "android",
+                    "priority": 60,
+                    "capabilities": ["settings"],
+                }
+            )
+        )
+        capability = second.handle_text(
+            json.dumps(
+                {
+                    "type": "capability_update",
+                    "endpoint_id": "phone-rob-01",
+                    "capabilities": ["settings", "model_profiles"],
+                    "supports_binary_audio": False,
+                }
+            )
+        )
+        release_wrong_owner = second.handle_text(json.dumps({"type": "release_brain", "endpoint_id": "phone-rob-01"}))
+        release_pc = second.handle_text(json.dumps({"type": "release_brain", "endpoint_id": "pc-studio-01"}))
+
+        self.assertEqual("pc-studio-01", owner[0]["active_brain_owner"])
+        self.assertEqual("capability_update_result", capability[0]["type"])
+        self.assertEqual(["settings", "model_profiles"], capability[0]["capabilities"])
+        self.assertEqual("brain_owner_mismatch", release_wrong_owner[0]["code"])
+        self.assertEqual("owner_status", release_pc[0]["type"])
+        self.assertEqual("phone-rob-01", release_pc[0]["active_brain_owner"])
+
+    def test_settings_version_conflict_returns_current_snapshot(self):
+        session = LanBridgeSession(LanBridgeConfig())
+
+        conflict = session.handle_text(
+            json.dumps(
+                {
+                    "type": "settings_set",
+                    "version": 99,
+                    "settings": {"display": {"reduced_motion": True}},
+                }
+            )
+        )
+
+        self.assertEqual("settings_result", conflict[0]["type"])
+        self.assertFalse(conflict[0]["ok"])
+        self.assertEqual("settings_version_conflict", conflict[0]["code"])
+        self.assertEqual(1, conflict[0]["version"])
+        self.assertIn("display", conflict[0]["settings"])
+
+    def test_identified_non_owner_cannot_start_speech_turn(self):
+        state = BridgeControlState()
+        session = LanBridgeSession(LanBridgeConfig(), control_state=state)
+        session.handle_text(
+            json.dumps(
+                {
+                    "type": "endpoint_hello",
+                    "endpoint_id": "pc-studio-01",
+                    "endpoint_kind": "pc",
+                    "priority": 80,
+                }
+            )
+        )
+        session.handle_text(json.dumps({"type": "claim_brain", "endpoint_id": "pc-studio-01"}))
+        session.handle_text(
+            json.dumps(
+                {
+                    "type": "endpoint_hello",
+                    "endpoint_id": "phone-rob-01",
+                    "endpoint_kind": "android",
+                    "priority": 60,
+                }
+            )
+        )
+
+        blocked = session.handle_text(
+            json.dumps({"type": "utterance_start", "endpoint_id": "phone-rob-01", "sample_rate": 16000})
+        )
+
+        self.assertEqual("error", blocked[0]["type"])
+        self.assertEqual("brain_owner_mismatch", blocked[0]["code"])
+        self.assertIn("phone-rob-01", blocked[0]["detail"])
 
     def test_session_persists_host_memory_after_utterance(self):
         with tempfile.TemporaryDirectory() as temp_dir:

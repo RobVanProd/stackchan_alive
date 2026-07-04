@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import hashlib
 import json
 import socket
+import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -31,10 +33,297 @@ DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
+MAX_TRUSTED_ENDPOINTS = 8
 
 
 class WebSocketProtocolError(RuntimeError):
     """Raised when a client sends an invalid WebSocket handshake or frame."""
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def normalize_text(value: object, default: str = "", max_len: int = 64) -> str:
+    text = " ".join(str(value or default).split())
+    return text[:max_len]
+
+
+def normalize_endpoint_id(value: object) -> str:
+    text = normalize_text(value, max_len=64)
+    allowed = []
+    for char in text:
+        if char.isalnum() or char in ("-", "_", "."):
+            allowed.append(char)
+    return "".join(allowed)[:64]
+
+
+def normalize_capabilities(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    capabilities: list[str] = []
+    for item in value:
+        capability = normalize_endpoint_id(str(item).lower())
+        if capability and capability not in capabilities:
+            capabilities.append(capability)
+    return tuple(capabilities[:32])
+
+
+def default_bridge_settings() -> dict[str, object]:
+    return {
+        "persona": {"active": "spark"},
+        "voice": {"profile": "rvc-bright", "volume": 0.8},
+        "display": {"brightness": 1.0, "reduced_motion": False},
+        "motion": {"servo_enabled": False, "calibration_status": "unknown", "safe_stop": False},
+        "bridge": {"mode_policy": "auto", "active_brain_owner": "", "trusted_endpoint_count": 0},
+        "privacy": {"wake_gate_required": True, "raw_audio_retention": "none"},
+        "model": {"profile": "gemma4-e2b-gguf", "runner_status": "unconfigured"},
+        "diagnostics": {"export_logs": False},
+    }
+
+
+SAFETY_LOCKED_SETTING_PATHS = {
+    ("motion", "servo_enabled"),
+    ("motion", "servo_armed"),
+    ("privacy", "wake_gate_required"),
+    ("privacy", "raw_audio_retention"),
+}
+
+
+@dataclass
+class EndpointRecord:
+    endpoint_id: str
+    endpoint_name: str = ""
+    endpoint_kind: str = "dev"
+    public_key_fingerprint: str = ""
+    priority: int = 0
+    auto_connect: bool = True
+    capabilities: tuple[str, ...] = ()
+    app_version: str = ""
+    supports_binary_audio: bool = False
+    last_seen_ms: int = 0
+
+    @classmethod
+    def from_message(cls, message: dict[str, Any]) -> "EndpointRecord":
+        endpoint_id = normalize_endpoint_id(message.get("endpoint_id"))
+        if not endpoint_id:
+            raise ValueError("endpoint_id_required")
+        try:
+            priority = int(message.get("priority", 0))
+        except (TypeError, ValueError):
+            priority = 0
+        priority = max(0, min(100, priority))
+        endpoint_kind = normalize_endpoint_id(str(message.get("endpoint_kind", "dev")).lower()) or "dev"
+        return cls(
+            endpoint_id=endpoint_id,
+            endpoint_name=normalize_text(message.get("endpoint_name") or endpoint_id, max_len=80),
+            endpoint_kind=endpoint_kind[:32],
+            public_key_fingerprint=normalize_text(message.get("public_key_fingerprint"), max_len=96),
+            priority=priority,
+            auto_connect=bool(message.get("auto_connect", True)),
+            capabilities=normalize_capabilities(message.get("capabilities")),
+            app_version=normalize_text(message.get("app_version"), max_len=32),
+            supports_binary_audio=bool(message.get("supports_binary_audio", False)),
+            last_seen_ms=now_ms(),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "endpoint_id": self.endpoint_id,
+            "endpoint_name": self.endpoint_name,
+            "endpoint_kind": self.endpoint_kind,
+            "public_key_fingerprint": self.public_key_fingerprint,
+            "priority": self.priority,
+            "auto_connect": self.auto_connect,
+            "capabilities": list(self.capabilities),
+            "app_version": self.app_version,
+            "supports_binary_audio": self.supports_binary_audio,
+            "last_seen_ms": self.last_seen_ms,
+        }
+
+
+@dataclass
+class BridgeControlState:
+    trusted_endpoints: dict[str, EndpointRecord] = field(default_factory=dict)
+    active_brain_owner: str = ""
+    settings_version: int = 1
+    settings: dict[str, object] = field(default_factory=default_bridge_settings)
+
+    def register_endpoint(self, message: dict[str, Any]) -> dict[str, object]:
+        try:
+            endpoint = EndpointRecord.from_message(message)
+        except ValueError as exc:
+            return error_frame(str(exc))
+        if endpoint.endpoint_id not in self.trusted_endpoints and len(self.trusted_endpoints) >= MAX_TRUSTED_ENDPOINTS:
+            return error_frame("endpoint_registry_full")
+        self.trusted_endpoints[endpoint.endpoint_id] = endpoint
+        return {
+            "type": "endpoint_hello_result",
+            "protocol": PROTOCOL,
+            "endpoint_id": endpoint.endpoint_id,
+            "trusted": True,
+            "active_brain_owner": self.active_brain_owner,
+            "trusted_endpoint_count": len(self.trusted_endpoints),
+            "capabilities": list(endpoint.capabilities),
+        }
+
+    def touch_endpoint(self, endpoint_id: object) -> str:
+        normalized = normalize_endpoint_id(endpoint_id)
+        if normalized and normalized in self.trusted_endpoints:
+            self.trusted_endpoints[normalized].last_seen_ms = now_ms()
+        return normalized
+
+    def owner_status(self, state: str = "healthy") -> dict[str, object]:
+        owner = self.trusted_endpoints.get(self.active_brain_owner)
+        return {
+            "type": "owner_status",
+            "active_brain_owner": self.active_brain_owner,
+            "owner_kind": owner.endpoint_kind if owner else "",
+            "state": state if self.active_brain_owner else "offline",
+            "trusted_endpoint_count": len(self.trusted_endpoints),
+        }
+
+    def claim_brain(self, message: dict[str, Any]) -> dict[str, object]:
+        endpoint_id = self.touch_endpoint(message.get("endpoint_id"))
+        if not endpoint_id:
+            return error_frame("endpoint_id_required")
+        if endpoint_id not in self.trusted_endpoints:
+            return error_frame("endpoint_not_trusted", endpoint_id)
+        self.active_brain_owner = endpoint_id
+        return self.owner_status("healthy")
+
+    def release_brain(self, message: dict[str, Any]) -> dict[str, object]:
+        endpoint_id = self.touch_endpoint(message.get("endpoint_id"))
+        if endpoint_id and self.active_brain_owner and endpoint_id != self.active_brain_owner:
+            return error_frame("brain_owner_mismatch", endpoint_id)
+        released = self.active_brain_owner
+        self.active_brain_owner = ""
+        promoted = self.promote_best_endpoint(exclude=released)
+        return self.owner_status("healthy" if promoted else "released")
+
+    def promote_best_endpoint(self, *, exclude: str = "") -> str:
+        candidates = [
+            endpoint
+            for endpoint in self.trusted_endpoints.values()
+            if endpoint.auto_connect and endpoint.endpoint_id != exclude
+        ]
+        if not candidates:
+            return ""
+        candidates.sort(key=lambda endpoint: (endpoint.priority, endpoint.last_seen_ms), reverse=True)
+        self.active_brain_owner = candidates[0].endpoint_id
+        return self.active_brain_owner
+
+    def trusted_endpoints_frame(self) -> dict[str, object]:
+        endpoints = sorted(
+            (endpoint.to_dict() for endpoint in self.trusted_endpoints.values()),
+            key=lambda item: (-int(item.get("priority", 0)), str(item.get("endpoint_id", ""))),
+        )
+        return {
+            "type": "trusted_endpoints_result",
+            "active_brain_owner": self.active_brain_owner,
+            "endpoints": endpoints,
+        }
+
+    def forget_endpoint(self, message: dict[str, Any]) -> dict[str, object]:
+        endpoint_id = normalize_endpoint_id(message.get("endpoint_id"))
+        if not endpoint_id:
+            return error_frame("endpoint_id_required")
+        removed = endpoint_id in self.trusted_endpoints
+        self.trusted_endpoints.pop(endpoint_id, None)
+        if self.active_brain_owner == endpoint_id:
+            self.active_brain_owner = ""
+            self.promote_best_endpoint(exclude=endpoint_id)
+        return {
+            "type": "forget_endpoint_result",
+            "endpoint_id": endpoint_id,
+            "ok": removed,
+            "active_brain_owner": self.active_brain_owner,
+            "trusted_endpoint_count": len(self.trusted_endpoints),
+        }
+
+    def _settings_snapshot_dict(self) -> dict[str, object]:
+        snapshot = copy.deepcopy(self.settings)
+        bridge_settings = snapshot.setdefault("bridge", {})
+        if isinstance(bridge_settings, dict):
+            bridge_settings["active_brain_owner"] = self.active_brain_owner
+            bridge_settings["trusted_endpoint_count"] = len(self.trusted_endpoints)
+        return snapshot
+
+    def settings_snapshot(self, domains: object = None) -> dict[str, object]:
+        settings = self._settings_snapshot_dict()
+        if isinstance(domains, list) and domains:
+            wanted = {str(domain) for domain in domains}
+            settings = {key: value for key, value in settings.items() if key in wanted}
+        return {"type": "settings_snapshot", "version": self.settings_version, "settings": settings}
+
+    def settings_set(self, message: dict[str, Any]) -> dict[str, object]:
+        requested_version = message.get("version")
+        if requested_version is not None:
+            try:
+                parsed_version = int(requested_version)
+            except (TypeError, ValueError):
+                return error_frame("settings_version_invalid")
+            if parsed_version != self.settings_version:
+                return {
+                    "type": "settings_result",
+                    "ok": False,
+                    "code": "settings_version_conflict",
+                    "version": self.settings_version,
+                    "settings": self._settings_snapshot_dict(),
+                }
+        updates = message.get("settings")
+        if not isinstance(updates, dict):
+            return error_frame("settings_payload_invalid")
+        locked = self._locked_paths(updates)
+        if locked:
+            return {
+                "type": "settings_result",
+                "ok": False,
+                "code": "safety_locked_setting",
+                "locked": [".".join(path) for path in locked],
+                "version": self.settings_version,
+            }
+        self._deep_merge(self.settings, updates)
+        self.settings_version += 1
+        return {"type": "settings_result", "ok": True, "version": self.settings_version}
+
+    def _locked_paths(self, updates: dict[str, object], prefix: tuple[str, ...] = ()) -> list[tuple[str, ...]]:
+        locked: list[tuple[str, ...]] = []
+        for key, value in updates.items():
+            path = prefix + (str(key),)
+            if path in SAFETY_LOCKED_SETTING_PATHS:
+                locked.append(path)
+            if isinstance(value, dict):
+                locked.extend(self._locked_paths(value, path))
+        return locked
+
+    def _deep_merge(self, target: dict[str, object], updates: dict[str, object]) -> None:
+        for key, value in updates.items():
+            if isinstance(value, dict) and isinstance(target.get(key), dict):
+                self._deep_merge(target[key], value)  # type: ignore[index]
+            else:
+                target[str(key)] = copy.deepcopy(value)
+
+    def diagnostics_snapshot(self, config: LanBridgeConfig) -> dict[str, object]:
+        return {
+            "type": "diagnostics_snapshot",
+            "bridge": {
+                "protocol": PROTOCOL,
+                "active_brain_owner": self.active_brain_owner,
+                "trusted_endpoint_count": len(self.trusted_endpoints),
+                "settings_version": self.settings_version,
+                "mode_policy": self._settings_snapshot_dict().get("bridge", {}).get("mode_policy", "auto"),
+            },
+            "model": {
+                "profile": config.runner_profile,
+                "require_runner": config.require_runner,
+            },
+            "audio": {
+                "sample_rate": DEFAULT_SAMPLE_RATE,
+                "downlink_chunk_bytes": config.downlink_audio_chunk_bytes,
+                "max_upload_bytes": config.max_audio_bytes,
+            },
+        }
 
 
 @dataclass(frozen=True)
@@ -255,10 +544,17 @@ def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
 
 
 class LanBridgeSession:
-    def __init__(self, config: LanBridgeConfig, memory: BridgeMemory | None = None):
+    def __init__(
+        self,
+        config: LanBridgeConfig,
+        memory: BridgeMemory | None = None,
+        control_state: BridgeControlState | None = None,
+    ):
         self.config = config
         self.memory = memory if memory is not None else BridgeMemory()
+        self.control_state = control_state if control_state is not None else BridgeControlState()
         self.session = "lan"
+        self.endpoint_id = ""
         self.next_seq = 1
         self.audio = AudioUpload()
 
@@ -278,19 +574,81 @@ class LanBridgeSession:
         if message_type == "hello":
             self.session = str(message.get("session") or message.get("device_id") or self.session)[:48]
             return [{"type": "hello", "protocol": PROTOCOL, "session": self.session}]
+        if message_type == "endpoint_hello":
+            frame = self.control_state.register_endpoint(message)
+            self.endpoint_id = str(frame.get("endpoint_id", self.endpoint_id)) if frame.get("type") != "error" else self.endpoint_id
+            return [frame]
         if message_type == "heartbeat":
-            return [{"type": "heartbeat"}]
+            endpoint_id = self.control_state.touch_endpoint(message.get("endpoint_id") or self.endpoint_id)
+            frame: dict[str, object] = {"type": "heartbeat", "active_brain_owner": self.control_state.active_brain_owner}
+            if endpoint_id:
+                frame["endpoint_id"] = endpoint_id
+            return [frame]
+        if message_type == "claim_brain":
+            return [self.control_state.claim_brain(message)]
+        if message_type == "release_brain":
+            return [self.control_state.release_brain(message)]
+        if message_type == "owner_status":
+            return [self.control_state.owner_status()]
+        if message_type == "trusted_endpoints":
+            return [self.control_state.trusted_endpoints_frame()]
+        if message_type == "forget_endpoint":
+            return [self.control_state.forget_endpoint(message)]
+        if message_type == "settings_get":
+            return [self.control_state.settings_snapshot(message.get("domains"))]
+        if message_type == "settings_set":
+            return [self.control_state.settings_set(message)]
+        if message_type == "diagnostics_request":
+            return [self.control_state.diagnostics_snapshot(self.config)]
+        if message_type == "capability_update":
+            return [self._handle_capability_update(message)]
         if message_type == "utterance_start":
+            owner_error = self._owner_gate(message)
+            if owner_error is not None:
+                return [owner_error]
             self.audio.start(message.get("sample_rate", DEFAULT_SAMPLE_RATE))
             return [{"type": "listening", **self.audio.summary()}]
         if message_type == "cancel":
             self.audio.clear()
             return [error_frame("cancelled")]
         if message_type == "utterance_audio":
+            owner_error = self._owner_gate(message)
+            if owner_error is not None:
+                return [owner_error]
             return self._handle_text_audio(message)
         if message_type == "utterance_end":
+            owner_error = self._owner_gate(message)
+            if owner_error is not None:
+                return [owner_error]
             return self._handle_utterance_end(message, suppress_thinking=suppress_thinking)
         return [error_frame("unsupported_message", message_type)]
+
+    def _owner_gate(self, message: dict[str, Any]) -> dict[str, object] | None:
+        endpoint_id = normalize_endpoint_id(message.get("endpoint_id") or self.endpoint_id)
+        if not endpoint_id:
+            return None
+        self.control_state.touch_endpoint(endpoint_id)
+        owner = self.control_state.active_brain_owner
+        if owner and endpoint_id != owner:
+            return error_frame("brain_owner_mismatch", endpoint_id)
+        return None
+
+    def _handle_capability_update(self, message: dict[str, Any]) -> dict[str, object]:
+        endpoint_id = self.control_state.touch_endpoint(message.get("endpoint_id") or self.endpoint_id)
+        if not endpoint_id:
+            return error_frame("endpoint_id_required")
+        endpoint = self.control_state.trusted_endpoints.get(endpoint_id)
+        if endpoint is None:
+            return error_frame("endpoint_not_trusted", endpoint_id)
+        endpoint.capabilities = normalize_capabilities(message.get("capabilities"))
+        endpoint.supports_binary_audio = bool(message.get("supports_binary_audio", endpoint.supports_binary_audio))
+        endpoint.last_seen_ms = now_ms()
+        return {
+            "type": "capability_update_result",
+            "endpoint_id": endpoint_id,
+            "capabilities": list(endpoint.capabilities),
+            "supports_binary_audio": endpoint.supports_binary_audio,
+        }
 
     def early_thinking_frame(self, text: str) -> dict[str, object] | None:
         try:
@@ -311,6 +669,8 @@ class LanBridgeSession:
         return frame
 
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
+        if self.endpoint_id and self.control_state.active_brain_owner and self.endpoint_id != self.control_state.active_brain_owner:
+            return [error_frame("brain_owner_mismatch", self.endpoint_id)]
         try:
             self.audio.append(payload, self.config.max_audio_bytes)
         except WebSocketProtocolError as exc:
@@ -453,8 +813,13 @@ def read_http_request(conn: socket.socket) -> bytes:
     return bytes(data)
 
 
-def handle_connection(conn: socket.socket, config: LanBridgeConfig, memory: BridgeMemory) -> BridgeMemory:
-    session = LanBridgeSession(config, memory)
+def handle_connection(
+    conn: socket.socket,
+    config: LanBridgeConfig,
+    memory: BridgeMemory,
+    control_state: BridgeControlState | None = None,
+) -> BridgeMemory:
+    session = LanBridgeSession(config, memory, control_state)
     request = read_http_request(conn)
     conn.sendall(build_handshake_response(request))
     while True:
@@ -485,6 +850,7 @@ def handle_connection(conn: socket.socket, config: LanBridgeConfig, memory: Brid
 
 def serve(config: LanBridgeConfig) -> None:
     memory = load_bridge_memory(config.memory_file) if config.memory_file else BridgeMemory()
+    control_state = BridgeControlState()
     with socket.create_server((config.host, config.port), reuse_port=False) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         print(f"[bridge-lan] listening ws://{config.host}:{config.port} protocol={PROTOCOL}")
@@ -492,7 +858,7 @@ def serve(config: LanBridgeConfig) -> None:
             conn, address = server.accept()
             print(f"[bridge-lan] client={address[0]}:{address[1]}")
             with conn:
-                memory = handle_connection(conn, config, memory)
+                memory = handle_connection(conn, config, memory, control_state)
             if config.once:
                 break
 

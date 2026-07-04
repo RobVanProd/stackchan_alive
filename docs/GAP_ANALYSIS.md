@@ -44,6 +44,12 @@ registry with PC Brain Mode, Mobile Brain Mode, one active brain owner, observer
 clients, handoff, heartbeat failover, and `forget_endpoint`. The detailed Android/bridge
 contract lives in [ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
 
+Current bridge-side progress: `bridge/lan_service.py` now implements the host control-plane
+messages for trusted endpoint registration, active brain ownership, settings, diagnostics,
+capability updates, and endpoint forgetting, and `bridge/lan_smoke.py` has an
+`endpoint-controls` socket scenario. This is still B1 setup evidence only; firmware still has
+no Wi-Fi/WebSocket transport and cannot reach the service without the serial bench.
+
 ### B2. The serial link physically cannot carry the audio design
 
 16 kHz PCM16 mono = 32,000 bytes/s. 115200 baud ≈ 11,520 bytes/s raw — less after bench

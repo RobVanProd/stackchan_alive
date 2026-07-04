@@ -42,6 +42,9 @@ PC Brain Mode is the high-quality path.
   development logs, richer storage for host-side memory.
 - Current repo seam: `bridge/lan_service.py`, `bridge/local_runner.py`,
   `bridge/model_benchmark.py`, `bridge/character_red_team.py`.
+- Current control-plane smoke: `bridge/lan_smoke.py` scenario `endpoint-controls` covers
+  endpoint registration, active brain owner claim, settings, diagnostics, trusted endpoint
+  listing, and `forget_endpoint` against the host WebSocket service.
 
 The Android app should still be able to connect in this mode as a control/settings observer.
 It can show the active PC endpoint, request status, edit safe settings, audition voice
@@ -63,6 +66,9 @@ The first Android implementation may use deterministic fake engines while it pro
 bridge connection, settings round trip, handoff, and LiteRT-LM wrapper contract. Real model
 speed is not accepted until it passes the same Character Lock benchmark and red-team gates as
 the PC path.
+
+The host bridge already accepts the core control messages described below. Firmware still
+needs the Wi-Fi/WebSocket transport before the physical robot can use this control plane.
 
 ## Multi-Endpoint Model
 
