@@ -304,6 +304,8 @@ $requiredFiles = @(
   "tools/add_hardware_evidence_media.ps1",
   "tools/check_hardware_evidence_progress.cmd",
   "tools/check_hardware_evidence_progress.ps1",
+  "tools/test_android_apk_install_evidence_contract.cmd",
+  "tools/test_android_apk_install_evidence_contract.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -515,6 +517,13 @@ $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_
 foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "Test-OptionalAndroidProbeReport", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Test-AndroidDashboardManifestEvidence", "androidDashboardFinding", "Import the Android connected-dashboard screenshot", "Android APK install evidence", "Android companion bridge probe", "Android UDP beacon probe", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "optional unless Android is the companion bridge host", "media_manifest.json needs a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
+  }
+}
+
+$androidApkInstallEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_apk_install_evidence_contract.ps1") -Raw
+foreach ($pattern in @("check_hardware_evidence_progress.ps1", "stackchan.android-apk-install.v1", "BENCH_STATUS.json", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence report status: installed", "Assert-ReportLacksFinding", "Android APK install evidence contract tests passed")) {
+  if ($androidApkInstallEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_apk_install_evidence_contract.ps1 missing APK install evidence coverage: $pattern"
   }
 }
 
