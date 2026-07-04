@@ -90,10 +90,12 @@ notification.
 For the full Android phone/LAN validation pass, use `docs/ANDROID_COMPANION_TEST_PLAN.md`
 and attach its evidence to the packet.
 Before asking the robot to connect manually, run
-`tools/run_android_companion_probe.cmd -Url ws://<phone-lan-ip>:8765/bridge` from the repo
-or extracted release package to verify the Android endpoint handshake.
+`RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge` from the evidence
+packet to verify the Android endpoint handshake and save the report under
+`android/companion-probe/`.
 If mDNS discovery is unreliable, run `tools/run_android_udp_beacon_probe.cmd` from another
-machine on the same LAN to capture the Android UDP discovery beacon.
+machine on the same LAN, or `RUN_ANDROID_UDP_BEACON_PROBE.cmd` from the evidence packet,
+to capture the Android UDP discovery beacon under `android/udp-beacon-probe/`.
 
 Import the display photo or video into the packet:
 

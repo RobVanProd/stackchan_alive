@@ -47,11 +47,14 @@ If mDNS does not resolve, test the UDP fallback:
 
 ```powershell
 .\tools\run_android_udp_beacon_probe.cmd
+# From a generated hardware evidence packet, prefer:
+.\RUN_ANDROID_UDP_BEACON_PROBE.cmd
 ```
 
 The helper listens on UDP port `8766` and writes
 `output/android-udp-beacon/latest/ANDROID_UDP_BEACON_PROBE.md` plus
-`android_udp_beacon_probe.json`. Expected:
+`android_udp_beacon_probe.json`, or `android/udp-beacon-probe/` when run from an
+evidence packet. Expected:
 
 - [ ] `tools/run_android_udp_beacon_probe.cmd` captures a `stackchan_bridge_beacon` JSON payload.
 - [ ] The payload endpoint ID matches the Android dashboard identity.
@@ -65,11 +68,14 @@ Probe the displayed URL before asking the robot to connect:
 
 ```powershell
 .\tools\run_android_companion_probe.cmd -Url ws://<phone-lan-ip>:8765/bridge
+# From a generated hardware evidence packet, prefer:
+.\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
 ```
 
 The helper writes `output/android-companion-probe/latest/ANDROID_COMPANION_PROBE.md` and
-`android_companion_probe.json`. The expected first server text frame is `endpoint_hello`
-with Android endpoint metadata.
+`android_companion_probe.json`, or `android/companion-probe/` when run from an evidence
+packet. The expected first server text frame is `endpoint_hello` with Android endpoint
+metadata.
 
 Evidence to capture:
 
@@ -103,7 +109,7 @@ Attach these to the arrival-day packet:
 - screenshot of the Android dashboard manual URL
 - screenshot of the foreground notification
 - mDNS result or failure note
-- `output/android-udp-beacon/latest/ANDROID_UDP_BEACON_PROBE.md/json` or a failure note
-- `output/android-companion-probe/latest/ANDROID_COMPANION_PROBE.md/json`
+- `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
+- `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - Android logcat excerpt if the service stops, crashes, or loses foreground status
