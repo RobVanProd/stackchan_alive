@@ -38,6 +38,12 @@ Firmware contains zero Wi-Fi or WebSocket code. `BridgeClient` is a parser fed b
 never called by anything**. The entire P7 loop cannot run untethered, and
 `bridge/lan_service.py` already speaks a socket protocol that no device-side code can reach.
 
+This transport also needs the endpoint model that the Android companion will share with the
+PC bridge. The target is not "one hardcoded bridge IP"; it is a small trusted endpoint
+registry with PC Brain Mode, Mobile Brain Mode, one active brain owner, observer settings
+clients, handoff, heartbeat failover, and `forget_endpoint`. The detailed Android/bridge
+contract lives in [ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
+
 ### B2. The serial link physically cannot carry the audio design
 
 16 kHz PCM16 mono = 32,000 bytes/s. 115200 baud ≈ 11,520 bytes/s raw — less after bench
@@ -96,6 +102,10 @@ dry-run artifact in CI. This addresses the corpus/harness half of B7. It does **
 B7 until a configured local model runs the same suite with `--require-runner` and
 `summary.gate.ready == true`.
 
+The same rule applies to Mobile Brain Mode. LiteRT-LM/Android is a valid low-footprint
+target only after a real mobile runner passes the Character Lock benchmark and red-team gates;
+the deterministic wrapper and Android contract prove wiring, not model quality.
+
 ### B8. Nothing has ever run concurrently
 
 Mic capture + camera + ESP-SR + Wi-Fi + speaker playback are each individually planned for
@@ -129,7 +139,9 @@ real-hardware evidence in the status table exists.
 ## Recommended order of attack (the bottom half)
 
 1. **Wi-Fi + WebSocket transport in firmware** — unblocks P7 untethered, resolves B1/B2;
-   `lan_service.py` is already the counterparty. Includes Wi-Fi provisioning config.
+   `lan_service.py` is already the counterparty. Includes Wi-Fi provisioning config plus
+   trusted endpoint registry hooks, active brain owner arbitration, PC/mobile handoff, and
+   `forget_endpoint`.
 2. **I2S/ES7210 mic capture task** feeding the existing `AudioSaliency` + PCM upload path
    (B3). The logic and tests are already waiting for it.
 3. **ESP-SR wake gate** (B4) — also makes PRIVACY.md enforceable, which must happen in the
@@ -137,8 +149,8 @@ real-hardware evidence in the status table exists.
 4. **Integration spike** (B8) as soon as 1-3 exist in any form; record the PSRAM/core
    budget in PRODUCTION_READINESS.md.
 5. **Camera/ESP-DL** (B5) and **IMU/proximity drivers** (B6) — parallelizable.
-6. **Real engine selection + character red-team gate** (B7) — can proceed on the host in
-   parallel with all of the above.
+6. **Real engine selection + character red-team gate** (B7) — can proceed on the PC host and
+   Android/mobile runner in parallel with all of the above.
 
 The good news is genuine: because Codex built the top half correctly — pure logic, thin
 adapters, bench-first, tested — every one of these items plugs into an interface that

@@ -16,6 +16,12 @@ Mobile / low-footprint target:
 - Runtime: LiteRT-LM.
 - Why: mobile package for Android, iOS, desktop, IoT, and web. Google describes LiteRT-LM as the optimized edge path for Gemma 4, with CPU/GPU/NPU-oriented backends and lower active memory pressure for text workloads.
 
+The Android companion contract for this path is
+[ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md). It defines Mobile Brain Mode,
+PC Brain Mode, active brain owner handoff, endpoint forgetting, and settings access. A mobile
+runner is not a selected brain until it passes the same non-dry-run benchmark and red-team
+gates as the PC runner.
+
 Fallback target if E2B fails the character harness:
 
 - `google/gemma-4-E4B-it-qat-q4_0-gguf`
@@ -147,6 +153,10 @@ GitHub Actions also runs the probe in the `bridge-tests` job and uploads the rep
 GitHub Actions also runs `bridge/litert_lm_contract_smoke.py` and uploads the
 `litert-lm-contract-smoke` artifact so the mobile runner contract stays healthy even before
 the real LiteRT-LM engine is available.
+
+That smoke proves the mobile runner wrapper contract only. Android companion integration
+also needs the bridge-level gates in `docs/ANDROID_COMPANION_SPEC.md`: PC/mobile handoff,
+active brain owner arbitration, `settings_get` / `settings_set`, and `forget_endpoint`.
 
 `unconfigured` means the bridge software is present but no real local engine command is
 available yet. That is useful setup evidence, not model speed evidence. A real P7 candidate

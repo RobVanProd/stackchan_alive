@@ -118,6 +118,7 @@ $requiredFiles = @(
   "readiness_report.json",
   "release_manifest.json",
   "voice_source_status.json",
+  "docs/ANDROID_COMPANION_SPEC.md",
   "docs/BRAIN_MODEL.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
@@ -1449,6 +1450,10 @@ if ($manifest.acceptanceChecklistJson -ne "release_acceptance.json") {
   throw "Manifest acceptanceChecklistJson mismatch: $($manifest.acceptanceChecklistJson)"
 }
 
+if ($manifest.androidCompanionSpec -ne "docs/ANDROID_COMPANION_SPEC.md") {
+  throw "Manifest androidCompanionSpec mismatch: $($manifest.androidCompanionSpec)"
+}
+
 if ($manifest.brainModelGuide -ne "docs/BRAIN_MODEL.md") {
   throw "Manifest brainModelGuide mismatch: $($manifest.brainModelGuide)"
 }
@@ -1809,9 +1814,16 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/character_red_team.py", "run_character_red_team.cmd", "dry-run-no-runner-configured", "summary.gate.ready", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/character_red_team.py", "run_character_red_team.cmd", "dry-run-no-runner-configured", "summary.gate.ready", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate", "ANDROID_COMPANION_SPEC.md")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
+  }
+}
+
+$androidCompanionSpec = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_SPEC.md") -Raw
+foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked")) {
+  if ($androidCompanionSpec -notmatch [regex]::Escape($pattern)) {
+    throw "ANDROID_COMPANION_SPEC.md missing expected Android companion contract: $pattern"
   }
 }
 
@@ -1823,7 +1835,7 @@ foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Seq
 }
 
 $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json")) {
+foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }

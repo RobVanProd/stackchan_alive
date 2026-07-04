@@ -74,6 +74,14 @@ binary PCM frames after `utterance_start`, runs the same local runner/validator/
 `utterance_end`, and streams normalized bridge JSON text frames back to the client. Audio-only
 turns can use a configured local STT command:
 
+The Android companion uses the same `stackchan.bridge.v1` family. The target architecture is
+multi-endpoint: a PC bridge and an Android bridge may both be trusted, but only one endpoint
+is the active brain owner allowed to receive wake-gated audio and dynamic response ownership.
+Other trusted endpoints may remain connected as settings/diagnostics observers. The draft app
+contract, including PC Brain Mode, Mobile Brain Mode, `claim_brain`, `release_brain`,
+`settings_get`, `settings_set`, and `forget_endpoint`, lives in
+[ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
+
 The maintained socket-level smoke check is `tools/run_lan_smoke.cmd`:
 
 ```powershell
@@ -182,6 +190,10 @@ output.
 ## Runtime Rules
 
 - Wake-word gating happens before audio leaves the device.
+- In the multi-endpoint bridge model, wake-gated audio may stream only to the active brain
+  owner. Handoff must release open streams cleanly before another endpoint claims ownership.
+- Trusted endpoint forgetting must revoke auto-connect and require pairing again before that
+  endpoint can own the brain or write settings.
 - Firmware must never block face, motion, or intent tasks while waiting for bridge traffic.
 - The bridge upload buffer is bounded and raw PCM is cleared at `utterance_end` or `cancel`.
   A configured local STT command may receive the one-turn PCM on stdin. Host memory may store
