@@ -370,11 +370,11 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boo
         Text("Manual servos and triggers", color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SmallCommand("Look L")
-            SmallCommand("Look R")
-            SmallCommand("Nod Down")
-            SmallCommand("Shake")
-            SmallCommand("Reset", filled = true)
+            SmallCommand("Look L", enabled = false)
+            SmallCommand("Look R", enabled = false)
+            SmallCommand("Nod Down", enabled = false)
+            SmallCommand("Shake", enabled = false)
+            SmallCommand("Reset", filled = true, enabled = false)
         }
         Spacer(Modifier.height(12.dp))
         Text("Facial expressions", color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
@@ -410,7 +410,7 @@ private fun EndpointRegistry(state: CompanionUiState, modifier: Modifier) {
                 Text("Deploy mDNS Pairing", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Text("Broadcasts `_stackchan-bridge._tcp.local` for discovery.", color = Muted, fontSize = 11.sp)
             }
-            OutlinedButton(onClick = {}) {
+            OutlinedButton(onClick = {}, enabled = false) {
                 Text("+ Pair Node", fontSize = 12.sp)
             }
         }
@@ -494,8 +494,8 @@ private fun BrainPanel(
             SmallCommand("Export diagnostics", onClick = onExportDiagnostics)
             SmallCommand("Run C6 rehearsal", onClick = onRunC6Rehearsal)
             if (state.brainService.showBrainHandoffActions) {
-                SmallCommand("Use phone")
-                SmallCommand("Handoff")
+                SmallCommand("Use phone", enabled = false)
+                SmallCommand("Handoff", enabled = false)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -602,18 +602,28 @@ private fun Readout(label: String, value: String, accent: Color, modifier: Modif
 }
 
 @Composable
-private fun SmallCommand(text: String, filled: Boolean = false, onClick: () -> Unit = {}) {
+private fun SmallCommand(text: String, filled: Boolean = false, enabled: Boolean = true, onClick: () -> Unit = {}) {
     val colors = if (filled) {
-        ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF061018))
+        ButtonDefaults.buttonColors(
+            containerColor = Cyan,
+            contentColor = Color(0xFF061018),
+            disabledContainerColor = Color(0xFF12343A),
+            disabledContentColor = Muted,
+        )
     } else {
-        ButtonDefaults.outlinedButtonColors(contentColor = Ink, containerColor = Color.Transparent)
+        ButtonDefaults.outlinedButtonColors(
+            contentColor = Ink,
+            containerColor = Color.Transparent,
+            disabledContentColor = Muted,
+            disabledContainerColor = Color.Transparent,
+        )
     }
     if (filled) {
-        Button(onClick = onClick, shape = RoundedCornerShape(8.dp), colors = colors) {
+        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(8.dp), colors = colors) {
             Text(text, fontSize = 12.sp)
         }
     } else {
-        OutlinedButton(onClick = onClick, shape = RoundedCornerShape(8.dp), colors = colors) {
+        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(8.dp), colors = colors) {
             Text(text, fontSize = 12.sp)
         }
     }
@@ -644,6 +654,7 @@ private fun PersonaMode(text: String, selected: Boolean, modifier: Modifier = Mo
 private fun DirectiveItem(text: String) {
     OutlinedButton(
         onClick = {},
+        enabled = false,
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink, containerColor = Console),
         modifier = Modifier.fillMaxWidth(),
@@ -726,6 +737,7 @@ private fun EndpointItem(endpoint: EndpointRow) {
                 } else {
                     Button(
                         onClick = {},
+                        enabled = false,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Purple, contentColor = Color.White),
                     ) {
