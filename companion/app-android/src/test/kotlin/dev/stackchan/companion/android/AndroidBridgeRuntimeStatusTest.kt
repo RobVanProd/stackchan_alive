@@ -96,6 +96,7 @@ class AndroidBridgeRuntimeStatusTest {
         AndroidBridgeRuntimeStatusStore.updateSession(
             snapshot = EndpointSessionSnapshot(
                 connected = true,
+                robotHelloReceived = true,
                 deviceId = "stackchan-bench-01",
                 deviceName = "Stackchan Bench",
                 firmwareVersion = "bench-v1",
@@ -115,6 +116,29 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("", status.lastMessageType)
         assertEquals("", status.activeBrainOwner)
         assertEquals("Bridge failed", status.robotState)
+    }
+
+    @Test
+    fun socketConnectionDoesNotMarkRobotConnectedBeforeHello() {
+        AndroidBridgeRuntimeStatusStore.setServiceStatus(
+            "Foreground",
+            "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot session",
+        )
+        AndroidBridgeRuntimeStatusStore.updateSession(
+            snapshot = EndpointSessionSnapshot(
+                connected = true,
+                robotHelloReceived = false,
+                lastMessageType = "",
+            ),
+            detail = "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot hello",
+        )
+
+        val status = AndroidBridgeRuntimeStatusStore.status.value
+
+        assertFalse(status.robotConnected)
+        assertEquals("Awaiting robot", status.robotState)
+        assertTrue(status.connectionLabel.contains("Bridge ready"))
+        assertTrue(status.consoleMessage.contains("Awaiting Stack-chan bridge handshake"))
     }
 
     @Test

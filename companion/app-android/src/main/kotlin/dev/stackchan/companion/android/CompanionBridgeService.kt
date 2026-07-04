@@ -149,7 +149,7 @@ class CompanionBridgeService : Service() {
             var wasConnected = false
             while (isActive) {
                 val snapshot = runCatching { bridge.currentSnapshot() }.getOrDefault(null)
-                val connected = snapshot?.connected == true
+                val connected = snapshot?.robotHelloReceived == true
                 if (connected) {
                     acquireOrRenewSessionWakeLock()
                 } else {

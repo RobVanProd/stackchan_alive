@@ -21,7 +21,11 @@ current v1 companion branch.
   diagnostics screens are not complete.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, and the remaining fake telemetry must continue to be labeled or replaced.
-- G5 pairing enforcement is still open and remains blocking before public distribution.
+- G5 pairing enforcement is partially closed. Android and desktop no longer treat a raw
+  WebSocket connection as a connected robot session: app text turns, audio writes, settings
+  writes, Talk enablement, wake-lock promotion, and setup-complete UI now require the robot
+  `hello` handshake first. Full QR/short-code trust establishment and hardware proof still
+  remain blocking before public distribution.
 - G6 first-run Wi-Fi provisioning is still open. Current setup assumes the robot can
   already reach the phone or desktop bridge.
 - G7 Play submission remains pending on upload signing, developer verification, privacy
@@ -38,6 +42,6 @@ current v1 companion branch.
 
 1. Finish G1 with push-to-talk capture and transcript handling.
 2. Add G3 user-facing settings, diagnostics, and persona screens over the existing protocol.
-3. Enforce G5 pairing before any public Play distribution.
+3. Finish G5 with QR/short-code trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Coordinate G6 runtime Wi-Fi provisioning with firmware.

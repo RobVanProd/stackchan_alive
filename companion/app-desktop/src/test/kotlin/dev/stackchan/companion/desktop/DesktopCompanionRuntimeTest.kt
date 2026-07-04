@@ -42,6 +42,8 @@ class DesktopCompanionRuntimeTest {
             runtime.start()
             assertEquals(false, runtime.snapshot().mdnsAdvertised)
             val client = TestWebSocketClient.connect("ws://127.0.0.1:${firstConfig.port}/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
 
             client.send(
                 encodeControlMessage(
@@ -257,6 +259,18 @@ private class TestWebSocketClient private constructor(
 ) {
     fun send(text: String) {
         socket.sendText(text, true).join()
+    }
+
+    fun sendRobotHello() {
+        send(
+            encodeControlMessage(
+                DeviceHello(
+                    deviceId = "stackchan-bench-01",
+                    deviceName = "Stackchan Bench",
+                    firmwareVersion = "bench-v1",
+                ),
+            ),
+        )
     }
 
     fun nextText(): String =

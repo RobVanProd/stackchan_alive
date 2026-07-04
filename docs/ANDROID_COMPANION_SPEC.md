@@ -336,7 +336,10 @@ Forget device:
 ## Security And Privacy
 
 - Local network first. No cloud relay by default.
-- Pairing must establish endpoint trust before audio or settings writes are accepted.
+- Pairing must establish endpoint trust before audio or settings writes are accepted. Until
+  the full QR/short-code trust flow is available, the v1 bridge must at minimum reject app
+  text turns, audio writes, and settings writes until the robot completes the `hello`
+  handshake with a concrete device id.
 - Prefer TLS, Noise-style session keys, or another authenticated local session once firmware
   resource budget is known.
 - Raw wake-gated audio may be streamed only to the active brain owner.
@@ -373,6 +376,8 @@ The Android companion path is ready to integrate with firmware when:
 - A simulated robot can hand off PC -> mobile -> PC without changing firmware settings.
 - `forget_endpoint` prevents automatic reconnect until the endpoint is paired again.
 - `settings_get` and `settings_set` round trip, including version conflict handling.
+- A raw WebSocket connection without robot `hello` does not enable Talk, promote the Android
+  session wake lock, or accept audio/settings/app-text writes.
 - A connected robot receives a Talk text turn as `thinking`, `response_start`,
   `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - Safety-locked settings cannot be changed from the app.

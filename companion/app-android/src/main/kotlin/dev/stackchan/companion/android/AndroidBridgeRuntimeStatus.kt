@@ -107,7 +107,7 @@ object AndroidBridgeRuntimeStatusStore {
             it.copy(
                 serviceStatus = "Foreground",
                 serviceDetail = detail,
-                robotConnected = snapshot.connected,
+                robotConnected = snapshot.robotHelloReceived,
                 robotId = snapshot.deviceId,
                 robotName = snapshot.deviceName,
                 firmwareVersion = snapshot.firmwareVersion,

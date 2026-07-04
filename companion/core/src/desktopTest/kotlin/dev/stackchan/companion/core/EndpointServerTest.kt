@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -85,6 +86,8 @@ class EndpointServerTest {
         CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
             server.start()
             val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
 
             client.send(
                 encodeControlMessage(
@@ -168,6 +171,8 @@ class EndpointServerTest {
         CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
             server.start()
             val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
 
             client.send(encodeControlMessage(UtteranceStart(seq = 7, sampleRate = 16000)))
             client.sendBinary(ByteArray(256) { 1 })
@@ -276,11 +281,66 @@ class EndpointServerTest {
     }
 
     @Test
+    fun endpointServerRejectsSubmittedTextTurnBeforeRobotHello() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            server.waitForSnapshot { it.connected && !it.robotHelloReceived }
+
+            val submit = server.submitTextTurn("Hello before hello")
+            val snapshot = server.currentSnapshot()
+
+            assertEquals(false, submit.accepted)
+            assertEquals("Stack-chan has not completed the bridge hello yet.", submit.detail)
+            assertTrue(snapshot.connected)
+            assertEquals(false, snapshot.robotHelloReceived)
+            client.close()
+        }
+    }
+
+    @Test
+    fun endpointServerRejectsAudioAndSettingsWritesBeforeRobotHello() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            server.waitForSnapshot { it.connected && !it.robotHelloReceived }
+
+            client.send(encodeControlMessage(UtteranceStart(seq = 11, sampleRate = 16000)))
+            val audioError = assertIs<BridgeError>(decodeControlMessage(client.nextText()))
+            client.send(
+                encodeControlMessage(
+                    SettingsSet(
+                        version = 1,
+                        settings = buildJsonObject {
+                            put("display", buildJsonObject {
+                                put("brightness", JsonPrimitive(58))
+                            })
+                        },
+                    ),
+                ),
+            )
+            val settingsError = assertIs<BridgeError>(decodeControlMessage(client.nextText()))
+            val snapshot = server.currentSnapshot()
+
+            assertEquals("robot_hello_required", audioError.code)
+            assertEquals(11, audioError.seq)
+            assertEquals("robot_hello_required", settingsError.code)
+            assertEquals(false, snapshot.robotHelloReceived)
+            assertEquals("robot hello is required before protected bridge writes", snapshot.lastError)
+            client.close()
+        }
+    }
+
+    @Test
     fun endpointServerDoesNotFinishCanceledAudioTurn() = runBlocking {
         val port = freePort()
         CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
             server.start()
             val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
 
             client.send(encodeControlMessage(UtteranceStart(seq = 8, sampleRate = 16000)))
             client.sendBinary(ByteArray(64) { 3 })
@@ -311,6 +371,8 @@ class EndpointServerTest {
         ).use { server ->
             server.start()
             val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
 
             client.send(encodeControlMessage(UtteranceStart(seq = 9, sampleRate = 16000)))
             client.sendBinary(ByteArray(96) { 4 })
@@ -339,6 +401,22 @@ class EndpointServerTest {
 
     private fun freePort(): Int =
         ServerSocket(0).use { it.localPort }
+
+    private suspend fun CompanionEndpointServer.waitForSnapshot(
+        timeout: Duration = Duration.ofSeconds(5),
+        predicate: (EndpointSessionSnapshot) -> Boolean,
+    ): EndpointSessionSnapshot {
+        val deadline = System.nanoTime() + timeout.toNanos()
+        var snapshot = currentSnapshot()
+        while (System.nanoTime() < deadline) {
+            if (predicate(snapshot)) {
+                return snapshot
+            }
+            delay(10)
+            snapshot = currentSnapshot()
+        }
+        error("timed out waiting for endpoint snapshot: $snapshot")
+    }
 }
 
 private class TestWebSocketClient private constructor(
@@ -352,6 +430,18 @@ private class TestWebSocketClient private constructor(
 
     fun sendBinary(bytes: ByteArray) {
         socket.sendBinary(ByteBuffer.wrap(bytes), true).join()
+    }
+
+    fun sendRobotHello() {
+        send(
+            encodeControlMessage(
+                DeviceHello(
+                    deviceId = "stackchan-001",
+                    deviceName = "Stackchan Alive Bench",
+                    firmwareVersion = "dev-c2",
+                ),
+            ),
+        )
     }
 
     fun nextText(): String =

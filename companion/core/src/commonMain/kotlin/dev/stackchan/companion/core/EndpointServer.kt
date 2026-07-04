@@ -28,6 +28,7 @@ data class EndpointServerConfig(
 
 data class EndpointSessionSnapshot(
     val connected: Boolean = false,
+    val robotHelloReceived: Boolean = false,
     val deviceId: String = "",
     val deviceName: String = "",
     val firmwareVersion: String = "",
@@ -139,6 +140,12 @@ class CompanionEndpointServer(
                     detail = "No Stack-chan robot session is connected.",
                 )
             }
+            if (!snapshot.robotHelloReceived) {
+                return TextTurnSubmitResult(
+                    accepted = false,
+                    detail = "Stack-chan has not completed the bridge hello yet.",
+                )
+            }
             nextLocalSeq += 1
             val turn = buildResponseTurn(
                 seq = nextLocalSeq,
@@ -184,15 +191,27 @@ class CompanionEndpointServer(
                     emptyList()
                 }
                 is UtteranceStart -> {
-                    startAudioTurn(message)
-                    emptyList()
+                    if (robotHelloMissing()) {
+                        robotHelloRequiredError(seq = message.seq)
+                    } else {
+                        startAudioTurn(message)
+                        emptyList()
+                    }
                 }
                 is UtteranceAudio -> {
-                    appendAudioBytes(message)
-                    emptyList()
+                    if (robotHelloMissing()) {
+                        robotHelloRequiredError(seq = message.seq)
+                    } else {
+                        appendAudioBytes(message)
+                        emptyList()
+                    }
                 }
                 is UtteranceEnd -> {
-                    finishAudioTurn(message)
+                    if (robotHelloMissing()) {
+                        robotHelloRequiredError(seq = message.seq)
+                    } else {
+                        finishAudioTurn(message)
+                    }
                 }
                 is CancelMessage -> {
                     cancelAudioTurn(message)
@@ -204,7 +223,11 @@ class CompanionEndpointServer(
                 }
                 else -> {
                     recordMessageType(message.type)
-                    config.requestRouter.handle(message)?.let { textFrame(it) }.orEmpty()
+                    if (message is SettingsSet && robotHelloMissing()) {
+                        robotHelloRequiredError()
+                    } else {
+                        config.requestRouter.handle(message)?.let { textFrame(it) }.orEmpty()
+                    }
                 }
             }
         } catch (error: RuntimeException) {
@@ -220,6 +243,9 @@ class CompanionEndpointServer(
     }
 
     private suspend fun handleBinaryFrame(bytes: ByteArray): List<OutboundFrame> {
+        if (robotHelloMissing()) {
+            return robotHelloRequiredError()
+        }
         lock.withLock {
             if (audioTurn.active) {
                 audioTurn = audioTurn.copy(bytesReceived = audioTurn.bytesReceived + bytes.size)
@@ -237,9 +263,9 @@ class CompanionEndpointServer(
     private suspend fun updateConnected(connected: Boolean) {
         lock.withLock {
             snapshot = if (connected) {
-                snapshot.copy(connected = true, lastError = "")
+                EndpointSessionSnapshot(connected = true)
             } else {
-                snapshot.copy(connected = false)
+                snapshot.copy(connected = false, robotHelloReceived = false)
             }
         }
     }
@@ -248,6 +274,7 @@ class CompanionEndpointServer(
         lock.withLock {
             snapshot = snapshot.copy(
                 deviceId = message.deviceId,
+                robotHelloReceived = true,
                 deviceName = message.deviceName,
                 firmwareVersion = message.firmwareVersion,
                 sampleRate = message.sampleRate,
@@ -425,6 +452,21 @@ class CompanionEndpointServer(
         lock.withLock {
             snapshot = snapshot.copy(lastError = message)
         }
+    }
+
+    private suspend fun robotHelloMissing(): Boolean =
+        lock.withLock { !snapshot.robotHelloReceived }
+
+    private suspend fun robotHelloRequiredError(seq: Int? = null): List<OutboundFrame> {
+        recordError("robot hello is required before protected bridge writes")
+        return textFrame(
+            BridgeError(
+                seq = seq,
+                code = "robot_hello_required",
+                detail = "Stack-chan must complete the bridge hello before audio, settings writes, or app text turns are accepted.",
+                recoverable = true,
+            ),
+        )
     }
 
     private fun textFrame(message: BridgeMessage): List<OutboundFrame> =

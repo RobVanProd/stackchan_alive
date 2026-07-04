@@ -37,8 +37,11 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
     runtime: DesktopCompanionRuntimeSnapshot,
     diagnostics: DiagnosticsSnapshot,
 ): CompanionUiState {
-    val connection = if (connected) {
+    val robotReady = connected && robotHelloReceived
+    val connection = if (robotReady) {
         "Connected: ${deviceName.ifBlank { deviceId.ifBlank { "Robot" } }}"
+    } else if (connected) {
+        "Bridge session: awaiting robot hello"
     } else if (runtime.mdnsAdvertised) {
         "Listening: ${runtime.host}:${runtime.port} / mDNS"
     } else {
@@ -52,7 +55,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         kind = "robot",
         fingerprint = firmwareVersion.ifBlank { "No firmware hello yet" },
         priority = 100,
-        connected = connected,
+        connected = robotReady,
         activeBrain = false,
     )
     val desktopEndpoint = EndpointRow(
@@ -68,7 +71,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
     return CompanionUiState(
         connection = connection,
         brainOwner = owner,
-        heartbeatMs = if (connected) 8 else 0,
+        heartbeatMs = if (robotReady) 8 else 0,
         robotState = if (lastMessageType.isBlank()) "Awaiting robot" else lastMessageType,
         servoArmed = false,
         telemetry = diagnostics.toTelemetryReadings(this, runtime),
@@ -78,7 +81,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         robotSetup = RobotSetupUiState(
             primaryBridgeUrl = "ws://${runtime.host}:${runtime.port}/bridge",
             serviceRunning = runtime.brainSupervisor.running || runtime.mdnsAdvertised,
-            robotConnected = connected,
+            robotConnected = robotReady,
             robotName = robotName,
             robotFingerprint = firmwareVersion.ifBlank { "No firmware hello yet" },
         ),
@@ -91,11 +94,12 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
 
 private fun EndpointSessionSnapshot.toConversationUiState(): ConversationUiState =
     ConversationUiState(
-        inputEnabled = connected,
+        inputEnabled = robotHelloReceived,
         status = when {
-            connected && textTurnsSubmitted > 0 ->
+            robotHelloReceived && textTurnsSubmitted > 0 ->
                 "Text turns sent: $textTurnsSubmitted. Last turn: ${lastTextTurn.ifBlank { "n/a" }}"
-            connected -> "Connected to ${deviceName.ifBlank { deviceId.ifBlank { "Stack-chan" } }}. Text turns will play through the robot bridge."
+            robotHelloReceived -> "Connected to ${deviceName.ifBlank { deviceId.ifBlank { "Stack-chan" } }}. Text turns will play through the robot bridge."
+            connected -> "Bridge socket is open; waiting for Stack-chan hello before text turns are enabled."
             else -> "Connect Stack-chan before sending text turns from this desktop."
         },
         messages = if (lastTextTurn.isNotBlank()) {
@@ -107,8 +111,12 @@ private fun EndpointSessionSnapshot.toConversationUiState(): ConversationUiState
             listOf(
                 ConversationMessage(
                     sender = "Bridge",
-                    text = if (connected) "Stack-chan is connected. Send a short text turn to test the conversation path." else "Waiting for Stack-chan before text turns can be sent.",
-                    detail = if (connected) "Ready" else "Waiting",
+                    text = if (robotHelloReceived) {
+                        "Stack-chan is connected. Send a short text turn to test the conversation path."
+                    } else {
+                        "Waiting for Stack-chan before text turns can be sent."
+                    },
+                    detail = if (robotHelloReceived) "Ready" else "Waiting",
                 ),
             )
         },
@@ -193,7 +201,7 @@ private fun DiagnosticsSnapshot.toTelemetryReadings(
     val modelProfile = model?.stringValue("profile") ?: "fake"
     val runner = model?.stringValue("runner_status") ?: "deterministic_fake"
     val firmwareValue = session.firmwareVersion.ifBlank { firmware?.stringValue("target") ?: "awaiting robot" }
-    val firmwareDetail = if (session.connected) {
+    val firmwareDetail = if (session.robotHelloReceived) {
         session.deviceName.ifBlank { session.deviceId.ifBlank { "Connected" } }
     } else {
         val transport = firmware?.stringValue("transport") ?: "websocket"
@@ -212,8 +220,10 @@ private fun EndpointSessionSnapshot.consoleMessage(
     owner: String,
     runtime: DesktopCompanionRuntimeSnapshot,
 ): String =
-    if (connected) {
+    if (robotHelloReceived) {
         "Robot ${deviceName.ifBlank { deviceId }} last reported `$lastMessageType`; brain owner: $owner."
+    } else if (connected) {
+        "Bridge socket is open at ${runtime.host}:${runtime.port}; waiting for robot hello."
     } else {
         "Awaiting robot hello at ${runtime.host}:${runtime.port}; brain owner: $owner."
     }
