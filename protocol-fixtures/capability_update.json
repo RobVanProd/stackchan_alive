@@ -1,0 +1,9 @@
+{
+  "capabilities": [
+    "settings",
+    "llm",
+    "tts"
+  ],
+  "endpoint_id": "phone-rob-01",
+  "type": "capability_update"
+}

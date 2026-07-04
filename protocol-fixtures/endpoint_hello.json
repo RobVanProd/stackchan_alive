@@ -1,0 +1,19 @@
+{
+  "app_version": "0.1.0",
+  "capabilities": [
+    "stt",
+    "llm",
+    "tts",
+    "settings",
+    "persona_select",
+    "model_profiles",
+    "diagnostics"
+  ],
+  "endpoint_id": "phone-rob-01",
+  "endpoint_kind": "android",
+  "endpoint_name": "Rob's Phone",
+  "priority": 60,
+  "protocol": "stackchan.bridge.v1",
+  "supports_binary_audio": true,
+  "type": "endpoint_hello"
+}

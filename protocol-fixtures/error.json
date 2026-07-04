@@ -1,0 +1,7 @@
+{
+  "code": "bridge_timeout",
+  "detail": "No bridge traffic before timeout window.",
+  "recoverable": true,
+  "seq": 41,
+  "type": "error"
+}

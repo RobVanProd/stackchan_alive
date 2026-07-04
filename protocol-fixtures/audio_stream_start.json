@@ -1,0 +1,9 @@
+{
+  "audio_bytes": 4096,
+  "chunk_bytes": 4096,
+  "chunks": 1,
+  "format": "pcm16",
+  "sample_rate": 22050,
+  "seq": 41,
+  "type": "audio_stream_start"
+}

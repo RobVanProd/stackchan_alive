@@ -1,0 +1,38 @@
+{
+  "endpoints": [
+    {
+      "auto_connect": true,
+      "capabilities": [
+        "stt",
+        "llm",
+        "tts",
+        "rvc",
+        "settings",
+        "audio_downlink"
+      ],
+      "endpoint_id": "pc-studio-01",
+      "endpoint_kind": "pc",
+      "endpoint_name": "Studio PC",
+      "last_seen_ms": 1720000000000,
+      "priority": 80,
+      "public_key_fingerprint": "sha256:1111222233334444"
+    },
+    {
+      "auto_connect": true,
+      "capabilities": [
+        "stt",
+        "llm",
+        "tts",
+        "settings",
+        "persona_select"
+      ],
+      "endpoint_id": "phone-rob-01",
+      "endpoint_kind": "android",
+      "endpoint_name": "Rob's Phone",
+      "last_seen_ms": 1720000000100,
+      "priority": 60,
+      "public_key_fingerprint": "sha256:aaaabbbbccccdddd"
+    }
+  ],
+  "type": "trusted_endpoints_result"
+}

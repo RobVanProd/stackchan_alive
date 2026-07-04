@@ -1,0 +1,8 @@
+{
+  "arousal": 0.55,
+  "intent": "happy",
+  "seq": 41,
+  "text": "Hello. I am awake and looking.",
+  "type": "response_start",
+  "valence": 0.6
+}

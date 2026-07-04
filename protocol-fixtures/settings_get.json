@@ -1,0 +1,11 @@
+{
+  "domains": [
+    "persona",
+    "voice",
+    "motion",
+    "display",
+    "bridge",
+    "privacy"
+  ],
+  "type": "settings_get"
+}
