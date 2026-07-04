@@ -689,6 +689,13 @@ foreach ($pattern in @("BridgeWebSocketTransport::buildHandshakeRequest", "Bridg
   }
 }
 
+$bridgeEndpointRegistryText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeEndpointRegistry.cpp") -Raw
+foreach ($pattern in @("BridgeEndpointRegistry::upsertEndpoint", "BridgeEndpointRegistry::forgetEndpoint", "BridgeEndpointRegistry::markHeartbeat", "BridgeEndpointRegistry::markDisconnected", "BridgeEndpointRegistry::claimOwner", "BridgeEndpointRegistry::releaseOwner", "BridgeEndpointRegistry::updateCapabilities", "BridgeEndpointRegistry::chooseBestHealthyOwner", "kBridgeEndpointMax", "ownerHeartbeatTimeoutMs", "autoConnect", "ownerExpirations", "explicitClaims", "forgotten")) {
+  if ($bridgeEndpointRegistryText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeEndpointRegistry.cpp missing firmware endpoint registry support: $pattern"
+  }
+}
+
 $bridgeAudioDownlinkText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeAudioDownlink.cpp") -Raw
 foreach ($pattern in @("BridgeAudioDownlink::begin", "BridgeAudioDownlink::start", "BridgeAudioDownlink::submitChunk", "BridgeAudioDownlink::end", "BridgeAudioDownlink::abort", "BridgeAudioDownlinkSink", "startPlayback", "submitPlaybackChunk", "stopPlayback", "isPlayablePcm16Format", "playbackReady", "playbackStarts", "playbackChunks", "playbackBytes", "playbackUnsupported", "playbackErrors", "kBridgeAudioStreamChunkPayloadMax", "payloadBytes", "chunksAccepted", "bytesAccepted", "streamsCompleted", "streamsAborted", "updateChecksum")) {
   if ($bridgeAudioDownlinkText -notmatch [regex]::Escape($pattern)) {
@@ -857,9 +864,14 @@ foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
   }
 }
+foreach ($pattern in @("test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints", "test_bridge_endpoint_registry_explicit_claim_overrides_current_owner", "test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint", "test_bridge_endpoint_registry_tie_breaks_by_recent_seen", "test_bridge_endpoint_registry_forget_active_owner_promotes_next_endpoint", "test_bridge_endpoint_registry_disconnect_active_owner_promotes_next_endpoint", "test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint registry tests: $pattern"
+  }
+}
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeWebSocketTransport.cpp>")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeWebSocketTransport.cpp>")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }

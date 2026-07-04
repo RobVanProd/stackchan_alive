@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport slice check in this workspace: **119/119 native firmware logic
+Current firmware transport/registry slice check in this workspace: **126/126 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -21,7 +21,7 @@ piece of real hardware input and the real network transport:
 | Wake word + commands (P4) | Command map done, tested | **No ESP-SR**; wake/commands are bench text |
 | Face tracking (P5) | GazeTracker done, tested | CameraAdapter has no camera (no `esp_camera`/ESP-DL; `STACKCHAN_ENABLE_CAMERA` never set) |
 | Voice out (P6) | Done | **Real** (`M5.Speaker`, packaged WAVs, PCM16 downlink playback) |
-| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec is native-tested; **no Wi-Fi/TCP task or endpoint persistence in firmware** |
+| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec and endpoint registry are native-tested; **no Wi-Fi/TCP task or endpoint persistence in firmware** |
 | LLM / STT / TTS | Contracts, harness, benchmark tooling | All engines deterministic placeholders / `unconfigured` |
 
 So the demo that currently exists is: a Python simulator talking to a Python service, or a
@@ -37,21 +37,23 @@ Firmware now has a native-tested `BridgeWebSocketTransport` adapter that builds 
 upgrade request, encodes masked client text/binary frames, decodes unmasked server
 text/binary frames, routes server text into `BridgeClient::submitControlLine()`, routes TTS
 binary chunks into `BridgeClient::submitBinaryFrame()`, and marks the bridge disconnected on
-close frames. What is still missing is the production Wi-Fi/TCP task, provisioning config,
-endpoint persistence, and reconnect/failover loop. `BridgeClient` is still fed by the
-115200-baud serial bench in the running firmware, so the P7 loop cannot run untethered.
+close frames. Firmware also has a native-tested `BridgeEndpointRegistry` for the PC/mobile
+endpoint model: bounded trust records, explicit owner claims, current-owner stickiness,
+heartbeat expiration, priority promotion, disconnect recovery, and `forget_endpoint`.
+What is still missing is the production Wi-Fi/TCP task, provisioning config, nonvolatile
+endpoint persistence, message hookup, and reconnect/failover loop. `BridgeClient` is still
+fed by the 115200-baud serial bench in the running firmware, so the P7 loop cannot run
+untethered.
 
-This transport also needs the endpoint model that the Android companion will share with the
-PC bridge. The target is not "one hardcoded bridge IP"; it is a small trusted endpoint
-registry with PC Brain Mode, Mobile Brain Mode, one active brain owner, observer settings
-clients, handoff, heartbeat failover, and `forget_endpoint`. The detailed Android/bridge
-contract lives in [ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
+The detailed Android/bridge contract lives in
+[ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
 
 Current bridge-side progress: `bridge/lan_service.py` now implements the host control-plane
 messages for trusted endpoint registration, active brain ownership, settings, diagnostics,
 capability updates, and endpoint forgetting, and `bridge/lan_smoke.py` has an
-`endpoint-controls` socket scenario. Current firmware-side progress is frame-level only; it
-still cannot reach the service without the serial bench until Wi-Fi/TCP wiring lands.
+`endpoint-controls` socket scenario. Current firmware-side progress is frame-level and
+registry-rule-level only; it still cannot reach the service without the serial bench until
+Wi-Fi/TCP wiring lands.
 
 ### B2. The serial link physically cannot carry the audio design
 
@@ -149,10 +151,10 @@ real-hardware evidence in the status table exists.
 ## Recommended order of attack (the bottom half)
 
 1. **Wi-Fi client/provisioning + production WebSocket task in firmware** — unblocks P7
-   untethered, resolves B1/B2; `lan_service.py` is already the counterparty and the
-   frame-level adapter is now native-tested. Includes Wi-Fi provisioning config plus
-   trusted endpoint registry hooks, active brain owner arbitration, PC/mobile handoff, and
-   `forget_endpoint`.
+   untethered, resolves B1/B2; `lan_service.py` is already the counterparty, while the
+   frame-level adapter and endpoint arbitration rules are native-tested. Includes Wi-Fi
+   provisioning config, nonvolatile trusted endpoint persistence, message hookup, and live
+   PC/mobile handoff evidence.
 2. **I2S/ES7210 mic capture task** feeding the existing `AudioSaliency` + PCM upload path
    (B3). The logic and tests are already waiting for it.
 3. **ESP-SR wake gate** (B4) — also makes PRIVACY.md enforceable, which must happen in the

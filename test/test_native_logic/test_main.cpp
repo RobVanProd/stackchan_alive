@@ -13,6 +13,7 @@
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
+#include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -3094,6 +3095,162 @@ void test_bridge_websocket_close_marks_bridge_disconnected() {
   TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().closeFramesDecoded);
 }
 
+BridgeEndpointRecord makeBridgeEndpoint(const char* id,
+                                        BridgeEndpointKind kind,
+                                        uint8_t priority,
+                                        bool autoConnect = true,
+                                        uint32_t capabilities = BridgeEndpointCapabilityStt |
+                                                                BridgeEndpointCapabilityLlm |
+                                                                BridgeEndpointCapabilityTts) {
+  BridgeEndpointRecord endpoint;
+  std::strncpy(endpoint.endpointId, id, sizeof(endpoint.endpointId) - 1);
+  std::snprintf(endpoint.endpointName, sizeof(endpoint.endpointName), "%s-name", id);
+  std::snprintf(endpoint.publicKeyFingerprint,
+                sizeof(endpoint.publicKeyFingerprint),
+                "sha256:%s",
+                id);
+  endpoint.kind = kind;
+  endpoint.priority = priority;
+  endpoint.autoConnect = autoConnect;
+  endpoint.capabilities = capabilities;
+  return endpoint;
+}
+
+void test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+
+  BridgeEndpointRecord pc = makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80);
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(pc, 100));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.count());
+  TEST_ASSERT_TRUE(registry.isTrusted("pc-studio-01"));
+  TEST_ASSERT_EQUAL_UINT8(1, registry.telemetry().trustedCount);
+
+  pc.priority = 90;
+  std::strncpy(pc.endpointName, "Studio PC Updated", sizeof(pc.endpointName) - 1);
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(pc, 120));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.count());
+  const BridgeEndpointRecord* updated = registry.findEndpoint("pc-studio-01");
+  TEST_ASSERT_NOT_NULL(updated);
+  TEST_ASSERT_EQUAL_UINT8(90, updated->priority);
+  TEST_ASSERT_EQUAL_STRING("Studio PC Updated", updated->endpointName);
+
+  const char* ids[] = {
+      "phone-rob-01",
+      "dev-01",
+      "dev-02",
+      "dev-03",
+      "dev-04",
+      "dev-05",
+      "dev-06",
+  };
+  for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
+    TEST_ASSERT_TRUE(registry.upsertEndpoint(
+        makeBridgeEndpoint(ids[i], BridgeEndpointKind::Dev, static_cast<uint8_t>(10 + i)),
+        130 + static_cast<uint32_t>(i)));
+  }
+  TEST_ASSERT_EQUAL_UINT32(kBridgeEndpointMax, registry.count());
+  TEST_ASSERT_FALSE(registry.upsertEndpoint(makeBridgeEndpoint("overflow", BridgeEndpointKind::Dev, 1), 200));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().rejected);
+  TEST_ASSERT_EQUAL_UINT32(kBridgeEndpointMax, registry.count());
+}
+
+void test_bridge_endpoint_registry_explicit_claim_overrides_current_owner() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 100));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("phone-rob-01", BridgeEndpointKind::Android, 60), 110));
+
+  registry.update(120);
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+
+  TEST_ASSERT_TRUE(registry.claimOwner("phone-rob-01", 130, true));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+  registry.update(200);
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().explicitClaims);
+  TEST_ASSERT_EQUAL_UINT32(2, registry.telemetry().ownerChanges);
+}
+
+void test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint() {
+  BridgeEndpointRegistryConfig config;
+  config.ownerHeartbeatTimeoutMs = 100;
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin(config));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 100));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("phone-rob-01", BridgeEndpointKind::Android, 60), 110));
+  TEST_ASSERT_TRUE(registry.claimOwner("phone-rob-01", 120, true));
+  TEST_ASSERT_TRUE(registry.markHeartbeat("pc-studio-01", 180));
+
+  registry.update(221);
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().ownerExpirations);
+  TEST_ASSERT_EQUAL_UINT32(3, registry.telemetry().ownerChanges);
+}
+
+void test_bridge_endpoint_registry_tie_breaks_by_recent_seen() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 70), 100));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("phone-rob-01", BridgeEndpointKind::Android, 70), 200));
+
+  registry.update(210);
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+}
+
+void test_bridge_endpoint_registry_forget_active_owner_promotes_next_endpoint() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 100));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("phone-rob-01", BridgeEndpointKind::Android, 60), 120));
+  TEST_ASSERT_TRUE(registry.claimOwner("phone-rob-01", 130, true));
+  TEST_ASSERT_TRUE(registry.markHeartbeat("pc-studio-01", 135));
+
+  TEST_ASSERT_TRUE(registry.forgetEndpoint("phone-rob-01", 140));
+  TEST_ASSERT_FALSE(registry.isTrusted("phone-rob-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.count());
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().forgotten);
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().releases);
+}
+
+void test_bridge_endpoint_registry_disconnect_active_owner_promotes_next_endpoint() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 100));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("phone-rob-01", BridgeEndpointKind::Android, 60), 120));
+  TEST_ASSERT_TRUE(registry.claimOwner("pc-studio-01", 130, true));
+  TEST_ASSERT_TRUE(registry.markHeartbeat("phone-rob-01", 135));
+
+  TEST_ASSERT_TRUE(registry.markDisconnected("pc-studio-01", 150));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().releases);
+  TEST_ASSERT_EQUAL_UINT32(3, registry.telemetry().ownerChanges);
+}
+
+void test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(
+      makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 90, false),
+      100));
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("phone-rob-01", BridgeEndpointKind::Android, 60), 110));
+
+  registry.update(120);
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+
+  TEST_ASSERT_TRUE(registry.claimOwner("pc-studio-01", 130, true));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+  TEST_ASSERT_TRUE(registry.updateCapabilities("pc-studio-01",
+                                               BridgeEndpointCapabilitySettings |
+                                                   BridgeEndpointCapabilityAudioDownlink,
+                                               140));
+  const BridgeEndpointRecord* owner = registry.activeOwner();
+  TEST_ASSERT_NOT_NULL(owner);
+  TEST_ASSERT_EQUAL_UINT32(BridgeEndpointCapabilitySettings | BridgeEndpointCapabilityAudioDownlink,
+                           owner->capabilities);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -3215,5 +3372,12 @@ int main() {
   RUN_TEST(test_bridge_websocket_decodes_binary_downlink_chunks);
   RUN_TEST(test_bridge_websocket_rejects_masked_server_frames);
   RUN_TEST(test_bridge_websocket_close_marks_bridge_disconnected);
+  RUN_TEST(test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints);
+  RUN_TEST(test_bridge_endpoint_registry_explicit_claim_overrides_current_owner);
+  RUN_TEST(test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint);
+  RUN_TEST(test_bridge_endpoint_registry_tie_breaks_by_recent_seen);
+  RUN_TEST(test_bridge_endpoint_registry_forget_active_owner_promotes_next_endpoint);
+  RUN_TEST(test_bridge_endpoint_registry_disconnect_active_owner_promotes_next_endpoint);
+  RUN_TEST(test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim);
   return UNITY_END();
 }
