@@ -1,5 +1,6 @@
 package dev.stackchan.companion.android
 
+import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,8 +43,53 @@ class AndroidBridgeRuntimeStatusTest {
 
         assertEquals("Awaiting Stackchan robot", status.robotDisplayName)
         assertEquals("No robot hello yet", status.robotFingerprint)
-        assertEquals("Awaiting robot", status.robotState)
+        assertEquals("Bridge stopped", status.robotState)
         assertEquals("Bridge stopped: ws://192.168.1.42:8765/bridge", status.connectionLabel)
+    }
+
+    @Test
+    fun failedStatusDoesNotClaimStaleRobotConnection() {
+        val status = AndroidBridgeRuntimeStatus(
+            manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+            serviceStatus = "Failed",
+            serviceDetail = "Bridge failed: port already in use",
+            robotConnected = true,
+            robotId = "stackchan-bench-01",
+            robotName = "Stackchan Bench",
+            firmwareVersion = "bench-v1",
+            lastMessageType = "heartbeat",
+            activeBrainOwner = "phone-rob-01",
+        )
+
+        assertEquals("Bridge failed", status.robotState)
+        assertEquals("Bridge failed: ws://192.168.1.42:8765/bridge", status.connectionLabel)
+        assertEquals("Bridge failed: port already in use", status.consoleMessage)
+    }
+
+    @Test
+    fun serviceFailureClearsPreviousRobotSession() {
+        AndroidBridgeRuntimeStatusStore.updateSession(
+            snapshot = EndpointSessionSnapshot(
+                connected = true,
+                deviceId = "stackchan-bench-01",
+                deviceName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                activeBrainOwner = "phone-rob-01",
+                lastMessageType = "heartbeat",
+            ),
+            detail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+        )
+
+        AndroidBridgeRuntimeStatusStore.setServiceStatus("Failed", "Bridge failed: port already in use")
+
+        val status = AndroidBridgeRuntimeStatusStore.status.value
+        assertFalse(status.robotConnected)
+        assertEquals("", status.robotId)
+        assertEquals("", status.robotName)
+        assertEquals("", status.firmwareVersion)
+        assertEquals("", status.lastMessageType)
+        assertEquals("", status.activeBrainOwner)
+        assertEquals("Bridge failed", status.robotState)
     }
 
     @Test

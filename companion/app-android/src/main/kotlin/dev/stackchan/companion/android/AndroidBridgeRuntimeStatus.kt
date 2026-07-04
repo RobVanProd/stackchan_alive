@@ -26,24 +26,27 @@ data class AndroidBridgeRuntimeStatus(
         get() = firmwareVersion.ifBlank { if (robotConnected) robotId else "No robot hello yet" }
 
     val robotState: String
-        get() = if (robotConnected) lastMessageType.ifBlank { "connected" } else "Awaiting robot"
+        get() = when {
+            serviceStatus == "Failed" -> "Bridge failed"
+            serviceStatus == "Stopped" -> "Bridge stopped"
+            robotConnected -> lastMessageType.ifBlank { "connected" }
+            else -> "Awaiting robot"
+        }
 
     val connectionLabel: String
-        get() = if (robotConnected) {
-            "Connected: $robotDisplayName"
-        } else if (serviceStatus == "Failed") {
-            "Bridge failed: $primaryBridgeUrl"
-        } else if (serviceStatus == "Stopped") {
-            "Bridge stopped: $primaryBridgeUrl"
-        } else {
-            "Bridge ready: $primaryBridgeUrl"
+        get() = when {
+            serviceStatus == "Failed" -> "Bridge failed: $primaryBridgeUrl"
+            serviceStatus == "Stopped" -> "Bridge stopped: $primaryBridgeUrl"
+            robotConnected -> "Connected: $robotDisplayName"
+            else -> "Bridge ready: $primaryBridgeUrl"
         }
 
     val consoleMessage: String
-        get() = if (robotConnected) {
-            "Robot $robotDisplayName last reported `${lastMessageType.ifBlank { "connected" }}`; brain owner: ${activeBrainOwner.ifBlank { "None" }}."
-        } else {
-            "Awaiting Stack-chan bridge handshake at $primaryBridgeUrl."
+        get() = when {
+            serviceStatus == "Failed" -> serviceDetail
+            serviceStatus == "Stopped" -> serviceDetail
+            robotConnected -> "Robot $robotDisplayName last reported `${lastMessageType.ifBlank { "connected" }}`; brain owner: ${activeBrainOwner.ifBlank { "None" }}."
+            else -> "Awaiting Stack-chan bridge handshake at $primaryBridgeUrl."
         }
 }
 
@@ -57,9 +60,16 @@ object AndroidBridgeRuntimeStatusStore {
 
     fun setServiceStatus(status: String, detail: String) {
         mutableStatus.update {
+            val clearSession = status == "Starting" || status == "Failed" || status == "Stopped"
             it.copy(
                 serviceStatus = status,
                 serviceDetail = detail,
+                robotConnected = if (clearSession) false else it.robotConnected,
+                robotId = if (clearSession) "" else it.robotId,
+                robotName = if (clearSession) "" else it.robotName,
+                firmwareVersion = if (clearSession) "" else it.firmwareVersion,
+                lastMessageType = if (clearSession) "" else it.lastMessageType,
+                activeBrainOwner = if (clearSession) "" else it.activeBrainOwner,
             )
         }
     }
@@ -73,6 +83,11 @@ object AndroidBridgeRuntimeStatusStore {
                     serviceStatus = "Stopped",
                     serviceDetail = detail,
                     robotConnected = false,
+                    robotId = "",
+                    robotName = "",
+                    firmwareVersion = "",
+                    lastMessageType = "",
+                    activeBrainOwner = "",
                 )
             }
         }
