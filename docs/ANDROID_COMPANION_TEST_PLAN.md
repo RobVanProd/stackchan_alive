@@ -131,6 +131,7 @@ Evidence to capture:
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
 - [ ] Talk screen enables text input only after Stack-chan is connected.
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
+- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/trusted endpoint state, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.
@@ -188,5 +189,6 @@ Attach these to the arrival-day packet:
 - `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
 - `android/screen-off-soak/ANDROID_COMPANION_SOAK.md` and `android_companion_soak.json`, or the repo `output/android-companion-soak/latest/` equivalents
+- `ANDROID_DIAGNOSTICS_EXPORT.json` shared from the app after the robot session, with transcript/text-turn content redacted unless the tester explicitly opts in
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

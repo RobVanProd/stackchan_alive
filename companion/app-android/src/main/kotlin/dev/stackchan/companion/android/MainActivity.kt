@@ -27,6 +27,7 @@ import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.ConversationMessage
 import dev.stackchan.companion.ui.ConversationUiState
+import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
@@ -62,10 +63,24 @@ class MainActivity : ComponentActivity() {
                     ),
                 )
             }
+            var diagnosticsExport by remember {
+                mutableStateOf(
+                    DiagnosticsExportUiState(
+                        status = "Ready",
+                        path = filesDir.resolve("diagnostics").resolve("ANDROID_DIAGNOSTICS_EXPORT.json").absolutePath,
+                    ),
+                )
+            }
             val coroutineScope = rememberCoroutineScope()
             CompanionConsole(
                 targetName = "Android",
-                state = androidCompanionUiState(endpointHello, trustedEndpoints, bridgeStatus, conversationMessages),
+                state = androidCompanionUiState(
+                    endpointHello = endpointHello,
+                    trustedEndpoints = trustedEndpoints,
+                    bridgeStatus = bridgeStatus,
+                    conversationMessages = conversationMessages,
+                    diagnosticsExport = diagnosticsExport,
+                ),
                 onStartBrain = { startBridgeServiceOnce() },
                 onStopBrain = { stopBridgeService() },
                 onRestartBrain = { restartBridgeService() },
@@ -87,6 +102,28 @@ class MainActivity : ComponentActivity() {
                             sender = "Bridge",
                             text = if (result.accepted) result.responseText else result.detail,
                             detail = if (result.accepted) "Sent seq ${result.seq}" else "Not sent",
+                        )
+                    }
+                },
+                onExportDiagnostics = {
+                    diagnosticsExport = diagnosticsExport.copy(status = "Exporting", error = "")
+                    try {
+                        val result = exportAndroidDiagnostics(
+                            context = this@MainActivity,
+                            endpointHello = endpointHello,
+                            trustedEndpoints = trustedEndpoints,
+                            bridgeStatus = bridgeStatus,
+                        )
+                        diagnosticsExport = DiagnosticsExportUiState(status = "Exported", path = result.path)
+                        val shareIntent = Intent(Intent.ACTION_SEND)
+                            .setType("application/json")
+                            .putExtra(Intent.EXTRA_SUBJECT, "Stackchan Android diagnostics")
+                            .putExtra(Intent.EXTRA_TEXT, result.json)
+                        startActivity(Intent.createChooser(shareIntent, "Share Stackchan diagnostics"))
+                    } catch (error: Exception) {
+                        diagnosticsExport = diagnosticsExport.copy(
+                            status = "Export failed",
+                            error = error.message ?: error.javaClass.simpleName,
                         )
                     }
                 },
@@ -181,6 +218,7 @@ internal fun androidCompanionUiState(
     trustedEndpoints: List<TrustedEndpoint>,
     bridgeStatus: AndroidBridgeRuntimeStatus,
     conversationMessages: List<ConversationMessage> = emptyList(),
+    diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
 ): CompanionUiState =
     CompanionUiState(
         connection = bridgeStatus.connectionLabel,
@@ -206,6 +244,7 @@ internal fun androidCompanionUiState(
         ),
         robotSetup = androidRobotSetup(bridgeStatus, trustedEndpoints.size),
         conversation = androidConversationUiState(bridgeStatus, conversationMessages),
+        diagnosticsExport = diagnosticsExport,
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
     )
@@ -351,7 +390,7 @@ private fun TrustedEndpoint.toEndpointRow(activeBrainOwner: String): EndpointRow
         removable = true,
     )
 
-private fun androidRecentLogs(
+internal fun androidRecentLogs(
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
     bridgeStatus: AndroidBridgeRuntimeStatus,

@@ -361,7 +361,9 @@ The Android architect should produce:
 - Handoff tests for PC-to-mobile, mobile-to-PC, owner timeout, and observer-only mode.
 - A LiteRT-LM adapter seam that can run deterministic fake output first, then a real mobile
   model once installed.
-- Exportable diagnostics JSON that can be attached to Stackchan release evidence later.
+- Android diagnostics export/share support for `stackchan.android.diagnostics-export.v1`
+  JSON, written as `ANDROID_DIAGNOSTICS_EXPORT.json`, with live bridge, robot, and trusted
+  endpoint state and transcript/text-turn content redacted by default.
 
 ## Acceptance Gates
 

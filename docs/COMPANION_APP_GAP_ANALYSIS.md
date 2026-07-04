@@ -17,6 +17,8 @@ current v1 companion branch.
 - G2 real Mobile Brain Mode is still open. The current text-turn and audio-turn path uses
   deterministic fake output, not Android STT, LiteRT-LM, or Android TTS.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI remain open.
+  Android now has a first field diagnostics export/share path, but full user-facing
+  diagnostics screens are not complete.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, and the remaining fake telemetry must continue to be labeled or replaced.
 - G5 pairing enforcement is still open and remains blocking before public distribution.
@@ -25,7 +27,11 @@ current v1 companion branch.
 - G7 Play submission remains pending on upload signing, developer verification, privacy
   policy URL, data-safety answers, foreground-service declaration evidence, screenshots,
   and closed testing.
-- G8 Android field diagnostics export remains open.
+- G8 Android field diagnostics export is partially closed. Android can now export
+  `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, and trust state
+  to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet. The export redacts
+  the last text turn to a presence-only flag. Hardware-run capture and support review are
+  still required before calling G8 complete.
 - G9 desktop Python runtime packaging/detection remains open.
 
 ## Next Attack Order
@@ -33,5 +39,5 @@ current v1 companion branch.
 1. Finish G1 with push-to-talk capture and transcript handling.
 2. Add G3 user-facing settings, diagnostics, and persona screens over the existing protocol.
 3. Enforce G5 pairing before any public Play distribution.
-4. Add G8 Android diagnostics export so closed testers can share local evidence.
+4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Coordinate G6 runtime Wi-Fi provisioning with firmware.

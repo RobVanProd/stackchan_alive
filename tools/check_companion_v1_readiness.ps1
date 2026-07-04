@@ -204,6 +204,7 @@ function Test-CompanionSourceTree {
     "core/src/commonTest/kotlin/dev/stackchan/companion/core/BrainOwnerCoordinatorTest.kt",
     "app-android/src/main/AndroidManifest.xml",
     "app-android/src/main/kotlin/dev/stackchan/companion/android/CompanionBridgeService.kt",
+    "app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidDiagnosticsExport.kt",
     "app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/C0Spike.kt",
     "app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopBrainSupervisor.kt",
     "ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt"
@@ -239,13 +240,19 @@ Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
-  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "safety-locked", "Add your Stack-chan", "remove path", "Talk surface", "app_text_turn")
+  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "safety-locked", "Add your Stack-chan", "remove path", "Talk surface", "app_text_turn", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
 
 Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "waiting/setup action", "trusted companion nodes are stored", "Talk screen enables text input", "app_text_turn", "audio_stream_start", "response_end", "Removing a stored trusted companion endpoint")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "waiting/setup action", "trusted companion nodes are stored", "Talk screen enables text input", "app_text_turn", "audio_stream_start", "response_end", "Removing a stored trusted companion endpoint", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "redacts the last text turn")
+
+Test-TextEvidence `
+  -Id "android-diagnostics-export" `
+  -Name "Android diagnostics export implementation" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidDiagnosticsExport.kt") `
+  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "raw_audio_retention", "last text turn redacted to presence only")
 
 Test-TextEvidence `
   -Id "android-play-release-prep" `

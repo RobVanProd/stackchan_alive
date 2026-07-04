@@ -4,9 +4,14 @@ import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import dev.stackchan.companion.ui.ConversationMessage
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 class AndroidBridgeRuntimeStatusTest {
@@ -324,5 +329,54 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals(1, uiState.robotSetup.trustedCompanionCount)
         assertFalse(uiState.endpoints.first { it.kind == "android" }.removable)
         assertFalse(uiState.endpoints.first { it.kind == "robot" }.removable)
+    }
+
+    @Test
+    fun androidDiagnosticsExportRedactsTextTurnAndIncludesBridgeState() {
+        val endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01")
+        val trusted = TrustedEndpoint(
+            endpointId = "studio-mac-01",
+            endpointName = "Studio Mac",
+            endpointKind = "pc",
+            publicKeyFingerprint = "sha256:abcdef0123456789",
+            priority = 90,
+            capabilities = listOf("settings", "diagnostics"),
+            lastSeenMs = 1234,
+        )
+        val export = buildAndroidDiagnosticsJson(
+            endpointHello = endpointHello,
+            trustedEndpoints = listOf(trusted),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                lastMessageType = "app_text_turn",
+                activeBrainOwner = "phone-rob-01",
+                textTurnsSubmitted = 2,
+                lastTextTurn = "secret words should not leave the app",
+            ),
+            generatedAt = Instant.parse("2026-07-04T19:00:00Z"),
+        )
+
+        assertEquals("stackchan.android.diagnostics-export.v1", export["schema"]!!.jsonPrimitive.content)
+        assertEquals("2026-07-04T19:00:00Z", export["generated_at"]!!.jsonPrimitive.content)
+
+        val bridge = export["bridge"]!!.jsonObject
+        assertEquals("app_text_turn", bridge["last_message_type"]!!.jsonPrimitive.content)
+        assertEquals(2, bridge["text_turns_submitted"]!!.jsonPrimitive.content.toInt())
+        assertTrue(bridge["last_text_turn_present"]!!.jsonPrimitive.boolean)
+
+        val robot = export["robot"]!!.jsonObject
+        assertTrue(robot["connected"]!!.jsonPrimitive.boolean)
+        assertEquals("stackchan-bench-01", robot["device_id"]!!.jsonPrimitive.content)
+
+        assertEquals(1, export["trusted_endpoints"]!!.jsonArray.size)
+        assertTrue(export["recent_logs"]!!.jsonArray.isNotEmpty())
+        assertEquals("none", export["privacy"]!!.jsonObject["raw_audio_retention"]!!.jsonPrimitive.content)
+        assertFalse(export.toString().contains("secret words"))
     }
 }
