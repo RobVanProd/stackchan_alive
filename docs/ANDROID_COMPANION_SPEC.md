@@ -74,9 +74,10 @@ trusted endpoint listing, forgetting, and capability updates. Firmware also has 
 native-tested nonvolatile endpoint store with an ESP32 Preferences backend and endpoint
 control save hooks; the running firmware loads that store at boot, attaches it to endpoint
 control, exposes endpoint telemetry, and can exercise endpoint-control responses through the
-serial bench path. It still needs the production Wi-Fi/TCP task, provisioning config,
-network response sending, and live transport integration before the physical robot can use
-this control plane untethered.
+serial bench path. The firmware WebSocket adapter can queue and encode endpoint-control
+responses as masked client text frames. It still needs the production Wi-Fi/TCP task,
+provisioning config, socket writes for queued responses, and live transport integration
+before the physical robot can use this control plane untethered.
 
 ## Multi-Endpoint Model
 

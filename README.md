@@ -28,7 +28,7 @@ What is working in the repository now:
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink, and endpoint-control messages for PC/mobile companion work.
-- Firmware-side WebSocket handshake/frame adapter, trusted-endpoint owner registry, endpoint-control adapter, trusted-endpoint persistence store, boot-time endpoint-store load/attach, runtime endpoint telemetry, and serial-bench endpoint-control responses for `stackchan.bridge.v1`, with native tests for masked client frames, server text frames, PCM16 binary downlink chunks, endpoint hello/heartbeat/claim/release/list/forget messages, persistence save/load/clear, disconnect handling, owner handoff, and endpoint forgetting.
+- Firmware-side WebSocket handshake/frame adapter, endpoint-control network response framing, trusted-endpoint owner registry, endpoint-control adapter, trusted-endpoint persistence store, boot-time endpoint-store load/attach, runtime endpoint telemetry, and serial-bench endpoint-control responses for `stackchan.bridge.v1`, with native tests for masked client frames, server text frames, masked client response frames, PCM16 binary downlink chunks, endpoint hello/heartbeat/claim/release/list/forget messages, persistence save/load/clear, disconnect handling, owner handoff, and endpoint forgetting.
 - Android companion architecture contract for PC Brain Mode, Mobile Brain Mode, multi-endpoint handoff, trusted endpoint forgetting, and app-driven settings.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
@@ -36,7 +36,7 @@ What is working in the repository now:
 What is still gated:
 
 - Real hardware evidence for display, speaker, servo calibration, soak, power-cycle recovery, and target-speaker audio.
-- Real firmware Wi-Fi provisioning, TCP/WebSocket task integration, network response sending, and PC/mobile owner failover evidence on the CoreS3.
+- Real firmware Wi-Fi provisioning, TCP/WebSocket task integration, socket writes for queued endpoint responses, and PC/mobile owner failover evidence on the CoreS3.
 - Real camera, microphone, touch, proximity, and IMU producer bring-up beyond the bench/event boundaries.
 - Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
 - Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.

@@ -683,7 +683,7 @@ foreach ($pattern in @("BridgeClient::begin", "BridgeClient::update", "BridgeCli
 }
 
 $bridgeWebSocketTransportText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeWebSocketTransport.cpp") -Raw
-foreach ($pattern in @("BridgeWebSocketTransport::buildHandshakeRequest", "BridgeWebSocketTransport::acceptHandshakeResponse", "BridgeWebSocketTransport::encodeClientTextFrame", "BridgeWebSocketTransport::encodeClientBinaryFrame", "BridgeWebSocketTransport::submitBytes", "BridgeWebSocketTransport::dispatchFrame", "submitControlLine", "submitBinaryFrame", "Sec-WebSocket-Key", "Sec-WebSocket-Accept", "masked_server_websocket_frame", "websocket_payload_too_large", "kBridgeWebSocketFramePayloadMax", "BridgeWebSocketTransportState::Connected", "BridgeWebSocketTransportState::Closed")) {
+foreach ($pattern in @("BridgeWebSocketTransport::buildHandshakeRequest", "BridgeWebSocketTransport::acceptHandshakeResponse", "BridgeWebSocketTransport::encodeClientTextFrame", "BridgeWebSocketTransport::encodeClientBinaryFrame", "BridgeWebSocketTransport::submitBytes", "BridgeWebSocketTransport::attachEndpointControl", "BridgeWebSocketTransport::hasPendingTextResponse", "BridgeWebSocketTransport::popPendingTextResponse", "BridgeWebSocketTransport::encodePendingTextResponseFrame", "BridgeWebSocketTransport::routeTextFrame", "BridgeWebSocketTransport::queuePendingTextResponse", "endpointControlFrames", "endpointControlResponsesQueued", "outgoingTextFramesEncoded", "submitControlLine", "submitBinaryFrame", "Sec-WebSocket-Key", "Sec-WebSocket-Accept", "masked_server_websocket_frame", "websocket_payload_too_large", "kBridgeWebSocketFramePayloadMax", "BridgeWebSocketTransportState::Connected", "BridgeWebSocketTransportState::Closed")) {
   if ($bridgeWebSocketTransportText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeWebSocketTransport.cpp missing firmware WebSocket transport support: $pattern"
   }
@@ -873,7 +873,7 @@ foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "
     throw "provenance/test/test_native_logic/test_main.cpp missing generated expression tests: $pattern"
   }
 }
-foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected")) {
+foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected", "test_bridge_websocket_routes_endpoint_control_to_pending_response", "test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame", "test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
   }
@@ -1869,21 +1869,21 @@ foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/
 }
 
 $androidCompanionSpec = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_SPEC.md") -Raw
-foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "stackchan.bridge-endpoints.v1", "fresh heartbeat")) {
+foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "stackchan.bridge-endpoints.v1", "fresh heartbeat", "masked client text frames", "socket writes for queued responses")) {
   if ($androidCompanionSpec -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_SPEC.md missing expected Android companion contract: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "network response sending", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "native-tested endpoint-control response framing", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "socket writes for queued endpoint responses", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }
 }
 
 $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "stackchan.bridge-endpoints.v1", "BridgeEndpointStore", "Preferences backend", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
+foreach ($pattern in @("stackchan.bridge.v1", "stackchan.bridge-endpoints.v1", "BridgeEndpointStore", "Preferences backend", "masked client text frame", "queued responses over the network socket", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }

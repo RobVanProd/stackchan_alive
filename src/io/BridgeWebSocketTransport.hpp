@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "io/BridgeClient.hpp"
+#include "io/BridgeEndpointControl.hpp"
 
 namespace stackchan {
 
@@ -38,6 +39,10 @@ struct BridgeWebSocketTransportTelemetry {
   uint32_t closeFramesDecoded = 0;
   uint32_t pingFramesDecoded = 0;
   uint32_t pongFramesDecoded = 0;
+  uint32_t endpointControlFrames = 0;
+  uint32_t endpointControlResponsesQueued = 0;
+  uint32_t endpointControlResponsesDropped = 0;
+  uint32_t outgoingTextFramesEncoded = 0;
   uint32_t frameErrors = 0;
   uint32_t bridgeSubmitsRejected = 0;
   uint32_t bytesDecoded = 0;
@@ -50,12 +55,16 @@ struct BridgeWebSocketTransportTelemetry {
 class BridgeWebSocketTransport {
  public:
   bool begin(BridgeClient& bridge, uint32_t nowMs = 0);
+  void attachEndpointControl(BridgeEndpointControl* endpointControl);
   void reset();
 
   bool acceptHandshakeResponse(const char* response,
                                uint32_t nowMs = 0,
                                const char* expectedAccept = nullptr);
   bool submitBytes(const uint8_t* data, size_t length, uint32_t nowMs);
+  bool hasPendingTextResponse() const;
+  bool popPendingTextResponse(char* out, size_t outSize);
+  size_t encodePendingTextResponseFrame(const uint8_t maskKey[4], uint8_t* out, size_t outSize);
 
   const BridgeWebSocketTransportTelemetry& telemetry() const {
     return telemetry_;
@@ -102,10 +111,13 @@ class BridgeWebSocketTransport {
   void resetDecoder();
   bool startPayload(uint32_t length, uint32_t nowMs);
   bool dispatchFrame(uint32_t nowMs);
+  bool routeTextFrame(uint32_t nowMs);
+  void queuePendingTextResponse(const char* response);
   bool fail(const char* reason);
   bool rejectHandshake(const char* reason);
 
   BridgeClient* bridge_ = nullptr;
+  BridgeEndpointControl* endpointControl_ = nullptr;
   BridgeWebSocketTransportTelemetry telemetry_;
   DecodeStage decodeStage_ = DecodeStage::Header0;
   uint8_t opcode_ = 0;
@@ -113,6 +125,9 @@ class BridgeWebSocketTransport {
   uint32_t payloadReceived_ = 0;
   uint8_t length16High_ = 0;
   uint8_t payload_[kBridgeWebSocketFramePayloadMax + 1] = {};
+  char pendingTextResponse_[kBridgeEndpointControlResponseMax] = {};
+  char endpointResponse_[kBridgeEndpointControlResponseMax] = {};
+  bool hasPendingTextResponse_ = false;
 };
 
 }  // namespace stackchan
