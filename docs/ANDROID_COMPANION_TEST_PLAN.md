@@ -102,6 +102,21 @@ Evidence to capture:
 - [ ] Turning Wi-Fi back on lets the robot reconnect or rediscover the Android endpoint.
 - [ ] Stopping the foreground service makes the robot fall back to another healthy endpoint or offline behavior.
 
+If the Android service stops, crashes, loses foreground status, or fails during screen-off
+soak, capture adb evidence immediately:
+
+```powershell
+.\tools\capture_android_companion_logcat.cmd
+# From a generated hardware evidence packet, prefer:
+.\RUN_ANDROID_LOGCAT_CAPTURE.cmd
+```
+
+The helper writes `output/android-logcat/latest/ANDROID_COMPANION_LOGCAT.md`,
+`android_companion_logcat.json`, and `android_companion_logcat.txt`, or
+`android/logcat/` when run from an evidence packet. Use `-Serial <device-serial>` when
+multiple adb devices are connected and `-Lines <count>` when the failure has scrolled
+farther back in the device buffer.
+
 ## Evidence
 
 Attach these to the arrival-day packet:
@@ -112,4 +127,4 @@ Attach these to the arrival-day packet:
 - `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
-- Android logcat excerpt if the service stops, crashes, or loses foreground status
+- `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

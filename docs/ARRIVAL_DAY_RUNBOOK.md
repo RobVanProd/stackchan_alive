@@ -96,6 +96,9 @@ packet to verify the Android endpoint handshake and save the report under
 If mDNS discovery is unreliable, run `tools/run_android_udp_beacon_probe.cmd` from another
 machine on the same LAN, or `RUN_ANDROID_UDP_BEACON_PROBE.cmd` from the evidence packet,
 to capture the Android UDP discovery beacon under `android/udp-beacon-probe/`.
+If the Android service stops, crashes, loses foreground status, or fails during screen-off
+soak, connect adb and run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` from the evidence packet
+immediately. It saves the filtered service excerpt under `android/logcat/` for review.
 
 Import the display photo or video into the packet:
 

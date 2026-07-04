@@ -752,6 +752,7 @@ $hardwareSimBaselineLog = Quote-PowerShellArgument (Join-Path $logsDir "hardware
 $hardwareSimBaselineDir = Quote-PowerShellArgument (Join-Path $outDir "simulation/hardware-sim/latest")
 $androidCompanionProbeDir = Join-Path $androidDir "companion-probe"
 $androidUdpBeaconProbeDir = Join-Path $androidDir "udp-beacon-probe"
+$androidLogcatDir = Join-Path $androidDir "logcat"
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
 $speechDemoBody = "& '.\tools\send_speech_mouth_demo.ps1'$portArg"
@@ -826,6 +827,12 @@ $commandFiles = [ordered]@{
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\run_android_udp_beacon_probe.ps1`" -OutputDir `"$androidUdpBeaconProbeDir`" %*",
     "exit /b %ERRORLEVEL%"
   )
+  "RUN_ANDROID_LOGCAT_CAPTURE.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\capture_android_companion_logcat.ps1`" -OutputDir `"$androidLogcatDir`" %*",
+    "exit /b %ERRORLEVEL%"
+  )
   "RUN_ADD_MEDIA.cmd" = @(
     "@echo off",
     "cd /d `"$repoRoot`"",
@@ -862,7 +869,7 @@ $nextSteps = @(
   "5. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
   "6. Run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
   "7. Run ``RUN_SIM_HARDWARE_COMPARE.cmd`` to write ``SIM_HARDWARE_COMPARE.md/json`` and compare the real serial markers against the no-hardware baseline. Pending means more logs are needed; it is not promotion evidence.",
-  "8. If the Android phone is the companion bridge host, run ``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge`` from this packet to save LAN evidence under ``android/``.",
+  "8. If the Android phone is the companion bridge host, run ``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge`` from this packet to save LAN evidence under ``android/``. If the Android service stops, crashes, loses foreground status, or fails during screen-off soak, run ``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` immediately and attach ``android/logcat/``.",
   "9. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
   "10. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
   "11. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
@@ -906,6 +913,8 @@ $readme = @(
   "",
   "``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd`` are optional Android companion checks when the phone is the bridge host. They write probe output under ``android/`` for packet review; they do not replace robot serial logs or physical hardware evidence.",
   "",
+  "``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` captures a filtered adb logcat excerpt under ``android/logcat/`` for Android bridge service stop, crash, foreground-status, and screen-off soak failures. Run it immediately after reproducing the issue so the relevant service lifecycle lines are still in the device buffer.",
+  "",
   "BENCH_STATUS.md is the quick handoff file. RUN_PROGRESS_CHECK.cmd refreshes it with the current status, next action, next command, top findings, and matching BENCH_STATUS.json machine-readable report.",
   "",
   "RELEASE_ACCEPTANCE.md and release_acceptance.json record the no-hardware gates that were already accepted and the hardware gates still required before consumer rollout.",
@@ -947,6 +956,10 @@ $readme = @(
   "Probe the Android bridge URL shown in the app dashboard or notification:",
   "",
   "    .\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge",
+  "",
+  "Capture Android companion logcat evidence after a bridge service stop, crash, foreground-status loss, or screen-off soak failure:",
+  "",
+  "    .\RUN_ANDROID_LOGCAT_CAPTURE.cmd",
   "",
   "Display-only flash:",
   "",
@@ -1090,6 +1103,7 @@ $requiredRecords = @(
   "RUN_ROLLOUT_STATUS.cmd",
   "RUN_ANDROID_COMPANION_PROBE.cmd",
   "RUN_ANDROID_UDP_BEACON_PROBE.cmd",
+  "RUN_ANDROID_LOGCAT_CAPTURE.cmd",
   "RUN_ADD_MEDIA.cmd",
   "RUN_EVIDENCE_VERIFY.cmd",
   "RUN_CONSUMER_PROMOTION_CHECK.cmd"
@@ -1149,6 +1163,10 @@ $metadata = [ordered]@{
     udpBeaconProbeCommand = "RUN_ANDROID_UDP_BEACON_PROBE.cmd"
     udpBeaconProbeReport = "android/udp-beacon-probe/android_udp_beacon_probe.json"
     udpBeaconProbeSummary = "android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md"
+    logcatCommand = "RUN_ANDROID_LOGCAT_CAPTURE.cmd"
+    logcatReport = "android/logcat/android_companion_logcat.json"
+    logcatSummary = "android/logcat/ANDROID_COMPANION_LOGCAT.md"
+    logcatExcerpt = "android/logcat/android_companion_logcat.txt"
   }
   requiredLogs = $requiredLogs
   requiredRecords = $requiredRecords

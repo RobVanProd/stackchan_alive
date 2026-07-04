@@ -161,7 +161,12 @@ If the Android phone is the companion bridge host, also run these from the evide
 ```powershell
 .\RUN_ANDROID_UDP_BEACON_PROBE.cmd
 .\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
+.\RUN_ANDROID_LOGCAT_CAPTURE.cmd
 ```
+
+Only run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` when the Android bridge service stops, crashes,
+loses foreground status, or fails during screen-off soak. It writes the filtered adb
+excerpt under `android/logcat/` so the failure has packet-level evidence.
 
 The Android helpers write packet-local probe evidence under `android\udp-beacon-probe\` and `android\companion-probe\`.
 
