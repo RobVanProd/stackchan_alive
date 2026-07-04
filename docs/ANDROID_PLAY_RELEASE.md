@@ -75,6 +75,20 @@ robot validation, because the store screenshots should show a real connected
 session rather than a simulated dashboard.
 The Play listing also requires at least two screenshots before store submission.
 
+Create the Play evidence packet before uploading, then fill it after the internal
+testing release is available:
+
+```powershell
+tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-store/latest -WriteTemplate
+```
+
+After uploading the AAB to Play Console, installing from the internal testing
+track, and adding screenshots, run:
+
+```powershell
+tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-store/latest -Json
+```
+
 ## Manifest And Policy Review
 
 Before upload, confirm that each Android permission maps to an app behavior visible
@@ -107,3 +121,5 @@ Do not promote the app beyond internal testing until these are complete:
 - Privacy/data-safety answers are reviewed against actual network, audio, and
   diagnostics behavior.
 - Play Console internal testing install succeeds from the uploaded AAB.
+- `tools/check_android_play_store_evidence.ps1 -Json` reports
+  `play-internal-testing-ready`.

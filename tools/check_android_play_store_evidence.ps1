@@ -1,0 +1,293 @@
+param(
+  [string]$Root = "",
+  [string]$EvidenceRoot = "output/android-play-store/latest",
+  [switch]$WriteTemplate,
+  [switch]$Json
+)
+
+$ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($Root)) {
+  $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
+} else {
+  $Root = Resolve-Path $Root
+}
+
+Set-Location $Root
+
+if (-not [System.IO.Path]::IsPathRooted($EvidenceRoot)) {
+  $EvidenceRoot = Join-Path $Root $EvidenceRoot
+}
+
+$checks = @()
+
+function Add-Check {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [ValidateSet("pass", "fail")]
+    [string]$Status,
+    [string]$Evidence,
+    [string]$Detail
+  )
+
+  $script:checks += [ordered]@{
+    id = $Id
+    name = $Name
+    status = $Status
+    evidence = $Evidence
+    detail = $Detail
+  }
+}
+
+function Convert-ToRelativePath {
+  param([string]$Path)
+
+  $full = [System.IO.Path]::GetFullPath($Path)
+  $rootFull = [System.IO.Path]::GetFullPath([string]$Root)
+  if ($full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $full.Substring($rootFull.Length).TrimStart("\", "/") -replace "\\", "/"
+  }
+  return $full -replace "\\", "/"
+}
+
+function Test-Hash {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{64}$"
+}
+
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Test-ImagePath {
+  param([string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return "Screenshot path is blank."
+  }
+  $fullPath = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $EvidenceRoot $Path }
+  if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+    return "Missing screenshot file: $Path"
+  }
+  if ($fullPath -notmatch "\.(png|jpg|jpeg)$") {
+    return "Screenshot must be PNG or JPEG: $Path"
+  }
+  if ((Get-Item -LiteralPath $fullPath).Length -lt 1024) {
+    return "Screenshot file is too small to be credible: $Path"
+  }
+  return ""
+}
+
+function Write-PlayStoreEvidenceTemplate {
+  New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
+  New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "screenshots") | Out-Null
+
+  $template = [ordered]@{
+    schema = "stackchan.android-play-store-evidence.v1"
+    status = "pending"
+    applicationId = "dev.stackchan.companion"
+    versionName = "1.0.0"
+    versionCode = 1
+    sourceCommit = "<40-character git commit>"
+    releaseAabSha256 = "<64-character app-android-release.aab sha256>"
+    playSigningEnabled = $false
+    track = "internal"
+    uploadStatus = "pending"
+    internalTestingInstallStatus = "pending"
+    playConsoleReleaseName = ""
+    testerGroup = ""
+    uploadedAtUtc = ""
+    screenshots = @(
+      [ordered]@{
+        path = "screenshots/phone-live-dashboard.png"
+        device = "<phone model>"
+        notes = "Connected live dashboard with robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state."
+      },
+      [ordered]@{
+        path = "screenshots/phone-nodes-or-telemetry.png"
+        device = "<phone model>"
+        notes = "Second Play listing screenshot from the final Android build."
+      }
+    )
+    dataSafetyReviewPath = "DATA_SAFETY_REVIEW.md"
+    policyReviewPath = "POLICY_REVIEW.md"
+    notes = "Replace placeholders after uploading the release AAB to Play Console internal testing."
+  }
+  $template | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $EvidenceRoot "PLAY_STORE_EVIDENCE.json") -Encoding UTF8
+
+  @"
+# Android Play Store Evidence
+
+Fill this packet after the final Android build is uploaded to Play Console.
+
+Required proof:
+
+- Play Console internal testing release uses ``app-android-release.aab`` from the vetted CI run.
+- ``releaseAabSha256`` matches the CI release evidence.
+- Play App Signing is enabled.
+- Internal test install succeeds on the target phone.
+- At least two screenshots are captured from the final Android build.
+- Data safety and permission/policy notes are reviewed against actual app behavior.
+
+Run:
+
+````powershell
+tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-store/latest -Json
+````
+"@ | Set-Content -Path (Join-Path $EvidenceRoot "PLAY_STORE_EVIDENCE.md") -Encoding UTF8
+
+  @"
+# Data Safety Review
+
+Complete before Play submission.
+
+- Network behavior:
+- Audio or microphone behavior:
+- Diagnostics/logging behavior:
+- User data collected:
+- User data shared:
+- Retention/deletion notes:
+- Reviewer:
+- Review date:
+"@ | Set-Content -Path (Join-Path $EvidenceRoot "DATA_SAFETY_REVIEW.md") -Encoding UTF8
+
+  @"
+# Policy Review
+
+Complete before Play submission.
+
+- Foreground service declaration:
+- Battery optimization request explanation:
+- Local-network/discovery explanation:
+- Notification behavior:
+- Target audience:
+- Reviewer:
+- Review date:
+"@ | Set-Content -Path (Join-Path $EvidenceRoot "POLICY_REVIEW.md") -Encoding UTF8
+
+  @"
+# Screenshots
+
+Place final Play listing screenshots in this directory and reference them from
+``PLAY_STORE_EVIDENCE.json``. Use real final-build screenshots, not simulator
+mockups, once physical robot validation is complete.
+"@ | Set-Content -Path (Join-Path $EvidenceRoot "screenshots/README.md") -Encoding UTF8
+}
+
+if ($WriteTemplate) {
+  Write-PlayStoreEvidenceTemplate
+}
+
+$evidenceJsonPath = Join-Path $EvidenceRoot "PLAY_STORE_EVIDENCE.json"
+if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
+  Add-Check "evidence-json" "Play evidence JSON" "fail" (Convert-ToRelativePath $evidenceJsonPath) "Run with -WriteTemplate, then fill the evidence after Play Console upload."
+} else {
+  Add-Check "evidence-json" "Play evidence JSON" "pass" (Convert-ToRelativePath $evidenceJsonPath) "Evidence JSON exists."
+  $evidence = Get-Content -LiteralPath $evidenceJsonPath -Raw | ConvertFrom-Json
+
+  if ($evidence.schema -eq "stackchan.android-play-store-evidence.v1") {
+    Add-Check "schema" "Evidence schema" "pass" "PLAY_STORE_EVIDENCE.json" "Schema matches."
+  } else {
+    Add-Check "schema" "Evidence schema" "fail" "PLAY_STORE_EVIDENCE.json" "Unexpected schema: $($evidence.schema)"
+  }
+
+  if ($evidence.applicationId -eq "dev.stackchan.companion") {
+    Add-Check "application-id" "Application ID" "pass" "PLAY_STORE_EVIDENCE.json" "Application ID matches the Android package."
+  } else {
+    Add-Check "application-id" "Application ID" "fail" "PLAY_STORE_EVIDENCE.json" "Expected dev.stackchan.companion, got $($evidence.applicationId)."
+  }
+
+  if (Test-Commit ([string]$evidence.sourceCommit)) {
+    Add-Check "source-commit" "Source commit" "pass" "PLAY_STORE_EVIDENCE.json" "Full source commit recorded."
+  } else {
+    Add-Check "source-commit" "Source commit" "fail" "PLAY_STORE_EVIDENCE.json" "sourceCommit must be a full 40-character SHA."
+  }
+
+  if (Test-Hash ([string]$evidence.releaseAabSha256)) {
+    Add-Check "release-aab-sha" "Release AAB SHA256" "pass" "PLAY_STORE_EVIDENCE.json" "Release AAB hash recorded."
+  } else {
+    Add-Check "release-aab-sha" "Release AAB SHA256" "fail" "PLAY_STORE_EVIDENCE.json" "releaseAabSha256 must be a 64-character SHA256."
+  }
+
+  if ($evidence.playSigningEnabled -eq $true) {
+    Add-Check "play-signing" "Play App Signing" "pass" "PLAY_STORE_EVIDENCE.json" "Play App Signing is recorded as enabled."
+  } else {
+    Add-Check "play-signing" "Play App Signing" "fail" "PLAY_STORE_EVIDENCE.json" "Set playSigningEnabled to true after confirming Play App Signing."
+  }
+
+  if ($evidence.track -eq "internal") {
+    Add-Check "track" "Play track" "pass" "PLAY_STORE_EVIDENCE.json" "Internal testing track recorded."
+  } else {
+    Add-Check "track" "Play track" "fail" "PLAY_STORE_EVIDENCE.json" "Expected track 'internal', got '$($evidence.track)'."
+  }
+
+  if ($evidence.uploadStatus -in @("uploaded", "rolled-out", "available-to-testers")) {
+    Add-Check "upload-status" "AAB upload status" "pass" "PLAY_STORE_EVIDENCE.json" "AAB upload status is $($evidence.uploadStatus)."
+  } else {
+    Add-Check "upload-status" "AAB upload status" "fail" "PLAY_STORE_EVIDENCE.json" "Record uploadStatus as uploaded, rolled-out, or available-to-testers after Play Console upload."
+  }
+
+  if ($evidence.internalTestingInstallStatus -in @("installed", "passed")) {
+    Add-Check "internal-install" "Internal testing install" "pass" "PLAY_STORE_EVIDENCE.json" "Internal testing install is $($evidence.internalTestingInstallStatus)."
+  } else {
+    Add-Check "internal-install" "Internal testing install" "fail" "PLAY_STORE_EVIDENCE.json" "Record internalTestingInstallStatus as installed or passed after installing from Play."
+  }
+
+  $screenshots = @($evidence.screenshots)
+  $screenshotIssues = @()
+  foreach ($screenshot in $screenshots) {
+    $issue = Test-ImagePath ([string]$screenshot.path)
+    if (-not [string]::IsNullOrWhiteSpace($issue)) {
+      $screenshotIssues += $issue
+    }
+  }
+  if ($screenshots.Count -ge 2 -and $screenshotIssues.Count -eq 0) {
+    Add-Check "screenshots" "Play screenshots" "pass" "PLAY_STORE_EVIDENCE.json" "At least two screenshot files are present."
+  } else {
+    $detail = if ($screenshots.Count -lt 2) { "At least two screenshots are required." } else { $screenshotIssues -join "; " }
+    Add-Check "screenshots" "Play screenshots" "fail" "PLAY_STORE_EVIDENCE.json" $detail
+  }
+
+  foreach ($review in @(
+    @{ id = "data-safety"; name = "Data safety review"; path = [string]$evidence.dataSafetyReviewPath },
+    @{ id = "policy-review"; name = "Policy review"; path = [string]$evidence.policyReviewPath }
+  )) {
+    $reviewPath = if ([System.IO.Path]::IsPathRooted($review.path)) { $review.path } else { Join-Path $EvidenceRoot $review.path }
+    if ((Test-Path -LiteralPath $reviewPath -PathType Leaf) -and (Get-Item -LiteralPath $reviewPath).Length -gt 256) {
+      Add-Check $review.id $review.name "pass" (Convert-ToRelativePath $reviewPath) "Review file is present."
+    } else {
+      Add-Check $review.id $review.name "fail" (Convert-ToRelativePath $reviewPath) "Review file is missing or still empty."
+    }
+  }
+}
+
+$failedChecks = @($checks | Where-Object { $_.status -eq "fail" })
+$passedChecks = @($checks | Where-Object { $_.status -eq "pass" })
+$status = if ($failedChecks.Count -gt 0) { "pending-play-store-evidence" } else { "play-internal-testing-ready" }
+$report = [ordered]@{
+  schema = "stackchan.android-play-store-evidence-check.v1"
+  status = $status
+  root = [string]$Root
+  evidenceRoot = Convert-ToRelativePath $EvidenceRoot
+  passed = $passedChecks.Count
+  failed = $failedChecks.Count
+  checks = @($checks)
+}
+
+if ($Json) {
+  $report | ConvertTo-Json -Depth 8
+} else {
+  Write-Host "Android Play Store evidence: $status"
+  Write-Host "Evidence root: $(Convert-ToRelativePath $EvidenceRoot)"
+  Write-Host "Passed: $($passedChecks.Count)  Failed: $($failedChecks.Count)"
+  foreach ($check in $checks) {
+    $prefix = if ($check.status -eq "pass") { "PASS" } else { "FAIL" }
+    Write-Host "[$prefix] $($check.name) - $($check.detail)"
+  }
+}
+
+if ($failedChecks.Count -gt 0) {
+  exit 1
+}

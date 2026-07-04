@@ -80,13 +80,23 @@ data class CompanionUiState(
     val audioStatus: String = "Fake output ready",
     val consoleMessage: String = "Awaiting wake-gated input on android brain...",
     val brainService: BrainServiceUiState = BrainServiceUiState(),
+    val robotSetup: RobotSetupUiState = RobotSetupUiState(),
     val diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     val c6Rehearsal: C6RehearsalUiState = C6RehearsalUiState(),
     val endpoints: List<EndpointRow> = listOf(
-        EndpointRow("Rob's Phone (This Companion)", "android", "SHA256:B84F17C2A0E192DDB...", 80, true, true),
-        EndpointRow("Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false),
-        EndpointRow("Guest Raspberry Pi 5", "pc", "SHA256:7F452C2C0F90DA15B...", 50, false, false),
+        EndpointRow("phone-rob-01", "Rob's Phone (This Companion)", "android", "SHA256:B84F17C2A0E192DDB...", 80, true, true),
+        EndpointRow("studio-mac-01", "Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false, removable = true),
+        EndpointRow("guest-pi-01", "Guest Raspberry Pi 5", "pc", "SHA256:7F452C2C0F90DA15B...", 50, false, false, removable = true),
     ),
+)
+
+data class RobotSetupUiState(
+    val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
+    val otherBridgeUrls: List<String> = emptyList(),
+    val serviceRunning: Boolean = false,
+    val robotConnected: Boolean = false,
+    val robotName: String = "Awaiting Stack-chan robot",
+    val robotFingerprint: String = "No robot hello yet",
 )
 
 data class DiagnosticsExportUiState(
@@ -123,12 +133,14 @@ data class TelemetryReading(
 )
 
 data class EndpointRow(
+    val endpointId: String,
     val name: String,
     val kind: String,
     val fingerprint: String,
     val priority: Int,
     val connected: Boolean,
     val activeBrain: Boolean,
+    val removable: Boolean = false,
 )
 
 private enum class MobileSection(
@@ -149,6 +161,7 @@ fun CompanionConsole(
     onRestartBrain: () -> Unit = {},
     onExportDiagnostics: () -> Unit = {},
     onRunC6Rehearsal: () -> Unit = {},
+    onForgetEndpoint: (String) -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -165,6 +178,7 @@ fun CompanionConsole(
                         onRestartBrain = onRestartBrain,
                         onExportDiagnostics = onExportDiagnostics,
                         onRunC6Rehearsal = onRunC6Rehearsal,
+                        onForgetEndpoint = onForgetEndpoint,
                     )
                 } else {
                     Column(
@@ -183,6 +197,7 @@ fun CompanionConsole(
                                 onRestartBrain = onRestartBrain,
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
+                                onForgetEndpoint = onForgetEndpoint,
                             )
                         } else {
                             TabletConsole(
@@ -192,6 +207,7 @@ fun CompanionConsole(
                                 onRestartBrain = onRestartBrain,
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
+                                onForgetEndpoint = onForgetEndpoint,
                             )
                         }
                         Footer()
@@ -211,6 +227,7 @@ private fun MobileConsole(
     onRestartBrain: () -> Unit,
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
+    onForgetEndpoint: (String) -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -236,7 +253,13 @@ private fun MobileConsole(
                     onExportDiagnostics = onExportDiagnostics,
                     onRunC6Rehearsal = onRunC6Rehearsal,
                 )
-                MobileSection.Nodes -> EndpointRegistry(state, Modifier.fillMaxWidth(), showTabs = false)
+                MobileSection.Nodes -> EndpointRegistry(
+                    state = state,
+                    modifier = Modifier.fillMaxWidth(),
+                    showTabs = false,
+                    onRestartBridge = onRestartBrain,
+                    onForgetEndpoint = onForgetEndpoint,
+                )
                 MobileSection.Telemetry -> TelemetryPanel(state, Modifier.fillMaxWidth())
             }
             Spacer(Modifier.height(4.dp))
@@ -253,6 +276,7 @@ private fun WideConsole(
     onRestartBrain: () -> Unit,
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
+    onForgetEndpoint: (String) -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -271,7 +295,12 @@ private fun WideConsole(
             modifier = Modifier.weight(1.62f),
         ) {
             StagePanel(state, Modifier.fillMaxWidth())
-            EndpointRegistry(state, Modifier.fillMaxWidth())
+            EndpointRegistry(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                onRestartBridge = onRestartBrain,
+                onForgetEndpoint = onForgetEndpoint,
+            )
         }
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -299,6 +328,7 @@ private fun TabletConsole(
     onRestartBrain: () -> Unit,
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
+    onForgetEndpoint: (String) -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -309,7 +339,12 @@ private fun TabletConsole(
             modifier = Modifier.weight(1.65f),
         ) {
             StagePanel(state, Modifier.fillMaxWidth())
-            EndpointRegistry(state, Modifier.fillMaxWidth())
+            EndpointRegistry(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                onRestartBridge = onRestartBrain,
+                onForgetEndpoint = onForgetEndpoint,
+            )
         }
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -520,35 +555,125 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boo
 }
 
 @Composable
-private fun EndpointRegistry(state: CompanionUiState, modifier: Modifier, showTabs: Boolean = true) {
+private fun EndpointRegistry(
+    state: CompanionUiState,
+    modifier: Modifier,
+    showTabs: Boolean = true,
+    onRestartBridge: () -> Unit = {},
+    onForgetEndpoint: (String) -> Unit = {},
+) {
+    var showSetup by remember { mutableStateOf(!state.robotSetup.robotConnected) }
     PanelShell(modifier = modifier) {
         if (showTabs) {
             Tabs()
             Spacer(Modifier.height(14.dp))
         }
-        Text("Trusted Companion Registry", color = Ink, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("My Stack-chan", color = Ink, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            StatusPill(
+                text = if (state.robotSetup.robotConnected) "Connected" else "Setup needed",
+                color = if (state.robotSetup.robotConnected) Mint else Amber,
+                background = if (state.robotSetup.robotConnected) Color(0xFF0D2A25) else Color(0xFF2A2613),
+            )
+        }
         Text(
-            "Only paired endpoints can own the conversational brain or issue settings updates.",
+            "Add or reconnect the robot, then manage the companions allowed to control it.",
             color = Muted,
             fontSize = 11.sp,
         )
+        Spacer(Modifier.height(12.dp))
+        RobotSetupCard(
+            setup = state.robotSetup,
+            expanded = showSetup,
+            onToggleExpanded = { showSetup = !showSetup },
+            onRestartBridge = onRestartBridge,
+        )
         Spacer(Modifier.height(14.dp))
+        Text("Trusted companion nodes", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text(
+            "Only trusted companions can own the conversational brain or issue settings updates.",
+            color = Muted,
+            fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(10.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             state.endpoints.forEach { endpoint ->
-                EndpointItem(endpoint)
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Deploy mDNS Pairing", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Text("Broadcasts `_stackchan-bridge._tcp.local` for discovery.", color = Muted, fontSize = 11.sp)
-            }
-            OutlinedButton(onClick = {}, enabled = false) {
-                Text("+ Pair Node", fontSize = 12.sp)
+                EndpointItem(endpoint, onForgetEndpoint = onForgetEndpoint, onReconnect = onRestartBridge)
             }
         }
         Spacer(Modifier.height(14.dp))
+    }
+}
+
+@Composable
+private fun RobotSetupCard(
+    setup: RobotSetupUiState,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onRestartBridge: () -> Unit,
+) {
+    Surface(
+        color = PanelAlt,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (setup.robotConnected) Mint else Amber),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(Console).border(1.dp, Line, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("SC", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(setup.robotName, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(setup.robotFingerprint, color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                SmallCommand(if (expanded) "Hide setup" else "Setup", onClick = onToggleExpanded)
+            }
+
+            if (expanded) {
+                Readout("Phone bridge URL", setup.primaryBridgeUrl, Cyan)
+                if (setup.otherBridgeUrls.isNotEmpty()) {
+                    Text(
+                        "Other LAN URLs: ${setup.otherBridgeUrls.joinToString(", ")}",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                PairingStep(1, "Power on Stack-chan and keep this phone on the same Wi-Fi.")
+                PairingStep(2, "Open the robot bridge or Wi-Fi setup on Stack-chan and enter the phone bridge URL above.")
+                PairingStep(3, "Return here and wait for the status to change to Connected before handing off brain control.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    SmallCommand("Restart discovery", filled = true, onClick = onRestartBridge)
+                    SmallCommand(
+                        text = if (setup.serviceRunning) "Bridge running" else "Start bridge",
+                        enabled = !setup.serviceRunning,
+                        onClick = onRestartBridge,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingStep(number: Int, text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+        Surface(color = Color(0xFF102E30), shape = CircleShape) {
+            Text(
+                number.toString(),
+                color = Cyan,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        Text(text, color = Ink, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.weight(1f))
     }
 }
 
@@ -832,7 +957,11 @@ private fun Tabs() {
 }
 
 @Composable
-private fun EndpointItem(endpoint: EndpointRow) {
+private fun EndpointItem(
+    endpoint: EndpointRow,
+    onForgetEndpoint: (String) -> Unit,
+    onReconnect: () -> Unit,
+) {
     val iconLabel = when (endpoint.kind) {
         "android" -> "P"
         "robot" -> "SC"
@@ -868,6 +997,18 @@ private fun EndpointItem(endpoint: EndpointRow) {
                 Spacer(Modifier.height(6.dp))
                 if (endpoint.connected) {
                     StatusPill("Connected", Mint, Color(0xFF0D2A25))
+                    if (endpoint.kind == "robot") {
+                        Spacer(Modifier.height(6.dp))
+                        SmallCommand("Reconnect", onClick = onReconnect)
+                    }
+                } else if (endpoint.removable) {
+                    Button(
+                        onClick = { onForgetEndpoint(endpoint.endpointId) },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White),
+                    ) {
+                        Text("Remove", fontSize = 12.sp)
+                    }
                 } else {
                     Button(
                         onClick = {},

@@ -1,6 +1,7 @@
 package dev.stackchan.companion.android
 
 import dev.stackchan.companion.core.EndpointSessionSnapshot
+import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -207,5 +208,54 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("phone-rob-01", phoneRow.fingerprint)
         assertTrue(phoneRow.connected)
         assertTrue(phoneRow.activeBrain)
+    }
+
+    @Test
+    fun androidUiStateExposesFriendlyStackchanSetupState() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf(
+                    "ws://192.168.1.42:8765/bridge",
+                    "ws://10.0.0.42:8765/bridge",
+                ),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot session",
+            ),
+        )
+
+        assertEquals("ws://192.168.1.42:8765/bridge", uiState.robotSetup.primaryBridgeUrl)
+        assertEquals(listOf("ws://10.0.0.42:8765/bridge"), uiState.robotSetup.otherBridgeUrls)
+        assertTrue(uiState.robotSetup.serviceRunning)
+        assertFalse(uiState.robotSetup.robotConnected)
+        assertEquals("Awaiting Stackchan robot", uiState.robotSetup.robotName)
+    }
+
+    @Test
+    fun androidUiStateMarksStoredCompanionsRemovable() {
+        val trusted = TrustedEndpoint(
+            endpointId = "studio-mac-01",
+            endpointName = "Studio Mac",
+            endpointKind = "pc",
+            publicKeyFingerprint = "sha256:abcdef0123456789",
+            priority = 90,
+            capabilities = listOf("settings", "diagnostics"),
+        )
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = listOf(trusted),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot session",
+            ),
+        )
+
+        val storedEndpoint = uiState.endpoints.first { it.endpointId == "studio-mac-01" }
+        assertEquals("Studio Mac", storedEndpoint.name)
+        assertTrue(storedEndpoint.removable)
+        assertFalse(uiState.endpoints.first { it.kind == "android" }.removable)
+        assertFalse(uiState.endpoints.first { it.kind == "robot" }.removable)
     }
 }

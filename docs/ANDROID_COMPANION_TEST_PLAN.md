@@ -28,6 +28,8 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] Battery optimization exemption is allowed or the denial is recorded as a test constraint.
 - [ ] The dashboard shows at least one `ws://<phone-lan-ip>:8765/bridge` manual fallback URL.
 - [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
+- [ ] The Nodes screen shows the guided `Add your Stack-chan` setup flow with the same manual URL.
+- [ ] Removing a stored trusted companion endpoint updates the registry without restarting the app.
 - [ ] The foreground notification shows the same reachable manual fallback URL.
 
 When using adb, install the APK and capture the install evidence before discovery checks:

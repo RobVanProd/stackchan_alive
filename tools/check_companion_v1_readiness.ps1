@@ -239,13 +239,13 @@ Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
-  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "safety-locked")
+  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "safety-locked", "Add your Stack-chan", "remove path")
 
 Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Removing a stored trusted companion endpoint")
 
 Test-TextEvidence `
   -Id "android-play-release-prep" `
@@ -257,7 +257,13 @@ Test-TextEvidence `
   -Id "android-play-readiness-check" `
   -Name "Android Play source readiness check" `
   -RelativePaths @("tools/check_android_play_release_readiness.ps1", "provenance/tools/check_android_play_release_readiness.ps1") `
-  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing")
+  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker")
+
+Test-TextEvidence `
+  -Id "android-play-store-evidence-check" `
+  -Name "Android Play Store post-upload evidence check" `
+  -RelativePaths @("tools/check_android_play_store_evidence.ps1", "provenance/tools/check_android_play_store_evidence.ps1") `
+  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots")
 
 Test-TextEvidence `
   -Id "android-screen-off-soak-helper" `

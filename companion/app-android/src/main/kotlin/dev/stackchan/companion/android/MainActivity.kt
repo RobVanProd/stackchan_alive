@@ -15,6 +15,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
@@ -22,6 +25,7 @@ import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.EndpointRow
+import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.TelemetryReading
 
 class MainActivity : ComponentActivity() {
@@ -37,17 +41,23 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionOrStartBridge()
         val stores = AndroidBridgeStores(this)
         val endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId())
-        val trustedEndpoints = stores.loadTrustedEndpoints().snapshot().endpoints
         val manualBridgeUrls = localBridgeManualUrls()
         AndroidBridgeRuntimeStatusStore.setManualBridgeUrls(manualBridgeUrls)
         setContent {
             val bridgeStatus by AndroidBridgeRuntimeStatusStore.status.collectAsState()
+            var trustedEndpoints by remember { mutableStateOf(stores.loadTrustedEndpoints().snapshot().endpoints) }
             CompanionConsole(
                 targetName = "Android",
                 state = androidCompanionUiState(endpointHello, trustedEndpoints, bridgeStatus),
                 onStartBrain = { startBridgeServiceOnce() },
                 onStopBrain = { stopBridgeService() },
                 onRestartBrain = { restartBridgeService() },
+                onForgetEndpoint = { endpointId ->
+                    val registry = stores.loadTrustedEndpoints()
+                    registry.forget(endpointId)
+                    stores.saveTrustedEndpoints(registry)
+                    trustedEndpoints = registry.snapshot().endpoints
+                },
             )
         }
     }
@@ -161,8 +171,19 @@ internal fun androidCompanionUiState(
             command = "CompanionBridgeService",
             recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
         ),
+        robotSetup = androidRobotSetup(bridgeStatus),
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
+    )
+
+private fun androidRobotSetup(bridgeStatus: AndroidBridgeRuntimeStatus): RobotSetupUiState =
+    RobotSetupUiState(
+        primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
+        otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
+        serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
+        robotConnected = bridgeStatus.robotConnected,
+        robotName = bridgeStatus.robotDisplayName,
+        robotFingerprint = bridgeStatus.robotFingerprint,
     )
 
 private fun androidTelemetryReadings(bridgeStatus: AndroidBridgeRuntimeStatus): List<TelemetryReading> =
@@ -195,6 +216,7 @@ private fun androidEndpointRows(
     bridgeStatus: AndroidBridgeRuntimeStatus,
 ): List<EndpointRow> {
     val robotRow = EndpointRow(
+        endpointId = bridgeStatus.robotId.ifBlank { "stackchan-robot" },
         name = bridgeStatus.robotDisplayName,
         kind = "robot",
         fingerprint = bridgeStatus.robotFingerprint,
@@ -203,6 +225,7 @@ private fun androidEndpointRows(
         activeBrain = false,
     )
     val phoneRow = EndpointRow(
+        endpointId = endpointHello.endpointId,
         name = "${endpointHello.endpointName} (This Phone)",
         kind = endpointHello.endpointKind,
         fingerprint = endpointHello.endpointId,
@@ -215,12 +238,14 @@ private fun androidEndpointRows(
 
 private fun TrustedEndpoint.toEndpointRow(activeBrainOwner: String): EndpointRow =
     EndpointRow(
+        endpointId = endpointId,
         name = endpointName.ifBlank { endpointId },
         kind = endpointKind,
         fingerprint = publicKeyFingerprint.ifBlank { endpointId },
         priority = priority,
         connected = false,
         activeBrain = activeBrainOwner == endpointId,
+        removable = true,
     )
 
 private fun androidRecentLogs(

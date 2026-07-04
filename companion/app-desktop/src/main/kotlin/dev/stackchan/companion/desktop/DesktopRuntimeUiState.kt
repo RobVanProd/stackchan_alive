@@ -7,6 +7,7 @@ import dev.stackchan.companion.ui.C6RehearsalUiState
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
+import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.TelemetryReading
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -44,6 +45,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
     val owner = activeBrainOwner?.takeIf { it.isNotBlank() } ?: "None"
     val robotName = deviceName.ifBlank { deviceId.ifBlank { "Awaiting robot" } }
     val robotEndpoint = EndpointRow(
+        endpointId = deviceId.ifBlank { "stackchan-robot" },
         name = robotName,
         kind = "robot",
         fingerprint = firmwareVersion.ifBlank { "No firmware hello yet" },
@@ -52,6 +54,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         activeBrain = false,
     )
     val desktopEndpoint = EndpointRow(
+        endpointId = runtime.mdnsEndpoint?.endpointId ?: runtime.endpointId,
         name = runtime.mdnsEndpoint?.endpointName ?: "This Desktop Companion",
         kind = "pc",
         fingerprint = runtime.mdnsEndpoint?.endpointId ?: runtime.endpointId,
@@ -70,6 +73,13 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         audioStatus = diagnostics.audio?.stringValue("engine") ?: "offline",
         consoleMessage = consoleMessage(owner, runtime),
         brainService = runtime.brainSupervisor.toBrainServiceUiState(),
+        robotSetup = RobotSetupUiState(
+            primaryBridgeUrl = "ws://${runtime.host}:${runtime.port}/bridge",
+            serviceRunning = runtime.brainSupervisor.running || runtime.mdnsAdvertised,
+            robotConnected = connected,
+            robotName = robotName,
+            robotFingerprint = firmwareVersion.ifBlank { "No firmware hello yet" },
+        ),
         diagnosticsExport = runtime.toDiagnosticsExportUiState(),
         c6Rehearsal = runtime.toC6RehearsalUiState(),
         endpoints = listOf(robotEndpoint, desktopEndpoint),

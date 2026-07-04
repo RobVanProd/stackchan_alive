@@ -157,10 +157,16 @@ Test-TextPatterns `
   -Patterns @("*.aab", "androidBundleSigning", "android-release-aab-signature", "jarsigner")
 
 Test-TextPatterns `
+  -Id "play-store-evidence-checker" `
+  -Name "Play Store evidence checker" `
+  -RelativePath "tools/check_android_play_store_evidence.ps1" `
+  -Patterns @("stackchan.android-play-store-evidence.v1", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")
+
+Test-TextPatterns `
   -Id "play-release-doc" `
   -Name "Play release checklist" `
   -RelativePath "docs/ANDROID_PLAY_RELEASE.md" `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "Play Console internal testing")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "check_android_play_store_evidence.cmd", "Play Console internal testing")
 
 foreach ($relativePath in @(
   "fastlane/metadata/android/en-US/title.txt",

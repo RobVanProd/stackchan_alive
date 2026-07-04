@@ -290,6 +290,8 @@ $requiredFiles = @(
   "tools/check_android_toolchain.ps1",
   "tools/check_android_play_release_readiness.cmd",
   "tools/check_android_play_release_readiness.ps1",
+  "tools/check_android_play_store_evidence.cmd",
+  "tools/check_android_play_store_evidence.ps1",
   "tools/check_companion_v1_readiness.cmd",
   "tools/check_companion_v1_readiness.ps1",
   "tools/export_companion_release_evidence.cmd",
@@ -1080,14 +1082,21 @@ foreach ($pattern in @("stackchan.android-toolchain-check.v1", "JAVA_HOME", "jav
 }
 
 $androidPlayReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_release_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing")) {
+foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker")) {
   if ($androidPlayReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_release_readiness.ps1 missing Android Play release readiness logic: $pattern"
   }
 }
 
+$androidPlayStoreEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_store_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
+  if ($androidPlayStoreEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_play_store_evidence.ps1 missing Android Play Store evidence logic: $pattern"
+  }
+}
+
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-play-release-prep", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-play-release-prep", "android-play-store-evidence-check", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }
@@ -2315,7 +2324,7 @@ foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/
 }
 
 $androidCompanionSpec = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_SPEC.md") -Raw
-foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "stackchan.bridge-endpoints.v1", "fresh heartbeat", "masked client text frames", "BridgeSocketWriter", "BridgeNetworkSession", "BridgeWiFiProvisioner", "WiFiClient", "partial-write buffering", "compile-time settings")) {
+foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "Add your Stack-chan", "remove path", "stackchan.bridge-endpoints.v1", "fresh heartbeat", "masked client text frames", "BridgeSocketWriter", "BridgeNetworkSession", "BridgeWiFiProvisioner", "WiFiClient", "partial-write buffering", "compile-time settings")) {
   if ($androidCompanionSpec -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_SPEC.md missing expected Android companion contract: $pattern"
   }
@@ -2329,7 +2338,7 @@ foreach ($pattern in @("Cross-Platform Build & Distribution Plan", "Kotlin Multi
 }
 
 $androidCompanionTestPlan = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_TEST_PLAN.md") -Raw
-foreach ($pattern in @("Android Companion Physical Test Plan", "foreground bridge service", "UDP beacon fallback", "manual URL fallback", "check_companion_v1_readiness.cmd", "protocol fixtures", "pending hardware gates", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "tools\install_android_companion_apk.cmd", "android/apk-install/", "android_apk_install.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "tools\run_android_companion_soak.cmd", "android/screen-off-soak/", "android_companion_soak.json", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "tools\capture_android_companion_logcat.cmd", "android/logcat/", "android_companion_logcat.txt", "endpoint_hello", "screen off", "robot serial log", "Android dashboard switches from waiting to connected", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state")) {
+foreach ($pattern in @("Android Companion Physical Test Plan", "foreground bridge service", "UDP beacon fallback", "manual URL fallback", "check_companion_v1_readiness.cmd", "protocol fixtures", "pending hardware gates", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "tools\install_android_companion_apk.cmd", "android/apk-install/", "android_apk_install.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "tools\run_android_companion_soak.cmd", "android/screen-off-soak/", "android_companion_soak.json", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "tools\capture_android_companion_logcat.cmd", "android/logcat/", "android_companion_logcat.txt", "endpoint_hello", "screen off", "robot serial log", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Removing a stored trusted companion endpoint", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state")) {
   if ($androidCompanionTestPlan -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_TEST_PLAN.md missing expected Android physical test guidance: $pattern"
   }
