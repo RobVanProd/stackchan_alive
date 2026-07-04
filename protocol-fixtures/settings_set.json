@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "bridge": {
+      "preferred_mode_policy": "mobile_preferred"
+    },
+    "display": {
+      "reduced_motion": true
+    }
+  },
+  "type": "settings_set",
+  "version": 12
+}

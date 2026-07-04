@@ -1,0 +1,5 @@
+{
+  "protocol": "stackchan.bridge.v1",
+  "session": "stackchan-001",
+  "type": "hello"
+}

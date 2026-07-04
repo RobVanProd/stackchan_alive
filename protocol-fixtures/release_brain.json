@@ -1,0 +1,5 @@
+{
+  "endpoint_id": "phone-rob-01",
+  "reason": "handoff_to_pc",
+  "type": "release_brain"
+}

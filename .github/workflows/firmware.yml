@@ -6,7 +6,28 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      companion: ${{ steps.filter.outputs.companion }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            companion:
+              - 'companion/**'
+              - 'protocol-fixtures/**'
+              - 'docs/ANDROID_COMPANION_SPEC.md'
+              - 'docs/BRIDGE_PROTOCOL.md'
+
   bridge-tests:
     runs-on: ubuntu-latest
     steps:
@@ -95,6 +116,38 @@ jobs:
             output/prearrival-sim/latest/hardware-sim/**
             output/prearrival-sim/latest/lan-smoke/**
             output/prearrival-sim/latest/engine-probe/**
+
+  companion-tests:
+    needs: changes
+    if: needs.changes.outputs.companion == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install companion Android SDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Run companion checks
+        run: |
+          cd companion
+          ./gradlew check :app-desktop:c0Spike
+
+      - name: Upload companion C0 spike report
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-c0-spike
+          path: output/companion/c0-spike/SPIKE.md
 
   native-tests:
     runs-on: ubuntu-latest

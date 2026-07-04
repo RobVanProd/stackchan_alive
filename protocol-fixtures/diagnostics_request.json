@@ -1,0 +1,10 @@
+{
+  "domains": [
+    "bridge",
+    "audio",
+    "model",
+    "firmware",
+    "battery"
+  ],
+  "type": "diagnostics_request"
+}

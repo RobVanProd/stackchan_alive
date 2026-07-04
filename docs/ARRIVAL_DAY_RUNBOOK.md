@@ -18,6 +18,8 @@ From the extracted release folder:
 .\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
+Before plugging in hardware, open `companion/evidence/c6-evidence/EVIDENCE.md` from the same release folder. It should show the committed C6 desktop companion brain-supervision gate passing, including GUI-driven Python brain start, simulated turns, restart, and diagnostics export.
+
 Open the newest folder under `output\hardware-evidence\`. Run every command below from that packet folder unless noted otherwise.
 
 If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd`, the packet also includes `HOSTED_MEDIA_REFERENCE.md`, `share\VERIFIED_URL.txt`, and `share/` copies of the verified local or Cloudflare share page reports. Use that verified page as the review reference for the expected image, video, face GIFs, and voice samples while collecting real-device evidence.
@@ -70,6 +72,52 @@ the unit is on the bench.
 For the local bridge socket path specifically, `tools/run_lan_smoke.cmd` writes
 `LAN_SMOKE.md/json` with the real WebSocket handshake, deterministic text turn, fake mic
 upload, fake STT/TTS, and PCM16 binary downlink check.
+
+If the Android companion is the bridge host, install the debug or release APK on the phone,
+open Stackchan Companion, allow notifications when prompted on Android 13 or newer, and
+allow the app to ignore battery optimizations if prompted for screen-off bench testing.
+Build the debug APK from the source checkout with
+`.\tools\check_android_toolchain.cmd` and then
+`cd companion; .\gradlew.bat :app-android:assembleDebug` when a signed release APK has not
+already been produced. The default debug output path is
+`companion\app-android\build\outputs\apk\debug\app-android-debug.apk`.
+The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
+and SDK Platform 36 before Gradle starts.
+Confirm the foreground notification reports the bridge as ready and advertised. The phone
+advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `proto`, and
+`capabilities` TXT metadata matching the desktop companion.
+When installing with adb, run
+`RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>` from the
+evidence packet first. It installs the APK and records the APK SHA256, source commit,
+installed version, device model, and package dump under `android/apk-install/`.
+Android holds a multicast lock while advertising so same-network discovery survives common
+Wi-Fi multicast filtering behavior. While a robot is connected, Android also holds a
+session-scoped partial wake lock so the bridge CPU path stays awake with the screen off.
+As an mDNS fallback, the phone broadcasts the same endpoint metadata as a UDP beacon to
+port `8766` every few seconds.
+If service discovery is unavailable on the LAN, manually point the robot bridge client at
+the `ws://<phone-lan-ip>:8765/bridge` URL shown in the Android dashboard or foreground
+notification.
+After the robot connects, capture the Android dashboard connected state. The screenshot
+must show the robot identity, firmware/version signal, last bridge frame, active brain
+owner, and foreground service state so the phone-hosted bridge path is reviewable without
+the device in hand.
+For the full Android phone/LAN validation pass, use `docs/ANDROID_COMPANION_TEST_PLAN.md`
+and attach its evidence to the packet.
+Before asking the robot to connect manually, run
+`RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge` from the evidence
+packet to verify the Android endpoint handshake and save the report under
+`android/companion-probe/`.
+After the robot connects through the phone and the connected dashboard screenshot is
+captured, run `RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge` with
+the phone screen off. It saves the strict 10-minute heartbeat soak report under
+`android/screen-off-soak/`.
+If mDNS discovery is unreliable, run `tools/run_android_udp_beacon_probe.cmd` from another
+machine on the same LAN, or `RUN_ANDROID_UDP_BEACON_PROBE.cmd` from the evidence packet,
+to capture the Android UDP discovery beacon under `android/udp-beacon-probe/`.
+If the Android service stops, crashes, loses foreground status, or fails during screen-off
+soak, connect adb and run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` from the evidence packet
+immediately. It saves the filtered service excerpt under `android/logcat/` for review.
 
 Import the display photo or video into the packet:
 

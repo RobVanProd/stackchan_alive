@@ -13,7 +13,7 @@ Use this when the Stack-chan hardware arrives.
 ```
 
 This copies the release ZIP into the packet and writes `logs/package_verify.log`, which is required for promotion.
-It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_SIM_HARDWARE_COMPARE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_BRIDGE_REPLAY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
+It also creates `BENCH_STATUS.md/json`, `NEXT_STEPS.md`, plus runnable `RUN_HARDWARE_SIM_BASELINE.cmd`, `RUN_SIM_HARDWARE_COMPARE.cmd`, `RUN_DISPLAY_ONLY.cmd`, `RUN_SPEECH_MOUTH_DEMO.cmd`, `RUN_SPEAK_ALL_INTENTS.cmd`, `RUN_BRIDGE_REPLAY.cmd`, `RUN_SERVO_CALIBRATION.cmd`, `RUN_SOAK_MONITOR.cmd`, `RUN_PACKAGE_VERIFY.cmd`, `RUN_ANDROID_APK_INSTALL.cmd`, `RUN_ANDROID_UDP_BEACON_PROBE.cmd`, `RUN_ANDROID_COMPANION_PROBE.cmd`, `RUN_ANDROID_SCREEN_OFF_SOAK.cmd`, `RUN_ANDROID_LOGCAT_CAPTURE.cmd`, `RUN_PROGRESS_CHECK.cmd`, and `RUN_EVIDENCE_VERIFY.cmd` files in the evidence packet.
 Open `BENCH_STATUS.md` first for the current next action, then `NEXT_STEPS.md` for the full bench run order and hard stops before servo motion, audio review, and consumer promotion.
 
 Before the physical unit is connected, `RUN_HARDWARE_SIM_BASELINE.cmd` saves the virtual
@@ -64,6 +64,44 @@ buffering. `BridgeNetworkSession` adds the tested TCP/WebSocket session loop, an
 `STACKCHAN_ENABLE_WIFI_BRIDGE=1`, `STACKCHAN_WIFI_SSID`, and `STACKCHAN_BRIDGE_HOST` are
 provided at build time. The remaining hardware gap is provisioning real credentials/bridge
 host and collecting live PC/mobile handoff evidence.
+
+If the Android phone is the companion bridge host, use the packet helpers before the robot
+session test:
+
+Build the Android companion APK from the source checkout first:
+
+```powershell
+.\tools\check_android_toolchain.cmd
+cd companion
+.\gradlew.bat :app-android:assembleDebug
+```
+
+The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
+and SDK Platform 36 before Gradle starts.
+
+Use the generated `companion\app-android\build\outputs\apk\debug\app-android-debug.apk`
+or a signed release APK as `<path-to-apk>`.
+
+```powershell
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>
+.\RUN_ANDROID_UDP_BEACON_PROBE.cmd
+.\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
+.\RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge
+```
+
+`RUN_ANDROID_APK_INSTALL.cmd` records the APK SHA256, source commit, and installed package
+version under `android/apk-install/`. The UDP and companion probes record same-LAN discovery and
+`endpoint_hello` evidence under `android/udp-beacon-probe/` and
+`android/companion-probe/`. `RUN_ANDROID_SCREEN_OFF_SOAK.cmd` records the 10-minute screen-off
+heartbeat soak under `android/screen-off-soak/`. If the Android service stops, crashes,
+loses foreground status, or fails during screen-off soak, run
+`RUN_ANDROID_LOGCAT_CAPTURE.cmd` immediately and attach `android/logcat/`.
+
+After the robot connects, capture the Android dashboard connected state before moving to the
+robot session test. The screenshot or screen recording must show the robot identity,
+firmware/version signal, last bridge frame, active brain owner, and foreground service state so
+the release packet proves the phone-hosted bridge is live in the operator UI, not only in probe
+logs.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the

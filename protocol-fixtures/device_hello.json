@@ -1,0 +1,16 @@
+{
+  "active_brain_owner": "pc-studio-01",
+  "capabilities": [
+    "wake_gate",
+    "pcm16_upload",
+    "pcm16_downlink",
+    "settings"
+  ],
+  "device_id": "stackchan-001",
+  "device_name": "Stackchan Alive",
+  "firmware_version": "dev",
+  "protocol": "stackchan.bridge.v1",
+  "sample_rate": 16000,
+  "trusted_endpoint_count": 2,
+  "type": "hello"
+}

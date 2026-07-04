@@ -57,9 +57,10 @@ $faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
 $dataDir = Join-Path $outDir "data"
 $bridgeDir = Join-Path $outDir "bridge"
+$companionEvidenceDir = Join-Path $outDir "companion/evidence"
 $provenanceDir = Join-Path $outDir "provenance"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $provenanceDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $companionEvidenceDir, $provenanceDir, $toolsDir | Out-Null
 
 $releaseRootPrefix = [System.IO.Path]::GetFullPath($outDir).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 
@@ -75,6 +76,41 @@ function Join-ReleasePackagePath {
     throw "Refusing package path outside release root: $RelativePath"
   }
   return $absolutePath
+}
+
+function Copy-SourceTree {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot,
+    [string[]]$ExcludedDirectoryNames = @()
+  )
+
+  $sourcePath = (Resolve-Path $SourceRoot).Path
+  New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+  $excluded = @{}
+  foreach ($name in $ExcludedDirectoryNames) {
+    $excluded[$name] = $true
+  }
+
+  function Copy-SourceTreeDirectory {
+    param(
+      [string]$CurrentSource,
+      [string]$CurrentDestination
+    )
+
+    New-Item -ItemType Directory -Force -Path $CurrentDestination | Out-Null
+    Get-ChildItem -LiteralPath $CurrentSource -File -Force | ForEach-Object {
+      Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $CurrentDestination $_.Name)
+    }
+    Get-ChildItem -LiteralPath $CurrentSource -Directory -Force | ForEach-Object {
+      if ($excluded.ContainsKey($_.Name)) {
+        return
+      }
+      Copy-SourceTreeDirectory -CurrentSource $_.FullName -CurrentDestination (Join-Path $CurrentDestination $_.Name)
+    }
+  }
+
+  Copy-SourceTreeDirectory -CurrentSource $sourcePath -CurrentDestination $DestinationRoot
 }
 
 function Copy-FirmwareSet {
@@ -251,7 +287,9 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
@@ -304,6 +342,13 @@ $bridgePackageFiles = @(
   "test_lan_service.py",
   "lan_smoke.py",
   "test_lan_smoke.py",
+  "android_companion_probe.py",
+  "test_android_companion_probe.py",
+  "android_companion_soak.py",
+  "test_android_companion_soak.py",
+  "android_udp_beacon_probe.py",
+  "test_android_udp_beacon_probe.py",
+  "test_android_dashboard_media_gate.py",
   "hardware_simulator.py",
   "test_hardware_simulator.py",
   "prearrival_sim_check.py",
@@ -351,6 +396,26 @@ if ($LASTEXITCODE -ne 0) {
   throw "RVC voice base status export failed."
 }
 
+$companionEvidenceFiles = @(
+  "output/companion/c6-evidence/EVIDENCE.json",
+  "output/companion/c6-evidence/EVIDENCE.md",
+  "output/companion/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+  "output/companion/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+  "output/companion/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+  "output/companion/c6-gui-rehearsal/GUI_REHEARSAL.json",
+  "output/companion/c6-gui-rehearsal/GUI_REHEARSAL.md",
+  "output/companion/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json"
+)
+
+foreach ($file in $companionEvidenceFiles) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing companion C6 evidence artifact: $file"
+  }
+  $destination = Join-ReleasePackagePath ("companion/evidence/" + $file.Substring("output/companion/".Length))
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+  Copy-Item -LiteralPath $file -Destination $destination
+}
+
 $releaseTools = @(
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
@@ -359,6 +424,12 @@ $releaseTools = @(
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
+  "tools/check_android_toolchain.cmd",
+  "tools/check_android_toolchain.ps1",
+  "tools/check_companion_v1_readiness.cmd",
+  "tools/check_companion_v1_readiness.ps1",
+  "tools/export_companion_release_evidence.cmd",
+  "tools/export_companion_release_evidence.ps1",
   "tools/preview_python_resolver.ps1",
   "tools/render_preview.py",
   "tools/audit_published_release.cmd",
@@ -406,6 +477,22 @@ $releaseTools = @(
   "tools/add_hardware_evidence_media.ps1",
   "tools/check_hardware_evidence_progress.cmd",
   "tools/check_hardware_evidence_progress.ps1",
+  "tools/test_android_apk_install_evidence_contract.cmd",
+  "tools/test_android_apk_install_evidence_contract.ps1",
+  "tools/test_android_probe_evidence_progress_contract.cmd",
+  "tools/test_android_probe_evidence_progress_contract.ps1",
+  "tools/test_android_rollout_status_contract.cmd",
+  "tools/test_android_rollout_status_contract.ps1",
+  "tools/test_android_logcat_capture_contract.cmd",
+  "tools/test_android_logcat_capture_contract.ps1",
+  "tools/test_android_evidence_packet_contract.cmd",
+  "tools/test_android_evidence_packet_contract.ps1",
+  "tools/test_strict_android_apk_evidence_contract.cmd",
+  "tools/test_strict_android_apk_evidence_contract.ps1",
+  "tools/test_strict_android_dashboard_evidence_contract.cmd",
+  "tools/test_strict_android_dashboard_evidence_contract.ps1",
+  "tools/test_strict_android_probe_evidence_contract.cmd",
+  "tools/test_strict_android_probe_evidence_contract.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -429,6 +516,16 @@ $releaseTools = @(
   "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
+  "tools/run_android_companion_probe.cmd",
+  "tools/run_android_companion_probe.ps1",
+  "tools/run_android_companion_soak.cmd",
+  "tools/run_android_companion_soak.ps1",
+  "tools/run_android_udp_beacon_probe.cmd",
+  "tools/run_android_udp_beacon_probe.ps1",
+  "tools/install_android_companion_apk.cmd",
+  "tools/install_android_companion_apk.ps1",
+  "tools/capture_android_companion_logcat.cmd",
+  "tools/capture_android_companion_logcat.ps1",
   "tools/run_prearrival_sim_check.cmd",
   "tools/run_prearrival_sim_check.ps1",
   "tools/run_hardware_simulation.cmd",
@@ -488,8 +585,10 @@ Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenance
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
+Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
 Copy-Item -LiteralPath "test" -Destination (Join-Path $provenanceDir "test") -Recurse
+Copy-SourceTree -SourceRoot "companion" -DestinationRoot (Join-Path $provenanceDir "companion") -ExcludedDirectoryNames @("build", ".gradle", ".kotlin")
 $dataProvenanceDir = Join-Path $provenanceDir "data"
 New-Item -ItemType Directory -Force -Path $dataProvenanceDir | Out-Null
 Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataProvenanceDir
@@ -769,6 +868,9 @@ $manifest = [ordered]@{
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
   androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
+  androidCompanionTestPlan = "docs/ANDROID_COMPANION_TEST_PLAN.md"
+  companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
+  androidCompanionSource = "provenance/companion"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
   gapAnalysis = "docs/GAP_ANALYSIS.md"
@@ -795,6 +897,17 @@ $manifest = [ordered]@{
   voiceRvcBaseMetadata = "data/voice_rvc_base_metadata.json"
   voiceRvcBaseStatusReport = "RVC_VOICE_BASE_STATUS.md"
   voiceRvcBaseStatusReportJson = "rvc_voice_base_status.json"
+  companionEvidenceManifest = "companion/evidence/c6-evidence/EVIDENCE.json"
+  companionEvidence = @(
+    "companion/evidence/c6-evidence/EVIDENCE.json",
+    "companion/evidence/c6-evidence/EVIDENCE.md",
+    "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+    "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+    "companion/evidence/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+    "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.json",
+    "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
+    "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json"
+  )
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
@@ -855,6 +968,12 @@ $manifest = [ordered]@{
     "tools/platformio_resolver.ps1",
     "tools/check_native_toolchain.cmd",
     "tools/check_native_toolchain.ps1",
+    "tools/check_android_toolchain.cmd",
+    "tools/check_android_toolchain.ps1",
+    "tools/check_companion_v1_readiness.cmd",
+    "tools/check_companion_v1_readiness.ps1",
+    "tools/export_companion_release_evidence.cmd",
+    "tools/export_companion_release_evidence.ps1",
     "tools/preview_python_resolver.ps1",
     "tools/render_preview.py",
     "tools/render_rvc_auditions.ps1",
@@ -892,6 +1011,22 @@ $manifest = [ordered]@{
     "tools/add_hardware_evidence_media.ps1",
     "tools/check_hardware_evidence_progress.cmd",
     "tools/check_hardware_evidence_progress.ps1",
+    "tools/test_android_apk_install_evidence_contract.cmd",
+    "tools/test_android_apk_install_evidence_contract.ps1",
+    "tools/test_android_probe_evidence_progress_contract.cmd",
+    "tools/test_android_probe_evidence_progress_contract.ps1",
+    "tools/test_android_rollout_status_contract.cmd",
+    "tools/test_android_rollout_status_contract.ps1",
+    "tools/test_android_logcat_capture_contract.cmd",
+    "tools/test_android_logcat_capture_contract.ps1",
+    "tools/test_android_evidence_packet_contract.cmd",
+    "tools/test_android_evidence_packet_contract.ps1",
+    "tools/test_strict_android_apk_evidence_contract.cmd",
+    "tools/test_strict_android_apk_evidence_contract.ps1",
+    "tools/test_strict_android_dashboard_evidence_contract.cmd",
+    "tools/test_strict_android_dashboard_evidence_contract.ps1",
+    "tools/test_strict_android_probe_evidence_contract.cmd",
+    "tools/test_strict_android_probe_evidence_contract.ps1",
     "tools/prepare_device_arrival.cmd",
     "tools/prepare_device_arrival.ps1",
     "tools/run_device_preflight.cmd",
@@ -908,6 +1043,16 @@ $manifest = [ordered]@{
     "tools/run_litert_lm_smoke.ps1",
     "tools/run_lan_smoke.cmd",
     "tools/run_lan_smoke.ps1",
+    "tools/run_android_companion_probe.cmd",
+    "tools/run_android_companion_probe.ps1",
+    "tools/run_android_companion_soak.cmd",
+    "tools/run_android_companion_soak.ps1",
+    "tools/run_android_udp_beacon_probe.cmd",
+    "tools/run_android_udp_beacon_probe.ps1",
+    "tools/install_android_companion_apk.cmd",
+    "tools/install_android_companion_apk.ps1",
+    "tools/capture_android_companion_logcat.cmd",
+    "tools/capture_android_companion_logcat.ps1",
     "tools/run_prearrival_sim_check.cmd",
     "tools/run_prearrival_sim_check.ps1",
     "tools/run_hardware_simulation.cmd",
@@ -959,6 +1104,8 @@ $manifest = [ordered]@{
     "provenance/platformio.ini",
     "provenance/requirements-preview.txt",
     "provenance/bridge/README.md",
+    "provenance/bridge/export_protocol_fixtures.py",
+    "provenance/bridge/test_protocol_fixtures.py",
     "provenance/bridge/persona_pack.py",
     "provenance/bridge/test_persona_pack.py",
     "provenance/bridge/character_red_team.py",
@@ -987,6 +1134,12 @@ $manifest = [ordered]@{
     "provenance/bridge/test_hardware_simulator.py",
     "provenance/bridge/prearrival_sim_check.py",
     "provenance/bridge/test_prearrival_sim_check.py",
+    "provenance/protocol-fixtures/endpoint_hello.json",
+    "provenance/protocol-fixtures/owner_status.json",
+    "provenance/protocol-fixtures/settings_get.json",
+    "provenance/protocol-fixtures/settings_set.json",
+    "provenance/protocol-fixtures/invalid/missing_type.json",
+    "provenance/protocol-fixtures/invalid/wrong_protocol.json",
     "provenance/firmware.yml",
     "provenance/release.yml",
     "provenance/data/commands.yaml",
@@ -1094,6 +1247,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; review-only until production voice-source rights clear" },
     [ordered]@{ gate = "character-red-team-dry-run"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json; real gate still requires a configured model runner" },
+    [ordered]@{ gate = "companion-c6-brain-supervision-evidence"; status = "pass"; evidence = "companion/evidence/c6-evidence/EVIDENCE.json plus C6 brain supervisor, GUI rehearsal, and diagnostics exports" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
@@ -1138,6 +1292,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; confirms review-only RVC base cache/hash status when available" },
     [ordered]@{ requirement = "character-red-team-dry-run-present"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json" },
+    [ordered]@{ requirement = "companion-c6-brain-supervision-evidence"; status = "pass"; evidence = "companion/evidence/c6-evidence/EVIDENCE.json plus C6 brain supervisor, GUI rehearsal, and diagnostics exports" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates imported photos/videos/audio and records hashes" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
@@ -1178,6 +1333,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
 - [x] Voice source status report present: ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``
 - [x] Character red-team dry-run report present: ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``
+- [x] Companion C6 brain-supervision evidence present: ``companion/evidence/c6-evidence/EVIDENCE.json``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
 - [x] Hardware media importer present: ``tools/add_hardware_evidence_media.cmd`` validates imported photos/videos/audio and records hashes
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
@@ -1216,6 +1372,7 @@ Consumer rollout: blocked pending hardware validation
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
 - Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json`` list the blocked production-voice gates. Current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
 - Character red-team dry-run evidence is present in ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``. It proves the adversarial corpus and validator path; the gate only passes after the same suite runs with ``--require-runner`` against a configured local model.
+- Companion C6 brain-supervision evidence is present under ``companion/evidence/`` and proves the desktop GUI can start the Python brain, drive simulated robot turns, stop, restart, and export diagnostics before the physical robot arrives.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.

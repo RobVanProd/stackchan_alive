@@ -86,6 +86,109 @@ function Test-TextPattern {
   }
 }
 
+function Test-OptionalAndroidProbeReport {
+  param(
+    [string]$RelativePath,
+    [string]$ExpectedSchema,
+    [string]$Description,
+    [string[]]$PassingStatuses = @("pass")
+  )
+
+  if ([string]::IsNullOrWhiteSpace($RelativePath)) {
+    Add-Pass "$Description is optional and has no configured report path"
+    return
+  }
+
+  $path = Join-EvidencePath $RelativePath
+  if (-not (Test-Path -LiteralPath $path)) {
+    Add-Pass "$Description report not present; optional unless Android is the companion bridge host"
+    return
+  }
+
+  $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+  if ($report.schema -ne $ExpectedSchema) {
+    Add-Finding "$Description report schema mismatch: $($report.schema)"
+  } elseif (@($PassingStatuses) -contains [string]$report.status) {
+    if ($ExpectedSchema -eq "stackchan.android-apk-install.v1") {
+      if ([string]$report.apkSha256 -notmatch "^[0-9a-fA-F]{64}$") {
+        Add-Finding "$Description report is missing a valid apkSha256."
+        return
+      }
+      $sourceCommit = [string]$report.sourceCommit
+      if ($sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+        Add-Finding "$Description report is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+        return
+      }
+      if ([string]::IsNullOrWhiteSpace([string]$report.versionName) -or
+          [string]::IsNullOrWhiteSpace([string]$report.versionCode)) {
+        Add-Finding "$Description report is missing installed versionName/versionCode."
+        return
+      }
+    }
+    Add-Pass "$Description report status: $($report.status)"
+  } else {
+    $issues = @($report.issues) -join "; "
+    Add-Finding "$Description report did not pass: $issues"
+  }
+}
+
+function Test-AndroidCompanionReportPresent {
+  param([object]$Metadata)
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return $false
+  }
+
+  foreach ($field in @("apkInstallReport", "companionProbeReport", "screenOffSoakReport", "udpBeaconProbeReport", "logcatReport")) {
+    $relativePath = [string]$Metadata.androidCompanionProbes.$field
+    if (-not [string]::IsNullOrWhiteSpace($relativePath) -and
+        (Test-Path -LiteralPath (Join-EvidencePath $relativePath))) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Test-AndroidDashboardManifestEvidence {
+  param([object]$Metadata)
+
+  if (-not (Test-AndroidCompanionReportPresent $Metadata)) {
+    return
+  }
+
+  $manifestPath = Join-EvidencePath "media_manifest.json"
+  if (-not (Test-Path -LiteralPath $manifestPath)) {
+    Add-Finding "Android companion reports are present, but media_manifest.json is missing the connected-dashboard screenshot entry. Run RUN_ADD_MEDIA.cmd -Type Photo -Notes `"Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state`" C:\path\android-dashboard.jpg"
+    return
+  }
+
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  if ($manifest.schema -ne "stackchan.hardware-media-manifest.v1") {
+    Add-Finding "media_manifest.json schema mismatch: $($manifest.schema)"
+    return
+  }
+
+  foreach ($entry in @($manifest.entries)) {
+    $relativePath = [string]$entry.relativePath
+    $notes = [string]$entry.notes
+    if ([string]$entry.kind -eq "photo" -and
+        $relativePath -match "^(?i:photos)/" -and
+        $notes -match "(?i)android.*dashboard|dashboard.*android" -and
+        $notes -match "(?i)connected" -and
+        $notes -match "(?i)robot\s+identity" -and
+        $notes -match "(?i)firmware/version|firmware.*version|version.*firmware" -and
+        $notes -match "(?i)last\s+bridge\s+frame" -and
+        $notes -match "(?i)active\s+brain\s+owner" -and
+        $notes -match "(?i)foreground\s+service|service\s+state") {
+      Add-Pass "media_manifest.json includes Android dashboard connected-state evidence: $relativePath"
+      return
+    }
+  }
+
+  Add-Finding "media_manifest.json needs a photo/video entry whose notes identify the Android dashboard connected state with robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state."
+}
+
 function Get-FirstFindingLike {
   param([string[]]$Patterns)
 
@@ -109,12 +212,21 @@ function Get-BenchNextAction {
     }
   }
 
-  $displayFinding = Get-FirstFindingLike @("logs/display_only_serial\.log", "display-only boot marker", "display readiness marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display runtime health telemetry", "No photo or video evidence")
+  $displayFinding = Get-FirstFindingLike @("logs/display_only_serial\.log", "display-only boot marker", "display readiness marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display runtime health telemetry", "No photo or video evidence")
   if (-not [string]::IsNullOrWhiteSpace($displayFinding)) {
     return [ordered]@{
       action = "Run the display-only flash, then add a clear face photo or short video."
       command = "RUN_DISPLAY_ONLY.cmd; RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg"
       reason = $displayFinding
+    }
+  }
+
+  $androidDashboardFinding = Get-FirstFindingLike @("Android companion reports are present", "Android dashboard connected state", "connected-dashboard screenshot", "media_manifest\.json needs a photo/video entry")
+  if (-not [string]::IsNullOrWhiteSpace($androidDashboardFinding)) {
+    return [ordered]@{
+      action = "Import the Android connected-dashboard screenshot with the required evidence notes."
+      command = "RUN_ADD_MEDIA.cmd -Type Photo -Notes `"Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state`" C:\path\android-dashboard.jpg"
+      reason = $androidDashboardFinding
     }
   }
 
@@ -320,6 +432,32 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
     }
   } else {
     Add-Finding "metadata.json has no shareVerification reference; hosted media review page is not pinned in this evidence packet"
+  }
+
+  if ($null -ne $metadata.androidCompanionProbes) {
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.apkInstallReport) `
+      -ExpectedSchema "stackchan.android-apk-install.v1" `
+      -Description "Android APK install evidence" `
+      -PassingStatuses @("installed")
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.companionProbeReport) `
+      -ExpectedSchema "stackchan.android-companion-probe.v1" `
+      -Description "Android companion bridge probe"
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.screenOffSoakReport) `
+      -ExpectedSchema "stackchan.android-companion-soak.v1" `
+      -Description "Android screen-off soak"
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.udpBeaconProbeReport) `
+      -ExpectedSchema "stackchan.android-udp-beacon-probe.v1" `
+      -Description "Android UDP beacon probe"
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.logcatReport) `
+      -ExpectedSchema "stackchan.android-companion-logcat.v1" `
+      -Description "Android companion logcat capture" `
+      -PassingStatuses @("captured")
+    Test-AndroidDashboardManifestEvidence $metadata
   }
 
   if ($null -ne $metadata.voiceGateStatus) {

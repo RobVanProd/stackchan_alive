@@ -28,6 +28,26 @@ After a real model runner command is configured, add `-RunModelBenchmark` to inc
 `model-benchmark/MODEL_BENCHMARK.md/json` and the `model-benchmark-candidate` gate in the
 same pre-arrival report.
 
+Check that the companion source/package still carries the v1 plan, protocol fixture
+provenance, Android/desktop modules, CI hooks, and pending hardware gates:
+
+```powershell
+.\tools\check_companion_v1_readiness.cmd
+```
+
+The expected source-ready state is `source-ready-pending-hardware`; physical robot,
+target-phone, C8 distribution, and production voice-source gates remain pending until
+their real evidence is captured.
+
+Capture companion release evidence after APK or desktop package artifacts exist:
+
+```powershell
+.\tools\export_companion_release_evidence.cmd
+```
+
+Before a signed C8 distribution is promoted, rerun it with `-RequireArtifacts` so missing
+APK or desktop package hashes block the release evidence.
+
 Run the socket-level LAN bridge smoke report:
 
 ```powershell
@@ -155,6 +175,42 @@ Open the newest evidence packet folder and run:
 .\RUN_BRIDGE_REPLAY.cmd
 .\RUN_SIM_HARDWARE_COMPARE.cmd
 ```
+
+If the Android phone is the companion bridge host, also run these from the evidence packet:
+
+Build the Android companion APK from the source checkout before this step:
+
+```powershell
+.\tools\check_android_toolchain.cmd
+cd companion
+.\gradlew.bat :app-android:assembleDebug
+```
+
+The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
+and SDK Platform 36 before Gradle starts.
+
+Then pass the resulting `companion\app-android\build\outputs\apk\debug\app-android-debug.apk`
+path into the evidence packet installer:
+
+```powershell
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>
+.\RUN_ANDROID_UDP_BEACON_PROBE.cmd
+.\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
+.\RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge
+.\RUN_ANDROID_LOGCAT_CAPTURE.cmd
+```
+
+Only run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` when the Android bridge service stops, crashes,
+loses foreground status, or fails during screen-off soak. It writes the filtered adb
+excerpt under `android/logcat/` so the failure has packet-level evidence.
+
+The Android helpers write packet-local probe evidence under `android\udp-beacon-probe\` and `android\companion-probe\`,
+and screen-off soak evidence under `android\screen-off-soak\`.
+`RUN_ANDROID_APK_INSTALL.cmd` writes install evidence, including the APK source commit,
+under `android\apk-install\`.
+After the robot connects through the phone, capture the Android dashboard connected state
+showing robot identity, firmware/version signal, last bridge frame, active brain owner,
+and foreground service state.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 

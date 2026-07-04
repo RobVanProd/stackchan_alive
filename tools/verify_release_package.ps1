@@ -119,7 +119,9 @@ $requiredFiles = @(
   "release_manifest.json",
   "voice_source_status.json",
   "docs/ANDROID_COMPANION_SPEC.md",
+  "docs/ANDROID_COMPANION_TEST_PLAN.md",
   "docs/BRAIN_MODEL.md",
+  "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
   "docs/GAP_ANALYSIS.md",
@@ -166,10 +168,31 @@ $requiredFiles = @(
   "bridge/test_lan_service.py",
   "bridge/lan_smoke.py",
   "bridge/test_lan_smoke.py",
+  "bridge/android_companion_probe.py",
+  "bridge/test_android_companion_probe.py",
+  "bridge/android_companion_soak.py",
+  "bridge/test_android_companion_soak.py",
+  "bridge/android_udp_beacon_probe.py",
+  "bridge/test_android_udp_beacon_probe.py",
+  "bridge/test_android_dashboard_media_gate.py",
   "bridge/hardware_simulator.py",
   "bridge/test_hardware_simulator.py",
   "bridge/prearrival_sim_check.py",
   "bridge/test_prearrival_sim_check.py",
+  "provenance/companion/settings.gradle.kts",
+  "provenance/companion/build.gradle.kts",
+  "provenance/companion/gradle.properties",
+  "provenance/companion/gradlew",
+  "provenance/companion/gradlew.bat",
+  "provenance/companion/gradle/libs.versions.toml",
+  "provenance/companion/app-android/build.gradle.kts",
+  "provenance/companion/app-android/src/main/AndroidManifest.xml",
+  "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt",
+  "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/CompanionBridgeService.kt",
+  "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatus.kt",
+  "provenance/companion/app-android/src/test/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatusTest.kt",
+  "provenance/companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/ProtocolMessage.kt",
+  "provenance/companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt",
   "personas/spark/pack.yaml",
   "personas/spark/character.yaml",
   "personas/spark/prompt.md",
@@ -188,6 +211,14 @@ $requiredFiles = @(
   "persona_prompt_assets.json",
   "character-red-team/CHARACTER_RED_TEAM.md",
   "character-red-team/character_red_team.json",
+  "companion/evidence/c6-evidence/EVIDENCE.json",
+  "companion/evidence/c6-evidence/EVIDENCE.md",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+  "companion/evidence/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
+  "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -250,6 +281,12 @@ $requiredFiles = @(
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
+  "tools/check_android_toolchain.cmd",
+  "tools/check_android_toolchain.ps1",
+  "tools/check_companion_v1_readiness.cmd",
+  "tools/check_companion_v1_readiness.ps1",
+  "tools/export_companion_release_evidence.cmd",
+  "tools/export_companion_release_evidence.ps1",
   "tools/preview_python_resolver.ps1",
   "tools/render_preview.py",
   "tools/audit_published_release.cmd",
@@ -290,6 +327,22 @@ $requiredFiles = @(
   "tools/add_hardware_evidence_media.ps1",
   "tools/check_hardware_evidence_progress.cmd",
   "tools/check_hardware_evidence_progress.ps1",
+  "tools/test_android_apk_install_evidence_contract.cmd",
+  "tools/test_android_apk_install_evidence_contract.ps1",
+  "tools/test_android_probe_evidence_progress_contract.cmd",
+  "tools/test_android_probe_evidence_progress_contract.ps1",
+  "tools/test_android_rollout_status_contract.cmd",
+  "tools/test_android_rollout_status_contract.ps1",
+  "tools/test_android_logcat_capture_contract.cmd",
+  "tools/test_android_logcat_capture_contract.ps1",
+  "tools/test_android_evidence_packet_contract.cmd",
+  "tools/test_android_evidence_packet_contract.ps1",
+  "tools/test_strict_android_apk_evidence_contract.cmd",
+  "tools/test_strict_android_apk_evidence_contract.ps1",
+  "tools/test_strict_android_dashboard_evidence_contract.cmd",
+  "tools/test_strict_android_dashboard_evidence_contract.ps1",
+  "tools/test_strict_android_probe_evidence_contract.cmd",
+  "tools/test_strict_android_probe_evidence_contract.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -313,6 +366,16 @@ $requiredFiles = @(
   "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
+  "tools/run_android_companion_probe.cmd",
+  "tools/run_android_companion_probe.ps1",
+  "tools/run_android_companion_soak.cmd",
+  "tools/run_android_companion_soak.ps1",
+  "tools/run_android_udp_beacon_probe.cmd",
+  "tools/run_android_udp_beacon_probe.ps1",
+  "tools/install_android_companion_apk.cmd",
+  "tools/install_android_companion_apk.ps1",
+  "tools/capture_android_companion_logcat.cmd",
+  "tools/capture_android_companion_logcat.ps1",
   "tools/run_prearrival_sim_check.cmd",
   "tools/run_prearrival_sim_check.ps1",
   "tools/run_hardware_simulation.cmd",
@@ -391,6 +454,8 @@ $requiredFiles = @(
   "provenance/release.yml",
   "provenance/requirements-preview.txt",
   "provenance/bridge/README.md",
+  "provenance/bridge/export_protocol_fixtures.py",
+  "provenance/bridge/test_protocol_fixtures.py",
   "provenance/bridge/character_red_team.py",
   "provenance/bridge/test_character_red_team.py",
   "provenance/bridge/persona_pack.py",
@@ -403,6 +468,12 @@ $requiredFiles = @(
   "provenance/bridge/test_engine_probe.py",
   "provenance/bridge/litert_lm_contract_smoke.py",
   "provenance/bridge/test_litert_lm_contract_smoke.py",
+  "provenance/protocol-fixtures/endpoint_hello.json",
+  "provenance/protocol-fixtures/owner_status.json",
+  "provenance/protocol-fixtures/settings_get.json",
+  "provenance/protocol-fixtures/settings_set.json",
+  "provenance/protocol-fixtures/invalid/missing_type.json",
+  "provenance/protocol-fixtures/invalid/wrong_protocol.json",
   "provenance/bridge/model_benchmark.py",
   "provenance/bridge/test_model_benchmark.py",
   "provenance/bridge/stt_adapter.py",
@@ -413,6 +484,13 @@ $requiredFiles = @(
   "provenance/bridge/test_lan_service.py",
   "provenance/bridge/lan_smoke.py",
   "provenance/bridge/test_lan_smoke.py",
+  "provenance/bridge/android_companion_probe.py",
+  "provenance/bridge/test_android_companion_probe.py",
+  "provenance/bridge/android_companion_soak.py",
+  "provenance/bridge/test_android_companion_soak.py",
+  "provenance/bridge/android_udp_beacon_probe.py",
+  "provenance/bridge/test_android_udp_beacon_probe.py",
+  "provenance/bridge/test_android_dashboard_media_gate.py",
   "provenance/bridge/hardware_simulator.py",
   "provenance/bridge/test_hardware_simulator.py",
   "provenance/bridge/prearrival_sim_check.py",
@@ -438,21 +516,21 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleDebug", "companion\app-android\build\outputs\apk\debug\app-android-debug.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
 }
 
 $arrivalRunbookText = Get-Content -LiteralPath (Join-PackagePath "ARRIVAL_DAY_RUNBOOK.md") -Raw
-foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "production voice-source provenance", "GitHub Actions")) {
+foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion; .\gradlew.bat :app-android:assembleDebug", "companion\app-android\build\outputs\apk\debug\app-android-debug.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "android/apk-install/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/screen-off-soak/", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "production voice-source provenance", "GitHub Actions")) {
   if ($arrivalRunbookText -notmatch [regex]::Escape($pattern)) {
     throw "ARRIVAL_DAY_RUNBOOK.md missing required bench guidance: $pattern"
   }
 }
 
 $deviceBringupText = Get-Content -LiteralPath (Join-PackagePath "docs/DEVICE_BRINGUP.md") -Raw
-foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "camera_ready", "camera_hw", "camera_active", "camera_events", "speech_adapter_ready", "speech_adapter_hw", "speech_cues", "speech_earcons", "audio_out_ready", "audio_out_hw", "audio_out_hw_ready", "audio_out_core0", "audio_out_requests", "audio_out_playing", "audio_out_frames", "audio_out_ducks", "audio_out_hw_frames", "audio_out_hw_drops", "bridge_ready", "bridge_state", "bridge_messages", "bridge_outputs", "bridge_parse_errors", "bridge_uplink_ready", "bridge_uplink_enabled", "bridge_uplink_gate_blocks", "bridge_timeouts", "[bridge]", "[bridge_uplink]", "[speech_audio]", "source=packaged_prompt", "prompt_id", "prompt_wav", "prompt_sidecar", "[audio_out]", "duck_on_barge_in", "sidecar_frames", "sidecar_frame_ms", "playback_ms", "hw_ready", "hw_playing", "hw_starts", "media/voice/sidecars", "earcon_samples", "earcon_peak", "earcon_checksum", "speak <boot|idle|attend", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "help", "speech clear", "bridge hello", "bridge response", "bridge audio", "bridge end", "uplink start", "uplink chunk", "uplink end", "uplink abort", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "sound dir=-45 level=0.70", "noise level=0.90", "[audio] event=", "latency_ms", "azimuth_deg", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
+foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]", "[runtime]", "motion_enabled", "demo_enabled", "speech_active", "camera_ready", "camera_hw", "camera_active", "camera_events", "speech_adapter_ready", "speech_adapter_hw", "speech_cues", "speech_earcons", "audio_out_ready", "audio_out_hw", "audio_out_hw_ready", "audio_out_core0", "audio_out_requests", "audio_out_playing", "audio_out_frames", "audio_out_ducks", "audio_out_hw_frames", "audio_out_hw_drops", "bridge_ready", "bridge_state", "bridge_messages", "bridge_outputs", "bridge_parse_errors", "bridge_uplink_ready", "bridge_uplink_enabled", "bridge_uplink_gate_blocks", "bridge_timeouts", "[bridge]", "[bridge_uplink]", "[speech_audio]", "source=packaged_prompt", "prompt_id", "prompt_wav", "prompt_sidecar", "[audio_out]", "duck_on_barge_in", "sidecar_frames", "sidecar_frame_ms", "playback_ms", "hw_ready", "hw_playing", "hw_starts", "media/voice/sidecars", "earcon_samples", "earcon_peak", "earcon_checksum", "speak <boot|idle|attend", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "RUN_ANDROID_APK_INSTALL.cmd", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleDebug", "companion\app-android\build\outputs\apk\debug\app-android-debug.apk", "android/apk-install/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/screen-off-soak/", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "help", "speech clear", "bridge hello", "bridge response", "bridge audio", "bridge end", "uplink start", "uplink chunk", "uplink end", "uplink abort", "touch cheek", "touch forehead", "proximity 0.85", "pickup 0.80", "shake 1.0", "putdown", "tilt x=0.40 y=-0.20 z=0.90", "sound dir=-45 level=0.70", "noise level=0.90", "[audio] event=", "latency_ms", "azimuth_deg", "payload_x", "payload_y", "payload_z", "ambient 12 22", "ambient lux 700 hour 10", "time 22", "circadian hour 7", "ambient_lux", "circadian_hour", "reduced on", "motion stop", "motion resume", "demo off", "demo on", "safe stop", "panic", "safe resume", "restore", "[motion] enabled=0")) {
   if ($deviceBringupText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DEVICE_BRINGUP.md missing required serial bench guidance: $pattern"
   }
@@ -480,7 +558,7 @@ foreach ($pattern in @("-All", "output/share", "Test-ShareOwnedProcess", "skippe
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_HARDWARE_SIM_BASELINE.cmd", "hardware_simulation_baseline.log", "simulation/hardware-sim/latest", "comparison baseline only", "run_hardware_simulation.ps1", "RUN_SIM_HARDWARE_COMPARE.cmd", "compare_hardware_sim_baseline.ps1", "SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json", "advisory sim-vs-real", "compareCommand", "compareReport", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speechDir", "lead_voice.speech_envelope.json", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_HARDWARE_SIM_BASELINE.cmd", "hardware_simulation_baseline.log", "simulation/hardware-sim/latest", "comparison baseline only", "run_hardware_simulation.ps1", "RUN_SIM_HARDWARE_COMPARE.cmd", "compare_hardware_sim_baseline.ps1", "SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json", "advisory sim-vs-real", "compareCommand", "compareReport", "RUN_ANDROID_APK_INSTALL.cmd", "install_android_companion_apk.ps1", "android/apk-install", "apkInstallCommand", "android_apk_install.json", "RUN_ANDROID_COMPANION_PROBE.cmd", "run_android_companion_probe.ps1", "android/companion-probe", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "run_android_companion_soak.ps1", "android/screen-off-soak", "screenOffSoakCommand", "android_companion_soak.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "run_android_udp_beacon_probe.ps1", "android/udp-beacon-probe", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "capture_android_companion_logcat.ps1", "android/logcat", "logcatCommand", "android_companion_logcat.json", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "androidCompanionProbes", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speechDir", "lead_voice.speech_envelope.json", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
   }
@@ -501,14 +579,140 @@ foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvi
 }
 
 $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak speech cue telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "Test-OptionalAndroidProbeReport", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Test-AndroidDashboardManifestEvidence", "androidDashboardFinding", "Import the Android connected-dashboard screenshot", "Android APK install evidence", "Android companion bridge probe", "Android screen-off soak", "Android UDP beacon probe", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "optional unless Android is the companion bridge host", "media_manifest.json needs a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
   }
 }
 
+$androidApkInstallEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_apk_install_evidence_contract.ps1") -Raw
+foreach ($pattern in @("check_hardware_evidence_progress.ps1", "stackchan.android-apk-install.v1", "BENCH_STATUS.json", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence report status: installed", "Assert-ReportLacksFinding", "Android APK install evidence contract tests passed")) {
+  if ($androidApkInstallEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_apk_install_evidence_contract.ps1 missing APK install evidence coverage: $pattern"
+  }
+}
+
+$androidProbeEvidenceProgressContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_probe_evidence_progress_contract.ps1") -Raw
+foreach ($pattern in @("check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "report schema mismatch", "report did not pass", "Android screen-off soak report status: pass", "Android companion logcat capture report status: captured", "Android probe evidence progress contract tests passed")) {
+  if ($androidProbeEvidenceProgressContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_probe_evidence_progress_contract.ps1 missing Android probe progress evidence coverage: $pattern"
+  }
+}
+
+$androidRolloutStatusContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_rollout_status_contract.ps1") -Raw
+foreach ($pattern in @("export_rollout_status.ps1", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "ROLLOUT_STATUS.json", "android-companion-probes", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence status installed", "Android companion bridge probe schema mismatch", "Android screen-off soak status fail", "Android UDP beacon probe status fail", "Android companion logcat capture status failed", "Android rollout status evidence contract tests passed")) {
+  if ($androidRolloutStatusContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_rollout_status_contract.ps1 missing Android rollout status coverage: $pattern"
+  }
+}
+
+$androidLogcatCaptureContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_logcat_capture_contract.ps1") -Raw
+foreach ($pattern in @("capture_android_companion_logcat.ps1", "fake-adb.ps1", "stackchan.android-companion-logcat.v1", "android_companion_logcat.json", "ANDROID_COMPANION_LOGCAT.md", "android_companion_logcat.txt", "android_companion_logcat_raw.txt", "CompanionBridgeService started", "ForegroundService", "FATAL EXCEPTION synthetic", "Android logcat capture contract tests passed")) {
+  if ($androidLogcatCaptureContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_logcat_capture_contract.ps1 missing Android logcat capture coverage: $pattern"
+  }
+}
+
+$androidEvidencePacketContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_evidence_packet_contract.ps1") -Raw
+foreach ($pattern in @("start_hardware_evidence.ps1", "check_hardware_evidence_progress.ps1", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "androidCompanionProbes", "android/apk-install/android_apk_install.json", "android/companion-probe/android_companion_probe.json", "android/screen-off-soak/android_companion_soak.json", "android/udp-beacon-probe/android_udp_beacon_probe.json", "android/logcat/android_companion_logcat.json", "Test-AndroidDashboardManifestEvidence", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android evidence packet contract tests passed")) {
+  if ($androidEvidencePacketContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_evidence_packet_contract.ps1 missing Android evidence packet coverage: $pattern"
+  }
+}
+
+$strictAndroidApkEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_strict_android_apk_evidence_contract.ps1") -Raw
+foreach ($pattern in @("verify_hardware_evidence.ps1", "AndroidApkEvidenceContractSelfTest", "stackchan.android-apk-install.v1", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK strict evidence contract verified", "Strict Android APK evidence contract tests passed")) {
+  if ($strictAndroidApkEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_strict_android_apk_evidence_contract.ps1 missing strict Android APK evidence coverage: $pattern"
+  }
+}
+
+$strictAndroidDashboardEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_strict_android_dashboard_evidence_contract.ps1") -Raw
+foreach ($pattern in @("verify_hardware_evidence.ps1", "AndroidDashboardEvidenceContractSelfTest", "stackchan.hardware-media-manifest.v1", "media_manifest.json is missing", "missing a photo/video entry", "Android dashboard strict evidence contract verified", "Strict Android dashboard evidence contract tests passed", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state")) {
+  if ($strictAndroidDashboardEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_strict_android_dashboard_evidence_contract.ps1 missing strict Android dashboard evidence coverage: $pattern"
+  }
+}
+
+$strictAndroidProbeEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_strict_android_probe_evidence_contract.ps1") -Raw
+foreach ($pattern in @("verify_hardware_evidence.ps1", "AndroidProbeEvidenceContractSelfTest", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "schema mismatch", "status is not accepted", "Android screen-off soak status is not accepted", "Android probe strict evidence contract verified", "Strict Android probe evidence contract tests passed")) {
+  if ($strictAndroidProbeEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_strict_android_probe_evidence_contract.ps1 missing strict Android probe evidence coverage: $pattern"
+  }
+}
+
+$androidDashboardMediaGateTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_dashboard_media_gate.py") -Raw
+foreach ($pattern in @("AndroidDashboardMediaGateTest", "check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "test_android_probe_requires_dashboard_media_notes", "test_matching_dashboard_media_notes_clear_android_dashboard_finding", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "media_manifest.json is missing the connected-dashboard", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state")) {
+  if ($androidDashboardMediaGateTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_dashboard_media_gate.py missing dashboard media gate coverage: $pattern"
+  }
+}
+
+$androidCompanionProbeText = Get-Content -LiteralPath (Join-PackagePath "bridge/android_companion_probe.py") -Raw
+foreach ($pattern in @("stackchan.android-companion-probe.v1", "stackchan.bridge.v1", "Android bridge URL must start with ws://", "Android bridge URL path must be /bridge", "101 Switching Protocols", "endpoint_hello", "expected endpoint_kind android", "settings", "diagnostics", "android_companion_probe.json", "ANDROID_COMPANION_PROBE.md", "ws://192.168.1.42:8765/bridge", "--allow-non-android")) {
+  if ($androidCompanionProbeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/android_companion_probe.py missing Android companion probe runtime contract: $pattern"
+  }
+}
+
+$androidCompanionProbeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_companion_probe.py") -Raw
+foreach ($pattern in @("AndroidCompanionProbeTest", "test_parse_requires_ws_bridge_url", "test_probe_accepts_android_endpoint_hello", "test_probe_rejects_non_android_endpoint_by_default", "endpoint_kind", "android", "expected endpoint_kind android")) {
+  if ($androidCompanionProbeTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_companion_probe.py missing Android companion probe test coverage: $pattern"
+  }
+}
+
+$androidCompanionSoakText = Get-Content -LiteralPath (Join-PackagePath "bridge/android_companion_soak.py") -Raw
+foreach ($pattern in @("stackchan.android-companion-soak.v1", "build_soak_report", "evaluate_samples", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "DEFAULT_DURATION_SECONDS = 600.0", "DEFAULT_INTERVAL_SECONDS = 30.0", "--min-success-rate", "--max-failures", "RUN_ANDROID_LOGCAT_CAPTURE.cmd")) {
+  if ($androidCompanionSoakText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/android_companion_soak.py missing Android screen-off soak runtime contract: $pattern"
+  }
+}
+
+$androidCompanionSoakTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_companion_soak.py") -Raw
+foreach ($pattern in @("AndroidCompanionSoakTest", "test_soak_passes_when_all_samples_pass", "test_soak_fails_when_any_strict_sample_fails", "test_write_outputs_include_logcat_follow_up", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android-companion-test")) {
+  if ($androidCompanionSoakTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_companion_soak.py missing Android screen-off soak test coverage: $pattern"
+  }
+}
+
+$androidUdpBeaconProbeText = Get-Content -LiteralPath (Join-PackagePath "bridge/android_udp_beacon_probe.py") -Raw
+foreach ($pattern in @("stackchan.android-udp-beacon-probe.v1", "stackchan.bridge.v1", "stackchan_bridge_beacon", "DEFAULT_BEACON_PORT = 8766", "DEFAULT_BRIDGE_PORT = 8765", "expected endpoint_kind android", "expected bridge port", "expected endpoint_id", "settings", "diagnostics", "timed out waiting for UDP beacon", "android_udp_beacon_probe.json", "ANDROID_UDP_BEACON_PROBE.md", "--expected-bridge-port", "--expected-endpoint-id", "--allow-non-android")) {
+  if ($androidUdpBeaconProbeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/android_udp_beacon_probe.py missing Android UDP beacon probe runtime contract: $pattern"
+  }
+}
+
+$androidUdpBeaconProbeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_udp_beacon_probe.py") -Raw
+foreach ($pattern in @("AndroidUdpBeaconProbeTest", "test_validate_accepts_android_beacon", "test_validate_rejects_wrong_kind_and_port", "test_probe_listens_for_one_beacon", "stackchan_bridge_beacon", "expected bridge port 8765", "endpoint_kind android")) {
+  if ($androidUdpBeaconProbeTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_udp_beacon_probe.py missing Android UDP beacon probe test coverage: $pattern"
+  }
+}
+
+$androidCompanionProbeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_android_companion_probe.ps1") -Raw
+foreach ($pattern in @("[double]`$Timeout = 5.0", "--timeout", "android_companion_probe.py", "--allow-non-android")) {
+  if ($androidCompanionProbeRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_android_companion_probe.ps1 missing Android companion probe wrapper contract: $pattern"
+  }
+}
+
+$androidCompanionSoakRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_android_companion_soak.ps1") -Raw
+foreach ($pattern in @("[double]`$DurationSeconds = 600.0", "[double]`$IntervalSeconds = 30.0", "[double]`$MinSuccessRate = 1.0", "[int]`$MaxFailures = 0", "--duration-seconds", "--interval-seconds", "--min-success-rate", "--max-failures", "android_companion_soak.py", "--allow-non-android")) {
+  if ($androidCompanionSoakRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_android_companion_soak.ps1 missing Android screen-off soak wrapper contract: $pattern"
+  }
+}
+
+$androidUdpBeaconProbeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_android_udp_beacon_probe.ps1") -Raw
+foreach ($pattern in @("[double]`$Timeout = 10.0", "[int]`$ExpectedBridgePort = 8765", "--expected-bridge-port", "--expected-endpoint-id", "android_udp_beacon_probe.py", "--allow-non-android")) {
+  if ($androidUdpBeaconProbeRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_android_udp_beacon_probe.ps1 missing Android UDP beacon probe wrapper contract: $pattern"
+  }
+}
+
 $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench Status", "stackchan.bench-status.v1", "nextAction", "nextCommand", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "production voice-source provenance", "stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Speech-mouth demo evidence", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "RVC lead audition reference hash does not match metadata", "voiceGateStatus", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "stackchan.voice-source-status.v1", "voice_source_status.json status does not match metadata voiceGateStatus", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "stackchan.rvc-voice-base-status.v1", "rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus", "shareVerification", "stackchan.share-verification.v1", "verifiedShareUrl", "verifiedUrlFile", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "Speak-all-intents demo complete", "command=speak_intent", "cue_intent=", "source=packaged_prompt", "soak display frame-budget telemetry", "soak face animator telemetry", "soak speech cue telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "AllowSyntheticEvidence", "diagnosticOnly")) {
+foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench Status", "stackchan.bench-status.v1", "nextAction", "nextCommand", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "production voice-source provenance", "stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Speech-mouth demo evidence", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "RVC lead audition reference hash does not match metadata", "voiceGateStatus", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "stackchan.voice-source-status.v1", "voice_source_status.json status does not match metadata voiceGateStatus", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "stackchan.rvc-voice-base-status.v1", "rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus", "shareVerification", "stackchan.share-verification.v1", "verifiedShareUrl", "verifiedUrlFile", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "Speak-all-intents demo complete", "command=speak_intent", "cue_intent=", "source=packaged_prompt", "soak display frame-budget telemetry", "soak face animator telemetry", "soak speech cue telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "Test-AndroidDashboardManifestEntry", "Assert-AndroidDashboardManifestEvidence", "Assert-AndroidReportEvidence", "Assert-AndroidCompanionReportEvidence", "AndroidApkEvidenceContractSelfTest", "AndroidDashboardEvidenceContractSelfTest", "AndroidProbeEvidenceContractSelfTest", "Android APK strict evidence contract verified", "Android dashboard strict evidence contract verified", "Android probe strict evidence contract verified", "status is not accepted", "stackchan.android-companion-probe.v1", "stackchan.android-companion-soak.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "Android companion reports are present", "media_manifest.json is missing a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "AllowSyntheticEvidence", "diagnosticOnly")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_hardware_evidence.ps1 missing acceptance artifact verification logic: $pattern"
   }
@@ -586,6 +790,13 @@ foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
     if ($publishDocText -notmatch [regex]::Escape($pattern)) {
       throw "$docPath missing safe publish guidance: $pattern"
     }
+  }
+}
+
+$releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
+foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json/md", "artifact SHA256s", "libs.versions.toml", "-RequireArtifacts")) {
+  if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/RELEASE_PROCESS.md missing companion C8 release evidence guidance: $pattern"
   }
 }
 
@@ -854,6 +1065,27 @@ foreach ($pattern in @("stackchan.native-toolchain-check.v1", "Get-StackchanNati
   }
 }
 
+$androidToolchainCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_toolchain.ps1") -Raw
+foreach ($pattern in @("stackchan.android-toolchain-check.v1", "JAVA_HOME", "java.exe", "ANDROID_HOME", "ANDROID_SDK_ROOT", "platform-tools", "adb.exe", "platforms/android-36", "companion/gradlew.bat", "Install JDK 21", "Android SDK Platform 36", "sdkmanager")) {
+  if ($androidToolchainCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_toolchain.ps1 missing Android toolchain diagnostic logic: $pattern"
+  }
+}
+
+$companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+  if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
+  }
+}
+
+$companionReleaseEvidenceExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_companion_release_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.companion-release-evidence.v1", "COMPANION_RELEASE_EVIDENCE.json", "COMPANION_RELEASE_EVIDENCE.md", "toolchainPins", "Get-FileHash", "AndroidArtifactRoot", "DesktopArtifactRoot", "RequireArtifacts", "evidence-pending-artifacts", "blocked-missing-artifacts")) {
+  if ($companionReleaseEvidenceExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_companion_release_evidence.ps1 missing companion release evidence export logic: $pattern"
+  }
+}
+
 $platformioResolverText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_resolver.ps1") -Raw
 foreach ($pattern in @("scoop/apps/mingw/current/bin", "scoop/apps/gcc/current/bin", "chocolatey/lib/mingw", "BrechtSanders.WinLibs")) {
   if ($platformioResolverText -notmatch [regex]::Escape($pattern)) {
@@ -876,7 +1108,7 @@ foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "local-archive-veri
 }
 
 $rolloutStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rollout_status.ps1") -Raw
-foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Get-RolloutNextAction", "nextOwner", "nextAction", "nextCommand", "nextReason", "actionsStatusPath", "ActionsStatusPath", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "github-actions-required-workflows", "voice_source_status.json", "rvc_voice_base_status.json", "rvc-voice-base-approval", "RVC voice base is not approved for consumer distribution", "voice-gate-status-consistency", "metadata voiceGateStatus does not match package voice status reports", "Evidence voiceGateStatus is not pinned to the package voice status reports", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference", "Get-SpeechMouthDemoEvidenceStatus", "speech-mouth-demo-evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "source=packaged_prompt", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd")) {
+foreach ($pattern in @("stackchan.rollout-status.v1", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Get-RolloutNextAction", "nextOwner", "nextAction", "nextCommand", "nextReason", "actionsStatusPath", "ActionsStatusPath", "check_hardware_evidence_progress.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "github-actions-required-workflows", "voice_source_status.json", "rvc_voice_base_status.json", "rvc-voice-base-approval", "RVC voice base is not approved for consumer distribution", "voice-gate-status-consistency", "metadata voiceGateStatus does not match package voice status reports", "Evidence voiceGateStatus is not pinned to the package voice status reports", "consumer-promotion-ready", "blocked-or-pending", "hosted-media-reference", "Get-SpeechMouthDemoEvidenceStatus", "speech-mouth-demo-evidence", "Get-AndroidProbeEvidenceStatus", "apkSha256", "valid apkSha256", "sourceCommit", "full sourceCommit SHA", "versionName/versionCode", "-SourceCommit <git-commit>", "android-companion-probes", "androidCompanionProbes", "optional unless Android is the bridge host", "Android APK install evidence", "stackchan.android-apk-install.v1", "installed", "Android screen-off soak", "screenOffSoakReport", "stackchan.android-companion-soak.v1", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "Android companion logcat capture", "stackchan.android-companion-logcat.v1", "captured", "logcatReport", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "source=packaged_prompt", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd")) {
   if ($rolloutStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rollout_status.ps1 missing rollout status export logic: $pattern"
   }
@@ -1369,6 +1601,20 @@ foreach ($pattern in @("preview_python_resolver.ps1", "Get-StackchanPreviewPytho
   }
 }
 
+$androidApkInstallerText = Get-Content -LiteralPath (Join-PackagePath "tools/install_android_companion_apk.ps1") -Raw
+foreach ($pattern in @("stackchan.android-apk-install.v1", "adb was not found", "Missing Android APK", "source checkout", ".\gradlew.bat :app-android:assembleDebug", "devices", "Multiple adb devices", "install", "-r", "dumpsys", "versionName", "versionCode", "sourceCommit", "-SourceCommit", "git rev-parse HEAD", "android_apk_install.json", "ANDROID_APK_INSTALL.md", "adb_install.log", "adb_dumpsys_package.txt", "-ApkPath", "-Serial")) {
+  if ($androidApkInstallerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/install_android_companion_apk.ps1 missing Android APK install evidence logic: $pattern"
+  }
+}
+
+$androidLogcatCaptureText = Get-Content -LiteralPath (Join-PackagePath "tools/capture_android_companion_logcat.ps1") -Raw
+foreach ($pattern in @("stackchan.android-companion-logcat.v1", "adb was not found", "devices", "Multiple adb devices", "logcat", "ForegroundService", "CompanionBridgeService", "android_companion_logcat.txt", "ANDROID_COMPANION_LOGCAT.md", "android_companion_logcat.json", "-Serial", "-Lines")) {
+  if ($androidLogcatCaptureText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/capture_android_companion_logcat.ps1 missing Android logcat capture logic: $pattern"
+  }
+}
+
 $hardwareSimulationComparatorText = Get-Content -LiteralPath (Join-PackagePath "tools/compare_hardware_sim_baseline.ps1") -Raw
 foreach ($pattern in @("stackchan.hardware-sim-compare.v1", "simulation/hardware-sim/latest/hardware_simulation.json", "SIM_HARDWARE_COMPARE.json", "SIM_HARDWARE_COMPARE.md", "RUN_HARDWARE_SIM_BASELINE.cmd", "RUN_BRIDGE_REPLAY.cmd", "bridge_parse_errors", "bridge_timeouts", "bridge_downlink_errors", "bridge_downlink_playback_errors", "arrival-rehearsal", "conversation-audio-loop", "bridge-kill-recovery", "advisory comparison only")) {
   if ($hardwareSimulationComparatorText -notmatch [regex]::Escape($pattern)) {
@@ -1602,6 +1848,18 @@ if ($manifest.androidCompanionSpec -ne "docs/ANDROID_COMPANION_SPEC.md") {
   throw "Manifest androidCompanionSpec mismatch: $($manifest.androidCompanionSpec)"
 }
 
+if ($manifest.androidCompanionTestPlan -ne "docs/ANDROID_COMPANION_TEST_PLAN.md") {
+  throw "Manifest androidCompanionTestPlan mismatch: $($manifest.androidCompanionTestPlan)"
+}
+
+if ($manifest.companionCrossPlatformPlan -ne "docs/COMPANION_CROSS_PLATFORM_PLAN.md") {
+  throw "Manifest companionCrossPlatformPlan mismatch: $($manifest.companionCrossPlatformPlan)"
+}
+
+if ($manifest.androidCompanionSource -ne "provenance/companion") {
+  throw "Manifest androidCompanionSource mismatch: $($manifest.androidCompanionSource)"
+}
+
 if ($manifest.brainModelGuide -ne "docs/BRAIN_MODEL.md") {
   throw "Manifest brainModelGuide mismatch: $($manifest.brainModelGuide)"
 }
@@ -1691,6 +1949,68 @@ if ($manifest.voiceRvcBase -ne "data/voice_rvc_base.yaml") {
 
 if ($manifest.voiceRvcBaseMetadata -ne "data/voice_rvc_base_metadata.json") {
   throw "Manifest voiceRvcBaseMetadata mismatch: $($manifest.voiceRvcBaseMetadata)"
+}
+
+if ($manifest.companionEvidenceManifest -ne "companion/evidence/c6-evidence/EVIDENCE.json") {
+  throw "Manifest companionEvidenceManifest mismatch: $($manifest.companionEvidenceManifest)"
+}
+
+foreach ($generatedDir in @(
+    "provenance/companion/.gradle",
+    "provenance/companion/.kotlin",
+    "provenance/companion/build",
+    "provenance/companion/app-android/build",
+    "provenance/companion/app-desktop/build",
+    "provenance/companion/core/build",
+    "provenance/companion/ui/build"
+  )) {
+  if (Test-Path -LiteralPath (Join-PackagePath $generatedDir)) {
+    throw "Android companion source provenance must not include generated Gradle cache/build directory: $generatedDir"
+  }
+}
+
+$androidRuntimeStatusTest = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/app-android/src/test/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatusTest.kt") -Raw
+foreach ($pattern in @("androidConnectedDashboardStateContainsArrivalDayEvidenceFields", "Manual fallback URL: ws://192.168.1.42:8765/bridge", "Other LAN URLs: ws://10.0.0.42:8765/bridge", "Robot: Stackchan Bench / bench-v1", "Last bridge frame: heartbeat", "Brain owner: phone-rob-01", "Android NSD advertises _stackchan-bridge._tcp.local", "UDP beacon broadcasts endpoint metadata", "phoneRow.activeBrain")) {
+  if ($androidRuntimeStatusTest -notmatch [regex]::Escape($pattern)) {
+    throw "AndroidBridgeRuntimeStatusTest.kt missing arrival-day dashboard state coverage: $pattern"
+  }
+}
+
+$expectedCompanionEvidence = @(
+  "companion/evidence/c6-evidence/EVIDENCE.json",
+  "companion/evidence/c6-evidence/EVIDENCE.md",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+  "companion/evidence/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
+  "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json"
+)
+$actualCompanionEvidence = @($manifest.companionEvidence)
+foreach ($file in $expectedCompanionEvidence) {
+  if ($actualCompanionEvidence -notcontains $file) {
+    throw "Manifest companionEvidence missing expected file: $file"
+  }
+  Assert-File $file
+}
+foreach ($file in $actualCompanionEvidence) {
+  if ($expectedCompanionEvidence -notcontains $file) {
+    throw "Manifest companionEvidence contains unexpected file: $file"
+  }
+}
+
+$companionEvidenceManifest = Get-Content -LiteralPath (Join-PackagePath "companion/evidence/c6-evidence/EVIDENCE.json") -Raw | ConvertFrom-Json
+if ($companionEvidenceManifest.schema -ne "stackchan.companion.c6-evidence-bundle.v1") {
+  throw "Companion C6 evidence manifest schema mismatch: $($companionEvidenceManifest.schema)"
+}
+if ($companionEvidenceManifest.result.gui_rehearsal_overall_ok -ne $true) {
+  throw "Companion C6 GUI rehearsal did not pass in evidence manifest"
+}
+if ($companionEvidenceManifest.result.brain_supervisor_smoke_overall_ok -ne $true) {
+  throw "Companion C6 brain supervisor smoke did not pass in evidence manifest"
+}
+if ($companionEvidenceManifest.result.diagnostics_exports_attached -ne $true) {
+  throw "Companion C6 diagnostics exports are not attached"
 }
 
 $expectedMediaArtifacts = @(
@@ -1975,6 +2295,20 @@ foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "
   }
 }
 
+$companionCrossPlatformPlan = Get-Content -LiteralPath (Join-PackagePath "docs/COMPANION_CROSS_PLATFORM_PLAN.md") -Raw
+foreach ($pattern in @("Cross-Platform Build & Distribution Plan", "Kotlin Multiplatform", "Compose Multiplatform", "Hydraulic Conveyor", "Android cannot silently self-update outside a store", "C0", "Scaffold", "C1", "Protocol module", "C8", "Distribution hardening", "RELEASE_EVIDENCE.json", "First Three PRs")) {
+  if ($companionCrossPlatformPlan -notmatch [regex]::Escape($pattern)) {
+    throw "COMPANION_CROSS_PLATFORM_PLAN.md missing expected companion distribution plan guidance: $pattern"
+  }
+}
+
+$androidCompanionTestPlan = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_TEST_PLAN.md") -Raw
+foreach ($pattern in @("Android Companion Physical Test Plan", "foreground bridge service", "UDP beacon fallback", "manual URL fallback", "check_companion_v1_readiness.cmd", "protocol fixtures", "pending hardware gates", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleDebug", "companion\app-android\build\outputs\apk\debug\app-android-debug.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "tools\install_android_companion_apk.cmd", "android/apk-install/", "android_apk_install.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "tools\run_android_companion_soak.cmd", "android/screen-off-soak/", "android_companion_soak.json", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "tools\capture_android_companion_logcat.cmd", "android/logcat/", "android_companion_logcat.txt", "endpoint_hello", "screen off", "robot serial log", "Android dashboard switches from waiting to connected", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state")) {
+  if ($androidCompanionTestPlan -notmatch [regex]::Escape($pattern)) {
+    throw "ANDROID_COMPANION_TEST_PLAN.md missing expected Android physical test guidance: $pattern"
+  }
+}
+
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
 foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "disabled-by-default M5 mic capture adapter", "native-tested endpoint-control response framing", "native-tested socket-writer drain path", "native-tested LAN session loop", "boot-wired compile-time Wi-Fi bridge provisioning hook", "real configured Wi-Fi credentials/bridge host", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "WiFiClient", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
@@ -2103,7 +2437,7 @@ if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
 if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
   $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
@@ -2117,7 +2451,7 @@ foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -2151,7 +2485,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Requ
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -2186,6 +2520,10 @@ if ($voiceSourceStatusNoHardwareGate.Count -ne 1) {
 $characterRedTeamNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "character-red-team-dry-run" -and $_.status -eq "pass" })
 if ($characterRedTeamNoHardwareGate.Count -ne 1) {
   throw "readiness_report.json missing passed character red-team dry-run gate"
+}
+$companionC6NoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "companion-c6-brain-supervision-evidence" -and $_.status -eq "pass" })
+if ($companionC6NoHardwareGate.Count -ne 1) {
+  throw "readiness_report.json missing passed companion-c6-brain-supervision-evidence gate"
 }
 $mediaImporterNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "hardware-media-importer-present" -and $_.status -eq "pass" })
 if ($mediaImporterNoHardwareGate.Count -ne 1) {

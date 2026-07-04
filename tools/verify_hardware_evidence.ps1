@@ -3,7 +3,10 @@ param(
   [int64]$MinLogBytes = 128,
   [switch]$AllowMissingPackage,
   [switch]$AllowMissingMedia,
-  [switch]$AllowSyntheticEvidence
+  [switch]$AllowSyntheticEvidence,
+  [switch]$AndroidApkEvidenceContractSelfTest,
+  [switch]$AndroidDashboardEvidenceContractSelfTest,
+  [switch]$AndroidProbeEvidenceContractSelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -468,6 +471,197 @@ function Resolve-EvidenceRelativeFile {
   return Get-Item -LiteralPath $resolved
 }
 
+function Test-AndroidCompanionReportPresent {
+  param([object]$Metadata)
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return $false
+  }
+
+  foreach ($field in @("apkInstallReport", "companionProbeReport", "screenOffSoakReport", "udpBeaconProbeReport", "logcatReport")) {
+    $relativePath = [string]$Metadata.androidCompanionProbes.$field
+    if (-not [string]::IsNullOrWhiteSpace($relativePath) -and
+        (Test-Path -LiteralPath (Join-EvidencePath $relativePath))) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Assert-AndroidReportEvidence {
+  param(
+    [object]$ProbeConfig,
+    [string]$Field,
+    [string]$Description,
+    [string]$ExpectedSchema,
+    [string[]]$PassingStatuses = @("pass")
+  )
+
+  $relativePath = [string]$ProbeConfig.$Field
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    return
+  }
+
+  $path = Join-EvidencePath $relativePath
+  if (-not (Test-Path -LiteralPath $path)) {
+    return
+  }
+
+  $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+  if ($report.schema -ne $ExpectedSchema) {
+    throw "$Description schema mismatch: $($report.schema)"
+  }
+  if (@($PassingStatuses) -notcontains [string]$report.status) {
+    $issues = @($report.issues) -join "; "
+    throw "$Description status is not accepted: $($report.status). $issues"
+  }
+  if ($ExpectedSchema -eq "stackchan.android-apk-install.v1" -and
+      [string]$report.apkSha256 -notmatch "^[0-9a-fA-F]{64}$") {
+    throw "$Description is missing a valid apkSha256."
+  }
+  if ($ExpectedSchema -eq "stackchan.android-apk-install.v1") {
+    if ([string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+      throw "$Description is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$report.versionName) -or
+        [string]::IsNullOrWhiteSpace([string]$report.versionCode)) {
+      throw "$Description is missing installed versionName/versionCode."
+    }
+  }
+}
+
+function Assert-AndroidCompanionReportEvidence {
+  param([object]$Metadata)
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return
+  }
+
+  $probeConfig = $Metadata.androidCompanionProbes
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "apkInstallReport" `
+    -Description "Android APK install evidence" `
+    -ExpectedSchema "stackchan.android-apk-install.v1" `
+    -PassingStatuses @("installed")
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "companionProbeReport" `
+    -Description "Android companion bridge probe" `
+    -ExpectedSchema "stackchan.android-companion-probe.v1"
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "screenOffSoakReport" `
+    -Description "Android screen-off soak" `
+    -ExpectedSchema "stackchan.android-companion-soak.v1"
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "udpBeaconProbeReport" `
+    -Description "Android UDP beacon probe" `
+    -ExpectedSchema "stackchan.android-udp-beacon-probe.v1"
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "logcatReport" `
+    -Description "Android companion logcat capture" `
+    -ExpectedSchema "stackchan.android-companion-logcat.v1" `
+    -PassingStatuses @("captured")
+}
+
+function Test-AndroidDashboardManifestEntry {
+  param([object]$Entry)
+
+  $relativePath = [string]$Entry.relativePath
+  $notes = [string]$Entry.notes
+  if ([string]$Entry.kind -ne "photo" -or
+      $relativePath -notmatch "^(?i:photos)/" -or
+      [string]::IsNullOrWhiteSpace($notes)) {
+    return $false
+  }
+
+  foreach ($pattern in @(
+    "(?i)android.*dashboard|dashboard.*android",
+    "(?i)connected",
+    "(?i)robot\s+identity",
+    "(?i)firmware/version|firmware.*version|version.*firmware",
+    "(?i)last\s+bridge\s+frame",
+    "(?i)active\s+brain\s+owner",
+    "(?i)foreground\s+service|service\s+state"
+  )) {
+    if ($notes -notmatch $pattern) {
+      return $false
+    }
+  }
+
+  $file = Resolve-EvidenceRelativeFile $relativePath
+  return (Test-MediaEvidenceFile $file)
+}
+
+function Assert-AndroidDashboardManifestEvidence {
+  param([object]$Metadata)
+
+  if (-not (Test-AndroidCompanionReportPresent $Metadata)) {
+    return
+  }
+
+  $manifestPath = Join-EvidencePath "media_manifest.json"
+  if (-not (Test-Path -LiteralPath $manifestPath)) {
+    throw "Android companion reports are present, but media_manifest.json is missing. Import the connected dashboard screenshot with RUN_ADD_MEDIA.cmd -Type Photo -Notes `"Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state`" C:\path\android-dashboard.jpg"
+  }
+
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  if ($manifest.schema -ne "stackchan.hardware-media-manifest.v1") {
+    throw "media_manifest.json schema mismatch: $($manifest.schema)"
+  }
+
+  foreach ($entry in @($manifest.entries)) {
+    if (Test-AndroidDashboardManifestEntry $entry) {
+      return
+    }
+  }
+
+  throw "media_manifest.json is missing a photo/video entry whose notes identify the Android dashboard connected state with robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state."
+}
+
+if ($AndroidApkEvidenceContractSelfTest) {
+  $metadataPath = Join-EvidencePath "metadata.json"
+  if (-not (Test-Path -LiteralPath $metadataPath)) {
+    throw "Android APK evidence contract self-test requires metadata.json."
+  }
+
+  $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+  Assert-AndroidCompanionReportEvidence $metadata
+  Write-Host "Android APK strict evidence contract verified:"
+  Write-Host $evidencePath
+  return
+}
+
+if ($AndroidDashboardEvidenceContractSelfTest) {
+  $metadataPath = Join-EvidencePath "metadata.json"
+  if (-not (Test-Path -LiteralPath $metadataPath)) {
+    throw "Android dashboard evidence contract self-test requires metadata.json."
+  }
+
+  $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+  Assert-AndroidDashboardManifestEvidence $metadata
+  Write-Host "Android dashboard strict evidence contract verified:"
+  Write-Host $evidencePath
+  return
+}
+
+if ($AndroidProbeEvidenceContractSelfTest) {
+  $metadataPath = Join-EvidencePath "metadata.json"
+  if (-not (Test-Path -LiteralPath $metadataPath)) {
+    throw "Android probe evidence contract self-test requires metadata.json."
+  }
+
+  $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+  Assert-AndroidCompanionReportEvidence $metadata
+  Write-Host "Android probe strict evidence contract verified:"
+  Write-Host $evidencePath
+  return
+}
+
 $requiredFiles = @(
   "README.md",
   "BENCH_STATUS.md",
@@ -905,6 +1099,9 @@ if (-not $AllowMissingMedia) {
     throw "No supported real-device speaker recording found under audio/. Add a valid .wav, .mp3, .m4a, .aac, .mp4, .mov, or .webm file."
   }
 }
+
+Assert-AndroidDashboardManifestEvidence $metadata
+Assert-AndroidCompanionReportEvidence $metadata
 
 Write-Host "Hardware evidence verified:"
 Write-Host $evidencePath

@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "display": {
+      "reduced_motion": true
+    },
+    "motion": {
+      "servo_enabled": false
+    },
+    "persona": {
+      "active": "spark"
+    }
+  },
+  "type": "settings_snapshot",
+  "version": 12
+}

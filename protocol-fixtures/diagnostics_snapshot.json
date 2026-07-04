@@ -1,0 +1,22 @@
+{
+  "audio": {
+    "sample_rate": 16000,
+    "stream_bytes": 4096
+  },
+  "battery": {
+    "charging": false,
+    "percent": 87
+  },
+  "bridge": {
+    "state": "ready",
+    "timeouts": 0
+  },
+  "firmware": {
+    "version": "dev"
+  },
+  "model": {
+    "latency_ms": 120,
+    "profile": "fake"
+  },
+  "type": "diagnostics_snapshot"
+}

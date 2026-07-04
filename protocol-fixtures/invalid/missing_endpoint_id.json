@@ -1,0 +1,12 @@
+{
+  "app_version": "0.1.0",
+  "capabilities": [
+    "settings"
+  ],
+  "endpoint_kind": "android",
+  "endpoint_name": "Rob's Phone",
+  "priority": 60,
+  "protocol": "stackchan.bridge.v1",
+  "supports_binary_audio": true,
+  "type": "endpoint_hello"
+}
