@@ -37,7 +37,7 @@ class CompanionBridgeService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Starting bridge on port $DEFAULT_BRIDGE_PORT"))
+        startForeground(NOTIFICATION_ID, buildNotification("Starting bridge at ${primaryBridgeManualUrl()}"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -108,9 +108,9 @@ class CompanionBridgeService : Service() {
                     ).also { it.start() }
                 }.onSuccess { bridgeAdvertisement ->
                     advertisement = bridgeAdvertisement
-                    updateNotification("Bridge ready at ws://0.0.0.0:$DEFAULT_BRIDGE_PORT/bridge; advertising NSD")
+                    updateNotification("Bridge ready at ${primaryBridgeManualUrl()}; advertising NSD")
                 }.onFailure { error ->
-                    updateNotification("Bridge ready; NSD advertise unavailable: ${error.message ?: error::class.simpleName}")
+                    updateNotification("Bridge ready at ${primaryBridgeManualUrl()}; NSD unavailable: ${error.message ?: error::class.simpleName}")
                 }
             }.onFailure { error ->
                 updateNotification("Bridge failed: ${error.message ?: error::class.simpleName}")
@@ -133,7 +133,7 @@ class CompanionBridgeService : Service() {
                 if (connected != wasConnected) {
                     wasConnected = connected
                     val suffix = if (connected) "session wake lock active" else "waiting for robot session"
-                    updateNotification("Bridge ready at ws://0.0.0.0:$DEFAULT_BRIDGE_PORT/bridge; $suffix")
+                    updateNotification("Bridge ready at ${primaryBridgeManualUrl()}; $suffix")
                 }
                 delay(WAKE_LOCK_POLL_MS)
             }
@@ -199,6 +199,7 @@ class CompanionBridgeService : Service() {
             .setSmallIcon(R.drawable.ic_stackchan_bridge)
             .setContentTitle("Stackchan companion bridge")
             .setContentText(contentText)
+            .setStyle(Notification.BigTextStyle().bigText(contentText))
             .setContentIntent(openIntent)
             .setOngoing(true)
             .addAction(

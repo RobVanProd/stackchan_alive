@@ -13,7 +13,6 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
 import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
@@ -29,25 +28,33 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermissionOrStartBridge()
+        val manualBridgeUrls = localBridgeManualUrls()
+        val primaryBridgeUrl = manualBridgeUrls.first()
+        val recentLogs = buildList {
+            add("Foreground bridge hosts /bridge for robot testing.")
+            add("Manual fallback URL: $primaryBridgeUrl")
+            if (manualBridgeUrls.size > 1) {
+                add("Other LAN URLs: ${manualBridgeUrls.drop(1).joinToString(", ")}")
+            }
+            add("Android NSD advertises _stackchan-bridge._tcp.local.")
+            add("UDP beacon broadcasts endpoint metadata on port 8766.")
+            add("Settings and trusted endpoints persist on this phone.")
+        }
         setContent {
             CompanionConsole(
                 targetName = "Android",
                 state = CompanionUiState(
-                    connection = "Bridge service active on this phone",
+                    connection = "Bridge ready: $primaryBridgeUrl",
                     brainOwner = "Android",
                     brainService = BrainServiceUiState(
                         running = true,
                         status = "Foreground",
                         pid = "android",
-                        endpoint = "0.0.0.0:$DEFAULT_BRIDGE_PORT",
+                        endpoint = primaryBridgeUrl,
                         command = "CompanionBridgeService",
-                        recentLogs = listOf(
-                            "Foreground bridge hosts /bridge for robot testing.",
-                            "Android NSD advertises _stackchan-bridge._tcp.local.",
-                            "Settings and trusted endpoints persist on this phone.",
-                        ),
+                        recentLogs = recentLogs,
                     ),
-                    consoleMessage = "Awaiting Stack-chan bridge handshake on Android.",
+                    consoleMessage = "Awaiting Stack-chan bridge handshake at $primaryBridgeUrl.",
                 ),
             )
         }
