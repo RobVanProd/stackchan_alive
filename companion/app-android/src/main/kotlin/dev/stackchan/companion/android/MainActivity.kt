@@ -43,22 +43,10 @@ class MainActivity : ComponentActivity() {
             val bridgeStatus by AndroidBridgeRuntimeStatusStore.status.collectAsState()
             CompanionConsole(
                 targetName = "Android",
-                state = CompanionUiState(
-                    connection = bridgeStatus.connectionLabel,
-                    brainOwner = bridgeStatus.activeBrainOwner.ifBlank { "None" },
-                    heartbeatMs = if (bridgeStatus.robotConnected) 8 else 0,
-                    robotState = bridgeStatus.robotState,
-                    brainService = BrainServiceUiState(
-                        running = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
-                        status = bridgeStatus.serviceStatus,
-                        pid = "android",
-                        endpoint = bridgeStatus.primaryBridgeUrl,
-                        command = "CompanionBridgeService",
-                        recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
-                    ),
-                    consoleMessage = bridgeStatus.consoleMessage,
-                    endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
-                ),
+                state = androidCompanionUiState(endpointHello, trustedEndpoints, bridgeStatus),
+                onStartBrain = { startBridgeServiceOnce() },
+                onStopBrain = { stopBridgeService() },
+                onRestartBrain = { restartBridgeService() },
             )
         }
     }
@@ -85,6 +73,16 @@ class MainActivity : ComponentActivity() {
         }
         bridgeServiceStarted = true
         CompanionBridgeService.start(this)
+    }
+
+    private fun stopBridgeService() {
+        bridgeServiceStarted = false
+        CompanionBridgeService.stop(this)
+    }
+
+    private fun restartBridgeService() {
+        bridgeServiceStarted = true
+        CompanionBridgeService.restart(this)
     }
 
     private fun showBatteryOptimizationPromptIfNeeded() {
@@ -134,6 +132,33 @@ class MainActivity : ComponentActivity() {
         const val KEY_BATTERY_PROMPT_SHOWN = "battery_optimization_prompt_shown"
     }
 }
+
+internal fun androidCompanionUiState(
+    endpointHello: EndpointHello,
+    trustedEndpoints: List<TrustedEndpoint>,
+    bridgeStatus: AndroidBridgeRuntimeStatus,
+): CompanionUiState =
+    CompanionUiState(
+        connection = bridgeStatus.connectionLabel,
+        brainOwner = bridgeStatus.activeBrainOwner.ifBlank { "None" },
+        heartbeatMs = if (bridgeStatus.robotConnected) 8 else 0,
+        robotState = bridgeStatus.robotState,
+        brainService = BrainServiceUiState(
+            running = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
+            status = bridgeStatus.serviceStatus,
+            panelTitle = "Android Bridge Service",
+            primaryActionRunningLabel = "Stop bridge",
+            primaryActionStoppedLabel = "Start bridge",
+            restartActionLabel = "Restart bridge",
+            showBrainHandoffActions = false,
+            pid = "android",
+            endpoint = bridgeStatus.primaryBridgeUrl,
+            command = "CompanionBridgeService",
+            recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
+        ),
+        consoleMessage = bridgeStatus.consoleMessage,
+        endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
+    )
 
 private fun androidEndpointRows(
     endpointHello: EndpointHello,

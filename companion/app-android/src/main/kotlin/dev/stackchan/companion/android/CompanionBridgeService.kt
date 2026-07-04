@@ -244,5 +244,19 @@ class CompanionBridgeService : Service() {
                 context.startService(intent)
             }
         }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, CompanionBridgeService::class.java).setAction(ACTION_STOP)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun restart(context: Context) {
+            stop(context)
+            start(context)
+        }
     }
 }

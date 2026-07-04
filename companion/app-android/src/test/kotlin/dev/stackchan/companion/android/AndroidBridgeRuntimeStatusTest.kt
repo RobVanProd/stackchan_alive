@@ -1,6 +1,8 @@
 package dev.stackchan.companion.android
 
+import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import org.junit.Test
 
 class AndroidBridgeRuntimeStatusTest {
@@ -41,5 +43,26 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("No robot hello yet", status.robotFingerprint)
         assertEquals("Awaiting robot", status.robotState)
         assertEquals("Bridge stopped: ws://192.168.1.42:8765/bridge", status.connectionLabel)
+    }
+
+    @Test
+    fun androidUiStateUsesBridgeServiceOperatorLabels() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot session",
+            ),
+        )
+
+        assertEquals("Android Bridge Service", uiState.brainService.panelTitle)
+        assertEquals("Stop bridge", uiState.brainService.primaryActionRunningLabel)
+        assertEquals("Start bridge", uiState.brainService.primaryActionStoppedLabel)
+        assertEquals("Restart bridge", uiState.brainService.restartActionLabel)
+        assertEquals("CompanionBridgeService", uiState.brainService.command)
+        assertEquals("ws://192.168.1.42:8765/bridge", uiState.brainService.endpoint)
+        assertFalse(uiState.brainService.showBrainHandoffActions)
     }
 }

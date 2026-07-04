@@ -99,6 +99,11 @@ data class C6RehearsalUiState(
 data class BrainServiceUiState(
     val running: Boolean = false,
     val status: String = "Stopped",
+    val panelTitle: String = "PC Brain Supervisor",
+    val primaryActionRunningLabel: String = "Stop brain",
+    val primaryActionStoppedLabel: String = "Start brain",
+    val restartActionLabel: String = "Restart",
+    val showBrainHandoffActions: Boolean = true,
     val pid: String = "n/a",
     val endpoint: String = "0.0.0.0:8766",
     val command: String = "python bridge/lan_service.py",
@@ -386,7 +391,7 @@ private fun BrainPanel(
     onRunC6Rehearsal: () -> Unit = {},
 ) {
     PanelShell(modifier = modifier) {
-        SectionTitle("PC Brain Supervisor", Purple)
+        SectionTitle(state.brainService.panelTitle, Purple)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxWidth()) {
             Readout("Service", state.brainService.status, if (state.brainService.running) Mint else Amber)
@@ -402,15 +407,21 @@ private fun BrainPanel(
         Spacer(Modifier.height(14.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SmallCommand(
-                text = if (state.brainService.running) "Stop brain" else "Start brain",
+                text = if (state.brainService.running) {
+                    state.brainService.primaryActionRunningLabel
+                } else {
+                    state.brainService.primaryActionStoppedLabel
+                },
                 filled = true,
                 onClick = if (state.brainService.running) onStopBrain else onStartBrain,
             )
-            SmallCommand("Restart", onClick = onRestartBrain)
+            SmallCommand(state.brainService.restartActionLabel, onClick = onRestartBrain)
             SmallCommand("Export diagnostics", onClick = onExportDiagnostics)
             SmallCommand("Run C6 rehearsal", onClick = onRunC6Rehearsal)
-            SmallCommand("Use phone")
-            SmallCommand("Handoff")
+            if (state.brainService.showBrainHandoffActions) {
+                SmallCommand("Use phone")
+                SmallCommand("Handoff")
+            }
         }
         Spacer(Modifier.height(12.dp))
         Readout("Diagnostics export", state.diagnosticsExport.status, if (state.diagnosticsExport.error.isBlank()) Mint else Danger)
