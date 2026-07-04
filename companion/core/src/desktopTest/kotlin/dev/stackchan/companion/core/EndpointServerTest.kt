@@ -4,7 +4,9 @@ import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
+import java.nio.ByteBuffer
 import java.time.Duration
+import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.LinkedBlockingQueue
@@ -160,6 +162,58 @@ class EndpointServerTest {
         }
     }
 
+    @Test
+    fun endpointServerRunsDeterministicFakeAudioTurn() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+
+            client.send(encodeControlMessage(UtteranceStart(seq = 7, sampleRate = 16000)))
+            client.sendBinary(ByteArray(256) { 1 })
+            client.send(
+                encodeControlMessage(
+                    UtteranceAudio(
+                        seq = 7,
+                        pcmB64 = Base64.getEncoder().encodeToString(ByteArray(128) { 2 }),
+                    ),
+                ),
+            )
+            client.send(encodeControlMessage(UtteranceEnd(seq = 7, transcript = "Bench audio received")))
+
+            val thinking = assertIs<Thinking>(decodeControlMessage(client.nextText()))
+            val response = assertIs<ResponseStart>(decodeControlMessage(client.nextText()))
+            val streamStart = assertIs<AudioStreamStart>(decodeControlMessage(client.nextText()))
+            val firstChunk = client.nextBinary()
+            val secondChunk = client.nextBinary()
+            val firstMouth = assertIs<AudioFrame>(decodeControlMessage(client.nextText()))
+            val finalMouth = assertIs<AudioFrame>(decodeControlMessage(client.nextText()))
+            val streamEnd = assertIs<AudioStreamEnd>(decodeControlMessage(client.nextText()))
+            val responseEnd = assertIs<ResponseEnd>(decodeControlMessage(client.nextText()))
+            val snapshot = server.currentSnapshot()
+
+            assertEquals(7, thinking.seq)
+            assertEquals("fake_audio_turn", response.intent)
+            assertEquals("Bench audio received", response.text)
+            assertEquals("pcm16", streamStart.format)
+            assertEquals(24000, streamStart.sampleRate)
+            assertEquals(1024, streamStart.audioBytes)
+            assertEquals(512, streamStart.chunkBytes)
+            assertEquals(2, streamStart.chunks)
+            assertEquals(512, firstChunk.size)
+            assertEquals(512, secondChunk.size)
+            assertEquals("aa", firstMouth.viseme)
+            assertEquals(true, finalMouth.final)
+            assertEquals(1024, streamEnd.audioBytes)
+            assertEquals(2, streamEnd.chunks)
+            assertEquals(7, responseEnd.seq)
+            assertEquals(384, snapshot.audioBytesReceived)
+            assertEquals(1024, snapshot.audioBytesSent)
+            assertEquals("utterance_end", snapshot.lastMessageType)
+            client.close()
+        }
+    }
+
     private fun freePort(): Int =
         ServerSocket(0).use { it.localPort }
 }
@@ -167,14 +221,23 @@ class EndpointServerTest {
 private class TestWebSocketClient private constructor(
     private val socket: WebSocket,
     private val messages: LinkedBlockingQueue<String>,
+    private val binaryMessages: LinkedBlockingQueue<ByteArray>,
 ) {
     fun send(text: String) {
         socket.sendText(text, true).join()
     }
 
+    fun sendBinary(bytes: ByteArray) {
+        socket.sendBinary(ByteBuffer.wrap(bytes), true).join()
+    }
+
     fun nextText(): String =
         messages.poll(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS)
             ?: error("timed out waiting for websocket text")
+
+    fun nextBinary(): ByteArray =
+        binaryMessages.poll(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS)
+            ?: error("timed out waiting for websocket binary")
 
     fun close() {
         socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join()
@@ -183,6 +246,7 @@ private class TestWebSocketClient private constructor(
     companion object {
         fun connect(uri: String): TestWebSocketClient {
             val messages = LinkedBlockingQueue<String>()
+            val binaryMessages = LinkedBlockingQueue<ByteArray>()
             val listener = object : WebSocket.Listener {
                 override fun onText(
                     webSocket: WebSocket,
@@ -195,6 +259,20 @@ private class TestWebSocketClient private constructor(
                     webSocket.request(1)
                     return CompletableFuture.completedFuture(null)
                 }
+
+                override fun onBinary(
+                    webSocket: WebSocket,
+                    data: ByteBuffer,
+                    last: Boolean,
+                ): CompletionStage<*> {
+                    if (last) {
+                        val bytes = ByteArray(data.remaining())
+                        data.get(bytes)
+                        binaryMessages.offer(bytes)
+                    }
+                    webSocket.request(1)
+                    return CompletableFuture.completedFuture(null)
+                }
             }
             val socket = HttpClient
                 .newHttpClient()
@@ -203,7 +281,7 @@ private class TestWebSocketClient private constructor(
                 .buildAsync(URI.create(uri), listener)
                 .get(Duration.ofSeconds(5).toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
             socket.request(1)
-            return TestWebSocketClient(socket, messages)
+            return TestWebSocketClient(socket, messages, binaryMessages)
         }
     }
 }
