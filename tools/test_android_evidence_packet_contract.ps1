@@ -90,6 +90,9 @@ try {
       "RUN_ANDROID_COMPANION_PROBE.cmd",
       "run_android_companion_probe.ps1",
       '-OutputDir `"$androidCompanionProbeDir`" %*',
+      "RUN_ANDROID_SCREEN_OFF_SOAK.cmd",
+      "run_android_companion_soak.ps1",
+      '-OutputDir `"$androidCompanionSoakDir`" %*',
       "RUN_ANDROID_UDP_BEACON_PROBE.cmd",
       "run_android_udp_beacon_probe.ps1",
       '-OutputDir `"$androidUdpBeaconProbeDir`" %*',
@@ -119,6 +122,7 @@ try {
       "Test-AndroidCompanionReportPresent",
       "stackchan.android-apk-install.v1",
       "stackchan.android-companion-probe.v1",
+      "stackchan.android-companion-soak.v1",
       "stackchan.android-udp-beacon-probe.v1",
       "stackchan.android-companion-logcat.v1",
       "optional unless Android is the companion bridge host",
@@ -137,6 +141,7 @@ try {
       androidCompanionProbes = [ordered]@{
         apkInstallReport = "android/apk-install/android_apk_install.json"
         companionProbeReport = "android/companion-probe/android_companion_probe.json"
+        screenOffSoakReport = "android/screen-off-soak/android_companion_soak.json"
         udpBeaconProbeReport = "android/udp-beacon-probe/android_udp_beacon_probe.json"
         logcatReport = "android/logcat/android_companion_logcat.json"
       }
@@ -154,6 +159,11 @@ try {
       status = "pass"
       issues = @()
     })
+  Write-JsonFile -Path (Join-Path $evidenceRoot "android/screen-off-soak/android_companion_soak.json") -Value ([ordered]@{
+      schema = "stackchan.android-companion-soak.v1"
+      status = "pass"
+      issues = @()
+    })
   Write-JsonFile -Path (Join-Path $evidenceRoot "android/udp-beacon-probe/android_udp_beacon_probe.json") -Value ([ordered]@{
       schema = "stackchan.android-udp-beacon-probe.v1"
       status = "pass"
@@ -168,6 +178,7 @@ try {
   $report = Invoke-ProgressCheck -EvidenceRoot $evidenceRoot
   Assert-ReportHas -Items @($report.passes) -Needle "Android APK install evidence report status: installed" -Description "APK install progress pass"
   Assert-ReportHas -Items @($report.passes) -Needle "Android companion bridge probe report status: pass" -Description "companion probe progress pass"
+  Assert-ReportHas -Items @($report.passes) -Needle "Android screen-off soak report status: pass" -Description "screen-off soak progress pass"
   Assert-ReportHas -Items @($report.passes) -Needle "Android UDP beacon probe report status: pass" -Description "UDP beacon progress pass"
   Assert-ReportHas -Items @($report.passes) -Needle "Android companion logcat capture report status: captured" -Description "logcat progress pass"
   Assert-ReportHas -Items @($report.findings) -Needle "connected-dashboard screenshot" -Description "dashboard screenshot finding"

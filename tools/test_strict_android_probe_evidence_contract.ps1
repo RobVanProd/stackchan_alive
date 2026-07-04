@@ -26,6 +26,11 @@ function New-ValidReports {
       status = "pass"
       issues = @()
     }
+    soak = [ordered]@{
+      schema = "stackchan.android-companion-soak.v1"
+      status = "pass"
+      issues = @()
+    }
     udp = [ordered]@{
       schema = "stackchan.android-udp-beacon-probe.v1"
       status = "pass"
@@ -46,12 +51,14 @@ function New-TestEvidenceRoot {
   $createdRoots.Add($root) | Out-Null
 
   Write-JsonFile -Path (Join-Path $root "android/companion-probe/android_companion_probe.json") -Value $Reports.companion
+  Write-JsonFile -Path (Join-Path $root "android/screen-off-soak/android_companion_soak.json") -Value $Reports.soak
   Write-JsonFile -Path (Join-Path $root "android/udp-beacon-probe/android_udp_beacon_probe.json") -Value $Reports.udp
   Write-JsonFile -Path (Join-Path $root "android/logcat/android_companion_logcat.json") -Value $Reports.logcat
   Write-JsonFile -Path (Join-Path $root "metadata.json") -Value ([ordered]@{
       androidCompanionProbes = [ordered]@{
         apkInstallReport = ""
         companionProbeReport = "android/companion-probe/android_companion_probe.json"
+        screenOffSoakReport = "android/screen-off-soak/android_companion_soak.json"
         udpBeaconProbeReport = "android/udp-beacon-probe/android_udp_beacon_probe.json"
         logcatReport = "android/logcat/android_companion_logcat.json"
       }
@@ -113,6 +120,11 @@ try {
   $udpFailureReports.udp.status = "fail"
   $udpFailureReports.udp.issues = @("timed out waiting for UDP beacon")
   Assert-ContractFailsWith -Name "UDP beacon failure status" -Reports $udpFailureReports -Needle "Android UDP beacon probe status is not accepted"
+
+  $soakFailureReports = New-ValidReports
+  $soakFailureReports.soak.status = "fail"
+  $soakFailureReports.soak.issues = @("failed samples 1 exceeded max failures 0")
+  Assert-ContractFailsWith -Name "screen-off soak failure status" -Reports $soakFailureReports -Needle "Android screen-off soak status is not accepted"
 
   $logcatFailureReports = New-ValidReports
   $logcatFailureReports.logcat.status = "failed"

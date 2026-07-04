@@ -61,6 +61,7 @@ function New-TestEvidenceRoot {
       androidCompanionProbes = [ordered]@{
         apkInstallReport = ""
         companionProbeReport = "android/companion-probe/android_companion_probe.json"
+        screenOffSoakReport = ""
         udpBeaconProbeReport = ""
         logcatReport = ""
       }

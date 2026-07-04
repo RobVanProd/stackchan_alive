@@ -26,6 +26,11 @@ function New-ValidReports {
       status = "pass"
       issues = @()
     }
+    soak = [ordered]@{
+      schema = "stackchan.android-companion-soak.v1"
+      status = "pass"
+      issues = @()
+    }
     udp = [ordered]@{
       schema = "stackchan.android-udp-beacon-probe.v1"
       status = "pass"
@@ -46,12 +51,14 @@ function New-TestEvidenceRoot {
   $createdRoots.Add($root) | Out-Null
 
   Write-JsonFile -Path (Join-Path $root "android/companion-probe/android_companion_probe.json") -Value $Reports.companion
+  Write-JsonFile -Path (Join-Path $root "android/screen-off-soak/android_companion_soak.json") -Value $Reports.soak
   Write-JsonFile -Path (Join-Path $root "android/udp-beacon-probe/android_udp_beacon_probe.json") -Value $Reports.udp
   Write-JsonFile -Path (Join-Path $root "android/logcat/android_companion_logcat.json") -Value $Reports.logcat
   Write-JsonFile -Path (Join-Path $root "metadata.json") -Value ([ordered]@{
       androidCompanionProbes = [ordered]@{
         apkInstallReport = ""
         companionProbeReport = "android/companion-probe/android_companion_probe.json"
+        screenOffSoakReport = "android/screen-off-soak/android_companion_soak.json"
         udpBeaconProbeReport = "android/udp-beacon-probe/android_udp_beacon_probe.json"
         logcatReport = "android/logcat/android_companion_logcat.json"
       }
@@ -145,6 +152,12 @@ try {
   $udpFailureResult = Invoke-ProgressCase -Name "UDP beacon failure status" -Reports $udpFailureReports
   Assert-ReportHasFinding -Report $udpFailureResult -Needle "Android UDP beacon probe report did not pass"
 
+  $soakFailureReports = New-ValidReports
+  $soakFailureReports.soak.status = "fail"
+  $soakFailureReports.soak.issues = @("failed samples 1 exceeded max failures 0")
+  $soakFailureResult = Invoke-ProgressCase -Name "screen-off soak failure status" -Reports $soakFailureReports
+  Assert-ReportHasFinding -Report $soakFailureResult -Needle "Android screen-off soak report did not pass"
+
   $logcatFailureReports = New-ValidReports
   $logcatFailureReports.logcat.status = "failed"
   $logcatFailureReports.logcat.issues = @("CompanionBridgeService not observed")
@@ -154,9 +167,11 @@ try {
   $validReports = New-ValidReports
   $validResult = Invoke-ProgressCase -Name "valid Android probe reports" -Reports $validReports
   Assert-ReportHasPass -Report $validResult -Needle "Android companion bridge probe report status: pass"
+  Assert-ReportHasPass -Report $validResult -Needle "Android screen-off soak report status: pass"
   Assert-ReportHasPass -Report $validResult -Needle "Android UDP beacon probe report status: pass"
   Assert-ReportHasPass -Report $validResult -Needle "Android companion logcat capture report status: captured"
   Assert-ReportLacksFinding -Report $validResult -Needle "Android companion bridge probe report schema mismatch"
+  Assert-ReportLacksFinding -Report $validResult -Needle "Android screen-off soak report did not pass"
   Assert-ReportLacksFinding -Report $validResult -Needle "Android UDP beacon probe report did not pass"
   Assert-ReportLacksFinding -Report $validResult -Needle "Android companion logcat capture report did not pass"
 

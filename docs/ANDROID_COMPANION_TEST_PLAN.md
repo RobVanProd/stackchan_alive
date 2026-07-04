@@ -130,6 +130,22 @@ Evidence to capture:
 - [ ] Android session wake lock is released after the robot disconnects.
 - [ ] Reopening the app still shows the same endpoint identity.
 
+Run the screen-off soak helper while the phone is the active bridge host and the robot is
+connected:
+
+```powershell
+.\tools\run_android_companion_soak.cmd -Url ws://<phone-lan-ip>:8765/bridge
+# From a generated hardware evidence packet, prefer:
+.\RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge
+```
+
+The helper samples the Android bridge for 10 minutes by default and writes
+`output/android-companion-soak/latest/ANDROID_COMPANION_SOAK.md` and
+`android_companion_soak.json`, or `android/screen-off-soak/` when run from an evidence
+packet. Leave `-DurationSeconds 600 -IntervalSeconds 30 -MaxFailures 0` at the strict
+defaults for v1 release evidence unless the test owner explicitly approves a diagnostic
+rerun.
+
 ## Handoff And Failure Cases
 
 - [ ] If desktop and Android endpoints are both trusted, only one endpoint is active brain owner.
@@ -164,5 +180,6 @@ Attach these to the arrival-day packet:
 - mDNS result or failure note
 - `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
+- `android/screen-off-soak/ANDROID_COMPANION_SOAK.md` and `android_companion_soak.json`, or the repo `output/android-companion-soak/latest/` equivalents
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

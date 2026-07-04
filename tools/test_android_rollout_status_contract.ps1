@@ -85,6 +85,11 @@ function New-ValidProbeReports {
       status = "pass"
       issues = @()
     }
+    soak = [ordered]@{
+      schema = "stackchan.android-companion-soak.v1"
+      status = "pass"
+      issues = @()
+    }
     udp = [ordered]@{
       schema = "stackchan.android-udp-beacon-probe.v1"
       status = "pass"
@@ -108,13 +113,16 @@ function New-TestEvidenceRoot {
   New-Item -ItemType Directory -Force -Path (Join-Path $root "android/apk-install") | Out-Null
 
   $companionReportPath = ""
+  $soakReportPath = ""
   $udpReportPath = ""
   $logcatReportPath = ""
   if ($null -ne $ProbeReports) {
     $companionReportPath = "android/companion-probe/android_companion_probe.json"
+    $soakReportPath = "android/screen-off-soak/android_companion_soak.json"
     $udpReportPath = "android/udp-beacon-probe/android_udp_beacon_probe.json"
     $logcatReportPath = "android/logcat/android_companion_logcat.json"
     Write-JsonFile -Path (Join-Path $root $companionReportPath) -Value $ProbeReports.companion
+    Write-JsonFile -Path (Join-Path $root $soakReportPath) -Value $ProbeReports.soak
     Write-JsonFile -Path (Join-Path $root $udpReportPath) -Value $ProbeReports.udp
     Write-JsonFile -Path (Join-Path $root $logcatReportPath) -Value $ProbeReports.logcat
   }
@@ -125,6 +133,7 @@ function New-TestEvidenceRoot {
       androidCompanionProbes = [ordered]@{
         apkInstallReport = "android/apk-install/android_apk_install.json"
         companionProbeReport = $companionReportPath
+        screenOffSoakReport = $soakReportPath
         udpBeaconProbeReport = $udpReportPath
         logcatReport = $logcatReportPath
       }
@@ -237,6 +246,12 @@ try {
   $udpFailureResult = Invoke-RolloutCase -Name "UDP beacon failure status" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $udpFailureReports
   Assert-AndroidGate -Report $udpFailureResult -ExpectedStatus "blocked" -EvidenceNeedle "Android UDP beacon probe status fail"
 
+  $soakFailureReports = New-ValidProbeReports
+  $soakFailureReports.soak.status = "fail"
+  $soakFailureReports.soak.issues = @("failed samples 1 exceeded max failures 0")
+  $soakFailureResult = Invoke-RolloutCase -Name "screen-off soak failure status" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $soakFailureReports
+  Assert-AndroidGate -Report $soakFailureResult -ExpectedStatus "blocked" -EvidenceNeedle "Android screen-off soak status fail"
+
   $logcatFailureReports = New-ValidProbeReports
   $logcatFailureReports.logcat.status = "failed"
   $logcatFailureReports.logcat.issues = @("CompanionBridgeService not observed")
@@ -246,6 +261,7 @@ try {
   $validProbeReports = New-ValidProbeReports
   $validProbeResult = Invoke-RolloutCase -Name "valid Android probe reports" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $validProbeReports
   Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android companion bridge probe status pass"
+  Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android screen-off soak status pass"
   Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android UDP beacon probe status pass"
   Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android companion logcat capture status captured"
 

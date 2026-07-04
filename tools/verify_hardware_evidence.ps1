@@ -478,7 +478,7 @@ function Test-AndroidCompanionReportPresent {
     return $false
   }
 
-  foreach ($field in @("apkInstallReport", "companionProbeReport", "udpBeaconProbeReport", "logcatReport")) {
+  foreach ($field in @("apkInstallReport", "companionProbeReport", "screenOffSoakReport", "udpBeaconProbeReport", "logcatReport")) {
     $relativePath = [string]$Metadata.androidCompanionProbes.$field
     if (-not [string]::IsNullOrWhiteSpace($relativePath) -and
         (Test-Path -LiteralPath (Join-EvidencePath $relativePath))) {
@@ -550,6 +550,11 @@ function Assert-AndroidCompanionReportEvidence {
     -Field "companionProbeReport" `
     -Description "Android companion bridge probe" `
     -ExpectedSchema "stackchan.android-companion-probe.v1"
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "screenOffSoakReport" `
+    -Description "Android screen-off soak" `
+    -ExpectedSchema "stackchan.android-companion-soak.v1"
   Assert-AndroidReportEvidence `
     -ProbeConfig $probeConfig `
     -Field "udpBeaconProbeReport" `

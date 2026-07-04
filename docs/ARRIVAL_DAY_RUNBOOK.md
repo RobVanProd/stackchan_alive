@@ -108,6 +108,10 @@ Before asking the robot to connect manually, run
 `RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge` from the evidence
 packet to verify the Android endpoint handshake and save the report under
 `android/companion-probe/`.
+After the robot connects through the phone and the connected dashboard screenshot is
+captured, run `RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge` with
+the phone screen off. It saves the strict 10-minute heartbeat soak report under
+`android/screen-off-soak/`.
 If mDNS discovery is unreliable, run `tools/run_android_udp_beacon_probe.cmd` from another
 machine on the same LAN, or `RUN_ANDROID_UDP_BEACON_PROBE.cmd` from the evidence packet,
 to capture the Android UDP discovery beacon under `android/udp-beacon-probe/`.

@@ -205,6 +205,12 @@ function Get-AndroidProbeEvidenceStatus {
       passingStatuses = @("pass")
     },
     [ordered]@{
+      label = "Android screen-off soak"
+      path = [string]$probeConfig.screenOffSoakReport
+      schema = "stackchan.android-companion-soak.v1"
+      passingStatuses = @("pass")
+    },
+    [ordered]@{
       label = "Android UDP beacon probe"
       path = [string]$probeConfig.udpBeaconProbeReport
       schema = "stackchan.android-udp-beacon-probe.v1"
