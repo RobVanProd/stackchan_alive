@@ -116,6 +116,28 @@ class EndpointRequestRouterTest {
     }
 
     @Test
+    fun routerAnswersDiagnosticsRequests() {
+        val registry = TrustedEndpointRegistry()
+        registry.upsert(
+            TrustedEndpoint(
+                endpointId = "studio-mac-01",
+                endpointKind = "pc",
+                publicKeyFingerprint = "sha256:1111222233334444",
+                capabilities = listOf("settings", "brain_owner"),
+            ),
+        )
+        val router = EndpointRequestRouter(trustedEndpointRegistry = registry)
+
+        val snapshot = assertIs<DiagnosticsSnapshot>(
+            router.handle(DiagnosticsRequest(domains = listOf("bridge", "model"))),
+        )
+
+        assertEquals(1, snapshot.bridge["trusted_endpoint_count"]!!.jsonPrimitive.content.toInt())
+        assertEquals("fake", snapshot.model!!.jsonObject["profile"]!!.jsonPrimitive.content)
+        assertEquals(null, snapshot.audio)
+    }
+
+    @Test
     fun routerRunsPersistenceCallbacksAfterSuccessfulMutationsOnly() {
         var settingsCallbacks = 0
         var trustCallbacks = 0

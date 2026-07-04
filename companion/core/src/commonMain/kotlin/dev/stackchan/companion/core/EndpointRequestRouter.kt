@@ -4,6 +4,11 @@ class EndpointRequestRouter(
     private val settingsRepository: SettingsRepository = SettingsRepository(),
     private val trustedEndpointRegistry: TrustedEndpointRegistry = TrustedEndpointRegistry(),
     private val brainOwnerCoordinator: BrainOwnerCoordinator = BrainOwnerCoordinator(trustedEndpointRegistry),
+    private val diagnosticsReporter: DiagnosticsReporter = DiagnosticsReporter(
+        settingsRepository = settingsRepository,
+        trustedEndpointRegistry = trustedEndpointRegistry,
+        brainOwnerCoordinator = brainOwnerCoordinator,
+    ),
     private val onSettingsChanged: (SettingsRepository) -> Unit = {},
     private val onTrustedEndpointsChanged: (TrustedEndpointRegistry) -> Unit = {},
 ) {
@@ -15,6 +20,7 @@ class EndpointRequestRouter(
             is SettingsSet -> handleSettingsSet(message)
             is TrustedEndpoints -> trustedEndpointRegistry.trustedEndpoints()
             is ForgetEndpoint -> handleForgetEndpoint(message)
+            is DiagnosticsRequest -> diagnosticsReporter.snapshot(message)
             else -> null
         }
 

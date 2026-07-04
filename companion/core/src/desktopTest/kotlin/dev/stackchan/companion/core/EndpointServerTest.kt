@@ -143,6 +143,23 @@ class EndpointServerTest {
         }
     }
 
+    @Test
+    fun endpointServerRoutesDiagnosticsRequests() {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+
+            client.send(encodeControlMessage(DiagnosticsRequest(domains = listOf("bridge", "audio"))))
+            val snapshot = assertIs<DiagnosticsSnapshot>(decodeControlMessage(client.nextText()))
+
+            assertEquals("stackchan.bridge.v1", snapshot.bridge["protocol"]!!.jsonPrimitive.content)
+            assertEquals("fake", snapshot.audio!!.jsonObject["engine"]!!.jsonPrimitive.content)
+            assertEquals(null, snapshot.model)
+            client.close()
+        }
+    }
+
     private fun freePort(): Int =
         ServerSocket(0).use { it.localPort }
 }
