@@ -29,6 +29,7 @@ data class AndroidBridgeRuntimeStatus(
         get() = when {
             serviceStatus == "Failed" -> "Bridge failed"
             serviceStatus == "Stopped" -> "Bridge stopped"
+            serviceStatus == "Starting" -> "Bridge starting"
             robotConnected -> lastMessageType.ifBlank { "connected" }
             else -> "Awaiting robot"
         }
@@ -37,6 +38,7 @@ data class AndroidBridgeRuntimeStatus(
         get() = when {
             serviceStatus == "Failed" -> "Bridge failed: $primaryBridgeUrl"
             serviceStatus == "Stopped" -> "Bridge stopped: $primaryBridgeUrl"
+            serviceStatus == "Starting" -> "Bridge starting: $primaryBridgeUrl"
             robotConnected -> "Connected: $robotDisplayName"
             else -> "Bridge ready: $primaryBridgeUrl"
         }
@@ -45,6 +47,7 @@ data class AndroidBridgeRuntimeStatus(
         get() = when {
             serviceStatus == "Failed" -> serviceDetail
             serviceStatus == "Stopped" -> serviceDetail
+            serviceStatus == "Starting" -> serviceDetail
             robotConnected -> "Robot $robotDisplayName last reported `${lastMessageType.ifBlank { "connected" }}`; brain owner: ${activeBrainOwner.ifBlank { "None" }}."
             else -> "Awaiting Stack-chan bridge handshake at $primaryBridgeUrl."
         }

@@ -67,6 +67,24 @@ class AndroidBridgeRuntimeStatusTest {
     }
 
     @Test
+    fun startingStatusDoesNotClaimBridgeReady() {
+        val status = AndroidBridgeRuntimeStatus(
+            manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+            serviceStatus = "Starting",
+            serviceDetail = "Starting bridge at ws://192.168.1.42:8765/bridge",
+            robotConnected = true,
+            robotId = "stackchan-bench-01",
+            robotName = "Stackchan Bench",
+            firmwareVersion = "bench-v1",
+            lastMessageType = "heartbeat",
+        )
+
+        assertEquals("Bridge starting", status.robotState)
+        assertEquals("Bridge starting: ws://192.168.1.42:8765/bridge", status.connectionLabel)
+        assertEquals("Starting bridge at ws://192.168.1.42:8765/bridge", status.consoleMessage)
+    }
+
+    @Test
     fun serviceFailureClearsPreviousRobotSession() {
         AndroidBridgeRuntimeStatusStore.updateSession(
             snapshot = EndpointSessionSnapshot(
