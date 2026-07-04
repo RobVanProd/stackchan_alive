@@ -230,6 +230,39 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.robotSetup.serviceRunning)
         assertFalse(uiState.robotSetup.robotConnected)
         assertEquals("Awaiting Stackchan robot", uiState.robotSetup.robotName)
+        assertEquals("Add your Stack-chan", uiState.robotSetup.setupTitle)
+        assertTrue(uiState.robotSetup.setupStatus.contains("Bridge is ready"))
+        assertEquals(0, uiState.robotSetup.trustedCompanionCount)
+        assertEquals(3, uiState.robotSetup.steps.size)
+        assertTrue(uiState.robotSetup.steps[0].completed)
+        assertFalse(uiState.robotSetup.steps[0].current)
+        assertFalse(uiState.robotSetup.steps[1].completed)
+        assertTrue(uiState.robotSetup.steps[1].current)
+        assertFalse(uiState.robotSetup.steps[2].completed)
+    }
+
+    @Test
+    fun androidUiStateMarksSetupCompleteWhenRobotHelloArrives() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                lastMessageType = "heartbeat",
+            ),
+        )
+
+        assertTrue(uiState.robotSetup.robotConnected)
+        assertTrue(uiState.robotSetup.setupStatus.contains("Stackchan Bench is connected"))
+        assertTrue(uiState.robotSetup.steps.all { it.completed })
+        assertTrue(uiState.robotSetup.steps.last().current)
+        assertTrue(uiState.endpoints.first { it.kind == "robot" }.connected)
     }
 
     @Test
@@ -255,6 +288,7 @@ class AndroidBridgeRuntimeStatusTest {
         val storedEndpoint = uiState.endpoints.first { it.endpointId == "studio-mac-01" }
         assertEquals("Studio Mac", storedEndpoint.name)
         assertTrue(storedEndpoint.removable)
+        assertEquals(1, uiState.robotSetup.trustedCompanionCount)
         assertFalse(uiState.endpoints.first { it.kind == "android" }.removable)
         assertFalse(uiState.endpoints.first { it.kind == "robot" }.removable)
     }

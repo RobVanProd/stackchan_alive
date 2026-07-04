@@ -25,6 +25,7 @@ import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.EndpointRow
+import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.TelemetryReading
 
@@ -171,20 +172,60 @@ internal fun androidCompanionUiState(
             command = "CompanionBridgeService",
             recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
         ),
-        robotSetup = androidRobotSetup(bridgeStatus),
+        robotSetup = androidRobotSetup(bridgeStatus, trustedEndpoints.size),
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
     )
 
-private fun androidRobotSetup(bridgeStatus: AndroidBridgeRuntimeStatus): RobotSetupUiState =
-    RobotSetupUiState(
+private fun androidRobotSetup(
+    bridgeStatus: AndroidBridgeRuntimeStatus,
+    trustedCompanionCount: Int,
+): RobotSetupUiState {
+    val serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed"
+    val setupStatus = when {
+        bridgeStatus.robotConnected -> "${bridgeStatus.robotDisplayName} is connected. Brain and settings controls are now available."
+        serviceRunning -> "Bridge is ready. Connect Stack-chan to this phone's bridge URL."
+        else -> "Start the phone bridge so Stack-chan can discover this app."
+    }
+    return RobotSetupUiState(
+        setupStatus = setupStatus,
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
-        serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
+        serviceRunning = serviceRunning,
         robotConnected = bridgeStatus.robotConnected,
         robotName = bridgeStatus.robotDisplayName,
         robotFingerprint = bridgeStatus.robotFingerprint,
+        trustedCompanionCount = trustedCompanionCount,
+        steps = listOf(
+            RobotSetupStepUiState(
+                label = "Start phone bridge",
+                detail = if (serviceRunning) {
+                    "The bridge is advertising on this phone."
+                } else {
+                    "Tap Start bridge so Stack-chan has somewhere to connect."
+                },
+                completed = serviceRunning,
+                current = !serviceRunning,
+            ),
+            RobotSetupStepUiState(
+                label = "Connect Stack-chan",
+                detail = "Power on Stack-chan, keep it on this Wi-Fi, and enter the phone bridge URL.",
+                completed = bridgeStatus.robotConnected,
+                current = serviceRunning && !bridgeStatus.robotConnected,
+            ),
+            RobotSetupStepUiState(
+                label = "Confirm robot ready",
+                detail = if (bridgeStatus.robotConnected) {
+                    "Robot hello received: ${bridgeStatus.robotDisplayName} / ${bridgeStatus.robotFingerprint}."
+                } else {
+                    "Wait here until the robot row changes from waiting to connected."
+                },
+                completed = bridgeStatus.robotConnected,
+                current = bridgeStatus.robotConnected,
+            ),
+        ),
     )
+}
 
 private fun androidTelemetryReadings(bridgeStatus: AndroidBridgeRuntimeStatus): List<TelemetryReading> =
     listOf(

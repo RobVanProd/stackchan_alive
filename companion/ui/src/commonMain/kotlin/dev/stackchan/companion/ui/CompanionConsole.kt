@@ -91,12 +91,27 @@ data class CompanionUiState(
 )
 
 data class RobotSetupUiState(
+    val setupTitle: String = "Add your Stack-chan",
+    val setupStatus: String = "Start the phone bridge, then connect Stack-chan on the same Wi-Fi.",
     val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
     val otherBridgeUrls: List<String> = emptyList(),
     val serviceRunning: Boolean = false,
     val robotConnected: Boolean = false,
     val robotName: String = "Awaiting Stack-chan robot",
     val robotFingerprint: String = "No robot hello yet",
+    val trustedCompanionCount: Int = 0,
+    val steps: List<RobotSetupStepUiState> = listOf(
+        RobotSetupStepUiState("Start bridge", "Keep this app open so Stack-chan can reach the phone.", current = true),
+        RobotSetupStepUiState("Connect robot", "Put Stack-chan on the same Wi-Fi and enter the phone bridge URL."),
+        RobotSetupStepUiState("Confirm ready", "Wait for the robot hello before using brain or settings controls."),
+    ),
+)
+
+data class RobotSetupStepUiState(
+    val label: String,
+    val detail: String,
+    val completed: Boolean = false,
+    val current: Boolean = false,
 )
 
 data class DiagnosticsExportUiState(
@@ -576,11 +591,7 @@ private fun EndpointRegistry(
                 background = if (state.robotSetup.robotConnected) Color(0xFF0D2A25) else Color(0xFF2A2613),
             )
         }
-        Text(
-            "Add or reconnect the robot, then manage the companions allowed to control it.",
-            color = Muted,
-            fontSize = 11.sp,
-        )
+        Text("Add or reconnect the robot, then manage the companions allowed to control it.", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(12.dp))
         RobotSetupCard(
             setup = state.robotSetup,
@@ -627,13 +638,15 @@ private fun RobotSetupCard(
                     Text("SC", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(setup.robotName, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(setup.robotFingerprint, color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(setup.setupTitle, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(setup.setupStatus, color = Muted, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 SmallCommand(if (expanded) "Hide setup" else "Setup", onClick = onToggleExpanded)
             }
 
             if (expanded) {
+                Readout("Robot", setup.robotName, if (setup.robotConnected) Mint else Amber)
+                Readout("Robot fingerprint", setup.robotFingerprint, if (setup.robotConnected) Cyan else Muted)
                 Readout("Phone bridge URL", setup.primaryBridgeUrl, Cyan)
                 if (setup.otherBridgeUrls.isNotEmpty()) {
                     Text(
@@ -645,9 +658,15 @@ private fun RobotSetupCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                PairingStep(1, "Power on Stack-chan and keep this phone on the same Wi-Fi.")
-                PairingStep(2, "Open the robot bridge or Wi-Fi setup on Stack-chan and enter the phone bridge URL above.")
-                PairingStep(3, "Return here and wait for the status to change to Connected before handing off brain control.")
+                setup.steps.forEachIndexed { index, step ->
+                    PairingStep(index + 1, step)
+                }
+                Text(
+                    "Trusted companions stored: ${setup.trustedCompanionCount}. Remove old phones, PCs, or test nodes below when they should no longer control Stack-chan.",
+                    color = Muted,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     SmallCommand("Restart discovery", filled = true, onClick = onRestartBridge)
                     SmallCommand(
@@ -662,18 +681,26 @@ private fun RobotSetupCard(
 }
 
 @Composable
-private fun PairingStep(number: Int, text: String) {
+private fun PairingStep(number: Int, step: RobotSetupStepUiState) {
+    val color = when {
+        step.completed -> Mint
+        step.current -> Amber
+        else -> Muted
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-        Surface(color = Color(0xFF102E30), shape = CircleShape) {
+        Surface(color = if (step.completed) Color(0xFF0D2A25) else Color(0xFF102E30), shape = CircleShape) {
             Text(
-                number.toString(),
-                color = Cyan,
+                if (step.completed) "OK" else number.toString(),
+                color = color,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
-        Text(text, color = Ink, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(step.label, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, lineHeight = 17.sp)
+            Text(step.detail, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        }
     }
 }
 
@@ -1001,6 +1028,10 @@ private fun EndpointItem(
                         Spacer(Modifier.height(6.dp))
                         SmallCommand("Reconnect", onClick = onReconnect)
                     }
+                } else if (endpoint.kind == "robot") {
+                    StatusPill("Waiting", Amber, Color(0xFF2A2613))
+                    Spacer(Modifier.height(6.dp))
+                    SmallCommand("Setup", filled = true, onClick = onReconnect)
                 } else if (endpoint.removable) {
                     Button(
                         onClick = { onForgetEndpoint(endpoint.endpointId) },

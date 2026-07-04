@@ -124,6 +124,9 @@ Evidence to capture:
 
 ## Robot Session
 
+- [ ] The **Add your Stack-chan** setup card shows the live phone bridge URL and the three setup states: Start phone bridge, Connect Stack-chan, and Confirm robot ready.
+- [ ] The disconnected robot row shows a waiting/setup action rather than an unavailable handoff action.
+- [ ] The setup card shows how many trusted companion nodes are stored before the operator removes or keeps old devices.
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
 - [ ] Android notification switches from waiting to session active.
