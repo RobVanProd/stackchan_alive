@@ -32,7 +32,10 @@ Start with these files:
 
 Do not loosen the foundation rules. The validator rejects wider response caps, unsafe
 memory prefixes, missing safety lines, clone markers, bad prompt slots, and missing
-packaged prompts.
+packaged prompts. If `voice.yaml` points at packaged prompt audio, `pack.yaml` must also
+declare `provenance.voice_policy` pointing at a `stackchan.voice-source-provenance.v1`
+record. Review-only prototype audio may pass validation, but it must be documented; an
+undocumented voice source fails.
 
 ## Validate
 

@@ -96,8 +96,9 @@ pack compatible with every firmware build.
 4. Character harness run: parameterize `bridge/character_harness.py` by pack so its
    validation vocabulary and caps come from the pack + foundation, and replay the
    deterministic transcript against the pack's prompt.
-5. Voice provenance gate on any shipped audio (reuses the existing
-   `voice_source_provenance` machinery).
+5. Voice provenance gate on any shipped packaged prompt audio: `pack.yaml`
+   `provenance.voice_policy` must point at a `stackchan.voice-source-provenance.v1`
+   record with forbidden-source attestations and rollout evidence requirements.
 6. Checksums over the pack directory.
 
 **Sharing = a zip of the pack folder.** Import runs the verifier before the pack is
@@ -138,10 +139,10 @@ proves the pack seam is not Spark-specific. The bridge prompt, character harness
 `SpeechPlanner` line table, firmware earcon tone table, firmware face/idle-life/circadian
 behavior constants, expression defaults, yawn shape, listen/think/orient motion biases,
 packaged prompt metadata, firmware WAV embedding list, release prompt WAV/sidecar
-packaging, and red-team dry-run harness now load from persona packs. The red-team gate is
-corpus/validator-ready, but it still
-requires a configured real runner before it can pass as model evidence. Production voice
-assets and provenance remain the next pack-native surface.
+packaging, voice-source provenance validation, and red-team dry-run harness now load from
+persona packs. The red-team gate is corpus/validator-ready, but it still requires a
+configured real runner before it can pass as model evidence. Production voice assets remain
+review-gated until a licensed/owned source record clears the rollout evidence requirements.
 
 1. **Extract Spark:** create `personas/spark/` from CHARACTER_LOCK.md, `voice_persona.yaml`,
    `expressions.yaml`, and the strings currently in `SpeechPlanner.cpp` /
@@ -163,7 +164,8 @@ assets and provenance remain the next pack-native surface.
    face/idle-life/circadian behavior constants, expression defaults, yawn shape, and
    listen/think/orient motion biases, packaged prompt metadata, the firmware WAV
    embedding list, and release prompt WAV/sidecar packaging are now generated from the
-   pack; production voice assets and provenance remain the next pack-native surface.
+   pack; packaged prompt audio now requires pack-native voice provenance, while production
+   voice approval remains blocked until licensed/owned source evidence exists.
 
 Steps 1-8 can run entirely in parallel with the hardware bring-up track in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — this is host/build tooling and pure-logic firmware
