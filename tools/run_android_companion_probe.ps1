@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$Url,
+  [double]$Timeout = 5.0,
   [string]$OutputDir = "output/android-companion-probe/latest",
   [switch]$Json,
   [switch]$AllowNonAndroid
@@ -13,7 +14,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $python = Get-StackchanPreviewPython
 $script = Join-Path $repoRoot "bridge/android_companion_probe.py"
 
-$args = @($script, $Url, "--out-dir", $OutputDir)
+$args = @($script, $Url, "--timeout", "$Timeout", "--out-dir", $OutputDir)
 if ($Json) {
   $args += "--json"
 }

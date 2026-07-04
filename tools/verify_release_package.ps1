@@ -553,6 +553,20 @@ foreach ($pattern in @("AndroidUdpBeaconProbeTest", "test_validate_accepts_andro
   }
 }
 
+$androidCompanionProbeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_android_companion_probe.ps1") -Raw
+foreach ($pattern in @("[double]`$Timeout = 5.0", "--timeout", "android_companion_probe.py", "--allow-non-android")) {
+  if ($androidCompanionProbeRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_android_companion_probe.ps1 missing Android companion probe wrapper contract: $pattern"
+  }
+}
+
+$androidUdpBeaconProbeRunnerText = Get-Content -LiteralPath (Join-PackagePath "tools/run_android_udp_beacon_probe.ps1") -Raw
+foreach ($pattern in @("[double]`$Timeout = 10.0", "[int]`$ExpectedBridgePort = 8765", "--expected-bridge-port", "--expected-endpoint-id", "android_udp_beacon_probe.py", "--allow-non-android")) {
+  if ($androidUdpBeaconProbeRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_android_udp_beacon_probe.ps1 missing Android UDP beacon probe wrapper contract: $pattern"
+  }
+}
+
 $hardwareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_hardware_evidence.ps1") -Raw
 foreach ($pattern in @("BENCH_STATUS.md", "BENCH_STATUS.json", "Stackchan Bench Status", "stackchan.bench-status.v1", "nextAction", "nextCommand", "NEXT_STEPS.md", "Stackchan Evidence Next Steps", "production voice-source provenance", "stackchan.release-acceptance.v1", "test-ready-for-device-arrival", "blocked-pending-hardware-validation", "release_acceptance.json", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Speech-mouth demo evidence", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "Test-AudioEvidenceFile", "Speaker recording file", "Intelligible through device speaker", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "RVC lead audition reference hash does not match metadata", "voiceGateStatus", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "stackchan.voice-source-status.v1", "voice_source_status.json status does not match metadata voiceGateStatus", "RVC_VOICE_BASE_STATUS.md", "rvc_voice_base_status.json", "stackchan.rvc-voice-base-status.v1", "rvc_voice_base_status.json distributionApproved does not match metadata voiceGateStatus", "shareVerification", "stackchan.share-verification.v1", "verifiedShareUrl", "verifiedUrlFile", "share verification report does not show all probes HTTP 200", "HOSTED_MEDIA_REFERENCE.md missing expected marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "Speak-all-intents demo complete", "command=speak_intent", "cue_intent=", "source=packaged_prompt", "soak display frame-budget telemetry", "soak face animator telemetry", "soak speech cue telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "Test-AndroidDashboardManifestEntry", "Assert-AndroidDashboardManifestEvidence", "Android companion reports are present", "media_manifest.json is missing a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "AllowSyntheticEvidence", "diagnosticOnly")) {
   if ($hardwareVerifierText -notmatch [regex]::Escape($pattern)) {

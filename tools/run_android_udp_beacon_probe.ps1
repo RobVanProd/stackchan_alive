@@ -2,6 +2,7 @@ param(
   [string]$BindHost = "",
   [int]$Port = 8766,
   [double]$Timeout = 10.0,
+  [int]$ExpectedBridgePort = 8765,
   [string]$ExpectedEndpointId = "",
   [string]$OutputDir = "output/android-udp-beacon/latest",
   [switch]$Json,
@@ -15,7 +16,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $python = Get-StackchanPreviewPython
 $script = Join-Path $repoRoot "bridge/android_udp_beacon_probe.py"
 
-$args = @($script, "--port", "$Port", "--timeout", "$Timeout", "--out-dir", $OutputDir)
+$args = @($script, "--port", "$Port", "--timeout", "$Timeout", "--expected-bridge-port", "$ExpectedBridgePort", "--out-dir", $OutputDir)
 if ($BindHost -ne "") {
   $args += @("--bind-host", $BindHost)
 }
