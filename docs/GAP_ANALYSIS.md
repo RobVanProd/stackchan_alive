@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry slice check in this workspace: **126/126 native firmware logic
+Current firmware transport/registry/control slice check in this workspace: **132/132 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -21,7 +21,7 @@ piece of real hardware input and the real network transport:
 | Wake word + commands (P4) | Command map done, tested | **No ESP-SR**; wake/commands are bench text |
 | Face tracking (P5) | GazeTracker done, tested | CameraAdapter has no camera (no `esp_camera`/ESP-DL; `STACKCHAN_ENABLE_CAMERA` never set) |
 | Voice out (P6) | Done | **Real** (`M5.Speaker`, packaged WAVs, PCM16 downlink playback) |
-| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec and endpoint registry are native-tested; **no Wi-Fi/TCP task or endpoint persistence in firmware** |
+| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec, endpoint registry, and endpoint-control adapter are native-tested; **no Wi-Fi/TCP task or endpoint persistence in firmware** |
 | LLM / STT / TTS | Contracts, harness, benchmark tooling | All engines deterministic placeholders / `unconfigured` |
 
 So the demo that currently exists is: a Python simulator talking to a Python service, or a
@@ -40,10 +40,12 @@ binary chunks into `BridgeClient::submitBinaryFrame()`, and marks the bridge dis
 close frames. Firmware also has a native-tested `BridgeEndpointRegistry` for the PC/mobile
 endpoint model: bounded trust records, explicit owner claims, current-owner stickiness,
 heartbeat expiration, priority promotion, disconnect recovery, and `forget_endpoint`.
-What is still missing is the production Wi-Fi/TCP task, provisioning config, nonvolatile
-endpoint persistence, message hookup, and reconnect/failover loop. `BridgeClient` is still
-fed by the 115200-baud serial bench in the running firmware, so the P7 loop cannot run
-untethered.
+`BridgeEndpointControl` now parses endpoint-control JSON into that registry and emits
+bounded responses for endpoint hello, heartbeat, claim/release, owner status, trusted-list,
+forget, and capability-update messages. What is still missing is the production Wi-Fi/TCP
+task, provisioning config, nonvolatile endpoint persistence, response send integration, and
+reconnect/failover loop. `BridgeClient` is still fed by the 115200-baud serial bench in the
+running firmware, so the P7 loop cannot run untethered.
 
 The detailed Android/bridge contract lives in
 [ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
@@ -51,9 +53,9 @@ The detailed Android/bridge contract lives in
 Current bridge-side progress: `bridge/lan_service.py` now implements the host control-plane
 messages for trusted endpoint registration, active brain ownership, settings, diagnostics,
 capability updates, and endpoint forgetting, and `bridge/lan_smoke.py` has an
-`endpoint-controls` socket scenario. Current firmware-side progress is frame-level and
-registry-rule-level only; it still cannot reach the service without the serial bench until
-Wi-Fi/TCP wiring lands.
+`endpoint-controls` socket scenario. Current firmware-side progress is frame-level,
+registry-rule-level, and endpoint-control-adapter-level; it still cannot reach the service
+without the serial bench until Wi-Fi/TCP wiring lands.
 
 ### B2. The serial link physically cannot carry the audio design
 
@@ -152,9 +154,9 @@ real-hardware evidence in the status table exists.
 
 1. **Wi-Fi client/provisioning + production WebSocket task in firmware** — unblocks P7
    untethered, resolves B1/B2; `lan_service.py` is already the counterparty, while the
-   frame-level adapter and endpoint arbitration rules are native-tested. Includes Wi-Fi
-   provisioning config, nonvolatile trusted endpoint persistence, message hookup, and live
-   PC/mobile handoff evidence.
+   frame-level adapter, endpoint arbitration rules, and endpoint-control parser are
+   native-tested. Includes Wi-Fi provisioning config, nonvolatile trusted endpoint
+   persistence, adapter response-send hookup, and live PC/mobile handoff evidence.
 2. **I2S/ES7210 mic capture task** feeding the existing `AudioSaliency` + PCM upload path
    (B3). The logic and tests are already waiting for it.
 3. **ESP-SR wake gate** (B4) — also makes PRIVACY.md enforceable, which must happen in the

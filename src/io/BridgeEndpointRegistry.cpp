@@ -141,6 +141,8 @@ bool BridgeEndpointRegistry::releaseOwner(const char* endpointId, uint32_t nowMs
     telemetry_.rejected++;
     return false;
   }
+  endpoints_[activeOwnerIndex_].lastSeenMs = nowMs;
+  endpoints_[activeOwnerIndex_].lastHeartbeatMs = 0;
   releaseOwnerIndex(nowMs);
   update(nowMs);
   refreshTelemetry();

@@ -68,9 +68,11 @@ speed is not accepted until it passes the same Character Lock benchmark and red-
 the PC path.
 
 The host bridge already accepts the core control messages described below. Firmware now has
-a native-tested WebSocket handshake/frame adapter and trusted-endpoint owner registry, but
-still needs the Wi-Fi/TCP task, provisioning config, nonvolatile endpoint persistence, and
-message hookup before the physical robot can use this control plane.
+a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and
+endpoint-control adapter for endpoint hello, heartbeat, brain claim/release, owner status,
+trusted endpoint listing, forgetting, and capability updates. It still needs the Wi-Fi/TCP
+task, provisioning config, nonvolatile endpoint persistence, and live transport integration
+before the physical robot can use this control plane.
 
 ## Multi-Endpoint Model
 
