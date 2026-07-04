@@ -23,6 +23,7 @@ dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.websockets)
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.serialization.json)
 }
 
 compose.desktop {

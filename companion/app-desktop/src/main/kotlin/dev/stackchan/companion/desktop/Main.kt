@@ -5,11 +5,19 @@ import androidx.compose.ui.window.application
 import dev.stackchan.companion.core.CompanionIdentity
 import dev.stackchan.companion.ui.CompanionStatusView
 
-fun main() = application {
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = CompanionIdentity.displayName,
-    ) {
-        CompanionStatusView(targetName = "Desktop")
+fun main() {
+    val runtime = DesktopCompanionRuntime().start()
+    Runtime.getRuntime().addShutdownHook(Thread { runtime.close() })
+
+    application {
+        Window(
+            onCloseRequest = {
+                runtime.close()
+                exitApplication()
+            },
+            title = CompanionIdentity.displayName,
+        ) {
+            CompanionStatusView(targetName = "Desktop")
+        }
     }
 }
