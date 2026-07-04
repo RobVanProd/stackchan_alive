@@ -90,7 +90,8 @@ function Find-ApkSigner {
     if (-not (Test-Path -LiteralPath $sdkRoot -PathType Container)) {
       continue
     }
-    $candidate = Get-ChildItem -LiteralPath $sdkRoot -Recurse -File -Include "apksigner", "apksigner.bat" -ErrorAction SilentlyContinue |
+    $candidate = Get-ChildItem -LiteralPath $sdkRoot -Recurse -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -in @("apksigner", "apksigner.bat") } |
       Sort-Object FullName -Descending |
       Select-Object -First 1
     if ($candidate) {
@@ -408,6 +409,7 @@ function Test-AndroidReleaseApkSignature {
   if ($text -match "Signer #1 certificate DN:\s*(.+)") {
     $signer = $matches[1].Trim()
   }
+  $signingProfile = if ($signer -match "CN=Android Debug") { "lab-debug-fallback" } elseif ([string]::IsNullOrWhiteSpace($signer)) { "unknown" } else { "upload-key" }
 
   return [ordered]@{
     status = if ($verified) { "verified" } else { "failed" }
@@ -415,7 +417,14 @@ function Test-AndroidReleaseApkSignature {
     verifier = $resolvedApkSigner
     scheme = $scheme
     signer = $signer
-    detail = if ($verified) { "Release APK signature verified by apksigner." } else { "apksigner verification failed: $text" }
+    signingProfile = $signingProfile
+    detail = if ($verified) {
+      if ($signingProfile -eq "lab-debug-fallback") {
+        "Release APK signature verified by apksigner with the Android debug certificate; lab install only, not Play upload signing."
+      } else {
+        "Release APK signature verified by apksigner."
+      }
+    } else { "apksigner verification failed: $text" }
   }
 }
 
@@ -481,13 +490,21 @@ function Test-AndroidReleaseBundleSignature {
   if ($text -match "X\.509,\s*([^`r`n]+)") {
     $signer = $matches[1].Trim()
   }
+  $signingProfile = if ($text -match "CN=Android Debug") { "lab-debug-fallback" } elseif ([string]::IsNullOrWhiteSpace($signer)) { "unknown" } else { "upload-key" }
 
   return [ordered]@{
     status = if ($verified) { "verified" } else { "failed" }
     bundle = [string]$releaseEntry["path"]
     verifier = $resolvedJarSigner
     signer = $signer
-    detail = if ($verified) { "Release AAB signature verified by jarsigner." } else { "jarsigner verification failed: $text" }
+    signingProfile = $signingProfile
+    detail = if ($verified) {
+      if ($signingProfile -eq "lab-debug-fallback") {
+        "Release AAB signature verified by jarsigner with the Android debug certificate; lab evidence only, not Play upload signing."
+      } else {
+        "Release AAB signature verified by jarsigner."
+      }
+    } else { "jarsigner verification failed: $text" }
   }
 }
 
@@ -596,6 +613,7 @@ $lines += "- Status: $($androidSigning.status)"
 $lines += "- APK: $($androidSigning.apk)"
 $lines += "- Scheme: $($androidSigning.scheme)"
 $lines += "- Signer: $($androidSigning.signer)"
+$lines += "- Signing profile: $($androidSigning.signingProfile)"
 $lines += "- Verifier: $($androidSigning.verifier)"
 $lines += "- Detail: $($androidSigning.detail)"
 $lines += ""
@@ -603,6 +621,7 @@ $lines += "## Android Bundle Signing"
 $lines += "- Status: $($androidBundleSigning.status)"
 $lines += "- Bundle: $($androidBundleSigning.bundle)"
 $lines += "- Signer: $($androidBundleSigning.signer)"
+$lines += "- Signing profile: $($androidBundleSigning.signingProfile)"
 $lines += "- Verifier: $($androidBundleSigning.verifier)"
 $lines += "- Detail: $($androidBundleSigning.detail)"
 $lines += ""

@@ -17,7 +17,7 @@ function Add-Check {
   param(
     [string]$Id,
     [string]$Name,
-    [ValidateSet("pass", "fail")]
+    [ValidateSet("pass", "fail", "pending")]
     [string]$Status,
     [string]$Evidence,
     [string]$Detail
@@ -30,6 +30,84 @@ function Add-Check {
     evidence = $Evidence
     detail = $Detail
   }
+}
+
+function Get-ConfiguredValue {
+  param([string]$Name)
+
+  $environmentValue = [Environment]::GetEnvironmentVariable($Name)
+  if (-not [string]::IsNullOrWhiteSpace($environmentValue)) {
+    return [ordered]@{
+      source = "environment"
+      value = $environmentValue
+    }
+  }
+
+  $propertiesPath = Join-RootPath "companion/gradle.properties"
+  if (Test-Path -LiteralPath $propertiesPath -PathType Leaf) {
+    foreach ($line in Get-Content -LiteralPath $propertiesPath) {
+      $trimmed = $line.Trim()
+      if ($trimmed.StartsWith("#") -or $trimmed -notmatch "^$([regex]::Escape($Name))\s*=\s*(.+)$") {
+        continue
+      }
+      return [ordered]@{
+        source = "companion/gradle.properties"
+        value = $matches[1].Trim()
+      }
+    }
+  }
+
+  return [ordered]@{
+    source = ""
+    value = ""
+  }
+}
+
+function Test-PlayUploadSigningEnvironment {
+  $requiredNames = @(
+    "STACKCHAN_ANDROID_KEYSTORE",
+    "STACKCHAN_ANDROID_KEYSTORE_PASSWORD",
+    "STACKCHAN_ANDROID_KEY_ALIAS",
+    "STACKCHAN_ANDROID_KEY_PASSWORD"
+  )
+  $configured = @{}
+  $missing = @()
+  foreach ($name in $requiredNames) {
+    $value = Get-ConfiguredValue $name
+    $configured[$name] = $value
+    if ([string]::IsNullOrWhiteSpace([string]$value.value)) {
+      $missing += $name
+    }
+  }
+
+  if ($missing.Count -gt 0) {
+    Add-Check `
+      -Id "play-upload-signing-environment" `
+      -Name "Play upload signing environment" `
+      -Status "pending" `
+      -Evidence "STACKCHAN_ANDROID_KEYSTORE*" `
+      -Detail ("Upload signing credentials are not configured yet; missing " + ($missing -join ", ") + ". Lab APK/AAB builds remain debug-certificate signed until these exist.")
+    return
+  }
+
+  $keystorePath = [string]$configured["STACKCHAN_ANDROID_KEYSTORE"].value
+  $resolvedKeystore = if ([System.IO.Path]::IsPathRooted($keystorePath)) { $keystorePath } else { Join-Path $Root $keystorePath }
+  if (-not (Test-Path -LiteralPath $resolvedKeystore -PathType Leaf)) {
+    Add-Check `
+      -Id "play-upload-signing-environment" `
+      -Name "Play upload signing environment" `
+      -Status "fail" `
+      -Evidence "STACKCHAN_ANDROID_KEYSTORE" `
+      -Detail "Upload signing variables are present, but the configured keystore file does not exist."
+    return
+  }
+
+  Add-Check `
+    -Id "play-upload-signing-environment" `
+    -Name "Play upload signing environment" `
+    -Status "pass" `
+    -Evidence "STACKCHAN_ANDROID_KEYSTORE*" `
+    -Detail "Upload signing variables are configured and the keystore file exists."
 }
 
 function Join-RootPath {
@@ -144,6 +222,8 @@ Test-TextPatterns `
   -RelativePath "companion/app-android/build.gradle.kts" `
   -Patterns @("STACKCHAN_ANDROID_KEYSTORE", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "playRelease", "isDebuggable = false")
 
+Test-PlayUploadSigningEnvironment
+
 Test-TextPatterns `
   -Id "ci-aab-build" `
   -Name "CI builds Android release bundle" `
@@ -178,12 +258,20 @@ foreach ($relativePath in @(
 }
 
 $failedChecks = @($checks | Where-Object { $_.status -eq "fail" })
-$status = if ($failedChecks.Count -gt 0) { "not-ready" } else { "source-ready" }
+$pendingChecks = @($checks | Where-Object { $_.status -eq "pending" })
+$status = if ($failedChecks.Count -gt 0) {
+  "not-ready"
+} elseif ($pendingChecks.Count -gt 0) {
+  "source-ready-pending-upload-signing"
+} else {
+  "source-ready"
+}
 $report = [ordered]@{
   schema = "stackchan.android-play-release-readiness.v1"
   status = $status
   root = [string]$Root
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count
+  pending = $pendingChecks.Count
   failed = $failedChecks.Count
   checks = @($checks)
 }
@@ -192,9 +280,9 @@ if ($Json) {
   $report | ConvertTo-Json -Depth 8
 } else {
   Write-Host "Android Play release readiness: $status"
-  Write-Host "Passed: $($report.passed)  Failed: $($report.failed)"
+  Write-Host "Passed: $($report.passed)  Pending: $($report.pending)  Failed: $($report.failed)"
   foreach ($check in $checks) {
-    $prefix = if ($check.status -eq "pass") { "PASS" } else { "FAIL" }
+    $prefix = if ($check.status -eq "pass") { "PASS" } elseif ($check.status -eq "pending") { "PENDING" } else { "FAIL" }
     Write-Host "[$prefix] $($check.name) - $($check.detail)"
   }
 }

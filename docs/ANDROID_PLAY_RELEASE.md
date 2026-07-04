@@ -41,6 +41,8 @@ Gradle properties or environment variables are present:
 When they are absent, Gradle falls back to the Android debug signing config so the
 CI/lab release APK remains installable before Play credentials exist. That fallback
 is for testing only and must not be used for a public Play upload.
+`tools/check_android_play_release_readiness.ps1` reports this as
+`source-ready-pending-upload-signing` until the upload-key environment is configured.
 
 Example local Play-ready build:
 
