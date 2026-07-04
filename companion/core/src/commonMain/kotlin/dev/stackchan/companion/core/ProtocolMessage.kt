@@ -274,7 +274,7 @@ fun defaultDesktopEndpointHello(endpointId: String = "pc-companion-c0"): Endpoin
         endpointKind = "pc",
         priority = 50,
         supportsBinaryAudio = true,
-        capabilities = listOf("settings", "diagnostics"),
+        capabilities = listOf("settings", "diagnostics", "brain_owner"),
     )
 
 fun defaultAndroidEndpointHello(endpointId: String = "android-companion-c0"): EndpointHello =
@@ -284,7 +284,7 @@ fun defaultAndroidEndpointHello(endpointId: String = "android-companion-c0"): En
         endpointKind = "android",
         priority = 60,
         supportsBinaryAudio = true,
-        capabilities = listOf("settings", "diagnostics", "persona_select"),
+        capabilities = listOf("settings", "diagnostics", "persona_select", "brain_owner"),
     )
 
 fun decodeControlMessage(text: String): BridgeMessage {

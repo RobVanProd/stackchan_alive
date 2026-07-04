@@ -87,6 +87,35 @@ class EndpointRequestRouterTest {
     }
 
     @Test
+    fun routerAnswersBrainOwnerClaimsAndClearsForgottenOwner() {
+        val registry = TrustedEndpointRegistry()
+        registry.upsert(
+            TrustedEndpoint(
+                endpointId = "phone-rob-01",
+                endpointKind = "android",
+                publicKeyFingerprint = "sha256:1111222233334444",
+                priority = 80,
+                autoConnect = true,
+                capabilities = listOf("settings", "brain_owner"),
+            ),
+        )
+        val coordinator = BrainOwnerCoordinator(registry)
+        val router = EndpointRequestRouter(
+            trustedEndpointRegistry = registry,
+            brainOwnerCoordinator = coordinator,
+        )
+
+        val claimed = assertIs<OwnerStatus>(
+            router.handle(ClaimBrain(endpointId = "phone-rob-01", reason = "use mobile brain")),
+        )
+        router.handle(ForgetEndpoint(endpointId = "phone-rob-01"))
+
+        assertEquals("phone-rob-01", claimed.activeBrainOwner)
+        assertEquals("", coordinator.status().activeBrainOwner)
+        assertEquals("idle", coordinator.status().state)
+    }
+
+    @Test
     fun routerRunsPersistenceCallbacksAfterSuccessfulMutationsOnly() {
         var settingsCallbacks = 0
         var trustCallbacks = 0

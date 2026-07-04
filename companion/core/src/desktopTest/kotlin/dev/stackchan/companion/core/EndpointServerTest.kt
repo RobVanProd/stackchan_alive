@@ -111,6 +111,38 @@ class EndpointServerTest {
         }
     }
 
+    @Test
+    fun endpointServerRoutesOwnerHandoffRequests() {
+        val port = freePort()
+        val registry = TrustedEndpointRegistry()
+        registry.upsert(
+            TrustedEndpoint(
+                endpointId = "phone-rob-01",
+                endpointKind = "android",
+                publicKeyFingerprint = "sha256:1111222233334444",
+                priority = 80,
+                autoConnect = true,
+                capabilities = listOf("brain_owner"),
+            ),
+        )
+        val router = EndpointRequestRouter(trustedEndpointRegistry = registry)
+        CompanionEndpointServer(EndpointServerConfig(port = port, requestRouter = router)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+
+            client.send(encodeControlMessage(ClaimBrain(endpointId = "phone-rob-01", reason = "mobile brain online")))
+            val claimed = assertIs<OwnerStatus>(decodeControlMessage(client.nextText()))
+            client.send(encodeControlMessage(ReleaseBrain(endpointId = "phone-rob-01", reason = "operator release")))
+            val released = assertIs<OwnerStatus>(decodeControlMessage(client.nextText()))
+
+            assertEquals("phone-rob-01", claimed.activeBrainOwner)
+            assertEquals("claimed", claimed.state)
+            assertEquals("", released.activeBrainOwner)
+            assertEquals("idle", released.state)
+            client.close()
+        }
+    }
+
     private fun freePort(): Int =
         ServerSocket(0).use { it.localPort }
 }
