@@ -1,30 +1,11 @@
 package dev.stackchan.companion.desktop
 
-import dev.stackchan.companion.core.BridgeHello
-import dev.stackchan.companion.core.CompanionIdentity
-import dev.stackchan.companion.core.DeviceHello
-import dev.stackchan.companion.core.Listening
-import dev.stackchan.companion.core.ResponseEnd
-import dev.stackchan.companion.core.ResponseStart
-import dev.stackchan.companion.core.Thinking
-import dev.stackchan.companion.core.UtteranceEnd
-import dev.stackchan.companion.core.UtteranceStart
-import dev.stackchan.companion.core.decodeControlMessage
-import dev.stackchan.companion.core.encodeControlMessage
-import java.net.ConnectException
 import java.net.InetAddress
 import java.net.ServerSocket
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.WebSocket
-import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
@@ -121,40 +102,23 @@ data class BrainSupervisorSmokeReport(
             put("final_stop_ok", finalStopOk)
             put("diagnostics_export_ok", diagnosticsExportOk)
             put("overall_ok", ok)
-            put("first_start", firstStart.toJson())
-            put("first_turn", firstTurn.toJson())
-            put("first_stop", firstStop.toJson())
-            put("restart_start", restartStart.toJson())
-            put("second_turn", secondTurn.toJson())
-            put("final_stop", finalStop.toJson())
+            put("first_start", firstStart.toBrainSupervisorEvidenceJson())
+            put("first_turn", firstTurn.toBrainTurnEvidenceJson())
+            put("first_stop", firstStop.toBrainSupervisorEvidenceJson())
+            put("restart_start", restartStart.toBrainSupervisorEvidenceJson())
+            put("second_turn", secondTurn.toBrainTurnEvidenceJson())
+            put("final_stop", finalStop.toBrainSupervisorEvidenceJson())
             put("notes", JsonArray(notes.map { JsonPrimitive(it) }))
         }.toString()
 }
-
-data class BrainTurnEvidence(
-    val ok: Boolean,
-    val frameOrder: List<String>,
-    val responseText: String,
-    val thinkingLatencyMs: Long,
-    val responseEndLatencyMs: Long,
-)
-
-private fun BrainTurnEvidence.toJson() =
-    buildJsonObject {
-        put("ok", ok)
-        put("frame_order", JsonArray(frameOrder.map { JsonPrimitive(it) }))
-        put("response_text", responseText)
-        put("thinking_latency_ms", thinkingLatencyMs)
-        put("response_end_latency_ms", responseEndLatencyMs)
-    }
 
 fun runBrainSupervisorSmoke(outDir: Path): BrainSupervisorSmokeReport = runBlocking {
     val notes = mutableListOf<String>()
     val repoRoot = defaultRepoRoot()
     val scriptPath = repoRoot.resolve("bridge").resolve("lan_service.py")
-    val pythonCommand = resolvePythonCommand()
-    val runtimePort = freeLoopbackPort()
-    val brainPort = freeLoopbackPort()
+    val pythonCommand = resolveBrainSupervisorPythonCommand()
+    val runtimePort = freeBrainSupervisorLoopbackPort()
+    val brainPort = freeBrainSupervisorLoopbackPort()
     val stateDir = Files.createTempDirectory(outDir, "state-")
     notes += "Using isolated runtime state directory `${stateDir.fileName}`."
     notes += "Driving Python brain through DesktopCompanionRuntime start/stop/restart controls."
@@ -189,12 +153,12 @@ fun runBrainSupervisorSmoke(outDir: Path): BrainSupervisorSmokeReport = runBlock
     DesktopCompanionRuntime(runtimeConfig).use { runtime ->
         runtime.start()
         val firstStart = runtime.startBrainService()
-        val firstTurn = driveTextTurn(brainPort, deviceId = "stackchan-c6-smoke-1", seq = 71)
+        val firstTurn = driveBrainSupervisorTextTurn(brainPort, deviceId = "stackchan-c6-smoke-1", seq = 71)
         waitForBrainExit(runtime)
         val firstStop = runtime.stopBrainService()
 
         val restartStart = runtime.restartBrainService()
-        val secondTurn = driveTextTurn(brainPort, deviceId = "stackchan-c6-smoke-2", seq = 72)
+        val secondTurn = driveBrainSupervisorTextTurn(brainPort, deviceId = "stackchan-c6-smoke-2", seq = 72)
         waitForBrainExit(runtime)
         val finalStop = runtime.stopBrainService()
 
@@ -221,45 +185,6 @@ fun runBrainSupervisorSmoke(outDir: Path): BrainSupervisorSmokeReport = runBlock
     }
 }
 
-private fun driveTextTurn(port: Int, deviceId: String, seq: Int): BrainTurnEvidence {
-    BrainSmokeClient.connectWithRetry("ws://127.0.0.1:$port/bridge").use { client ->
-        val startedAt = System.nanoTime()
-        client.send(encodeControlMessage(DeviceHello(deviceId = deviceId, capabilities = listOf("diagnostics"))))
-        val hello = decodeControlMessage(client.nextText()) as BridgeHello
-        client.send(encodeControlMessage(UtteranceStart(seq = seq, sampleRate = 16000)))
-        val listening = decodeControlMessage(client.nextText()) as Listening
-        client.send(encodeControlMessage(UtteranceEnd(seq = seq, transcript = "Hello Stackchan.")))
-        val thinking = decodeControlMessage(client.nextText()) as Thinking
-        val thinkingLatencyMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis()
-        val responseStart = decodeControlMessage(client.nextText()) as ResponseStart
-        val frameOrder = mutableListOf(hello.type, listening.type, thinking.type, responseStart.type)
-        var responseEndLatencyMs = thinkingLatencyMs
-        while (true) {
-            val next = decodeControlMessage(client.nextText())
-            frameOrder += next.type
-            if (next is ResponseEnd) {
-                responseEndLatencyMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis()
-                break
-            }
-        }
-        val ok = hello.protocol == CompanionIdentity.protocol &&
-            thinking.seq == seq &&
-            responseStart.seq == seq &&
-            responseStart.text.isNotBlank() &&
-            frameOrder.first() == "hello" &&
-            frameOrder.contains("thinking") &&
-            frameOrder.contains("response_start") &&
-            frameOrder.last() == "response_end"
-        return BrainTurnEvidence(
-            ok = ok,
-            frameOrder = frameOrder,
-            responseText = responseStart.text,
-            thinkingLatencyMs = thinkingLatencyMs,
-            responseEndLatencyMs = responseEndLatencyMs,
-        )
-    }
-}
-
 private fun waitForBrainExit(runtime: DesktopCompanionRuntime): DesktopBrainSupervisorSnapshot {
     val deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos()
     while (System.nanoTime() < deadline) {
@@ -272,21 +197,7 @@ private fun waitForBrainExit(runtime: DesktopCompanionRuntime): DesktopBrainSupe
     return runtime.snapshot().brainSupervisor
 }
 
-private fun DesktopBrainSupervisorSnapshot.toJson() =
-    buildJsonObject {
-        put("running", running)
-        pid?.let { put("pid", it) }
-        put("host", host)
-        put("port", port)
-        put("script_path", scriptPath.toString())
-        put("command", JsonArray(command.map { JsonPrimitive(it) }))
-        startedAt?.let { put("started_at", it.toString()) }
-        stoppedAt?.let { put("stopped_at", it.toString()) }
-        exitCode?.let { put("exit_code", it) }
-        put("recent_logs", JsonArray(recentLogs.map { JsonPrimitive(it) }))
-    }
-
-private fun resolvePythonCommand(): String =
+internal fun resolveBrainSupervisorPythonCommand(): String =
     listOfNotNull(
         System.getProperty("stackchan.brain.python"),
         System.getenv("STACKCHAN_BRAIN_PYTHON"),
@@ -310,88 +221,7 @@ private fun canRunPython(command: String): Boolean =
         process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
     }.getOrDefault(false)
 
-private fun freeLoopbackPort(): Int =
+internal fun freeBrainSupervisorLoopbackPort(): Int =
     ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { socket ->
         socket.localPort
     }
-
-private class BrainSmokeClient private constructor(
-    private val socket: WebSocket,
-    private val messages: LinkedBlockingQueue<String>,
-) : AutoCloseable {
-    fun send(text: String) {
-        socket.sendText(text, true).join()
-    }
-
-    fun nextText(): String =
-        messages.poll(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS)
-            ?: error("timed out waiting for websocket text")
-
-    override fun close() {
-        socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join()
-    }
-
-    companion object {
-        fun connectWithRetry(uri: String): BrainSmokeClient {
-            val deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos()
-            var lastError: Throwable? = null
-            while (System.nanoTime() < deadline) {
-                try {
-                    return connect(uri)
-                } catch (error: Throwable) {
-                    lastError = error
-                    if (!isRetryableConnectError(error)) {
-                        throw error
-                    }
-                    Thread.sleep(100)
-                }
-            }
-            throw IllegalStateException("timed out connecting to $uri", lastError)
-        }
-
-        private fun connect(uri: String): BrainSmokeClient {
-            val messages = LinkedBlockingQueue<String>()
-            val listener = object : WebSocket.Listener {
-                override fun onText(
-                    webSocket: WebSocket,
-                    data: CharSequence,
-                    last: Boolean,
-                ): CompletionStage<*> {
-                    if (last) {
-                        messages.offer(data.toString())
-                    }
-                    webSocket.request(1)
-                    return CompletableFuture.completedFuture(null)
-                }
-
-                override fun onBinary(
-                    webSocket: WebSocket,
-                    data: ByteBuffer,
-                    last: Boolean,
-                ): CompletionStage<*> {
-                    webSocket.request(1)
-                    return CompletableFuture.completedFuture(null)
-                }
-            }
-            val socket = HttpClient
-                .newHttpClient()
-                .newWebSocketBuilder()
-                .connectTimeout(Duration.ofSeconds(2))
-                .buildAsync(URI.create(uri), listener)
-                .get(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS)
-            socket.request(1)
-            return BrainSmokeClient(socket, messages)
-        }
-
-        private fun isRetryableConnectError(error: Throwable): Boolean {
-            var current: Throwable? = error
-            while (current != null) {
-                if (current is ConnectException) {
-                    return true
-                }
-                current = current.cause
-            }
-            return false
-        }
-    }
-}

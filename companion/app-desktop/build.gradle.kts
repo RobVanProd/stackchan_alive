@@ -61,3 +61,11 @@ tasks.register<JavaExec>("brainSupervisorSmoke") {
     mainClass.set("dev.stackchan.companion.desktop.BrainSupervisorSmokeKt")
     args(rootProject.layout.projectDirectory.dir("../output/companion/c6-brain-supervisor").asFile.absolutePath)
 }
+
+tasks.register<JavaExec>("c6GuiRehearsalSmoke") {
+    group = "verification"
+    description = "Runs the desktop GUI C6 rehearsal flow and writes GUI_REHEARSAL evidence."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.stackchan.companion.desktop.BrainSupervisorRehearsalKt")
+    args(rootProject.layout.projectDirectory.dir("../output/companion/c6-gui-rehearsal").asFile.absolutePath)
+}

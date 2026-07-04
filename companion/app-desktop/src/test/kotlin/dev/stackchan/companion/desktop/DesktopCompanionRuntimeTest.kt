@@ -176,12 +176,79 @@ class DesktopCompanionRuntimeTest {
             assertTrue(brainService["command"]!!.jsonArray.isNotEmpty())
             assertEquals("stackchan.bridge.v1", diagnostics["bridge"]!!.jsonObject["protocol"]!!.jsonPrimitive.content)
             assertEquals("Ready", before.diagnosticsExport.status)
+            assertEquals("Ready", before.c6Rehearsal.status)
             assertTrue(Files.isRegularFile(exportedPath))
             assertEquals(config.storageDir.resolve("diagnostics").resolve("DIAGNOSTICS_EXPORT.json"), exportedPath)
             assertEquals("Exported", after.diagnosticsExport.status)
             assertEquals(exportedPath.toString(), after.diagnosticsExport.path)
         }
     }
+
+    @Test
+    fun runtimeRunsC6GuiRehearsalAndPublishesEvidenceState() = runBlocking {
+        val storageDir = Files.createTempDirectory("stackchan-desktop-c6-rehearsal")
+        val scriptPath = defaultRepoRoot().resolve("bridge").resolve("lan_service.py")
+        val brainPort = freePort()
+        val config = runtimeConfig(storageDir).copy(
+            brainSupervisorConfig = DesktopBrainSupervisorConfig(
+                pythonCommand = pythonCommand(),
+                scriptPath = scriptPath,
+                host = "127.0.0.1",
+                port = brainPort,
+                arguments = listOf(
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    brainPort.toString(),
+                    "--runner-profile",
+                    "gemma4-e2b-gguf",
+                    "--runner-case",
+                    "greeting",
+                    "--once",
+                ),
+                workingDirectory = scriptPath.parent,
+            ),
+        )
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+
+            val result = runtime.runC6GuiRehearsal()
+            val after = runtime.toCompanionUiState()
+
+            assertEquals(true, result.report.ok)
+            assertTrue(Files.isRegularFile(result.evidencePath))
+            assertTrue(Files.isRegularFile(result.diagnosticsPath))
+            assertEquals("Passed", after.c6Rehearsal.status)
+            assertEquals(result.evidencePath.toString(), after.c6Rehearsal.path)
+            assertEquals("Exported", after.diagnosticsExport.status)
+            assertEquals(result.diagnosticsPath.toString(), after.diagnosticsExport.path)
+        }
+    }
+
+    private fun pythonCommand(): String =
+        listOfNotNull(
+            System.getProperty("stackchan.test.python"),
+            System.getenv("PYTHON"),
+            System.getenv("PYTHON_EXE"),
+            System.getenv("STACKCHAN_BRAIN_PYTHON"),
+            localWindowsPython(),
+            "python",
+            "python3",
+        ).firstOrNull(::canRunPython) ?: error("Python is required for C6 GUI rehearsal test")
+
+    private fun localWindowsPython(): String? {
+        val localAppData = System.getenv("LOCALAPPDATA") ?: return null
+        return Path.of(localAppData, "Programs", "Python", "Python312", "python.exe").toString()
+    }
+
+    private fun canRunPython(command: String): Boolean =
+        runCatching {
+            val process = ProcessBuilder(command, "--version")
+                .redirectErrorStream(true)
+                .start()
+            process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
+        }.getOrDefault(false)
 }
 
 private class TestWebSocketClient private constructor(

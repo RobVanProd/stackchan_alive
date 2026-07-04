@@ -39,6 +39,9 @@ data class DesktopCompanionRuntimeSnapshot(
     val brainSupervisor: DesktopBrainSupervisorSnapshot,
     val diagnosticsExportPath: Path?,
     val diagnosticsExportError: String = "",
+    val c6RehearsalPath: Path? = null,
+    val c6RehearsalError: String = "",
+    val c6RehearsalRunning: Boolean = false,
     val mdnsError: String = "",
 )
 
@@ -53,6 +56,9 @@ class DesktopCompanionRuntime(
     private var mdnsError: String = ""
     private var diagnosticsExportPath: Path? = null
     private var diagnosticsExportError: String = ""
+    private var c6RehearsalPath: Path? = null
+    private var c6RehearsalError: String = ""
+    private var c6RehearsalRunning: Boolean = false
 
     fun start(): DesktopCompanionRuntime {
         check(server == null) { "desktop companion runtime already started" }
@@ -109,6 +115,9 @@ class DesktopCompanionRuntime(
             brainSupervisor = brainSupervisor.snapshot(),
             diagnosticsExportPath = diagnosticsExportPath,
             diagnosticsExportError = diagnosticsExportError,
+            c6RehearsalPath = c6RehearsalPath,
+            c6RehearsalError = c6RehearsalError,
+            c6RehearsalRunning = c6RehearsalRunning,
             mdnsError = mdnsError,
         )
 
@@ -144,6 +153,25 @@ class DesktopCompanionRuntime(
         }
     }
 
+    suspend fun runC6GuiRehearsal(
+        outputDir: Path = config.storageDir.resolve("diagnostics").resolve("c6-gui-rehearsal"),
+    ): BrainSupervisorRehearsalResult {
+        check(!c6RehearsalRunning) { "C6 GUI rehearsal is already running" }
+        c6RehearsalRunning = true
+        c6RehearsalError = ""
+        return try {
+            val result = runBrainSupervisorGuiRehearsal(outputDir)
+            c6RehearsalPath = result.evidencePath
+            c6RehearsalError = if (result.report.ok) "" else "C6 GUI rehearsal failed"
+            result
+        } catch (error: Exception) {
+            c6RehearsalError = error.message ?: error.javaClass.simpleName
+            throw error
+        } finally {
+            c6RehearsalRunning = false
+        }
+    }
+
     override fun close() {
         brainSupervisor.close()
         registration?.close()
@@ -156,6 +184,9 @@ class DesktopCompanionRuntime(
         mdnsError = ""
         diagnosticsExportPath = null
         diagnosticsExportError = ""
+        c6RehearsalPath = null
+        c6RehearsalError = ""
+        c6RehearsalRunning = false
     }
 }
 

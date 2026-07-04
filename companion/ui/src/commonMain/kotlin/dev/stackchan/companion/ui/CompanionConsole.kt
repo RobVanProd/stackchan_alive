@@ -76,6 +76,7 @@ data class CompanionUiState(
     val consoleMessage: String = "Awaiting wake-gated input on android brain...",
     val brainService: BrainServiceUiState = BrainServiceUiState(),
     val diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
+    val c6Rehearsal: C6RehearsalUiState = C6RehearsalUiState(),
     val endpoints: List<EndpointRow> = listOf(
         EndpointRow("Rob's Phone (This Companion)", "android", "SHA256:B84F17C2A0E192DDB...", 80, true, true),
         EndpointRow("Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false),
@@ -85,6 +86,12 @@ data class CompanionUiState(
 
 data class DiagnosticsExportUiState(
     val status: String = "Not exported",
+    val path: String = "",
+    val error: String = "",
+)
+
+data class C6RehearsalUiState(
+    val status: String = "Ready",
     val path: String = "",
     val error: String = "",
 )
@@ -122,6 +129,7 @@ fun CompanionConsole(
     onStopBrain: () -> Unit = {},
     onRestartBrain: () -> Unit = {},
     onExportDiagnostics: () -> Unit = {},
+    onRunC6Rehearsal: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -146,6 +154,7 @@ fun CompanionConsole(
                                 onStopBrain = onStopBrain,
                                 onRestartBrain = onRestartBrain,
                                 onExportDiagnostics = onExportDiagnostics,
+                                onRunC6Rehearsal = onRunC6Rehearsal,
                             )
                             EndpointRegistry(state, Modifier.fillMaxWidth())
                             TelemetryPanel(state, Modifier.fillMaxWidth())
@@ -174,6 +183,7 @@ fun CompanionConsole(
                                     onStopBrain = onStopBrain,
                                     onRestartBrain = onRestartBrain,
                                     onExportDiagnostics = onExportDiagnostics,
+                                    onRunC6Rehearsal = onRunC6Rehearsal,
                                 )
                                 SecurityPanel(Modifier.fillMaxWidth())
                             }
@@ -352,6 +362,7 @@ private fun BrainPanel(
     onStopBrain: () -> Unit = {},
     onRestartBrain: () -> Unit = {},
     onExportDiagnostics: () -> Unit = {},
+    onRunC6Rehearsal: () -> Unit = {},
 ) {
     PanelShell(modifier = modifier) {
         SectionTitle("PC Brain Supervisor", Purple)
@@ -376,6 +387,7 @@ private fun BrainPanel(
             )
             SmallCommand("Restart", onClick = onRestartBrain)
             SmallCommand("Export diagnostics", onClick = onExportDiagnostics)
+            SmallCommand("Run C6 rehearsal", onClick = onRunC6Rehearsal)
             SmallCommand("Use phone")
             SmallCommand("Handoff")
         }
@@ -385,6 +397,19 @@ private fun BrainPanel(
             Spacer(Modifier.height(6.dp))
             Text(
                 state.diagnosticsExport.path,
+                color = Muted,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Readout("C6 GUI rehearsal", state.c6Rehearsal.status, if (state.c6Rehearsal.error.isBlank()) Mint else Danger)
+        if (state.c6Rehearsal.path.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                state.c6Rehearsal.path,
                 color = Muted,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,

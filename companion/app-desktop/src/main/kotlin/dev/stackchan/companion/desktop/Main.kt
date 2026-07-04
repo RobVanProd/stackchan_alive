@@ -42,6 +42,11 @@ fun main() {
                         runCatching { runtime.exportDiagnosticsEvidenceFile() }
                     }
                 },
+                onRunC6Rehearsal = {
+                    scope.launch {
+                        runCatching { runtime.runC6GuiRehearsal() }
+                    }
+                },
             )
         }
     }

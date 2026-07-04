@@ -3,6 +3,7 @@ package dev.stackchan.companion.desktop
 import dev.stackchan.companion.core.DiagnosticsSnapshot
 import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.ui.BrainServiceUiState
+import dev.stackchan.companion.ui.C6RehearsalUiState
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
@@ -70,6 +71,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         consoleMessage = consoleMessage(owner, runtime),
         brainService = runtime.brainSupervisor.toBrainServiceUiState(),
         diagnosticsExport = runtime.toDiagnosticsExportUiState(),
+        c6Rehearsal = runtime.toC6RehearsalUiState(),
         endpoints = listOf(robotEndpoint, desktopEndpoint),
     )
 }
@@ -115,6 +117,30 @@ private fun DesktopCompanionRuntimeSnapshot.toDiagnosticsExportUiState(): Diagno
         else -> DiagnosticsExportUiState(
             status = "Ready",
             path = storageDir.resolve("diagnostics").resolve("DIAGNOSTICS_EXPORT.json").toString(),
+        )
+    }
+
+private fun DesktopCompanionRuntimeSnapshot.toC6RehearsalUiState(): C6RehearsalUiState =
+    when {
+        c6RehearsalRunning -> C6RehearsalUiState(
+            status = "Running",
+            path = c6RehearsalPath?.toString()
+                ?: storageDir.resolve("diagnostics").resolve("c6-gui-rehearsal").resolve("GUI_REHEARSAL.json")
+                    .toString(),
+        )
+        c6RehearsalError.isNotBlank() -> C6RehearsalUiState(
+            status = "Failed",
+            path = c6RehearsalPath?.toString().orEmpty(),
+            error = c6RehearsalError,
+        )
+        c6RehearsalPath != null -> C6RehearsalUiState(
+            status = "Passed",
+            path = c6RehearsalPath.toString(),
+        )
+        else -> C6RehearsalUiState(
+            status = "Ready",
+            path = storageDir.resolve("diagnostics").resolve("c6-gui-rehearsal").resolve("GUI_REHEARSAL.json")
+                .toString(),
         )
     }
 
