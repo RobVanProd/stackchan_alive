@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry/control/persistence slice check in this workspace: **151/151 native firmware logic
+Current firmware transport/registry/control/persistence slice check in this workspace: **154/154 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -17,7 +17,7 @@ piece of real hardware input and the real network transport:
 | Idle life, circadian, micro-expressions (P1) | Done, tested | Ambient lux is bench-only (no LTR-553 driver) |
 | Touch (P2) | Done | **Real** (`M5.Touch` tap/hold) — the one fully real sense |
 | Proximity, pickup, shake, tilt (P2) | Done, tested | No LTR-553/BMI270 drivers; bench commands only |
-| Sound saliency, direction, VAD (P3) | Done; PCM feature extraction exists and is fixture-tested | **No I2S/ES7210 mic capture task at all** |
+| Sound saliency, direction, VAD (P3) | Done; PCM feature extraction, disabled-by-default M5 mic capture adapter, and telemetry path exist and are fixture/native-tested | No real mic-enabled evidence yet; wake/STT still gated |
 | Wake word + commands (P4) | Command map done, tested | **No ESP-SR**; wake/commands are bench text |
 | Face tracking (P5) | GazeTracker done, tested | CameraAdapter has no camera (no `esp_camera`/ESP-DL; `STACKCHAN_ENABLE_CAMERA` never set) |
 | Voice out (P6) | Done | **Real** (`M5.Speaker`, packaged WAVs, PCM16 downlink playback) |
@@ -85,13 +85,15 @@ to Wi-Fi/TCP. Conclusion: **Wi-Fi transport is not an enhancement, it is the
 prerequisite** for the P7 latency budget; don't spend further effort optimizing the serial
 audio path.
 
-### B3. No microphone path — the flagship behaviors have no input
+### B3. Microphone path is wired, but not evidenced on hardware
 
 `AudioSaliency` has real sample-level feature extraction (`makeAudioSaliencySample` over
-left/right PCM windows) proven against WAV fixtures. Nothing on the device produces those
-windows. Turn-toward-voice (P3), VAD-gated listening (P4), and STT uplink (P7) all starve
-without an I2S/ES7210 capture task. This is the single largest gap between "marked
-complete" and "feels real."
+left/right PCM windows) proven against WAV fixtures. Firmware now has `AudioCaptureAdapter`
+with an M5Unified mic source, disabled by default behind `STACKCHAN_ENABLE_MIC_CAPTURE`,
+plus runtime `audio_capture_*` telemetry and native fake-source coverage from PCM windows to
+`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. What is still missing is a
+CoreS3 run with the mic actually enabled, measured capture telemetry, and the wake/STT path
+that consumes capture beyond local reflex events.
 
 ### B4. No wake word engine — and the privacy model depends on one
 
@@ -176,8 +178,9 @@ real-hardware evidence in the status table exists.
    persistence store, boot load/attach, serial-bench endpoint responses, and masked
    client response-frame encoding are implemented. Includes Wi-Fi provisioning config,
    socket write hookup, and live PC/mobile handoff evidence.
-2. **I2S/ES7210 mic capture task** feeding the existing `AudioSaliency` + PCM upload path
-   (B3). The logic and tests are already waiting for it.
+2. **Enable and evidence the M5 mic capture path** feeding the existing `AudioSaliency`,
+   then extend it to PCM upload for STT (B3). The adapter and native tests exist; hardware
+   capture logs are the next gate.
 3. **ESP-SR wake gate** (B4) — also makes PRIVACY.md enforceable, which must happen in the
    same PR that enables continuous capture.
 4. **Integration spike** (B8) as soon as 1-3 exist in any form; record the PSRAM/core

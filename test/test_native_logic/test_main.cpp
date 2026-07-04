@@ -10,6 +10,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
+#include "io/AudioCaptureAdapter.hpp"
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
@@ -83,6 +84,60 @@ struct WavPcmFixture {
   uint32_t sampleRate = 0;
   std::vector<int16_t> left;
   std::vector<int16_t> right;
+};
+
+class FakeAudioCaptureSource final : public AudioCaptureSource {
+ public:
+  bool begin(uint32_t sampleRate, uint16_t windowSamples) override {
+    beginCalls++;
+    lastSampleRate = sampleRate;
+    lastWindowSamples = windowSamples;
+    enabled = beginResult;
+    return beginResult;
+  }
+
+  bool isEnabled() const override {
+    return enabled;
+  }
+
+  bool record(int16_t* out, uint16_t sampleCount, uint32_t sampleRate) override {
+    recordCalls++;
+    lastSampleRate = sampleRate;
+    lastWindowSamples = sampleCount;
+    if (!recordResult || out == nullptr || samples.size() < sampleCount) {
+      return false;
+    }
+    for (uint16_t i = 0; i < sampleCount; ++i) {
+      out[i] = samples[i];
+    }
+    return true;
+  }
+
+  void end() override {
+    enabled = false;
+    endCalls++;
+  }
+
+  void setSquareWave(uint16_t count, int16_t amplitude) {
+    samples.assign(count, 0);
+    for (uint16_t i = 0; i < count; ++i) {
+      samples[i] = ((i / 5) % 2 == 0) ? amplitude : static_cast<int16_t>(-amplitude);
+    }
+  }
+
+  void setSilence(uint16_t count) {
+    samples.assign(count, 0);
+  }
+
+  bool beginResult = true;
+  bool recordResult = true;
+  bool enabled = false;
+  uint32_t beginCalls = 0;
+  uint32_t recordCalls = 0;
+  uint32_t endCalls = 0;
+  uint32_t lastSampleRate = 0;
+  uint16_t lastWindowSamples = 0;
+  std::vector<int16_t> samples;
 };
 
 uint16_t readLe16(const std::vector<uint8_t>& bytes, size_t offset) {
@@ -420,6 +475,73 @@ void test_audio_reflex_loud_noise_preempts_speech_events() {
   TEST_ASSERT_EQUAL_STRING("audio_loud_noise", events[0].command);
   TEST_ASSERT_TRUE(reflex.telemetry().loudNoise);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.80f, reflex.telemetry().level);
+}
+
+void test_audio_capture_adapter_disabled_default_is_ready_without_source() {
+  AudioCaptureAdapter capture;
+  TEST_ASSERT_TRUE(capture.begin());
+  TEST_ASSERT_TRUE(capture.telemetry().ready);
+  TEST_ASSERT_FALSE(capture.telemetry().enabled);
+  TEST_ASSERT_FALSE(capture.telemetry().hardwareReady);
+  TEST_ASSERT_EQUAL_STRING("mic_capture_disabled", capture.telemetry().lastError);
+
+  AudioReflexEvent events[3];
+  TEST_ASSERT_EQUAL_UINT8(0, capture.poll(100, events, 3));
+  TEST_ASSERT_EQUAL_UINT32(0, capture.telemetry().windowsCaptured);
+}
+
+void test_audio_capture_adapter_rejects_oversized_window() {
+  FakeAudioCaptureSource source;
+  AudioCaptureConfig config;
+  config.enabled = true;
+  config.windowSamples = kAudioCaptureWindowSamples + 1;
+
+  AudioCaptureAdapter capture;
+  TEST_ASSERT_FALSE(capture.begin(config, &source));
+  TEST_ASSERT_TRUE(capture.telemetry().ready);
+  TEST_ASSERT_TRUE(capture.telemetry().enabled);
+  TEST_ASSERT_FALSE(capture.telemetry().hardwareReady);
+  TEST_ASSERT_EQUAL_STRING("mic_capture_bad_config", capture.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(0, source.beginCalls);
+}
+
+void test_audio_capture_adapter_records_pcm_and_emits_reflex_events() {
+  FakeAudioCaptureSource source;
+  source.setSquareWave(kAudioCaptureWindowSamples, 12000);
+
+  AudioCaptureConfig config;
+  config.enabled = true;
+  config.minPollIntervalMs = 10;
+  AudioCaptureAdapter capture;
+  TEST_ASSERT_TRUE(capture.begin(config, &source));
+  TEST_ASSERT_TRUE(capture.telemetry().hardwareReady);
+  TEST_ASSERT_EQUAL_UINT32(kAudioCaptureSampleRate, source.lastSampleRate);
+  TEST_ASSERT_EQUAL_UINT16(kAudioCaptureWindowSamples, source.lastWindowSamples);
+
+  AudioReflexEvent events[3];
+  uint8_t count = capture.poll(100, events, 3);
+  TEST_ASSERT_EQUAL_UINT8(2, count);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::UserSpeaking), static_cast<int>(events[0].event.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SoundDirection), static_cast<int>(events[1].event.type));
+  TEST_ASSERT_EQUAL_UINT32(1, capture.telemetry().windowsCaptured);
+  TEST_ASSERT_EQUAL_UINT32(kAudioCaptureWindowSamples, capture.telemetry().samplesCaptured);
+  TEST_ASSERT_EQUAL_UINT32(2, capture.telemetry().eventsPublished);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, capture.telemetry().lastLevel);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, capture.telemetry().lastZeroCrossingRate);
+
+  TEST_ASSERT_EQUAL_UINT8(0, capture.poll(105, events, 3));
+  TEST_ASSERT_EQUAL_UINT32(1, source.recordCalls);
+
+  source.setSilence(kAudioCaptureWindowSamples);
+  count = capture.poll(120, events, 3);
+  TEST_ASSERT_EQUAL_UINT8(1, count);
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::SpeechEnded), static_cast<int>(events[0].event.type));
+  TEST_ASSERT_EQUAL_UINT32(2, capture.telemetry().windowsCaptured);
+  TEST_ASSERT_EQUAL_UINT32(3, capture.telemetry().eventsPublished);
+
+  capture.stop();
+  TEST_ASSERT_FALSE(capture.telemetry().hardwareReady);
+  TEST_ASSERT_EQUAL_UINT32(1, source.endCalls);
 }
 
 void test_positive_valence_smiles() {
@@ -4296,6 +4418,9 @@ int main() {
   RUN_TEST(test_audio_saliency_uses_wav_fixtures_for_vad_and_direction);
   RUN_TEST(test_audio_reflex_maps_saliency_to_persona_events);
   RUN_TEST(test_audio_reflex_loud_noise_preempts_speech_events);
+  RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);
+  RUN_TEST(test_audio_capture_adapter_rejects_oversized_window);
+  RUN_TEST(test_audio_capture_adapter_records_pcm_and_emits_reflex_events);
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
   RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);

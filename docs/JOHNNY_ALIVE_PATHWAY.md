@@ -27,7 +27,7 @@ Latency targets from the roadmap remain active:
 |---|---|---|
 | P1 Ambient life | Implemented in firmware/preview path with face animation artifacts and reduced-motion handling. | Real hardware idle evidence remains required before consumer promotion. |
 | P2 Physical senses | Bench commands and emotion/safety responses exist for touch, proximity, pickup, shake, putdown, and tilt. | Real touch/proximity/IMU adapters and hardware video evidence. |
-| P3 Sound awareness | Bench sound/noise events, saliency fixtures, and latency telemetry path exist. | Real ES7210 mic capture and on-device direction evidence. |
+| P3 Sound awareness | Bench sound/noise events, saliency fixtures, disabled-by-default M5 mic capture adapter, and latency telemetry path exist. | Real mic-enabled CoreS3 capture and on-device direction evidence. |
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
 | P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |

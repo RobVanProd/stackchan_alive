@@ -7,6 +7,7 @@
 
 #include "config/RobotConfig.hpp"
 #include "face/ProceduralFace.hpp"
+#include "io/AudioCaptureAdapter.hpp"
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
@@ -49,6 +50,8 @@ StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
 SensorAdapter gSensors;
 CameraAdapter gCamera;
+AudioCaptureAdapter gAudioCapture;
+M5MicAudioCaptureSource gAudioCaptureSource;
 AudioOut gAudioOut;
 BridgeAudioDownlink gBridgeAudioDownlink;
 SpeechAdapter gSpeechAdapter;
@@ -636,6 +639,23 @@ void printRuntimeStatus() {
   Serial.print(speechOut.ready ? 1 : 0);
   Serial.print(F(" speech_adapter_hw="));
   Serial.print(speechOut.hardwareEnabled ? 1 : 0);
+  const AudioCaptureTelemetry& capture = gAudioCapture.telemetry();
+  Serial.print(F(" audio_capture_ready="));
+  Serial.print(capture.ready ? 1 : 0);
+  Serial.print(F(" audio_capture_enabled="));
+  Serial.print(capture.enabled ? 1 : 0);
+  Serial.print(F(" audio_capture_hw_ready="));
+  Serial.print(capture.hardwareReady ? 1 : 0);
+  Serial.print(F(" audio_capture_windows="));
+  Serial.print(capture.windowsCaptured);
+  Serial.print(F(" audio_capture_drops="));
+  Serial.print(capture.windowsDropped);
+  Serial.print(F(" audio_capture_events="));
+  Serial.print(capture.eventsPublished);
+  Serial.print(F(" audio_capture_level="));
+  Serial.print(capture.lastLevel, 3);
+  Serial.print(F(" audio_capture_zcr="));
+  Serial.print(capture.lastZeroCrossingRate, 3);
   Serial.print(F(" speech_cues="));
   Serial.print(speechOut.cuesQueued);
   Serial.print(F(" speech_earcons="));
@@ -1308,13 +1328,28 @@ void IntentTask(void* pv) {
   (void)pv;
   TickType_t wake = xTaskGetTickCount();
   uint32_t lastSpeechSeq = 0;
-  RobotEvent pendingAudioEvent;
-  bool hasPendingAudioEvent = false;
+  RobotEvent pendingAudioEvents[4];
+  uint8_t pendingAudioEventCount = 0;
 
   while (true) {
     const uint32_t loopMs = millis();
     gBridgeEndpointControl.update(loopMs);
     updateBridgeNetwork(loopMs);
+
+    AudioReflexEvent audioEvents[3];
+    const uint8_t audioEventCount = gAudioCapture.poll(loopMs, audioEvents, 3);
+    for (uint8_t i = 0; i < audioEventCount; ++i) {
+      if (!audioEvents[i].valid) {
+        continue;
+      }
+      gIntent.applyEvent(audioEvents[i].event, audioEvents[i].mode);
+      if (pendingAudioEventCount < 4) {
+        pendingAudioEvents[pendingAudioEventCount++] = audioEvents[i].event;
+      }
+      if (audioEvents[i].event.type == EventType::UserSpeaking) {
+        gAudioOut.duck(loopMs);
+      }
+    }
 
     RobotEvent cameraEvent;
     while (gCamera.poll(&cameraEvent)) {
@@ -1327,8 +1362,9 @@ void IntentTask(void* pv) {
       if (control.hasEvent) {
         gIntent.applyEvent(control.event, control.mode);
         if (isAudioTelemetryEvent(control.event.type)) {
-          pendingAudioEvent = control.event;
-          hasPendingAudioEvent = true;
+          if (pendingAudioEventCount < 4) {
+            pendingAudioEvents[pendingAudioEventCount++] = control.event;
+          }
         }
         if (control.event.type == EventType::UserSpeaking) {
           gAudioOut.duck(millis());
@@ -1369,10 +1405,10 @@ void IntentTask(void* pv) {
     pollBridgeOutputs(millis());
 
     RobotFrame frame = gIntent.update(millis());
-    if (hasPendingAudioEvent) {
-      printAudioTelemetry(pendingAudioEvent, frame.timestampMs);
-      hasPendingAudioEvent = false;
+    for (uint8_t i = 0; i < pendingAudioEventCount; ++i) {
+      printAudioTelemetry(pendingAudioEvents[i], frame.timestampMs);
     }
+    pendingAudioEventCount = 0;
     if (frame.speechSeq != 0 && frame.speechSeq != lastSpeechSeq && frame.speech.shouldSpeak()) {
       lastSpeechSeq = frame.speechSeq;
       printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);
@@ -1421,6 +1457,7 @@ void setup() {
   gBridgeEndpointStore.load(gBridgeEndpointRegistry, bootMs);
   gBridgeEndpointControl.begin(gBridgeEndpointRegistry);
   gBridgeEndpointControl.attachStore(&gBridgeEndpointStore);
+  gAudioCapture.begin(AudioCaptureConfig {}, &gAudioCaptureSource);
   gBridgeWiFi.begin(BridgeWiFiProvisioningConfig {}, bootMs);
   gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), bootMs);
   gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);

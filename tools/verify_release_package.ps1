@@ -372,6 +372,8 @@ $requiredFiles = @(
   "provenance/src/io/BridgeWiFiClientSocket.cpp",
   "provenance/src/io/BridgeWiFiProvisioner.hpp",
   "provenance/src/io/BridgeWiFiProvisioner.cpp",
+  "provenance/src/io/AudioCaptureAdapter.hpp",
+  "provenance/src/io/AudioCaptureAdapter.cpp",
   "provenance/src/io/BridgeAudioDownlink.hpp",
   "provenance/src/io/BridgeAudioDownlink.cpp",
   "provenance/src/persona/SpeechPlanner.hpp",
@@ -606,6 +608,11 @@ foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "f
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
+foreach ($pattern in @("disabled-by-default M5 mic capture adapter", "mic PCM-to-reflex events", "mic-enabled capture evidence")) {
+  if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/README.md missing mic capture status guidance: $pattern"
+  }
+}
 
 $creatingPersonasText = Get-Content -LiteralPath (Join-PackagePath "docs/CREATING_PERSONAS.md") -Raw
 foreach ($pattern in @("create_persona_pack.cmd nova", "copy-edit-validate-build", "verify_persona_pack.cmd nova --Json", "run_character_red_team.cmd -Persona nova -Json", "STACKCHAN_PERSONA", "voice provenance gate")) {
@@ -680,6 +687,20 @@ $cameraAdapterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/
 foreach ($pattern in @("CameraAdapter::begin", "CameraAdapter::submitFace", "CameraAdapter::submitFaceLost", "CameraAdapter::poll", "STACKCHAN_ENABLE_CAMERA", "EventType::FaceDetected", "EventType::FaceLost", "eventsPublished", "lastEventMs")) {
   if ($cameraAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/CameraAdapter.cpp missing P5 camera-adapter support: $pattern"
+  }
+}
+
+$audioCaptureHeaderText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/AudioCaptureAdapter.hpp") -Raw
+foreach ($pattern in @("STACKCHAN_ENABLE_MIC_CAPTURE", "AudioCaptureConfig", "AudioCaptureTelemetry", "AudioCaptureSource", "M5MicAudioCaptureSource", "AudioCaptureAdapter", "kAudioCaptureSampleRate", "kAudioCaptureWindowSamples")) {
+  if ($audioCaptureHeaderText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/AudioCaptureAdapter.hpp missing P3 mic capture adapter contract: $pattern"
+  }
+}
+
+$audioCaptureText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/AudioCaptureAdapter.cpp") -Raw
+foreach ($pattern in @("AudioCaptureAdapter::begin", "AudioCaptureAdapter::poll", "AudioCaptureAdapter::stop", "AudioCaptureAdapter::configured", "M5MicAudioCaptureSource::begin", "M5.Mic.begin", "M5.Mic.record", "makeAudioSaliencySample", "AudioReflexEvent", "mic_capture_disabled", "mic_capture_bad_config", "mic_begin_failed")) {
+  if ($audioCaptureText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/AudioCaptureAdapter.cpp missing P3 mic capture adapter support: $pattern"
   }
 }
 
@@ -792,6 +813,11 @@ $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp"
 foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeNetworkSession.update", "handleEndpointControlLine", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_timeouts=", "[bridge]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
+  }
+}
+foreach ($pattern in @("AudioCaptureAdapter", "M5MicAudioCaptureSource", "gAudioCapture", "gAudioCapture.begin", "gAudioCapture.poll", "audio_capture_ready=", "audio_capture_enabled=", "audio_capture_hw_ready=", "audio_capture_windows=", "audio_capture_drops=", "audio_capture_events=", "audio_capture_level=", "audio_capture_zcr=")) {
+  if ($mainText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/main.cpp missing mic capture boot wiring: $pattern"
   }
 }
 
@@ -936,9 +962,14 @@ foreach ($pattern in @("test_bridge_endpoint_registry_restore_keeps_endpoint_unh
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint persistence tests: $pattern"
   }
 }
+foreach ($pattern in @("FakeAudioCaptureSource", "test_audio_capture_adapter_disabled_default_is_ready_without_source", "test_audio_capture_adapter_rejects_oversized_window", "test_audio_capture_adapter_records_pcm_and_emits_reflex_events")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing firmware mic capture tests: $pattern"
+  }
+}
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
@@ -1919,7 +1950,7 @@ foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "native-tested endpoint-control response framing", "native-tested socket-writer drain path", "native-tested LAN session loop", "boot-wired compile-time Wi-Fi bridge provisioning hook", "real configured Wi-Fi credentials/bridge host", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "WiFiClient", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "disabled-by-default M5 mic capture adapter", "native-tested endpoint-control response framing", "native-tested socket-writer drain path", "native-tested LAN session loop", "boot-wired compile-time Wi-Fi bridge provisioning hook", "real configured Wi-Fi credentials/bridge host", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "WiFiClient", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }
