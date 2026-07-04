@@ -1,11 +1,13 @@
 package dev.stackchan.companion.desktop
 
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.stackchan.companion.core.CompanionIdentity
 import dev.stackchan.companion.ui.CompanionConsole
+import kotlinx.coroutines.delay
 
 fun main() {
     val runtime = DesktopCompanionRuntime().start()
@@ -20,7 +22,13 @@ fun main() {
             title = CompanionIdentity.displayName,
             state = rememberWindowState(width = 1180.dp, height = 820.dp),
         ) {
-            CompanionConsole(targetName = "Desktop")
+            val uiState = produceState(initialValue = desktopStartingUiState(), runtime) {
+                while (true) {
+                    value = runtime.toCompanionUiState()
+                    delay(1_000)
+                }
+            }
+            CompanionConsole(targetName = "Desktop", state = uiState.value)
         }
     }
 }

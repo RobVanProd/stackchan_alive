@@ -4,6 +4,7 @@ import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
 import dev.stackchan.companion.core.DiscoveredEndpoint
 import dev.stackchan.companion.core.EndpointRequestRouter
+import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.core.EndpointServerConfig
 import dev.stackchan.companion.core.JmDnsDiscovery
 import dev.stackchan.companion.core.RegisteredService
@@ -28,6 +29,7 @@ data class DesktopCompanionRuntimeSnapshot(
     val host: String,
     val port: Int,
     val storageDir: Path,
+    val endpointId: String,
     val mdnsAdvertised: Boolean,
     val mdnsEndpoint: DiscoveredEndpoint?,
     val mdnsError: String = "",
@@ -89,10 +91,14 @@ class DesktopCompanionRuntime(
             host = config.host,
             port = config.port,
             storageDir = config.storageDir,
+            endpointId = config.endpointId,
             mdnsAdvertised = registration != null,
             mdnsEndpoint = registration?.endpoint,
             mdnsError = mdnsError,
         )
+
+    suspend fun sessionSnapshot(): EndpointSessionSnapshot =
+        server?.currentSnapshot() ?: EndpointSessionSnapshot()
 
     override fun close() {
         registration?.close()

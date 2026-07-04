@@ -1,5 +1,7 @@
 package dev.stackchan.companion.desktop
 
+import dev.stackchan.companion.core.DeviceHello
+import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.SettingsGet
 import dev.stackchan.companion.core.SettingsResult
 import dev.stackchan.companion.core.SettingsSet
@@ -22,6 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -104,6 +107,39 @@ class DesktopCompanionRuntimeTest {
             assertEquals("pc", snapshot.mdnsEndpoint.endpointKind)
             assertEquals(config.port, snapshot.mdnsEndpoint.port)
             assertTrue("brain_owner" in snapshot.mdnsEndpoint.capabilities)
+        }
+    }
+
+    @Test
+    fun runtimeProjectsConnectedRobotIntoUiState() = runBlocking {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-ui-state"))
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+            val before = runtime.toCompanionUiState()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:${config.port}/bridge")
+
+            client.send(
+                encodeControlMessage(
+                    DeviceHello(
+                        deviceId = "stackchan-bench-01",
+                        deviceName = "Stackchan Bench",
+                        firmwareVersion = "bench-v1",
+                        capabilities = listOf("settings", "diagnostics"),
+                    ),
+                ),
+            )
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+            val after = runtime.toCompanionUiState()
+
+            assertEquals("Listening: 127.0.0.1:${config.port}", before.connection)
+            assertEquals("Connected: Stackchan Bench", after.connection)
+            assertEquals("hello", after.robotState)
+            assertEquals(true, after.endpoints.first().connected)
+            assertEquals("Stackchan Bench", after.endpoints.first().name)
+            assertEquals("bench-v1", after.endpoints.first().fingerprint)
+            assertEquals("pc-runtime-test", after.endpoints[1].fingerprint)
+            client.close()
         }
     }
 }

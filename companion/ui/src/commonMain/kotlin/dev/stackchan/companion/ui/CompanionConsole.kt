@@ -399,6 +399,11 @@ private fun Tabs() {
 
 @Composable
 private fun EndpointItem(endpoint: EndpointRow) {
+    val iconLabel = when (endpoint.kind) {
+        "android" -> "P"
+        "robot" -> "SC"
+        else -> "PC"
+    }
     Surface(
         color = if (endpoint.activeBrain) Color(0xFFFBFBFF) else Color.White,
         border = androidx.compose.foundation.BorderStroke(1.dp, if (endpoint.activeBrain) Color(0xFFD9D2FF) else Line),
@@ -414,7 +419,7 @@ private fun EndpointItem(endpoint: EndpointRow) {
                 modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F4FA)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(if (endpoint.kind == "android") "P" else "PC", color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(iconLabel, color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
             Column(modifier = Modifier.weight(1f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
