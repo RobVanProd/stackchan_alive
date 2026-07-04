@@ -356,6 +356,8 @@ The Android architect should produce:
 - Device discovery stubs for mDNS, UDP beacon fallback, manual IP, and optional BLE bootstrap.
 - Settings repository and UI flows for `settings_get`, `settings_set`, and
   `forget_endpoint`.
+- A Talk surface that sends a text turn through the active bridge session using
+  `app_text_turn` response frames before push-to-talk is promoted.
 - Handoff tests for PC-to-mobile, mobile-to-PC, owner timeout, and observer-only mode.
 - A LiteRT-LM adapter seam that can run deterministic fake output first, then a real mobile
   model once installed.
@@ -369,6 +371,8 @@ The Android companion path is ready to integrate with firmware when:
 - A simulated robot can hand off PC -> mobile -> PC without changing firmware settings.
 - `forget_endpoint` prevents automatic reconnect until the endpoint is paired again.
 - `settings_get` and `settings_set` round trip, including version conflict handling.
+- A connected robot receives a Talk text turn as `thinking`, `response_start`,
+  `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - Safety-locked settings cannot be changed from the app.
 - Offline fallback still works with no active brain owner.
 - Mobile model mode passes the same Character Lock red-team and benchmark gates as the PC

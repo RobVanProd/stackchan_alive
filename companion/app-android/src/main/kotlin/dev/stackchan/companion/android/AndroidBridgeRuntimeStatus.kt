@@ -15,6 +15,8 @@ data class AndroidBridgeRuntimeStatus(
     val firmwareVersion: String = "",
     val lastMessageType: String = "",
     val activeBrainOwner: String = "",
+    val textTurnsSubmitted: Int = 0,
+    val lastTextTurn: String = "",
 ) {
     val primaryBridgeUrl: String
         get() = manualBridgeUrls.firstOrNull() ?: primaryBridgeManualUrl()
@@ -73,6 +75,8 @@ object AndroidBridgeRuntimeStatusStore {
                 firmwareVersion = if (clearSession) "" else it.firmwareVersion,
                 lastMessageType = if (clearSession) "" else it.lastMessageType,
                 activeBrainOwner = if (clearSession) "" else it.activeBrainOwner,
+                textTurnsSubmitted = if (clearSession) 0 else it.textTurnsSubmitted,
+                lastTextTurn = if (clearSession) "" else it.lastTextTurn,
             )
         }
     }
@@ -91,6 +95,8 @@ object AndroidBridgeRuntimeStatusStore {
                     firmwareVersion = "",
                     lastMessageType = "",
                     activeBrainOwner = "",
+                    textTurnsSubmitted = 0,
+                    lastTextTurn = "",
                 )
             }
         }
@@ -107,6 +113,8 @@ object AndroidBridgeRuntimeStatusStore {
                 firmwareVersion = snapshot.firmwareVersion,
                 lastMessageType = snapshot.lastMessageType,
                 activeBrainOwner = snapshot.activeBrainOwner.orEmpty(),
+                textTurnsSubmitted = snapshot.textTurnsSubmitted,
+                lastTextTurn = snapshot.lastTextTurn,
             )
         }
     }

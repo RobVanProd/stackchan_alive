@@ -11,6 +11,7 @@ import dev.stackchan.companion.core.EndpointServerConfig
 import dev.stackchan.companion.core.JmDnsDiscovery
 import dev.stackchan.companion.core.RegisteredService
 import dev.stackchan.companion.core.SettingsRepositoryFileStore
+import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.TrustedEndpointFileStore
 import dev.stackchan.companion.core.defaultDesktopEndpointHello
 import java.net.InetAddress
@@ -123,6 +124,15 @@ class DesktopCompanionRuntime(
 
     suspend fun sessionSnapshot(): EndpointSessionSnapshot =
         server?.currentSnapshot() ?: EndpointSessionSnapshot()
+
+    suspend fun submitTextTurn(text: String): TextTurnSubmitResult {
+        val bridge = server
+            ?: return TextTurnSubmitResult(
+                accepted = false,
+                detail = "Desktop bridge runtime is not running.",
+            )
+        return bridge.submitTextTurn(text)
+    }
 
     fun diagnosticsSnapshot(domains: List<String> = emptyList()): DiagnosticsSnapshot =
         requestRouter?.handle(DiagnosticsRequest(domains = domains)) as? DiagnosticsSnapshot

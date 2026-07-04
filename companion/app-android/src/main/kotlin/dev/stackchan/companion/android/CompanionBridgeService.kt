@@ -15,6 +15,7 @@ import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
 import dev.stackchan.companion.core.EndpointRequestRouter
 import dev.stackchan.companion.core.EndpointServerConfig
+import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,6 +82,9 @@ class CompanionBridgeService : Service() {
         advertisement?.close()
         advertisement = null
         server?.close()
+        if (activeServer === server) {
+            activeServer = null
+        }
         server = null
     }
 
@@ -112,6 +116,7 @@ class CompanionBridgeService : Service() {
                 ).start()
             }.onSuccess { bridge ->
                 server = bridge
+                activeServer = bridge
                 startWakeLockMonitor(bridge)
                 udpBeaconBroadcaster = AndroidUdpBeaconBroadcaster(
                     endpointHello = endpointHello,
@@ -278,5 +283,17 @@ class CompanionBridgeService : Service() {
                 context.startService(intent)
             }
         }
+
+        suspend fun submitTextTurn(text: String): TextTurnSubmitResult {
+            val bridge = activeServer
+                ?: return TextTurnSubmitResult(
+                    accepted = false,
+                    detail = "Android bridge service is not running.",
+                )
+            return bridge.submitTextTurn(text)
+        }
+
+        @Volatile
+        private var activeServer: CompanionEndpointServer? = null
     }
 }

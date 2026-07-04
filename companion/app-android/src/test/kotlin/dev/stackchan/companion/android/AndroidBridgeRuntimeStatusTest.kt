@@ -3,6 +3,7 @@ package dev.stackchan.companion.android
 import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
+import dev.stackchan.companion.ui.ConversationMessage
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -130,6 +131,8 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("CompanionBridgeService", uiState.brainService.command)
         assertEquals("ws://192.168.1.42:8765/bridge", uiState.brainService.endpoint)
         assertFalse(uiState.brainService.showBrainHandoffActions)
+        assertFalse(uiState.conversation.inputEnabled)
+        assertTrue(uiState.conversation.status.contains("Connect Stack-chan"))
     }
 
     @Test
@@ -158,6 +161,8 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("heartbeat", uiState.telemetry.first { it.label == "Last frame" }.value)
         assertEquals("Foreground", uiState.telemetry.first { it.label == "Service" }.value)
         assertTrue(uiState.telemetry.none { it.value == "87%" || it.value == "42.5 C" || it.value == "v3.1.0" })
+        assertTrue(uiState.conversation.inputEnabled)
+        assertTrue(uiState.conversation.status.contains("Connected to Stackchan Bench"))
     }
 
     @Test
@@ -263,6 +268,34 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.robotSetup.steps.all { it.completed })
         assertTrue(uiState.robotSetup.steps.last().current)
         assertTrue(uiState.endpoints.first { it.kind == "robot" }.connected)
+    }
+
+    @Test
+    fun androidUiStateShowsTextTurnConversationStatus() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            conversationMessages = listOf(
+                ConversationMessage("You", "Hello Stack-chan", "Sent"),
+                ConversationMessage("Bridge", "Hello Stack-chan", "Sent seq 10001"),
+            ),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                lastMessageType = "app_text_turn",
+                textTurnsSubmitted = 1,
+                lastTextTurn = "Hello Stack-chan",
+            ),
+        )
+
+        assertTrue(uiState.conversation.inputEnabled)
+        assertTrue(uiState.conversation.status.contains("Text turns sent: 1"))
+        assertEquals("Hello Stack-chan", uiState.conversation.messages.last().text)
     }
 
     @Test

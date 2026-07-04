@@ -215,6 +215,67 @@ class EndpointServerTest {
     }
 
     @Test
+    fun endpointServerSendsSubmittedTextTurnToConnectedRobot() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+
+            client.send(
+                encodeControlMessage(
+                    DeviceHello(
+                        deviceId = "stackchan-001",
+                        deviceName = "Stackchan Alive Bench",
+                        firmwareVersion = "dev-c2",
+                    ),
+                ),
+            )
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            val submit = server.submitTextTurn("Hello from the phone")
+
+            val thinking = assertIs<Thinking>(decodeControlMessage(client.nextText()))
+            val response = assertIs<ResponseStart>(decodeControlMessage(client.nextText()))
+            val streamStart = assertIs<AudioStreamStart>(decodeControlMessage(client.nextText()))
+            val firstChunk = client.nextBinary()
+            val secondChunk = client.nextBinary()
+            assertIs<AudioFrame>(decodeControlMessage(client.nextText()))
+            val finalMouth = assertIs<AudioFrame>(decodeControlMessage(client.nextText()))
+            val streamEnd = assertIs<AudioStreamEnd>(decodeControlMessage(client.nextText()))
+            val responseEnd = assertIs<ResponseEnd>(decodeControlMessage(client.nextText()))
+            val snapshot = server.currentSnapshot()
+
+            assertTrue(submit.accepted)
+            assertEquals(submit.seq, thinking.seq)
+            assertEquals("app_text_turn", response.intent)
+            assertEquals("Hello from the phone", response.text)
+            assertEquals("pcm16", streamStart.format)
+            assertEquals(512, firstChunk.size)
+            assertEquals(512, secondChunk.size)
+            assertEquals(true, finalMouth.final)
+            assertEquals(1024, streamEnd.audioBytes)
+            assertEquals(submit.seq, responseEnd.seq)
+            assertEquals("app_text_turn", snapshot.lastMessageType)
+            assertEquals(1, snapshot.textTurnsSubmitted)
+            assertEquals("Hello from the phone", snapshot.lastTextTurn)
+            assertEquals(1024, snapshot.audioBytesSent)
+            client.close()
+        }
+    }
+
+    @Test
+    fun endpointServerRejectsSubmittedTextTurnWithoutRobotSession() = runBlocking {
+        CompanionEndpointServer(EndpointServerConfig(port = freePort())).use { server ->
+            server.start()
+
+            val submit = server.submitTextTurn("Hello?")
+
+            assertEquals(false, submit.accepted)
+            assertEquals("No Stack-chan robot session is connected.", submit.detail)
+        }
+    }
+
+    @Test
     fun endpointServerDoesNotFinishCanceledAudioTurn() = runBlocking {
         val port = freePort()
         CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->

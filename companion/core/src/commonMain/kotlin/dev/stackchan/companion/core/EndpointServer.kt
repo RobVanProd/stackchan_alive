@@ -12,7 +12,9 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -37,6 +39,15 @@ data class EndpointSessionSnapshot(
     val lastError: String = "",
     val audioBytesReceived: Int = 0,
     val audioBytesSent: Int = 0,
+    val textTurnsSubmitted: Int = 0,
+    val lastTextTurn: String = "",
+)
+
+data class TextTurnSubmitResult(
+    val accepted: Boolean,
+    val seq: Int = 0,
+    val responseText: String = "",
+    val detail: String,
 )
 
 private data class AudioTurnState(
@@ -51,12 +62,21 @@ private sealed interface OutboundFrame {
     data class Binary(val value: ByteArray) : OutboundFrame
 }
 
+private data class OutboundTurn(
+    val seq: Int,
+    val text: String,
+    val audioBytes: Int,
+    val frames: List<OutboundFrame>,
+)
+
 class CompanionEndpointServer(
     private val config: EndpointServerConfig,
 ) : AutoCloseable {
     private val lock = Mutex()
     private var snapshot = EndpointSessionSnapshot()
     private var audioTurn = AudioTurnState()
+    private var outboundTurns: Channel<OutboundTurn>? = null
+    private var nextLocalSeq = 10_000
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
 
     fun start(): CompanionEndpointServer {
@@ -65,6 +85,16 @@ class CompanionEndpointServer(
             install(WebSockets)
             routing {
                 webSocket(config.path) {
+                    val turnChannel = Channel<OutboundTurn>(Channel.BUFFERED)
+                    setOutboundTurns(turnChannel)
+                    val senderJob = launch {
+                        for (turn in turnChannel) {
+                            turn.frames.forEach { response ->
+                                sendOutboundFrame(response)
+                            }
+                            recordSubmittedTextTurn(turn)
+                        }
+                    }
                     updateConnected(true)
                     try {
                         for (frame in incoming) {
@@ -74,15 +104,15 @@ class CompanionEndpointServer(
                                 else -> emptyList()
                             }
                             responses.forEach { response ->
-                                when (response) {
-                                    is OutboundFrame.Text -> outgoing.send(Frame.Text(response.value))
-                                    is OutboundFrame.Binary -> outgoing.send(Frame.Binary(true, response.value))
-                                }
+                                sendOutboundFrame(response)
                             }
                         }
                     } catch (_: ClosedReceiveChannelException) {
                         // Normal peer disconnect.
                     } finally {
+                        clearOutboundTurns(turnChannel)
+                        turnChannel.close()
+                        senderJob.cancel()
                         updateConnected(false)
                     }
                 }
@@ -92,6 +122,46 @@ class CompanionEndpointServer(
     }
 
     suspend fun currentSnapshot(): EndpointSessionSnapshot = lock.withLock { snapshot }
+
+    suspend fun submitTextTurn(text: String): TextTurnSubmitResult {
+        val cleanedText = text.trim()
+        if (cleanedText.isBlank()) {
+            return TextTurnSubmitResult(
+                accepted = false,
+                detail = "Text turn is empty.",
+            )
+        }
+        val prepared = lock.withLock {
+            val channel = outboundTurns
+            if (!snapshot.connected || channel == null) {
+                return TextTurnSubmitResult(
+                    accepted = false,
+                    detail = "No Stack-chan robot session is connected.",
+                )
+            }
+            nextLocalSeq += 1
+            val turn = buildResponseTurn(
+                seq = nextLocalSeq,
+                responseText = cleanedText,
+                intent = "app_text_turn",
+            )
+            channel to turn
+        }
+        val sent = prepared.first.trySend(prepared.second).isSuccess
+        return if (sent) {
+            TextTurnSubmitResult(
+                accepted = true,
+                seq = prepared.second.seq,
+                responseText = prepared.second.text,
+                detail = "Text turn sent to the connected Stack-chan session.",
+            )
+        } else {
+            TextTurnSubmitResult(
+                accepted = false,
+                detail = "Stack-chan session is no longer accepting text turns.",
+            )
+        }
+    }
 
     override fun close() {
         engine?.stop(gracePeriodMillis = 100, timeoutMillis = 1000)
@@ -268,42 +338,9 @@ class CompanionEndpointServer(
             ?.takeIf { it.isNotBlank() }
             ?: message.text?.takeIf { it.isNotBlank() }
             ?: "Fake audio turn received ${turn.bytesReceived} bytes at ${turn.sampleRate}Hz."
-        val pcm = fakePcm16(responseText)
-        val chunkSize = 512
-        val chunks = pcm.asIterable().chunked(chunkSize).map { it.toByteArray() }
-        recordAudioBytesSent(pcm.size)
-
-        return buildList {
-            addAll(
-                textFrames(
-                    Thinking(seq = seq),
-                    ResponseStart(
-                        seq = seq,
-                        intent = "fake_audio_turn",
-                        text = responseText,
-                        arousal = 0.42,
-                        valence = 0.64,
-                    ),
-                    AudioStreamStart(
-                        seq = seq,
-                        format = "pcm16",
-                        sampleRate = 24000,
-                        audioBytes = pcm.size,
-                        chunkBytes = chunkSize,
-                        chunks = chunks.size,
-                    ),
-                ),
-            )
-            chunks.forEach { chunk -> add(OutboundFrame.Binary(chunk)) }
-            addAll(
-                textFrames(
-                    AudioFrame(seq = seq, env = 0.35, viseme = "aa", durationMs = 120),
-                    AudioFrame(seq = seq, env = 0.0, viseme = "neutral", durationMs = 60, final = true),
-                    AudioStreamEnd(seq = seq, audioBytes = pcm.size, chunks = chunks.size),
-                    ResponseEnd(seq = seq),
-                ),
-            )
-        }
+        val responseTurn = buildResponseTurn(seq = seq, responseText = responseText, intent = "fake_audio_turn")
+        recordAudioBytesSent(responseTurn.audioBytes)
+        return responseTurn.frames
     }
 
     private suspend fun recordOwnerStatus(message: OwnerStatus) {
@@ -358,6 +395,32 @@ class CompanionEndpointServer(
         }
     }
 
+    private suspend fun setOutboundTurns(channel: Channel<OutboundTurn>) {
+        lock.withLock {
+            outboundTurns = channel
+        }
+    }
+
+    private suspend fun clearOutboundTurns(channel: Channel<OutboundTurn>) {
+        lock.withLock {
+            if (outboundTurns === channel) {
+                outboundTurns = null
+            }
+        }
+    }
+
+    private suspend fun recordSubmittedTextTurn(turn: OutboundTurn) {
+        lock.withLock {
+            snapshot = snapshot.copy(
+                lastMessageType = "app_text_turn",
+                lastError = "",
+                audioBytesSent = snapshot.audioBytesSent + turn.audioBytes,
+                textTurnsSubmitted = snapshot.textTurnsSubmitted + 1,
+                lastTextTurn = turn.text,
+            )
+        }
+    }
+
     private suspend fun recordError(message: String) {
         lock.withLock {
             snapshot = snapshot.copy(lastError = message)
@@ -369,6 +432,51 @@ class CompanionEndpointServer(
 
     private fun textFrames(vararg messages: BridgeMessage): List<OutboundFrame> =
         messages.map { OutboundFrame.Text(encodeControlMessage(it)) }
+
+    private fun buildResponseTurn(seq: Int, responseText: String, intent: String): OutboundTurn {
+        val pcm = fakePcm16(responseText)
+        val chunkSize = 512
+        val chunks = pcm.asIterable().chunked(chunkSize).map { it.toByteArray() }
+        val frames = buildList {
+            addAll(
+                textFrames(
+                    Thinking(seq = seq),
+                    ResponseStart(
+                        seq = seq,
+                        intent = intent,
+                        text = responseText,
+                        arousal = 0.42,
+                        valence = 0.64,
+                    ),
+                    AudioStreamStart(
+                        seq = seq,
+                        format = "pcm16",
+                        sampleRate = 24000,
+                        audioBytes = pcm.size,
+                        chunkBytes = chunkSize,
+                        chunks = chunks.size,
+                    ),
+                ),
+            )
+            chunks.forEach { chunk -> add(OutboundFrame.Binary(chunk)) }
+            addAll(
+                textFrames(
+                    AudioFrame(seq = seq, env = 0.35, viseme = "aa", durationMs = 120),
+                    AudioFrame(seq = seq, env = 0.0, viseme = "neutral", durationMs = 60, final = true),
+                    AudioStreamEnd(seq = seq, audioBytes = pcm.size, chunks = chunks.size),
+                    ResponseEnd(seq = seq),
+                ),
+            )
+        }
+        return OutboundTurn(seq = seq, text = responseText, audioBytes = pcm.size, frames = frames)
+    }
+
+    private suspend fun io.ktor.server.websocket.DefaultWebSocketServerSession.sendOutboundFrame(response: OutboundFrame) {
+        when (response) {
+            is OutboundFrame.Text -> outgoing.send(Frame.Text(response.value))
+            is OutboundFrame.Binary -> outgoing.send(Frame.Binary(true, response.value))
+        }
+    }
 
     private fun fakePcm16(seed: String): ByteArray {
         val bytes = seed.encodeToByteArray()

@@ -47,6 +47,11 @@ fun main() {
                         runCatching { runtime.runC6GuiRehearsal() }
                     }
                 },
+                onSendTextTurn = { text ->
+                    scope.launch {
+                        runCatching { runtime.submitTextTurn(text) }
+                    }
+                },
             )
         }
     }

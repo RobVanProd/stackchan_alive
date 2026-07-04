@@ -5,6 +5,8 @@ import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.C6RehearsalUiState
 import dev.stackchan.companion.ui.CompanionUiState
+import dev.stackchan.companion.ui.ConversationMessage
+import dev.stackchan.companion.ui.ConversationUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.RobotSetupUiState
@@ -80,11 +82,37 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
             robotName = robotName,
             robotFingerprint = firmwareVersion.ifBlank { "No firmware hello yet" },
         ),
+        conversation = toConversationUiState(),
         diagnosticsExport = runtime.toDiagnosticsExportUiState(),
         c6Rehearsal = runtime.toC6RehearsalUiState(),
         endpoints = listOf(robotEndpoint, desktopEndpoint),
     )
 }
+
+private fun EndpointSessionSnapshot.toConversationUiState(): ConversationUiState =
+    ConversationUiState(
+        inputEnabled = connected,
+        status = when {
+            connected && textTurnsSubmitted > 0 ->
+                "Text turns sent: $textTurnsSubmitted. Last turn: ${lastTextTurn.ifBlank { "n/a" }}"
+            connected -> "Connected to ${deviceName.ifBlank { deviceId.ifBlank { "Stack-chan" } }}. Text turns will play through the robot bridge."
+            else -> "Connect Stack-chan before sending text turns from this desktop."
+        },
+        messages = if (lastTextTurn.isNotBlank()) {
+            listOf(
+                ConversationMessage("You", lastTextTurn, "Last sent"),
+                ConversationMessage("Bridge", lastTextTurn, "Delivered"),
+            )
+        } else {
+            listOf(
+                ConversationMessage(
+                    sender = "Bridge",
+                    text = if (connected) "Stack-chan is connected. Send a short text turn to test the conversation path." else "Waiting for Stack-chan before text turns can be sent.",
+                    detail = if (connected) "Ready" else "Waiting",
+                ),
+            )
+        },
+    )
 
 private fun DesktopBrainSupervisorSnapshot.toBrainServiceUiState(): BrainServiceUiState {
     val compactCommand = buildString {

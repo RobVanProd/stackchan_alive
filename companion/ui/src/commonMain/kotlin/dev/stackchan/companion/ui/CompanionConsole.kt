@@ -27,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -79,6 +80,7 @@ data class CompanionUiState(
     ),
     val audioStatus: String = "Fake output ready",
     val consoleMessage: String = "Awaiting wake-gated input on android brain...",
+    val conversation: ConversationUiState = ConversationUiState(),
     val brainService: BrainServiceUiState = BrainServiceUiState(),
     val robotSetup: RobotSetupUiState = RobotSetupUiState(),
     val diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
@@ -88,6 +90,20 @@ data class CompanionUiState(
         EndpointRow("studio-mac-01", "Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false, removable = true),
         EndpointRow("guest-pi-01", "Guest Raspberry Pi 5", "pc", "SHA256:7F452C2C0F90DA15B...", 50, false, false, removable = true),
     ),
+)
+
+data class ConversationUiState(
+    val inputEnabled: Boolean = false,
+    val status: String = "Connect Stack-chan to send text turns.",
+    val messages: List<ConversationMessage> = listOf(
+        ConversationMessage("Bridge", "Text turns will appear here once the app is connected to Stack-chan.", "Waiting"),
+    ),
+)
+
+data class ConversationMessage(
+    val sender: String,
+    val text: String,
+    val detail: String = "",
 )
 
 data class RobotSetupUiState(
@@ -162,9 +178,10 @@ private enum class MobileSection(
     val label: String,
 ) {
     Live("Live"),
+    Talk("Talk"),
     Brain("Brain"),
     Nodes("Nodes"),
-    Telemetry("Telemetry"),
+    Telemetry("Telem"),
 }
 
 @Composable
@@ -177,6 +194,7 @@ fun CompanionConsole(
     onExportDiagnostics: () -> Unit = {},
     onRunC6Rehearsal: () -> Unit = {},
     onForgetEndpoint: (String) -> Unit = {},
+    onSendTextTurn: (String) -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -194,6 +212,7 @@ fun CompanionConsole(
                         onExportDiagnostics = onExportDiagnostics,
                         onRunC6Rehearsal = onRunC6Rehearsal,
                         onForgetEndpoint = onForgetEndpoint,
+                        onSendTextTurn = onSendTextTurn,
                     )
                 } else {
                     Column(
@@ -213,6 +232,7 @@ fun CompanionConsole(
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                                 onForgetEndpoint = onForgetEndpoint,
+                                onSendTextTurn = onSendTextTurn,
                             )
                         } else {
                             TabletConsole(
@@ -223,6 +243,7 @@ fun CompanionConsole(
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                                 onForgetEndpoint = onForgetEndpoint,
+                                onSendTextTurn = onSendTextTurn,
                             )
                         }
                         Footer()
@@ -243,6 +264,7 @@ private fun MobileConsole(
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
+    onSendTextTurn: (String) -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -259,6 +281,11 @@ private fun MobileConsole(
                     StagePanel(state, Modifier.fillMaxWidth(), compact = true)
                     SecurityPanel(Modifier.fillMaxWidth())
                 }
+                MobileSection.Talk -> ConversationPanel(
+                    state = state,
+                    modifier = Modifier.fillMaxWidth(),
+                    onSendTextTurn = onSendTextTurn,
+                )
                 MobileSection.Brain -> BrainPanel(
                     state = state,
                     modifier = Modifier.fillMaxWidth(),
@@ -292,6 +319,7 @@ private fun WideConsole(
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
+    onSendTextTurn: (String) -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -310,6 +338,11 @@ private fun WideConsole(
             modifier = Modifier.weight(1.62f),
         ) {
             StagePanel(state, Modifier.fillMaxWidth())
+            ConversationPanel(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                onSendTextTurn = onSendTextTurn,
+            )
             EndpointRegistry(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
@@ -344,6 +377,7 @@ private fun TabletConsole(
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
+    onSendTextTurn: (String) -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -354,6 +388,11 @@ private fun TabletConsole(
             modifier = Modifier.weight(1.65f),
         ) {
             StagePanel(state, Modifier.fillMaxWidth())
+            ConversationPanel(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                onSendTextTurn = onSendTextTurn,
+            )
             EndpointRegistry(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
@@ -613,6 +652,80 @@ private fun EndpointRegistry(
             }
         }
         Spacer(Modifier.height(14.dp))
+    }
+}
+
+@Composable
+private fun ConversationPanel(
+    state: CompanionUiState,
+    modifier: Modifier,
+    onSendTextTurn: (String) -> Unit,
+) {
+    var draft by remember { mutableStateOf("") }
+    PanelShell(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle("Talk", Mint)
+            Spacer(Modifier.weight(1f))
+            StatusPill(
+                text = if (state.conversation.inputEnabled) "Ready" else "Waiting",
+                color = if (state.conversation.inputEnabled) Mint else Amber,
+                background = if (state.conversation.inputEnabled) Color(0xFF0D2A25) else Color(0xFF2A2613),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(state.conversation.status, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        Spacer(Modifier.height(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            state.conversation.messages.takeLast(5).forEach { message ->
+                ConversationBubble(message)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            enabled = state.conversation.inputEnabled,
+            singleLine = false,
+            minLines = 2,
+            label = { Text("Text to Stack-chan", color = Muted, fontSize = 12.sp) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            SmallCommand(
+                text = "Send",
+                filled = true,
+                enabled = state.conversation.inputEnabled && draft.isNotBlank(),
+                onClick = {
+                    val text = draft.trim()
+                    if (text.isNotBlank()) {
+                        draft = ""
+                        onSendTextTurn(text)
+                    }
+                },
+            )
+            SmallCommand("Push-to-talk", enabled = false)
+        }
+    }
+}
+
+@Composable
+private fun ConversationBubble(message: ConversationMessage) {
+    Surface(
+        color = if (message.sender == "You") Color(0xFF102E30) else PanelAlt,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (message.sender == "You") Cyan else Line),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(message.sender, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                if (message.detail.isNotBlank()) {
+                    Text(message.detail, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Text(message.text, color = Ink, fontSize = 12.sp, lineHeight = 17.sp)
+        }
     }
 }
 

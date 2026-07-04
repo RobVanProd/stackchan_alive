@@ -129,6 +129,8 @@ Evidence to capture:
 - [ ] The setup card shows how many trusted companion nodes are stored before the operator removes or keeps old devices.
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
+- [ ] Talk screen enables text input only after Stack-chan is connected.
+- [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - [ ] Android notification switches from waiting to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.

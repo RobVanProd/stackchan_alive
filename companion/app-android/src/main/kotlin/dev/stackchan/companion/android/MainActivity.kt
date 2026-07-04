@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.TrustedEndpoint
@@ -24,10 +25,13 @@ import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
+import dev.stackchan.companion.ui.ConversationMessage
+import dev.stackchan.companion.ui.ConversationUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.TelemetryReading
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -47,9 +51,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             val bridgeStatus by AndroidBridgeRuntimeStatusStore.status.collectAsState()
             var trustedEndpoints by remember { mutableStateOf(stores.loadTrustedEndpoints().snapshot().endpoints) }
+            var conversationMessages by remember {
+                mutableStateOf(
+                    listOf(
+                        ConversationMessage(
+                            sender = "Bridge",
+                            text = "Connect Stack-chan, then send a text turn from this phone.",
+                            detail = "Ready",
+                        ),
+                    ),
+                )
+            }
+            val coroutineScope = rememberCoroutineScope()
             CompanionConsole(
                 targetName = "Android",
-                state = androidCompanionUiState(endpointHello, trustedEndpoints, bridgeStatus),
+                state = androidCompanionUiState(endpointHello, trustedEndpoints, bridgeStatus, conversationMessages),
                 onStartBrain = { startBridgeServiceOnce() },
                 onStopBrain = { stopBridgeService() },
                 onRestartBrain = { restartBridgeService() },
@@ -58,6 +74,21 @@ class MainActivity : ComponentActivity() {
                     registry.forget(endpointId)
                     stores.saveTrustedEndpoints(registry)
                     trustedEndpoints = registry.snapshot().endpoints
+                },
+                onSendTextTurn = { text ->
+                    val cleanedText = text.trim()
+                    if (cleanedText.isBlank()) {
+                        return@CompanionConsole
+                    }
+                    conversationMessages = conversationMessages + ConversationMessage("You", cleanedText, "Sending")
+                    coroutineScope.launch {
+                        val result = CompanionBridgeService.submitTextTurn(cleanedText)
+                        conversationMessages = conversationMessages + ConversationMessage(
+                            sender = "Bridge",
+                            text = if (result.accepted) result.responseText else result.detail,
+                            detail = if (result.accepted) "Sent seq ${result.seq}" else "Not sent",
+                        )
+                    }
                 },
             )
         }
@@ -149,6 +180,7 @@ internal fun androidCompanionUiState(
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
     bridgeStatus: AndroidBridgeRuntimeStatus,
+    conversationMessages: List<ConversationMessage> = emptyList(),
 ): CompanionUiState =
     CompanionUiState(
         connection = bridgeStatus.connectionLabel,
@@ -173,9 +205,39 @@ internal fun androidCompanionUiState(
             recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
         ),
         robotSetup = androidRobotSetup(bridgeStatus, trustedEndpoints.size),
+        conversation = androidConversationUiState(bridgeStatus, conversationMessages),
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
     )
+
+private fun androidConversationUiState(
+    bridgeStatus: AndroidBridgeRuntimeStatus,
+    conversationMessages: List<ConversationMessage>,
+): ConversationUiState {
+    val connected = bridgeStatus.robotConnected
+    return ConversationUiState(
+        inputEnabled = connected,
+        status = when {
+            connected && bridgeStatus.textTurnsSubmitted > 0 ->
+                "Text turns sent: ${bridgeStatus.textTurnsSubmitted}. Last turn: ${bridgeStatus.lastTextTurn.ifBlank { "n/a" }}"
+            connected -> "Connected to ${bridgeStatus.robotDisplayName}. Text turns will play through the robot bridge."
+            else -> "Connect Stack-chan before sending text turns from this phone."
+        },
+        messages = conversationMessages.ifEmpty {
+            listOf(
+                ConversationMessage(
+                    sender = "Bridge",
+                    text = if (connected) {
+                        "Stack-chan is connected. Send a short text turn to test the conversation path."
+                    } else {
+                        "Waiting for Stack-chan before text turns can be sent."
+                    },
+                    detail = if (connected) "Ready" else "Waiting",
+                ),
+            )
+        },
+    )
+}
 
 private fun androidRobotSetup(
     bridgeStatus: AndroidBridgeRuntimeStatus,
