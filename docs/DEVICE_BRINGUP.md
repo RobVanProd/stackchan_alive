@@ -39,8 +39,9 @@ When changing firmware-side WebSocket framing, run `pio test -e native_logic`; t
 suite covers upgrade request generation, masked client frames, server text/binary downlink
 decoding, and disconnect handling before the real Wi-Fi/TCP task exists.
 The same native suite covers trusted-endpoint registry arbitration for PC/mobile handoff,
-heartbeat expiry, disconnect promotion, and `forget_endpoint` behavior before nonvolatile
-storage exists.
+heartbeat expiry, disconnect promotion, and `forget_endpoint` behavior. It also covers the
+trusted-endpoint persistence store for save/load/clear, malformed-store rejection, and the
+boot rule that restored endpoints are trusted but unhealthy until a fresh heartbeat.
 It also covers the firmware endpoint-control adapter for `endpoint_hello`, endpoint
 heartbeat, `claim_brain`, `release_brain`, `owner_status`, `trusted_endpoints`,
 `forget_endpoint`, and `capability_update` before the production Wi-Fi/TCP task is wired to

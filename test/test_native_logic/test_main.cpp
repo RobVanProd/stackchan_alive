@@ -15,6 +15,7 @@
 #include "io/BridgeClient.hpp"
 #include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
+#include "io/BridgeEndpointStore.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -3502,6 +3503,152 @@ void test_bridge_endpoint_control_rejects_bad_endpoint_frames_and_ignores_bridge
   TEST_ASSERT_EQUAL_UINT32(2, control.telemetry().rejectedMessages);
 }
 
+void test_bridge_endpoint_registry_restore_keeps_endpoint_unhealthy_until_heartbeat() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+
+  BridgeEndpointRecord restored = makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80);
+  restored.lastSeenMs = 222;
+  TEST_ASSERT_TRUE(registry.restoreEndpoint(restored, 1000));
+  TEST_ASSERT_TRUE(registry.isTrusted("pc-studio-01"));
+  TEST_ASSERT_NULL(registry.activeOwner());
+  const BridgeEndpointRecord* endpoint = registry.findEndpoint("pc-studio-01");
+  TEST_ASSERT_NOT_NULL(endpoint);
+  TEST_ASSERT_EQUAL_UINT32(222, endpoint->lastSeenMs);
+  TEST_ASSERT_EQUAL_UINT32(0, endpoint->lastHeartbeatMs);
+  TEST_ASSERT_EQUAL_UINT32(1, registry.telemetry().restores);
+
+  registry.update(1100);
+  TEST_ASSERT_NULL(registry.activeOwner());
+  TEST_ASSERT_TRUE(registry.markHeartbeat("pc-studio-01", 1200));
+  registry.update(1201);
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+}
+
+void test_bridge_endpoint_store_saves_and_loads_trusted_endpoints_without_owner() {
+  BridgeEndpointRegistry source;
+  TEST_ASSERT_TRUE(source.begin());
+  TEST_ASSERT_TRUE(source.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 100));
+  BridgeEndpointRecord phone = makeBridgeEndpoint("phone-rob-01",
+                                                  BridgeEndpointKind::Android,
+                                                  60,
+                                                  false,
+                                                  BridgeEndpointCapabilitySettings |
+                                                      BridgeEndpointCapabilityModelProfiles);
+  std::strncpy(phone.endpointName, "Rob Phone", sizeof(phone.endpointName) - 1);
+  TEST_ASSERT_TRUE(source.upsertEndpoint(phone, 120));
+  TEST_ASSERT_TRUE(source.claimOwner("phone-rob-01", 130, true));
+
+  BridgeEndpointMemoryStore backend;
+  BridgeEndpointStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  TEST_ASSERT_TRUE(store.save(source, 140));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"schema\":\"stackchan.bridge-endpoints.v1\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"endpoint_id\":\"pc-studio-01\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"endpoint_id\":\"phone-rob-01\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"auto_connect\":false"));
+
+  BridgeEndpointRegistry restored;
+  TEST_ASSERT_TRUE(restored.begin());
+  TEST_ASSERT_TRUE(store.load(restored, 1000));
+  TEST_ASSERT_EQUAL_UINT32(2, restored.count());
+  TEST_ASSERT_TRUE(restored.isTrusted("pc-studio-01"));
+  TEST_ASSERT_TRUE(restored.isTrusted("phone-rob-01"));
+  TEST_ASSERT_NULL(restored.activeOwner());
+  const BridgeEndpointRecord* restoredPhone = restored.findEndpoint("phone-rob-01");
+  TEST_ASSERT_NOT_NULL(restoredPhone);
+  TEST_ASSERT_EQUAL_STRING("Rob Phone", restoredPhone->endpointName);
+  TEST_ASSERT_EQUAL_UINT8(60, restoredPhone->priority);
+  TEST_ASSERT_FALSE(restoredPhone->autoConnect);
+  TEST_ASSERT_EQUAL_UINT32(BridgeEndpointCapabilitySettings |
+                               BridgeEndpointCapabilityModelProfiles,
+                           restoredPhone->capabilities);
+  TEST_ASSERT_EQUAL_UINT32(2, store.telemetry().endpointsLoaded);
+  TEST_ASSERT_EQUAL_UINT32(2, restored.telemetry().restores);
+}
+
+void test_bridge_endpoint_store_clear_removes_persisted_registry() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 100));
+
+  BridgeEndpointMemoryStore backend;
+  BridgeEndpointStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  TEST_ASSERT_TRUE(store.save(registry, 110));
+  TEST_ASSERT_TRUE(std::strlen(backend.value()) > 0);
+  TEST_ASSERT_TRUE(store.clear(120));
+  TEST_ASSERT_EQUAL_STRING("", backend.value());
+
+  BridgeEndpointRegistry empty;
+  TEST_ASSERT_TRUE(empty.begin());
+  TEST_ASSERT_TRUE(store.load(empty, 130));
+  TEST_ASSERT_EQUAL_UINT32(0, empty.count());
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().clears);
+}
+
+void test_bridge_endpoint_store_rejects_malformed_or_wrong_schema_payloads() {
+  BridgeEndpointMemoryStore backend;
+  BridgeEndpointStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  TEST_ASSERT_TRUE(backend.write("{\"schema\":\"wrong\",\"endpoints\":[]}"));
+
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  TEST_ASSERT_FALSE(store.load(registry, 100));
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().parseErrors);
+  TEST_ASSERT_EQUAL_UINT32(0, registry.count());
+
+  TEST_ASSERT_TRUE(backend.write("{\"schema\":\"stackchan.bridge-endpoints.v1\",\"endpoints\":[{}]}"));
+  TEST_ASSERT_FALSE(store.load(registry, 110));
+  TEST_ASSERT_EQUAL_UINT32(2, store.telemetry().parseErrors);
+  TEST_ASSERT_EQUAL_UINT32(0, registry.count());
+}
+
+void test_bridge_endpoint_control_persists_pairing_and_forget_when_store_attached() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointMemoryStore backend;
+  BridgeEndpointStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  control.attachStore(&store);
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"priority\":60,\"capabilities\":[\"settings\"]}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"endpoint_id\":\"phone-rob-01\""));
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().persistenceSaves);
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().saves);
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"capability_update\",\"endpoint_id\":\"phone-rob-01\","
+      "\"capabilities\":[\"settings\",\"diagnostics\"]}",
+      response,
+      120,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"capabilities\":"));
+  TEST_ASSERT_EQUAL_UINT32(2, control.telemetry().persistenceSaves);
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"forget_endpoint\",\"endpoint_id\":\"phone-rob-01\"}",
+      response,
+      140,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NULL(std::strstr(backend.value(), "\"endpoint_id\":\"phone-rob-01\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"count\":0"));
+  TEST_ASSERT_EQUAL_UINT32(3, control.telemetry().persistenceSaves);
+  TEST_ASSERT_EQUAL_UINT32(3, store.telemetry().saves);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -3636,5 +3783,10 @@ int main() {
   RUN_TEST(test_bridge_endpoint_control_lists_and_forgets_endpoints);
   RUN_TEST(test_bridge_endpoint_control_updates_capabilities);
   RUN_TEST(test_bridge_endpoint_control_rejects_bad_endpoint_frames_and_ignores_bridge_frames);
+  RUN_TEST(test_bridge_endpoint_registry_restore_keeps_endpoint_unhealthy_until_heartbeat);
+  RUN_TEST(test_bridge_endpoint_store_saves_and_loads_trusted_endpoints_without_owner);
+  RUN_TEST(test_bridge_endpoint_store_clear_removes_persisted_registry);
+  RUN_TEST(test_bridge_endpoint_store_rejects_malformed_or_wrong_schema_payloads);
+  RUN_TEST(test_bridge_endpoint_control_persists_pairing_and_forget_when_store_attached);
   return UNITY_END();
 }

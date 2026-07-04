@@ -13,9 +13,12 @@ frames, decodes unmasked server text/binary frames, and routes those frames into
 multi-endpoint trust/health/active-owner rules and a native-tested `BridgeEndpointControl`
 adapter that parses endpoint hello, endpoint heartbeat, `claim_brain`, `release_brain`,
 `owner_status`, `trusted_endpoints`, `forget_endpoint`, and `capability_update` frames into
-bounded JSON responses. The running CoreS3 firmware still needs the production Wi-Fi/TCP
-task to feed these adapters, send their responses, and persist endpoints in nonvolatile
-storage. Once frames reach `BridgeClient`, firmware parses downlink stream
+bounded JSON responses. Firmware also has a native-tested `BridgeEndpointStore` that
+serializes trusted endpoints as `stackchan.bridge-endpoints.v1` JSON and an ESP32
+Preferences backend for nonvolatile storage. The running CoreS3 firmware still needs the
+production Wi-Fi/TCP task to feed these adapters, send their responses, load/attach the
+endpoint store at boot, and collect live PC/mobile handoff evidence. Once frames reach
+`BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
 through `BridgeClientOutput`, feeds that payload to the firmware downlink consumer for
 checksum/telemetry validation, and still uses `audio` response frames for mouth/envelope

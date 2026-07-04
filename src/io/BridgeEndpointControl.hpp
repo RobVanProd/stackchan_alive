@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "io/BridgeEndpointRegistry.hpp"
+#include "io/BridgeEndpointStore.hpp"
 
 namespace stackchan {
 
@@ -30,6 +31,8 @@ struct BridgeEndpointControlTelemetry {
   uint32_t trustedEndpointRequests = 0;
   uint32_t capabilityUpdates = 0;
   uint32_t forgotten = 0;
+  uint32_t persistenceSaves = 0;
+  uint32_t persistenceErrors = 0;
   uint32_t responsesDropped = 0;
   uint32_t lastHandledMs = 0;
 };
@@ -37,6 +40,7 @@ struct BridgeEndpointControlTelemetry {
 class BridgeEndpointControl {
  public:
   bool begin(BridgeEndpointRegistry& registry);
+  void attachStore(BridgeEndpointStore* store);
   void update(uint32_t nowMs);
 
   BridgeEndpointControlResult submitControlLine(const char* jsonLine,
@@ -109,8 +113,10 @@ class BridgeEndpointControl {
                                 char* responseOut,
                                 size_t responseOutSize);
   static void copyBounded(char* out, size_t outSize, const char* value);
+  bool persistRegistry(uint32_t nowMs);
 
   BridgeEndpointRegistry* registry_ = nullptr;
+  BridgeEndpointStore* store_ = nullptr;
   BridgeEndpointControlTelemetry telemetry_;
 };
 

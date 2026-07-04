@@ -690,16 +690,23 @@ foreach ($pattern in @("BridgeWebSocketTransport::buildHandshakeRequest", "Bridg
 }
 
 $bridgeEndpointRegistryText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeEndpointRegistry.cpp") -Raw
-foreach ($pattern in @("BridgeEndpointRegistry::upsertEndpoint", "BridgeEndpointRegistry::forgetEndpoint", "BridgeEndpointRegistry::markHeartbeat", "BridgeEndpointRegistry::markDisconnected", "BridgeEndpointRegistry::claimOwner", "BridgeEndpointRegistry::releaseOwner", "BridgeEndpointRegistry::updateCapabilities", "BridgeEndpointRegistry::chooseBestHealthyOwner", "kBridgeEndpointMax", "ownerHeartbeatTimeoutMs", "autoConnect", "ownerExpirations", "explicitClaims", "forgotten")) {
+foreach ($pattern in @("BridgeEndpointRegistry::upsertEndpoint", "BridgeEndpointRegistry::restoreEndpoint", "BridgeEndpointRegistry::forgetEndpoint", "BridgeEndpointRegistry::markHeartbeat", "BridgeEndpointRegistry::markDisconnected", "BridgeEndpointRegistry::claimOwner", "BridgeEndpointRegistry::releaseOwner", "BridgeEndpointRegistry::updateCapabilities", "BridgeEndpointRegistry::chooseBestHealthyOwner", "kBridgeEndpointMax", "ownerHeartbeatTimeoutMs", "autoConnect", "ownerExpirations", "explicitClaims", "forgotten", "restores")) {
   if ($bridgeEndpointRegistryText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeEndpointRegistry.cpp missing firmware endpoint registry support: $pattern"
   }
 }
 
 $bridgeEndpointControlText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeEndpointControl.cpp") -Raw
-foreach ($pattern in @("BridgeEndpointControl::submitControlLine", "BridgeEndpointControl::handleEndpointHello", "BridgeEndpointControl::handleHeartbeat", "BridgeEndpointControl::handleClaimBrain", "BridgeEndpointControl::handleReleaseBrain", "BridgeEndpointControl::handleForgetEndpoint", "BridgeEndpointControl::handleCapabilityUpdate", "BridgeEndpointControl::writeTrustedEndpoints", "BridgeEndpointControl::writeCapabilities", "deserializeJson", "endpoint_hello_result", "claim_brain", "release_brain", "owner_status", "trusted_endpoints_result", "forget_endpoint_result", "capability_update_result", "BridgeEndpointCapabilityModelProfiles", "BridgeEndpointCapabilityDiagnostics", "BridgeEndpointCapabilityPcm16Upload")) {
+foreach ($pattern in @("BridgeEndpointControl::submitControlLine", "BridgeEndpointControl::attachStore", "BridgeEndpointControl::persistRegistry", "BridgeEndpointControl::handleEndpointHello", "BridgeEndpointControl::handleHeartbeat", "BridgeEndpointControl::handleClaimBrain", "BridgeEndpointControl::handleReleaseBrain", "BridgeEndpointControl::handleForgetEndpoint", "BridgeEndpointControl::handleCapabilityUpdate", "BridgeEndpointControl::writeTrustedEndpoints", "BridgeEndpointControl::writeCapabilities", "deserializeJson", "endpoint_hello_result", "claim_brain", "release_brain", "owner_status", "trusted_endpoints_result", "forget_endpoint_result", "capability_update_result", "endpoint_persist_failed", "persistenceSaves", "BridgeEndpointCapabilityModelProfiles", "BridgeEndpointCapabilityDiagnostics", "BridgeEndpointCapabilityPcm16Upload")) {
   if ($bridgeEndpointControlText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeEndpointControl.cpp missing firmware endpoint control support: $pattern"
+  }
+}
+
+$bridgeEndpointStoreText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeEndpointStore.cpp") -Raw
+foreach ($pattern in @("BridgeEndpointStore::save", "BridgeEndpointStore::load", "BridgeEndpointStore::clear", "BridgeEndpointMemoryStore::write", "BridgeEndpointPreferencesStore::begin", "BridgeEndpointPreferencesStore::clear", "Preferences", "stackchan.bridge-endpoints.v1", "restoreEndpoint", "kBridgeEndpointStoreJsonMax", "endpointsSaved", "endpointsLoaded")) {
+  if ($bridgeEndpointStoreText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeEndpointStore.cpp missing firmware endpoint persistence support: $pattern"
   }
 }
 
@@ -881,9 +888,14 @@ foreach ($pattern in @("test_bridge_endpoint_control_registers_endpoint_and_retu
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint control tests: $pattern"
   }
 }
+foreach ($pattern in @("test_bridge_endpoint_registry_restore_keeps_endpoint_unhealthy_until_heartbeat", "test_bridge_endpoint_store_saves_and_loads_trusted_endpoints_without_owner", "test_bridge_endpoint_store_clear_removes_persisted_registry", "test_bridge_endpoint_store_rejects_malformed_or_wrong_schema_payloads", "test_bridge_endpoint_control_persists_pairing_and_forget_when_store_attached")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint persistence tests: $pattern"
+  }
+}
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
@@ -1857,21 +1869,21 @@ foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/
 }
 
 $androidCompanionSpec = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_SPEC.md") -Raw
-foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked")) {
+foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "stackchan.bridge-endpoints.v1", "fresh heartbeat")) {
   if ($androidCompanionSpec -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_SPEC.md missing expected Android companion contract: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach wiring", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }
 }
 
 $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
+foreach ($pattern in @("stackchan.bridge.v1", "stackchan.bridge-endpoints.v1", "BridgeEndpointStore", "Preferences backend", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }
