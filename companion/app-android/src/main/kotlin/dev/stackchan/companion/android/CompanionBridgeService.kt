@@ -10,6 +10,7 @@ import android.content.Intent
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
 import dev.stackchan.companion.core.EndpointRequestRouter
@@ -20,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class CompanionBridgeService : Service() {
@@ -27,6 +30,8 @@ class CompanionBridgeService : Service() {
     private var server: CompanionEndpointServer? = null
     private var advertisement: AndroidBridgeAdvertisement? = null
     private var startJob: Job? = null
+    private var wakeLockMonitorJob: Job? = null
+    private var sessionWakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -47,6 +52,9 @@ class CompanionBridgeService : Service() {
 
     override fun onDestroy() {
         startJob?.cancel()
+        wakeLockMonitorJob?.cancel()
+        wakeLockMonitorJob = null
+        releaseSessionWakeLock()
         advertisement?.close()
         advertisement = null
         server?.close()
@@ -83,6 +91,7 @@ class CompanionBridgeService : Service() {
                 ).start()
             }.onSuccess { bridge ->
                 server = bridge
+                startWakeLockMonitor(bridge)
                 runCatching {
                     AndroidBridgeAdvertisement(
                         context = applicationContext,
@@ -99,6 +108,45 @@ class CompanionBridgeService : Service() {
             }.onFailure { error ->
                 updateNotification("Bridge failed: ${error.message ?: error::class.simpleName}")
                 stopSelf()
+            }
+        }
+    }
+
+    private fun startWakeLockMonitor(bridge: CompanionEndpointServer) {
+        wakeLockMonitorJob?.cancel()
+        wakeLockMonitorJob = serviceScope.launch {
+            var wasConnected = false
+            while (isActive) {
+                val connected = runCatching { bridge.currentSnapshot().connected }.getOrDefault(false)
+                if (connected) {
+                    acquireOrRenewSessionWakeLock()
+                } else {
+                    releaseSessionWakeLock()
+                }
+                if (connected != wasConnected) {
+                    wasConnected = connected
+                    val suffix = if (connected) "session wake lock active" else "waiting for robot session"
+                    updateNotification("Bridge ready at ws://0.0.0.0:$DEFAULT_BRIDGE_PORT/bridge; $suffix")
+                }
+                delay(WAKE_LOCK_POLL_MS)
+            }
+        }
+    }
+
+    private fun acquireOrRenewSessionWakeLock() {
+        val lock = sessionWakeLock ?: getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, SESSION_WAKE_LOCK_TAG)
+            .apply { setReferenceCounted(false) }
+            .also { sessionWakeLock = it }
+        runCatching { lock.acquire(WAKE_LOCK_TIMEOUT_MS) }
+    }
+
+    private fun releaseSessionWakeLock() {
+        sessionWakeLock?.let { lock ->
+            runCatching {
+                if (lock.isHeld) {
+                    lock.release()
+                }
             }
         }
     }
@@ -163,6 +211,9 @@ class CompanionBridgeService : Service() {
         private const val CHANNEL_ID = "stackchan_companion_bridge"
         private const val NOTIFICATION_ID = 8765
         private const val ACTION_STOP = "dev.stackchan.companion.android.STOP_BRIDGE"
+        private const val SESSION_WAKE_LOCK_TAG = "StackchanCompanion:BridgeSession"
+        private const val WAKE_LOCK_TIMEOUT_MS = 60_000L
+        private const val WAKE_LOCK_POLL_MS = 15_000L
 
         fun start(context: Context) {
             val intent = Intent(context, CompanionBridgeService::class.java)
