@@ -75,7 +75,8 @@ upload, fake STT/TTS, and PCM16 binary downlink check.
 
 If the Android companion is the bridge host, install the debug or release APK on the phone,
 open Stackchan Companion, allow notifications when prompted on Android 13 or newer, and
-confirm the foreground notification reports the bridge as ready and advertised. The phone
+allow the app to ignore battery optimizations if prompted for screen-off bench testing.
+Confirm the foreground notification reports the bridge as ready and advertised. The phone
 advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `proto`, and
 `capabilities` TXT metadata matching the desktop companion.
 Android holds a multicast lock while advertising so same-network discovery survives common
