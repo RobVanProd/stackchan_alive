@@ -231,8 +231,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Install companion Android SDK packages
-        if: matrix.setup_android
-        shell: ${{ matrix.shell }}
+        if: matrix.setup_android && matrix.shell == 'bash'
+        shell: bash
+        run: ${{ matrix.install_android_command }}
+
+      - name: Install companion Android SDK packages on Windows
+        if: matrix.setup_android && matrix.shell == 'pwsh'
+        shell: pwsh
         run: ${{ matrix.install_android_command }}
 
       - name: Install Linux desktop packaging prerequisites
@@ -243,7 +248,13 @@ jobs:
           sudo apt-get install -y fakeroot
 
       - name: Build companion platform artifact
-        shell: ${{ matrix.shell }}
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: ${{ matrix.command }}
+
+      - name: Build companion platform artifact on Windows
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
         run: ${{ matrix.command }}
 
       - name: Upload companion platform artifact
