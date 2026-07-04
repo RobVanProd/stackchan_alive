@@ -256,8 +256,15 @@ jobs:
           status=$?
           if [ "$status" -ne 0 ]; then
             echo "::group::Compose desktop package diagnostics"
-            if [ -d companion/app-desktop/build/compose ]; then
-              find companion/app-desktop/build/compose -type f \( -name '*.txt' -o -name '*.args.txt' \) -print | sort | while IFS= read -r file; do
+            compose_dir=""
+            for candidate in companion/app-desktop/build/compose app-desktop/build/compose; do
+              if [ -d "$candidate" ]; then
+                compose_dir="$candidate"
+                break
+              fi
+            done
+            if [ -n "$compose_dir" ]; then
+              find "$compose_dir" -type f \( -name '*.txt' -o -name '*.args.txt' \) -print | sort | while IFS= read -r file; do
                 echo "---- $file"
                 sed -n '1,240p' "$file"
               done
@@ -276,8 +283,11 @@ jobs:
           $status = $LASTEXITCODE
           if ($status -ne 0) {
             Write-Output '::group::Compose desktop package diagnostics'
-            if (Test-Path 'companion/app-desktop/build/compose') {
-              Get-ChildItem 'companion/app-desktop/build/compose' -Recurse -File -Include '*.txt','*.args.txt' |
+            $composeDir = @('companion/app-desktop/build/compose', 'app-desktop/build/compose') |
+              Where-Object { Test-Path $_ } |
+              Select-Object -First 1
+            if ($composeDir) {
+              Get-ChildItem $composeDir -Recurse -File -Include '*.txt','*.args.txt' |
                 Sort-Object FullName |
                 ForEach-Object {
                   Write-Output "---- $($_.FullName)"
