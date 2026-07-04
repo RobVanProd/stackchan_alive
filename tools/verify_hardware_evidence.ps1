@@ -3,7 +3,8 @@ param(
   [int64]$MinLogBytes = 128,
   [switch]$AllowMissingPackage,
   [switch]$AllowMissingMedia,
-  [switch]$AllowSyntheticEvidence
+  [switch]$AllowSyntheticEvidence,
+  [switch]$AndroidApkEvidenceContractSelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -613,6 +614,19 @@ function Assert-AndroidDashboardManifestEvidence {
   }
 
   throw "media_manifest.json is missing a photo/video entry whose notes identify the Android dashboard connected state with robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state."
+}
+
+if ($AndroidApkEvidenceContractSelfTest) {
+  $metadataPath = Join-EvidencePath "metadata.json"
+  if (-not (Test-Path -LiteralPath $metadataPath)) {
+    throw "Android APK evidence contract self-test requires metadata.json."
+  }
+
+  $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+  Assert-AndroidCompanionReportEvidence $metadata
+  Write-Host "Android APK strict evidence contract verified:"
+  Write-Host $evidencePath
+  return
 }
 
 $requiredFiles = @(
