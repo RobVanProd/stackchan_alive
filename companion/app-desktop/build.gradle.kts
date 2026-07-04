@@ -22,8 +22,8 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.websockets)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.kotlin.test)
-    testImplementation(libs.kotlinx.serialization.json)
 }
 
 compose.desktop {
@@ -44,4 +44,12 @@ tasks.register<JavaExec>("c0Spike") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("dev.stackchan.companion.desktop.C0SpikeKt")
     args(rootProject.layout.projectDirectory.dir("../output/companion/c0-spike").asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("runtimeSmoke") {
+    group = "verification"
+    description = "Runs a desktop runtime WebSocket smoke test and writes output/companion/runtime-smoke/SMOKE.md."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.stackchan.companion.desktop.RuntimeSmokeKt")
+    args(rootProject.layout.projectDirectory.dir("../output/companion/runtime-smoke").asFile.absolutePath)
 }
