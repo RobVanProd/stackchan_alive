@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 class CompanionBridgeService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var server: CompanionEndpointServer? = null
+    private var advertisement: AndroidBridgeAdvertisement? = null
     private var startJob: Job? = null
 
     override fun onCreate() {
@@ -46,6 +47,8 @@ class CompanionBridgeService : Service() {
 
     override fun onDestroy() {
         startJob?.cancel()
+        advertisement?.close()
+        advertisement = null
         server?.close()
         server = null
         serviceScope.cancel()
@@ -61,6 +64,7 @@ class CompanionBridgeService : Service() {
             val stores = AndroidBridgeStores(applicationContext)
             val settings = stores.loadSettings()
             val trustedEndpoints = stores.loadTrustedEndpoints()
+            val endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId())
             val router = EndpointRequestRouter(
                 settingsRepository = settings,
                 trustedEndpointRegistry = trustedEndpoints,
@@ -73,13 +77,25 @@ class CompanionBridgeService : Service() {
                     EndpointServerConfig(
                         host = "0.0.0.0",
                         port = DEFAULT_BRIDGE_PORT,
-                        endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId()),
+                        endpointHello = endpointHello,
                         requestRouter = router,
                     ),
                 ).start()
             }.onSuccess { bridge ->
                 server = bridge
-                updateNotification("Bridge ready at ws://0.0.0.0:$DEFAULT_BRIDGE_PORT/bridge")
+                runCatching {
+                    AndroidBridgeAdvertisement(
+                        context = applicationContext,
+                        endpointHello = endpointHello,
+                        port = DEFAULT_BRIDGE_PORT,
+                        onStatusChanged = ::updateNotification,
+                    ).also { it.start() }
+                }.onSuccess { bridgeAdvertisement ->
+                    advertisement = bridgeAdvertisement
+                    updateNotification("Bridge ready at ws://0.0.0.0:$DEFAULT_BRIDGE_PORT/bridge; advertising NSD")
+                }.onFailure { error ->
+                    updateNotification("Bridge ready; NSD advertise unavailable: ${error.message ?: error::class.simpleName}")
+                }
             }.onFailure { error ->
                 updateNotification("Bridge failed: ${error.message ?: error::class.simpleName}")
                 stopSelf()

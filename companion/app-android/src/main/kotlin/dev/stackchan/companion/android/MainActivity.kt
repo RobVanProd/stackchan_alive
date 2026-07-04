@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
                         command = "CompanionBridgeService",
                         recentLogs = listOf(
                             "Foreground bridge hosts /bridge for robot testing.",
+                            "Android NSD advertises _stackchan-bridge._tcp.local.",
                             "Settings and trusted endpoints persist on this phone.",
                         ),
                     ),
