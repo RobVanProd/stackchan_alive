@@ -110,9 +110,18 @@ function Test-OptionalAndroidProbeReport {
     Add-Finding "$Description report schema mismatch: $($report.schema)"
   } elseif (@($PassingStatuses) -contains [string]$report.status) {
     if ($ExpectedSchema -eq "stackchan.android-apk-install.v1") {
+      if ([string]$report.apkSha256 -notmatch "^[0-9a-fA-F]{64}$") {
+        Add-Finding "$Description report is missing a valid apkSha256."
+        return
+      }
       $sourceCommit = [string]$report.sourceCommit
       if ($sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
         Add-Finding "$Description report is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+        return
+      }
+      if ([string]::IsNullOrWhiteSpace([string]$report.versionName) -or
+          [string]::IsNullOrWhiteSpace([string]$report.versionCode)) {
+        Add-Finding "$Description report is missing installed versionName/versionCode."
         return
       }
     }

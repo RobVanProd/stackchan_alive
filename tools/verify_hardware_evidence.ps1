@@ -514,8 +514,17 @@ function Assert-AndroidReportEvidence {
     throw "$Description status is not accepted: $($report.status). $issues"
   }
   if ($ExpectedSchema -eq "stackchan.android-apk-install.v1" -and
-      [string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
-    throw "$Description is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+      [string]$report.apkSha256 -notmatch "^[0-9a-fA-F]{64}$") {
+    throw "$Description is missing a valid apkSha256."
+  }
+  if ($ExpectedSchema -eq "stackchan.android-apk-install.v1") {
+    if ([string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+      throw "$Description is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$report.versionName) -or
+        [string]::IsNullOrWhiteSpace([string]$report.versionCode)) {
+      throw "$Description is missing installed versionName/versionCode."
+    }
   }
 }
 

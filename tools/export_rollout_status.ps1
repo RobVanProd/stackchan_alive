@@ -241,8 +241,15 @@ function Get-AndroidProbeEvidenceStatus {
       $issues = @($report.issues) -join "; "
       $failures.Add("$($probe.label) status $($report.status): $issues") | Out-Null
     } elseif ([string]$probe.schema -eq "stackchan.android-apk-install.v1" -and
+        [string]$report.apkSha256 -notmatch "^[0-9a-fA-F]{64}$") {
+      $failures.Add("$($probe.label) is missing a valid apkSha256") | Out-Null
+    } elseif ([string]$probe.schema -eq "stackchan.android-apk-install.v1" -and
         [string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
       $failures.Add("$($probe.label) is missing a full sourceCommit SHA; re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>") | Out-Null
+    } elseif ([string]$probe.schema -eq "stackchan.android-apk-install.v1" -and
+        ([string]::IsNullOrWhiteSpace([string]$report.versionName) -or
+         [string]::IsNullOrWhiteSpace([string]$report.versionCode))) {
+      $failures.Add("$($probe.label) is missing installed versionName/versionCode") | Out-Null
     } else {
       $present.Add("$($probe.label) status $($report.status) at $($probe.path)") | Out-Null
     }
