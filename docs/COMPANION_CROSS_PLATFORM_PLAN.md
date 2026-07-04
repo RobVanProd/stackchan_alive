@@ -218,17 +218,20 @@ and a Windows `.msi` on Windows. Every leg provisions JDK 21 and Android SDK Pla
 the shared KMP Android targets are configured consistently even during desktop packaging,
 and every leg uploads its produced platform artifact with `if-no-files-found: error`.
 A follow-on `companion-release-evidence` job downloads those four platform artifacts,
-runs `tools/export_companion_release_evidence.ps1 -RequireArtifacts`, and uploads
-`COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, byte counts, SHA256 hashes,
-the producing commit, and Gradle toolchain pins. That evidence job fails if the manifest
-does not include both Android debug/release APKs plus Linux `.deb`, macOS `.dmg`, and
-Windows `.msi` desktop packages.
+runs `tools/export_companion_release_evidence.ps1 -RequireArtifacts`, verifies the Android
+release APK with `apksigner`, and uploads `COMPANION_RELEASE_EVIDENCE.json/md` with
+artifact paths, byte counts, SHA256 hashes, the producing commit, Gradle toolchain pins,
+and Android signing status. That evidence job fails if the manifest does not include both
+Android debug/release APKs, a verified signed release APK, plus Linux `.deb`, macOS `.dmg`,
+and Windows `.msi` desktop packages.
 
-Evidence snapshot: PR #194 run `28710085809` on 2026-07-04 passed `bridge-tests`,
+Evidence snapshot: PR #194 run `28711092216` on 2026-07-04 passed `bridge-tests`,
 `native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, and
 `companion-release-evidence`. Uploaded companion artifacts included `companion-android-apks`,
 `companion-desktop-linux`, `companion-desktop-macos`, `companion-desktop-windows`, and a
-complete `COMPANION_RELEASE_EVIDENCE.json/md` manifest.
+complete `COMPANION_RELEASE_EVIDENCE.json/md` manifest. The release APK entry is
+`app-android-release.apk`; the signing evidence records APK Signature Scheme v2 with the
+Android debug certificate for lab/arrival-day testing.
 
 **PR / push (`firmware.yml` additions, path-filtered to `companion/**` and
 `protocol-fixtures/**`):**

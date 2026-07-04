@@ -314,6 +314,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android signing verifier
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "build-tools;36.0.0"
+
       - name: Download companion Android APK artifacts
         uses: actions/download-artifact@v7
         with:

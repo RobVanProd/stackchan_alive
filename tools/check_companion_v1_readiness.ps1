@@ -255,7 +255,13 @@ Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
-  -Patterns @("companion-tests", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "./gradlew check :app-desktop:c0Spike")
+  -Patterns @("companion-tests", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "./gradlew check :app-desktop:c0Spike")
+
+Test-TextEvidence `
+  -Id "companion-release-signing-evidence" `
+  -Name "Companion release APK signing evidence" `
+  -RelativePaths @("tools/export_companion_release_evidence.ps1") `
+  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2")
 
 Test-TextEvidence `
   -Id "android-toolchain-check" `

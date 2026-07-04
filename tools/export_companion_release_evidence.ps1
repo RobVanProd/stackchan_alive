@@ -5,6 +5,7 @@ param(
   [string]$PackageRoot = "",
   [string]$AndroidArtifactRoot = "",
   [string]$DesktopArtifactRoot = "",
+  [string]$ApkSignerPath = "",
   [string]$OutDir = "",
   [switch]$RequireArtifacts,
   [switch]$Json
@@ -54,6 +55,50 @@ function Get-Sha256Text {
     return ""
   }
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Get-CommandPath {
+  param([string]$Name)
+
+  $command = Get-Command $Name -ErrorAction SilentlyContinue
+  if ($command) {
+    return [string]$command.Source
+  }
+  return ""
+}
+
+function Find-ApkSigner {
+  if (-not [string]::IsNullOrWhiteSpace($ApkSignerPath)) {
+    if (Test-Path -LiteralPath $ApkSignerPath -PathType Leaf) {
+      return [string](Resolve-Path $ApkSignerPath)
+    }
+    return $ApkSignerPath
+  }
+
+  foreach ($commandName in @("apksigner", "apksigner.bat")) {
+    $path = Get-CommandPath $commandName
+    if (-not [string]::IsNullOrWhiteSpace($path)) {
+      return $path
+    }
+  }
+
+  $localAndroidSdk = if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { "" } else { Join-Path $env:LOCALAPPDATA "Android/Sdk" }
+  $sdkRoots = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, $localAndroidSdk) |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Select-Object -Unique
+  foreach ($sdkRoot in $sdkRoots) {
+    if (-not (Test-Path -LiteralPath $sdkRoot -PathType Container)) {
+      continue
+    }
+    $candidate = Get-ChildItem -LiteralPath $sdkRoot -Recurse -File -Include "apksigner", "apksigner.bat" -ErrorAction SilentlyContinue |
+      Sort-Object FullName -Descending |
+      Select-Object -First 1
+    if ($candidate) {
+      return [string]$candidate.FullName
+    }
+  }
+
+  return ""
 }
 
 function Convert-ToRelativePath {
@@ -247,6 +292,99 @@ function Test-ArtifactEntryPattern {
   return $false
 }
 
+function Get-AndroidApkEntry {
+  param(
+    [object]$ArtifactGroup,
+    [ValidateSet("debug", "release")]
+    [string]$Flavor
+  )
+
+  foreach ($entry in @($ArtifactGroup.entries)) {
+    $name = [string]$entry["name"]
+    $path = [string]$entry["path"]
+    if ($name -match "$Flavor.*\.apk$" -or $path -match "(^|[\\/])$Flavor[\\/][^\\/]+\.apk$") {
+      return $entry
+    }
+  }
+  return $null
+}
+
+function Test-AndroidReleaseApkSignature {
+  param([object]$ArtifactGroup)
+
+  $releaseEntry = Get-AndroidApkEntry $ArtifactGroup "release"
+  if ($null -eq $releaseEntry) {
+    return [ordered]@{
+      status = "pending"
+      apk = ""
+      verifier = ""
+      scheme = ""
+      signer = ""
+      detail = "Release APK artifact not found."
+    }
+  }
+
+  $apkPath = [string]$releaseEntry["path"]
+  if (-not [System.IO.Path]::IsPathRooted($apkPath)) {
+    $apkPath = Join-Path $Root $apkPath
+  }
+  if (-not (Test-Path -LiteralPath $apkPath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      apk = [string]$releaseEntry["path"]
+      verifier = ""
+      scheme = ""
+      signer = ""
+      detail = "Release APK path was recorded but does not exist on disk."
+    }
+  }
+
+  $resolvedApkSigner = Find-ApkSigner
+  if ([string]::IsNullOrWhiteSpace($resolvedApkSigner)) {
+    return [ordered]@{
+      status = "pending"
+      apk = [string]$releaseEntry["path"]
+      verifier = ""
+      scheme = ""
+      signer = ""
+      detail = "apksigner was not found; install Android build-tools or pass -ApkSignerPath."
+    }
+  }
+
+  $output = @()
+  try {
+    $output = @(& $resolvedApkSigner verify --verbose --print-certs $apkPath 2>&1)
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $output = @($_.Exception.Message)
+    $exitCode = 1
+  }
+
+  $text = (($output | Out-String).Trim())
+  $verified = $exitCode -eq 0 -and $text -match "(?m)^Verifies\s*$"
+  $scheme = ""
+  if ($text -match "Verified using v2 scheme \(APK Signature Scheme v2\): true") {
+    $scheme = "v2"
+  } elseif ($text -match "Verified using v3 scheme \(APK Signature Scheme v3\): true") {
+    $scheme = "v3"
+  } elseif ($text -match "Verified using v1 scheme \(JAR signing\): true") {
+    $scheme = "v1"
+  }
+  $signer = ""
+  if ($text -match "Signer #1 certificate DN:\s*(.+)") {
+    $signer = $matches[1].Trim()
+  }
+
+  return [ordered]@{
+    status = if ($verified) { "verified" } else { "failed" }
+    apk = [string]$releaseEntry["path"]
+    verifier = $resolvedApkSigner
+    scheme = $scheme
+    signer = $signer
+    detail = if ($verified) { "Release APK signature verified by apksigner." } else { "apksigner verification failed: $text" }
+  }
+}
+
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
   $pending += "companion-cross-platform-plan"
@@ -257,10 +395,10 @@ if ([string]::IsNullOrWhiteSpace($readinessPath)) {
 if ($androidArtifacts.status -ne "present") {
   $pending += "android-apk-artifacts"
 } else {
-  if (-not (Test-ArtifactEntryPattern $androidArtifacts 'debug.*\.apk$')) {
+  if ($null -eq (Get-AndroidApkEntry $androidArtifacts "debug")) {
     $pending += "android-debug-apk-artifact"
   }
-  if (-not (Test-ArtifactEntryPattern $androidArtifacts 'release.*\.apk$')) {
+  if ($null -eq (Get-AndroidApkEntry $androidArtifacts "release")) {
     $pending += "android-release-apk-artifact"
   }
 }
@@ -281,6 +419,11 @@ if ([string]::IsNullOrWhiteSpace($toolchainPins.path)) {
   $pending += "gradle-toolchain-pins"
 }
 
+$androidSigning = Test-AndroidReleaseApkSignature $androidArtifacts
+if ($androidSigning.status -ne "verified") {
+  $pending += "android-release-apk-signature"
+}
+
 $status = if ($RequireArtifacts -and $pending.Count -gt 0) { "blocked-missing-artifacts" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
 $report = [ordered]@{
@@ -297,6 +440,7 @@ $report = [ordered]@{
   }
   toolchainPins = $toolchainPins
   artifacts = @($androidArtifacts, $desktopArtifacts)
+  androidSigning = $androidSigning
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
 }
@@ -329,6 +473,14 @@ foreach ($artifactGroup in $report.artifacts) {
     }
   }
 }
+$lines += ""
+$lines += "## Android Signing"
+$lines += "- Status: $($androidSigning.status)"
+$lines += "- APK: $($androidSigning.apk)"
+$lines += "- Scheme: $($androidSigning.scheme)"
+$lines += "- Signer: $($androidSigning.signer)"
+$lines += "- Verifier: $($androidSigning.verifier)"
+$lines += "- Detail: $($androidSigning.detail)"
 $lines += ""
 $lines += "## Pending"
 if ($pending.Count -eq 0) {
