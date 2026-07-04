@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
@@ -17,5 +18,6 @@ android {
 
 dependencies {
     implementation(project(":core"))
-    implementation(libs.androidx.activity)
+    implementation(project(":ui"))
+    implementation(libs.androidx.activity.compose)
 }
