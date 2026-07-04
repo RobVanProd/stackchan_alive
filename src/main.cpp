@@ -735,6 +735,12 @@ void printRuntimeStatus() {
   Serial.print(network.bytesWritten);
   Serial.print(F(" bridge_network_writer_frames="));
   Serial.print(network.writerFrames);
+  Serial.print(F(" bridge_network_writer_binary_frames="));
+  Serial.print(network.writerBinaryFrames);
+  Serial.print(F(" bridge_network_binary_queued="));
+  Serial.print(gBridgeNetworkSession.writer().telemetry().binaryFramesQueued);
+  Serial.print(F(" bridge_network_binary_dropped="));
+  Serial.print(gBridgeNetworkSession.writer().telemetry().binaryFramesDropped);
   const BridgeEndpointRegistryTelemetry& endpoints = gBridgeEndpointRegistry.telemetry();
   Serial.print(F(" bridge_endpoint_registry_ready="));
   Serial.print(endpoints.ready ? 1 : 0);

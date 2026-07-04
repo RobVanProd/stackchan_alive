@@ -8,7 +8,11 @@
 
 namespace stackchan {
 
-constexpr size_t kBridgeSocketWriterFrameMax = kBridgeEndpointControlResponseMax + 16u;
+constexpr size_t kBridgeSocketWriterPayloadMax =
+    kBridgeWebSocketFramePayloadMax > kBridgeEndpointControlResponseMax
+        ? kBridgeWebSocketFramePayloadMax
+        : kBridgeEndpointControlResponseMax;
+constexpr size_t kBridgeSocketWriterFrameMax = kBridgeSocketWriterPayloadMax + 16u;
 
 enum class BridgeSocketWriterDrainResult : uint8_t {
   NoPending,
@@ -23,11 +27,18 @@ enum class BridgeSocketWriterDrainResult : uint8_t {
 struct BridgeSocketWriterTelemetry {
   bool ready = false;
   bool frameBuffered = false;
+  bool binaryFrameQueued = false;
   uint32_t drainAttempts = 0;
   uint32_t framesEncoded = 0;
   uint32_t framesWritten = 0;
+  uint32_t binaryFramesQueued = 0;
+  uint32_t binaryFramesDropped = 0;
+  uint32_t binaryFramesEncoded = 0;
+  uint32_t binaryFramesWritten = 0;
   uint32_t partialWrites = 0;
   uint32_t writeFailures = 0;
+  uint32_t binaryBytesQueued = 0;
+  uint32_t binaryBytesWritten = 0;
   uint32_t bytesWritten = 0;
   uint32_t lastWriteMs = 0;
   char lastError[kBridgeErrorMax] = {};
@@ -46,6 +57,8 @@ class BridgeSocketWriter {
   bool begin(BridgeWebSocketTransport& transport, BridgeSocketWriterSink& sink, uint32_t maskSeed = 0x51ac5eedu);
   void reset();
 
+  bool queueBinaryFrame(const uint8_t* payload, size_t length);
+  BridgeSocketWriterDrainResult drainPendingFrame(uint32_t nowMs);
   BridgeSocketWriterDrainResult drainPendingTextResponse(uint32_t nowMs);
 
   const BridgeSocketWriterTelemetry& telemetry() const {
@@ -53,6 +66,13 @@ class BridgeSocketWriter {
   }
 
  private:
+  enum class PendingFrameKind : uint8_t {
+    None,
+    TextResponse,
+    BinaryUpload,
+  };
+
+  BridgeSocketWriterDrainResult drainPending(uint32_t nowMs, bool includeBinary);
   uint32_t nextMaskWord();
   void makeMask(uint8_t out[4]);
   BridgeSocketWriterDrainResult fail(BridgeSocketWriterDrainResult result, const char* reason);
@@ -64,8 +84,12 @@ class BridgeSocketWriter {
   BridgeSocketWriterTelemetry telemetry_;
   uint32_t maskState_ = 0x51ac5eedu;
   uint8_t frame_[kBridgeSocketWriterFrameMax] = {};
+  uint8_t binaryPayload_[kBridgeWebSocketFramePayloadMax] = {};
   size_t frameBytes_ = 0;
   size_t frameOffset_ = 0;
+  size_t framePayloadBytes_ = 0;
+  size_t binaryPayloadBytes_ = 0;
+  PendingFrameKind frameKind_ = PendingFrameKind::None;
 };
 
 }  // namespace stackchan

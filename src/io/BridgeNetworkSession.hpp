@@ -50,6 +50,7 @@ struct BridgeNetworkSessionTelemetry {
   uint32_t bytesRead = 0;
   uint32_t bytesWritten = 0;
   uint32_t writerFrames = 0;
+  uint32_t writerBinaryFrames = 0;
   uint32_t lastStateMs = 0;
   char lastError[kBridgeNetworkErrorMax] = {};
 };
@@ -74,6 +75,7 @@ class BridgeNetworkSession {
   bool start(uint32_t nowMs);
   void update(uint32_t nowMs);
   void stop(uint32_t nowMs);
+  bool queueBinaryFrame(const uint8_t* payload, size_t length);
 
   const BridgeNetworkSessionTelemetry& telemetry() const {
     return telemetry_;
