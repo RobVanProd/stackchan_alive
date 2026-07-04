@@ -32,7 +32,7 @@ from tts_adapter import DEFAULT_TTS_VOICE, TTS_COMMAND_ENV
 
 SCHEMA = "stackchan.lan-smoke.v1"
 DEFAULT_OUT_DIR = Path("output/lan-smoke/latest")
-DEFAULT_SCENARIOS = ("text-turn", "audio-loop", "thinking-latency")
+DEFAULT_SCENARIOS = ("text-turn", "audio-loop", "thinking-latency", "endpoint-controls")
 CLIENT_MASK = b"\x37\xfa\x21\x3d"
 THINKING_LATENCY_MAX_MS = 200.0
 DELAYED_RESPONSE_MIN_MS = 250.0
@@ -411,6 +411,51 @@ def run_thinking_latency(host: str, base_config: LanBridgeConfig, temp_dir: Path
     return result
 
 
+def run_endpoint_controls(host: str, config: LanBridgeConfig) -> ScenarioResult:
+    result = ScenarioResult(scenario="endpoint-controls")
+    start = time.perf_counter()
+    with SmokeServer(config) as server:
+        port = server.port()
+        with SmokeClient(host, port) as client:
+            result.handshake_status = "accepted"
+            client.send_text(
+                {
+                    "type": "endpoint_hello",
+                    "endpoint_id": "pc-studio-01",
+                    "endpoint_name": "Studio PC",
+                    "endpoint_kind": "pc",
+                    "priority": 80,
+                    "supports_binary_audio": True,
+                    "capabilities": ["stt", "llm", "tts", "settings", "audio_downlink"],
+                }
+            )
+            append_received(result, client.read())
+            client.send_text({"type": "claim_brain", "endpoint_id": "pc-studio-01"})
+            append_received(result, client.read())
+            client.send_text({"type": "settings_get", "domains": ["bridge", "display"]})
+            settings_frame = client.read()
+            append_received(result, settings_frame)
+            version = int(settings_frame.text_payload().get("version", 0))
+            client.send_text(
+                {
+                    "type": "settings_set",
+                    "version": version,
+                    "settings": {"display": {"reduced_motion": True}},
+                }
+            )
+            append_received(result, client.read())
+            client.send_text({"type": "diagnostics_request", "domains": ["bridge", "model"]})
+            append_received(result, client.read())
+            client.send_text({"type": "trusted_endpoints"})
+            append_received(result, client.read())
+            client.send_text({"type": "forget_endpoint", "endpoint_id": "pc-studio-01"})
+            append_received(result, client.read())
+        result.server_errors.extend(server.errors)
+    result.elapsed_ms = (time.perf_counter() - start) * 1000.0
+    validate_endpoint_controls(result)
+    return result
+
+
 def validate_common(result: ScenarioResult) -> None:
     if result.server_errors:
         result.fail("server_errors_present")
@@ -467,6 +512,38 @@ def validate_thinking_latency(result: ScenarioResult) -> None:
         result.fail("delayed_response_not_observed")
 
 
+def validate_endpoint_controls(result: ScenarioResult) -> None:
+    if result.server_errors:
+        result.fail("server_errors_present")
+    require_order(
+        result,
+        (
+            "endpoint_hello_result",
+            "owner_status",
+            "settings_snapshot",
+            "settings_result",
+            "diagnostics_snapshot",
+            "trusted_endpoints_result",
+            "forget_endpoint_result",
+        ),
+    )
+    owner = require_frame(result, "owner_status") or {}
+    settings_result = require_frame(result, "settings_result") or {}
+    diagnostics = require_frame(result, "diagnostics_snapshot") or {}
+    trusted = require_frame(result, "trusted_endpoints_result") or {}
+    forgotten = require_frame(result, "forget_endpoint_result") or {}
+    if owner.get("active_brain_owner") != "pc-studio-01":
+        result.fail("claim_brain_owner_mismatch")
+    if settings_result.get("ok") is not True:
+        result.fail("settings_set_failed")
+    if diagnostics.get("bridge", {}).get("active_brain_owner") != "pc-studio-01":
+        result.fail("diagnostics_owner_mismatch")
+    if len(trusted.get("endpoints", [])) != 1:
+        result.fail("trusted_endpoint_missing")
+    if forgotten.get("ok") is not True or forgotten.get("trusted_endpoint_count") != 0:
+        result.fail("forget_endpoint_failed")
+
+
 def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEFAULT_SCENARIOS) -> dict[str, Any]:
     selected = tuple(scenarios)
     results: list[ScenarioResult] = []
@@ -480,6 +557,8 @@ def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEF
                 results.append(run_audio_loop(config.host, config, temp_dir))
             elif scenario == "thinking-latency":
                 results.append(run_thinking_latency(config.host, config, temp_dir))
+            elif scenario == "endpoint-controls":
+                results.append(run_endpoint_controls(config.host, config))
             else:
                 result = ScenarioResult(scenario=scenario, status="fail")
                 result.issues.append("unknown_scenario")

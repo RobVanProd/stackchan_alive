@@ -128,7 +128,10 @@ python bridge/lan_smoke.py --out-dir output/lan-smoke/latest --json
 It writes `LAN_SMOKE.md/json`, starts a temporary local WebSocket bridge, performs a real
 handshake, sends a transcript-backed text turn, then sends a fake mic PCM upload through fake
 STT/TTS, validates the binary PCM16 downlink sequence, and checks `thinking-latency` so the
-face can show visible thinking before delayed speech finishes.
+face can show visible thinking before delayed speech finishes. It also exercises the
+`endpoint-controls` path for Android/PC companion work: `endpoint_hello`, `claim_brain`,
+`settings_get`, `settings_set`, `diagnostics_request`, `trusted_endpoints`, and
+`forget_endpoint`.
 
 Audio-only turns can use a local STT command:
 
@@ -166,9 +169,12 @@ stream totals. When speaker hardware is enabled, firmware can also hand accepted
 PCM16 chunks to the M5 speaker sink. Other formats are transported for validation but are not
 played by the downlink sink.
 
-The service accepts `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and `cancel`
-JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It tracks bounded
-upload telemetry and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
+The service accepts `hello`, `endpoint_hello`, `claim_brain`, `release_brain`,
+`owner_status`, `trusted_endpoints`, `forget_endpoint`, `settings_get`, `settings_set`,
+`diagnostics_request`, `capability_update`, `utterance_start`, `utterance_end`, `heartbeat`,
+and `cancel` JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It
+tracks trusted PC/Android endpoints, one active brain owner, safe settings writes, bounded
+upload telemetry, and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
 or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
 stream chunks, `audio` mouth frames, and `response_end` frames back to the client.

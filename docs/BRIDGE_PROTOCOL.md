@@ -91,7 +91,9 @@ The maintained socket-level smoke check is `tools/run_lan_smoke.cmd`:
 It writes `output/lan-smoke/latest/LAN_SMOKE.md/json`, starts a temporary local WebSocket
 server, performs the real handshake, validates the text-turn frame order, sends fake mic
 PCM through fake STT/TTS, checks `audio_stream_start`, binary chunks, and
-`audio_stream_end` before `response_end`, and measures the `thinking-latency` scenario.
+`audio_stream_end` before `response_end`, measures the `thinking-latency` scenario, and
+exercises `endpoint-controls` for PC/Android endpoint ownership, settings, diagnostics, and
+trusted endpoint forgetting.
 For LAN socket clients, `thinking` is emitted immediately on `utterance_end` before slow
 STT/model/TTS work runs; the final response suppresses the duplicate `thinking` frame.
 
@@ -128,6 +130,16 @@ downlink sink.
 ## Device To Bridge
 
 - `hello`: device identity and protocol version.
+- `endpoint_hello`: companion/bridge endpoint identity, kind, priority, and capabilities.
+- `claim_brain`: trusted endpoint requests active brain ownership.
+- `release_brain`: active owner releases the brain; the bridge may promote another trusted endpoint.
+- `owner_status`: request the current active brain owner state.
+- `trusted_endpoints`: list trusted PC/mobile/dev endpoints.
+- `forget_endpoint`: remove one trusted endpoint and require pairing before it reconnects as trusted.
+- `settings_get`: read safe bot/bridge settings by domain.
+- `settings_set`: write safe settings with version conflict detection; safety-locked settings are rejected.
+- `diagnostics_request`: read bridge/model/audio diagnostics.
+- `capability_update`: update capabilities for a trusted endpoint.
 - `utterance_start`: wake-gated user speech has started.
 - `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
 - `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. A `text` or `transcript` field bypasses STT and is useful for deterministic tests.
@@ -145,6 +157,14 @@ Example:
 ## Bridge To Device
 
 - `hello`: bridge accepted the session.
+- `endpoint_hello_result`: endpoint trust/capability registration result.
+- `owner_status`: active brain owner, owner kind, health state, and trusted endpoint count.
+- `trusted_endpoints_result`: trusted endpoint registry snapshot.
+- `forget_endpoint_result`: endpoint removal result.
+- `settings_snapshot`: versioned safe settings snapshot.
+- `settings_result`: safe settings write result or version/safety-lock rejection.
+- `diagnostics_snapshot`: bridge/model/audio diagnostics.
+- `capability_update_result`: updated endpoint capabilities.
 - `listening`: bridge is receiving user speech.
 - `thinking`: bridge is processing; firmware emits `ThinkingStarted`.
 - `response_start`: response metadata is ready; firmware emits `ResponseStarted`.

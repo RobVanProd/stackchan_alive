@@ -1103,28 +1103,28 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
 }
 
 $lanServiceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_service.py") -Raw
-foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats")) {
+foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats")) {
   if ($lanServiceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_lan_service.py missing LAN bridge service test coverage: $pattern"
   }
 }
 
 $lanSmokeText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_smoke.py") -Raw
-foreach ($pattern in @("stackchan.lan-smoke.v1", "SmokeServer", "SmokeClient", "encode_client_frame", "build_report", "LAN_SMOKE.md", "lan_smoke.json", "audio-loop", "thinking-latency", "frame_timings", "THINKING_LATENCY_MAX_MS", "validate_thinking_latency", "fake_stt", "fake_tts", "binary_downlink_byte_mismatch")) {
+foreach ($pattern in @("stackchan.lan-smoke.v1", "SmokeServer", "SmokeClient", "encode_client_frame", "build_report", "LAN_SMOKE.md", "lan_smoke.json", "audio-loop", "thinking-latency", "endpoint-controls", "frame_timings", "THINKING_LATENCY_MAX_MS", "validate_thinking_latency", "validate_endpoint_controls", "fake_stt", "fake_tts", "binary_downlink_byte_mismatch", "forget_endpoint")) {
   if ($lanSmokeText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_smoke.py missing LAN smoke support: $pattern"
   }
 }
 
 $lanSmokeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_smoke.py") -Raw
-foreach ($pattern in @("LanSmokeTests", "test_client_frames_are_masked_for_server_protocol_path", "test_build_report_exercises_text_and_audio_socket_paths", "test_write_outputs_creates_json_markdown_and_per_scenario_reports", "test_smoke_report_does_not_leak_configured_runner_environment", "thinking-latency", "frame_timings")) {
+foreach ($pattern in @("LanSmokeTests", "test_client_frames_are_masked_for_server_protocol_path", "test_build_report_exercises_text_and_audio_socket_paths", "test_write_outputs_creates_json_markdown_and_per_scenario_reports", "test_smoke_report_does_not_leak_configured_runner_environment", "thinking-latency", "endpoint-controls", "owner_status", "forget_endpoint_result", "frame_timings")) {
   if ($lanSmokeTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_lan_smoke.py missing LAN smoke test coverage: $pattern"
   }
