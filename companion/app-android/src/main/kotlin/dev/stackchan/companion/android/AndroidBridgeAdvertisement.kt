@@ -3,6 +3,7 @@ package dev.stackchan.companion.android
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.STACKCHAN_BRIDGE_SERVICE
 
@@ -12,7 +13,10 @@ class AndroidBridgeAdvertisement(
     private val port: Int,
     private val onStatusChanged: (String) -> Unit = {},
 ) : AutoCloseable {
-    private val nsdManager = context.applicationContext.getSystemService(NsdManager::class.java)
+    private val appContext = context.applicationContext
+    private val nsdManager = appContext.getSystemService(NsdManager::class.java)
+    private val wifiManager = appContext.getSystemService(WifiManager::class.java)
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var listener: NsdManager.RegistrationListener? = null
 
     fun start() {
@@ -21,6 +25,7 @@ class AndroidBridgeAdvertisement(
         }
         require(port in 1..65535) { "port must be 1..65535" }
 
+        acquireMulticastLock()
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = endpointHello.endpointName
             serviceType = ANDROID_BRIDGE_SERVICE_TYPE
@@ -37,6 +42,7 @@ class AndroidBridgeAdvertisement(
 
             override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
                 listener = null
+                releaseMulticastLock()
                 onStatusChanged("Bridge ready; NSD advertise failed ($errorCode)")
             }
 
@@ -47,16 +53,48 @@ class AndroidBridgeAdvertisement(
             }
         }
         listener = registrationListener
-        nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        try {
+            nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        } catch (error: RuntimeException) {
+            listener = null
+            releaseMulticastLock()
+            throw error
+        }
     }
 
     override fun close() {
-        val registrationListener = listener ?: return
+        val registrationListener = listener
         listener = null
-        runCatching { nsdManager.unregisterService(registrationListener) }
+        if (registrationListener != null) {
+            runCatching { nsdManager.unregisterService(registrationListener) }
+        }
+        releaseMulticastLock()
+    }
+
+    private fun acquireMulticastLock() {
+        if (multicastLock?.isHeld == true) {
+            return
+        }
+        multicastLock = wifiManager.createMulticastLock(MULTICAST_LOCK_TAG).apply {
+            setReferenceCounted(false)
+            runCatching { acquire() }
+                .onFailure { onStatusChanged("Bridge ready; multicast lock unavailable") }
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        multicastLock?.let { lock ->
+            runCatching {
+                if (lock.isHeld) {
+                    lock.release()
+                }
+            }
+        }
+        multicastLock = null
     }
 
     companion object {
+        private const val MULTICAST_LOCK_TAG = "stackchan_companion_nsd"
         val ANDROID_BRIDGE_SERVICE_TYPE: String = STACKCHAN_BRIDGE_SERVICE.removeSuffix(".local") + "."
     }
 }
