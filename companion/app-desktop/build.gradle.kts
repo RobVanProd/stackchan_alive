@@ -53,3 +53,11 @@ tasks.register<JavaExec>("runtimeSmoke") {
     mainClass.set("dev.stackchan.companion.desktop.RuntimeSmokeKt")
     args(rootProject.layout.projectDirectory.dir("../output/companion/runtime-smoke").asFile.absolutePath)
 }
+
+tasks.register<JavaExec>("brainSupervisorSmoke") {
+    group = "verification"
+    description = "Starts the supervised Python brain, drives two text turns across restart, and writes C6 evidence."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.stackchan.companion.desktop.BrainSupervisorSmokeKt")
+    args(rootProject.layout.projectDirectory.dir("../output/companion/c6-brain-supervisor").asFile.absolutePath)
+}

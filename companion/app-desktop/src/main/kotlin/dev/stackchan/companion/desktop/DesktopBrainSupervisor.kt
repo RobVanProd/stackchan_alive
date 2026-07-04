@@ -175,5 +175,14 @@ private fun defaultPythonCommand(): String {
     return if ("win" in osName) "python" else "python3"
 }
 
-private fun defaultRepoRoot(): Path =
-    Path.of(System.getProperty("stackchan.repo.root") ?: "..").toAbsolutePath().normalize()
+internal fun defaultRepoRoot(): Path {
+    System.getProperty("stackchan.repo.root")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return Path.of(it).toAbsolutePath().normalize() }
+
+    val current = Path.of("").toAbsolutePath().normalize()
+    return generateSequence(current) { it.parent }
+        .firstOrNull { Files.isRegularFile(it.resolve("bridge").resolve("lan_service.py")) }
+        ?: current.parent?.toAbsolutePath()?.normalize()
+        ?: current
+}

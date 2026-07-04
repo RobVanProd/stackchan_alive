@@ -27,8 +27,10 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.Json
 
 class DesktopCompanionRuntimeTest {
     @Test
@@ -149,6 +151,27 @@ class DesktopCompanionRuntimeTest {
             assertEquals("bench-v1", after.telemetry[3].value)
             assertEquals("fake", after.audioStatus)
             client.close()
+        }
+    }
+
+    @Test
+    fun runtimeExportsDiagnosticsEvidenceJson() = runBlocking {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-diagnostics-export"))
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+
+            val exported = Json.parseToJsonElement(runtime.exportDiagnosticsEvidenceJson()).jsonObject
+            val brainService = exported["brain_service"]!!.jsonObject
+            val diagnostics = exported["diagnostics"]!!.jsonObject
+
+            assertEquals("stackchan.companion.diagnostics-export.v1", exported["schema"]!!.jsonPrimitive.content)
+            assertEquals("pc-runtime-test", exported["runtime"]!!.jsonObject["endpoint_id"]!!.jsonPrimitive.content)
+            assertEquals(false, exported["session"]!!.jsonObject["connected"]!!.jsonPrimitive.content.toBoolean())
+            assertEquals(false, brainService["running"]!!.jsonPrimitive.content.toBoolean())
+            assertEquals(config.brainSupervisorConfig.port, brainService["port"]!!.jsonPrimitive.content.toInt())
+            assertTrue(brainService["command"]!!.jsonArray.isNotEmpty())
+            assertEquals("stackchan.bridge.v1", diagnostics["bridge"]!!.jsonObject["protocol"]!!.jsonPrimitive.content)
         }
     }
 }
