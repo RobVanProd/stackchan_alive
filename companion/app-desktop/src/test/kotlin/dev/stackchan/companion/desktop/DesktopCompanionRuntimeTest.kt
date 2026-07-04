@@ -133,12 +133,19 @@ class DesktopCompanionRuntimeTest {
             val after = runtime.toCompanionUiState()
 
             assertEquals("Listening: 127.0.0.1:${config.port}", before.connection)
+            assertEquals("Protocol", before.telemetry[0].label)
+            assertEquals("stackchan.bridge.v1", before.telemetry[0].value)
+            assertEquals("Audio", before.telemetry[1].label)
+            assertEquals("fake", before.telemetry[1].value)
             assertEquals("Connected: Stackchan Bench", after.connection)
             assertEquals("hello", after.robotState)
             assertEquals(true, after.endpoints.first().connected)
             assertEquals("Stackchan Bench", after.endpoints.first().name)
             assertEquals("bench-v1", after.endpoints.first().fingerprint)
             assertEquals("pc-runtime-test", after.endpoints[1].fingerprint)
+            assertEquals("Firmware", after.telemetry[3].label)
+            assertEquals("bench-v1", after.telemetry[3].value)
+            assertEquals("fake", after.audioStatus)
             client.close()
         }
     }

@@ -65,11 +65,25 @@ data class CompanionUiState(
     val activePersona: String = "Spark",
     val robotState: String = "Neutral",
     val servoArmed: Boolean = true,
+    val telemetry: List<TelemetryReading> = listOf(
+        TelemetryReading("Power", "87%", "Discharging"),
+        TelemetryReading("CPU temp", "42.5 C", "Nominal"),
+        TelemetryReading("Uptime", "04:12:39", "H:M:S"),
+        TelemetryReading("Firmware", "v3.1.0", "Stable"),
+    ),
+    val audioStatus: String = "Fake output ready",
+    val consoleMessage: String = "Awaiting wake-gated input on android brain...",
     val endpoints: List<EndpointRow> = listOf(
         EndpointRow("Rob's Phone (This Companion)", "android", "SHA256:B84F17C2A0E192DDB...", 80, true, true),
         EndpointRow("Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false),
         EndpointRow("Guest Raspberry Pi 5", "pc", "SHA256:7F452C2C0F90DA15B...", 50, false, false),
     ),
+)
+
+data class TelemetryReading(
+    val label: String,
+    val value: String,
+    val detail: String,
 )
 
 data class EndpointRow(
@@ -258,16 +272,15 @@ private fun TelemetryPanel(state: CompanionUiState, modifier: Modifier) {
     PanelShell(modifier = modifier) {
         SectionTitle("Telemetry", Cyan)
         Spacer(Modifier.height(12.dp))
-        TelemetryRow("Power", "87%", "Discharging")
-        TelemetryRow("CPU temp", "42.5 C", "Nominal")
-        TelemetryRow("Uptime", "04:12:39", "H:M:S")
-        TelemetryRow("Firmware", "v3.1.0", "Stable")
+        state.telemetry.forEach { reading ->
+            TelemetryRow(reading)
+        }
         Spacer(Modifier.height(16.dp))
-        Text("Audio out", color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text("Audio out // ${state.audioStatus}", color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
         AudioBars()
         Spacer(Modifier.height(16.dp))
-        ConsoleLog("Awaiting wake-gated input on ${state.brainOwner.lowercase()} brain...")
+        ConsoleLog(state.consoleMessage)
     }
 }
 
@@ -449,7 +462,7 @@ private fun EndpointItem(endpoint: EndpointRow) {
 }
 
 @Composable
-private fun TelemetryRow(label: String, value: String, detail: String) {
+private fun TelemetryRow(reading: TelemetryReading) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -458,14 +471,14 @@ private fun TelemetryRow(label: String, value: String, detail: String) {
             modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFCCE7EF), RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(label.take(1), color = Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(reading.label.take(1), color = Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(label.uppercase(), color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-            Text(value, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text(reading.label.uppercase(), color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text(reading.value, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
-        Text(detail, color = Cyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text(reading.detail, color = Cyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
     }
 }
 

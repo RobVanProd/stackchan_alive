@@ -2,6 +2,8 @@ package dev.stackchan.companion.desktop
 
 import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
+import dev.stackchan.companion.core.DiagnosticsRequest
+import dev.stackchan.companion.core.DiagnosticsSnapshot
 import dev.stackchan.companion.core.DiscoveredEndpoint
 import dev.stackchan.companion.core.EndpointRequestRouter
 import dev.stackchan.companion.core.EndpointSessionSnapshot
@@ -14,6 +16,7 @@ import dev.stackchan.companion.core.defaultDesktopEndpointHello
 import java.net.InetAddress
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlinx.serialization.json.JsonObject
 
 data class DesktopCompanionRuntimeConfig(
     val host: String = System.getProperty("stackchan.companion.host") ?: "0.0.0.0",
@@ -41,6 +44,7 @@ class DesktopCompanionRuntime(
     private var server: CompanionEndpointServer? = null
     private var discovery: JmDnsDiscovery? = null
     private var registration: RegisteredService? = null
+    private var requestRouter: EndpointRequestRouter? = null
     private var mdnsError: String = ""
 
     fun start(): DesktopCompanionRuntime {
@@ -60,6 +64,7 @@ class DesktopCompanionRuntime(
             onSettingsChanged = settingsStore::save,
             onTrustedEndpointsChanged = trustStore::save,
         )
+        requestRouter = router
 
         server = CompanionEndpointServer(
             EndpointServerConfig(
@@ -100,6 +105,10 @@ class DesktopCompanionRuntime(
     suspend fun sessionSnapshot(): EndpointSessionSnapshot =
         server?.currentSnapshot() ?: EndpointSessionSnapshot()
 
+    fun diagnosticsSnapshot(domains: List<String> = emptyList()): DiagnosticsSnapshot =
+        requestRouter?.handle(DiagnosticsRequest(domains = domains)) as? DiagnosticsSnapshot
+            ?: DiagnosticsSnapshot(bridge = JsonObject(emptyMap()))
+
     override fun close() {
         registration?.close()
         registration = null
@@ -107,6 +116,7 @@ class DesktopCompanionRuntime(
         discovery = null
         server?.close()
         server = null
+        requestRouter = null
         mdnsError = ""
     }
 }
