@@ -246,7 +246,7 @@ Test-TextPatterns `
   -Id "play-release-doc" `
   -Name "Play release checklist" `
   -RelativePath "docs/ANDROID_PLAY_RELEASE.md" `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "check_android_play_store_evidence.cmd", "Play Console internal testing")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
 
 foreach ($relativePath in @(
   "fastlane/metadata/android/en-US/title.txt",

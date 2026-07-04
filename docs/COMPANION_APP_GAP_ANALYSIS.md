@@ -12,8 +12,10 @@ current v1 companion branch.
   Android and desktop. Text turns are sent through the active `CompanionEndpointServer`
   session as `app_text_turn` response frames (`thinking`, `response_start`,
   `audio_stream_start`, binary audio chunks, `audio_stream_end`, `response_end`).
-- Push-to-talk remains intentionally disabled until microphone capture, permission copy,
-  and STT handling are implemented and tested.
+- Android push-to-talk now requests `RECORD_AUDIO`, uses Android `SpeechRecognizer` for
+  transcript capture when available, and submits the final transcript through the existing
+  robot-gated text-turn path. Target-phone STT behavior, denial/retry UX, and physical robot
+  transcript evidence still need to be captured before G1 is complete.
 - G2 real Mobile Brain Mode is still open. The current text-turn and audio-turn path uses
   deterministic fake output, not Android STT, LiteRT-LM, or Android TTS.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI remain open.
@@ -42,7 +44,7 @@ current v1 companion branch.
 
 ## Next Attack Order
 
-1. Finish G1 with push-to-talk capture and transcript handling.
+1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
 2. Add G3 user-facing settings, diagnostics, and persona screens over the existing protocol.
 3. Finish G5 with QR/short-code trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.

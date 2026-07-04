@@ -359,6 +359,74 @@ class AndroidBridgeRuntimeStatusTest {
     }
 
     @Test
+    fun androidUiStateEnablesPushToTalkWhenSpeechRecognizerAndRobotAreReady() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+            ),
+            pushToTalkAvailable = true,
+            pushToTalkStatus = "Microphone turns use Android speech recognition.",
+        )
+
+        assertTrue(uiState.conversation.inputEnabled)
+        assertTrue(uiState.conversation.pushToTalkEnabled)
+        assertEquals("Push-to-talk", uiState.conversation.pushToTalkLabel)
+        assertEquals(
+            "Microphone turns use Android speech recognition.",
+            uiState.conversation.pushToTalkStatus,
+        )
+    }
+
+    @Test
+    fun androidUiStateKeepsPushToTalkDisabledUntilRobotHello() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot hello",
+                robotSocketConnected = true,
+            ),
+            pushToTalkAvailable = true,
+        )
+
+        assertFalse(uiState.conversation.inputEnabled)
+        assertFalse(uiState.conversation.pushToTalkEnabled)
+        assertEquals("Push-to-talk", uiState.conversation.pushToTalkLabel)
+    }
+
+    @Test
+    fun androidUiStateLabelsPushToTalkUnavailableWithoutSpeechRecognizer() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+            ),
+            pushToTalkAvailable = false,
+        )
+
+        assertTrue(uiState.conversation.inputEnabled)
+        assertFalse(uiState.conversation.pushToTalkEnabled)
+        assertEquals("Mic unavailable", uiState.conversation.pushToTalkLabel)
+    }
+
+    @Test
     fun androidUiStateMarksStoredCompanionsRemovable() {
         val trusted = TrustedEndpoint(
             endpointId = "studio-mac-01",

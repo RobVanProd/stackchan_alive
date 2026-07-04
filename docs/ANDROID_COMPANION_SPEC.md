@@ -360,7 +360,9 @@ The Android architect should produce:
 - Settings repository and UI flows for `settings_get`, `settings_set`, and
   `forget_endpoint`.
 - A Talk surface that sends a text turn through the active bridge session using
-  `app_text_turn` response frames before push-to-talk is promoted.
+  `app_text_turn` response frames. Android push-to-talk may submit the same text turn path
+  after explicit `RECORD_AUDIO` permission and `SpeechRecognizer` transcript capture are
+  vetted on target phones.
 - Handoff tests for PC-to-mobile, mobile-to-PC, owner timeout, and observer-only mode.
 - A LiteRT-LM adapter seam that can run deterministic fake output first, then a real mobile
   model once installed.
@@ -380,6 +382,9 @@ The Android companion path is ready to integrate with firmware when:
   session wake lock, or accept audio/settings/app-text writes.
 - A connected robot receives a Talk text turn as `thinking`, `response_start`,
   `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
+- Android push-to-talk requests microphone permission only from the Talk action, reports
+  listening/transcript/error state, and submits the final transcript through the same
+  robot-gated text-turn path.
 - Safety-locked settings cannot be changed from the app.
 - Offline fallback still works with no active brain owner.
 - Mobile model mode passes the same Character Lock red-team and benchmark gates as the PC

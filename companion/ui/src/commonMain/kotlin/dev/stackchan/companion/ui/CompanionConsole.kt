@@ -94,6 +94,9 @@ data class CompanionUiState(
 
 data class ConversationUiState(
     val inputEnabled: Boolean = false,
+    val pushToTalkEnabled: Boolean = false,
+    val pushToTalkLabel: String = "Push-to-talk",
+    val pushToTalkStatus: String = "",
     val status: String = "Connect Stack-chan to send text turns.",
     val messages: List<ConversationMessage> = listOf(
         ConversationMessage("Bridge", "Text turns will appear here once the app is connected to Stack-chan.", "Waiting"),
@@ -195,6 +198,7 @@ fun CompanionConsole(
     onRunC6Rehearsal: () -> Unit = {},
     onForgetEndpoint: (String) -> Unit = {},
     onSendTextTurn: (String) -> Unit = {},
+    onPushToTalk: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -213,6 +217,7 @@ fun CompanionConsole(
                         onRunC6Rehearsal = onRunC6Rehearsal,
                         onForgetEndpoint = onForgetEndpoint,
                         onSendTextTurn = onSendTextTurn,
+                        onPushToTalk = onPushToTalk,
                     )
                 } else {
                     Column(
@@ -233,6 +238,7 @@ fun CompanionConsole(
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                                 onForgetEndpoint = onForgetEndpoint,
                                 onSendTextTurn = onSendTextTurn,
+                                onPushToTalk = onPushToTalk,
                             )
                         } else {
                             TabletConsole(
@@ -244,6 +250,7 @@ fun CompanionConsole(
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                                 onForgetEndpoint = onForgetEndpoint,
                                 onSendTextTurn = onSendTextTurn,
+                                onPushToTalk = onPushToTalk,
                             )
                         }
                         Footer()
@@ -265,6 +272,7 @@ private fun MobileConsole(
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
+    onPushToTalk: () -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -285,6 +293,7 @@ private fun MobileConsole(
                     state = state,
                     modifier = Modifier.fillMaxWidth(),
                     onSendTextTurn = onSendTextTurn,
+                    onPushToTalk = onPushToTalk,
                 )
                 MobileSection.Brain -> BrainPanel(
                     state = state,
@@ -320,6 +329,7 @@ private fun WideConsole(
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
+    onPushToTalk: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -342,6 +352,7 @@ private fun WideConsole(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
                 onSendTextTurn = onSendTextTurn,
+                onPushToTalk = onPushToTalk,
             )
             EndpointRegistry(
                 state = state,
@@ -378,6 +389,7 @@ private fun TabletConsole(
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
+    onPushToTalk: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -392,6 +404,7 @@ private fun TabletConsole(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
                 onSendTextTurn = onSendTextTurn,
+                onPushToTalk = onPushToTalk,
             )
             EndpointRegistry(
                 state = state,
@@ -660,6 +673,7 @@ private fun ConversationPanel(
     state: CompanionUiState,
     modifier: Modifier,
     onSendTextTurn: (String) -> Unit,
+    onPushToTalk: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
     PanelShell(modifier = modifier) {
@@ -704,7 +718,15 @@ private fun ConversationPanel(
                     }
                 },
             )
-            SmallCommand("Push-to-talk", enabled = false)
+            SmallCommand(
+                text = state.conversation.pushToTalkLabel,
+                enabled = state.conversation.pushToTalkEnabled,
+                onClick = onPushToTalk,
+            )
+        }
+        if (state.conversation.pushToTalkStatus.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(state.conversation.pushToTalkStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
         }
     }
 }

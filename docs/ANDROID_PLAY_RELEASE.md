@@ -104,6 +104,9 @@ in the release:
 - `POST_NOTIFICATIONS`: foreground service status notification on modern Android.
 - `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and `WAKE_LOCK`: screen-off robot bridge
   reliability test path.
+- `RECORD_AUDIO`: explicit Push-to-talk action on the Talk screen. The app sends the
+  recognized transcript through the local robot bridge and does not export raw microphone
+  audio in diagnostics.
 
 If a Play policy declaration is required for foreground service or battery
 optimization behavior, use the physical-test evidence and Android test plan as the
@@ -122,6 +125,8 @@ Do not promote the app beyond internal testing until these are complete:
 - Store screenshots are captured from the final Android build.
 - Privacy/data-safety answers are reviewed against actual network, audio, and
   diagnostics behavior.
+- Microphone permission copy, denial behavior, and transcript handling are verified from
+  the final Android build.
 - Play Console internal testing install succeeds from the uploaded AAB.
 - `tools/check_android_play_store_evidence.ps1 -Json` reports
   `play-internal-testing-ready`.

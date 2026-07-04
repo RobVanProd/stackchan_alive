@@ -37,9 +37,16 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     private var bridgeServiceStarted = false
+    private var speechTurnController: AndroidSpeechTurnController? = null
+    private var pendingSpeechPermissionResult: ((Boolean) -> Unit)? = null
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             startBridgeServiceOnce()
+        }
+    private val speechPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            pendingSpeechPermissionResult?.invoke(granted)
+            pendingSpeechPermissionResult = null
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,7 +78,29 @@ class MainActivity : ComponentActivity() {
                     ),
                 )
             }
+            var pushToTalkStatus by remember { mutableStateOf("Microphone turns use Android speech recognition.") }
+            val speechController = remember {
+                AndroidSpeechTurnController(applicationContext).also {
+                    speechTurnController = it
+                }
+            }
             val coroutineScope = rememberCoroutineScope()
+            fun submitTurn(text: String, userDetail: String = "Sending") {
+                val cleanedText = text.trim()
+                if (cleanedText.isBlank()) {
+                    return
+                }
+                conversationMessages = conversationMessages + ConversationMessage("You", cleanedText, userDetail)
+                coroutineScope.launch {
+                    val result = CompanionBridgeService.submitTextTurn(cleanedText)
+                    conversationMessages = conversationMessages + ConversationMessage(
+                        sender = "Bridge",
+                        text = if (result.accepted) result.responseText else result.detail,
+                        detail = if (result.accepted) "Sent seq ${result.seq}" else "Not sent",
+                    )
+                }
+            }
+
             CompanionConsole(
                 targetName = "Android",
                 state = androidCompanionUiState(
@@ -80,6 +109,8 @@ class MainActivity : ComponentActivity() {
                     bridgeStatus = bridgeStatus,
                     conversationMessages = conversationMessages,
                     diagnosticsExport = diagnosticsExport,
+                    pushToTalkAvailable = speechController.isAvailable(),
+                    pushToTalkStatus = pushToTalkStatus,
                 ),
                 onStartBrain = { startBridgeServiceOnce() },
                 onStopBrain = { stopBridgeService() },
@@ -91,18 +122,50 @@ class MainActivity : ComponentActivity() {
                     trustedEndpoints = registry.snapshot().endpoints
                 },
                 onSendTextTurn = { text ->
-                    val cleanedText = text.trim()
-                    if (cleanedText.isBlank()) {
+                    submitTurn(text)
+                },
+                onPushToTalk = {
+                    if (!bridgeStatus.robotConnected) {
+                        pushToTalkStatus = "Connect Stack-chan before using push-to-talk."
                         return@CompanionConsole
                     }
-                    conversationMessages = conversationMessages + ConversationMessage("You", cleanedText, "Sending")
-                    coroutineScope.launch {
-                        val result = CompanionBridgeService.submitTextTurn(cleanedText)
-                        conversationMessages = conversationMessages + ConversationMessage(
-                            sender = "Bridge",
-                            text = if (result.accepted) result.responseText else result.detail,
-                            detail = if (result.accepted) "Sent seq ${result.seq}" else "Not sent",
+                    val startListening = {
+                        pushToTalkStatus = "Listening..."
+                        conversationMessages = conversationMessages + ConversationMessage("Mic", "Listening for a short turn.", "Push-to-talk")
+                        speechController.start(
+                            onListening = {
+                                pushToTalkStatus = "Listening..."
+                            },
+                            onPartialTranscript = { transcript ->
+                                pushToTalkStatus = "Heard: $transcript"
+                            },
+                            onFinalTranscript = { transcript ->
+                                pushToTalkStatus = "Transcript ready."
+                                submitTurn(transcript, userDetail = "Speech transcript")
+                            },
+                            onError = { message ->
+                                pushToTalkStatus = message
+                                conversationMessages = conversationMessages + ConversationMessage("Mic", message, "Not sent")
+                            },
                         )
+                    }
+                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        startListening()
+                    } else {
+                        pushToTalkStatus = "Microphone permission is required for push-to-talk."
+                        pendingSpeechPermissionResult = { granted ->
+                            if (granted) {
+                                startListening()
+                            } else {
+                                pushToTalkStatus = "Microphone permission was denied."
+                                conversationMessages = conversationMessages + ConversationMessage(
+                                    sender = "Mic",
+                                    text = "Microphone permission was denied.",
+                                    detail = "Not sent",
+                                )
+                            }
+                        }
+                        speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
                 onExportDiagnostics = {
@@ -134,6 +197,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         showBatteryOptimizationPromptIfNeeded()
+    }
+
+    override fun onDestroy() {
+        speechTurnController?.stop()
+        speechTurnController = null
+        super.onDestroy()
     }
 
     private fun requestNotificationPermissionOrStartBridge() {
@@ -219,6 +288,8 @@ internal fun androidCompanionUiState(
     bridgeStatus: AndroidBridgeRuntimeStatus,
     conversationMessages: List<ConversationMessage> = emptyList(),
     diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
+    pushToTalkAvailable: Boolean = false,
+    pushToTalkStatus: String = "",
 ): CompanionUiState =
     CompanionUiState(
         connection = bridgeStatus.connectionLabel,
@@ -243,7 +314,12 @@ internal fun androidCompanionUiState(
             recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
         ),
         robotSetup = androidRobotSetup(bridgeStatus, trustedEndpoints.size),
-        conversation = androidConversationUiState(bridgeStatus, conversationMessages),
+        conversation = androidConversationUiState(
+            bridgeStatus = bridgeStatus,
+            conversationMessages = conversationMessages,
+            pushToTalkAvailable = pushToTalkAvailable,
+            pushToTalkStatus = pushToTalkStatus,
+        ),
         diagnosticsExport = diagnosticsExport,
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
@@ -252,10 +328,15 @@ internal fun androidCompanionUiState(
 private fun androidConversationUiState(
     bridgeStatus: AndroidBridgeRuntimeStatus,
     conversationMessages: List<ConversationMessage>,
+    pushToTalkAvailable: Boolean,
+    pushToTalkStatus: String,
 ): ConversationUiState {
     val connected = bridgeStatus.robotConnected
     return ConversationUiState(
         inputEnabled = connected,
+        pushToTalkEnabled = connected && pushToTalkAvailable,
+        pushToTalkLabel = if (pushToTalkAvailable) "Push-to-talk" else "Mic unavailable",
+        pushToTalkStatus = pushToTalkStatus,
         status = when {
             connected && bridgeStatus.textTurnsSubmitted > 0 ->
                 "Text turns sent: ${bridgeStatus.textTurnsSubmitted}. Last turn: ${bridgeStatus.lastTextTurn.ifBlank { "n/a" }}"

@@ -246,7 +246,7 @@ Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "app_text_turn", "audio_stream_start", "response_end", "Removing a stored trusted companion endpoint", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "app_text_turn", "audio_stream_start", "response_end", "Removing a stored trusted companion endpoint", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
@@ -255,16 +255,40 @@ Test-TextEvidence `
   -Patterns @("robotHelloReceived", "robot_hello_required", "audio, settings writes, or app text turns", "Stack-chan has not completed the bridge hello yet.")
 
 Test-TextEvidence `
+  -Id "android-push-to-talk-permission" `
+  -Name "Android push-to-talk microphone permission" `
+  -RelativePaths @("companion/app-android/src/main/AndroidManifest.xml", "provenance/companion/app-android/src/main/AndroidManifest.xml") `
+  -Patterns @("android.permission.RECORD_AUDIO")
+
+Test-TextEvidence `
+  -Id "android-push-to-talk-stt-controller" `
+  -Name "Android push-to-talk speech recognizer controller" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt") `
+  -Patterns @("SpeechRecognizer", "RecognizerIntent.ACTION_RECOGNIZE_SPEECH", "onFinalTranscript", "onPartialTranscript")
+
+Test-TextEvidence `
+  -Id "android-push-to-talk-submit" `
+  -Name "Android push-to-talk transcript submission" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
+  -Patterns @("speechPermissionLauncher", "Manifest.permission.RECORD_AUDIO", "CompanionBridgeService.submitTextTurn", "Speech transcript")
+
+Test-TextEvidence `
+  -Id "shared-push-to-talk-ui" `
+  -Name "Shared Talk UI exposes push-to-talk state" `
+  -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt", "provenance/companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
+  -Patterns @("pushToTalkEnabled", "pushToTalkLabel", "pushToTalkStatus", "onPushToTalk")
+
+Test-TextEvidence `
   -Id "android-diagnostics-export" `
   -Name "Android diagnostics export implementation" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidDiagnosticsExport.kt") `
-  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "raw_audio_retention", "last text turn redacted to presence only")
+  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "robot_socket_connected", "raw_audio_retention", "last text turn redacted to presence only")
 
 Test-TextEvidence `
   -Id "android-play-release-prep" `
   -Name "Android Play release preparation" `
   -RelativePaths @("docs/ANDROID_PLAY_RELEASE.md", "provenance/docs/ANDROID_PLAY_RELEASE.md") `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "physical robot validation", "Play Console internal testing")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "physical robot validation", "RECORD_AUDIO", "Play Console internal testing")
 
 Test-TextEvidence `
   -Id "android-play-readiness-check" `

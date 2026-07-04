@@ -25,6 +25,7 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] VPN, private DNS filtering, guest Wi-Fi isolation, and mobile hotspot client isolation are off unless intentionally being tested.
 - [ ] The installed APK version and git commit are recorded.
 - [ ] Android notifications are allowed for Stackchan Companion.
+- [ ] Android microphone permission is allowed for push-to-talk, or denial behavior is captured.
 - [ ] Battery optimization exemption is allowed or the denial is recorded as a test constraint.
 - [ ] The dashboard shows at least one `ws://<phone-lan-ip>:8765/bridge` manual fallback URL.
 - [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
@@ -131,6 +132,9 @@ Evidence to capture:
 - [ ] A raw WebSocket connection without the robot `hello` handshake changes the setup card to `Finish Stack-chan pairing` / waiting for robot hello, but does not mark setup complete, does not enable Talk, and does not promote the Android session wake lock.
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
 - [ ] Talk screen enables text input only after Stack-chan is connected.
+- [ ] Push-to-talk is enabled only after Stack-chan is connected and Android speech recognition is available.
+- [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
+- [ ] Denying microphone permission leaves push-to-talk disabled for that turn and records a not-sent microphone message.
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
