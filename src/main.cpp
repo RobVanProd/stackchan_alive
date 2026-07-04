@@ -10,6 +10,7 @@
 #include "io/AudioCaptureAdapter.hpp"
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
+#include "io/BridgeAudioUplink.hpp"
 #include "io/BridgeClient.hpp"
 #include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
@@ -54,6 +55,7 @@ AudioCaptureAdapter gAudioCapture;
 M5MicAudioCaptureSource gAudioCaptureSource;
 AudioOut gAudioOut;
 BridgeAudioDownlink gBridgeAudioDownlink;
+BridgeAudioUplink gBridgeAudioUplink;
 SpeechAdapter gSpeechAdapter;
 BridgeClient gBridge;
 BridgeEndpointRegistry gBridgeEndpointRegistry;
@@ -812,6 +814,33 @@ void printRuntimeStatus() {
   Serial.print(downlink.playbackUnsupported);
   Serial.print(F(" bridge_downlink_playback_errors="));
   Serial.print(downlink.playbackErrors);
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  Serial.print(F(" bridge_uplink_ready="));
+  Serial.print(uplink.ready ? 1 : 0);
+  Serial.print(F(" bridge_uplink_enabled="));
+  Serial.print(uplink.enabled ? 1 : 0);
+  Serial.print(F(" bridge_uplink_active="));
+  Serial.print(uplink.active ? 1 : 0);
+  Serial.print(F(" bridge_uplink_wake_gate_required="));
+  Serial.print(uplink.wakeGateRequired ? 1 : 0);
+  Serial.print(F(" bridge_uplink_turns="));
+  Serial.print(uplink.turnsStarted);
+  Serial.print(F(" bridge_uplink_completed="));
+  Serial.print(uplink.turnsCompleted);
+  Serial.print(F(" bridge_uplink_aborted="));
+  Serial.print(uplink.turnsAborted);
+  Serial.print(F(" bridge_uplink_chunks="));
+  Serial.print(uplink.chunksQueued);
+  Serial.print(F(" bridge_uplink_bytes="));
+  Serial.print(uplink.bytesQueued);
+  Serial.print(F(" bridge_uplink_errors="));
+  Serial.print(uplink.errors);
+  Serial.print(F(" bridge_uplink_gate_blocks="));
+  Serial.print(uplink.gateBlocks);
+  Serial.print(F(" bridge_uplink_queue_failures="));
+  Serial.print(uplink.queueFailures);
+  Serial.print(F(" bridge_uplink_last_seq="));
+  Serial.print(uplink.lastSeq);
   Serial.print(F(" bridge_timeouts="));
   Serial.println(bridge.timeouts);
 }
@@ -1473,6 +1502,7 @@ void setup() {
   gBridgeWiFi.begin(BridgeWiFiProvisioningConfig {}, bootMs);
   gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), bootMs);
   gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
+  gBridgeAudioUplink.begin(BridgeAudioUplinkConfig {}, &gBridgeNetworkSession);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
