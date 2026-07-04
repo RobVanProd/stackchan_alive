@@ -13,6 +13,8 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
@@ -36,35 +38,26 @@ class MainActivity : ComponentActivity() {
         val endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId())
         val trustedEndpoints = stores.loadTrustedEndpoints().snapshot().endpoints
         val manualBridgeUrls = localBridgeManualUrls()
-        val primaryBridgeUrl = manualBridgeUrls.first()
-        val recentLogs = buildList {
-            add("Foreground bridge hosts /bridge for robot testing.")
-            add("Endpoint ID: ${endpointHello.endpointId}")
-            add("Manual fallback URL: $primaryBridgeUrl")
-            if (manualBridgeUrls.size > 1) {
-                add("Other LAN URLs: ${manualBridgeUrls.drop(1).joinToString(", ")}")
-            }
-            add("Trusted endpoints stored: ${trustedEndpoints.size}")
-            add("Android NSD advertises _stackchan-bridge._tcp.local.")
-            add("UDP beacon broadcasts endpoint metadata on port 8766.")
-            add("Settings and trusted endpoints persist on this phone.")
-        }
+        AndroidBridgeRuntimeStatusStore.setManualBridgeUrls(manualBridgeUrls)
         setContent {
+            val bridgeStatus by AndroidBridgeRuntimeStatusStore.status.collectAsState()
             CompanionConsole(
                 targetName = "Android",
                 state = CompanionUiState(
-                    connection = "Bridge ready: $primaryBridgeUrl",
-                    brainOwner = "None",
+                    connection = bridgeStatus.connectionLabel,
+                    brainOwner = bridgeStatus.activeBrainOwner.ifBlank { "None" },
+                    heartbeatMs = if (bridgeStatus.robotConnected) 8 else 0,
+                    robotState = bridgeStatus.robotState,
                     brainService = BrainServiceUiState(
-                        running = true,
-                        status = "Foreground",
+                        running = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
+                        status = bridgeStatus.serviceStatus,
                         pid = "android",
-                        endpoint = primaryBridgeUrl,
+                        endpoint = bridgeStatus.primaryBridgeUrl,
                         command = "CompanionBridgeService",
-                        recentLogs = recentLogs,
+                        recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
                     ),
-                    consoleMessage = "Awaiting Stack-chan bridge handshake at $primaryBridgeUrl.",
-                    endpoints = androidEndpointRows(endpointHello, trustedEndpoints),
+                    consoleMessage = bridgeStatus.consoleMessage,
+                    endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
                 ),
             )
         }
@@ -145,13 +138,14 @@ class MainActivity : ComponentActivity() {
 private fun androidEndpointRows(
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
+    bridgeStatus: AndroidBridgeRuntimeStatus,
 ): List<EndpointRow> {
     val robotRow = EndpointRow(
-        name = "Awaiting Stackchan robot",
+        name = bridgeStatus.robotDisplayName,
         kind = "robot",
-        fingerprint = "No robot hello yet",
+        fingerprint = bridgeStatus.robotFingerprint,
         priority = 100,
-        connected = false,
+        connected = bridgeStatus.robotConnected,
         activeBrain = false,
     )
     val phoneRow = EndpointRow(
@@ -160,17 +154,40 @@ private fun androidEndpointRows(
         fingerprint = endpointHello.endpointId,
         priority = endpointHello.priority,
         connected = true,
-        activeBrain = false,
+        activeBrain = bridgeStatus.activeBrainOwner == endpointHello.endpointId,
     )
-    return listOf(robotRow, phoneRow) + trustedEndpoints.map { it.toEndpointRow() }
+    return listOf(robotRow, phoneRow) + trustedEndpoints.map { it.toEndpointRow(bridgeStatus.activeBrainOwner) }
 }
 
-private fun TrustedEndpoint.toEndpointRow(): EndpointRow =
+private fun TrustedEndpoint.toEndpointRow(activeBrainOwner: String): EndpointRow =
     EndpointRow(
         name = endpointName.ifBlank { endpointId },
         kind = endpointKind,
         fingerprint = publicKeyFingerprint.ifBlank { endpointId },
         priority = priority,
         connected = false,
-        activeBrain = false,
+        activeBrain = activeBrainOwner == endpointId,
     )
+
+private fun androidRecentLogs(
+    endpointHello: EndpointHello,
+    trustedEndpoints: List<TrustedEndpoint>,
+    bridgeStatus: AndroidBridgeRuntimeStatus,
+): List<String> = buildList {
+    add(bridgeStatus.serviceDetail)
+    add("Endpoint ID: ${endpointHello.endpointId}")
+    add("Manual fallback URL: ${bridgeStatus.primaryBridgeUrl}")
+    if (bridgeStatus.manualBridgeUrls.size > 1) {
+        add("Other LAN URLs: ${bridgeStatus.manualBridgeUrls.drop(1).joinToString(", ")}")
+    }
+    if (bridgeStatus.robotConnected) {
+        add("Robot: ${bridgeStatus.robotDisplayName} / ${bridgeStatus.robotFingerprint}")
+        add("Last bridge frame: ${bridgeStatus.lastMessageType.ifBlank { "connected" }}")
+        add("Brain owner: ${bridgeStatus.activeBrainOwner.ifBlank { "None" }}")
+    } else {
+        add("Robot session: waiting for handshake")
+    }
+    add("Trusted endpoints stored: ${trustedEndpoints.size}")
+    add("Android NSD advertises _stackchan-bridge._tcp.local.")
+    add("UDP beacon broadcasts endpoint metadata on port 8766.")
+}

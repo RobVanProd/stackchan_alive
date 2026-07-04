@@ -37,7 +37,9 @@ class CompanionBridgeService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Starting bridge at ${primaryBridgeManualUrl()}"))
+        val startingDetail = "Starting bridge at ${primaryBridgeManualUrl()}"
+        AndroidBridgeRuntimeStatusStore.setServiceStatus("Starting", startingDetail)
+        startForeground(NOTIFICATION_ID, buildNotification(startingDetail))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -62,6 +64,7 @@ class CompanionBridgeService : Service() {
         advertisement = null
         server?.close()
         server = null
+        AndroidBridgeRuntimeStatusStore.setStopped("Android bridge service stopped.")
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -113,7 +116,8 @@ class CompanionBridgeService : Service() {
                     updateNotification("Bridge ready at ${primaryBridgeManualUrl()}; NSD unavailable: ${error.message ?: error::class.simpleName}")
                 }
             }.onFailure { error ->
-                updateNotification("Bridge failed: ${error.message ?: error::class.simpleName}")
+                val failureDetail = "Bridge failed: ${error.message ?: error::class.simpleName}"
+                updateNotification(failureDetail, status = "Failed")
                 stopSelf()
             }
         }
@@ -124,7 +128,8 @@ class CompanionBridgeService : Service() {
         wakeLockMonitorJob = serviceScope.launch {
             var wasConnected = false
             while (isActive) {
-                val connected = runCatching { bridge.currentSnapshot().connected }.getOrDefault(false)
+                val snapshot = runCatching { bridge.currentSnapshot() }.getOrDefault(null)
+                val connected = snapshot?.connected == true
                 if (connected) {
                     acquireOrRenewSessionWakeLock()
                 } else {
@@ -134,6 +139,13 @@ class CompanionBridgeService : Service() {
                     wasConnected = connected
                     val suffix = if (connected) "session wake lock active" else "waiting for robot session"
                     updateNotification("Bridge ready at ${primaryBridgeManualUrl()}; $suffix")
+                }
+                if (snapshot != null) {
+                    val suffix = if (connected) "session wake lock active" else "waiting for robot session"
+                    AndroidBridgeRuntimeStatusStore.updateSession(
+                        snapshot = snapshot,
+                        detail = "Bridge ready at ${primaryBridgeManualUrl()}; $suffix",
+                    )
                 }
                 delay(WAKE_LOCK_POLL_MS)
             }
@@ -172,7 +184,8 @@ class CompanionBridgeService : Service() {
         notificationManager().createNotificationChannel(channel)
     }
 
-    private fun updateNotification(contentText: String) {
+    private fun updateNotification(contentText: String, status: String = "Foreground") {
+        AndroidBridgeRuntimeStatusStore.setServiceStatus(status, contentText)
         notificationManager().notify(NOTIFICATION_ID, buildNotification(contentText))
     }
 

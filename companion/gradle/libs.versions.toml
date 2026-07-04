@@ -3,6 +3,7 @@ agp = "9.2.0"
 androidxActivity = "1.11.0"
 compose = "1.11.0"
 jmdns = "3.5.12"
+junit = "4.13.2"
 kotlin = "2.4.0"
 kotlinxCoroutines = "1.10.2"
 kotlinxSerialization = "1.9.0"
@@ -11,6 +12,7 @@ ktor = "3.5.1"
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
+junit = { module = "junit:junit", version.ref = "junit" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

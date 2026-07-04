@@ -20,4 +20,6 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":ui"))
     implementation(libs.androidx.activity.compose)
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
 }
