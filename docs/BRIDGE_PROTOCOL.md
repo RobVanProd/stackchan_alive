@@ -34,9 +34,11 @@ latency against the 2.5 s budget, verifies mouth frames, and returns to `Ready`.
 host path decodes it to PCM16 before binary downlink and virtual speaker handoff. The
 device-shell rehearsal covers virtual display ticks, label persistence, CoreS3
 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, PCM16 speaker handoff counters,
-mouth-display activity, and power-cycle recovery. The audio-downlink simulation also mirrors
-`bridge_downlink_playback_*` telemetry, including the unsupported-format path. The default
-simulation also includes
+mouth-display activity, and power-cycle recovery. The servo-safety rehearsal separately
+checks virtual servo attach, pitch/yaw and yaw-velocity clipping, safe-stop blocking, and
+continued face/audio rendering while motion is held. The audio-downlink simulation also
+mirrors `bridge_downlink_playback_*` telemetry, including the unsupported-format path. The
+default simulation also includes
 `bridge-kill-recovery`, which aborts an in-flight TTS stream after a bridge error, emits the
 offline fallback prompt, reconnects, and proves the next response can return to `Ready`, plus
 `offline-command-fallback`, which keeps the bridge disconnected while local commands still

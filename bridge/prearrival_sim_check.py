@@ -36,6 +36,7 @@ DEFAULT_SCENARIOS = (
     "audio-downlink",
     "audio-downlink-unsupported",
     "arrival-rehearsal",
+    "servo-safety-rehearsal",
     "bridge-kill-recovery",
     "offline-command-fallback",
 )
@@ -56,9 +57,11 @@ def scenario_highlights(summary: dict[str, Any]) -> dict[str, Any]:
     arrival = scenario_by_name(summary, "arrival-rehearsal") or {}
     audio_loop = scenario_by_name(summary, "conversation-audio-loop") or {}
     recovery = scenario_by_name(summary, "bridge-kill-recovery") or {}
+    servo = scenario_by_name(summary, "servo-safety-rehearsal") or {}
     arrival_telemetry = arrival.get("telemetry", {})
     audio_telemetry = audio_loop.get("telemetry", {})
     recovery_telemetry = recovery.get("telemetry", {})
+    servo_telemetry = servo.get("telemetry", {})
     return {
         "arrival_rehearsal": {
             "status": arrival.get("status", "missing"),
@@ -82,6 +85,15 @@ def scenario_highlights(summary: dict[str, Any]) -> dict[str, Any]:
             "bridge_recoveries": recovery_telemetry.get("bridge_recoveries", 0),
             "audio_streams_aborted": recovery_telemetry.get("audio_streams_aborted", 0),
             "final_bridge_state": recovery_telemetry.get("bridge_state", ""),
+        },
+        "servo_safety_rehearsal": {
+            "status": servo.get("status", "missing"),
+            "servo_commands": servo_telemetry.get("servo_commands", 0),
+            "blocked_commands": servo_telemetry.get("servo_blocked_commands", 0),
+            "clipped_commands": servo_telemetry.get("servo_clipped_commands", 0),
+            "motion_disabled_display_frames": servo_telemetry.get("motion_disabled_display_frames", 0),
+            "motion_disabled_mouth_frames": servo_telemetry.get("motion_disabled_mouth_frames", 0),
+            "final_motion_enabled": servo_telemetry.get("motion_enabled", False),
         },
     }
 
@@ -350,6 +362,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"errors `{highlights['bridge_kill_recovery']['bridge_errors']}`, "
         f"recoveries `{highlights['bridge_kill_recovery']['bridge_recoveries']}`, "
         f"final state `{highlights['bridge_kill_recovery']['final_bridge_state']}`.",
+        f"- Servo safety rehearsal: `{highlights['servo_safety_rehearsal']['status']}`, "
+        f"commands `{highlights['servo_safety_rehearsal']['servo_commands']}`, "
+        f"blocked `{highlights['servo_safety_rehearsal']['blocked_commands']}`, "
+        f"clipped `{highlights['servo_safety_rehearsal']['clipped_commands']}`, "
+        f"disabled-display frames `{highlights['servo_safety_rehearsal']['motion_disabled_display_frames']}`, "
+        f"disabled-mouth frames `{highlights['servo_safety_rehearsal']['motion_disabled_mouth_frames']}`.",
         "",
         "## LAN WebSocket Smoke",
         "",

@@ -222,6 +222,34 @@ class HardwareSimulatorTests(unittest.TestCase):
         for mode in ("listen", "think", "react", "speak", "concern", "happy", "idle"):
             self.assertIn(mode, telemetry["modes_seen"])
 
+    def test_servo_safety_rehearsal_blocks_motion_but_keeps_face_and_audio_alive(self):
+        hardware = run_simulation("servo-safety-rehearsal")
+        report = hardware.report("servo-safety-rehearsal")
+        telemetry = report["telemetry"]
+
+        self.assertEqual("pass", report["status"], report["issues"])
+        self.assertTrue(telemetry["servo_ready"])
+        self.assertGreaterEqual(telemetry["servo_attach_count"], 1)
+        self.assertEqual(4, telemetry["servo_commands"])
+        self.assertEqual(3, telemetry["servo_angle_commands"])
+        self.assertEqual(1, telemetry["servo_velocity_commands"])
+        self.assertEqual(1, telemetry["servo_blocked_commands"])
+        self.assertGreaterEqual(telemetry["servo_clipped_commands"], 2)
+        self.assertGreaterEqual(telemetry["servo_stop_count"], 1)
+        self.assertTrue(telemetry["motion_enabled"])
+        self.assertLessEqual(abs(telemetry["servo_pitch_deg"]), 20.0)
+        self.assertLessEqual(abs(telemetry["servo_yaw_deg"]), 45.0)
+        self.assertLessEqual(abs(telemetry["servo_yaw_velocity"]), 0.65)
+        self.assertGreater(telemetry["motion_disabled_display_frames"], 0)
+        self.assertGreater(telemetry["motion_disabled_mouth_frames"], 0)
+        self.assertEqual(1, telemetry["speaker_playback_starts"])
+        self.assertEqual(2, telemetry["speaker_frames_submitted"])
+        self.assertEqual("Ready", telemetry["bridge_state"])
+        for mode in ("safety", "happy", "idle"):
+            self.assertIn(mode, telemetry["modes_seen"])
+        self.assertTrue(any("[motion] enabled=0" in line for line in hardware.serial_lines))
+        self.assertTrue(any("[servo] blocked" in line for line in hardware.serial_lines))
+
     def test_bridge_kill_recovery_uses_offline_fallback_and_returns_ready(self):
         hardware = run_simulation("bridge-kill-recovery")
         report = hardware.report("bridge-kill-recovery")
@@ -337,17 +365,20 @@ class HardwareSimulatorTests(unittest.TestCase):
 
     def test_summary_and_output_files_are_written(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            summary = write_outputs(Path(temp_dir), ["reference", "audio-downlink", "audio-downlink-unsupported"])
+            summary = write_outputs(Path(temp_dir), ["reference", "audio-downlink", "audio-downlink-unsupported", "servo-safety-rehearsal"])
             report_path = Path(temp_dir) / "hardware_simulation.json"
             markdown_path = Path(temp_dir) / "HARDWARE_SIMULATION.md"
             serial_path = Path(temp_dir) / "audio-downlink.serial.log"
+            servo_serial_path = Path(temp_dir) / "servo-safety-rehearsal.serial.log"
 
             decoded = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertTrue(markdown_path.exists())
             self.assertTrue(serial_path.exists())
             self.assertIn("Bridge downlink:", markdown_path.read_text(encoding="utf-8"))
             self.assertIn("Downlink playback:", markdown_path.read_text(encoding="utf-8"))
+            self.assertIn("Servo safety:", markdown_path.read_text(encoding="utf-8"))
             self.assertIn("bridge_downlink_streams=1", serial_path.read_text(encoding="utf-8"))
+            self.assertIn("servo_blocked_commands=1", servo_serial_path.read_text(encoding="utf-8"))
 
         self.assertEqual("pass", summary["status"])
         self.assertEqual(SIM_SCHEMA, decoded["schema"])

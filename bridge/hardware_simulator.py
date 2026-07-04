@@ -28,6 +28,11 @@ AUDIO_DOWNLINK_TEST_BYTES = 5000
 AUDIO_UPLOAD_TEST_BYTES = 6400
 DOWNLINK_CHECKSUM_SEED = 2166136261
 PLAYABLE_DOWNLINK_FORMATS = {"pcm16", "s16le", "raw16", "pcm_s16le"}
+SERVO_PITCH_MIN_DEG = -20.0
+SERVO_PITCH_MAX_DEG = 20.0
+SERVO_YAW_MIN_DEG = -45.0
+SERVO_YAW_MAX_DEG = 45.0
+SERVO_YAW_MAX_VELOCITY = 0.65
 
 
 Frame = dict[str, object] | bytes
@@ -102,6 +107,20 @@ class VirtualHardwareTelemetry:
     control_events: int = 0
     core_inputs: int = 0
     motion_enabled: bool = True
+    motion_disabled_display_frames: int = 0
+    motion_disabled_mouth_frames: int = 0
+    servo_ready: bool = False
+    servo_attach_count: int = 0
+    servo_stop_count: int = 0
+    servo_commands: int = 0
+    servo_angle_commands: int = 0
+    servo_velocity_commands: int = 0
+    servo_blocked_commands: int = 0
+    servo_clipped_commands: int = 0
+    servo_pitch_deg: float = 0.0
+    servo_yaw_deg: float = 0.0
+    servo_yaw_velocity: float = 0.0
+    servo_last_source: str = ""
     power_cycles: int = 0
     modes_seen: list[str] = field(default_factory=lambda: ["idle"])
 
@@ -174,6 +193,20 @@ class VirtualHardwareTelemetry:
             "control_events": self.control_events,
             "core_inputs": self.core_inputs,
             "motion_enabled": self.motion_enabled,
+            "motion_disabled_display_frames": self.motion_disabled_display_frames,
+            "motion_disabled_mouth_frames": self.motion_disabled_mouth_frames,
+            "servo_ready": self.servo_ready,
+            "servo_attach_count": self.servo_attach_count,
+            "servo_stop_count": self.servo_stop_count,
+            "servo_commands": self.servo_commands,
+            "servo_angle_commands": self.servo_angle_commands,
+            "servo_velocity_commands": self.servo_velocity_commands,
+            "servo_blocked_commands": self.servo_blocked_commands,
+            "servo_clipped_commands": self.servo_clipped_commands,
+            "servo_pitch_deg": round(self.servo_pitch_deg, 3),
+            "servo_yaw_deg": round(self.servo_yaw_deg, 3),
+            "servo_yaw_velocity": round(self.servo_yaw_velocity, 3),
+            "servo_last_source": self.servo_last_source,
             "power_cycles": self.power_cycles,
             "modes_seen": list(self.modes_seen),
         }
@@ -362,6 +395,35 @@ class VirtualStackchanHardware:
             for mode in ("listen", "think", "react", "speak", "concern", "happy", "idle"):
                 if mode not in self.telemetry.modes_seen:
                     self._record_issue(f"arrival_mode_not_seen:{mode}")
+        if scenario == "servo-safety-rehearsal":
+            if not self.telemetry.servo_ready:
+                self._record_issue("servo_not_ready")
+            if self.telemetry.servo_attach_count < 1:
+                self._record_issue("servo_attach_not_observed")
+            if self.telemetry.servo_commands < 3:
+                self._record_issue("servo_commands_not_covered")
+            if self.telemetry.servo_angle_commands < 2:
+                self._record_issue("servo_angle_commands_not_covered")
+            if self.telemetry.servo_velocity_commands < 1:
+                self._record_issue("servo_velocity_commands_not_covered")
+            if self.telemetry.servo_clipped_commands < 2:
+                self._record_issue("servo_clipping_not_observed")
+            if self.telemetry.servo_blocked_commands < 1:
+                self._record_issue("servo_blocked_command_not_observed")
+            if self.telemetry.servo_stop_count < 1:
+                self._record_issue("servo_stop_not_observed")
+            if not self.telemetry.motion_enabled:
+                self._record_issue("servo_motion_left_disabled")
+            if self.telemetry.motion_disabled_display_frames <= 0:
+                self._record_issue("display_not_rendered_while_motion_disabled")
+            if self.telemetry.motion_disabled_mouth_frames <= 0:
+                self._record_issue("mouth_not_rendered_while_motion_disabled")
+            if self.telemetry.speaker_playback_starts < 1:
+                self._record_issue("servo_safety_speaker_stream_not_exercised")
+            if self.telemetry.bridge_state != "Ready":
+                self._record_issue("servo_safety_did_not_return_ready")
+            if "safety" not in self.telemetry.modes_seen:
+                self._record_issue("servo_safety_mode_not_seen")
         if scenario == "bridge-kill-recovery":
             if self.telemetry.bridge_errors != 1:
                 self._record_issue("bridge_kill_error_not_observed")
@@ -601,6 +663,9 @@ class VirtualStackchanHardware:
         if frame_type == "control_command":
             self._process_control_command(frame)
             return
+        if frame_type == "motion_command":
+            self._process_motion_command(frame)
+            return
         if frame_type == "power_cycle":
             self._power_cycle()
             return
@@ -759,22 +824,23 @@ class VirtualStackchanHardware:
     def _process_control_command(self, frame: dict[str, object]) -> None:
         command = str(frame.get("command") or "").strip().lower()
         strength = max(0.0, min(1.0, _float(frame.get("strength"), 1.0)))
+        next_motion_enabled: bool | None = None
         if command == "shake":
             mode = "concern"
             event = "Shaken"
-            self.telemetry.motion_enabled = False
+            next_motion_enabled = False
         elif command == "putdown":
             mode = "idle"
             event = "PutDown"
-            self.telemetry.motion_enabled = True
+            next_motion_enabled = True
         elif command in {"safe_stop", "stop_moving", "motion_stop"}:
             mode = "safety"
             event = "SafetyStop"
-            self.telemetry.motion_enabled = False
+            next_motion_enabled = False
         elif command in {"safe_resume", "motion_resume"}:
             mode = "idle"
             event = "SafetyResume"
-            self.telemetry.motion_enabled = True
+            next_motion_enabled = True
         elif command == "look_at_me":
             mode = "attend"
             event = "ExplicitCommand"
@@ -795,11 +861,89 @@ class VirtualStackchanHardware:
             self._record_error(f"unsupported_control_command:{command or 'blank'}")
             return
         self.telemetry.control_events += 1
+        if next_motion_enabled is not None:
+            self._set_motion_enabled(next_motion_enabled, command)
         self._set_face_mode(mode)
         self._serial(
             "[control] "
             f"command={command} mode={mode} event={event} strength={strength:.2f} "
             f"motion_enabled={int(self.telemetry.motion_enabled)} at_ms={self.now_ms}"
+        )
+
+    def _process_motion_command(self, frame: dict[str, object]) -> None:
+        source = str(frame.get("source") or "sim").strip().lower()[:40] or "sim"
+        yaw_mode = str(frame.get("yaw_mode") or frame.get("mode") or "angle").strip().lower()
+        pitch_requested = _float(
+            _first_value(frame, "pitch_deg", "pitch", default=self.telemetry.servo_pitch_deg),
+            self.telemetry.servo_pitch_deg,
+        )
+        if not self.telemetry.motion_enabled:
+            self.telemetry.servo_blocked_commands += 1
+            self._serial(
+                "[servo] blocked "
+                f"source={source} pitch_request={pitch_requested:.2f} "
+                f"yaw_mode={yaw_mode} motion_enabled=0"
+            )
+            return
+
+        clipped = False
+        pitch_cmd = _clamp_float(pitch_requested, SERVO_PITCH_MIN_DEG, SERVO_PITCH_MAX_DEG)
+        clipped = clipped or pitch_cmd != pitch_requested
+        self.telemetry.servo_pitch_deg = pitch_cmd
+        self.telemetry.servo_last_source = source
+
+        if yaw_mode in {"angle", "position", "pos"}:
+            yaw_requested = _float(
+                _first_value(frame, "yaw_deg", "yaw", default=self.telemetry.servo_yaw_deg),
+                self.telemetry.servo_yaw_deg,
+            )
+            yaw_cmd = _clamp_float(yaw_requested, SERVO_YAW_MIN_DEG, SERVO_YAW_MAX_DEG)
+            clipped = clipped or yaw_cmd != yaw_requested
+            self.telemetry.servo_yaw_deg = yaw_cmd
+            self.telemetry.servo_yaw_velocity = 0.0
+            self.telemetry.servo_angle_commands += 1
+            detail = f"yaw={yaw_cmd:.2f} yaw_request={yaw_requested:.2f}"
+        elif yaw_mode in {"velocity", "vel"}:
+            yaw_velocity_requested = _float(
+                _first_value(frame, "yaw_velocity", "yaw_vel", "velocity", default=0.0),
+                0.0,
+            )
+            yaw_velocity_cmd = _clamp_float(
+                yaw_velocity_requested,
+                -SERVO_YAW_MAX_VELOCITY,
+                SERVO_YAW_MAX_VELOCITY,
+            )
+            clipped = clipped or yaw_velocity_cmd != yaw_velocity_requested
+            self.telemetry.servo_yaw_velocity = yaw_velocity_cmd
+            self.telemetry.servo_velocity_commands += 1
+            detail = f"yaw_velocity={yaw_velocity_cmd:.2f} yaw_velocity_request={yaw_velocity_requested:.2f}"
+        elif yaw_mode in {"disabled", "off", "none"}:
+            self.telemetry.servo_yaw_velocity = 0.0
+            detail = "yaw_disabled=1"
+        else:
+            self._record_error(f"unsupported_motion_yaw_mode:{yaw_mode or 'blank'}")
+            return
+
+        self.telemetry.servo_commands += 1
+        if clipped:
+            self.telemetry.servo_clipped_commands += 1
+        self._serial(
+            "[servo] command "
+            f"source={source} pitch={pitch_cmd:.2f} pitch_request={pitch_requested:.2f} "
+            f"yaw_mode={yaw_mode} {detail} clipped={int(clipped)} "
+            f"motion_enabled={int(self.telemetry.motion_enabled)}"
+        )
+
+    def _set_motion_enabled(self, enabled: bool, reason: str) -> None:
+        if not enabled:
+            self.telemetry.servo_stop_count += 1
+            self.telemetry.servo_pitch_deg = 0.0
+            self.telemetry.servo_yaw_deg = 0.0
+            self.telemetry.servo_yaw_velocity = 0.0
+        self.telemetry.motion_enabled = enabled
+        self._serial(
+            "[motion] "
+            f"enabled={int(enabled)} reason={reason} servo_stops={self.telemetry.servo_stop_count}"
         )
 
     def _packaged_prompt(self, intent: str, text: str) -> None:
@@ -830,6 +974,11 @@ class VirtualStackchanHardware:
         self.telemetry.boot_count += 1
         self.telemetry.display_ready = True
         self.telemetry.speaker_ready = True
+        self.telemetry.servo_ready = True
+        self.telemetry.servo_attach_count += 1
+        self.telemetry.servo_pitch_deg = 0.0
+        self.telemetry.servo_yaw_deg = 0.0
+        self.telemetry.servo_yaw_velocity = 0.0
         self.telemetry.bridge_downlink_ready = True
         self.telemetry.bridge_downlink_active = False
         self.telemetry.bridge_downlink_playback_ready = self.telemetry.speaker_ready
@@ -843,6 +992,7 @@ class VirtualStackchanHardware:
         self._serial("[system] boot virtual_core_s3=1 firmware=stackchan_alive")
         self._serial("[display] M5 display renderer ready canvas=double-buffered")
         self._serial("[audio_out] hw_ready=1 hw_playing=0 source=virtual_speaker")
+        self._serial("[servo] virtual actuator ready pitch=0.00 yaw=0.00 motion_enabled=1")
 
     def _power_cycle(self) -> None:
         if self.active_stream is not None:
@@ -875,6 +1025,10 @@ class VirtualStackchanHardware:
                 self.telemetry.display_label_frames += 1
             if self.mouth_env > 0.02:
                 self.telemetry.mouth_display_frames += 1
+            if not self.telemetry.motion_enabled:
+                self.telemetry.motion_disabled_display_frames += 1
+                if self.mouth_env > 0.02:
+                    self.telemetry.motion_disabled_mouth_frames += 1
             self.display_last_frame_ms = self.display_next_ms
             self.display_next_ms += DISPLAY_FRAME_MS
 
@@ -998,6 +1152,12 @@ class VirtualStackchanHardware:
             f"bridge_downlink_playback_bytes={self.telemetry.bridge_downlink_playback_bytes} "
             f"bridge_downlink_playback_unsupported={self.telemetry.bridge_downlink_playback_unsupported} "
             f"bridge_downlink_playback_errors={self.telemetry.bridge_downlink_playback_errors} "
+            f"motion_enabled={int(self.telemetry.motion_enabled)} "
+            f"servo_ready={int(self.telemetry.servo_ready)} "
+            f"servo_commands={self.telemetry.servo_commands} "
+            f"servo_blocked_commands={self.telemetry.servo_blocked_commands} "
+            f"servo_clipped_commands={self.telemetry.servo_clipped_commands} "
+            f"servo_stops={self.telemetry.servo_stop_count} "
             f"bridge_timeouts={self.telemetry.timeouts}"
         )
 
@@ -1014,6 +1174,17 @@ def _float(value: object, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _first_value(frame: dict[str, object], *keys: str, default: object = None) -> object:
+    for key in keys:
+        if key in frame:
+            return frame.get(key)
+    return default
+
+
+def _clamp_float(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 def _update_downlink_checksum(checksum: int, payload: bytes) -> int:
@@ -1086,6 +1257,31 @@ def arrival_rehearsal_frames() -> list[Frame]:
             {"type": "power_cycle"},
             {"type": "hello", "protocol": "stackchan.bridge.v1", "session": "arrival-reboot"},
             {"type": "heartbeat"},
+        ]
+    )
+    return frames
+
+
+def servo_safety_rehearsal_frames() -> list[Frame]:
+    frames: list[Frame] = [
+        {"type": "hello", "protocol": "stackchan.bridge.v1", "session": "servo-safety"},
+        {"type": "motion_command", "source": "self_test", "pitch_deg": 8.0, "yaw_deg": 16.0},
+        {"type": "motion_command", "source": "clip_probe", "pitch_deg": 36.0, "yaw_deg": 72.0},
+        {"type": "control_command", "command": "safe_stop"},
+        {"type": "motion_command", "source": "blocked_probe", "pitch_deg": -10.0, "yaw_deg": -24.0},
+    ]
+    frames.extend(full_audio_downlink_frames()[1:])
+    frames.extend(
+        [
+            {"type": "control_command", "command": "safe_resume"},
+            {"type": "motion_command", "source": "resume_probe", "pitch_deg": -7.0, "yaw_deg": -18.0},
+            {
+                "type": "motion_command",
+                "source": "velocity_probe",
+                "pitch_deg": 2.0,
+                "yaw_mode": "velocity",
+                "yaw_velocity": 1.25,
+            },
         ]
     )
     return frames
@@ -1340,6 +1536,8 @@ def scenario_frames(name: str) -> tuple[list[Frame], int | None]:
         return full_audio_downlink_frames("wav"), None
     if name == "arrival-rehearsal":
         return arrival_rehearsal_frames(), None
+    if name == "servo-safety-rehearsal":
+        return servo_safety_rehearsal_frames(), None
     if name == "bridge-kill-recovery":
         return bridge_kill_recovery_frames(), None
     if name == "offline-command-fallback":
@@ -1422,6 +1620,13 @@ def write_outputs(output_dir: Path, scenarios: Iterable[str]) -> dict[str, objec
                 f"- First audio latency: {telemetry['conversation_first_audio_latency_ms']} ms",
                 f"- Display frames: {telemetry['display_frames']} (max gap {telemetry['display_frame_gap_max_ms']} ms)",
                 f"- Controls: {telemetry['control_events']} total / {telemetry['core_inputs']} CoreS3 inputs",
+                f"- Servo safety: ready={int(telemetry['servo_ready'])} "
+                f"commands={telemetry['servo_commands']} "
+                f"blocked={telemetry['servo_blocked_commands']} "
+                f"clipped={telemetry['servo_clipped_commands']} "
+                f"stops={telemetry['servo_stop_count']} "
+                f"motion_disabled_display_frames={telemetry['motion_disabled_display_frames']} "
+                f"motion_disabled_mouth_frames={telemetry['motion_disabled_mouth_frames']}",
                 f"- Audio streams: {telemetry['audio_streams_started']} started / {telemetry['audio_streams_ended']} ended",
                 f"- Audio bytes: {telemetry['audio_stream_bytes_received']} received",
                 f"- Bridge downlink: {telemetry['bridge_downlink_streams']} streams / "
@@ -1459,6 +1664,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "audio-downlink",
             "audio-downlink-unsupported",
             "arrival-rehearsal",
+            "servo-safety-rehearsal",
             "bridge-kill-recovery",
             "offline-command-fallback",
             "timeout",
@@ -1467,7 +1673,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Scenario to run. Defaults to reference, lan-text, conversation-rehearsal, "
             "conversation-tts-downlink, conversation-audio-loop, audio-downlink, "
             "audio-downlink-unsupported, arrival-rehearsal, "
-            "bridge-kill-recovery, and offline-command-fallback."
+            "servo-safety-rehearsal, bridge-kill-recovery, and offline-command-fallback."
         ),
     )
     parser.add_argument("--out-dir", type=Path, help="Optional directory for JSON and serial-like logs.")
@@ -1486,6 +1692,7 @@ def main() -> int:
         "audio-downlink",
         "audio-downlink-unsupported",
         "arrival-rehearsal",
+        "servo-safety-rehearsal",
         "bridge-kill-recovery",
         "offline-command-fallback",
     ]

@@ -1,8 +1,8 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Verified by running the suites in this workspace: **93/93 bridge Python tests pass**,
-**109/109 native firmware logic tests pass**. The status table in
+Verified by running the suites in this workspace: **108/108 bridge Python tests pass**,
+**111/111 native firmware logic tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
 ## The structural truth
@@ -71,6 +71,10 @@ servo-safety-hold reflex exists in logic but has no real trigger. These are know
 listed in the pathway status table; flagged here so the ranking is complete. (Minor bug
 while in there: `CameraAdapter` holds a single pending event, so a `FaceDetected`
 immediately followed by `FaceLost` within one poll cycle silently drops one.)
+
+Current simulator coverage now includes `servo-safety-rehearsal` for safe-stop/resume,
+clipping, and face/audio continuity while motion is disabled. That improves pre-arrival
+proxy coverage, but does not close the real IMU trigger or calibrated servo evidence gap.
 
 ### B7. The brain is a deterministic transcript, and the character harness only checks shape
 
