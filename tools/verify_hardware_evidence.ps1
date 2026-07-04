@@ -486,14 +486,16 @@ function Test-AndroidCompanionReportPresent {
   return $false
 }
 
-function Assert-AndroidApkInstallEvidence {
-  param([object]$Metadata)
+function Assert-AndroidReportEvidence {
+  param(
+    [object]$ProbeConfig,
+    [string]$Field,
+    [string]$Description,
+    [string]$ExpectedSchema,
+    [string[]]$PassingStatuses = @("pass")
+  )
 
-  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
-    return
-  }
-
-  $relativePath = [string]$Metadata.androidCompanionProbes.apkInstallReport
+  $relativePath = [string]$ProbeConfig.$Field
   if ([string]::IsNullOrWhiteSpace($relativePath)) {
     return
   }
@@ -504,15 +506,49 @@ function Assert-AndroidApkInstallEvidence {
   }
 
   $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-  if ($report.schema -ne "stackchan.android-apk-install.v1") {
-    throw "Android APK install evidence schema mismatch: $($report.schema)"
+  if ($report.schema -ne $ExpectedSchema) {
+    throw "$Description schema mismatch: $($report.schema)"
   }
-  if ($report.status -ne "installed") {
-    throw "Android APK install evidence status is not installed: $($report.status)"
+  if (@($PassingStatuses) -notcontains [string]$report.status) {
+    $issues = @($report.issues) -join "; "
+    throw "$Description status is not accepted: $($report.status). $issues"
   }
-  if ([string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
-    throw "Android APK install evidence is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+  if ($ExpectedSchema -eq "stackchan.android-apk-install.v1" -and
+      [string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+    throw "$Description is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
   }
+}
+
+function Assert-AndroidCompanionReportEvidence {
+  param([object]$Metadata)
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return
+  }
+
+  $probeConfig = $Metadata.androidCompanionProbes
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "apkInstallReport" `
+    -Description "Android APK install evidence" `
+    -ExpectedSchema "stackchan.android-apk-install.v1" `
+    -PassingStatuses @("installed")
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "companionProbeReport" `
+    -Description "Android companion bridge probe" `
+    -ExpectedSchema "stackchan.android-companion-probe.v1"
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "udpBeaconProbeReport" `
+    -Description "Android UDP beacon probe" `
+    -ExpectedSchema "stackchan.android-udp-beacon-probe.v1"
+  Assert-AndroidReportEvidence `
+    -ProbeConfig $probeConfig `
+    -Field "logcatReport" `
+    -Description "Android companion logcat capture" `
+    -ExpectedSchema "stackchan.android-companion-logcat.v1" `
+    -PassingStatuses @("captured")
 }
 
 function Test-AndroidDashboardManifestEntry {
@@ -1009,7 +1045,7 @@ if (-not $AllowMissingMedia) {
 }
 
 Assert-AndroidDashboardManifestEvidence $metadata
-Assert-AndroidApkInstallEvidence $metadata
+Assert-AndroidCompanionReportEvidence $metadata
 
 Write-Host "Hardware evidence verified:"
 Write-Host $evidencePath
