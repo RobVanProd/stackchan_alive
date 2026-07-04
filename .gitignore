@@ -21,6 +21,17 @@ output/*
 output/companion/*
 !output/companion/c0-spike/
 !output/companion/c0-spike/SPIKE.md
+!output/companion/c6-brain-supervisor/
+!output/companion/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json
+!output/companion/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md
+!output/companion/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json
+!output/companion/c6-gui-rehearsal/
+!output/companion/c6-gui-rehearsal/GUI_REHEARSAL.json
+!output/companion/c6-gui-rehearsal/GUI_REHEARSAL.md
+!output/companion/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json
+!output/companion/c6-evidence/
+!output/companion/c6-evidence/EVIDENCE.json
+!output/companion/c6-evidence/EVIDENCE.md
 dist/
 build/
 out/
