@@ -72,9 +72,11 @@ a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner regist
 endpoint-control adapter for endpoint hello, heartbeat, brain claim/release, owner status,
 trusted endpoint listing, forgetting, and capability updates. Firmware also has a
 native-tested nonvolatile endpoint store with an ESP32 Preferences backend and endpoint
-control save hooks. It still needs the production Wi-Fi/TCP task, provisioning config,
-boot-time store load/attach wiring, response sending, and live transport integration before
-the physical robot can use this control plane.
+control save hooks; the running firmware loads that store at boot, attaches it to endpoint
+control, exposes endpoint telemetry, and can exercise endpoint-control responses through the
+serial bench path. It still needs the production Wi-Fi/TCP task, provisioning config,
+network response sending, and live transport integration before the physical robot can use
+this control plane untethered.
 
 ## Multi-Endpoint Model
 

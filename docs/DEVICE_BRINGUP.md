@@ -46,6 +46,9 @@ It also covers the firmware endpoint-control adapter for `endpoint_hello`, endpo
 heartbeat, `claim_brain`, `release_brain`, `owner_status`, `trusted_endpoints`,
 `forget_endpoint`, and `capability_update` before the production Wi-Fi/TCP task is wired to
 send responses.
+The display firmware initializes the endpoint registry/store/control objects at boot and
+prints endpoint telemetry in `[runtime]`; serial bench `bridge ...` JSON can exercise the
+endpoint-control response path before live Wi-Fi exists.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the

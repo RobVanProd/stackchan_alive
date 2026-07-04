@@ -10,6 +10,9 @@
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
+#include "io/BridgeEndpointControl.hpp"
+#include "io/BridgeEndpointRegistry.hpp"
+#include "io/BridgeEndpointStore.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -47,6 +50,14 @@ AudioOut gAudioOut;
 BridgeAudioDownlink gBridgeAudioDownlink;
 SpeechAdapter gSpeechAdapter;
 BridgeClient gBridge;
+BridgeEndpointRegistry gBridgeEndpointRegistry;
+BridgeEndpointControl gBridgeEndpointControl;
+BridgeEndpointStore gBridgeEndpointStore;
+#if defined(ARDUINO_ARCH_ESP32)
+BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
+#else
+BridgeEndpointMemoryStore gBridgeEndpointStoreBackend;
+#endif
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
@@ -244,6 +255,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
 
 M5SpeakerAudioSink gSpeakerSink;
 char gBridgeSpeechText[kBridgeTextMax] = {};
+char gBridgeEndpointResponse[kBridgeEndpointControlResponseMax] = {};
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_ENABLE_SERVOS
@@ -647,6 +659,42 @@ void printRuntimeStatus() {
   Serial.print(bridge.audioStreamErrors);
   Serial.print(F(" bridge_audio_stream_active="));
   Serial.print(bridge.audioStreamActive ? 1 : 0);
+  const BridgeEndpointRegistryTelemetry& endpoints = gBridgeEndpointRegistry.telemetry();
+  Serial.print(F(" bridge_endpoint_registry_ready="));
+  Serial.print(endpoints.ready ? 1 : 0);
+  Serial.print(F(" bridge_endpoint_count="));
+  Serial.print(endpoints.trustedCount);
+  Serial.print(F(" bridge_endpoint_active="));
+  const BridgeEndpointRecord* activeEndpoint = gBridgeEndpointRegistry.activeOwner();
+  Serial.print(activeEndpoint == nullptr ? "" : activeEndpoint->endpointId);
+  Serial.print(F(" bridge_endpoint_restores="));
+  Serial.print(endpoints.restores);
+  const BridgeEndpointControlTelemetry& endpointControl = gBridgeEndpointControl.telemetry();
+  Serial.print(F(" bridge_endpoint_control_ready="));
+  Serial.print(endpointControl.ready ? 1 : 0);
+  Serial.print(F(" bridge_endpoint_messages="));
+  Serial.print(endpointControl.handledMessages);
+  Serial.print(F(" bridge_endpoint_rejected="));
+  Serial.print(endpointControl.rejectedMessages);
+  Serial.print(F(" bridge_endpoint_persistence_saves="));
+  Serial.print(endpointControl.persistenceSaves);
+  Serial.print(F(" bridge_endpoint_persistence_errors="));
+  Serial.print(endpointControl.persistenceErrors);
+  const BridgeEndpointStoreTelemetry& endpointStore = gBridgeEndpointStore.telemetry();
+  Serial.print(F(" bridge_endpoint_store_ready="));
+  Serial.print(endpointStore.ready ? 1 : 0);
+  Serial.print(F(" bridge_endpoint_store_loads="));
+  Serial.print(endpointStore.loads);
+  Serial.print(F(" bridge_endpoint_store_saves="));
+  Serial.print(endpointStore.saves);
+  Serial.print(F(" bridge_endpoint_store_loaded="));
+  Serial.print(endpointStore.endpointsLoaded);
+  Serial.print(F(" bridge_endpoint_store_saved="));
+  Serial.print(endpointStore.endpointsSaved);
+  Serial.print(F(" bridge_endpoint_store_parse_errors="));
+  Serial.print(endpointStore.parseErrors);
+  Serial.print(F(" bridge_endpoint_store_write_errors="));
+  Serial.print(endpointStore.writeErrors);
   const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
   Serial.print(F(" bridge_downlink_ready="));
   Serial.print(downlink.ready ? 1 : 0);
@@ -898,6 +946,36 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
     Serial.print(output.error);
   }
   Serial.println();
+}
+
+const __FlashStringHelper* endpointControlResultName(BridgeEndpointControlResult result) {
+  switch (result) {
+    case BridgeEndpointControlResult::Handled:
+      return F("handled");
+    case BridgeEndpointControlResult::Rejected:
+      return F("rejected");
+    case BridgeEndpointControlResult::Ignored:
+    default:
+      return F("ignored");
+  }
+}
+
+bool handleEndpointControlLine(const char* line, uint32_t nowMs) {
+  gBridgeEndpointResponse[0] = '\0';
+  const BridgeEndpointControlResult result = gBridgeEndpointControl.submitControlLine(
+      line, gBridgeEndpointResponse, sizeof(gBridgeEndpointResponse), nowMs);
+  if (result == BridgeEndpointControlResult::Ignored) {
+    return false;
+  }
+
+  Serial.print(F("[endpoint] result="));
+  Serial.print(endpointControlResultName(result));
+  Serial.print(F(" at_ms="));
+  Serial.print(nowMs);
+  Serial.print(F(" response="));
+  Serial.print(gBridgeEndpointResponse);
+  Serial.println();
+  return true;
 }
 
 void printAudioTelemetry(const RobotEvent& event, uint32_t frameMs) {
@@ -1158,6 +1236,8 @@ void IntentTask(void* pv) {
   bool hasPendingAudioEvent = false;
 
   while (true) {
+    gBridgeEndpointControl.update(millis());
+
     RobotEvent cameraEvent;
     while (gCamera.poll(&cameraEvent)) {
       gIntent.applyEvent(cameraEvent, visionModeForEvent(cameraEvent.type));
@@ -1197,7 +1277,10 @@ void IntentTask(void* pv) {
         gIntent.queueSpeechCue(control.speechCue, millis());
       }
       if (control.hasBridge) {
-        gBridge.submitControlLine(control.bridge.controlLine, millis());
+        const uint32_t nowMs = millis();
+        if (!handleEndpointControlLine(control.bridge.controlLine, nowMs)) {
+          gBridge.submitControlLine(control.bridge.controlLine, nowMs);
+        }
       }
       publishSpeechInput(control);
       publishFaceControl(control);
@@ -1253,6 +1336,12 @@ void setup() {
   gBridgeAudioDownlink.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   gSpeechAdapter.begin(false, &gAudioOut);
   gBridge.begin();
+  const uint32_t bootMs = millis();
+  gBridgeEndpointRegistry.begin();
+  gBridgeEndpointStore.begin(gBridgeEndpointStoreBackend);
+  gBridgeEndpointStore.load(gBridgeEndpointRegistry, bootMs);
+  gBridgeEndpointControl.begin(gBridgeEndpointRegistry);
+  gBridgeEndpointControl.attachStore(&gBridgeEndpointStore);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
