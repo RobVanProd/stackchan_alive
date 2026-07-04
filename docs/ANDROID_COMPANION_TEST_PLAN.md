@@ -54,13 +54,20 @@ If both discovery paths fail, use the dashboard or notification URL directly.
 
 ## Manual Bridge Probe
 
-Probe the displayed URL before asking the robot to connect. Any WebSocket client is valid.
-The expected first server text frame is `endpoint_hello` with Android endpoint metadata.
+Probe the displayed URL before asking the robot to connect:
+
+```powershell
+.\tools\run_android_companion_probe.cmd -Url ws://<phone-lan-ip>:8765/bridge
+```
+
+The helper writes `output/android-companion-probe/latest/ANDROID_COMPANION_PROBE.md` and
+`android_companion_probe.json`. The expected first server text frame is `endpoint_hello`
+with Android endpoint metadata.
 
 Evidence to capture:
 
 - [ ] displayed manual URL
-- [ ] successful WebSocket connection to `/bridge`
+- [ ] `tools/run_android_companion_probe.cmd` passes against `/bridge`
 - [ ] `endpoint_hello.endpoint_kind` is `android`
 - [ ] `endpoint_hello.protocol` is `stackchan.bridge.v1`
 - [ ] advertised capabilities include settings/diagnostics and brain ownership capability if enabled for the test build
@@ -90,6 +97,6 @@ Attach these to the arrival-day packet:
 - screenshot of the foreground notification
 - mDNS result or failure note
 - UDP beacon capture or failure note
-- WebSocket probe transcript with `endpoint_hello`
+- `output/android-companion-probe/latest/ANDROID_COMPANION_PROBE.md/json`
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - Android logcat excerpt if the service stops, crashes, or loses foreground status

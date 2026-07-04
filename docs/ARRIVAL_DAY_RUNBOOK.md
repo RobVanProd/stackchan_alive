@@ -89,6 +89,9 @@ the `ws://<phone-lan-ip>:8765/bridge` URL shown in the Android dashboard or fore
 notification.
 For the full Android phone/LAN validation pass, use `docs/ANDROID_COMPANION_TEST_PLAN.md`
 and attach its evidence to the packet.
+Before asking the robot to connect manually, run
+`tools/run_android_companion_probe.cmd -Url ws://<phone-lan-ip>:8765/bridge` from the repo
+or extracted release package to verify the Android endpoint handshake.
 
 Import the display photo or video into the packet:
 
