@@ -126,8 +126,10 @@ Evidence to capture:
 ## Robot Session
 
 - [ ] The **Add your Stack-chan** setup card shows the live phone bridge URL and the three setup states: Start phone bridge, Connect Stack-chan, and Confirm robot ready.
+- [ ] The setup card shows a pairing code, phone fingerprint, discovery mode, and plain-language instruction for entering the bridge URL plus pairing code on Stack-chan.
 - [ ] The disconnected robot row shows a waiting/setup action rather than an unavailable handoff action.
-- [ ] The setup card shows how many trusted companion nodes are stored before the operator removes or keeps old devices.
+- [ ] The setup card shows how many saved robots and trusted companion nodes are stored before the operator removes or keeps old devices.
+- [ ] After a robot hello, the robot is saved on the phone and appears as a removable robot row; forgetting it removes the phone-side saved robot record without pretending to perform robot-side unpair.
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
 - [ ] A raw WebSocket connection without the robot `hello` handshake changes the setup card to `Finish Stack-chan pairing` / waiting for robot hello, but does not mark setup complete, does not enable Talk, and does not promote the Android session wake lock.
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
@@ -136,7 +138,7 @@ Evidence to capture:
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
 - [ ] Denying microphone permission leaves push-to-talk disabled for that turn and records a not-sent microphone message.
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
-- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
+- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/saved robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.

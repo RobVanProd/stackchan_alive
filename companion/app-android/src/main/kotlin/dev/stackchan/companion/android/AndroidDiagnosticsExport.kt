@@ -20,12 +20,14 @@ fun exportAndroidDiagnostics(
     context: Context,
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
+    savedRobots: List<SavedRobot> = emptyList(),
     bridgeStatus: AndroidBridgeRuntimeStatus,
     generatedAt: Instant = Instant.now(),
 ): AndroidDiagnosticsExportResult {
     val json = buildAndroidDiagnosticsJson(
         endpointHello = endpointHello,
         trustedEndpoints = trustedEndpoints,
+        savedRobots = savedRobots,
         bridgeStatus = bridgeStatus,
         generatedAt = generatedAt,
     ).toString()
@@ -41,6 +43,7 @@ fun exportAndroidDiagnostics(
 fun buildAndroidDiagnosticsJson(
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
+    savedRobots: List<SavedRobot> = emptyList(),
     bridgeStatus: AndroidBridgeRuntimeStatus,
     generatedAt: Instant,
 ): JsonObject =
@@ -77,7 +80,18 @@ fun buildAndroidDiagnosticsJson(
             put("display_name", bridgeStatus.robotDisplayName)
             put("firmware_version", bridgeStatus.firmwareVersion)
             put("fingerprint", bridgeStatus.robotFingerprint)
+            put("saved_on_phone", savedRobots.any { it.robotId == bridgeStatus.robotId && bridgeStatus.robotId.isNotBlank() })
         })
+        put("saved_robots", JsonArray(savedRobots.map { robot ->
+            buildJsonObject {
+                put("robot_id", robot.robotId)
+                put("robot_name", robot.robotName)
+                put("firmware_version", robot.firmwareVersion)
+                put("fingerprint", robot.fingerprint)
+                put("last_bridge_url", robot.lastBridgeUrl)
+                put("last_seen_ms", robot.lastSeenMs)
+            }
+        }))
         put("trusted_endpoints", JsonArray(trustedEndpoints.map { endpoint ->
             buildJsonObject {
                 put("endpoint_id", endpoint.endpointId)

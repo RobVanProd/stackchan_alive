@@ -268,7 +268,11 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("Awaiting Stackchan robot", uiState.robotSetup.robotName)
         assertEquals("Add your Stack-chan", uiState.robotSetup.setupTitle)
         assertTrue(uiState.robotSetup.setupStatus.contains("Bridge is ready"))
+        assertEquals(6, uiState.robotSetup.pairingShortCode.length)
+        assertTrue(uiState.robotSetup.pairingFingerprint.startsWith("sha256:"))
+        assertTrue(uiState.robotSetup.pairingInstruction.contains("pairing code"))
         assertEquals(0, uiState.robotSetup.trustedCompanionCount)
+        assertEquals(0, uiState.robotSetup.savedRobotCount)
         assertEquals(3, uiState.robotSetup.steps.size)
         assertTrue(uiState.robotSetup.steps[0].completed)
         assertFalse(uiState.robotSetup.steps[0].current)
@@ -297,6 +301,7 @@ class AndroidBridgeRuntimeStatusTest {
 
         assertTrue(uiState.robotSetup.robotConnected)
         assertTrue(uiState.robotSetup.setupStatus.contains("Stackchan Bench is connected"))
+        assertTrue(uiState.robotSetup.pairingInstruction.contains("saved"))
         assertTrue(uiState.robotSetup.steps.all { it.completed })
         assertTrue(uiState.robotSetup.steps.last().current)
         assertTrue(uiState.endpoints.first { it.kind == "robot" }.connected)
@@ -324,6 +329,7 @@ class AndroidBridgeRuntimeStatusTest {
         assertFalse(uiState.robotSetup.steps[1].current)
         assertFalse(uiState.robotSetup.steps[2].completed)
         assertTrue(uiState.robotSetup.steps[2].current)
+        assertTrue(uiState.robotSetup.pairingInstruction.contains("Confirm"))
         assertEquals("Robot detected: waiting for hello", uiState.connection)
         assertTrue(uiState.consoleMessage.contains("Waiting for robot hello"))
         assertEquals("Waiting for hello", uiState.telemetry.first { it.label == "Robot" }.detail)
@@ -455,6 +461,51 @@ class AndroidBridgeRuntimeStatusTest {
     }
 
     @Test
+    fun androidUiStateShowsSavedRobotsAsRemovable() {
+        val currentRobot = SavedRobot(
+            robotId = "stackchan-bench-01",
+            robotName = "Stackchan Bench",
+            firmwareVersion = "bench-v1",
+            fingerprint = "bench-v1",
+            lastBridgeUrl = "ws://192.168.1.42:8765/bridge",
+            lastSeenMs = 2000,
+        )
+        val previousRobot = SavedRobot(
+            robotId = "stackchan-old-01",
+            robotName = "Old Stackchan",
+            firmwareVersion = "old-v1",
+            fingerprint = "old-v1",
+            lastBridgeUrl = "ws://192.168.1.50:8765/bridge",
+            lastSeenMs = 1000,
+        )
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            savedRobots = listOf(currentRobot, previousRobot),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+            ),
+        )
+
+        assertEquals(2, uiState.robotSetup.savedRobotCount)
+        val currentRow = uiState.endpoints.first { it.endpointId == "stackchan-bench-01" }
+        assertTrue(currentRow.connected)
+        assertTrue(currentRow.removable)
+
+        val previousRow = uiState.endpoints.first { it.endpointId == "stackchan-old-01" }
+        assertFalse(previousRow.connected)
+        assertTrue(previousRow.removable)
+        assertEquals("Old Stackchan", previousRow.name)
+    }
+
+    @Test
     fun androidDiagnosticsExportRedactsTextTurnAndIncludesBridgeState() {
         val endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01")
         val trusted = TrustedEndpoint(
@@ -469,6 +520,16 @@ class AndroidBridgeRuntimeStatusTest {
         val export = buildAndroidDiagnosticsJson(
             endpointHello = endpointHello,
             trustedEndpoints = listOf(trusted),
+            savedRobots = listOf(
+                SavedRobot(
+                    robotId = "stackchan-bench-01",
+                    robotName = "Stackchan Bench",
+                    firmwareVersion = "bench-v1",
+                    fingerprint = "bench-v1",
+                    lastBridgeUrl = "ws://192.168.1.42:8765/bridge",
+                    lastSeenMs = 1234,
+                ),
+            ),
             bridgeStatus = AndroidBridgeRuntimeStatus(
                 manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
                 serviceStatus = "Foreground",
@@ -498,8 +559,10 @@ class AndroidBridgeRuntimeStatusTest {
         val robot = export["robot"]!!.jsonObject
         assertTrue(robot["socket_connected"]!!.jsonPrimitive.boolean)
         assertTrue(robot["connected"]!!.jsonPrimitive.boolean)
+        assertTrue(robot["saved_on_phone"]!!.jsonPrimitive.boolean)
         assertEquals("stackchan-bench-01", robot["device_id"]!!.jsonPrimitive.content)
 
+        assertEquals(1, export["saved_robots"]!!.jsonArray.size)
         assertEquals(1, export["trusted_endpoints"]!!.jsonArray.size)
         assertTrue(export["recent_logs"]!!.jsonArray.isNotEmpty())
         assertEquals("none", export["privacy"]!!.jsonObject["raw_audio_retention"]!!.jsonPrimitive.content)

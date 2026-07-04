@@ -114,11 +114,16 @@ data class RobotSetupUiState(
     val setupStatus: String = "Start the phone bridge, then connect Stack-chan on the same Wi-Fi.",
     val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
     val otherBridgeUrls: List<String> = emptyList(),
+    val pairingShortCode: String = "------",
+    val pairingFingerprint: String = "No pairing ticket yet",
+    val pairingMode: String = "Manual bridge",
+    val pairingInstruction: String = "Start the bridge to generate a pairing ticket for Stack-chan.",
     val serviceRunning: Boolean = false,
     val robotConnected: Boolean = false,
     val robotName: String = "Awaiting Stack-chan robot",
     val robotFingerprint: String = "No robot hello yet",
     val trustedCompanionCount: Int = 0,
+    val savedRobotCount: Int = 0,
     val steps: List<RobotSetupStepUiState> = listOf(
         RobotSetupStepUiState("Start bridge", "Keep this app open so Stack-chan can reach the phone.", current = true),
         RobotSetupStepUiState("Connect robot", "Put Stack-chan on the same Wi-Fi and enter the phone bridge URL."),
@@ -197,6 +202,7 @@ fun CompanionConsole(
     onExportDiagnostics: () -> Unit = {},
     onRunC6Rehearsal: () -> Unit = {},
     onForgetEndpoint: (String) -> Unit = {},
+    onForgetRobot: (String) -> Unit = {},
     onSendTextTurn: (String) -> Unit = {},
     onPushToTalk: () -> Unit = {},
 ) {
@@ -216,6 +222,7 @@ fun CompanionConsole(
                         onExportDiagnostics = onExportDiagnostics,
                         onRunC6Rehearsal = onRunC6Rehearsal,
                         onForgetEndpoint = onForgetEndpoint,
+                        onForgetRobot = onForgetRobot,
                         onSendTextTurn = onSendTextTurn,
                         onPushToTalk = onPushToTalk,
                     )
@@ -237,6 +244,7 @@ fun CompanionConsole(
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                                 onForgetEndpoint = onForgetEndpoint,
+                                onForgetRobot = onForgetRobot,
                                 onSendTextTurn = onSendTextTurn,
                                 onPushToTalk = onPushToTalk,
                             )
@@ -249,6 +257,7 @@ fun CompanionConsole(
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                                 onForgetEndpoint = onForgetEndpoint,
+                                onForgetRobot = onForgetRobot,
                                 onSendTextTurn = onSendTextTurn,
                                 onPushToTalk = onPushToTalk,
                             )
@@ -271,6 +280,7 @@ private fun MobileConsole(
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
+    onForgetRobot: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
     onPushToTalk: () -> Unit,
 ) {
@@ -310,6 +320,7 @@ private fun MobileConsole(
                     showTabs = false,
                     onRestartBridge = onRestartBrain,
                     onForgetEndpoint = onForgetEndpoint,
+                    onForgetRobot = onForgetRobot,
                 )
                 MobileSection.Telemetry -> TelemetryPanel(state, Modifier.fillMaxWidth())
             }
@@ -328,6 +339,7 @@ private fun WideConsole(
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
+    onForgetRobot: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
     onPushToTalk: () -> Unit,
 ) {
@@ -359,6 +371,7 @@ private fun WideConsole(
                 modifier = Modifier.fillMaxWidth(),
                 onRestartBridge = onRestartBrain,
                 onForgetEndpoint = onForgetEndpoint,
+                onForgetRobot = onForgetRobot,
             )
         }
         Column(
@@ -388,6 +401,7 @@ private fun TabletConsole(
     onExportDiagnostics: () -> Unit,
     onRunC6Rehearsal: () -> Unit,
     onForgetEndpoint: (String) -> Unit,
+    onForgetRobot: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
     onPushToTalk: () -> Unit,
 ) {
@@ -411,6 +425,7 @@ private fun TabletConsole(
                 modifier = Modifier.fillMaxWidth(),
                 onRestartBridge = onRestartBrain,
                 onForgetEndpoint = onForgetEndpoint,
+                onForgetRobot = onForgetRobot,
             )
         }
         Column(
@@ -628,6 +643,7 @@ private fun EndpointRegistry(
     showTabs: Boolean = true,
     onRestartBridge: () -> Unit = {},
     onForgetEndpoint: (String) -> Unit = {},
+    onForgetRobot: (String) -> Unit = {},
 ) {
     var showSetup by remember { mutableStateOf(!state.robotSetup.robotConnected) }
     PanelShell(modifier = modifier) {
@@ -643,7 +659,7 @@ private fun EndpointRegistry(
                 background = if (state.robotSetup.robotConnected) Color(0xFF0D2A25) else Color(0xFF2A2613),
             )
         }
-        Text("Add or reconnect the robot, then manage the companions allowed to control it.", color = Muted, fontSize = 11.sp)
+        Text("Add or reconnect the robot, then manage the saved robot and companions allowed to control it.", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(12.dp))
         RobotSetupCard(
             setup = state.robotSetup,
@@ -661,7 +677,12 @@ private fun EndpointRegistry(
         Spacer(Modifier.height(10.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             state.endpoints.forEach { endpoint ->
-                EndpointItem(endpoint, onForgetEndpoint = onForgetEndpoint, onReconnect = onRestartBridge)
+                EndpointItem(
+                    endpoint = endpoint,
+                    onForgetEndpoint = onForgetEndpoint,
+                    onForgetRobot = onForgetRobot,
+                    onReconnect = onRestartBridge,
+                )
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -783,6 +804,17 @@ private fun RobotSetupCard(
                 Readout("Robot", setup.robotName, if (setup.robotConnected) Mint else Amber)
                 Readout("Robot fingerprint", setup.robotFingerprint, if (setup.robotConnected) Cyan else Muted)
                 Readout("Phone bridge URL", setup.primaryBridgeUrl, Cyan)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Readout("Pairing code", setup.pairingShortCode, Amber, Modifier.weight(0.75f))
+                    Readout("Mode", setup.pairingMode, Cyan, Modifier.weight(1.25f))
+                }
+                Readout("Phone fingerprint", setup.pairingFingerprint, Muted)
+                Text(
+                    setup.pairingInstruction,
+                    color = Muted,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                )
                 if (setup.otherBridgeUrls.isNotEmpty()) {
                     Text(
                         "Other LAN URLs: ${setup.otherBridgeUrls.joinToString(", ")}",
@@ -797,7 +829,7 @@ private fun RobotSetupCard(
                     PairingStep(index + 1, step)
                 }
                 Text(
-                    "Trusted companions stored: ${setup.trustedCompanionCount}. Remove old phones, PCs, or test nodes below when they should no longer control Stack-chan.",
+                    "Saved robots: ${setup.savedRobotCount}. Trusted companions stored: ${setup.trustedCompanionCount}. Remove old robots, phones, PCs, or test nodes below when they should no longer control Stack-chan.",
                     color = Muted,
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
@@ -1122,6 +1154,7 @@ private fun Tabs() {
 private fun EndpointItem(
     endpoint: EndpointRow,
     onForgetEndpoint: (String) -> Unit,
+    onForgetRobot: (String) -> Unit,
     onReconnect: () -> Unit,
 ) {
     val iconLabel = when (endpoint.kind) {
@@ -1161,12 +1194,22 @@ private fun EndpointItem(
                     StatusPill("Connected", Mint, Color(0xFF0D2A25))
                     if (endpoint.kind == "robot") {
                         Spacer(Modifier.height(6.dp))
-                        SmallCommand("Reconnect", onClick = onReconnect)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            SmallCommand("Reconnect", onClick = onReconnect)
+                            if (endpoint.removable) {
+                                SmallCommand("Forget", enabled = true, onClick = { onForgetRobot(endpoint.endpointId) })
+                            }
+                        }
                     }
                 } else if (endpoint.kind == "robot") {
                     StatusPill("Waiting", Amber, Color(0xFF2A2613))
                     Spacer(Modifier.height(6.dp))
-                    SmallCommand("Setup", filled = true, onClick = onReconnect)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SmallCommand("Setup", filled = true, onClick = onReconnect)
+                        if (endpoint.removable) {
+                            SmallCommand("Forget", onClick = { onForgetRobot(endpoint.endpointId) })
+                        }
+                    }
                 } else if (endpoint.removable) {
                     Button(
                         onClick = { onForgetEndpoint(endpoint.endpointId) },

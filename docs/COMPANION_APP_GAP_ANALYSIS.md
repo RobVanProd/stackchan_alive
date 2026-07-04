@@ -27,8 +27,10 @@ current v1 companion branch.
   WebSocket connection as a connected robot session: app text turns, audio writes, settings
   writes, Talk enablement, wake-lock promotion, and setup-complete UI now require the robot
   `hello` handshake first. Android also exposes the intermediate "robot socket detected,
-  waiting for hello" state in setup, notification detail, and diagnostics export. Full
-  QR/short-code trust establishment and hardware proof still remain blocking before public
+  waiting for hello" state in setup, notification detail, and diagnostics export. Android now
+  shows a phone-side pairing ticket with pairing code, fingerprint, bridge URL, discovery
+  mode, and saved-robot add/remove state after a robot `hello`. Full QR/short-code
+  robot-side trust establishment and hardware proof still remain blocking before public
   distribution.
 - G6 first-run Wi-Fi provisioning is still open. Current setup assumes the robot can
   already reach the phone or desktop bridge.
@@ -46,6 +48,6 @@ current v1 companion branch.
 
 1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
 2. Add G3 user-facing settings, diagnostics, and persona screens over the existing protocol.
-3. Finish G5 with QR/short-code trust establishment and real hardware pairing evidence.
+3. Finish G5 with QR/short-code robot-side trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Coordinate G6 runtime Wi-Fi provisioning with firmware.

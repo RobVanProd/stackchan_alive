@@ -13,6 +13,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,7 @@ import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.TelemetryReading
+import java.security.MessageDigest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val bridgeStatus by AndroidBridgeRuntimeStatusStore.status.collectAsState()
             var trustedEndpoints by remember { mutableStateOf(stores.loadTrustedEndpoints().snapshot().endpoints) }
+            var savedRobots by remember { mutableStateOf(stores.loadSavedRobots()) }
             var conversationMessages by remember {
                 mutableStateOf(
                     listOf(
@@ -85,6 +88,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val coroutineScope = rememberCoroutineScope()
+            LaunchedEffect(
+                bridgeStatus.robotConnected,
+                bridgeStatus.robotId,
+                bridgeStatus.robotName,
+                bridgeStatus.firmwareVersion,
+            ) {
+                if (bridgeStatus.robotConnected && bridgeStatus.robotId.isNotBlank()) {
+                    savedRobots = stores.rememberRobot(
+                        SavedRobot(
+                            robotId = bridgeStatus.robotId,
+                            robotName = bridgeStatus.robotDisplayName,
+                            firmwareVersion = bridgeStatus.firmwareVersion,
+                            fingerprint = bridgeStatus.robotFingerprint,
+                            lastBridgeUrl = bridgeStatus.primaryBridgeUrl,
+                            lastSeenMs = System.currentTimeMillis(),
+                        ),
+                    )
+                }
+            }
             fun submitTurn(text: String, userDetail: String = "Sending") {
                 val cleanedText = text.trim()
                 if (cleanedText.isBlank()) {
@@ -106,6 +128,7 @@ class MainActivity : ComponentActivity() {
                 state = androidCompanionUiState(
                     endpointHello = endpointHello,
                     trustedEndpoints = trustedEndpoints,
+                    savedRobots = savedRobots,
                     bridgeStatus = bridgeStatus,
                     conversationMessages = conversationMessages,
                     diagnosticsExport = diagnosticsExport,
@@ -120,6 +143,9 @@ class MainActivity : ComponentActivity() {
                     registry.forget(endpointId)
                     stores.saveTrustedEndpoints(registry)
                     trustedEndpoints = registry.snapshot().endpoints
+                },
+                onForgetRobot = { robotId ->
+                    savedRobots = stores.forgetRobot(robotId)
                 },
                 onSendTextTurn = { text ->
                     submitTurn(text)
@@ -175,6 +201,7 @@ class MainActivity : ComponentActivity() {
                             context = this@MainActivity,
                             endpointHello = endpointHello,
                             trustedEndpoints = trustedEndpoints,
+                            savedRobots = savedRobots,
                             bridgeStatus = bridgeStatus,
                         )
                         diagnosticsExport = DiagnosticsExportUiState(status = "Exported", path = result.path)
@@ -285,6 +312,7 @@ class MainActivity : ComponentActivity() {
 internal fun androidCompanionUiState(
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
+    savedRobots: List<SavedRobot> = emptyList(),
     bridgeStatus: AndroidBridgeRuntimeStatus,
     conversationMessages: List<ConversationMessage> = emptyList(),
     diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
@@ -313,7 +341,12 @@ internal fun androidCompanionUiState(
             command = "CompanionBridgeService",
             recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
         ),
-        robotSetup = androidRobotSetup(bridgeStatus, trustedEndpoints.size),
+        robotSetup = androidRobotSetup(
+            endpointHello = endpointHello,
+            bridgeStatus = bridgeStatus,
+            trustedCompanionCount = trustedEndpoints.size,
+            savedRobotCount = savedRobots.size,
+        ),
         conversation = androidConversationUiState(
             bridgeStatus = bridgeStatus,
             conversationMessages = conversationMessages,
@@ -322,7 +355,7 @@ internal fun androidCompanionUiState(
         ),
         diagnosticsExport = diagnosticsExport,
         consoleMessage = bridgeStatus.consoleMessage,
-        endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
+        endpoints = androidEndpointRows(endpointHello, trustedEndpoints, savedRobots, bridgeStatus),
     )
 
 private fun androidConversationUiState(
@@ -360,11 +393,26 @@ private fun androidConversationUiState(
 }
 
 private fun androidRobotSetup(
+    endpointHello: EndpointHello,
     bridgeStatus: AndroidBridgeRuntimeStatus,
     trustedCompanionCount: Int,
+    savedRobotCount: Int,
 ): RobotSetupUiState {
     val serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed"
     val robotDetected = bridgeStatus.robotSocketConnected || bridgeStatus.robotConnected
+    val pairingSeed = "${endpointHello.endpointId}|${endpointHello.appVersion}|${bridgeStatus.primaryBridgeUrl}"
+    val pairingFingerprint = "sha256:${sha256Hex(pairingSeed).take(32)}"
+    val pairingShortCode = sha256Hex("$pairingSeed|pair").take(6).uppercase()
+    val pairingInstruction = when {
+        bridgeStatus.robotConnected ->
+            "This phone is saved for ${bridgeStatus.robotDisplayName}. Use Forget below before pairing a replacement robot."
+        bridgeStatus.robotSocketConnected ->
+            "Stack-chan reached this phone. Confirm the robot display shows this code/fingerprint, then wait for hello."
+        serviceRunning ->
+            "On Stack-chan, choose companion pairing, enter the bridge URL, then confirm this pairing code and fingerprint."
+        else ->
+            "Start the phone bridge to make this pairing ticket usable."
+    }
     val setupStatus = when {
         bridgeStatus.robotConnected -> "${bridgeStatus.robotDisplayName} is connected. Brain and settings controls are now available."
         bridgeStatus.robotSocketConnected -> "Stack-chan reached this phone. Waiting for the bridge hello before controls unlock."
@@ -380,11 +428,16 @@ private fun androidRobotSetup(
         setupStatus = setupStatus,
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
+        pairingShortCode = pairingShortCode,
+        pairingFingerprint = pairingFingerprint,
+        pairingMode = if (serviceRunning) "mDNS + UDP + manual URL" else "Bridge stopped",
+        pairingInstruction = pairingInstruction,
         serviceRunning = serviceRunning,
         robotConnected = bridgeStatus.robotConnected,
         robotName = bridgeStatus.robotDisplayName,
         robotFingerprint = bridgeStatus.robotFingerprint,
         trustedCompanionCount = trustedCompanionCount,
+        savedRobotCount = savedRobotCount,
         steps = listOf(
             RobotSetupStepUiState(
                 label = "Start phone bridge",
@@ -398,7 +451,7 @@ private fun androidRobotSetup(
             ),
             RobotSetupStepUiState(
                 label = "Connect Stack-chan",
-                detail = "Power on Stack-chan, keep it on this Wi-Fi, and enter the phone bridge URL.",
+                detail = "Power on Stack-chan, keep it on this Wi-Fi, and enter the phone bridge URL plus pairing code.",
                 completed = robotDetected,
                 current = serviceRunning && !robotDetected,
             ),
@@ -449,8 +502,10 @@ private fun androidTelemetryReadings(bridgeStatus: AndroidBridgeRuntimeStatus): 
 private fun androidEndpointRows(
     endpointHello: EndpointHello,
     trustedEndpoints: List<TrustedEndpoint>,
+    savedRobots: List<SavedRobot>,
     bridgeStatus: AndroidBridgeRuntimeStatus,
 ): List<EndpointRow> {
+    val savedRobotIds = savedRobots.map { it.robotId }.toSet()
     val robotRow = EndpointRow(
         endpointId = bridgeStatus.robotId.ifBlank { "stackchan-robot" },
         name = bridgeStatus.robotDisplayName,
@@ -459,6 +514,7 @@ private fun androidEndpointRows(
         priority = 100,
         connected = bridgeStatus.robotConnected,
         activeBrain = false,
+        removable = bridgeStatus.robotId.isNotBlank() && bridgeStatus.robotId in savedRobotIds,
     )
     val phoneRow = EndpointRow(
         endpointId = endpointHello.endpointId,
@@ -469,8 +525,23 @@ private fun androidEndpointRows(
         connected = true,
         activeBrain = bridgeStatus.activeBrainOwner == endpointHello.endpointId,
     )
-    return listOf(robotRow, phoneRow) + trustedEndpoints.map { it.toEndpointRow(bridgeStatus.activeBrainOwner) }
+    val savedRobotRows = savedRobots
+        .filterNot { it.robotId == bridgeStatus.robotId }
+        .map { it.toEndpointRow() }
+    return listOf(robotRow, phoneRow) + savedRobotRows + trustedEndpoints.map { it.toEndpointRow(bridgeStatus.activeBrainOwner) }
 }
+
+private fun SavedRobot.toEndpointRow(): EndpointRow =
+    EndpointRow(
+        endpointId = robotId,
+        name = robotName.ifBlank { robotId },
+        kind = "robot",
+        fingerprint = fingerprint.ifBlank { firmwareVersion.ifBlank { "Saved robot" } },
+        priority = 100,
+        connected = false,
+        activeBrain = false,
+        removable = true,
+    )
 
 private fun TrustedEndpoint.toEndpointRow(activeBrainOwner: String): EndpointRow =
     EndpointRow(
@@ -506,3 +577,8 @@ internal fun androidRecentLogs(
     add("Android NSD advertises _stackchan-bridge._tcp.local.")
     add("UDP beacon broadcasts endpoint metadata on port 8766.")
 }
+
+private fun sha256Hex(value: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
