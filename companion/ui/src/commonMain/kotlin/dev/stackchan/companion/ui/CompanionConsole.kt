@@ -75,11 +75,18 @@ data class CompanionUiState(
     val audioStatus: String = "Fake output ready",
     val consoleMessage: String = "Awaiting wake-gated input on android brain...",
     val brainService: BrainServiceUiState = BrainServiceUiState(),
+    val diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     val endpoints: List<EndpointRow> = listOf(
         EndpointRow("Rob's Phone (This Companion)", "android", "SHA256:B84F17C2A0E192DDB...", 80, true, true),
         EndpointRow("Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false),
         EndpointRow("Guest Raspberry Pi 5", "pc", "SHA256:7F452C2C0F90DA15B...", 50, false, false),
     ),
+)
+
+data class DiagnosticsExportUiState(
+    val status: String = "Not exported",
+    val path: String = "",
+    val error: String = "",
 )
 
 data class BrainServiceUiState(
@@ -114,6 +121,7 @@ fun CompanionConsole(
     onStartBrain: () -> Unit = {},
     onStopBrain: () -> Unit = {},
     onRestartBrain: () -> Unit = {},
+    onExportDiagnostics: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -137,6 +145,7 @@ fun CompanionConsole(
                                 onStartBrain = onStartBrain,
                                 onStopBrain = onStopBrain,
                                 onRestartBrain = onRestartBrain,
+                                onExportDiagnostics = onExportDiagnostics,
                             )
                             EndpointRegistry(state, Modifier.fillMaxWidth())
                             TelemetryPanel(state, Modifier.fillMaxWidth())
@@ -164,6 +173,7 @@ fun CompanionConsole(
                                     onStartBrain = onStartBrain,
                                     onStopBrain = onStopBrain,
                                     onRestartBrain = onRestartBrain,
+                                    onExportDiagnostics = onExportDiagnostics,
                                 )
                                 SecurityPanel(Modifier.fillMaxWidth())
                             }
@@ -341,6 +351,7 @@ private fun BrainPanel(
     onStartBrain: () -> Unit = {},
     onStopBrain: () -> Unit = {},
     onRestartBrain: () -> Unit = {},
+    onExportDiagnostics: () -> Unit = {},
 ) {
     PanelShell(modifier = modifier) {
         SectionTitle("PC Brain Supervisor", Purple)
@@ -364,8 +375,22 @@ private fun BrainPanel(
                 onClick = if (state.brainService.running) onStopBrain else onStartBrain,
             )
             SmallCommand("Restart", onClick = onRestartBrain)
+            SmallCommand("Export diagnostics", onClick = onExportDiagnostics)
             SmallCommand("Use phone")
             SmallCommand("Handoff")
+        }
+        Spacer(Modifier.height(12.dp))
+        Readout("Diagnostics export", state.diagnosticsExport.status, if (state.diagnosticsExport.error.isBlank()) Mint else Danger)
+        if (state.diagnosticsExport.path.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                state.diagnosticsExport.path,
+                color = Muted,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Spacer(Modifier.height(14.dp))
         ConsoleLog(state.brainService.recentLogs.takeLast(6).joinToString("\n"))

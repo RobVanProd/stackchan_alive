@@ -37,6 +37,8 @@ data class DesktopCompanionRuntimeSnapshot(
     val mdnsAdvertised: Boolean,
     val mdnsEndpoint: DiscoveredEndpoint?,
     val brainSupervisor: DesktopBrainSupervisorSnapshot,
+    val diagnosticsExportPath: Path?,
+    val diagnosticsExportError: String = "",
     val mdnsError: String = "",
 )
 
@@ -49,6 +51,8 @@ class DesktopCompanionRuntime(
     private var requestRouter: EndpointRequestRouter? = null
     private val brainSupervisor = DesktopBrainSupervisor(config.brainSupervisorConfig)
     private var mdnsError: String = ""
+    private var diagnosticsExportPath: Path? = null
+    private var diagnosticsExportError: String = ""
 
     fun start(): DesktopCompanionRuntime {
         check(server == null) { "desktop companion runtime already started" }
@@ -103,6 +107,8 @@ class DesktopCompanionRuntime(
             mdnsAdvertised = registration != null,
             mdnsEndpoint = registration?.endpoint,
             brainSupervisor = brainSupervisor.snapshot(),
+            diagnosticsExportPath = diagnosticsExportPath,
+            diagnosticsExportError = diagnosticsExportError,
             mdnsError = mdnsError,
         )
 
@@ -122,6 +128,22 @@ class DesktopCompanionRuntime(
     fun restartBrainService(): DesktopBrainSupervisorSnapshot =
         brainSupervisor.restart().snapshot()
 
+    suspend fun exportDiagnosticsEvidenceFile(
+        outputDir: Path = config.storageDir.resolve("diagnostics"),
+    ): Path {
+        return try {
+            Files.createDirectories(outputDir)
+            val path = outputDir.resolve("DIAGNOSTICS_EXPORT.json")
+            Files.writeString(path, exportDiagnosticsEvidenceJson())
+            diagnosticsExportPath = path
+            diagnosticsExportError = ""
+            path
+        } catch (error: Exception) {
+            diagnosticsExportError = error.message ?: error.javaClass.simpleName
+            throw error
+        }
+    }
+
     override fun close() {
         brainSupervisor.close()
         registration?.close()
@@ -132,6 +154,8 @@ class DesktopCompanionRuntime(
         server = null
         requestRouter = null
         mdnsError = ""
+        diagnosticsExportPath = null
+        diagnosticsExportError = ""
     }
 }
 

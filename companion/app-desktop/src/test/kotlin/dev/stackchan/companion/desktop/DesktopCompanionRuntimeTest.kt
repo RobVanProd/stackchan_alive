@@ -161,9 +161,12 @@ class DesktopCompanionRuntimeTest {
         DesktopCompanionRuntime(config).use { runtime ->
             runtime.start()
 
+            val before = runtime.toCompanionUiState()
             val exported = Json.parseToJsonElement(runtime.exportDiagnosticsEvidenceJson()).jsonObject
             val brainService = exported["brain_service"]!!.jsonObject
             val diagnostics = exported["diagnostics"]!!.jsonObject
+            val exportedPath = runtime.exportDiagnosticsEvidenceFile()
+            val after = runtime.toCompanionUiState()
 
             assertEquals("stackchan.companion.diagnostics-export.v1", exported["schema"]!!.jsonPrimitive.content)
             assertEquals("pc-runtime-test", exported["runtime"]!!.jsonObject["endpoint_id"]!!.jsonPrimitive.content)
@@ -172,6 +175,11 @@ class DesktopCompanionRuntimeTest {
             assertEquals(config.brainSupervisorConfig.port, brainService["port"]!!.jsonPrimitive.content.toInt())
             assertTrue(brainService["command"]!!.jsonArray.isNotEmpty())
             assertEquals("stackchan.bridge.v1", diagnostics["bridge"]!!.jsonObject["protocol"]!!.jsonPrimitive.content)
+            assertEquals("Ready", before.diagnosticsExport.status)
+            assertTrue(Files.isRegularFile(exportedPath))
+            assertEquals(config.storageDir.resolve("diagnostics").resolve("DIAGNOSTICS_EXPORT.json"), exportedPath)
+            assertEquals("Exported", after.diagnosticsExport.status)
+            assertEquals(exportedPath.toString(), after.diagnosticsExport.path)
         }
     }
 }

@@ -4,6 +4,7 @@ import dev.stackchan.companion.core.DiagnosticsSnapshot
 import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionUiState
+import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.TelemetryReading
 import kotlinx.serialization.json.JsonObject
@@ -68,6 +69,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         audioStatus = diagnostics.audio?.stringValue("engine") ?: "offline",
         consoleMessage = consoleMessage(owner, runtime),
         brainService = runtime.brainSupervisor.toBrainServiceUiState(),
+        diagnosticsExport = runtime.toDiagnosticsExportUiState(),
         endpoints = listOf(robotEndpoint, desktopEndpoint),
     )
 }
@@ -98,6 +100,23 @@ private fun DesktopBrainSupervisorSnapshot.toBrainServiceUiState(): BrainService
         recentLogs = recentLogs.ifEmpty { listOf("PC brain supervisor idle.") },
     )
 }
+
+private fun DesktopCompanionRuntimeSnapshot.toDiagnosticsExportUiState(): DiagnosticsExportUiState =
+    when {
+        diagnosticsExportError.isNotBlank() -> DiagnosticsExportUiState(
+            status = "Export failed",
+            path = diagnosticsExportPath?.toString().orEmpty(),
+            error = diagnosticsExportError,
+        )
+        diagnosticsExportPath != null -> DiagnosticsExportUiState(
+            status = "Exported",
+            path = diagnosticsExportPath.toString(),
+        )
+        else -> DiagnosticsExportUiState(
+            status = "Ready",
+            path = storageDir.resolve("diagnostics").resolve("DIAGNOSTICS_EXPORT.json").toString(),
+        )
+    }
 
 private fun DiagnosticsSnapshot.toTelemetryReadings(
     session: EndpointSessionSnapshot,
