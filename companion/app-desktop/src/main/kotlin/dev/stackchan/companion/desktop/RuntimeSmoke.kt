@@ -7,11 +7,18 @@ import dev.stackchan.companion.core.DiagnosticsRequest
 import dev.stackchan.companion.core.DiagnosticsSnapshot
 import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.OwnerStatus
+import dev.stackchan.companion.core.ResponseStart
 import dev.stackchan.companion.core.SettingsResult
 import dev.stackchan.companion.core.SettingsSet
+import dev.stackchan.companion.core.AudioStreamEnd
+import dev.stackchan.companion.core.AudioStreamStart
+import dev.stackchan.companion.core.ResponseEnd
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.TrustedEndpointFileStore
 import dev.stackchan.companion.core.TrustedEndpointRegistry
+import dev.stackchan.companion.core.UtteranceAudio
+import dev.stackchan.companion.core.UtteranceEnd
+import dev.stackchan.companion.core.UtteranceStart
 import dev.stackchan.companion.core.decodeControlMessage
 import dev.stackchan.companion.core.encodeControlMessage
 import java.net.InetAddress
@@ -19,16 +26,20 @@ import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -37,6 +48,7 @@ fun main(args: Array<String>) {
     Files.createDirectories(outDir)
     val report = runRuntimeSmoke(outDir)
     Files.writeString(outDir.resolve("SMOKE.md"), report.toMarkdown())
+    Files.writeString(outDir.resolve("SMOKE.json"), report.toJson())
     if (!report.ok) {
         error("Runtime smoke failed; see ${outDir.resolve("SMOKE.md")}")
     }
@@ -48,10 +60,11 @@ data class RuntimeSmokeReport(
     val settingsOk: Boolean,
     val ownerOk: Boolean,
     val diagnosticsOk: Boolean,
+    val fakeAudioOk: Boolean,
     val notes: List<String>,
 ) {
     val ok: Boolean =
-        endpointHelloOk && settingsOk && ownerOk && diagnosticsOk
+        endpointHelloOk && settingsOk && ownerOk && diagnosticsOk && fakeAudioOk
 
     fun toMarkdown(): String = buildString {
         appendLine("# Companion Runtime Smoke")
@@ -61,11 +74,25 @@ data class RuntimeSmokeReport(
         appendLine("- settings_ok: `$settingsOk`")
         appendLine("- owner_ok: `$ownerOk`")
         appendLine("- diagnostics_ok: `$diagnosticsOk`")
+        appendLine("- fake_audio_ok: `$fakeAudioOk`")
         appendLine("- overall_ok: `$ok`")
         appendLine()
         appendLine("## Notes")
         notes.forEach { appendLine("- $it") }
     }
+
+    fun toJson(): String =
+        buildJsonObject {
+            put("schema", "stackchan.companion.runtime-smoke.v1")
+            put("generated_at", generatedAt.toString())
+            put("endpoint_hello_ok", endpointHelloOk)
+            put("settings_ok", settingsOk)
+            put("owner_ok", ownerOk)
+            put("diagnostics_ok", diagnosticsOk)
+            put("fake_audio_ok", fakeAudioOk)
+            put("overall_ok", ok)
+            put("notes", JsonArray(notes.map { JsonPrimitive(it) }))
+        }.toString()
 }
 
 fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
@@ -153,12 +180,47 @@ fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
                 false
             }
 
+            val fakeAudioOk = runCatching {
+                client.send(encodeControlMessage(UtteranceStart(seq = 42, sampleRate = 16000)))
+                client.sendBinary(ByteArray(320) { 3 })
+                client.send(
+                    encodeControlMessage(
+                        UtteranceAudio(
+                            seq = 42,
+                            pcmB64 = Base64.getEncoder().encodeToString(ByteArray(160) { 4 }),
+                        ),
+                    ),
+                )
+                client.send(encodeControlMessage(UtteranceEnd(seq = 42, transcript = "runtime smoke audio")))
+                val thinking = decodeControlMessage(client.nextText())
+                val response = decodeControlMessage(client.nextText()) as ResponseStart
+                val start = decodeControlMessage(client.nextText()) as AudioStreamStart
+                val binaryBytes = (1..start.chunks).sumOf { client.nextBinary().size }
+                val mouthFrame = decodeControlMessage(client.nextText())
+                val finalMouthFrame = decodeControlMessage(client.nextText())
+                val end = decodeControlMessage(client.nextText()) as AudioStreamEnd
+                val responseEnd = decodeControlMessage(client.nextText()) as ResponseEnd
+                notes += "Fake audio turn returned ${thinking.type}, intent=${response.intent}, chunks=${start.chunks}, binary_bytes=$binaryBytes."
+                response.intent == "fake_audio_turn" &&
+                    start.format == "pcm16" &&
+                    start.audioBytes == binaryBytes &&
+                    end.audioBytes == start.audioBytes &&
+                    end.chunks == start.chunks &&
+                    mouthFrame.type == "audio" &&
+                    finalMouthFrame.type == "audio" &&
+                    responseEnd.seq == 42
+            }.getOrElse {
+                notes += "Fake audio turn failed: ${it.message}"
+                false
+            }
+
             return RuntimeSmokeReport(
                 generatedAt = Instant.now(),
                 endpointHelloOk = endpointHelloOk,
                 settingsOk = settingsOk,
                 ownerOk = ownerOk,
                 diagnosticsOk = diagnosticsOk,
+                fakeAudioOk = fakeAudioOk,
                 notes = notes,
             )
         }
@@ -189,14 +251,23 @@ private fun freeLoopbackPort(): Int =
 private class RuntimeSmokeClient private constructor(
     private val socket: WebSocket,
     private val messages: LinkedBlockingQueue<String>,
+    private val binaryMessages: LinkedBlockingQueue<ByteArray>,
 ) : AutoCloseable {
     fun send(text: String) {
         socket.sendText(text, true).join()
     }
 
+    fun sendBinary(bytes: ByteArray) {
+        socket.sendBinary(ByteBuffer.wrap(bytes), true).join()
+    }
+
     fun nextText(): String =
         messages.poll(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS)
             ?: error("timed out waiting for websocket text")
+
+    fun nextBinary(): ByteArray =
+        binaryMessages.poll(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS)
+            ?: error("timed out waiting for websocket binary")
 
     override fun close() {
         socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join()
@@ -205,6 +276,7 @@ private class RuntimeSmokeClient private constructor(
     companion object {
         fun connect(uri: String): RuntimeSmokeClient {
             val messages = LinkedBlockingQueue<String>()
+            val binaryMessages = LinkedBlockingQueue<ByteArray>()
             val listener = object : WebSocket.Listener {
                 override fun onText(
                     webSocket: WebSocket,
@@ -217,6 +289,20 @@ private class RuntimeSmokeClient private constructor(
                     webSocket.request(1)
                     return CompletableFuture.completedFuture(null)
                 }
+
+                override fun onBinary(
+                    webSocket: WebSocket,
+                    data: ByteBuffer,
+                    last: Boolean,
+                ): CompletionStage<*> {
+                    if (last) {
+                        val bytes = ByteArray(data.remaining())
+                        data.get(bytes)
+                        binaryMessages.offer(bytes)
+                    }
+                    webSocket.request(1)
+                    return CompletableFuture.completedFuture(null)
+                }
             }
             val socket = HttpClient
                 .newHttpClient()
@@ -225,7 +311,7 @@ private class RuntimeSmokeClient private constructor(
                 .buildAsync(URI.create(uri), listener)
                 .get(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS)
             socket.request(1)
-            return RuntimeSmokeClient(socket, messages)
+            return RuntimeSmokeClient(socket, messages, binaryMessages)
         }
     }
 }
