@@ -529,6 +529,10 @@ void test_audio_capture_adapter_records_pcm_and_emits_reflex_events() {
   TEST_ASSERT_EQUAL_UINT32(2, capture.telemetry().eventsPublished);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, capture.telemetry().lastLevel);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, capture.telemetry().lastZeroCrossingRate);
+  TEST_ASSERT_NOT_NULL(capture.lastPcmWindow());
+  TEST_ASSERT_EQUAL_UINT16(kAudioCaptureWindowSamples, capture.lastPcmSampleCount());
+  TEST_ASSERT_EQUAL_INT16(source.samples[0], capture.lastPcmWindow()[0]);
+  TEST_ASSERT_EQUAL_INT16(source.samples[7], capture.lastPcmWindow()[7]);
 
   TEST_ASSERT_EQUAL_UINT8(0, capture.poll(105, events, 3));
   TEST_ASSERT_EQUAL_UINT32(1, source.recordCalls);

@@ -25,6 +25,9 @@ The current LAN service implements the beginning of that flow: bounded PCM uploa
 TTS metadata adapter for mouth timing, optional binary TTS audio downlink, explicit transcript
 fields on `utterance_end` for deterministic tests, and raw-audio clearing at the end of the
 turn. Audio-only turns return `stt_not_implemented` unless an STT command is configured.
+Firmware mic capture remains compiled off by default. When it is explicitly enabled, captured
+PCM windows may feed the bridge uplink only while a turn is already active; microphone
+reflexes do not open that turn by themselves.
 
 If Wi-Fi or the bridge is unavailable, Stackchan must degrade offline. On-device commands, local expressions, safety behavior, and packaged prompts still work. A missing bridge must not create a dead state.
 

@@ -1083,6 +1083,21 @@ void handleBridgeUplinkBench(const BenchBridgeUpload& upload, uint32_t nowMs) {
   printBridgeUplinkResult(upload.action, accepted, upload.seq, bytes, nowMs);
 }
 
+void submitCapturedAudioWindowToBridgeUplink(uint32_t nowMs) {
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  if (!uplink.active) {
+    return;
+  }
+
+  const int16_t* samples = gAudioCapture.lastPcmWindow();
+  const uint16_t sampleCount = gAudioCapture.lastPcmSampleCount();
+  if (samples == nullptr || sampleCount == 0) {
+    return;
+  }
+
+  gBridgeAudioUplink.submitPcmChunk(uplink.lastSeq, samples, sampleCount, nowMs);
+}
+
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   Serial.print(F("[bridge] type="));
   Serial.print(bridgeOutputTypeName(output.type));
@@ -1474,7 +1489,11 @@ void IntentTask(void* pv) {
     updateBridgeNetwork(loopMs);
 
     AudioReflexEvent audioEvents[3];
+    const uint32_t audioWindowsBefore = gAudioCapture.telemetry().windowsCaptured;
     const uint8_t audioEventCount = gAudioCapture.poll(loopMs, audioEvents, 3);
+    if (gAudioCapture.telemetry().windowsCaptured != audioWindowsBefore) {
+      submitCapturedAudioWindowToBridgeUplink(loopMs);
+    }
     for (uint8_t i = 0; i < audioEventCount; ++i) {
       if (!audioEvents[i].valid) {
         continue;

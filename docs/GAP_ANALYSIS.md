@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry/control/persistence slice check in this workspace: **167/167 native firmware logic
+Current firmware transport/registry/control/persistence slice check in this workspace: **166/166 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -98,14 +98,15 @@ audio path.
 left/right PCM windows) proven against WAV fixtures. Firmware now has `AudioCaptureAdapter`
 with an M5Unified mic source, disabled by default behind `STACKCHAN_ENABLE_MIC_CAPTURE`,
 plus runtime `audio_capture_*` telemetry and native fake-source coverage from PCM windows to
-`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. Firmware also has
-`BridgeAudioUplink`, disabled by default behind `STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK`, to
-queue `utterance_start`, bounded PCM binary chunks, and `utterance_end` only after a wake
-gate is explicitly open. What is still missing is wiring real mic windows into that turn
-controller; the serial `uplink start|chunk|end|abort` bench route only sends synthetic PCM
-for transport bring-up. A CoreS3 run with the mic actually enabled, measured
-capture/uplink telemetry, and the wake/STT path that consumes capture beyond local reflex
-events are still open.
+`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. The adapter also exposes the
+last captured PCM window read-only so the intent loop can forward real mic windows into
+`BridgeAudioUplink` while, and only while, an uplink turn is already active. Firmware also
+has `BridgeAudioUplink`, disabled by default behind `STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK`,
+to queue `utterance_start`, bounded PCM binary chunks, and `utterance_end` only after a wake
+gate is explicitly open. The serial `uplink start|chunk|end|abort` bench route can still
+send synthetic PCM for transport bring-up. What is still missing is a CoreS3 run with the
+mic actually enabled, measured capture/uplink telemetry, and the wake/STT path that consumes
+capture beyond local reflex events.
 
 ### B4. No wake word engine — and the privacy model depends on one
 

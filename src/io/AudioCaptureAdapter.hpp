@@ -68,6 +68,14 @@ class AudioCaptureAdapter {
     return telemetry_;
   }
 
+  const int16_t* lastPcmWindow() const {
+    return telemetry_.windowsCaptured > 0 ? mono_ : nullptr;
+  }
+
+  uint16_t lastPcmSampleCount() const {
+    return telemetry_.windowsCaptured > 0 ? config_.windowSamples : 0;
+  }
+
  private:
   bool configured() const;
   void copyError(const char* reason);
