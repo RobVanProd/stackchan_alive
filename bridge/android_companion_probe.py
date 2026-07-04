@@ -79,7 +79,7 @@ def make_handshake(url: BridgeUrl) -> bytes:
     ).encode("ascii")
 
 
-def read_handshake_response(sock: socket.socket) -> str:
+def read_handshake_response(sock: socket.socket) -> tuple[str, bytes]:
     data = bytearray()
     while b"\r\n\r\n" not in data:
         chunk = sock.recv(4096)
@@ -88,7 +88,9 @@ def read_handshake_response(sock: socket.socket) -> str:
         data.extend(chunk)
         if len(data) > 8192:
             raise ProbeError("WebSocket handshake response too large")
-    return data.decode("iso-8859-1", errors="replace")
+    header_end = data.index(b"\r\n\r\n") + 4
+    response = bytes(data[:header_end]).decode("iso-8859-1", errors="replace")
+    return response, bytes(data[header_end:])
 
 
 def encode_close_frame() -> bytes:
@@ -96,31 +98,36 @@ def encode_close_frame() -> bytes:
     return bytes([first, 0x80]) + CLIENT_MASK
 
 
-def read_ws_frame(sock: socket.socket, max_payload: int = 65536) -> tuple[int, bytes]:
-    first = sock.recv(1)
+def read_ws_frame(sock: socket.socket, initial: bytes = b"", max_payload: int = 65536) -> tuple[int, bytes]:
+    buffered = bytearray(initial)
+    first = read_exact(sock, 1, buffered)
     if not first:
         raise ProbeError("server closed before sending a WebSocket frame")
-    second = sock.recv(1)
+    second = read_exact(sock, 1, buffered)
     if not second:
         raise ProbeError("server closed during WebSocket frame header")
     opcode = first[0] & 0x0F
     masked = (second[0] & 0x80) != 0
     length = second[0] & 0x7F
     if length == 126:
-        length = int.from_bytes(read_exact(sock, 2), "big")
+        length = int.from_bytes(read_exact(sock, 2, buffered), "big")
     elif length == 127:
-        length = int.from_bytes(read_exact(sock, 8), "big")
+        length = int.from_bytes(read_exact(sock, 8, buffered), "big")
     if length > max_payload:
         raise ProbeError("WebSocket frame payload too large")
-    mask = read_exact(sock, 4) if masked else b""
-    payload = read_exact(sock, length)
+    mask = read_exact(sock, 4, buffered) if masked else b""
+    payload = read_exact(sock, length, buffered)
     if masked:
         payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
     return opcode, payload
 
 
-def read_exact(sock: socket.socket, size: int) -> bytes:
+def read_exact(sock: socket.socket, size: int, buffered: bytearray | None = None) -> bytes:
     data = bytearray()
+    if buffered:
+        take = min(size, len(buffered))
+        data.extend(buffered[:take])
+        del buffered[:take]
     while len(data) < size:
         chunk = sock.recv(size - len(data))
         if not chunk:
@@ -134,10 +141,10 @@ def connect_and_read_endpoint_hello(url: BridgeUrl, timeout: float) -> tuple[str
     with socket.create_connection((url.host, url.port), timeout=timeout) as sock:
         sock.settimeout(timeout)
         sock.sendall(make_handshake(url))
-        response = read_handshake_response(sock)
+        response, buffered = read_handshake_response(sock)
         if "101 Switching Protocols" not in response:
             raise ProbeError("server did not accept WebSocket handshake")
-        opcode, payload = read_ws_frame(sock)
+        opcode, payload = read_ws_frame(sock, initial=buffered)
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         if opcode != 0x1:
             raise ProbeError(f"expected endpoint_hello text frame, got opcode {opcode}")

@@ -37,6 +37,20 @@ class AndroidCompanionProbeTest(unittest.TestCase):
         self.assertEqual("android-companion-test", report["endpoint_hello"]["endpoint_id"])
         self.assertEqual([], report["issues"])
 
+    def test_probe_accepts_endpoint_hello_coalesced_with_handshake(self):
+        frame = {
+            "type": "endpoint_hello",
+            "protocol": "stackchan.bridge.v1",
+            "endpoint_id": "android-companion-coalesced-test",
+            "endpoint_kind": "android",
+            "capabilities": ["settings", "diagnostics"],
+        }
+        with endpoint_hello_server(frame, coalesce_response_and_frame=True) as url:
+            report = build_report(url, timeout=2.0, require_android=True)
+
+        self.assertEqual("pass", report["status"], report)
+        self.assertEqual("android-companion-coalesced-test", report["endpoint_hello"]["endpoint_id"])
+
     def test_probe_rejects_non_android_endpoint_by_default(self):
         frame = {
             "type": "endpoint_hello",
@@ -53,8 +67,9 @@ class AndroidCompanionProbeTest(unittest.TestCase):
 
 
 class endpoint_hello_server:
-    def __init__(self, frame):
+    def __init__(self, frame, coalesce_response_and_frame=False):
         self.frame = frame
+        self.coalesce_response_and_frame = coalesce_response_and_frame
         self.ready = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.port = 0
@@ -76,16 +91,19 @@ class endpoint_hello_server:
             with conn:
                 headers = self._read_handshake(conn)
                 accept = websocket_accept(headers["sec-websocket-key"])
-                conn.sendall(
-                    (
-                        "HTTP/1.1 101 Switching Protocols\r\n"
-                        "Upgrade: websocket\r\n"
-                        "Connection: Upgrade\r\n"
-                        f"Sec-WebSocket-Accept: {accept}\r\n"
-                        "\r\n"
-                    ).encode("ascii")
-                )
-                conn.sendall(encode_server_text(json.dumps(self.frame).encode("utf-8")))
+                response = (
+                    "HTTP/1.1 101 Switching Protocols\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    f"Sec-WebSocket-Accept: {accept}\r\n"
+                    "\r\n"
+                ).encode("ascii")
+                frame = encode_server_text(json.dumps(self.frame).encode("utf-8"))
+                if self.coalesce_response_and_frame:
+                    conn.sendall(response + frame)
+                    return
+                conn.sendall(response)
+                conn.sendall(frame)
 
     @staticmethod
     def _read_handshake(conn):
