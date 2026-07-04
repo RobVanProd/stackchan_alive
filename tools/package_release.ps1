@@ -57,9 +57,10 @@ $faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
 $dataDir = Join-Path $outDir "data"
 $bridgeDir = Join-Path $outDir "bridge"
+$companionEvidenceDir = Join-Path $outDir "companion/evidence"
 $provenanceDir = Join-Path $outDir "provenance"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $provenanceDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $companionEvidenceDir, $provenanceDir, $toolsDir | Out-Null
 
 $releaseRootPrefix = [System.IO.Path]::GetFullPath($outDir).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 
@@ -349,6 +350,26 @@ if ($LASTEXITCODE -ne 0) {
   -OutputDir $outDir
 if ($LASTEXITCODE -ne 0) {
   throw "RVC voice base status export failed."
+}
+
+$companionEvidenceFiles = @(
+  "output/companion/c6-evidence/EVIDENCE.json",
+  "output/companion/c6-evidence/EVIDENCE.md",
+  "output/companion/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+  "output/companion/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+  "output/companion/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+  "output/companion/c6-gui-rehearsal/GUI_REHEARSAL.json",
+  "output/companion/c6-gui-rehearsal/GUI_REHEARSAL.md",
+  "output/companion/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json"
+)
+
+foreach ($file in $companionEvidenceFiles) {
+  if (-not (Test-Path -LiteralPath $file)) {
+    throw "Missing companion C6 evidence artifact: $file"
+  }
+  $destination = Join-ReleasePackagePath ("companion/evidence/" + $file.Substring("output/companion/".Length))
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+  Copy-Item -LiteralPath $file -Destination $destination
 }
 
 $releaseTools = @(
@@ -795,6 +816,17 @@ $manifest = [ordered]@{
   voiceRvcBaseMetadata = "data/voice_rvc_base_metadata.json"
   voiceRvcBaseStatusReport = "RVC_VOICE_BASE_STATUS.md"
   voiceRvcBaseStatusReportJson = "rvc_voice_base_status.json"
+  companionEvidenceManifest = "companion/evidence/c6-evidence/EVIDENCE.json"
+  companionEvidence = @(
+    "companion/evidence/c6-evidence/EVIDENCE.json",
+    "companion/evidence/c6-evidence/EVIDENCE.md",
+    "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+    "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+    "companion/evidence/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+    "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.json",
+    "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
+    "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json"
+  )
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
@@ -1080,6 +1112,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; review-only until production voice-source rights clear" },
     [ordered]@{ gate = "character-red-team-dry-run"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json; real gate still requires a configured model runner" },
+    [ordered]@{ gate = "companion-c6-brain-supervision-evidence"; status = "pass"; evidence = "companion/evidence/c6-evidence/EVIDENCE.json plus C6 brain supervisor, GUI rehearsal, and diagnostics exports" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
     [ordered]@{ gate = "dependency-provenance-present"; status = "pass"; evidence = "DEPENDENCIES.md and dependency_lock.json" },
     [ordered]@{ gate = "checksums-present"; status = "pass"; evidence = "SHA256SUMS.txt" },
@@ -1124,6 +1157,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
     [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; confirms review-only RVC base cache/hash status when available" },
     [ordered]@{ requirement = "character-red-team-dry-run-present"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json" },
+    [ordered]@{ requirement = "companion-c6-brain-supervision-evidence"; status = "pass"; evidence = "companion/evidence/c6-evidence/EVIDENCE.json plus C6 brain supervisor, GUI rehearsal, and diagnostics exports" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
     [ordered]@{ requirement = "hardware-media-importer-present"; status = "pass"; evidence = "tools/add_hardware_evidence_media.cmd validates imported photos/videos/audio and records hashes" },
     [ordered]@{ requirement = "servo-risk-gated"; status = "pass"; evidence = "tools/flash_release_firmware.ps1 requires -ConfirmServoRisk for servo_calibration" },
@@ -1164,6 +1198,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Voice source provenance template present: ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``
 - [x] Voice source status report present: ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``
 - [x] Character red-team dry-run report present: ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``
+- [x] Companion C6 brain-supervision evidence present: ``companion/evidence/c6-evidence/EVIDENCE.json``
 - [x] Arrival tools present: prepare, evidence capture, and evidence verification scripts
 - [x] Hardware media importer present: ``tools/add_hardware_evidence_media.cmd`` validates imported photos/videos/audio and records hashes
 - [x] Evidence progress checker present: ``tools/check_hardware_evidence_progress.cmd``
@@ -1202,6 +1237,7 @@ Consumer rollout: blocked pending hardware validation
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
 - Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json`` list the blocked production-voice gates. Current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
 - Character red-team dry-run evidence is present in ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``. It proves the adversarial corpus and validator path; the gate only passes after the same suite runs with ``--require-runner`` against a configured local model.
+- Companion C6 brain-supervision evidence is present under ``companion/evidence/`` and proves the desktop GUI can start the Python brain, drive simulated robot turns, stop, restart, and export diagnostics before the physical robot arrives.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.

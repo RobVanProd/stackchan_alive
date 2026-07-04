@@ -188,6 +188,14 @@ $requiredFiles = @(
   "persona_prompt_assets.json",
   "character-red-team/CHARACTER_RED_TEAM.md",
   "character-red-team/character_red_team.json",
+  "companion/evidence/c6-evidence/EVIDENCE.json",
+  "companion/evidence/c6-evidence/EVIDENCE.md",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+  "companion/evidence/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
+  "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json",
   "firmware/display_only/bootloader.bin",
   "firmware/display_only/firmware.bin",
   "firmware/display_only/firmware.elf",
@@ -1545,6 +1553,47 @@ if ($manifest.voiceRvcBaseMetadata -ne "data/voice_rvc_base_metadata.json") {
   throw "Manifest voiceRvcBaseMetadata mismatch: $($manifest.voiceRvcBaseMetadata)"
 }
 
+if ($manifest.companionEvidenceManifest -ne "companion/evidence/c6-evidence/EVIDENCE.json") {
+  throw "Manifest companionEvidenceManifest mismatch: $($manifest.companionEvidenceManifest)"
+}
+
+$expectedCompanionEvidence = @(
+  "companion/evidence/c6-evidence/EVIDENCE.json",
+  "companion/evidence/c6-evidence/EVIDENCE.md",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.json",
+  "companion/evidence/c6-brain-supervisor/BRAIN_SUPERVISOR_SMOKE.md",
+  "companion/evidence/c6-brain-supervisor/DIAGNOSTICS_EXPORT.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.json",
+  "companion/evidence/c6-gui-rehearsal/GUI_REHEARSAL.md",
+  "companion/evidence/c6-gui-rehearsal/DIAGNOSTICS_EXPORT.json"
+)
+$actualCompanionEvidence = @($manifest.companionEvidence)
+foreach ($file in $expectedCompanionEvidence) {
+  if ($actualCompanionEvidence -notcontains $file) {
+    throw "Manifest companionEvidence missing expected file: $file"
+  }
+  Assert-File $file
+}
+foreach ($file in $actualCompanionEvidence) {
+  if ($expectedCompanionEvidence -notcontains $file) {
+    throw "Manifest companionEvidence contains unexpected file: $file"
+  }
+}
+
+$companionEvidenceManifest = Get-Content -LiteralPath (Join-PackagePath "companion/evidence/c6-evidence/EVIDENCE.json") -Raw | ConvertFrom-Json
+if ($companionEvidenceManifest.schema -ne "stackchan.companion.c6-evidence-bundle.v1") {
+  throw "Companion C6 evidence manifest schema mismatch: $($companionEvidenceManifest.schema)"
+}
+if ($companionEvidenceManifest.result.gui_rehearsal_overall_ok -ne $true) {
+  throw "Companion C6 GUI rehearsal did not pass in evidence manifest"
+}
+if ($companionEvidenceManifest.result.brain_supervisor_smoke_overall_ok -ne $true) {
+  throw "Companion C6 brain supervisor smoke did not pass in evidence manifest"
+}
+if ($companionEvidenceManifest.result.diagnostics_exports_attached -ne $true) {
+  throw "Companion C6 diagnostics exports are not attached"
+}
+
 $expectedMediaArtifacts = @(
   "media/stackchan_alive_preview.png",
   "media/stackchan_alive_expression_sheet.png",
@@ -1955,7 +2004,7 @@ if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
 if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
-foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
+foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
   $match = @($acceptance.noHardwareAcceptance | Where-Object { $_.requirement -eq $requirement -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
@@ -1969,7 +2018,7 @@ foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -2003,7 +2052,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Requ
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Device Evidence", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -2038,6 +2087,10 @@ if ($voiceSourceStatusNoHardwareGate.Count -ne 1) {
 $characterRedTeamNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "character-red-team-dry-run" -and $_.status -eq "pass" })
 if ($characterRedTeamNoHardwareGate.Count -ne 1) {
   throw "readiness_report.json missing passed character red-team dry-run gate"
+}
+$companionC6NoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "companion-c6-brain-supervision-evidence" -and $_.status -eq "pass" })
+if ($companionC6NoHardwareGate.Count -ne 1) {
+  throw "readiness_report.json missing passed companion-c6-brain-supervision-evidence gate"
 }
 $mediaImporterNoHardwareGate = @($readinessJson.noHardwareProof | Where-Object { $_.gate -eq "hardware-media-importer-present" -and $_.status -eq "pass" })
 if ($mediaImporterNoHardwareGate.Count -ne 1) {

@@ -18,6 +18,8 @@ From the extracted release folder:
 .\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
 ```
 
+Before plugging in hardware, open `companion/evidence/c6-evidence/EVIDENCE.md` from the same release folder. It should show the committed C6 desktop companion brain-supervision gate passing, including GUI-driven Python brain start, simulated turns, restart, and diagnostics export.
+
 Open the newest folder under `output\hardware-evidence\`. Run every command below from that packet folder unless noted otherwise.
 
 If you already ran `tools\share_release.cmd` and `tools\verify_share_release.cmd`, the packet also includes `HOSTED_MEDIA_REFERENCE.md`, `share\VERIFIED_URL.txt`, and `share/` copies of the verified local or Cloudflare share page reports. Use that verified page as the review reference for the expected image, video, face GIFs, and voice samples while collecting real-device evidence.
