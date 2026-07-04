@@ -250,6 +250,7 @@ foreach ($file in $voiceRvcFiles) {
 Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDir
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
@@ -767,6 +768,7 @@ $manifest = [ordered]@{
   releaseAssetManifest = "release_assets.json"
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
+  androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
   gapAnalysis = "docs/GAP_ANALYSIS.md"

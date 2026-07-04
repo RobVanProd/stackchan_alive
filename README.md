@@ -28,6 +28,7 @@ What is working in the repository now:
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, and PCM16 binary downlink.
+- Android companion architecture contract for PC Brain Mode, Mobile Brain Mode, multi-endpoint handoff, trusted endpoint forgetting, and app-driven settings.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
 
@@ -99,6 +100,7 @@ Useful docs:
 - [docs/PERSONA_PACKS.md](docs/PERSONA_PACKS.md): swappable persona-pack format and migration plan.
 - [docs/CREATING_PERSONAS.md](docs/CREATING_PERSONAS.md): copy-edit-validate-build tutorial for creating a new Character OS persona.
 - [docs/BRAIN_MODEL.md](docs/BRAIN_MODEL.md): Gemma 4 E2B / LiteRT-LM model target and harness gate.
+- [docs/ANDROID_COMPANION_SPEC.md](docs/ANDROID_COMPANION_SPEC.md): PC/mobile brain modes, bridge handoff, trusted endpoints, and app settings contract.
 
 Prototype voice auditions:
 
@@ -120,6 +122,10 @@ The intended production bridge is wake-gated: audio may leave the device only af
 wake-word or explicit activation, and bridge memory stays host-side and resettable. If Wi-Fi
 or the bridge is unavailable, Stackchan must keep local expressions, safety behavior, packaged
 prompts, and offline commands working.
+
+The Android companion is specified as a local bridge peer, not a cloud service. It should be
+able to observe a PC-hosted brain, become the active mobile brain owner, hand off ownership
+without changing firmware settings, and forget trusted endpoints from the app.
 
 ![Brain bridge conversation flow](docs/media/diagrams/06-brain-bridge-protocol.png)
 
