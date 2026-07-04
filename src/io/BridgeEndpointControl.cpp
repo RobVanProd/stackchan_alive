@@ -23,9 +23,14 @@ uint8_t clampPriority(uint32_t value) {
 
 bool BridgeEndpointControl::begin(BridgeEndpointRegistry& registry) {
   registry_ = &registry;
+  store_ = nullptr;
   telemetry_ = BridgeEndpointControlTelemetry {};
   telemetry_.ready = registry_->telemetry().ready;
   return telemetry_.ready;
+}
+
+void BridgeEndpointControl::attachStore(BridgeEndpointStore* store) {
+  store_ = store;
 }
 
 void BridgeEndpointControl::update(uint32_t nowMs) {
@@ -128,6 +133,9 @@ BridgeEndpointControlResult BridgeEndpointControl::handleEndpointHello(const Jso
   }
   registry_->update(nowMs);
   telemetry_.endpointHellos++;
+  if (!persistRegistry(nowMs)) {
+    return writeError("endpoint_persist_failed", endpoint.endpointId, responseOut, responseOutSize);
+  }
   const BridgeEndpointRecord* stored = registry_->findEndpoint(endpoint.endpointId);
   return stored == nullptr ? writeError("endpoint_not_trusted", endpoint.endpointId, responseOut, responseOutSize)
                            : writeEndpointHelloResult(*stored, responseOut, responseOutSize);
@@ -216,6 +224,9 @@ BridgeEndpointControlResult BridgeEndpointControl::handleForgetEndpoint(const Js
     return writeForgetResult(endpointId, false, responseOut, responseOutSize);
   }
   telemetry_.forgotten++;
+  if (!persistRegistry(nowMs)) {
+    return writeError("endpoint_persist_failed", endpointId, responseOut, responseOutSize);
+  }
   return writeForgetResult(endpointId, true, responseOut, responseOutSize);
 }
 
@@ -236,6 +247,9 @@ BridgeEndpointControlResult BridgeEndpointControl::handleCapabilityUpdate(const 
     return writeError("endpoint_not_trusted", endpointId, responseOut, responseOutSize);
   }
   telemetry_.capabilityUpdates++;
+  if (!persistRegistry(nowMs)) {
+    return writeError("endpoint_persist_failed", endpointId, responseOut, responseOutSize);
+  }
   return writeCapabilityResult(*endpoint, responseOut, responseOutSize);
 }
 
@@ -477,6 +491,18 @@ void BridgeEndpointControl::copyBounded(char* out, size_t outSize, const char* v
   const size_t copyLen = sourceLen < (outSize - 1u) ? sourceLen : (outSize - 1u);
   std::memcpy(out, value, copyLen);
   out[copyLen] = '\0';
+}
+
+bool BridgeEndpointControl::persistRegistry(uint32_t nowMs) {
+  if (store_ == nullptr) {
+    return true;
+  }
+  if (registry_ == nullptr || !store_->save(*registry_, nowMs)) {
+    telemetry_.persistenceErrors++;
+    return false;
+  }
+  telemetry_.persistenceSaves++;
+  return true;
 }
 
 }  // namespace stackchan

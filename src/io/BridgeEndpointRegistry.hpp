@@ -62,6 +62,7 @@ struct BridgeEndpointRegistryTelemetry {
   uint32_t forgotten = 0;
   uint32_t rejected = 0;
   uint32_t upserts = 0;
+  uint32_t restores = 0;
   uint32_t heartbeats = 0;
   uint32_t lastChangeMs = 0;
 };
@@ -71,6 +72,7 @@ class BridgeEndpointRegistry {
   bool begin(const BridgeEndpointRegistryConfig& config = BridgeEndpointRegistryConfig {});
 
   bool upsertEndpoint(const BridgeEndpointRecord& endpoint, uint32_t nowMs);
+  bool restoreEndpoint(const BridgeEndpointRecord& endpoint, uint32_t nowMs);
   bool forgetEndpoint(const char* endpointId, uint32_t nowMs);
   bool markHeartbeat(const char* endpointId, uint32_t nowMs);
   bool markDisconnected(const char* endpointId, uint32_t nowMs);

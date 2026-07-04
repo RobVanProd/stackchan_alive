@@ -70,9 +70,11 @@ the PC path.
 The host bridge already accepts the core control messages described below. Firmware now has
 a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and
 endpoint-control adapter for endpoint hello, heartbeat, brain claim/release, owner status,
-trusted endpoint listing, forgetting, and capability updates. It still needs the Wi-Fi/TCP
-task, provisioning config, nonvolatile endpoint persistence, and live transport integration
-before the physical robot can use this control plane.
+trusted endpoint listing, forgetting, and capability updates. Firmware also has a
+native-tested nonvolatile endpoint store with an ESP32 Preferences backend and endpoint
+control save hooks. It still needs the production Wi-Fi/TCP task, provisioning config,
+boot-time store load/attach wiring, response sending, and live transport integration before
+the physical robot can use this control plane.
 
 ## Multi-Endpoint Model
 
@@ -107,6 +109,8 @@ The robot should maintain a small trusted endpoint registry in nonvolatile confi
 
 The firmware does not need an unlimited device database. Eight trusted endpoints is enough
 for a robot, a development machine, a phone, and a few test peers.
+The current firmware persistence schema is `stackchan.bridge-endpoints.v1`; restored
+endpoints are trusted but intentionally unhealthy until they send a fresh heartbeat.
 
 ## Owner Semantics
 

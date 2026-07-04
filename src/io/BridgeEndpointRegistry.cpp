@@ -52,6 +52,44 @@ bool BridgeEndpointRegistry::upsertEndpoint(const BridgeEndpointRecord& endpoint
   return true;
 }
 
+bool BridgeEndpointRegistry::restoreEndpoint(const BridgeEndpointRecord& endpoint, uint32_t nowMs) {
+  if (!telemetry_.ready || !isValidId(endpoint.endpointId)) {
+    telemetry_.rejected++;
+    return false;
+  }
+
+  int index = findIndex(endpoint.endpointId);
+  if (index < 0) {
+    if (count_ >= kBridgeEndpointMax) {
+      telemetry_.rejected++;
+      return false;
+    }
+    index = static_cast<int>(count_);
+    count_++;
+  }
+
+  BridgeEndpointRecord& target = endpoints_[index];
+  copyBounded(target.endpointId, sizeof(target.endpointId), endpoint.endpointId);
+  copyBounded(target.endpointName, sizeof(target.endpointName), endpoint.endpointName);
+  copyBounded(target.publicKeyFingerprint,
+              sizeof(target.publicKeyFingerprint),
+              endpoint.publicKeyFingerprint);
+  target.kind = endpoint.kind;
+  target.priority = endpoint.priority;
+  target.trusted = true;
+  target.autoConnect = endpoint.autoConnect;
+  target.capabilities = endpoint.capabilities;
+  target.lastSeenMs = endpoint.lastSeenMs == 0 ? nowMs : endpoint.lastSeenMs;
+  target.lastHeartbeatMs = 0;
+  telemetry_.restores++;
+  telemetry_.lastChangeMs = nowMs;
+  if (activeOwnerIndex_ == index) {
+    activeOwnerIndex_ = -1;
+  }
+  refreshTelemetry();
+  return true;
+}
+
 bool BridgeEndpointRegistry::forgetEndpoint(const char* endpointId, uint32_t nowMs) {
   if (!telemetry_.ready || !isValidId(endpointId)) {
     telemetry_.rejected++;
