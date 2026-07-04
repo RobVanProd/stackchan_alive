@@ -102,11 +102,15 @@ The simulator currently checks:
   drawing, CoreS3 tap/hold/BtnA/BtnB/BtnC input mapping, motion safety toggles, speaker
   stream submission counters, mouth-display activity during speech, and a power-cycle
   recovery rehearsal
+- a servo-safety rehearsal: virtual servo attach, pitch/yaw angle clamping, yaw velocity
+  clamping, safe-stop blocking of motion commands, continued face/audio rendering while
+  motion is disabled, and safe-resume acceptance
 
 The default run includes `reference`, `lan-text`, `conversation-rehearsal`,
 `conversation-tts-downlink`, `conversation-audio-loop`, `audio-downlink`,
 `audio-downlink-unsupported`,
-`arrival-rehearsal`, `bridge-kill-recovery`, and `offline-command-fallback`.
+`arrival-rehearsal`, `servo-safety-rehearsal`, `bridge-kill-recovery`, and
+`offline-command-fallback`.
 The `conversation-rehearsal` scenario is the no-hardware P7 demo proxy: a virtual wake input
 starts a turn, the simulator marks utterance end, the LAN bridge emits `listening`,
 `thinking`, `response_start`, `audio`, and `response_end`, and the virtual device checks that
@@ -128,6 +132,13 @@ chunks, verifies `bridge_downlink_streams`, `bridge_downlink_completed`,
 `bridge_downlink_chunks`, `bridge_downlink_bytes`, `bridge_downlink_playback_starts`,
 `bridge_downlink_playback_chunks`, `bridge_downlink_playback_bytes`, mouth/display activity,
 then power-cycles and expects the virtual bridge to return to `Ready`.
+
+The `servo-safety-rehearsal` scenario isolates the motion proxy: it accepts an in-range
+servo command, clips an out-of-range angle command to the firmware limits, applies
+`safe_stop`, proves a blocked command cannot move the virtual servos, keeps display ticks and
+mouth/audio playback alive while motion is disabled, then `safe_resume`s and accepts angle
+and velocity commands with clamping. This catches command-order and safety-state regressions;
+it is not proof that real servos are calibrated or mechanically safe.
 
 The `bridge-kill-recovery` scenario simulates a LAN bridge dropping mid-response while a
 binary TTS stream is open. The virtual device must abort that stream, emit one offline
@@ -159,6 +170,12 @@ To run the pre-arrival device-shell rehearsal:
 
 ```powershell
 .\tools\run_hardware_simulation.cmd -Scenario arrival-rehearsal -Json
+```
+
+To run the servo safety proxy:
+
+```powershell
+.\tools\run_hardware_simulation.cmd -Scenario servo-safety-rehearsal -Json
 ```
 
 To compare a generated evidence packet against captured hardware logs:

@@ -177,8 +177,9 @@ Run the virtual hardware proxy while the physical unit is unavailable:
 
 The default simulation includes a pre-arrival device-shell rehearsal plus a fake
 mic/STT/model/TTS/speaker loop for bridge ordering, virtual CoreS3 inputs, display frame
-ticks, conversation timing, mouth/speaker stream counters, power-cycle recovery, and
-bridge-kill recovery. It is still not a substitute for real hardware evidence.
+ticks, conversation timing, mouth/speaker stream counters, servo safety stop/resume and
+clipping checks, power-cycle recovery, and bridge-kill recovery. It is still not a
+substitute for real hardware evidence.
 
 Run the combined pre-arrival proxy report:
 
