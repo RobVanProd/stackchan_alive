@@ -27,6 +27,7 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] Android notifications are allowed for Stackchan Companion.
 - [ ] Battery optimization exemption is allowed or the denial is recorded as a test constraint.
 - [ ] The dashboard shows at least one `ws://<phone-lan-ip>:8765/bridge` manual fallback URL.
+- [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
 - [ ] The foreground notification shows the same reachable manual fallback URL.
 
 ## Discovery Checks
