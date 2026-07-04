@@ -77,9 +77,12 @@ If the Android companion is the bridge host, install the debug or release APK on
 open Stackchan Companion, allow notifications when prompted on Android 13 or newer, and
 allow the app to ignore battery optimizations if prompted for screen-off bench testing.
 Build the debug APK from the source checkout with
+`.\tools\check_android_toolchain.cmd` and then
 `cd companion; .\gradlew.bat :app-android:assembleDebug` when a signed release APK has not
 already been produced. The default debug output path is
 `companion\app-android\build\outputs\apk\debug\app-android-debug.apk`.
+The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
+and SDK Platform 36 before Gradle starts.
 Confirm the foreground notification reports the bridge as ready and advertised. The phone
 advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `proto`, and
 `capabilities` TXT metadata matching the desktop companion.

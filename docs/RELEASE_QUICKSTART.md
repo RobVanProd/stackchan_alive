@@ -161,9 +161,13 @@ If the Android phone is the companion bridge host, also run these from the evide
 Build the Android companion APK from the source checkout before this step:
 
 ```powershell
+.\tools\check_android_toolchain.cmd
 cd companion
 .\gradlew.bat :app-android:assembleDebug
 ```
+
+The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
+and SDK Platform 36 before Gradle starts.
 
 Then pass the resulting `companion\app-android\build\outputs\apk\debug\app-android-debug.apk`
 path into the evidence packet installer:
