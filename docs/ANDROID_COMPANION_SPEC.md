@@ -76,9 +76,12 @@ control save hooks; the running firmware loads that store at boot, attaches it t
 control, exposes endpoint telemetry, and can exercise endpoint-control responses through the
 serial bench path. The firmware WebSocket adapter can queue and encode endpoint-control
 responses as masked client text frames, and `BridgeSocketWriter` can drain those queued
-responses through a socket sink with partial-write buffering. It still needs the production
-Wi-Fi/TCP task, provisioning config, real `WiFiClient` binding, and live transport
-integration before the physical robot can use this control plane untethered.
+responses through a socket sink with partial-write buffering. `BridgeNetworkSession` now
+defines the firmware TCP/WebSocket session loop for handshake, incoming frames, endpoint
+response writeback, and reconnect scheduling, with `BridgeWiFiClientSocket` as the ESP32
+`WiFiClient` binding. It still needs Wi-Fi provisioning config, boot-time task/update
+integration, and live transport evidence before the physical robot can use this control
+plane untethered.
 
 ## Multi-Endpoint Model
 

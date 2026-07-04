@@ -35,9 +35,11 @@ When changing the P7 bridge service, also run `tools/run_lan_smoke.cmd`. It writ
 `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the real local WebSocket handshake,
 deterministic text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink path, and
 visible `thinking-latency` timing without hardware.
-When changing firmware-side WebSocket framing, run `pio test -e native_logic`; the native
-suite covers upgrade request generation, masked client frames, server text/binary downlink
-decoding, and disconnect handling before the real Wi-Fi/TCP task exists.
+When changing firmware-side WebSocket framing or LAN session code, run
+`pio test -e native_logic`; the native suite covers upgrade request generation, masked
+client frames, server text/binary downlink decoding, socket writer behavior, TCP/WebSocket
+session handshakes, endpoint response writeback, and reconnect scheduling before boot-time
+Wi-Fi integration exists.
 The same native suite covers trusted-endpoint registry arbitration for PC/mobile handoff,
 heartbeat expiry, disconnect promotion, and `forget_endpoint` behavior. It also covers the
 trusted-endpoint persistence store for save/load/clear, malformed-store rejection, and the
@@ -52,8 +54,9 @@ endpoint-control response path before live Wi-Fi exists.
 The firmware WebSocket adapter also routes endpoint-control text frames before normal
 conversation frames and can encode the queued endpoint response as a masked client text
 frame. `BridgeSocketWriter` can drain those frames through a socket sink with partial-write
-buffering; the remaining hardware gap is the Wi-Fi/TCP task that binds it to a real
-`WiFiClient` socket.
+buffering. `BridgeNetworkSession` adds the tested TCP/WebSocket session loop, and
+`BridgeWiFiClientSocket` binds the socket interface to ESP32 `WiFiClient`; the remaining
+hardware gap is Wi-Fi provisioning plus boot-time task/update integration.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the
