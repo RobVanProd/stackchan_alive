@@ -211,6 +211,13 @@ evidence. Suggested opening set (verify latest stable at C0 and freeze):
 
 Extend the existing workflows; do not create a second release universe.
 
+Current PR gate in `.github/workflows/firmware.yml`: companion changes run the shared
+`companion-tests` job plus `companion-platform-builds`, a four-leg matrix that builds
+Android debug/release APKs on Ubuntu, a Linux `.deb` on Ubuntu, a macOS `.dmg` on macOS,
+and a Windows `.msi` on Windows. Every leg provisions JDK 21 and Android SDK Platform 36 so
+the shared KMP Android targets are configured consistently even during desktop packaging,
+and every leg uploads its produced platform artifact with `if-no-files-found: error`.
+
 **PR / push (`firmware.yml` additions, path-filtered to `companion/**` and
 `protocol-fixtures/**`):**
 
