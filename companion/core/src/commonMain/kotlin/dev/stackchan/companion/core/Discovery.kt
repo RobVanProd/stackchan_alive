@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 const val STACKCHAN_BRIDGE_SERVICE = "_stackchan-bridge._tcp.local"
 const val STACKCHAN_DEVICE_SERVICE = "_stackchan-device._tcp.local"
 const val DEFAULT_BRIDGE_PORT = 8765
+const val DEFAULT_BRIDGE_BEACON_PORT = 8766
 
 enum class DiscoveryMethod {
     MDNS,

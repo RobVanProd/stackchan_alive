@@ -29,6 +29,7 @@ class CompanionBridgeService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var server: CompanionEndpointServer? = null
     private var advertisement: AndroidBridgeAdvertisement? = null
+    private var udpBeaconBroadcaster: AndroidUdpBeaconBroadcaster? = null
     private var startJob: Job? = null
     private var wakeLockMonitorJob: Job? = null
     private var sessionWakeLock: PowerManager.WakeLock? = null
@@ -55,6 +56,8 @@ class CompanionBridgeService : Service() {
         wakeLockMonitorJob?.cancel()
         wakeLockMonitorJob = null
         releaseSessionWakeLock()
+        udpBeaconBroadcaster?.close()
+        udpBeaconBroadcaster = null
         advertisement?.close()
         advertisement = null
         server?.close()
@@ -92,6 +95,10 @@ class CompanionBridgeService : Service() {
             }.onSuccess { bridge ->
                 server = bridge
                 startWakeLockMonitor(bridge)
+                udpBeaconBroadcaster = AndroidUdpBeaconBroadcaster(
+                    endpointHello = endpointHello,
+                    onStatusChanged = ::updateNotification,
+                ).also { it.start(serviceScope) }
                 runCatching {
                     AndroidBridgeAdvertisement(
                         context = applicationContext,

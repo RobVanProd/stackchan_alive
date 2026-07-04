@@ -82,6 +82,8 @@ advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `
 Android holds a multicast lock while advertising so same-network discovery survives common
 Wi-Fi multicast filtering behavior. While a robot is connected, Android also holds a
 session-scoped partial wake lock so the bridge CPU path stays awake with the screen off.
+As an mDNS fallback, the phone broadcasts the same endpoint metadata as a UDP beacon to
+port `8766` every few seconds.
 If service discovery is unavailable on the LAN, manually point the robot bridge client at
 `ws://<phone-lan-ip>:8765/bridge`.
 
