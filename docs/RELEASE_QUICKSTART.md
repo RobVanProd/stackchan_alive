@@ -159,6 +159,7 @@ Open the newest evidence packet folder and run:
 If the Android phone is the companion bridge host, also run these from the evidence packet:
 
 ```powershell
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
 .\RUN_ANDROID_UDP_BEACON_PROBE.cmd
 .\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
 .\RUN_ANDROID_LOGCAT_CAPTURE.cmd
@@ -169,6 +170,7 @@ loses foreground status, or fails during screen-off soak. It writes the filtered
 excerpt under `android/logcat/` so the failure has packet-level evidence.
 
 The Android helpers write packet-local probe evidence under `android\udp-beacon-probe\` and `android\companion-probe\`.
+`RUN_ANDROID_APK_INSTALL.cmd` writes install evidence under `android\apk-install\`.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 

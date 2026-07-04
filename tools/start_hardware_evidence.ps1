@@ -753,6 +753,7 @@ $hardwareSimBaselineDir = Quote-PowerShellArgument (Join-Path $outDir "simulatio
 $androidCompanionProbeDir = Join-Path $androidDir "companion-probe"
 $androidUdpBeaconProbeDir = Join-Path $androidDir "udp-beacon-probe"
 $androidLogcatDir = Join-Path $androidDir "logcat"
+$androidApkInstallDir = Join-Path $androidDir "apk-install"
 $displayCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware display_only$portArg -Monitor 2>&1 | Tee-Object -FilePath $displayLog"
 $servoCommand = "& '.\tools\flash_release_firmware.ps1'$packageFlashArg -Firmware servo_calibration$portArg -Monitor -ConfirmServoRisk 2>&1 | Tee-Object -FilePath $servoLog"
 $speechDemoBody = "& '.\tools\send_speech_mouth_demo.ps1'$portArg"
@@ -833,6 +834,12 @@ $commandFiles = [ordered]@{
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\capture_android_companion_logcat.ps1`" -OutputDir `"$androidLogcatDir`" %*",
     "exit /b %ERRORLEVEL%"
   )
+  "RUN_ANDROID_APK_INSTALL.cmd" = @(
+    "@echo off",
+    "cd /d `"$repoRoot`"",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `".\tools\install_android_companion_apk.ps1`" -OutputDir `"$androidApkInstallDir`" %*",
+    "exit /b %ERRORLEVEL%"
+  )
   "RUN_ADD_MEDIA.cmd" = @(
     "@echo off",
     "cd /d `"$repoRoot`"",
@@ -869,7 +876,7 @@ $nextSteps = @(
   "5. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
   "6. Run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
   "7. Run ``RUN_SIM_HARDWARE_COMPARE.cmd`` to write ``SIM_HARDWARE_COMPARE.md/json`` and compare the real serial markers against the no-hardware baseline. Pending means more logs are needed; it is not promotion evidence.",
-  "8. If the Android phone is the companion bridge host, run ``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge`` from this packet to save LAN evidence under ``android/``. If the Android service stops, crashes, loses foreground status, or fails during screen-off soak, run ``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` immediately and attach ``android/logcat/``.",
+  "8. If the Android phone is the companion bridge host, run ``RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>`` to record the installed APK hash/version, then run ``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge`` from this packet to save LAN evidence under ``android/``. If the Android service stops, crashes, loses foreground status, or fails during screen-off soak, run ``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` immediately and attach ``android/logcat/``.",
   "9. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
   "10. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
   "11. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
@@ -913,6 +920,8 @@ $readme = @(
   "",
   "``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd`` are optional Android companion checks when the phone is the bridge host. They write probe output under ``android/`` for packet review; they do not replace robot serial logs or physical hardware evidence.",
   "",
+  "``RUN_ANDROID_APK_INSTALL.cmd`` installs a debug or release APK with adb and writes the installed APK hash, version, device model, and package dump under ``android/apk-install/``. Use ``-ApkPath`` when the APK is not at the default Gradle debug path.",
+  "",
   "``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` captures a filtered adb logcat excerpt under ``android/logcat/`` for Android bridge service stop, crash, foreground-status, and screen-off soak failures. Run it immediately after reproducing the issue so the relevant service lifecycle lines are still in the device buffer.",
   "",
   "BENCH_STATUS.md is the quick handoff file. RUN_PROGRESS_CHECK.cmd refreshes it with the current status, next action, next command, top findings, and matching BENCH_STATUS.json machine-readable report.",
@@ -948,6 +957,10 @@ $readme = @(
   "    $simHardwareCompareCommand",
   "",
   "    .\RUN_SIM_HARDWARE_COMPARE.cmd",
+  "",
+  "Install the Android companion APK on the phone and capture the APK hash/version evidence:",
+  "",
+  "    .\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>",
   "",
   "Capture Android companion UDP beacon evidence from another machine on the same LAN:",
   "",
@@ -1104,6 +1117,7 @@ $requiredRecords = @(
   "RUN_ANDROID_COMPANION_PROBE.cmd",
   "RUN_ANDROID_UDP_BEACON_PROBE.cmd",
   "RUN_ANDROID_LOGCAT_CAPTURE.cmd",
+  "RUN_ANDROID_APK_INSTALL.cmd",
   "RUN_ADD_MEDIA.cmd",
   "RUN_EVIDENCE_VERIFY.cmd",
   "RUN_CONSUMER_PROMOTION_CHECK.cmd"
@@ -1163,6 +1177,9 @@ $metadata = [ordered]@{
     udpBeaconProbeCommand = "RUN_ANDROID_UDP_BEACON_PROBE.cmd"
     udpBeaconProbeReport = "android/udp-beacon-probe/android_udp_beacon_probe.json"
     udpBeaconProbeSummary = "android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md"
+    apkInstallCommand = "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>"
+    apkInstallReport = "android/apk-install/android_apk_install.json"
+    apkInstallSummary = "android/apk-install/ANDROID_APK_INSTALL.md"
     logcatCommand = "RUN_ANDROID_LOGCAT_CAPTURE.cmd"
     logcatReport = "android/logcat/android_companion_logcat.json"
     logcatSummary = "android/logcat/ANDROID_COMPANION_LOGCAT.md"

@@ -30,6 +30,19 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
 - [ ] The foreground notification shows the same reachable manual fallback URL.
 
+When using adb, install the APK and capture the install evidence before discovery checks:
+
+```powershell
+.\tools\install_android_companion_apk.cmd -ApkPath <path-to-apk>
+# From a generated hardware evidence packet, prefer:
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
+```
+
+The helper writes `output/android-apk-install/latest/ANDROID_APK_INSTALL.md`,
+`android_apk_install.json`, `adb_install.log`, and `adb_dumpsys_package.txt`, or
+`android/apk-install/` when run from an evidence packet. The report records the APK SHA256,
+device model, package version, and install/update timestamps.
+
 ## Discovery Checks
 
 Run these from another machine on the same LAN when available.
@@ -123,6 +136,7 @@ Attach these to the arrival-day packet:
 
 - screenshot of the Android dashboard manual URL
 - screenshot of the foreground notification
+- `android/apk-install/ANDROID_APK_INSTALL.md`, `android_apk_install.json`, and `adb_install.log`, or the repo `output/android-apk-install/latest/` equivalents
 - mDNS result or failure note
 - `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
