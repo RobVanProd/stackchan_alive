@@ -220,7 +220,9 @@ and every leg uploads its produced platform artifact with `if-no-files-found: er
 A follow-on `companion-release-evidence` job downloads those four platform artifacts,
 runs `tools/export_companion_release_evidence.ps1 -RequireArtifacts`, and uploads
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, byte counts, SHA256 hashes,
-the producing commit, and Gradle toolchain pins.
+the producing commit, and Gradle toolchain pins. That evidence job fails if the manifest
+does not include both Android debug/release APKs plus Linux `.deb`, macOS `.dmg`, and
+Windows `.msi` desktop packages.
 
 Evidence snapshot: PR #194 run `28708831980` on 2026-07-04 passed `bridge-tests`,
 `native-tests`, firmware `build`, `companion-tests`, and all four platform artifact legs:

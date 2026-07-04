@@ -161,7 +161,12 @@ function Get-ArtifactEntries {
     })
   }
 
-  $entries = @($entries | Sort-Object path -Unique)
+  $entries = @(
+    $entries |
+      Group-Object { [string]$_["path"] } |
+      ForEach-Object { $_.Group[0] } |
+      Sort-Object { [string]$_["path"] }
+  )
   if ($entries.Count -eq 0) {
     return [ordered]@{
       kind = $Kind
@@ -226,6 +231,22 @@ $desktopArtifacts = Get-ArtifactEntries `
   -Roots @($DesktopArtifactRoot, "output/conveyor", "output/companion/desktop") `
   -Patterns @("*.msi", "*.msix", "*.appinstaller", "*.deb", "*.dmg", "*.zip")
 
+function Test-ArtifactEntryPattern {
+  param(
+    [object]$ArtifactGroup,
+    [string]$Pattern
+  )
+
+  foreach ($entry in @($ArtifactGroup.entries)) {
+    $name = [string]$entry["name"]
+    $path = [string]$entry["path"]
+    if ($name -match $Pattern -or $path -match $Pattern) {
+      return $true
+    }
+  }
+  return $false
+}
+
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
   $pending += "companion-cross-platform-plan"
@@ -235,9 +256,26 @@ if ([string]::IsNullOrWhiteSpace($readinessPath)) {
 }
 if ($androidArtifacts.status -ne "present") {
   $pending += "android-apk-artifacts"
+} else {
+  if (-not (Test-ArtifactEntryPattern $androidArtifacts 'debug.*\.apk$')) {
+    $pending += "android-debug-apk-artifact"
+  }
+  if (-not (Test-ArtifactEntryPattern $androidArtifacts 'release.*\.apk$')) {
+    $pending += "android-release-apk-artifact"
+  }
 }
 if ($desktopArtifacts.status -ne "present") {
   $pending += "desktop-distribution-artifacts"
+} else {
+  if (-not (Test-ArtifactEntryPattern $desktopArtifacts '\.deb$')) {
+    $pending += "desktop-linux-deb-artifact"
+  }
+  if (-not (Test-ArtifactEntryPattern $desktopArtifacts '\.dmg$')) {
+    $pending += "desktop-macos-dmg-artifact"
+  }
+  if (-not (Test-ArtifactEntryPattern $desktopArtifacts '\.msi$')) {
+    $pending += "desktop-windows-msi-artifact"
+  }
 }
 if ([string]::IsNullOrWhiteSpace($toolchainPins.path)) {
   $pending += "gradle-toolchain-pins"
