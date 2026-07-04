@@ -193,14 +193,22 @@ function Get-AndroidProbeEvidenceStatus {
   $probeConfig = $Metadata.androidCompanionProbes
   $reports = @(
     [ordered]@{
+      label = "Android APK install evidence"
+      path = [string]$probeConfig.apkInstallReport
+      schema = "stackchan.android-apk-install.v1"
+      passingStatuses = @("installed")
+    },
+    [ordered]@{
       label = "Android companion bridge probe"
       path = [string]$probeConfig.companionProbeReport
       schema = "stackchan.android-companion-probe.v1"
+      passingStatuses = @("pass")
     },
     [ordered]@{
       label = "Android UDP beacon probe"
       path = [string]$probeConfig.udpBeaconProbeReport
       schema = "stackchan.android-udp-beacon-probe.v1"
+      passingStatuses = @("pass")
     }
   )
 
@@ -223,11 +231,11 @@ function Get-AndroidProbeEvidenceStatus {
       $failures.Add("$($probe.label) report could not be read") | Out-Null
     } elseif ($report.schema -ne [string]$probe.schema) {
       $failures.Add("$($probe.label) schema mismatch: $($report.schema)") | Out-Null
-    } elseif ($report.status -ne "pass") {
+    } elseif (@($probe.passingStatuses) -notcontains [string]$report.status) {
       $issues = @($report.issues) -join "; "
       $failures.Add("$($probe.label) status $($report.status): $issues") | Out-Null
     } else {
-      $present.Add("$($probe.label) passed at $($probe.path)") | Out-Null
+      $present.Add("$($probe.label) status $($report.status) at $($probe.path)") | Out-Null
     }
   }
 

@@ -90,7 +90,8 @@ function Test-OptionalAndroidProbeReport {
   param(
     [string]$RelativePath,
     [string]$ExpectedSchema,
-    [string]$Description
+    [string]$Description,
+    [string[]]$PassingStatuses = @("pass")
   )
 
   if ([string]::IsNullOrWhiteSpace($RelativePath)) {
@@ -107,8 +108,8 @@ function Test-OptionalAndroidProbeReport {
   $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
   if ($report.schema -ne $ExpectedSchema) {
     Add-Finding "$Description report schema mismatch: $($report.schema)"
-  } elseif ($report.status -eq "pass") {
-    Add-Pass "$Description report passed"
+  } elseif (@($PassingStatuses) -contains [string]$report.status) {
+    Add-Pass "$Description report status: $($report.status)"
   } else {
     $issues = @($report.issues) -join "; "
     Add-Finding "$Description report did not pass: $issues"
@@ -352,6 +353,11 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
   }
 
   if ($null -ne $metadata.androidCompanionProbes) {
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.apkInstallReport) `
+      -ExpectedSchema "stackchan.android-apk-install.v1" `
+      -Description "Android APK install evidence" `
+      -PassingStatuses @("installed")
     Test-OptionalAndroidProbeReport `
       -RelativePath ([string]$metadata.androidCompanionProbes.companionProbeReport) `
       -ExpectedSchema "stackchan.android-companion-probe.v1" `
