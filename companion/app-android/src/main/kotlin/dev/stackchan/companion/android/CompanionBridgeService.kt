@@ -1,0 +1,160 @@
+package dev.stackchan.companion.android
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.os.IBinder
+import dev.stackchan.companion.core.CompanionEndpointServer
+import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
+import dev.stackchan.companion.core.EndpointRequestRouter
+import dev.stackchan.companion.core.EndpointServerConfig
+import dev.stackchan.companion.core.defaultAndroidEndpointHello
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
+class CompanionBridgeService : Service() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var server: CompanionEndpointServer? = null
+    private var startJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification("Starting bridge on port $DEFAULT_BRIDGE_PORT"))
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        ensureServerStarted()
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        startJob?.cancel()
+        server?.close()
+        server = null
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    private fun ensureServerStarted() {
+        if (server != null || startJob?.isActive == true) {
+            return
+        }
+
+        startJob = serviceScope.launch {
+            val stores = AndroidBridgeStores(applicationContext)
+            val settings = stores.loadSettings()
+            val trustedEndpoints = stores.loadTrustedEndpoints()
+            val router = EndpointRequestRouter(
+                settingsRepository = settings,
+                trustedEndpointRegistry = trustedEndpoints,
+                onSettingsChanged = stores::saveSettings,
+                onTrustedEndpointsChanged = stores::saveTrustedEndpoints,
+            )
+
+            runCatching {
+                CompanionEndpointServer(
+                    EndpointServerConfig(
+                        host = "0.0.0.0",
+                        port = DEFAULT_BRIDGE_PORT,
+                        endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId()),
+                        requestRouter = router,
+                    ),
+                ).start()
+            }.onSuccess { bridge ->
+                server = bridge
+                updateNotification("Bridge ready at ws://0.0.0.0:$DEFAULT_BRIDGE_PORT/bridge")
+            }.onFailure { error ->
+                updateNotification("Bridge failed: ${error.message ?: error::class.simpleName}")
+                stopSelf()
+            }
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Stackchan bridge",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "Keeps the Stackchan robot bridge available on the local network."
+        }
+        notificationManager().createNotificationChannel(channel)
+    }
+
+    private fun updateNotification(contentText: String) {
+        notificationManager().notify(NOTIFICATION_ID, buildNotification(contentText))
+    }
+
+    private fun buildNotification(contentText: String): Notification {
+        val openIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val stopIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, CompanionBridgeService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        return builder
+            .setSmallIcon(R.drawable.ic_stackchan_bridge)
+            .setContentTitle("Stackchan companion bridge")
+            .setContentText(contentText)
+            .setContentIntent(openIntent)
+            .setOngoing(true)
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(this, R.drawable.ic_stackchan_bridge),
+                    "Stop",
+                    stopIntent,
+                ).build(),
+            )
+            .build()
+    }
+
+    private fun notificationManager(): NotificationManager =
+        getSystemService(NotificationManager::class.java)
+
+    companion object {
+        private const val CHANNEL_ID = "stackchan_companion_bridge"
+        private const val NOTIFICATION_ID = 8765
+        private const val ACTION_STOP = "dev.stackchan.companion.android.STOP_BRIDGE"
+
+        fun start(context: Context) {
+            val intent = Intent(context, CompanionBridgeService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+    }
+}
