@@ -67,8 +67,10 @@ bridge connection, settings round trip, handoff, and LiteRT-LM wrapper contract.
 speed is not accepted until it passes the same Character Lock benchmark and red-team gates as
 the PC path.
 
-The host bridge already accepts the core control messages described below. Firmware still
-needs the Wi-Fi/WebSocket transport before the physical robot can use this control plane.
+The host bridge already accepts the core control messages described below. Firmware now has
+a native-tested WebSocket handshake/frame adapter, but still needs the Wi-Fi/TCP task,
+provisioning config, and endpoint persistence before the physical robot can use this control
+plane.
 
 ## Multi-Endpoint Model
 

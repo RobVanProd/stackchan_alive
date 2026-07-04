@@ -28,6 +28,7 @@ What is working in the repository now:
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
 - LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink, and endpoint-control messages for PC/mobile companion work.
+- Firmware-side WebSocket handshake/frame adapter for `stackchan.bridge.v1`, with native tests for masked client frames, server text frames, PCM16 binary downlink chunks, and disconnect handling.
 - Android companion architecture contract for PC Brain Mode, Mobile Brain Mode, multi-endpoint handoff, trusted endpoint forgetting, and app-driven settings.
 - Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
 - Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
@@ -35,6 +36,7 @@ What is working in the repository now:
 What is still gated:
 
 - Real hardware evidence for display, speaker, servo calibration, soak, power-cycle recovery, and target-speaker audio.
+- Real firmware Wi-Fi provisioning, TCP/WebSocket task hookup, endpoint persistence, and PC/mobile owner failover on the CoreS3.
 - Real camera, microphone, touch, proximity, and IMU producer bring-up beyond the bench/event boundaries.
 - Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
 - Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.
@@ -221,6 +223,9 @@ Run the socket-level bridge proxy:
 It writes `output/lan-smoke/latest/LAN_SMOKE.md` and matching JSON for the local WebSocket
 handshake, bridge frame order, fake audio upload, fake STT/TTS, binary downlink path, and
 immediate visible `thinking` timing while a delayed response is still running.
+The firmware-side frame adapter is tested separately in `pio test -e native_logic`; the
+remaining device work is the Wi-Fi/TCP task that feeds those bytes from the CoreS3 network
+stack.
 
 Check local model/STT/TTS engine readiness:
 

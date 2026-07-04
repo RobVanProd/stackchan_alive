@@ -682,6 +682,13 @@ foreach ($pattern in @("BridgeClient::begin", "BridgeClient::update", "BridgeCli
   }
 }
 
+$bridgeWebSocketTransportText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeWebSocketTransport.cpp") -Raw
+foreach ($pattern in @("BridgeWebSocketTransport::buildHandshakeRequest", "BridgeWebSocketTransport::acceptHandshakeResponse", "BridgeWebSocketTransport::encodeClientTextFrame", "BridgeWebSocketTransport::encodeClientBinaryFrame", "BridgeWebSocketTransport::submitBytes", "BridgeWebSocketTransport::dispatchFrame", "submitControlLine", "submitBinaryFrame", "Sec-WebSocket-Key", "Sec-WebSocket-Accept", "masked_server_websocket_frame", "websocket_payload_too_large", "kBridgeWebSocketFramePayloadMax", "BridgeWebSocketTransportState::Connected", "BridgeWebSocketTransportState::Closed")) {
+  if ($bridgeWebSocketTransportText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeWebSocketTransport.cpp missing firmware WebSocket transport support: $pattern"
+  }
+}
+
 $bridgeAudioDownlinkText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeAudioDownlink.cpp") -Raw
 foreach ($pattern in @("BridgeAudioDownlink::begin", "BridgeAudioDownlink::start", "BridgeAudioDownlink::submitChunk", "BridgeAudioDownlink::end", "BridgeAudioDownlink::abort", "BridgeAudioDownlinkSink", "startPlayback", "submitPlaybackChunk", "stopPlayback", "isPlayablePcm16Format", "playbackReady", "playbackStarts", "playbackChunks", "playbackBytes", "playbackUnsupported", "playbackErrors", "kBridgeAudioStreamChunkPayloadMax", "payloadBytes", "chunksAccepted", "bytesAccepted", "streamsCompleted", "streamsAborted", "updateChecksum")) {
   if ($bridgeAudioDownlinkText -notmatch [regex]::Escape($pattern)) {
@@ -845,9 +852,14 @@ foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "
     throw "provenance/test/test_native_logic/test_main.cpp missing generated expression tests: $pattern"
   }
 }
+foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
+  }
+}
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeWebSocketTransport.cpp>")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
