@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry/control/persistence slice check in this workspace: **158/158 native firmware logic
+Current firmware transport/registry/control/persistence slice check in this workspace: **162/162 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -52,11 +52,11 @@ responses on the serial bench path. The WebSocket adapter can now route endpoint
 server text before normal conversation frames, queue the bounded JSON response, and encode
 that response as a masked client text frame. `BridgeSocketWriter` now drains those queued
 responses through a socket sink, including partial-write retry buffering and disconnected
-socket preservation. It also has a bounded one-frame masked binary-upload queue for future
-wake-gated PCM uplink, with partial-write retry buffering and native coverage for queue
-bounds. `BridgeNetworkSession` now opens the TCP socket, sends the WebSocket upgrade
+socket preservation. It also has bounded one-frame masked client text and binary-upload
+queues for future `utterance_start`/`utterance_end` plus wake-gated PCM uplink, with
+partial-write retry buffering and native coverage for queue bounds. `BridgeNetworkSession` now opens the TCP socket, sends the WebSocket upgrade
 request, accepts the handshake, feeds received bytes into the WebSocket adapter, drains
-queued endpoint responses and queued binary frames through the writer, and schedules
+queued endpoint responses plus queued text/binary frames through the writer, and schedules
 reconnects; an ESP32
 `BridgeWiFiClientSocket` binds that socket interface to `WiFiClient`. Firmware now has
 compile-time Wi-Fi/bridge provisioning settings, nonblocking Wi-Fi retry logic, boot-time
@@ -83,7 +83,7 @@ counts as an untethered bridge.
 16 kHz PCM16 mono = 32,000 bytes/s. 115200 baud ≈ 11,520 bytes/s raw — less after bench
 line framing (the line buffer is 192 chars). Real-time TTS streaming over the current
 transport is off by ~3x before overhead. The binary-frame path now has a native-tested
-WebSocket adapter plus a native-tested socket-writer binary uplink queue, but the running
+WebSocket adapter plus native-tested socket-writer text/binary uplink queues, but the running
 device still needs configured Wi-Fi/TCP hardware evidence before it can be treated as a
 real-time audio path. Conclusion: **Wi-Fi transport is not an enhancement, it is the
 prerequisite** for the P7 latency budget; don't spend further effort optimizing the serial
@@ -95,11 +95,11 @@ audio path.
 left/right PCM windows) proven against WAV fixtures. Firmware now has `AudioCaptureAdapter`
 with an M5Unified mic source, disabled by default behind `STACKCHAN_ENABLE_MIC_CAPTURE`,
 plus runtime `audio_capture_*` telemetry and native fake-source coverage from PCM windows to
-`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. The network session can queue a
-bounded masked binary WebSocket frame for future PCM uplink, but no turn controller is
-allowed to stream mic audio until wake gating exists. What is still missing is a CoreS3 run
-with the mic actually enabled, measured capture telemetry, and the wake/STT path that
-consumes capture beyond local reflex events.
+`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. The network session can queue
+bounded masked text and binary WebSocket frames for future `utterance_start`/PCM/
+`utterance_end` uplink, but no turn controller is allowed to stream mic audio until wake
+gating exists. What is still missing is a CoreS3 run with the mic actually enabled, measured
+capture telemetry, and the wake/STT path that consumes capture beyond local reflex events.
 
 ### B4. No wake word engine — and the privacy model depends on one
 

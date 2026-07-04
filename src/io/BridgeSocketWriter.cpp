@@ -12,6 +12,8 @@ bool BridgeSocketWriter::begin(BridgeWebSocketTransport& transport,
   telemetry_ = BridgeSocketWriterTelemetry {};
   maskState_ = maskSeed != 0 ? maskSeed : 0x51ac5eedu;
   clearFrame();
+  textPayloadBytes_ = 0;
+  textPayload_[0] = '\0';
   binaryPayloadBytes_ = 0;
   telemetry_.ready = true;
   return true;
@@ -20,8 +22,42 @@ bool BridgeSocketWriter::begin(BridgeWebSocketTransport& transport,
 void BridgeSocketWriter::reset() {
   telemetry_ = BridgeSocketWriterTelemetry {};
   clearFrame();
+  textPayloadBytes_ = 0;
+  textPayload_[0] = '\0';
   binaryPayloadBytes_ = 0;
   telemetry_.ready = transport_ != nullptr && sink_ != nullptr;
+}
+
+bool BridgeSocketWriter::queueTextFrame(const char* payload) {
+  if (!telemetry_.ready || transport_ == nullptr || sink_ == nullptr) {
+    fail(BridgeSocketWriterDrainResult::NotReady, "socket_writer_not_ready");
+    return false;
+  }
+  if (payload == nullptr || payload[0] == '\0') {
+    telemetry_.textFramesDropped++;
+    copyError("socket_text_payload_invalid");
+    return false;
+  }
+  const size_t length = std::strlen(payload);
+  if (length >= sizeof(textPayload_)) {
+    telemetry_.textFramesDropped++;
+    copyError("socket_text_payload_too_large");
+    return false;
+  }
+  if (textPayloadBytes_ != 0 ||
+      (frameKind_ == PendingFrameKind::QueuedText && frameBytes_ != 0)) {
+    telemetry_.textFramesDropped++;
+    copyError("socket_text_queue_full");
+    return false;
+  }
+
+  std::memcpy(textPayload_, payload, length + 1u);
+  textPayloadBytes_ = length;
+  telemetry_.textFrameQueued = true;
+  telemetry_.textFramesQueued++;
+  telemetry_.textBytesQueued += static_cast<uint32_t>(length);
+  telemetry_.lastError[0] = '\0';
+  return true;
 }
 
 bool BridgeSocketWriter::queueBinaryFrame(const uint8_t* payload, size_t length) {
@@ -82,6 +118,24 @@ BridgeSocketWriterDrainResult BridgeSocketWriter::drainPending(uint32_t nowMs,
         return fail(BridgeSocketWriterDrainResult::EncodeFailed, "socket_encode_failed");
       }
       telemetry_.framesEncoded++;
+    } else if (textPayloadBytes_ != 0) {
+      uint8_t maskKey[4] = {};
+      makeMask(maskKey);
+      frameBytes_ = BridgeWebSocketTransport::encodeClientTextFrame(
+          textPayload_, maskKey, frame_, sizeof(frame_));
+      framePayloadBytes_ = textPayloadBytes_;
+      textPayloadBytes_ = 0;
+      textPayload_[0] = '\0';
+      telemetry_.textFrameQueued = false;
+      frameOffset_ = 0;
+      frameKind_ = PendingFrameKind::QueuedText;
+      telemetry_.frameBuffered = frameBytes_ > 0;
+      if (frameBytes_ == 0) {
+        clearFrame();
+        return fail(BridgeSocketWriterDrainResult::EncodeFailed, "socket_text_encode_failed");
+      }
+      telemetry_.framesEncoded++;
+      telemetry_.textFramesEncoded++;
     } else if (includeBinary && binaryPayloadBytes_ != 0) {
       uint8_t maskKey[4] = {};
       makeMask(maskKey);
@@ -129,7 +183,10 @@ BridgeSocketWriterDrainResult BridgeSocketWriter::drainPending(uint32_t nowMs,
   const size_t completedPayloadBytes = framePayloadBytes_;
   clearFrame();
   telemetry_.framesWritten++;
-  if (completedKind == PendingFrameKind::BinaryUpload) {
+  if (completedKind == PendingFrameKind::QueuedText) {
+    telemetry_.textFramesWritten++;
+    telemetry_.textBytesWritten += static_cast<uint32_t>(completedPayloadBytes);
+  } else if (completedKind == PendingFrameKind::BinaryUpload) {
     telemetry_.binaryFramesWritten++;
     telemetry_.binaryBytesWritten += static_cast<uint32_t>(completedPayloadBytes);
   }

@@ -3662,6 +3662,75 @@ void test_bridge_socket_writer_disconnected_keeps_pending_response() {
   TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
 }
 
+void test_bridge_socket_writer_writes_queued_text_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 705));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      706));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x45566778));
+  const char* payload = "{\"type\":\"utterance_start\",\"seq\":77,\"sample_rate\":16000}";
+  TEST_ASSERT_TRUE(writer.queueTextFrame(payload));
+  TEST_ASSERT_TRUE(writer.telemetry().textFrameQueued);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(707)));
+
+  TEST_ASSERT_FALSE(writer.telemetry().textFrameQueued);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().textFramesQueued);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().textFramesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().textFramesWritten);
+  TEST_ASSERT_EQUAL_UINT32(std::strlen(payload), writer.telemetry().textBytesQueued);
+  TEST_ASSERT_EQUAL_UINT32(std::strlen(payload), writer.telemetry().textBytesWritten);
+
+  char decoded[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(sink.bytes, decoded, sizeof(decoded)));
+  TEST_ASSERT_EQUAL_STRING(payload, decoded);
+}
+
+void test_bridge_socket_writer_bounds_queued_text_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 708));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      709));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x46576879));
+  TEST_ASSERT_FALSE(writer.queueTextFrame(""));
+  TEST_ASSERT_EQUAL_STRING("socket_text_payload_invalid", writer.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().textFramesDropped);
+
+  char tooLarge[kBridgeEndpointControlResponseMax + 1u] = {};
+  std::memset(tooLarge, 'x', sizeof(tooLarge) - 1u);
+  tooLarge[sizeof(tooLarge) - 1u] = '\0';
+  TEST_ASSERT_FALSE(writer.queueTextFrame(tooLarge));
+  TEST_ASSERT_EQUAL_STRING("socket_text_payload_too_large", writer.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(2, writer.telemetry().textFramesDropped);
+
+  TEST_ASSERT_TRUE(writer.queueTextFrame("{\"type\":\"utterance_start\",\"seq\":1}"));
+  TEST_ASSERT_FALSE(writer.queueTextFrame("{\"type\":\"utterance_end\",\"seq\":1}"));
+  TEST_ASSERT_EQUAL_STRING("socket_text_queue_full", writer.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(3, writer.telemetry().textFramesDropped);
+}
+
 void test_bridge_socket_writer_writes_queued_binary_frame() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -3932,6 +4001,40 @@ void test_bridge_network_session_writes_queued_binary_frame() {
   for (size_t i = 0; i < sizeof(payload); ++i) {
     TEST_ASSERT_EQUAL_HEX8(payload[i], decoded[i]);
   }
+}
+
+void test_bridge_network_session_writes_queued_text_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  const BridgeNetworkSessionConfig config = makeBridgeNetworkSessionConfig();
+  TEST_ASSERT_TRUE(session.begin(bridge, socket, config, 830));
+  TEST_ASSERT_TRUE(session.start(835));
+  socket.pushIncoming(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n");
+  session.update(840);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Connected),
+                    static_cast<int>(session.telemetry().state));
+  socket.clearOutgoing();
+
+  const char* payload = "{\"type\":\"utterance_end\",\"seq\":88,\"text\":\"Hello Stackchan.\"}";
+  TEST_ASSERT_TRUE(session.queueTextFrame(payload));
+  session.update(845);
+
+  TEST_ASSERT_FALSE(socket.outgoing.empty());
+  TEST_ASSERT_EQUAL_UINT32(1, session.telemetry().writerFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, session.telemetry().writerTextFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, session.writer().telemetry().textFramesWritten);
+  TEST_ASSERT_EQUAL_UINT32(std::strlen(payload), session.writer().telemetry().textBytesWritten);
+
+  char decoded[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decoded, sizeof(decoded)));
+  TEST_ASSERT_EQUAL_STRING(payload, decoded);
 }
 
 void test_bridge_network_session_reconnects_after_socket_disconnect() {
@@ -4715,6 +4818,8 @@ int main() {
   RUN_TEST(test_bridge_socket_writer_writes_pending_endpoint_response_frame);
   RUN_TEST(test_bridge_socket_writer_retains_partial_frame_until_complete);
   RUN_TEST(test_bridge_socket_writer_disconnected_keeps_pending_response);
+  RUN_TEST(test_bridge_socket_writer_writes_queued_text_frame);
+  RUN_TEST(test_bridge_socket_writer_bounds_queued_text_frame);
   RUN_TEST(test_bridge_socket_writer_writes_queued_binary_frame);
   RUN_TEST(test_bridge_socket_writer_retains_partial_binary_frame_until_complete);
   RUN_TEST(test_bridge_socket_writer_bounds_binary_queue);
@@ -4722,6 +4827,7 @@ int main() {
   RUN_TEST(test_bridge_network_session_feeds_server_frames_to_bridge_client);
   RUN_TEST(test_bridge_network_session_writes_endpoint_control_response);
   RUN_TEST(test_bridge_network_session_writes_queued_binary_frame);
+  RUN_TEST(test_bridge_network_session_writes_queued_text_frame);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);

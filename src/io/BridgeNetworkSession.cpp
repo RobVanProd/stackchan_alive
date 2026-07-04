@@ -90,6 +90,10 @@ void BridgeNetworkSession::stop(uint32_t nowMs) {
   setState(BridgeNetworkSessionState::Idle, nowMs);
 }
 
+bool BridgeNetworkSession::queueTextFrame(const char* payload) {
+  return writer_.queueTextFrame(payload);
+}
+
 bool BridgeNetworkSession::queueBinaryFrame(const uint8_t* payload, size_t length) {
   return writer_.queueBinaryFrame(payload, length);
 }
@@ -217,10 +221,12 @@ void BridgeNetworkSession::readConnected(uint32_t nowMs) {
 
 void BridgeNetworkSession::drainWriter(uint32_t nowMs) {
   const uint32_t beforeFrames = writer_.telemetry().framesWritten;
+  const uint32_t beforeTextFrames = writer_.telemetry().textFramesWritten;
   const uint32_t beforeBinaryFrames = writer_.telemetry().binaryFramesWritten;
   const uint32_t beforeBytes = writer_.telemetry().bytesWritten;
   const BridgeSocketWriterDrainResult result = writer_.drainPendingFrame(nowMs);
   telemetry_.writerFrames += writer_.telemetry().framesWritten - beforeFrames;
+  telemetry_.writerTextFrames += writer_.telemetry().textFramesWritten - beforeTextFrames;
   telemetry_.writerBinaryFrames += writer_.telemetry().binaryFramesWritten - beforeBinaryFrames;
   telemetry_.bytesWritten += writer_.telemetry().bytesWritten - beforeBytes;
   if (result == BridgeSocketWriterDrainResult::NotConnected ||
