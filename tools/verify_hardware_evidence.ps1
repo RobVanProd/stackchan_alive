@@ -486,6 +486,35 @@ function Test-AndroidCompanionReportPresent {
   return $false
 }
 
+function Assert-AndroidApkInstallEvidence {
+  param([object]$Metadata)
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return
+  }
+
+  $relativePath = [string]$Metadata.androidCompanionProbes.apkInstallReport
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    return
+  }
+
+  $path = Join-EvidencePath $relativePath
+  if (-not (Test-Path -LiteralPath $path)) {
+    return
+  }
+
+  $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+  if ($report.schema -ne "stackchan.android-apk-install.v1") {
+    throw "Android APK install evidence schema mismatch: $($report.schema)"
+  }
+  if ($report.status -ne "installed") {
+    throw "Android APK install evidence status is not installed: $($report.status)"
+  }
+  if ([string]$report.sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+    throw "Android APK install evidence is missing a full sourceCommit SHA. Re-run RUN_ANDROID_APK_INSTALL.cmd with -SourceCommit <git-commit>."
+  }
+}
+
 function Test-AndroidDashboardManifestEntry {
   param([object]$Entry)
 
@@ -980,6 +1009,7 @@ if (-not $AllowMissingMedia) {
 }
 
 Assert-AndroidDashboardManifestEvidence $metadata
+Assert-AndroidApkInstallEvidence $metadata
 
 Write-Host "Hardware evidence verified:"
 Write-Host $evidencePath
