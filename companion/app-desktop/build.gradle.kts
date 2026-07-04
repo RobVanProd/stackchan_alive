@@ -33,7 +33,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Stackchan Companion"
-            packageVersion = "0.1.0"
+            packageVersion = "1.0.0"
         }
     }
 }

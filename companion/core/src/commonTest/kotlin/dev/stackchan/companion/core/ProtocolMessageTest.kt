@@ -30,7 +30,7 @@ class ProtocolMessageTest {
               "endpoint_id": "phone-rob-01",
               "endpoint_name": "Rob's Phone",
               "endpoint_kind": "android",
-              "app_version": "0.1.0",
+              "app_version": "1.0.0",
               "priority": 60,
               "supports_binary_audio": true,
               "capabilities": ["settings"],
@@ -53,7 +53,7 @@ class ProtocolMessageTest {
               "endpoint_id": "phone-rob-01",
               "endpoint_name": "Rob's Phone",
               "endpoint_kind": "android",
-              "app_version": "0.1.0",
+              "app_version": "1.0.0",
               "priority": 60,
               "supports_binary_audio": true,
               "capabilities": ["settings", "diagnostics"]

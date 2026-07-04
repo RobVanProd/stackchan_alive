@@ -10,5 +10,5 @@ plugins {
 
 allprojects {
     group = "dev.stackchan"
-    version = "0.1.0"
+    version = "1.0.0"
 }
