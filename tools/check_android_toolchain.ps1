@@ -79,9 +79,25 @@ function Get-JavaReport {
     $status = "no-java-command"
   } else {
     try {
-      $versionOutput = & $selectedJava -version 2>&1
-      $exitCode = $LASTEXITCODE
-      $versionText = (($versionOutput | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1) | Out-String).Trim()
+      $previousErrorActionPreference = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      try {
+        $versionOutput = & $selectedJava -version 2>&1
+        $exitCode = $LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+      }
+      $versionLines = @($versionOutput | ForEach-Object {
+        if ($_ -is [System.Management.Automation.ErrorRecord]) {
+          $_.Exception.Message
+        } else {
+          $_
+        }
+      })
+      $versionText = (($versionLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1) | Out-String).Trim()
+      if (($null -eq $exitCode -or "$exitCode" -eq "") -and $versionText -match 'version "?[0-9]') {
+        $exitCode = 0
+      }
       if ($exitCode -eq 0) {
         $status = "ready"
       } else {
