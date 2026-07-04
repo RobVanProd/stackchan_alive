@@ -310,6 +310,7 @@ $bridgePackageFiles = @(
   "test_android_companion_probe.py",
   "android_udp_beacon_probe.py",
   "test_android_udp_beacon_probe.py",
+  "test_android_dashboard_media_gate.py",
   "hardware_simulator.py",
   "test_hardware_simulator.py",
   "prearrival_sim_check.py",

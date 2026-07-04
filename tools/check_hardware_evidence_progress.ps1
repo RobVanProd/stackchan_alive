@@ -196,7 +196,7 @@ function Get-BenchNextAction {
     }
   }
 
-  $displayFinding = Get-FirstFindingLike @("logs/display_only_serial\.log", "display-only boot marker", "display readiness marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display runtime health telemetry", "No photo or video evidence")
+  $displayFinding = Get-FirstFindingLike @("logs/display_only_serial\.log", "display-only boot marker", "display readiness marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display runtime health telemetry", "No photo or video evidence")
   if (-not [string]::IsNullOrWhiteSpace($displayFinding)) {
     return [ordered]@{
       action = "Run the display-only flash, then add a clear face photo or short video."

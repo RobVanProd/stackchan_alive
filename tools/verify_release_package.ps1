@@ -167,6 +167,7 @@ $requiredFiles = @(
   "bridge/test_lan_service.py",
   "bridge/lan_smoke.py",
   "bridge/test_lan_smoke.py",
+  "bridge/test_android_dashboard_media_gate.py",
   "bridge/hardware_simulator.py",
   "bridge/test_hardware_simulator.py",
   "bridge/prearrival_sim_check.py",
@@ -414,6 +415,7 @@ $requiredFiles = @(
   "provenance/bridge/test_lan_service.py",
   "provenance/bridge/lan_smoke.py",
   "provenance/bridge/test_lan_smoke.py",
+  "provenance/bridge/test_android_dashboard_media_gate.py",
   "provenance/bridge/hardware_simulator.py",
   "provenance/bridge/test_hardware_simulator.py",
   "provenance/bridge/prearrival_sim_check.py",
@@ -502,9 +504,16 @@ foreach ($pattern in @("diagnosticOnly", "syntheticEvidence", "AllowSyntheticEvi
 }
 
 $hardwareProgressText = Get-Content -LiteralPath (Join-PackagePath "tools/check_hardware_evidence_progress.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "Test-OptionalAndroidProbeReport", "Test-AndroidDashboardManifestEvidence", "androidDashboardFinding", "Import the Android connected-dashboard screenshot", "Android APK install evidence", "Android companion bridge probe", "Android UDP beacon probe", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "optional unless Android is the companion bridge host", "media_manifest.json needs a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Generated source WAVs alone do not count", "OBSERVATIONS.md has blank field", "AUDIO_REVIEW.md has blank field", "No real-device speaker recording found under audio/", "CHECKLIST.md still has unchecked gates", "No photo or video evidence found", "display-only boot marker", "logs/display_only_serial\.log.*display frame-budget telemetry", "display face animator telemetry", "display bench control telemetry", "display speech cue telemetry", "display runtime health telemetry", "speech mouth demo envelope commands", "speech mouth demo clear command", "speech mouth demo completion", "speechMouthFinding", "speakAllFinding", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speak-all packaged prompt audio-output handoff", "soak display frame-budget telemetry", "soak face animator telemetry", "soak runtime health telemetry", "reduced_motion_on|reduced_motion_off|safe_stop", "RVC lead audition reference hash matches metadata", "metadata.json has no shareVerification reference", "Hosted media share verification report matches metadata", "VERIFIED_URL.txt", "metadata.json missing voiceGateStatus reference", "Voice source status report matches metadata", "RVC voice base status report matches metadata", "Test-OptionalAndroidProbeReport", "Test-AndroidDashboardManifestEvidence", "androidDashboardFinding", "Import the Android connected-dashboard screenshot", "Android APK install evidence", "Android companion bridge probe", "Android UDP beacon probe", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "optional unless Android is the companion bridge host", "media_manifest.json needs a photo/video entry", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "Get-BenchNextAction", "Write-BenchStatusReport", "nextAction", "nextCommand", "ready-for-strict-evidence-verify", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_EVIDENCE_VERIFY.cmd")) {
   if ($hardwareProgressText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_hardware_evidence_progress.ps1 missing evidence progress check: $pattern"
+  }
+}
+
+$androidDashboardMediaGateTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_dashboard_media_gate.py") -Raw
+foreach ($pattern in @("AndroidDashboardMediaGateTest", "check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "test_android_probe_requires_dashboard_media_notes", "test_matching_dashboard_media_notes_clear_android_dashboard_finding", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "media_manifest.json is missing the connected-dashboard", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state")) {
+  if ($androidDashboardMediaGateTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_dashboard_media_gate.py missing dashboard media gate coverage: $pattern"
   }
 }
 
