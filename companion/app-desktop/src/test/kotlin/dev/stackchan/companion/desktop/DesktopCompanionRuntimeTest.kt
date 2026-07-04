@@ -35,6 +35,7 @@ class DesktopCompanionRuntimeTest {
 
         DesktopCompanionRuntime(firstConfig).use { runtime ->
             runtime.start()
+            assertEquals(false, runtime.snapshot().mdnsAdvertised)
             val client = TestWebSocketClient.connect("ws://127.0.0.1:${firstConfig.port}/bridge")
 
             client.send(
@@ -78,10 +79,33 @@ class DesktopCompanionRuntimeTest {
             port = freePort(),
             storageDir = storageDir,
             endpointId = "pc-runtime-test",
+            advertiseMdns = false,
         )
 
     private fun freePort(): Int =
         ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+
+    @Test
+    fun runtimeAdvertisesBridgeEndpointWhenMdnsIsEnabled() {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-mdns")).copy(
+            advertiseMdns = true,
+            mdnsAddress = InetAddress.getLoopbackAddress(),
+            mdnsInstanceName = "stackchan-runtime-mdns-test",
+        )
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+
+            val snapshot = runtime.snapshot()
+
+            assertEquals(true, snapshot.mdnsAdvertised)
+            assertEquals("", snapshot.mdnsError)
+            assertEquals("pc-runtime-test", snapshot.mdnsEndpoint!!.endpointId)
+            assertEquals("pc", snapshot.mdnsEndpoint.endpointKind)
+            assertEquals(config.port, snapshot.mdnsEndpoint.port)
+            assertTrue("brain_owner" in snapshot.mdnsEndpoint.capabilities)
+        }
+    }
 }
 
 private class TestWebSocketClient private constructor(
