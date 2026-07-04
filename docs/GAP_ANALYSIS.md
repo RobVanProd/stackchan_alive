@@ -1,8 +1,8 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Verified by running the suites in this workspace: **108/108 bridge Python tests pass**,
-**113/113 native firmware logic tests pass**. The status table in
+Current firmware transport slice check in this workspace: **119/119 native firmware logic
+tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
 ## The structural truth
@@ -21,7 +21,7 @@ piece of real hardware input and the real network transport:
 | Wake word + commands (P4) | Command map done, tested | **No ESP-SR**; wake/commands are bench text |
 | Face tracking (P5) | GazeTracker done, tested | CameraAdapter has no camera (no `esp_camera`/ESP-DL; `STACKCHAN_ENABLE_CAMERA` never set) |
 | Voice out (P6) | Done | **Real** (`M5.Speaker`, packaged WAVs, PCM16 downlink playback) |
-| Bridge (P7) | Full protocol both sides, tested | **No Wi-Fi/WebSocket in firmware**; frames arrive via USB serial bench |
+| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec is native-tested; **no Wi-Fi/TCP task or endpoint persistence in firmware** |
 | LLM / STT / TTS | Contracts, harness, benchmark tooling | All engines deterministic placeholders / `unconfigured` |
 
 So the demo that currently exists is: a Python simulator talking to a Python service, or a
@@ -33,10 +33,13 @@ should be read as "implemented the top half of everything."
 
 ### B1. No device-to-bridge transport (critical path)
 
-Firmware contains zero Wi-Fi or WebSocket code. `BridgeClient` is a parser fed by the
-115200-baud serial bench; `BridgeClient::submitBinaryFrame()` is **dead code — defined,
-never called by anything**. The entire P7 loop cannot run untethered, and
-`bridge/lan_service.py` already speaks a socket protocol that no device-side code can reach.
+Firmware now has a native-tested `BridgeWebSocketTransport` adapter that builds the client
+upgrade request, encodes masked client text/binary frames, decodes unmasked server
+text/binary frames, routes server text into `BridgeClient::submitControlLine()`, routes TTS
+binary chunks into `BridgeClient::submitBinaryFrame()`, and marks the bridge disconnected on
+close frames. What is still missing is the production Wi-Fi/TCP task, provisioning config,
+endpoint persistence, and reconnect/failover loop. `BridgeClient` is still fed by the
+115200-baud serial bench in the running firmware, so the P7 loop cannot run untethered.
 
 This transport also needs the endpoint model that the Android companion will share with the
 PC bridge. The target is not "one hardcoded bridge IP"; it is a small trusted endpoint
@@ -47,15 +50,16 @@ contract lives in [ANDROID_COMPANION_SPEC.md](ANDROID_COMPANION_SPEC.md).
 Current bridge-side progress: `bridge/lan_service.py` now implements the host control-plane
 messages for trusted endpoint registration, active brain ownership, settings, diagnostics,
 capability updates, and endpoint forgetting, and `bridge/lan_smoke.py` has an
-`endpoint-controls` socket scenario. This is still B1 setup evidence only; firmware still has
-no Wi-Fi/WebSocket transport and cannot reach the service without the serial bench.
+`endpoint-controls` socket scenario. Current firmware-side progress is frame-level only; it
+still cannot reach the service without the serial bench until Wi-Fi/TCP wiring lands.
 
 ### B2. The serial link physically cannot carry the audio design
 
 16 kHz PCM16 mono = 32,000 bytes/s. 115200 baud ≈ 11,520 bytes/s raw — less after bench
 line framing (the line buffer is 192 chars). Real-time TTS streaming over the current
-transport is off by ~3x before overhead. The binary-frame path that could help is
-unreachable (B1). Conclusion: **Wi-Fi transport is not an enhancement, it is the
+transport is off by ~3x before overhead. The binary-frame path now has a native-tested
+WebSocket adapter, but it is still unreachable from the running device until B1 connects it
+to Wi-Fi/TCP. Conclusion: **Wi-Fi transport is not an enhancement, it is the
 prerequisite** for the P7 latency budget; don't spend further effort optimizing the serial
 audio path.
 
@@ -144,8 +148,9 @@ real-hardware evidence in the status table exists.
 
 ## Recommended order of attack (the bottom half)
 
-1. **Wi-Fi + WebSocket transport in firmware** — unblocks P7 untethered, resolves B1/B2;
-   `lan_service.py` is already the counterparty. Includes Wi-Fi provisioning config plus
+1. **Wi-Fi client/provisioning + production WebSocket task in firmware** — unblocks P7
+   untethered, resolves B1/B2; `lan_service.py` is already the counterparty and the
+   frame-level adapter is now native-tested. Includes Wi-Fi provisioning config plus
    trusted endpoint registry hooks, active brain owner arbitration, PC/mobile handoff, and
    `forget_endpoint`.
 2. **I2S/ES7210 mic capture task** feeding the existing `AudioSaliency` + PCM upload path

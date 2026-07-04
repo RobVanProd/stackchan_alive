@@ -13,6 +13,7 @@
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
+#include "io/BridgeWebSocketTransport.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
@@ -2849,6 +2850,250 @@ void test_bridge_client_accepts_serial_bridge_transcript() {
   TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().parseErrors);
 }
 
+size_t encodeServerWebSocketFrame(uint8_t opcode,
+                                  const uint8_t* payload,
+                                  size_t length,
+                                  uint8_t* out,
+                                  size_t outSize) {
+  const size_t headerBytes = length < 126 ? 2u : 4u;
+  const size_t totalBytes = headerBytes + length;
+  if (out == nullptr || outSize < totalBytes || length > 0xffffu) {
+    return 0;
+  }
+  out[0] = static_cast<uint8_t>(0x80 | (opcode & 0x0f));
+  if (length < 126) {
+    out[1] = static_cast<uint8_t>(length);
+  } else {
+    out[1] = 126;
+    out[2] = static_cast<uint8_t>((length >> 8) & 0xff);
+    out[3] = static_cast<uint8_t>(length & 0xff);
+  }
+  if (length > 0) {
+    std::memcpy(out + headerBytes, payload, length);
+  }
+  return totalBytes;
+}
+
+size_t encodeServerWebSocketText(const char* payload, uint8_t* out, size_t outSize) {
+  return encodeServerWebSocketFrame(static_cast<uint8_t>(BridgeWebSocketOpcode::Text),
+                                    reinterpret_cast<const uint8_t*>(payload),
+                                    std::strlen(payload),
+                                    out,
+                                    outSize);
+}
+
+void test_bridge_websocket_builds_upgrade_request_and_accepts_response() {
+  BridgeClientConfig config;
+  config.deviceId = "stackchan-test";
+
+  char request[kBridgeWebSocketHandshakeMax] = {};
+  const size_t requestBytes = BridgeWebSocketTransport::buildHandshakeRequest(
+      request,
+      sizeof(request),
+      "127.0.0.1",
+      8765,
+      "/bridge",
+      "dGhlIHNhbXBsZSBub25jZQ==",
+      config);
+
+  TEST_ASSERT_GREATER_THAN_UINT32(0, requestBytes);
+  TEST_ASSERT_TRUE(containsText(request, "GET /bridge HTTP/1.1"));
+  TEST_ASSERT_TRUE(containsText(request, "Host: 127.0.0.1:8765"));
+  TEST_ASSERT_TRUE(containsText(request, "Upgrade: websocket"));
+  TEST_ASSERT_TRUE(containsText(request, "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="));
+  TEST_ASSERT_TRUE(containsText(request, "X-Stackchan-Protocol: stackchan.bridge.v1"));
+  TEST_ASSERT_TRUE(containsText(request, "X-Stackchan-Device: stackchan-test"));
+
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin(config));
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 100));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Connecting), static_cast<int>(bridge.telemetry().state));
+
+  const char* response =
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
+      "\r\n";
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(response, 120, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWebSocketTransportState::Connected),
+                    static_cast<int>(transport.telemetry().state));
+  TEST_ASSERT_TRUE(transport.telemetry().handshakeAccepted);
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().handshakesAccepted);
+  TEST_ASSERT_EQUAL_UINT32(0, transport.telemetry().handshakesRejected);
+}
+
+void test_bridge_websocket_encodes_masked_client_text_frames() {
+  const char* payload = "{\"type\":\"hello\",\"protocol\":\"stackchan.bridge.v1\"}";
+  const uint8_t maskKey[4] = {0x11, 0x22, 0x33, 0x44};
+  uint8_t frame[160] = {};
+
+  const size_t frameBytes = BridgeWebSocketTransport::encodeClientTextFrame(
+      payload,
+      maskKey,
+      frame,
+      sizeof(frame));
+
+  TEST_ASSERT_GREATER_THAN_UINT32(0, frameBytes);
+  TEST_ASSERT_EQUAL_HEX8(0x81, frame[0]);
+  TEST_ASSERT_TRUE((frame[1] & 0x80) != 0);
+  TEST_ASSERT_EQUAL_UINT32(std::strlen(payload), frame[1] & 0x7f);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[0], frame[2]);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[1], frame[3]);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[2], frame[4]);
+  TEST_ASSERT_EQUAL_HEX8(maskKey[3], frame[5]);
+
+  const size_t payloadOffset = 6;
+  for (size_t i = 0; i < std::strlen(payload); ++i) {
+    TEST_ASSERT_EQUAL_HEX8(static_cast<uint8_t>(payload[i]),
+                           frame[payloadOffset + i] ^ maskKey[i % 4u]);
+  }
+}
+
+void test_bridge_websocket_decodes_server_text_to_bridge_client() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 200));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      210));
+
+  const char* hello = "{\"type\":\"hello\",\"protocol\":\"stackchan.bridge.v1\",\"session\":\"ws-ok\"}";
+  uint8_t frame[160] = {};
+  const size_t frameBytes = encodeServerWebSocketText(hello, frame, sizeof(frame));
+  TEST_ASSERT_GREATER_THAN_UINT32(0, frameBytes);
+
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, 2, 220));
+  BridgeClientOutput output;
+  TEST_ASSERT_FALSE(bridge.poll(&output));
+  TEST_ASSERT_TRUE(transport.submitBytes(frame + 2, frameBytes - 2, 225));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("ws-ok", output.sessionId);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().textFramesDecoded);
+  TEST_ASSERT_EQUAL_UINT32(std::strlen(hello), transport.telemetry().maxPayloadBytes);
+}
+
+void test_bridge_websocket_decodes_binary_downlink_chunks() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 300));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      305));
+
+  uint8_t frame[256] = {};
+  const char* start =
+      "{\"type\":\"audio_stream_start\",\"seq\":44,\"format\":\"pcm16\",\"sample_rate\":22050,"
+      "\"audio_bytes\":4,\"chunk_bytes\":4,\"chunks\":1}";
+  size_t frameBytes = encodeServerWebSocketText(start, frame, sizeof(frame));
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, frameBytes, 310));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(44, output.stream.seq);
+  TEST_ASSERT_EQUAL_STRING("pcm16", output.stream.format);
+
+  const uint8_t payload[] = {0x00, 0x00, 0xff, 0x7f};
+  frameBytes = encodeServerWebSocketFrame(static_cast<uint8_t>(BridgeWebSocketOpcode::Binary),
+                                          payload,
+                                          sizeof(payload),
+                                          frame,
+                                          sizeof(frame));
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, frameBytes, 315));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(44, output.streamChunk.seq);
+  TEST_ASSERT_EQUAL_UINT32(4, output.streamChunk.payloadBytes);
+  TEST_ASSERT_NOT_NULL(output.streamChunk.payload);
+  TEST_ASSERT_EQUAL_HEX8(0x00, output.streamChunk.payload[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x7f, output.streamChunk.payload[3]);
+  TEST_ASSERT_TRUE(output.streamChunk.finalChunk);
+
+  const char* end = "{\"type\":\"audio_stream_end\",\"seq\":44,\"audio_bytes\":4,\"chunks\":1}";
+  frameBytes = encodeServerWebSocketText(end, frame, sizeof(frame));
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, frameBytes, 320));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamEnd), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().binaryFramesDecoded);
+  TEST_ASSERT_EQUAL_UINT32(2, transport.telemetry().textFramesDecoded);
+  TEST_ASSERT_EQUAL_UINT32(0, transport.telemetry().bridgeSubmitsRejected);
+}
+
+void test_bridge_websocket_rejects_masked_server_frames() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 400));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      405));
+
+  const uint8_t maskedServerFrame[] = {
+      0x81,
+      static_cast<uint8_t>(0x80 | 2),
+      0x01,
+      0x02,
+      0x03,
+      0x04,
+      static_cast<uint8_t>('h' ^ 0x01),
+      static_cast<uint8_t>('i' ^ 0x02),
+  };
+  TEST_ASSERT_FALSE(transport.submitBytes(maskedServerFrame, sizeof(maskedServerFrame), 410));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWebSocketTransportState::Error),
+                    static_cast<int>(transport.telemetry().state));
+  TEST_ASSERT_EQUAL_STRING("masked_server_websocket_frame", transport.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().frameErrors);
+  TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().inboundMessages);
+}
+
+void test_bridge_websocket_close_marks_bridge_disconnected() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 500));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      505));
+
+  uint8_t frame[160] = {};
+  size_t frameBytes = encodeServerWebSocketText("{\"type\":\"hello\",\"session\":\"before-close\"}",
+                                                frame,
+                                                sizeof(frame));
+  TEST_ASSERT_TRUE(transport.submitBytes(frame, frameBytes, 510));
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+
+  const uint8_t closeFrame[] = {0x88, 0x00};
+  TEST_ASSERT_TRUE(transport.submitBytes(closeFrame, sizeof(closeFrame), 520));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWebSocketTransportState::Closed),
+                    static_cast<int>(transport.telemetry().state));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Offline), static_cast<int>(bridge.telemetry().state));
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().closeFramesDecoded);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -2964,5 +3209,11 @@ int main() {
   RUN_TEST(test_bridge_client_times_out_active_session_once);
   RUN_TEST(test_bridge_client_timeout_aborts_audio_stream);
   RUN_TEST(test_bridge_client_accepts_serial_bridge_transcript);
+  RUN_TEST(test_bridge_websocket_builds_upgrade_request_and_accepts_response);
+  RUN_TEST(test_bridge_websocket_encodes_masked_client_text_frames);
+  RUN_TEST(test_bridge_websocket_decodes_server_text_to_bridge_client);
+  RUN_TEST(test_bridge_websocket_decodes_binary_downlink_chunks);
+  RUN_TEST(test_bridge_websocket_rejects_masked_server_frames);
+  RUN_TEST(test_bridge_websocket_close_marks_bridge_disconnected);
   return UNITY_END();
 }

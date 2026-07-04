@@ -35,6 +35,9 @@ When changing the P7 bridge service, also run `tools/run_lan_smoke.cmd`. It writ
 `output/lan-smoke/latest/LAN_SMOKE.md/json` and verifies the real local WebSocket handshake,
 deterministic text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink path, and
 visible `thinking-latency` timing without hardware.
+When changing firmware-side WebSocket framing, run `pio test -e native_logic`; the native
+suite covers upgrade request generation, masked client frames, server text/binary downlink
+decoding, and disconnect handling before the real Wi-Fi/TCP task exists.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the
