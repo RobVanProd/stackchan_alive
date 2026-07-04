@@ -98,11 +98,17 @@ def _cpp_float(value):
     text = f"{float(value):.6f}".rstrip("0").rstrip(".")
     if text in ("", "-0"):
         text = "0"
+    if "." not in text and "e" not in text.lower():
+        text = f"{text}.0"
     return f"{text}f"
 
 
 def _mapping(value):
     return value if isinstance(value, dict) else {}
+
+
+def _expression_value(spec, key, minimum, maximum, default):
+    return _clamp_float(_mapping(spec).get(key), minimum, maximum, default)
 
 
 def _earcon_tones(name, spec):
@@ -157,6 +163,7 @@ generated_dir.mkdir(parents=True, exist_ok=True)
 speech_header_path = generated_dir / "PersonaSpeechLines.hpp"
 earcon_header_path = generated_dir / "PersonaEarcons.hpp"
 behavior_header_path = generated_dir / "PersonaBehavior.hpp"
+expressions_header_path = generated_dir / "PersonaExpressions.hpp"
 
 ordered_intents = (
     "boot",
@@ -362,5 +369,131 @@ if behavior_header_path.exists() and behavior_header_path.read_text(encoding="ut
     pass
 else:
     behavior_header_path.write_text(behavior_text, encoding="utf-8")
+
+expressions = _mapping(pack.expressions)
+
+
+def _expr_pose(spec, defaults=None):
+    defaults = defaults or {}
+    return {
+        "eyeOpen": _expression_value(spec, "eye_open", 0.02, 1.20, defaults.get("eyeOpen", 0.85)),
+        "eyeSmile": _expression_value(spec, "eye_smile", 0.00, 1.00, defaults.get("eyeSmile", 0.15)),
+        "squint": _expression_value(spec, "squint", 0.00, 1.00, defaults.get("squint", 0.0)),
+        "browTilt": _expression_value(spec, "brow_tilt", -1.00, 1.00, defaults.get("browTilt", 0.0)),
+        "mouthSmile": _expression_value(spec, "mouth_smile", -1.00, 1.00, defaults.get("mouthSmile", 0.15)),
+        "mouthOpen": _expression_value(spec, "mouth_open", 0.00, 1.00, defaults.get("mouthOpen", 0.0)),
+        "pupilX": _expression_value(spec, "pupil_x", -1.00, 1.00, defaults.get("pupilX", 0.0)),
+        "pupilY": _expression_value(spec, "pupil_y", -1.00, 1.00, defaults.get("pupilY", 0.0)),
+        "pupilScale": _expression_value(spec, "pupil_scale", 0.50, 1.50, defaults.get("pupilScale", 1.0)),
+        "faceX": _expression_value(spec, "face_x", -12.00, 12.00, defaults.get("faceX", 0.0)),
+        "faceY": _expression_value(spec, "face_y", -12.00, 12.00, defaults.get("faceY", 0.0)),
+    }
+
+
+def _pose_cpp(symbol, pose):
+    fields = (
+        "eyeOpen",
+        "eyeSmile",
+        "squint",
+        "browTilt",
+        "mouthSmile",
+        "mouthOpen",
+        "pupilX",
+        "pupilY",
+        "pupilScale",
+        "faceX",
+        "faceY",
+    )
+    values = ", ".join(_cpp_float(pose[field]) for field in fields)
+    return f"static constexpr PersonaExpressionTargets {symbol} = {{{values}}};"
+
+
+neutral_pose = _expr_pose(_mapping(expressions.get("neutral")))
+expression_pose_keys = (
+    ("kNeutralExpression", "neutral", neutral_pose),
+    ("kDrowsyExpression", "drowsy", neutral_pose),
+    ("kSurpriseExpression", "surprise", neutral_pose),
+    ("kPickedUpExpression", "picked_up", neutral_pose),
+    ("kShakenExpression", "shaken", neutral_pose),
+    ("kPutDownExpression", "put_down", neutral_pose),
+    ("kTiltedExpression", "tilted", neutral_pose),
+    ("kSoundDirectionExpression", "sound_direction", neutral_pose),
+    ("kLoudNoiseExpression", "loud_noise", neutral_pose),
+)
+
+expression_parts = [
+    "#pragma once",
+    "",
+    "#include <stdint.h>",
+    "",
+    "namespace stackchan {",
+    "namespace generated_persona {",
+    "",
+    f"static constexpr const char* kExpressionsPersonaId = {_cpp_string(pack.pack_id)};",
+    "",
+    "struct PersonaExpressionTargets {",
+    "  float eyeOpen;",
+    "  float eyeSmile;",
+    "  float squint;",
+    "  float browTilt;",
+    "  float mouthSmile;",
+    "  float mouthOpen;",
+    "  float pupilX;",
+    "  float pupilY;",
+    "  float pupilScale;",
+    "  float faceX;",
+    "  float faceY;",
+    "};",
+    "",
+]
+
+for symbol, section, defaults in expression_pose_keys:
+    expression_parts.append(_pose_cpp(symbol, _expr_pose(_mapping(expressions.get(section)), defaults)))
+
+listen = _mapping(expressions.get("listen"))
+think = _mapping(expressions.get("think"))
+yawn = _mapping(expressions.get("yawn"))
+sound_direction = _mapping(expressions.get("sound_direction"))
+
+expression_parts.extend(
+    [
+        "",
+        "// Listen focus and pitch bias: attending posture without changing the mode vocabulary.",
+        "static constexpr float kListenFocus = "
+        f"{_cpp_float(_clamp_float(listen.get('focus'), 0.00, 1.00, 0.90))};",
+        "static constexpr float kListenPitchBiasDeg = "
+        f"{_cpp_float(_clamp_float(listen.get('pitch_bias_deg'), -20.00, 20.00, -4.00))};",
+        "// Think gaze/yaw bias: eyes lead the head during computing posture.",
+        "static constexpr float kThinkPupilY = "
+        f"{_cpp_float(_clamp_float(think.get('pupil_y'), -1.00, 1.00, -0.20))};",
+        "static constexpr float kThinkYawBiasDeg = "
+        f"{_cpp_float(_clamp_float(think.get('yaw_bias_deg'), -45.00, 45.00, 18.00))};",
+        "// Sound-orient yaw bias: head follow-through after eyes lead.",
+        "static constexpr float kSoundDirectionYawBiasDeg = "
+        f"{_cpp_float(_clamp_float(sound_direction.get('yaw_bias_deg'), -45.00, 45.00, 16.00))};",
+        "// Yawn deltas: fatigue peak shape layered over the current expression.",
+        f"static constexpr uint32_t kYawnDurationMs = {_clamp_int(yawn.get('duration_ms'), 200, 4000, 1200)}UL;",
+        "static constexpr float kYawnEyeOpenDelta = "
+        f"{_cpp_float(_clamp_float(yawn.get('eye_open_delta'), -1.00, 0.00, -0.24))};",
+        "static constexpr float kYawnSquintDelta = "
+        f"{_cpp_float(_clamp_float(yawn.get('squint_delta'), 0.00, 1.00, 0.22))};",
+        "static constexpr float kYawnMouthOpen = "
+        f"{_cpp_float(_clamp_float(yawn.get('mouth_open'), 0.00, 1.00, 0.55))};",
+        "static constexpr float kYawnMouthSmileDelta = "
+        f"{_cpp_float(_clamp_float(yawn.get('mouth_smile_delta'), -1.00, 0.00, -0.12))};",
+        "static constexpr float kYawnPitchBiasDeg = "
+        f"{_cpp_float(_clamp_float(yawn.get('pitch_bias_deg'), -10.00, 10.00, 0.45))};",
+        "",
+        "}  // namespace generated_persona",
+        "}  // namespace stackchan",
+        "",
+    ]
+)
+
+expressions_text = "\n".join(expression_parts)
+if expressions_header_path.exists() and expressions_header_path.read_text(encoding="utf-8") == expressions_text:
+    pass
+else:
+    expressions_header_path.write_text(expressions_text, encoding="utf-8")
 
 env.Append(CPPPATH=[str(generated_dir)])

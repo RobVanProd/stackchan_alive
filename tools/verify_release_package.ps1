@@ -586,14 +586,14 @@ foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.
     throw "docs/README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, and behavior codegen", "verify_persona_pack.cmd glow --Json")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, and expression codegen", "verify_persona_pack.cmd glow --Json")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "Speech lines, earcon params")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "Speech lines, earcon params")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
@@ -791,9 +791,37 @@ foreach ($pattern in @("FirmwareVoiceAssets.hpp", "stackchan_spark_greeting.wav"
 }
 
 $personaAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_persona_assets.py") -Raw
-foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "PersonaBehavior.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "kIdleBreathingHz", "kIdleFidgetMinMs", "kCuriosityArousalDelta", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
+foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "PersonaBehavior.hpp", "PersonaExpressions.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "kIdleBreathingHz", "kIdleFidgetMinMs", "kCuriosityArousalDelta", "kExpressionsPersonaId", "kNeutralExpression", "kYawnDurationMs", "kThinkYawBiasDeg", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
   if ($personaAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_generate_persona_assets.py missing persona speech generation logic: $pattern"
+  }
+}
+
+$expressionMapperText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/face/ExpressionMapper.cpp") -Raw
+foreach ($pattern in @("PersonaExpressions.hpp", "generated_persona::kNeutralExpression", "generated_persona::kDrowsyExpression", "generated_persona::kThinkPupilY", "blendValue")) {
+  if ($expressionMapperText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/face/ExpressionMapper.cpp missing generated expression use: $pattern"
+  }
+}
+
+$idleLifeText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/IdleLife.cpp") -Raw
+foreach ($pattern in @("PersonaExpressions.hpp", "generated_persona::kYawnDurationMs", "generated_persona::kYawnMouthOpen", "generated_persona::kYawnEyeOpenDelta", "generated_persona::kYawnMouthSmileDelta")) {
+  if ($idleLifeText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/persona/IdleLife.cpp missing generated yawn expression use: $pattern"
+  }
+}
+
+$intentEngineText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/IntentEngine.cpp") -Raw
+foreach ($pattern in @("PersonaExpressions.hpp", "generated_persona::kListenPitchBiasDeg", "generated_persona::kThinkYawBiasDeg", "generated_persona::kSoundDirectionYawBiasDeg")) {
+  if ($intentEngineText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/persona/IntentEngine.cpp missing generated expression motion bias use: $pattern"
+  }
+}
+
+$nativeLogicTestText = Get-Content -LiteralPath (Join-PackagePath "provenance/test/test_native_logic/test_main.cpp") -Raw
+foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "test_expression_mapper_uses_persona_expression_defaults")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing generated expression tests: $pattern"
   }
 }
 
@@ -895,14 +923,14 @@ if ([int]$characterRedTeamJson.summary.configured_runner_cases -ne 0) {
 }
 
 $personaPackLoaderText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
-foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened")) {
+foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms")) {
   if ($personaPackLoaderText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/persona_pack.py missing persona pack support: $pattern"
   }
 }
 
 $personaPackTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_persona_pack.py") -Raw
-foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line")) {
+foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y")) {
   if ($personaPackTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_persona_pack.py missing persona pack test coverage: $pattern"
   }

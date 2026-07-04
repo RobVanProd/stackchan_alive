@@ -4,13 +4,13 @@
 #include <math.h>
 
 #include "PersonaBehavior.hpp"
+#include "PersonaExpressions.hpp"
 
 namespace stackchan {
 
 namespace {
 constexpr float kTwoPi = 6.2831853f;
 constexpr uint32_t kMicroExpressionDurationMs = 240;
-constexpr uint32_t kYawnDurationMs = 1200;
 constexpr float kYawnFatigueThreshold = 0.62f;
 }
 
@@ -68,13 +68,13 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
 
   const float yawn = yawnPulse(nowMs, fatigue) * motionScale;
   if (yawn > 0.0f && frame.mode != CharacterMode::Speak) {
-    frame.face.mouthOpen = clampValue(max(frame.face.mouthOpen, yawn * 0.55f), 0.0f, 1.0f);
-    frame.face.eyeOpen = clampValue(frame.face.eyeOpen - yawn * 0.24f, 0.02f, 1.12f);
-    frame.face.squint = clampValue(frame.face.squint + yawn * 0.22f, 0.0f, 1.0f);
-    frame.face.mouthSmile = clampValue(frame.face.mouthSmile - yawn * 0.12f, -1.0f, 1.0f);
+    frame.face.mouthOpen = clampValue(max(frame.face.mouthOpen, yawn * generated_persona::kYawnMouthOpen), 0.0f, 1.0f);
+    frame.face.eyeOpen = clampValue(frame.face.eyeOpen + yawn * generated_persona::kYawnEyeOpenDelta, 0.02f, 1.12f);
+    frame.face.squint = clampValue(frame.face.squint + yawn * generated_persona::kYawnSquintDelta, 0.0f, 1.0f);
+    frame.face.mouthSmile = clampValue(frame.face.mouthSmile + yawn * generated_persona::kYawnMouthSmileDelta, -1.0f, 1.0f);
     frame.face.browTilt = clampValue(frame.face.browTilt - yawn * 0.08f, -1.0f, 1.0f);
     frame.face.faceY += yawn * 0.90f;
-    frame.motion.pitchDeg += yawn * 0.45f;
+    frame.motion.pitchDeg += yawn * generated_persona::kYawnPitchBiasDeg;
   }
 
   telemetry_.breathY = breathY;
@@ -128,12 +128,12 @@ float IdleLife::yawnPulse(uint32_t nowMs, float fatigue) {
   }
 
   const uint32_t elapsed = nowMs - nextYawnMs_;
-  if (elapsed >= kYawnDurationMs) {
+  if (elapsed >= generated_persona::kYawnDurationMs) {
     scheduleNextYawn(nowMs);
     return 0.0f;
   }
 
-  const float x = static_cast<float>(elapsed) / static_cast<float>(kYawnDurationMs);
+  const float x = static_cast<float>(elapsed) / static_cast<float>(generated_persona::kYawnDurationMs);
   const float fatigueScale = clampValue((fatigue - kYawnFatigueThreshold) / (1.0f - kYawnFatigueThreshold), 0.0f, 1.0f);
   return sinf(x * 3.1415927f) * fatigueScale;
 }

@@ -2,7 +2,7 @@
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
 Verified by running the suites in this workspace: **108/108 bridge Python tests pass**,
-**111/111 native firmware logic tests pass**. The status table in
+**113/113 native firmware logic tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
 ## The structural truth

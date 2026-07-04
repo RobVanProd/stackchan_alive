@@ -20,6 +20,7 @@
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "PersonaBehavior.hpp"
+#include "PersonaExpressions.hpp"
 #include "persona/AudioSaliency.hpp"
 #include "persona/CommandMap.hpp"
 #include "persona/EarconSynth.hpp"
@@ -448,6 +449,34 @@ void test_expression_mapper_sets_brow_tilt_direction() {
 
   FaceTargets focused = mapper.map(emotion, CharacterMode::Idle);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, focused.browTilt);
+}
+
+void test_persona_expression_codegen_exposes_pose_targets() {
+  TEST_ASSERT_EQUAL_STRING("spark", generated_persona::kExpressionsPersonaId);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.85f, generated_persona::kNeutralExpression.eyeOpen);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.15f, generated_persona::kNeutralExpression.eyeSmile);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.15f, generated_persona::kNeutralExpression.mouthSmile);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.58f, generated_persona::kDrowsyExpression.eyeOpen);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.20f, generated_persona::kThinkPupilY);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 18.0f, generated_persona::kThinkYawBiasDeg);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -4.0f, generated_persona::kListenPitchBiasDeg);
+  TEST_ASSERT_EQUAL_UINT32(1200, generated_persona::kYawnDurationMs);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.55f, generated_persona::kYawnMouthOpen);
+}
+
+void test_expression_mapper_uses_persona_expression_defaults() {
+  ExpressionMapper mapper;
+  EmotionalProfile emotion;
+  FaceTargets neutral = mapper.map(emotion, CharacterMode::Idle);
+
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, generated_persona::kNeutralExpression.eyeOpen, neutral.eyeOpen);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, generated_persona::kNeutralExpression.eyeSmile, neutral.eyeSmile);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, generated_persona::kNeutralExpression.mouthSmile, neutral.mouthSmile);
+
+  emotion.fatigue = 0.90f;
+  FaceTargets drowsy = mapper.map(emotion, CharacterMode::Idle);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, generated_persona::kDrowsyExpression.eyeOpen, drowsy.eyeOpen);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, generated_persona::kDrowsyExpression.faceY, drowsy.faceY);
 }
 
 void test_face_animator_outback_overshoots_then_settles() {
@@ -2836,6 +2865,8 @@ int main() {
   RUN_TEST(test_positive_valence_smiles);
   RUN_TEST(test_sleep_mode_closes_eyes_and_mouth);
   RUN_TEST(test_expression_mapper_sets_brow_tilt_direction);
+  RUN_TEST(test_persona_expression_codegen_exposes_pose_targets);
+  RUN_TEST(test_expression_mapper_uses_persona_expression_defaults);
   RUN_TEST(test_face_animator_outback_overshoots_then_settles);
   RUN_TEST(test_face_animator_smooths_channels_with_independent_timing);
   RUN_TEST(test_face_animator_uses_mode_authored_pose_keys);
