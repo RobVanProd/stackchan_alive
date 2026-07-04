@@ -30,12 +30,17 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -126,6 +131,15 @@ data class EndpointRow(
     val activeBrain: Boolean,
 )
 
+private enum class MobileSection(
+    val label: String,
+) {
+    Live("Live"),
+    Brain("Brain"),
+    Nodes("Nodes"),
+    Telemetry("Telemetry"),
+}
+
 @Composable
 fun CompanionConsole(
     targetName: String,
@@ -142,100 +156,218 @@ fun CompanionConsole(
                 val compact = maxWidth < 820.dp
                 val wideConsole = maxWidth >= 1180.dp
                 TacticalBackdrop()
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(if (compact) 12.dp else 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                ) {
-                    Header(targetName, state, compact)
-                    if (compact) {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            StagePanel(state, Modifier.fillMaxWidth(), compact = true)
-                            BrainPanel(
+                if (compact) {
+                    MobileConsole(
+                        targetName = targetName,
+                        state = state,
+                        onStartBrain = onStartBrain,
+                        onStopBrain = onStopBrain,
+                        onRestartBrain = onRestartBrain,
+                        onExportDiagnostics = onExportDiagnostics,
+                        onRunC6Rehearsal = onRunC6Rehearsal,
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        Header(targetName, state, compact = false)
+                        if (wideConsole) {
+                            WideConsole(
                                 state = state,
-                                modifier = Modifier.fillMaxWidth(),
                                 onStartBrain = onStartBrain,
                                 onStopBrain = onStopBrain,
                                 onRestartBrain = onRestartBrain,
                                 onExportDiagnostics = onExportDiagnostics,
                                 onRunC6Rehearsal = onRunC6Rehearsal,
                             )
-                            EndpointRegistry(state, Modifier.fillMaxWidth())
-                            TelemetryPanel(state, Modifier.fillMaxWidth())
-                            SecurityPanel(Modifier.fillMaxWidth())
+                        } else {
+                            TabletConsole(
+                                state = state,
+                                onStartBrain = onStartBrain,
+                                onStopBrain = onStopBrain,
+                                onRestartBrain = onRestartBrain,
+                                onExportDiagnostics = onExportDiagnostics,
+                                onRunC6Rehearsal = onRunC6Rehearsal,
+                            )
                         }
-                    } else if (wideConsole) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.weight(0.82f),
-                            ) {
-                                PersonaCorePanel(state, Modifier.fillMaxWidth())
-                                DirectivePanel(Modifier.fillMaxWidth())
-                                SecurityPanel(Modifier.fillMaxWidth())
-                            }
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.weight(1.62f),
-                            ) {
-                                StagePanel(state, Modifier.fillMaxWidth())
-                                EndpointRegistry(state, Modifier.fillMaxWidth())
-                            }
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.weight(0.96f),
-                            ) {
-                                TelemetryPanel(state, Modifier.fillMaxWidth())
-                                BrainPanel(
-                                    state = state,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onStartBrain = onStartBrain,
-                                    onStopBrain = onStopBrain,
-                                    onRestartBrain = onRestartBrain,
-                                    onExportDiagnostics = onExportDiagnostics,
-                                    onRunC6Rehearsal = onRunC6Rehearsal,
-                                )
-                            }
-                        }
-                    } else {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.weight(1.65f),
-                            ) {
-                                StagePanel(state, Modifier.fillMaxWidth())
-                                EndpointRegistry(state, Modifier.fillMaxWidth())
-                            }
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                TelemetryPanel(state, Modifier.fillMaxWidth())
-                                BrainPanel(
-                                    state = state,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onStartBrain = onStartBrain,
-                                    onStopBrain = onStopBrain,
-                                    onRestartBrain = onRestartBrain,
-                                    onExportDiagnostics = onExportDiagnostics,
-                                    onRunC6Rehearsal = onRunC6Rehearsal,
-                                )
-                                SecurityPanel(Modifier.fillMaxWidth())
-                            }
-                        }
+                        Footer()
                     }
-                    Footer()
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MobileConsole(
+    targetName: String,
+    state: CompanionUiState,
+    onStartBrain: () -> Unit,
+    onStopBrain: () -> Unit,
+    onRestartBrain: () -> Unit,
+    onExportDiagnostics: () -> Unit,
+    onRunC6Rehearsal: () -> Unit,
+) {
+    var selectedSection by remember { mutableStateOf(MobileSection.Live) }
+    Column(
+        modifier = Modifier.fillMaxSize().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Header(targetName, state, compact = true)
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when (selectedSection) {
+                MobileSection.Live -> {
+                    StagePanel(state, Modifier.fillMaxWidth(), compact = true)
+                    SecurityPanel(Modifier.fillMaxWidth())
+                }
+                MobileSection.Brain -> BrainPanel(
+                    state = state,
+                    modifier = Modifier.fillMaxWidth(),
+                    onStartBrain = onStartBrain,
+                    onStopBrain = onStopBrain,
+                    onRestartBrain = onRestartBrain,
+                    onExportDiagnostics = onExportDiagnostics,
+                    onRunC6Rehearsal = onRunC6Rehearsal,
+                )
+                MobileSection.Nodes -> EndpointRegistry(state, Modifier.fillMaxWidth(), showTabs = false)
+                MobileSection.Telemetry -> TelemetryPanel(state, Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+        MobileNav(selectedSection = selectedSection, onSelected = { selectedSection = it })
+    }
+}
+
+@Composable
+private fun WideConsole(
+    state: CompanionUiState,
+    onStartBrain: () -> Unit,
+    onStopBrain: () -> Unit,
+    onRestartBrain: () -> Unit,
+    onExportDiagnostics: () -> Unit,
+    onRunC6Rehearsal: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.weight(0.82f),
+        ) {
+            PersonaCorePanel(state, Modifier.fillMaxWidth())
+            DirectivePanel(Modifier.fillMaxWidth())
+            SecurityPanel(Modifier.fillMaxWidth())
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.weight(1.62f),
+        ) {
+            StagePanel(state, Modifier.fillMaxWidth())
+            EndpointRegistry(state, Modifier.fillMaxWidth())
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.weight(0.96f),
+        ) {
+            TelemetryPanel(state, Modifier.fillMaxWidth())
+            BrainPanel(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                onStartBrain = onStartBrain,
+                onStopBrain = onStopBrain,
+                onRestartBrain = onRestartBrain,
+                onExportDiagnostics = onExportDiagnostics,
+                onRunC6Rehearsal = onRunC6Rehearsal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabletConsole(
+    state: CompanionUiState,
+    onStartBrain: () -> Unit,
+    onStopBrain: () -> Unit,
+    onRestartBrain: () -> Unit,
+    onExportDiagnostics: () -> Unit,
+    onRunC6Rehearsal: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.weight(1.65f),
+        ) {
+            StagePanel(state, Modifier.fillMaxWidth())
+            EndpointRegistry(state, Modifier.fillMaxWidth())
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            TelemetryPanel(state, Modifier.fillMaxWidth())
+            BrainPanel(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                onStartBrain = onStartBrain,
+                onStopBrain = onStopBrain,
+                onRestartBrain = onRestartBrain,
+                onExportDiagnostics = onExportDiagnostics,
+                onRunC6Rehearsal = onRunC6Rehearsal,
+            )
+            SecurityPanel(Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun MobileNav(selectedSection: MobileSection, onSelected: (MobileSection) -> Unit) {
+    Surface(
+        color = Panel,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MobileSection.entries.forEach { section ->
+                MobileNavItem(
+                    text = section.label,
+                    selected = section == selectedSection,
+                    onClick = { onSelected(section) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MobileNavItem(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = ButtonDefaults.buttonColors(
+        containerColor = if (selected) Cyan else PanelAlt,
+        contentColor = if (selected) Color(0xFF061018) else Ink,
+    )
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        colors = colors,
+        modifier = modifier.height(44.dp),
+        contentPadding = ButtonDefaults.ContentPadding,
+    ) {
+        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -388,10 +520,12 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boo
 }
 
 @Composable
-private fun EndpointRegistry(state: CompanionUiState, modifier: Modifier) {
+private fun EndpointRegistry(state: CompanionUiState, modifier: Modifier, showTabs: Boolean = true) {
     PanelShell(modifier = modifier) {
-        Tabs()
-        Spacer(Modifier.height(14.dp))
+        if (showTabs) {
+            Tabs()
+            Spacer(Modifier.height(14.dp))
+        }
         Text("Trusted Companion Registry", color = Ink, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(
             "Only paired endpoints can own the conversational brain or issue settings updates.",
@@ -807,25 +941,87 @@ private fun RobotPreview(modifier: Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val body = Size(w * 0.58f, h * 0.56f)
-        val bodyLeft = (w - body.width) / 2f
-        val bodyTop = h * 0.2f
-        val stroke = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+        val screen = Size(w * 0.90f, h * 0.82f)
+        val left = (w - screen.width) * 0.5f
+        val top = h * 0.08f
+        val scaleX = screen.width / 320f
+        val scaleY = screen.height / 240f
+        fun sx(value: Float) = left + value * scaleX
+        fun sy(value: Float) = top + value * scaleY
 
-        drawOval(Color(0x22000000), topLeft = Offset(w * 0.34f, h * 0.78f), size = Size(w * 0.32f, h * 0.08f))
-        drawRoundRect(Color(0xFF111827), topLeft = Offset(bodyLeft, bodyTop), size = body, cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()))
-        drawRoundRect(Amber, topLeft = Offset(bodyLeft, bodyTop), size = body, cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), style = stroke)
-        drawRoundRect(Amber, topLeft = Offset(bodyLeft - 18.dp.toPx(), bodyTop + body.height * 0.34f), size = Size(14.dp.toPx(), body.height * 0.28f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
-        drawRoundRect(Amber, topLeft = Offset(bodyLeft + body.width + 4.dp.toPx(), bodyTop + body.height * 0.34f), size = Size(14.dp.toPx(), body.height * 0.28f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
-        drawOval(Cyan, topLeft = Offset(bodyLeft + body.width * 0.22f, bodyTop + body.height * 0.30f), size = Size(16.dp.toPx(), 24.dp.toPx()))
-        drawOval(Cyan, topLeft = Offset(bodyLeft + body.width * 0.68f, bodyTop + body.height * 0.30f), size = Size(16.dp.toPx(), 24.dp.toPx()))
-        drawRoundRect(Cyan, topLeft = Offset(bodyLeft + body.width * 0.45f, bodyTop + body.height * 0.68f), size = Size(body.width * 0.10f, 4.dp.toPx()), cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
-        drawLine(Color(0xFF1F2937), Offset(w * 0.5f, bodyTop + body.height + 8.dp.toPx()), Offset(w * 0.5f, bodyTop + body.height + 28.dp.toPx()), strokeWidth = 8.dp.toPx(), cap = StrokeCap.Round)
-        drawRoundRect(Color(0xFF1F2937), topLeft = Offset(w * 0.43f, bodyTop + body.height + 28.dp.toPx()), size = Size(w * 0.14f, 10.dp.toPx()), cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()))
+        drawRoundRect(
+            color = Color(0xFF071013),
+            topLeft = Offset(left, top),
+            size = screen,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()),
+        )
+        drawRoundRect(
+            color = Color(0xFF61E4D7),
+            topLeft = Offset(left, top),
+            size = screen,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()),
+            style = Stroke(width = 1.4.dp.toPx()),
+        )
+
+        var scanY = top + 12.dp.toPx()
+        while (scanY < top + screen.height - 12.dp.toPx()) {
+            drawLine(
+                color = Color(0x163D91A3),
+                start = Offset(left + 12.dp.toPx(), scanY),
+                end = Offset(left + screen.width - 12.dp.toPx(), scanY),
+                strokeWidth = 1.dp.toPx(),
+            )
+            scanY += 9.dp.toPx()
+        }
+
+        fun eye(cx: Float, cy: Float, browTilt: Float) {
+            val eyeW = 66f * scaleX
+            val eyeH = 50f * scaleY
+            val eyeLeft = sx(cx) - eyeW * 0.5f
+            val eyeTop = sy(cy) - eyeH * 0.5f
+            drawRoundRect(
+                color = Color(0xFFF7FBFF),
+                topLeft = Offset(eyeLeft, eyeTop),
+                size = Size(eyeW, eyeH),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(eyeH * 0.48f),
+            )
+            drawOval(
+                color = Color(0xFF111827),
+                topLeft = Offset(sx(cx) - eyeW * 0.07f, sy(cy) - eyeH * 0.17f),
+                size = Size(eyeW * 0.14f, eyeH * 0.34f),
+            )
+            drawCircle(
+                color = Color(0xFFF7FBFF),
+                radius = eyeW * 0.025f,
+                center = Offset(sx(cx) - eyeW * 0.08f, sy(cy) - eyeH * 0.16f),
+            )
+            val browY = sy(cy - 42f)
+            val browHalf = eyeW * 0.28f
+            drawLine(
+                color = Color(0xFFF7FBFF),
+                start = Offset(sx(cx) - browHalf, browY + browTilt * 7f * scaleY),
+                end = Offset(sx(cx) + browHalf, browY - browTilt * 7f * scaleY),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+        }
+
+        eye(104f, 104f, -0.25f)
+        eye(216f, 104f, 0.25f)
+
+        val mouth = Path().apply {
+            moveTo(sx(122f), sy(166f))
+            quadraticTo(sx(160f), sy(184f), sx(198f), sy(166f))
+        }
+        drawPath(
+            path = mouth,
+            color = Color(0xFFFF6B8A),
+            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round),
+        )
         drawLine(
-            color = Color(0xFF2B3650),
-            start = Offset(bodyLeft + 18.dp.toPx(), bodyTop + body.height * 0.16f),
-            end = Offset(bodyLeft + body.width - 18.dp.toPx(), bodyTop + body.height * 0.16f),
+            color = Color(0xFF61E4D7),
+            start = Offset(sx(108f), sy(212f)),
+            end = Offset(sx(212f), sy(212f)),
             strokeWidth = 1.dp.toPx(),
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f)),
         )
