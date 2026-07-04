@@ -27,16 +27,23 @@ enum class BridgeSocketWriterDrainResult : uint8_t {
 struct BridgeSocketWriterTelemetry {
   bool ready = false;
   bool frameBuffered = false;
+  bool textFrameQueued = false;
   bool binaryFrameQueued = false;
   uint32_t drainAttempts = 0;
   uint32_t framesEncoded = 0;
   uint32_t framesWritten = 0;
+  uint32_t textFramesQueued = 0;
+  uint32_t textFramesDropped = 0;
+  uint32_t textFramesEncoded = 0;
+  uint32_t textFramesWritten = 0;
   uint32_t binaryFramesQueued = 0;
   uint32_t binaryFramesDropped = 0;
   uint32_t binaryFramesEncoded = 0;
   uint32_t binaryFramesWritten = 0;
   uint32_t partialWrites = 0;
   uint32_t writeFailures = 0;
+  uint32_t textBytesQueued = 0;
+  uint32_t textBytesWritten = 0;
   uint32_t binaryBytesQueued = 0;
   uint32_t binaryBytesWritten = 0;
   uint32_t bytesWritten = 0;
@@ -57,6 +64,7 @@ class BridgeSocketWriter {
   bool begin(BridgeWebSocketTransport& transport, BridgeSocketWriterSink& sink, uint32_t maskSeed = 0x51ac5eedu);
   void reset();
 
+  bool queueTextFrame(const char* payload);
   bool queueBinaryFrame(const uint8_t* payload, size_t length);
   BridgeSocketWriterDrainResult drainPendingFrame(uint32_t nowMs);
   BridgeSocketWriterDrainResult drainPendingTextResponse(uint32_t nowMs);
@@ -69,6 +77,7 @@ class BridgeSocketWriter {
   enum class PendingFrameKind : uint8_t {
     None,
     TextResponse,
+    QueuedText,
     BinaryUpload,
   };
 
@@ -84,10 +93,12 @@ class BridgeSocketWriter {
   BridgeSocketWriterTelemetry telemetry_;
   uint32_t maskState_ = 0x51ac5eedu;
   uint8_t frame_[kBridgeSocketWriterFrameMax] = {};
+  char textPayload_[kBridgeEndpointControlResponseMax] = {};
   uint8_t binaryPayload_[kBridgeWebSocketFramePayloadMax] = {};
   size_t frameBytes_ = 0;
   size_t frameOffset_ = 0;
   size_t framePayloadBytes_ = 0;
+  size_t textPayloadBytes_ = 0;
   size_t binaryPayloadBytes_ = 0;
   PendingFrameKind frameKind_ = PendingFrameKind::None;
 };

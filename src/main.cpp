@@ -735,8 +735,14 @@ void printRuntimeStatus() {
   Serial.print(network.bytesWritten);
   Serial.print(F(" bridge_network_writer_frames="));
   Serial.print(network.writerFrames);
+  Serial.print(F(" bridge_network_writer_text_frames="));
+  Serial.print(network.writerTextFrames);
   Serial.print(F(" bridge_network_writer_binary_frames="));
   Serial.print(network.writerBinaryFrames);
+  Serial.print(F(" bridge_network_text_queued="));
+  Serial.print(gBridgeNetworkSession.writer().telemetry().textFramesQueued);
+  Serial.print(F(" bridge_network_text_dropped="));
+  Serial.print(gBridgeNetworkSession.writer().telemetry().textFramesDropped);
   Serial.print(F(" bridge_network_binary_queued="));
   Serial.print(gBridgeNetworkSession.writer().telemetry().binaryFramesQueued);
   Serial.print(F(" bridge_network_binary_dropped="));
