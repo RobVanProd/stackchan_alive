@@ -34,9 +34,9 @@ current v1 companion branch.
   `hello` handshake first. Android also exposes the intermediate "robot socket detected,
   waiting for hello" state in setup, notification detail, and diagnostics export. Android now
   shows a phone-side pairing ticket with pairing code, fingerprint, bridge URL, discovery
-  mode, and saved-robot add/remove state after a robot `hello`. Full QR/short-code
-  robot-side trust establishment and hardware proof still remain blocking before public
-  distribution.
+  mode, a current next step, and saved-robot add/remove guidance after a robot `hello`.
+  Full QR/short-code robot-side trust establishment and hardware proof still remain
+  blocking before public distribution.
 - G6 first-run Wi-Fi provisioning is still open. Current setup assumes the robot can
   already reach the phone or desktop bridge.
 - G7 Play submission remains pending on upload signing, developer verification, privacy

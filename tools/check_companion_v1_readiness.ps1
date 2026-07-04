@@ -246,7 +246,7 @@ Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "owner_status", "Removing a stored trusted companion endpoint", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
@@ -258,7 +258,7 @@ Test-TextEvidence `
   -Id "android-pairing-walkthrough" `
   -Name "Android guided robot pairing walkthrough" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
-  -Patterns @("pairingShortCode", "pairingFingerprint", "pairingInstruction", "SavedRobot", "rememberRobot", "onForgetRobot")
+  -Patterns @("pairingShortCode", "pairingFingerprint", "pairingInstruction", "nextActionTitle", "nextActionDetail", "removalGuidance", "SavedRobot", "rememberRobot", "onForgetRobot")
 
 Test-TextEvidence `
   -Id "android-saved-robot-store" `
@@ -276,7 +276,7 @@ Test-TextEvidence `
   -Id "shared-saved-robot-ui" `
   -Name "Shared Nodes UI exposes saved robot removal" `
   -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
-  -Patterns @("savedRobotCount", "onForgetRobot", "Saved robots", "Forget")
+  -Patterns @("savedRobotCount", "onForgetRobot", "Saved robots", "Forget", "nextActionTitle", "removalGuidance")
 
 Test-TextEvidence `
   -Id "shared-g3-control-surfaces" `

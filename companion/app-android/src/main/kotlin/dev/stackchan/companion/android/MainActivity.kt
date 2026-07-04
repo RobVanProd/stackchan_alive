@@ -505,6 +505,27 @@ private fun androidRobotSetup(
         serviceRunning -> "Bridge is ready. Connect Stack-chan to this phone's bridge URL."
         else -> "Start the phone bridge so Stack-chan can discover this app."
     }
+    val nextActionTitle = when {
+        bridgeStatus.robotConnected -> "Ready to test"
+        bridgeStatus.robotSocketConnected -> "Confirm the robot hello"
+        serviceRunning -> "Pair on Stack-chan"
+        else -> "Start this phone bridge"
+    }
+    val nextActionDetail = when {
+        bridgeStatus.robotConnected ->
+            "Open Talk for a short text turn, then keep this robot saved or use Forget below before pairing a replacement."
+        bridgeStatus.robotSocketConnected ->
+            "Compare the code and fingerprint shown here with Stack-chan, then wait for firmware to send hello."
+        serviceRunning ->
+            "On Stack-chan, open companion pairing, choose this phone, and enter ${bridgeStatus.primaryBridgeUrl} plus code $pairingShortCode."
+        else ->
+            "Tap Start bridge so the phone advertises mDNS, UDP beacon, and this manual bridge URL."
+    }
+    val removalGuidance = if (savedRobotCount > 0 || trustedCompanionCount > 0) {
+        "Use Forget on saved robot rows to remove phone-side robot records. Use Remove on companion rows to revoke old phones, PCs, or test nodes."
+    } else {
+        "After first pairing, saved robot and trusted companion rows appear here with Forget or Remove actions."
+    }
     return RobotSetupUiState(
         setupTitle = when {
             bridgeStatus.robotConnected -> "Stack-chan ready"
@@ -512,6 +533,8 @@ private fun androidRobotSetup(
             else -> "Add your Stack-chan"
         },
         setupStatus = setupStatus,
+        nextActionTitle = nextActionTitle,
+        nextActionDetail = nextActionDetail,
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
         pairingShortCode = pairingShortCode,
@@ -522,6 +545,7 @@ private fun androidRobotSetup(
         robotConnected = bridgeStatus.robotConnected,
         robotName = bridgeStatus.robotDisplayName,
         robotFingerprint = bridgeStatus.robotFingerprint,
+        removalGuidance = removalGuidance,
         trustedCompanionCount = trustedCompanionCount,
         savedRobotCount = savedRobotCount,
         steps = listOf(

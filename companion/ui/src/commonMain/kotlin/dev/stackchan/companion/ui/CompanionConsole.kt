@@ -115,6 +115,8 @@ data class ConversationMessage(
 data class RobotSetupUiState(
     val setupTitle: String = "Add your Stack-chan",
     val setupStatus: String = "Start the phone bridge, then connect Stack-chan on the same Wi-Fi.",
+    val nextActionTitle: String = "Next step",
+    val nextActionDetail: String = "Start the bridge, then enter the phone bridge URL on Stack-chan.",
     val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
     val otherBridgeUrls: List<String> = emptyList(),
     val pairingShortCode: String = "------",
@@ -125,6 +127,7 @@ data class RobotSetupUiState(
     val robotConnected: Boolean = false,
     val robotName: String = "Awaiting Stack-chan robot",
     val robotFingerprint: String = "No robot hello yet",
+    val removalGuidance: String = "Saved robots and trusted companion nodes can be removed from the rows below.",
     val trustedCompanionCount: Int = 0,
     val savedRobotCount: Int = 0,
     val steps: List<RobotSetupStepUiState> = listOf(
@@ -850,6 +853,9 @@ private fun RobotSetupCard(
             }
 
             if (expanded) {
+                Text(setup.nextActionTitle, color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(setup.nextActionDetail, color = Ink, fontSize = 12.sp, lineHeight = 17.sp)
+                HorizontalDivider(color = Line)
                 Readout("Robot", setup.robotName, if (setup.robotConnected) Mint else Amber)
                 Readout("Robot fingerprint", setup.robotFingerprint, if (setup.robotConnected) Cyan else Muted)
                 Readout("Phone bridge URL", setup.primaryBridgeUrl, Cyan)
@@ -882,6 +888,12 @@ private fun RobotSetupCard(
                     color = Muted,
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
+                )
+                Text(
+                    setup.removalGuidance,
+                    color = Muted,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     SmallCommand("Restart discovery", filled = true, onClick = onRestartBridge)

@@ -127,10 +127,12 @@ Evidence to capture:
 ## Robot Session
 
 - [ ] The **Add your Stack-chan** setup card shows the live phone bridge URL and the three setup states: Start phone bridge, Connect Stack-chan, and Confirm robot ready.
+- [ ] The setup card shows one current next step: Start this phone bridge, Pair on Stack-chan, Confirm the robot hello, or Ready to test.
 - [ ] The setup card shows a pairing code, phone fingerprint, discovery mode, and plain-language instruction for entering the bridge URL plus pairing code on Stack-chan.
 - [ ] The disconnected robot row shows a waiting/setup action rather than an unavailable handoff action.
 - [ ] The setup card shows how many saved robots and trusted companion nodes are stored before the operator removes or keeps old devices.
 - [ ] After a robot hello, the robot is saved on the phone and appears as a removable robot row; forgetting it removes the phone-side saved robot record without pretending to perform robot-side unpair.
+- [ ] Forget removes saved robot rows from this phone only; Remove revokes old companion phone/PC/test-node rows from the trusted companion registry.
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
 - [ ] A raw WebSocket connection without the robot `hello` handshake changes the setup card to `Finish Stack-chan pairing` / waiting for robot hello, but does not mark setup complete, does not enable Talk, and does not promote the Android session wake lock.
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, heartbeat status, active brain owner, and foreground service state.

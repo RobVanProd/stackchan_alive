@@ -283,6 +283,8 @@ Minimum screens:
 - Devices: discovered robots and endpoints, active brain owner, connect/disconnect, forget
   device.
 - Pairing: QR/short-code/manual IP flow, trust fingerprint confirmation.
+- Pairing setup must always show the current next step and distinguish phone-side saved
+  robot Forget from trusted companion Remove, so replacing a Stack-chan is explicit.
 - Brain: PC Brain Mode vs Mobile Brain Mode, active owner, model profile, runner status,
   handoff button.
 - Persona: active persona pack, installed packs, validation result, creator instructions link.
