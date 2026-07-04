@@ -290,6 +290,12 @@ Minimum screens:
 - Settings: display, motion-safe controls, bridge policy, privacy/memory reset.
 - Diagnostics: logs, heartbeat state, audio stream counters, model latency, export evidence.
 
+Before write controls are enabled, Android and desktop must still show readable settings,
+diagnostics, persona, and handoff status panels from the current settings repository,
+diagnostics snapshot, and live bridge state. Controls that perform `settings_set`, persona
+switching, or `claim_brain` / `release_brain` must remain locked until the app has robot
+round-trip evidence for those writes.
+
 Android service boundaries:
 
 - Foreground bridge service: maintains WebSocket connection and heartbeats when the phone is

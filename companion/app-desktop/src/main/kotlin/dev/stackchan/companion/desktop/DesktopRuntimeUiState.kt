@@ -2,15 +2,20 @@ package dev.stackchan.companion.desktop
 
 import dev.stackchan.companion.core.DiagnosticsSnapshot
 import dev.stackchan.companion.core.EndpointSessionSnapshot
+import dev.stackchan.companion.core.SettingsSnapshot
+import dev.stackchan.companion.ui.BrainHandoffUiState
 import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.C6RehearsalUiState
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.ConversationMessage
 import dev.stackchan.companion.ui.ConversationUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
+import dev.stackchan.companion.ui.DiagnosticsSurfaceUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.RobotSetupUiState
+import dev.stackchan.companion.ui.SettingsSurfaceUiState
 import dev.stackchan.companion.ui.TelemetryReading
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -20,7 +25,8 @@ suspend fun DesktopCompanionRuntime.toCompanionUiState(): CompanionUiState {
     val runtime = snapshot()
     val session = sessionSnapshot()
     val diagnostics = diagnosticsSnapshot(domains = listOf("bridge", "audio", "model", "firmware", "battery"))
-    return session.toCompanionUiState(runtime, diagnostics)
+    val settings = settingsSnapshot()
+    return session.toCompanionUiState(runtime, diagnostics, settings)
 }
 
 fun desktopStartingUiState(): CompanionUiState =
@@ -36,6 +42,7 @@ fun desktopStartingUiState(): CompanionUiState =
 private fun EndpointSessionSnapshot.toCompanionUiState(
     runtime: DesktopCompanionRuntimeSnapshot,
     diagnostics: DiagnosticsSnapshot,
+    settings: SettingsSnapshot,
 ): CompanionUiState {
     val robotReady = connected && robotHelloReceived
     val connection = if (robotReady) {
@@ -78,6 +85,9 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         audioStatus = diagnostics.audio?.stringValue("engine") ?: "offline",
         consoleMessage = consoleMessage(owner, runtime),
         brainService = runtime.brainSupervisor.toBrainServiceUiState(),
+        settingsSurface = settings.toSettingsSurface(),
+        diagnosticsSurface = diagnostics.toDiagnosticsSurface(),
+        handoffSurface = toHandoffSurface(owner, diagnostics),
         robotSetup = RobotSetupUiState(
             primaryBridgeUrl = "ws://${runtime.host}:${runtime.port}/bridge",
             serviceRunning = runtime.brainSupervisor.running || runtime.mdnsAdvertised,
@@ -91,6 +101,49 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         endpoints = listOf(robotEndpoint, desktopEndpoint),
     )
 }
+
+private fun SettingsSnapshot.toSettingsSurface(): SettingsSurfaceUiState =
+    SettingsSurfaceUiState(
+        version = version,
+        activePersona = settings.stringValue("persona", "active", "spark"),
+        voiceProfile = settings.stringValue("voice", "profile", "review_synth"),
+        voiceVolume = settings.stringValue("voice", "volume", "70"),
+        displayBrightness = settings.stringValue("display", "brightness", "80"),
+        displayReducedMotion = settings.booleanValue("display", "reduced_motion"),
+        motionReduced = settings.booleanValue("motion", "reduced_motion"),
+        rawAudioRetention = settings.stringValue("privacy", "raw_audio_retention", "none"),
+        modelProfile = settings.stringValue("model", "profile", "fake"),
+        modelStatus = settings.stringValue("model", "runner_status", "deterministic_fake"),
+        writeStatus = "Settings are visible here. Writes stay locked until GUI settings_set evidence is captured.",
+        writesEnabled = false,
+    )
+
+private fun DiagnosticsSnapshot.toDiagnosticsSurface(): DiagnosticsSurfaceUiState =
+    DiagnosticsSurfaceUiState(
+        protocol = bridge.stringValue("protocol"),
+        settingsVersion = bridge.stringValue("settings_version").takeIf { it.isNotBlank() }?.let { "v$it" }.orEmpty(),
+        trustedEndpointCount = bridge.stringValue("trusted_endpoint_count"),
+        audioEngine = audio?.stringValue("engine").orEmpty(),
+        audioSampleRate = audio?.stringValue("output_sample_rate")?.takeIf { it.isNotBlank() }?.let { "${it}Hz out" }.orEmpty(),
+        modelProfile = model?.stringValue("profile").orEmpty(),
+        modelStatus = model?.stringValue("runner_status").orEmpty(),
+        firmwareTarget = firmware?.stringValue("target").orEmpty(),
+        batterySource = battery?.stringValue("source").orEmpty(),
+    )
+
+private fun EndpointSessionSnapshot.toHandoffSurface(owner: String, diagnostics: DiagnosticsSnapshot): BrainHandoffUiState =
+    BrainHandoffUiState(
+        owner = owner,
+        ownerKind = diagnostics.bridge.stringValue("owner_kind").ifBlank { "none" },
+        state = diagnostics.bridge.stringValue("owner_state").ifBlank { if (owner == "None") "idle" else "active" },
+        claimEnabled = false,
+        releaseEnabled = false,
+        status = if (robotHelloReceived) {
+            "Robot is connected. Manual claim/release stays locked until GUI owner round-trip evidence is captured."
+        } else {
+            "Connect Stack-chan before brain handoff can be tested."
+        },
+    )
 
 private fun EndpointSessionSnapshot.toConversationUiState(): ConversationUiState =
     ConversationUiState(
@@ -233,3 +286,18 @@ private fun JsonObject.stringValue(key: String): String =
         runCatching { element.jsonPrimitive.contentOrNull }.getOrNull()
             ?: runCatching { element.jsonObject.toString() }.getOrDefault("")
     }.orEmpty()
+
+private fun JsonObject.stringValue(domain: String, key: String, fallback: String): String =
+    this[domain]
+        ?.jsonObjectOrNull()
+        ?.get(key)
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.takeIf { it.isNotBlank() }
+        ?: fallback
+
+private fun JsonObject.booleanValue(domain: String, key: String): Boolean =
+    stringValue(domain, key, "false").toBooleanStrictOrNull() ?: false
+
+private fun JsonElement.jsonObjectOrNull(): JsonObject? =
+    runCatching { jsonObject }.getOrNull()

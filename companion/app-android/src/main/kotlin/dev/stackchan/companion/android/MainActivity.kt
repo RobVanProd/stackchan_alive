@@ -21,20 +21,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.stackchan.companion.core.EndpointHello
+import dev.stackchan.companion.core.CompanionIdentity
+import dev.stackchan.companion.core.SettingsRepository
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import dev.stackchan.companion.ui.BrainServiceUiState
+import dev.stackchan.companion.ui.BrainHandoffUiState
 import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.ConversationMessage
 import dev.stackchan.companion.ui.ConversationUiState
+import dev.stackchan.companion.ui.DiagnosticsSurfaceUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
+import dev.stackchan.companion.ui.SettingsSurfaceUiState
 import dev.stackchan.companion.ui.TelemetryReading
 import java.security.MessageDigest
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -56,6 +65,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionOrStartBridge()
         val stores = AndroidBridgeStores(this)
         val endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId())
+        val settingsRepository = stores.loadSettings()
         val manualBridgeUrls = localBridgeManualUrls()
         AndroidBridgeRuntimeStatusStore.setManualBridgeUrls(manualBridgeUrls)
         setContent {
@@ -127,6 +137,7 @@ class MainActivity : ComponentActivity() {
                 targetName = "Android",
                 state = androidCompanionUiState(
                     endpointHello = endpointHello,
+                    settingsRepository = settingsRepository,
                     trustedEndpoints = trustedEndpoints,
                     savedRobots = savedRobots,
                     bridgeStatus = bridgeStatus,
@@ -311,6 +322,7 @@ class MainActivity : ComponentActivity() {
 
 internal fun androidCompanionUiState(
     endpointHello: EndpointHello,
+    settingsRepository: SettingsRepository = SettingsRepository(),
     trustedEndpoints: List<TrustedEndpoint>,
     savedRobots: List<SavedRobot> = emptyList(),
     bridgeStatus: AndroidBridgeRuntimeStatus,
@@ -318,12 +330,13 @@ internal fun androidCompanionUiState(
     diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     pushToTalkAvailable: Boolean = false,
     pushToTalkStatus: String = "",
-): CompanionUiState =
-    CompanionUiState(
+): CompanionUiState {
+    val settingsSurface = androidSettingsSurface(settingsRepository)
+    return CompanionUiState(
         connection = bridgeStatus.connectionLabel,
         brainOwner = bridgeStatus.activeBrainOwner.ifBlank { "None" },
         heartbeatMs = if (bridgeStatus.robotConnected) 8 else 0,
-        activePersona = "Android bridge",
+        activePersona = settingsSurface.activePersona,
         robotState = bridgeStatus.robotState,
         servoArmed = false,
         telemetry = androidTelemetryReadings(bridgeStatus),
@@ -341,6 +354,9 @@ internal fun androidCompanionUiState(
             command = "CompanionBridgeService",
             recentLogs = androidRecentLogs(endpointHello, trustedEndpoints, bridgeStatus),
         ),
+        settingsSurface = settingsSurface,
+        diagnosticsSurface = androidDiagnosticsSurface(settingsRepository, trustedEndpoints, bridgeStatus),
+        handoffSurface = androidHandoffSurface(endpointHello, trustedEndpoints, bridgeStatus),
         robotSetup = androidRobotSetup(
             endpointHello = endpointHello,
             bridgeStatus = bridgeStatus,
@@ -357,6 +373,67 @@ internal fun androidCompanionUiState(
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, savedRobots, bridgeStatus),
     )
+}
+
+private fun androidSettingsSurface(settingsRepository: SettingsRepository): SettingsSurfaceUiState {
+    val snapshot = settingsRepository.snapshot()
+    val settings = snapshot.settings
+    return SettingsSurfaceUiState(
+        version = snapshot.version,
+        activePersona = settings.stringValue("persona", "active", "spark"),
+        voiceProfile = settings.stringValue("voice", "profile", "review_synth"),
+        voiceVolume = settings.stringValue("voice", "volume", "70"),
+        displayBrightness = settings.stringValue("display", "brightness", "80"),
+        displayReducedMotion = settings.booleanValue("display", "reduced_motion"),
+        motionReduced = settings.booleanValue("motion", "reduced_motion"),
+        rawAudioRetention = settings.stringValue("privacy", "raw_audio_retention", "none"),
+        modelProfile = settings.stringValue("model", "profile", "fake"),
+        modelStatus = settings.stringValue("model", "runner_status", "deterministic_fake"),
+        writeStatus = "Settings are visible here. Writes stay locked until robot settings_set round-trip evidence exists.",
+        writesEnabled = false,
+    )
+}
+
+private fun androidDiagnosticsSurface(
+    settingsRepository: SettingsRepository,
+    trustedEndpoints: List<TrustedEndpoint>,
+    bridgeStatus: AndroidBridgeRuntimeStatus,
+): DiagnosticsSurfaceUiState {
+    val snapshot = settingsRepository.snapshot()
+    return DiagnosticsSurfaceUiState(
+        protocol = CompanionIdentity.protocol,
+        settingsVersion = "v${snapshot.version}",
+        trustedEndpointCount = trustedEndpoints.size.toString(),
+        audioEngine = if (bridgeStatus.robotConnected) "bridge" else "waiting",
+        audioSampleRate = if (bridgeStatus.robotConnected) "24000Hz out" else "n/a",
+        modelProfile = snapshot.settings.stringValue("model", "profile", "fake"),
+        modelStatus = snapshot.settings.stringValue("model", "runner_status", "deterministic_fake"),
+        firmwareTarget = bridgeStatus.robotFingerprint,
+        batterySource = "phone foreground service",
+    )
+}
+
+private fun androidHandoffSurface(
+    endpointHello: EndpointHello,
+    trustedEndpoints: List<TrustedEndpoint>,
+    bridgeStatus: AndroidBridgeRuntimeStatus,
+): BrainHandoffUiState {
+    val owner = bridgeStatus.activeBrainOwner.ifBlank { "None" }
+    val ownerKind = trustedEndpoints.firstOrNull { it.endpointId == bridgeStatus.activeBrainOwner }?.endpointKind
+        ?: if (bridgeStatus.activeBrainOwner == endpointHello.endpointId) endpointHello.endpointKind else "none"
+    return BrainHandoffUiState(
+        owner = owner,
+        ownerKind = ownerKind,
+        state = if (bridgeStatus.activeBrainOwner.isBlank()) "idle" else "active",
+        claimEnabled = false,
+        releaseEnabled = false,
+        status = if (bridgeStatus.robotConnected) {
+            "Robot is connected. Manual claim/release stays locked until owner_status round-trip evidence is captured."
+        } else {
+            "Connect Stack-chan before brain handoff can be tested."
+        },
+    )
+}
 
 private fun androidConversationUiState(
     bridgeStatus: AndroidBridgeRuntimeStatus,
@@ -582,3 +659,15 @@ private fun sha256Hex(value: String): String =
     MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
+
+private fun JsonObject.stringValue(domain: String, key: String, fallback: String): String =
+    this[domain]
+        ?.jsonObject
+        ?.get(key)
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.takeIf { it.isNotBlank() }
+        ?: fallback
+
+private fun JsonObject.booleanValue(domain: String, key: String): Boolean =
+    stringValue(domain, key, "false").toBooleanStrictOrNull() ?: false

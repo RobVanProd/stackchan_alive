@@ -11,6 +11,8 @@ import dev.stackchan.companion.core.EndpointServerConfig
 import dev.stackchan.companion.core.JmDnsDiscovery
 import dev.stackchan.companion.core.RegisteredService
 import dev.stackchan.companion.core.SettingsRepositoryFileStore
+import dev.stackchan.companion.core.SettingsGet
+import dev.stackchan.companion.core.SettingsSnapshot
 import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.TrustedEndpointFileStore
 import dev.stackchan.companion.core.defaultDesktopEndpointHello
@@ -137,6 +139,10 @@ class DesktopCompanionRuntime(
     fun diagnosticsSnapshot(domains: List<String> = emptyList()): DiagnosticsSnapshot =
         requestRouter?.handle(DiagnosticsRequest(domains = domains)) as? DiagnosticsSnapshot
             ?: DiagnosticsSnapshot(bridge = JsonObject(emptyMap()))
+
+    fun settingsSnapshot(domains: List<String> = emptyList()): SettingsSnapshot =
+        requestRouter?.handle(SettingsGet(domains = domains)) as? SettingsSnapshot
+            ?: SettingsSnapshot(version = 1, settings = JsonObject(emptyMap()))
 
     fun startBrainService(): DesktopBrainSupervisorSnapshot =
         brainSupervisor.start().snapshot()

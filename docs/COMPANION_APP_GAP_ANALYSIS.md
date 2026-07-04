@@ -18,9 +18,11 @@ current v1 companion branch.
   transcript evidence still need to be captured before G1 is complete.
 - G2 real Mobile Brain Mode is still open. The current text-turn and audio-turn path uses
   deterministic fake output, not Android STT, LiteRT-LM, or Android TTS.
-- G3 settings, diagnostics, persona selection, and manual brain handoff UI remain open.
-  Android now has a first field diagnostics export/share path, but full user-facing
-  diagnostics screens are not complete.
+- G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially
+  closed. Android and desktop now expose user-facing settings, diagnostics, persona, and
+  handoff status panels from the settings repository, diagnostics snapshot, and live bridge
+  state. Writes, persona switching, and manual brain claim/release remain locked until
+  robot round-trip evidence exists.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, and the remaining fake telemetry must continue to be labeled or replaced.
 - G5 pairing enforcement is partially closed. Android and desktop no longer treat a raw
@@ -47,7 +49,7 @@ current v1 companion branch.
 ## Next Attack Order
 
 1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
-2. Add G3 user-facing settings, diagnostics, and persona screens over the existing protocol.
+2. Finish G3 with settings writes, persona switching, and manual brain handoff round-trip evidence.
 3. Finish G5 with QR/short-code robot-side trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Coordinate G6 runtime Wi-Fi provisioning with firmware.

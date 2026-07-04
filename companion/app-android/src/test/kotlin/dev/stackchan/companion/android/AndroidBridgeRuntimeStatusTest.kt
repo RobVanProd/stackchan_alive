@@ -1,6 +1,7 @@
 package dev.stackchan.companion.android
 
 import dev.stackchan.companion.core.EndpointSessionSnapshot
+import dev.stackchan.companion.core.SettingsRepository
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import dev.stackchan.companion.ui.ConversationMessage
@@ -185,7 +186,7 @@ class AndroidBridgeRuntimeStatusTest {
         )
 
         assertFalse(uiState.servoArmed)
-        assertEquals("Android bridge", uiState.activePersona)
+        assertEquals("spark", uiState.activePersona)
         assertEquals("Robot bridge connected", uiState.audioStatus)
         assertEquals("Stackchan Bench", uiState.telemetry.first { it.label == "Robot" }.value)
         assertEquals("bench-v1", uiState.telemetry.first { it.label == "Firmware" }.value)
@@ -458,6 +459,58 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals(1, uiState.robotSetup.trustedCompanionCount)
         assertFalse(uiState.endpoints.first { it.kind == "android" }.removable)
         assertFalse(uiState.endpoints.first { it.kind == "robot" }.removable)
+    }
+
+    @Test
+    fun androidUiStateExposesSettingsDiagnosticsAndHandoffSurfaces() {
+        val settings = SettingsRepository()
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            settingsRepository = settings,
+            trustedEndpoints = listOf(
+                TrustedEndpoint(
+                    endpointId = "studio-mac-01",
+                    endpointName = "Studio Mac",
+                    endpointKind = "pc",
+                    publicKeyFingerprint = "sha256:abcdef0123456789",
+                    priority = 90,
+                    capabilities = listOf("settings", "diagnostics", "brain_owner"),
+                ),
+            ),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                lastMessageType = "heartbeat",
+                activeBrainOwner = "studio-mac-01",
+            ),
+        )
+
+        assertEquals("spark", uiState.activePersona)
+        assertEquals("spark", uiState.settingsSurface.activePersona)
+        assertEquals("review_synth", uiState.settingsSurface.voiceProfile)
+        assertEquals("80", uiState.settingsSurface.displayBrightness)
+        assertFalse(uiState.settingsSurface.writesEnabled)
+        assertTrue(uiState.settingsSurface.writeStatus.contains("settings_set"))
+
+        assertEquals("stackchan.bridge.v1", uiState.diagnosticsSurface.protocol)
+        assertEquals("v1", uiState.diagnosticsSurface.settingsVersion)
+        assertEquals("1", uiState.diagnosticsSurface.trustedEndpointCount)
+        assertEquals("bridge", uiState.diagnosticsSurface.audioEngine)
+        assertEquals("fake", uiState.diagnosticsSurface.modelProfile)
+        assertEquals("bench-v1", uiState.diagnosticsSurface.firmwareTarget)
+
+        assertEquals("studio-mac-01", uiState.handoffSurface.owner)
+        assertEquals("pc", uiState.handoffSurface.ownerKind)
+        assertEquals("active", uiState.handoffSurface.state)
+        assertFalse(uiState.handoffSurface.claimEnabled)
+        assertFalse(uiState.handoffSurface.releaseEnabled)
+        assertTrue(uiState.handoffSurface.status.contains("owner_status"))
     }
 
     @Test

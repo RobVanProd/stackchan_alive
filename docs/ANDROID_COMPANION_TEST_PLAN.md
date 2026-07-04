@@ -138,6 +138,8 @@ Evidence to capture:
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
 - [ ] Denying microphone permission leaves push-to-talk disabled for that turn and records a not-sent microphone message.
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
+- [ ] The Brain screen shows settings, diagnostics, persona, and handoff status from the current settings repository, diagnostics snapshot, and live bridge state.
+- [ ] Settings, persona switching, and manual brain claim/release actions remain disabled until `settings_set` and `owner_status` round-trip evidence exists.
 - [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/saved robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.

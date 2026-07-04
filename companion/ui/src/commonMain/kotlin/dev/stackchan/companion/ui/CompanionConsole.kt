@@ -83,6 +83,9 @@ data class CompanionUiState(
     val conversation: ConversationUiState = ConversationUiState(),
     val brainService: BrainServiceUiState = BrainServiceUiState(),
     val robotSetup: RobotSetupUiState = RobotSetupUiState(),
+    val settingsSurface: SettingsSurfaceUiState = SettingsSurfaceUiState(),
+    val diagnosticsSurface: DiagnosticsSurfaceUiState = DiagnosticsSurfaceUiState(),
+    val handoffSurface: BrainHandoffUiState = BrainHandoffUiState(),
     val diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     val c6Rehearsal: C6RehearsalUiState = C6RehearsalUiState(),
     val endpoints: List<EndpointRow> = listOf(
@@ -148,6 +151,43 @@ data class C6RehearsalUiState(
     val status: String = "Ready",
     val path: String = "",
     val error: String = "",
+)
+
+data class SettingsSurfaceUiState(
+    val version: Int = 1,
+    val activePersona: String = "spark",
+    val availablePersonas: List<String> = listOf("spark", "glow"),
+    val voiceProfile: String = "review_synth",
+    val voiceVolume: String = "70",
+    val displayBrightness: String = "80",
+    val displayReducedMotion: Boolean = false,
+    val motionReduced: Boolean = false,
+    val rawAudioRetention: String = "none",
+    val modelProfile: String = "fake",
+    val modelStatus: String = "deterministic_fake",
+    val writeStatus: String = "Read-only until robot settings round-trip is verified.",
+    val writesEnabled: Boolean = false,
+)
+
+data class DiagnosticsSurfaceUiState(
+    val protocol: String = "",
+    val settingsVersion: String = "",
+    val trustedEndpointCount: String = "",
+    val audioEngine: String = "",
+    val audioSampleRate: String = "",
+    val modelProfile: String = "",
+    val modelStatus: String = "",
+    val firmwareTarget: String = "",
+    val batterySource: String = "",
+)
+
+data class BrainHandoffUiState(
+    val owner: String = "None",
+    val ownerKind: String = "none",
+    val state: String = "idle",
+    val claimEnabled: Boolean = false,
+    val releaseEnabled: Boolean = false,
+    val status: String = "Manual handoff is locked until trust and owner round-trip evidence is captured.",
 )
 
 data class BrainServiceUiState(
@@ -556,16 +596,25 @@ private fun PersonaCorePanel(state: CompanionUiState, modifier: Modifier) {
         SectionTitle("Persona Core", Cyan)
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            PersonaMode("Spark", selected = true, modifier = Modifier.weight(1f))
-            PersonaMode("Glow", selected = false, modifier = Modifier.weight(1f))
+            state.settingsSurface.availablePersonas.take(2).forEach { persona ->
+                PersonaMode(
+                    persona.replaceFirstChar { it.uppercase() },
+                    selected = persona == state.settingsSurface.activePersona,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         Spacer(Modifier.height(14.dp))
-        Readout("Active", state.activePersona, Mint)
+        Readout("Active", state.settingsSurface.activePersona, Mint)
         Spacer(Modifier.height(10.dp))
         Readout("State", state.robotState, Cyan)
+        Spacer(Modifier.height(10.dp))
+        Readout("Voice", state.settingsSurface.voiceProfile, Purple)
+        Spacer(Modifier.height(10.dp))
+        Readout("Model", state.settingsSurface.modelProfile, Muted)
         Spacer(Modifier.height(12.dp))
         Text(
-            "> energetic / curious / high-frequency responses",
+            "> settings v${state.settingsSurface.version} / ${state.settingsSurface.writeStatus}",
             color = Muted,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
@@ -978,7 +1027,100 @@ private fun BrainPanel(
             )
         }
         Spacer(Modifier.height(14.dp))
+        SettingsSurfacePanel(state.settingsSurface)
+        Spacer(Modifier.height(14.dp))
+        HandoffSurfacePanel(state.handoffSurface)
+        Spacer(Modifier.height(14.dp))
+        DiagnosticsSurfacePanel(state.diagnosticsSurface)
+        Spacer(Modifier.height(14.dp))
         ConsoleLog(state.brainService.recentLogs.takeLast(6).joinToString("\n"))
+    }
+}
+
+@Composable
+private fun SettingsSurfacePanel(settings: SettingsSurfaceUiState) {
+    Surface(
+        color = Console,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle("Settings", Amber)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Persona", settings.activePersona, Mint, Modifier.weight(1f))
+                Readout("Voice", settings.voiceProfile, Cyan, Modifier.weight(1f))
+                Readout("Volume", settings.voiceVolume, Muted, Modifier.weight(0.65f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Brightness", settings.displayBrightness, Amber, Modifier.weight(1f))
+                Readout("Display motion", if (settings.displayReducedMotion) "Reduced" else "Normal", Muted, Modifier.weight(1f))
+                Readout("Servo motion", if (settings.motionReduced) "Reduced" else "Normal", Muted, Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Privacy audio", settings.rawAudioRetention, Mint, Modifier.weight(1f))
+                Readout("Model", settings.modelProfile, Purple, Modifier.weight(1f))
+            }
+            Text(settings.writeStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallCommand("Select persona", enabled = settings.writesEnabled)
+                SmallCommand("Save display", enabled = settings.writesEnabled)
+                SmallCommand("Privacy", enabled = settings.writesEnabled)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HandoffSurfacePanel(handoff: BrainHandoffUiState) {
+    Surface(
+        color = Console,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle("Brain Handoff", Purple)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Owner", handoff.owner, Cyan, Modifier.weight(1.25f))
+                Readout("Kind", handoff.ownerKind, Muted, Modifier.weight(0.75f))
+                Readout("State", handoff.state, if (handoff.state == "active" || handoff.state == "claimed") Mint else Amber, Modifier.weight(0.75f))
+            }
+            Text(handoff.status, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallCommand("Claim phone", enabled = handoff.claimEnabled)
+                SmallCommand("Release", enabled = handoff.releaseEnabled)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticsSurfacePanel(diagnostics: DiagnosticsSurfaceUiState) {
+    Surface(
+        color = Console,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle("Diagnostics", Cyan)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Protocol", diagnostics.protocol.ifBlank { "unknown" }, Mint, Modifier.weight(1f))
+                Readout("Settings", diagnostics.settingsVersion.ifBlank { "n/a" }, Amber, Modifier.weight(0.8f))
+                Readout("Trusted", diagnostics.trustedEndpointCount.ifBlank { "0" }, Muted, Modifier.weight(0.75f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Audio", diagnostics.audioEngine.ifBlank { "offline" }, Cyan, Modifier.weight(1f))
+                Readout("Rate", diagnostics.audioSampleRate.ifBlank { "n/a" }, Muted, Modifier.weight(0.75f))
+                Readout("Battery", diagnostics.batterySource.ifBlank { "host" }, Muted, Modifier.weight(0.8f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Model", diagnostics.modelProfile.ifBlank { "unknown" }, Purple, Modifier.weight(1f))
+                Readout("Runner", diagnostics.modelStatus.ifBlank { "unknown" }, Muted, Modifier.weight(1f))
+            }
+            Readout("Firmware target", diagnostics.firmwareTarget.ifBlank { "awaiting robot" }, Muted)
+        }
     }
 }
 
