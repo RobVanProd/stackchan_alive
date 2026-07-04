@@ -25,7 +25,7 @@ class AndroidCompanionProbeTest(unittest.TestCase):
             "endpoint_id": "android-companion-test",
             "endpoint_name": "Stackchan Android Companion",
             "endpoint_kind": "android",
-            "app_version": "0.1.0",
+            "app_version": "1.0.0",
             "priority": 60,
             "supports_binary_audio": True,
             "capabilities": ["settings", "diagnostics", "brain_owner"],
@@ -33,7 +33,7 @@ class AndroidCompanionProbeTest(unittest.TestCase):
         with endpoint_hello_server(frame) as url:
             report = build_report(url, timeout=2.0, require_android=True)
 
-        self.assertEqual("pass", report["status"])
+        self.assertEqual("pass", report["status"], report)
         self.assertEqual("android-companion-test", report["endpoint_hello"]["endpoint_id"])
         self.assertEqual([], report["issues"])
 
