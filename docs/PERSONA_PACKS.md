@@ -106,6 +106,30 @@ hardware evidence records exactly which persona was running. No marketplace
 infrastructure needed to start — a verified folder format that travels well *is* the MVP
 of sharing.
 
+## Creator path
+
+The community path must stay simple:
+
+```powershell
+.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author "Your Name"
+```
+
+That command copies `personas/spark` to `personas/nova`, rewrites only the identity fields,
+and validates the result. From there, a creator edits YAML and prompt text, then runs:
+
+```powershell
+.\tools\verify_persona_pack.cmd nova --Json
+.\tools\run_character_red_team.cmd -Persona nova -Json
+$env:STACKCHAN_PERSONA = "nova"
+pio test -e native_logic --without-testing
+pio run -e stackchan
+```
+
+[CREATING_PERSONAS.md](CREATING_PERSONAS.md) is the human tutorial. It is intentionally a
+copy-edit-validate-build workflow, not a separate pack editor. The validator remains the
+authority so community packs learn the same foundation rules that CI and release packages
+enforce.
+
 ## Migration plan (small PRs, each shippable)
 
 Current implementation status: Spark now exists under `personas/spark` as the active
@@ -131,12 +155,15 @@ assets and provenance remain the next pack-native surface.
    persona. Keep using Glow as the regression pack whenever new persona-controlled surface
    area lands. If hardcoded Spark-isms appear, fix them by moving data into the pack, not by
    adding conditionals.
-7. Extend codegen coverage as later phases land. Speech lines, earcon params,
+7. **Creator path:** done with `tools/create_persona_pack.*` plus
+   [CREATING_PERSONAS.md](CREATING_PERSONAS.md). The first-class human workflow is copy
+   Spark, rename, edit YAML, validate, red-team, build/run.
+8. Extend codegen coverage as later phases land. Speech lines, earcon params,
    face/idle-life/circadian behavior constants, expression defaults, yawn shape, and
    listen/think/orient motion biases, packaged prompt metadata, and the firmware WAV
    embedding list are now generated from the pack; production voice assets and provenance
    remain the next pack-native surface.
 
-Steps 1-6 can run entirely in parallel with the hardware bring-up track in
+Steps 1-8 can run entirely in parallel with the hardware bring-up track in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — this is host/build tooling and pure-logic firmware
 refactoring, all covered by the existing test suites.

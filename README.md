@@ -97,6 +97,7 @@ Useful docs:
 - [docs/VOICE_PERSONALITY.md](docs/VOICE_PERSONALITY.md): voice target, personality rules, and source guardrails.
 - [docs/CHARACTER_LOCK.md](docs/CHARACTER_LOCK.md): P7 bridge persona, response schema, and memory rules.
 - [docs/PERSONA_PACKS.md](docs/PERSONA_PACKS.md): swappable persona-pack format and migration plan.
+- [docs/CREATING_PERSONAS.md](docs/CREATING_PERSONAS.md): copy-edit-validate-build tutorial for creating a new Character OS persona.
 - [docs/BRAIN_MODEL.md](docs/BRAIN_MODEL.md): Gemma 4 E2B / LiteRT-LM model target and harness gate.
 
 Prototype voice auditions:
@@ -159,6 +160,15 @@ Validate the bundled Character OS persona packs:
 .\tools\verify_persona_pack.cmd --Json
 .\tools\verify_persona_pack.cmd glow --Json
 ```
+
+Create a new persona from Spark, then edit the copied YAML:
+
+```powershell
+.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author "Your Name"
+.\tools\verify_persona_pack.cmd nova --Json
+```
+
+The full creator path is in [docs/CREATING_PERSONAS.md](docs/CREATING_PERSONAS.md).
 
 Run the Character Lock red-team dry run:
 

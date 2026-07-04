@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import shutil
 from pathlib import Path
 
 from persona_pack import (
@@ -7,6 +8,9 @@ from persona_pack import (
     PersonaPackError,
     load_and_validate_persona_pack,
     load_persona_pack,
+    normalize_persona_id,
+    repo_root,
+    scaffold_persona_pack,
     validate_pack,
 )
 
@@ -56,6 +60,29 @@ class PersonaPackTests(unittest.TestCase):
         self.assertNotIn("Johnny", prompt)
         self.assertNotIn("Short Circuit", prompt)
         self.assertNotIn("Number 5", prompt)
+
+    def test_normalize_persona_id_keeps_build_friendly_slug(self):
+        self.assertEqual("my-test-bot", normalize_persona_id(" My Test Bot "))
+        self.assertEqual("spark-v2", normalize_persona_id("Spark__V2"))
+
+        with self.assertRaises(PersonaPackError):
+            normalize_persona_id("!!!")
+
+    def test_scaffold_persona_pack_copies_template_and_validates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            temp_personas = temp_root / "personas"
+            temp_personas.mkdir()
+            shutil.copytree(repo_root() / "personas" / "spark", temp_personas / "spark")
+
+            pack = scaffold_persona_pack("test-bot", display_name="Stackchan Test Bot", author="Unit Test", root=temp_root)
+
+            self.assertEqual("test-bot", pack.pack_id)
+            self.assertEqual("Stackchan Test Bot", pack.display_name)
+            self.assertIn("You are Stackchan Test Bot", pack.prompt_template)
+            self.assertEqual("Unit Test", pack.manifest["author"])
+            self.assertEqual("stackchan_test_bot", pack.voice["profile_id"])
+            self.assertEqual([], validate_pack(pack))
 
     def test_validator_rejects_loosened_caps_and_bad_safety_line(self):
         with tempfile.TemporaryDirectory() as temp_dir:
