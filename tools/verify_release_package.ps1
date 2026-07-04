@@ -525,10 +525,24 @@ foreach ($pattern in @("AndroidDashboardMediaGateTest", "check_hardware_evidence
   }
 }
 
+$androidCompanionProbeText = Get-Content -LiteralPath (Join-PackagePath "bridge/android_companion_probe.py") -Raw
+foreach ($pattern in @("stackchan.android-companion-probe.v1", "stackchan.bridge.v1", "Android bridge URL must start with ws://", "Android bridge URL path must be /bridge", "101 Switching Protocols", "endpoint_hello", "expected endpoint_kind android", "settings", "diagnostics", "android_companion_probe.json", "ANDROID_COMPANION_PROBE.md", "ws://192.168.1.42:8765/bridge", "--allow-non-android")) {
+  if ($androidCompanionProbeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/android_companion_probe.py missing Android companion probe runtime contract: $pattern"
+  }
+}
+
 $androidCompanionProbeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_companion_probe.py") -Raw
 foreach ($pattern in @("AndroidCompanionProbeTest", "test_parse_requires_ws_bridge_url", "test_probe_accepts_android_endpoint_hello", "test_probe_rejects_non_android_endpoint_by_default", "endpoint_kind", "android", "expected endpoint_kind android")) {
   if ($androidCompanionProbeTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_android_companion_probe.py missing Android companion probe test coverage: $pattern"
+  }
+}
+
+$androidUdpBeaconProbeText = Get-Content -LiteralPath (Join-PackagePath "bridge/android_udp_beacon_probe.py") -Raw
+foreach ($pattern in @("stackchan.android-udp-beacon-probe.v1", "stackchan.bridge.v1", "stackchan_bridge_beacon", "DEFAULT_BEACON_PORT = 8766", "DEFAULT_BRIDGE_PORT = 8765", "expected endpoint_kind android", "expected bridge port", "expected endpoint_id", "settings", "diagnostics", "timed out waiting for UDP beacon", "android_udp_beacon_probe.json", "ANDROID_UDP_BEACON_PROBE.md", "--expected-bridge-port", "--expected-endpoint-id", "--allow-non-android")) {
+  if ($androidUdpBeaconProbeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/android_udp_beacon_probe.py missing Android UDP beacon probe runtime contract: $pattern"
   }
 }
 
