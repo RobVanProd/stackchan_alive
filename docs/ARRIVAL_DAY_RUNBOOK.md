@@ -74,9 +74,10 @@ For the local bridge socket path specifically, `tools/run_lan_smoke.cmd` writes
 upload, fake STT/TTS, and PCM16 binary downlink check.
 
 If the Android companion is the bridge host, install the debug or release APK on the phone,
-open Stackchan Companion, and confirm the foreground notification reports the bridge as ready
-and advertised. The phone advertises `_stackchan-bridge._tcp.local` with `endpoint_id`,
-`endpoint_kind`, `proto`, and `capabilities` TXT metadata matching the desktop companion.
+open Stackchan Companion, allow notifications when prompted on Android 13 or newer, and
+confirm the foreground notification reports the bridge as ready and advertised. The phone
+advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `proto`, and
+`capabilities` TXT metadata matching the desktop companion.
 Android holds a multicast lock while advertising so same-network discovery survives common
 Wi-Fi multicast filtering behavior.
 If service discovery is unavailable on the LAN, manually point the robot bridge client at
