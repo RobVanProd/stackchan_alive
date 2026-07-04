@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Stackchan Companion icon">
+  <rect width="512" height="512" rx="108" fill="#071013"/>
+  <rect x="96" y="116" width="320" height="248" fill="#0B141A" stroke="#52F3EC" stroke-width="10"/>
+  <rect x="154" y="190" width="82" height="68" rx="18" fill="#F5F8FA"/>
+  <rect x="276" y="190" width="82" height="68" rx="18" fill="#F5F8FA"/>
+  <rect x="189" y="210" width="22" height="34" rx="10" fill="#071013"/>
+  <rect x="311" y="210" width="22" height="34" rx="10" fill="#071013"/>
+  <path d="M158 156 L232 166" fill="none" stroke="#F5F8FA" stroke-width="10" stroke-linecap="round"/>
+  <path d="M280 166 L354 156" fill="none" stroke="#F5F8FA" stroke-width="10" stroke-linecap="round"/>
+  <path d="M186 296 Q256 336 326 296" fill="none" stroke="#FF6F91" stroke-width="16" stroke-linecap="round"/>
+  <path d="M132 386 H380" fill="none" stroke="#52F3EC" stroke-width="8" stroke-linecap="round" stroke-dasharray="3 22"/>
+</svg>

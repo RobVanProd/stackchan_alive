@@ -17,6 +17,8 @@ $pendingGates = @(
   "android-apk-install-on-target-phone",
   "android-dashboard-connected-state-media",
   "screen-off-bridge-soak",
+  "google-play-store-screenshots",
+  "google-play-internal-testing-upload",
   "c8-tagged-release-distribution",
   "production-voice-source-before-consumer-rollout"
 )
@@ -246,6 +248,18 @@ Test-TextEvidence `
   -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected")
 
 Test-TextEvidence `
+  -Id "android-play-release-prep" `
+  -Name "Android Play release preparation" `
+  -RelativePaths @("docs/ANDROID_PLAY_RELEASE.md", "provenance/docs/ANDROID_PLAY_RELEASE.md") `
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "physical robot validation", "Play Console internal testing")
+
+Test-TextEvidence `
+  -Id "android-play-readiness-check" `
+  -Name "Android Play source readiness check" `
+  -RelativePaths @("tools/check_android_play_release_readiness.ps1", "provenance/tools/check_android_play_release_readiness.ps1") `
+  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing")
+
+Test-TextEvidence `
   -Id "android-screen-off-soak-helper" `
   -Name "Android screen-off soak helper" `
   -RelativePaths @("bridge/android_companion_soak.py", "tools/run_android_companion_soak.ps1") `
@@ -255,13 +269,13 @@ Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
-  -Patterns @("companion-tests", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "./gradlew check :app-desktop:c0Spike")
+  -Patterns @("companion-tests", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "check_android_play_release_readiness.ps1")
 
 Test-TextEvidence `
   -Id "companion-release-signing-evidence" `
   -Name "Companion release APK signing evidence" `
   -RelativePaths @("tools/export_companion_release_evidence.ps1") `
-  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2")
+  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2", "androidBundleSigning", "android-release-aab-signature", "jarsigner")
 
 Test-TextEvidence `
   -Id "android-toolchain-check" `

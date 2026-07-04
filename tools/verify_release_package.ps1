@@ -120,6 +120,11 @@ $requiredFiles = @(
   "voice_source_status.json",
   "docs/ANDROID_COMPANION_SPEC.md",
   "docs/ANDROID_COMPANION_TEST_PLAN.md",
+  "docs/ANDROID_PLAY_RELEASE.md",
+  "docs/store-assets/play/icon-512.png",
+  "docs/store-assets/play/icon-512.svg",
+  "docs/store-assets/play/feature-graphic-1024x500.png",
+  "docs/store-assets/play/README.md",
   "docs/BRAIN_MODEL.md",
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CHARACTER_LOCK.md",
@@ -283,6 +288,8 @@ $requiredFiles = @(
   "tools/check_native_toolchain.ps1",
   "tools/check_android_toolchain.cmd",
   "tools/check_android_toolchain.ps1",
+  "tools/check_android_play_release_readiness.cmd",
+  "tools/check_android_play_release_readiness.ps1",
   "tools/check_companion_v1_readiness.cmd",
   "tools/check_companion_v1_readiness.ps1",
   "tools/export_companion_release_evidence.cmd",
@@ -1072,15 +1079,22 @@ foreach ($pattern in @("stackchan.android-toolchain-check.v1", "JAVA_HOME", "jav
   }
 }
 
+$androidPlayReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_release_readiness.ps1") -Raw
+foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing")) {
+  if ($androidPlayReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_play_release_readiness.ps1 missing Android Play release readiness logic: $pattern"
+  }
+}
+
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-play-release-prep", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }
 }
 
 $companionReleaseEvidenceExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_companion_release_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-release-evidence.v1", "COMPANION_RELEASE_EVIDENCE.json", "COMPANION_RELEASE_EVIDENCE.md", "toolchainPins", "Get-FileHash", "AndroidArtifactRoot", "DesktopArtifactRoot", "ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "RequireArtifacts", "evidence-pending-artifacts", "blocked-missing-artifacts")) {
+foreach ($pattern in @("stackchan.companion-release-evidence.v1", "COMPANION_RELEASE_EVIDENCE.json", "COMPANION_RELEASE_EVIDENCE.md", "toolchainPins", "Get-FileHash", "AndroidArtifactRoot", "DesktopArtifactRoot", "ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "androidBundleSigning", "android-release-aab-signature", "jarsigner", "RequireArtifacts", "evidence-pending-artifacts", "blocked-missing-artifacts")) {
   if ($companionReleaseEvidenceExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_companion_release_evidence.ps1 missing companion release evidence export logic: $pattern"
   }
@@ -1852,6 +1866,18 @@ if ($manifest.androidCompanionTestPlan -ne "docs/ANDROID_COMPANION_TEST_PLAN.md"
   throw "Manifest androidCompanionTestPlan mismatch: $($manifest.androidCompanionTestPlan)"
 }
 
+if ($manifest.androidPlayRelease -ne "docs/ANDROID_PLAY_RELEASE.md") {
+  throw "Manifest androidPlayRelease mismatch: $($manifest.androidPlayRelease)"
+}
+
+if ($manifest.androidPlayIcon -ne "docs/store-assets/play/icon-512.png") {
+  throw "Manifest androidPlayIcon mismatch: $($manifest.androidPlayIcon)"
+}
+
+if ($manifest.androidPlayFeatureGraphic -ne "docs/store-assets/play/feature-graphic-1024x500.png") {
+  throw "Manifest androidPlayFeatureGraphic mismatch: $($manifest.androidPlayFeatureGraphic)"
+}
+
 if ($manifest.companionCrossPlatformPlan -ne "docs/COMPANION_CROSS_PLATFORM_PLAN.md") {
   throw "Manifest companionCrossPlatformPlan mismatch: $($manifest.companionCrossPlatformPlan)"
 }
@@ -2306,6 +2332,13 @@ $androidCompanionTestPlan = Get-Content -LiteralPath (Join-PackagePath "docs/AND
 foreach ($pattern in @("Android Companion Physical Test Plan", "foreground bridge service", "UDP beacon fallback", "manual URL fallback", "check_companion_v1_readiness.cmd", "protocol fixtures", "pending hardware gates", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "tools\install_android_companion_apk.cmd", "android/apk-install/", "android_apk_install.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "tools\run_android_companion_soak.cmd", "android/screen-off-soak/", "android_companion_soak.json", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "tools\capture_android_companion_logcat.cmd", "android/logcat/", "android_companion_logcat.txt", "endpoint_hello", "screen off", "robot serial log", "Android dashboard switches from waiting to connected", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state")) {
   if ($androidCompanionTestPlan -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_TEST_PLAN.md missing expected Android physical test guidance: $pattern"
+  }
+}
+
+$androidPlayRelease = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_RELEASE.md") -Raw
+foreach ($pattern in @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "physical robot validation", "Play Console internal testing")) {
+  if ($androidPlayRelease -notmatch [regex]::Escape($pattern)) {
+    throw "ANDROID_PLAY_RELEASE.md missing expected Play release guidance: $pattern"
   }
 }
 

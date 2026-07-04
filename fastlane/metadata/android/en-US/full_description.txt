@@ -1,0 +1,5 @@
+Stackchan Companion is the local mobile control surface for a Stack-chan robot.
+
+The app hosts the companion bridge, shows robot connection status, exposes paired companion nodes, and provides a phone-first dashboard for arrival-day testing and operation.
+
+This v1 release is intended for paired Stack-chan hardware and local-network testing. Final Play promotion requires physical robot validation, connected-session evidence, and screen-off bridge soak evidence.

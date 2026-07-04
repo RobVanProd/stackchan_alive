@@ -288,6 +288,7 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ANDROID_PLAY_RELEASE.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
@@ -307,6 +308,7 @@ Copy-Item -LiteralPath "docs/ROLLOUT_CHECKLIST.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_PERSONALITY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json" -Destination $docsDir
+Copy-Item -LiteralPath "docs/store-assets" -Destination $docsDir -Recurse
 Copy-Item -LiteralPath "data/calibration.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/expressions.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataDir
@@ -426,6 +428,8 @@ $releaseTools = @(
   "tools/check_native_toolchain.ps1",
   "tools/check_android_toolchain.cmd",
   "tools/check_android_toolchain.ps1",
+  "tools/check_android_play_release_readiness.cmd",
+  "tools/check_android_play_release_readiness.ps1",
   "tools/check_companion_v1_readiness.cmd",
   "tools/check_companion_v1_readiness.ps1",
   "tools/export_companion_release_evidence.cmd",
@@ -869,6 +873,9 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
   androidCompanionTestPlan = "docs/ANDROID_COMPANION_TEST_PLAN.md"
+  androidPlayRelease = "docs/ANDROID_PLAY_RELEASE.md"
+  androidPlayIcon = "docs/store-assets/play/icon-512.png"
+  androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
   androidCompanionSource = "provenance/companion"
   brainModelGuide = "docs/BRAIN_MODEL.md"
@@ -970,6 +977,8 @@ $manifest = [ordered]@{
     "tools/check_native_toolchain.ps1",
     "tools/check_android_toolchain.cmd",
     "tools/check_android_toolchain.ps1",
+    "tools/check_android_play_release_readiness.cmd",
+    "tools/check_android_play_release_readiness.ps1",
     "tools/check_companion_v1_readiness.cmd",
     "tools/check_companion_v1_readiness.ps1",
     "tools/export_companion_release_evidence.cmd",

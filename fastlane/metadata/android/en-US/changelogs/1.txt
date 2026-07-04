@@ -1,0 +1,7 @@
+Initial v1 companion release for Stack-chan hardware testing.
+
+- Android companion bridge service
+- Phone-first dashboard
+- Paired endpoint registry
+- Local discovery and manual bridge URL support
+- Stack-chan face preview and telemetry surfaces

@@ -101,6 +101,27 @@ function Find-ApkSigner {
   return ""
 }
 
+function Find-JarSigner {
+  foreach ($commandName in @("jarsigner", "jarsigner.exe")) {
+    $path = Get-CommandPath $commandName
+    if (-not [string]::IsNullOrWhiteSpace($path)) {
+      return $path
+    }
+  }
+
+  $javaHome = $env:JAVA_HOME
+  if (-not [string]::IsNullOrWhiteSpace($javaHome)) {
+    foreach ($relativePath in @("bin/jarsigner", "bin/jarsigner.exe")) {
+      $candidate = Join-Path $javaHome $relativePath
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        return [string](Resolve-Path $candidate)
+      }
+    }
+  }
+
+  return ""
+}
+
 function Convert-ToRelativePath {
   param([string]$Path)
 
@@ -268,8 +289,8 @@ $readinessPath = Find-FirstExistingFile @("tools/check_companion_v1_readiness.ps
 
 $androidArtifacts = Get-ArtifactEntries `
   -Kind "android-apk" `
-  -Roots @($AndroidArtifactRoot, "companion/app-android/build/outputs/apk/release") `
-  -Patterns @("*.apk")
+  -Roots @($AndroidArtifactRoot, "companion/app-android/build/outputs", "companion/app-android/build/outputs/apk/release") `
+  -Patterns @("*.apk", "*.aab")
 
 $desktopArtifacts = Get-ArtifactEntries `
   -Kind "desktop-package" `
@@ -303,6 +324,19 @@ function Get-AndroidApkEntry {
     $name = [string]$entry["name"]
     $path = [string]$entry["path"]
     if ($name -match "$Flavor.*\.apk$" -or $path -match "(^|[\\/])$Flavor[\\/][^\\/]+\.apk$") {
+      return $entry
+    }
+  }
+  return $null
+}
+
+function Get-AndroidReleaseAabEntry {
+  param([object]$ArtifactGroup)
+
+  foreach ($entry in @($ArtifactGroup.entries)) {
+    $name = [string]$entry["name"]
+    $path = [string]$entry["path"]
+    if ($name -match "release.*\.aab$" -or $path -match "(^|[\\/])release[\\/][^\\/]+\.aab$") {
       return $entry
     }
   }
@@ -385,6 +419,78 @@ function Test-AndroidReleaseApkSignature {
   }
 }
 
+$androidBundleSigning = [ordered]@{
+  status = "pending"
+  bundle = ""
+  verifier = ""
+  signer = ""
+  detail = "Release AAB artifact not found."
+}
+
+function Test-AndroidReleaseBundleSignature {
+  param([object]$ArtifactGroup)
+
+  $releaseEntry = Get-AndroidReleaseAabEntry $ArtifactGroup
+  if ($null -eq $releaseEntry) {
+    return [ordered]@{
+      status = "pending"
+      bundle = ""
+      verifier = ""
+      signer = ""
+      detail = "Release AAB artifact not found."
+    }
+  }
+
+  $bundlePath = [string]$releaseEntry["path"]
+  if (-not [System.IO.Path]::IsPathRooted($bundlePath)) {
+    $bundlePath = Join-Path $Root $bundlePath
+  }
+  if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      bundle = [string]$releaseEntry["path"]
+      verifier = ""
+      signer = ""
+      detail = "Release AAB path was recorded but does not exist on disk."
+    }
+  }
+
+  $resolvedJarSigner = Find-JarSigner
+  if ([string]::IsNullOrWhiteSpace($resolvedJarSigner)) {
+    return [ordered]@{
+      status = "pending"
+      bundle = [string]$releaseEntry["path"]
+      verifier = ""
+      signer = ""
+      detail = "jarsigner was not found; install a JDK or set JAVA_HOME."
+    }
+  }
+
+  $output = @()
+  try {
+    $output = @(& $resolvedJarSigner -verify -certs -verbose $bundlePath 2>&1)
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $output = @($_.Exception.Message)
+    $exitCode = 1
+  }
+
+  $text = (($output | Out-String).Trim())
+  $verified = $exitCode -eq 0 -and $text -match "jar verified"
+  $signer = ""
+  if ($text -match "X\.509,\s*([^`r`n]+)") {
+    $signer = $matches[1].Trim()
+  }
+
+  return [ordered]@{
+    status = if ($verified) { "verified" } else { "failed" }
+    bundle = [string]$releaseEntry["path"]
+    verifier = $resolvedJarSigner
+    signer = $signer
+    detail = if ($verified) { "Release AAB signature verified by jarsigner." } else { "jarsigner verification failed: $text" }
+  }
+}
+
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
   $pending += "companion-cross-platform-plan"
@@ -400,6 +506,9 @@ if ($androidArtifacts.status -ne "present") {
   }
   if ($null -eq (Get-AndroidApkEntry $androidArtifacts "release")) {
     $pending += "android-release-apk-artifact"
+  }
+  if ($null -eq (Get-AndroidReleaseAabEntry $androidArtifacts)) {
+    $pending += "android-release-aab-artifact"
   }
 }
 if ($desktopArtifacts.status -ne "present") {
@@ -423,6 +532,10 @@ $androidSigning = Test-AndroidReleaseApkSignature $androidArtifacts
 if ($androidSigning.status -ne "verified") {
   $pending += "android-release-apk-signature"
 }
+$androidBundleSigning = Test-AndroidReleaseBundleSignature $androidArtifacts
+if ($androidBundleSigning.status -ne "verified") {
+  $pending += "android-release-aab-signature"
+}
 
 $status = if ($RequireArtifacts -and $pending.Count -gt 0) { "blocked-missing-artifacts" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
@@ -441,6 +554,7 @@ $report = [ordered]@{
   toolchainPins = $toolchainPins
   artifacts = @($androidArtifacts, $desktopArtifacts)
   androidSigning = $androidSigning
+  androidBundleSigning = $androidBundleSigning
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
 }
@@ -484,6 +598,13 @@ $lines += "- Scheme: $($androidSigning.scheme)"
 $lines += "- Signer: $($androidSigning.signer)"
 $lines += "- Verifier: $($androidSigning.verifier)"
 $lines += "- Detail: $($androidSigning.detail)"
+$lines += ""
+$lines += "## Android Bundle Signing"
+$lines += "- Status: $($androidBundleSigning.status)"
+$lines += "- Bundle: $($androidBundleSigning.bundle)"
+$lines += "- Signer: $($androidBundleSigning.signer)"
+$lines += "- Verifier: $($androidBundleSigning.verifier)"
+$lines += "- Detail: $($androidBundleSigning.detail)"
 $lines += ""
 $lines += "## Pending"
 if ($pending.Count -eq 0) {

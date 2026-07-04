@@ -148,6 +148,10 @@ jobs:
           cd companion
           ./gradlew check :app-desktop:c0Spike
 
+      - name: Run Android Play release readiness check
+        shell: pwsh
+        run: ./tools/check_android_play_release_readiness.ps1 -Json
+
       - name: Upload companion C0 spike report
         uses: actions/upload-artifact@v7
         with:
@@ -171,11 +175,12 @@ jobs:
               sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
             command: |
               cd companion
-              ./gradlew :app-android:assembleDebug :app-android:assembleRelease
+              ./gradlew :app-android:assembleDebug :app-android:assembleRelease :app-android:bundleRelease
             artifact_name: companion-android-apks
             artifact_path: |
               companion/app-android/build/outputs/apk/debug/*.apk
               companion/app-android/build/outputs/apk/release/*.apk
+              companion/app-android/build/outputs/bundle/release/*.aab
           - name: desktop-linux
             os: ubuntu-latest
             setup_android: true
