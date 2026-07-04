@@ -145,6 +145,8 @@ class PersonaPackTests(unittest.TestCase):
         self.assertIn("behavior_idle_life_missing:breathing_hz", issues)
         self.assertIn("behavior_circadian_missing:evening_start_hour", issues)
         self.assertIn("behavior_emotion_response_missing:curiosity_arousal_delta", issues)
+        self.assertIn("expressions_section_missing:neutral", issues)
+        self.assertIn("expressions_think_missing:pupil_y", issues)
 
     def test_missing_pack_raises_clear_error(self):
         with self.assertRaises(PersonaPackError):

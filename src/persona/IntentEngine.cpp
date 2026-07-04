@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <math.h>
 
+#include "PersonaExpressions.hpp"
+
 namespace stackchan {
 
 namespace {
@@ -168,9 +170,9 @@ MotionTargets IntentEngine::motionForMode(uint32_t nowMs) const {
   motion.pitchDeg = sinf(t * 0.19f) * 4.0f;
 
   if (mode_ == CharacterMode::Listen) {
-    motion.pitchDeg += -4.0f;
+    motion.pitchDeg += generated_persona::kListenPitchBiasDeg;
   } else if (mode_ == CharacterMode::Think) {
-    motion.yawDeg += 18.0f;
+    motion.yawDeg += generated_persona::kThinkYawBiasDeg;
     motion.pitchDeg += 2.0f;
   } else if (mode_ == CharacterMode::Sleep) {
     motion.pitchDeg += 10.0f;
@@ -191,7 +193,7 @@ void IntentEngine::applySoundOrientation(RobotFrame& frame, uint32_t nowMs) cons
   frame.face.pupilX += gaze * 0.35f;
   frame.face.faceX += gaze * 3.0f;
   if (frame.motion.yawMode == YawMode::Angle) {
-    frame.motion.yawDeg += gaze * 16.0f;
+    frame.motion.yawDeg += gaze * generated_persona::kSoundDirectionYawBiasDeg;
   }
 }
 

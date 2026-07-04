@@ -439,6 +439,48 @@ def validate_pack(pack: PersonaPack) -> list[str]:
         issues.append("behavior_emotion_response_safety_out_of_range")
     if not 0.00 <= happy <= 0.80:
         issues.append("behavior_emotion_response_happy_out_of_range")
+
+    expressions = mapping(pack.expressions)
+    for section in ("neutral", "listen", "think", "drowsy", "yawn"):
+        if not mapping(expressions.get(section)):
+            issues.append(f"expressions_section_missing:{section}")
+
+    def check_expression_float(section: str, key: str, minimum: float, maximum: float) -> None:
+        spec = mapping(expressions.get(section))
+        if key not in spec:
+            issues.append(f"expressions_{section}_missing:{key}")
+            return
+        value = float_value(spec.get(key), minimum - 1.0)
+        if not minimum <= value <= maximum:
+            issues.append(f"expressions_{section}_out_of_range:{key}")
+
+    for key in ("eye_open", "eye_smile", "mouth_smile"):
+        check_expression_float("neutral", key, -1.0 if key == "mouth_smile" else 0.0, 1.2 if key == "eye_open" else 1.0)
+    check_expression_float("listen", "focus", 0.0, 1.0)
+    check_expression_float("listen", "pitch_bias_deg", -20.0, 20.0)
+    check_expression_float("think", "pupil_y", -1.0, 1.0)
+    check_expression_float("think", "yaw_bias_deg", -45.0, 45.0)
+    drowsy_ranges = {
+        "eye_open": (0.0, 1.2),
+        "squint": (0.0, 1.0),
+        "brow_tilt": (-1.0, 1.0),
+        "mouth_smile": (-1.0, 1.0),
+        "face_y": (-12.0, 12.0),
+    }
+    for key, (minimum, maximum) in drowsy_ranges.items():
+        check_expression_float("drowsy", key, minimum, maximum)
+    for key in ("duration_ms", "eye_open_delta", "squint_delta", "mouth_open", "mouth_smile_delta", "pitch_bias_deg"):
+        if key == "duration_ms":
+            spec = mapping(expressions.get("yawn"))
+            duration = int_value(spec.get(key), -1)
+            if not 200 <= duration <= 4000:
+                issues.append("expressions_yawn_out_of_range:duration_ms")
+        elif key in ("eye_open_delta", "mouth_smile_delta"):
+            check_expression_float("yawn", key, -1.0, 0.0)
+        elif key == "pitch_bias_deg":
+            check_expression_float("yawn", key, -10.0, 10.0)
+        else:
+            check_expression_float("yawn", key, 0.0, 1.0)
     return issues
 
 
