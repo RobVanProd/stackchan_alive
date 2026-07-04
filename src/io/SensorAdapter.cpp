@@ -554,6 +554,25 @@ bool parseUintToken(const char* token, uint32_t* valueOut) {
   return true;
 }
 
+bool parseUplinkWakeToken(const char* token, bool* wakeGateOpenOut) {
+  if (token == nullptr || wakeGateOpenOut == nullptr) {
+    return false;
+  }
+  if (strcmp(token, "wake") == 0 || strcmp(token, "open") == 0 ||
+      strcmp(token, "gated") == 0 || strcmp(token, "allowed") == 0 ||
+      strcmp(token, "1") == 0 || strcmp(token, "true") == 0) {
+    *wakeGateOpenOut = true;
+    return true;
+  }
+  if (strcmp(token, "closed") == 0 || strcmp(token, "blocked") == 0 ||
+      strcmp(token, "nowake") == 0 || strcmp(token, "no_wake") == 0 ||
+      strcmp(token, "0") == 0 || strcmp(token, "false") == 0) {
+    *wakeGateOpenOut = false;
+    return true;
+  }
+  return false;
+}
+
 void appendTextToken(char* out, size_t outSize, const char* token) {
   if (out == nullptr || outSize == 0 || token == nullptr || token[0] == '\0') {
     return;
@@ -568,6 +587,68 @@ void appendTextToken(char* out, size_t outSize, const char* token) {
     out[used + 1] = '\0';
   }
   strncat(out, token, outSize - strlen(out) - 1);
+}
+
+bool fillBridgeUpload(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  if (tokens == nullptr || tokenCount == 0 || tokens[0] == nullptr) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasBridgeUpload = true;
+  parsed.command = "bridge_uplink";
+  parsed.bridgeUpload.seq = 1;
+  parsed.bridgeUpload.bytes = 160;
+  parsed.bridgeUpload.wakeGateOpen = true;
+
+  if (strcmp(tokens[0], "start") == 0 || strcmp(tokens[0], "begin") == 0 ||
+      strcmp(tokens[0], "wake") == 0) {
+    parsed.bridgeUpload.action = BenchBridgeUploadAction::Start;
+    if (tokenCount >= 2) {
+      parseUintToken(tokens[1], &parsed.bridgeUpload.seq);
+    }
+    for (uint8_t i = 1; i < tokenCount; ++i) {
+      parseUplinkWakeToken(tokens[i], &parsed.bridgeUpload.wakeGateOpen);
+    }
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(tokens[0], "chunk") == 0 || strcmp(tokens[0], "audio") == 0 ||
+      strcmp(tokens[0], "pcm") == 0 || strcmp(tokens[0], "bytes") == 0) {
+    parsed.bridgeUpload.action = BenchBridgeUploadAction::Chunk;
+    if (tokenCount >= 2) {
+      parseUintToken(tokens[1], &parsed.bridgeUpload.seq);
+    }
+    uint32_t bytes = parsed.bridgeUpload.bytes;
+    if (tokenCount >= 3 && parseUintToken(tokens[2], &bytes)) {
+      parsed.bridgeUpload.bytes = static_cast<uint16_t>(constrain(static_cast<long>(bytes), 2L, 512L));
+      if ((parsed.bridgeUpload.bytes & 1u) != 0) {
+        parsed.bridgeUpload.bytes++;
+      }
+    }
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(tokens[0], "end") == 0 || strcmp(tokens[0], "done") == 0 ||
+      strcmp(tokens[0], "finish") == 0) {
+    parsed.bridgeUpload.action = BenchBridgeUploadAction::End;
+    if (tokenCount >= 2) {
+      parseUintToken(tokens[1], &parsed.bridgeUpload.seq);
+    }
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (strcmp(tokens[0], "abort") == 0 || strcmp(tokens[0], "cancel") == 0 ||
+      strcmp(tokens[0], "stop") == 0) {
+    parsed.bridgeUpload.action = BenchBridgeUploadAction::Abort;
+    *controlOut = parsed;
+    return true;
+  }
+
+  return false;
 }
 
 bool fillBridgeControl(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
@@ -1149,6 +1230,17 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "multinet") == 0 || strcmp(first, "phrase") == 0) {
     return fillCommandEvent(ambientTokens, ambientTokenCount, nowMs, controlOut);
   }
+  if (strcmp(first, "uplink") == 0 || strcmp(first, "micupload") == 0 ||
+      strcmp(first, "upload") == 0) {
+    return fillBridgeUpload(ambientTokens, ambientTokenCount, controlOut);
+  }
+  if ((strcmp(first, "bridge") == 0 || strcmp(first, "conversation") == 0 ||
+       strcmp(first, "conv") == 0) &&
+      second != nullptr &&
+      (strcmp(second, "upload") == 0 || strcmp(second, "uplink") == 0 ||
+       strcmp(second, "mic") == 0)) {
+    return fillBridgeUpload(&ambientTokens[1], ambientTokenCount - 1u, controlOut);
+  }
   if (strcmp(first, "bridge") == 0 || strcmp(first, "conversation") == 0 ||
       strcmp(first, "conv") == 0) {
     return fillBridgeControl(ambientTokens, ambientTokenCount, controlOut);
@@ -1263,6 +1355,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: command <1-5|go_to_sleep|wake_up|look_at_me|stop_moving|how_do_you_feel>"));
   Serial.println(F("[control] help: speak <boot|idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety>"));
   Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
+  Serial.println(F("[control] help: uplink start <seq> [wake|closed]; uplink chunk <seq> [bytes]; uplink end <seq>; uplink abort"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));

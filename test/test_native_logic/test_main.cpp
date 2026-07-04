@@ -1547,6 +1547,42 @@ void test_sensor_adapter_parses_bridge_conversation_commands() {
   TEST_ASSERT_EQUAL_STRING("{\"type\":\"response_end\",\"seq\":42}", control.bridge.controlLine);
 }
 
+void test_sensor_adapter_parses_bridge_uplink_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("uplink start 42 wake", 4115, &control));
+  TEST_ASSERT_TRUE(control.hasBridgeUpload);
+  TEST_ASSERT_EQUAL_STRING("bridge_uplink", control.command);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchBridgeUploadAction::Start),
+                    static_cast<int>(control.bridgeUpload.action));
+  TEST_ASSERT_EQUAL_UINT32(42, control.bridgeUpload.seq);
+  TEST_ASSERT_TRUE(control.bridgeUpload.wakeGateOpen);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("bridge upload start 43 closed", 4116, &control));
+  TEST_ASSERT_TRUE(control.hasBridgeUpload);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchBridgeUploadAction::Start),
+                    static_cast<int>(control.bridgeUpload.action));
+  TEST_ASSERT_EQUAL_UINT32(43, control.bridgeUpload.seq);
+  TEST_ASSERT_FALSE(control.bridgeUpload.wakeGateOpen);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("uplink chunk 43 33", 4117, &control));
+  TEST_ASSERT_TRUE(control.hasBridgeUpload);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchBridgeUploadAction::Chunk),
+                    static_cast<int>(control.bridgeUpload.action));
+  TEST_ASSERT_EQUAL_UINT32(43, control.bridgeUpload.seq);
+  TEST_ASSERT_EQUAL_UINT16(34, control.bridgeUpload.bytes);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("uplink end 43", 4118, &control));
+  TEST_ASSERT_TRUE(control.hasBridgeUpload);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchBridgeUploadAction::End),
+                    static_cast<int>(control.bridgeUpload.action));
+  TEST_ASSERT_EQUAL_UINT32(43, control.bridgeUpload.seq);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("uplink abort", 4119, &control));
+  TEST_ASSERT_TRUE(control.hasBridgeUpload);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchBridgeUploadAction::Abort),
+                    static_cast<int>(control.bridgeUpload.action));
+}
+
 void test_sensor_adapter_parses_audio_awareness_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("sound dir=-45 level=0.70", 4081, &control));
@@ -4878,6 +4914,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_spoken_command_bench_events);
   RUN_TEST(test_sensor_adapter_parses_direct_speech_intent_cues);
   RUN_TEST(test_sensor_adapter_parses_bridge_conversation_commands);
+  RUN_TEST(test_sensor_adapter_parses_bridge_uplink_commands);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);

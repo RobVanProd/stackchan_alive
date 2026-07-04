@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry/control/persistence slice check in this workspace: **166/166 native firmware logic
+Current firmware transport/registry/control/persistence slice check in this workspace: **167/167 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -56,7 +56,8 @@ socket preservation. It also has bounded one-frame masked client text and binary
 queues, and `BridgeAudioUplink` now composes disabled-by-default `utterance_start`, bounded
 PCM binary chunks, and `utterance_end` frames only after an explicit wake gate opens. Native
 coverage checks default-off behavior, wake-gate blocking, frame order, queue bounds, bad
-sequences, and chunk limits. `BridgeNetworkSession` now opens the TCP socket, sends the WebSocket upgrade
+sequences, chunk limits, and a serial bench `uplink ...` command that can exercise the same
+turn controller with synthetic PCM. `BridgeNetworkSession` now opens the TCP socket, sends the WebSocket upgrade
 request, accepts the handshake, feeds received bytes into the WebSocket adapter, drains
 queued endpoint responses plus queued text/binary frames through the writer, and schedules
 reconnects; an ESP32
@@ -101,8 +102,10 @@ plus runtime `audio_capture_*` telemetry and native fake-source coverage from PC
 `BridgeAudioUplink`, disabled by default behind `STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK`, to
 queue `utterance_start`, bounded PCM binary chunks, and `utterance_end` only after a wake
 gate is explicitly open. What is still missing is wiring real mic windows into that turn
-controller, a CoreS3 run with the mic actually enabled, measured capture/uplink telemetry,
-and the wake/STT path that consumes capture beyond local reflex events.
+controller; the serial `uplink start|chunk|end|abort` bench route only sends synthetic PCM
+for transport bring-up. A CoreS3 run with the mic actually enabled, measured
+capture/uplink telemetry, and the wake/STT path that consumes capture beyond local reflex
+events are still open.
 
 ### B4. No wake word engine — and the privacy model depends on one
 

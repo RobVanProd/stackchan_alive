@@ -54,7 +54,7 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - Wake-word gated activation before bridge audio handoff.
 - Offline behavior when bridge or Wi-Fi is disabled.
 - No hardcoded secrets in firmware, bridge source, or packaged release artifacts.
-- Serial counters for `bridge_messages`, `bridge_outputs`, `bridge_parse_errors`, `bridge_audio_streams`, `bridge_audio_stream_bytes`, `bridge_audio_stream_bytes_received`, `bridge_audio_stream_chunks`, `bridge_audio_stream_errors`, `bridge_downlink_streams`, `bridge_downlink_chunks`, `bridge_downlink_bytes`, `bridge_downlink_errors`, `bridge_downlink_playback_starts`, `bridge_downlink_playback_chunks`, `bridge_downlink_playback_bytes`, `bridge_downlink_playback_unsupported`, `bridge_downlink_playback_errors`, and `bridge_timeouts`.
+- Serial counters for `bridge_messages`, `bridge_outputs`, `bridge_parse_errors`, `bridge_audio_streams`, `bridge_audio_stream_bytes`, `bridge_audio_stream_bytes_received`, `bridge_audio_stream_chunks`, `bridge_audio_stream_errors`, `bridge_uplink_enabled`, `bridge_uplink_active`, `bridge_uplink_gate_blocks`, `bridge_uplink_queue_failures`, `bridge_downlink_streams`, `bridge_downlink_chunks`, `bridge_downlink_bytes`, `bridge_downlink_errors`, `bridge_downlink_playback_starts`, `bridge_downlink_playback_chunks`, `bridge_downlink_playback_bytes`, `bridge_downlink_playback_unsupported`, `bridge_downlink_playback_errors`, and `bridge_timeouts`.
 - Timeout recovery that clears `bridge_active` and returns the face to local behavior.
 - Voice-source status showing RVC review assets and production voice gates are still separated.
 

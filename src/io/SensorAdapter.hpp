@@ -29,6 +29,21 @@ struct BenchBridgeControl {
   char controlLine[192] = {};
 };
 
+enum class BenchBridgeUploadAction : uint8_t {
+  None,
+  Start,
+  Chunk,
+  End,
+  Abort,
+};
+
+struct BenchBridgeUpload {
+  BenchBridgeUploadAction action = BenchBridgeUploadAction::None;
+  uint32_t seq = 1;
+  uint16_t bytes = 160;
+  bool wakeGateOpen = true;
+};
+
 struct BenchControl {
   bool wantsHelp = false;
   bool wantsStatus = false;
@@ -41,6 +56,7 @@ struct BenchControl {
   bool hasCircadian = false;
   bool hasSpeechCue = false;
   bool hasBridge = false;
+  bool hasBridgeUpload = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
@@ -50,6 +66,7 @@ struct BenchControl {
   BenchSpeechEnvelope speech;
   BenchAmbientReading ambient;
   BenchBridgeControl bridge;
+  BenchBridgeUpload bridgeUpload;
   SpeechCue speechCue;
   const char* command = "";
 };
