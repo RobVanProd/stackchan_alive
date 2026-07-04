@@ -19,6 +19,7 @@ data class EndpointServerConfig(
     val port: Int = 8765,
     val path: String = "/bridge",
     val endpointHello: EndpointHello = defaultDesktopEndpointHello(),
+    val requestRouter: EndpointRequestRouter = EndpointRequestRouter(),
 )
 
 data class EndpointSessionSnapshot(
@@ -93,7 +94,7 @@ class CompanionEndpointServer(
                 }
                 else -> {
                     recordMessageType(message.type)
-                    null
+                    config.requestRouter.handle(message)?.let { encodeControlMessage(it) }
                 }
             }
         } catch (error: RuntimeException) {
