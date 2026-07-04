@@ -224,10 +224,11 @@ the producing commit, and Gradle toolchain pins. That evidence job fails if the 
 does not include both Android debug/release APKs plus Linux `.deb`, macOS `.dmg`, and
 Windows `.msi` desktop packages.
 
-Evidence snapshot: PR #194 run `28708831980` on 2026-07-04 passed `bridge-tests`,
-`native-tests`, firmware `build`, `companion-tests`, and all four platform artifact legs:
-`companion-android-apks`, `companion-desktop-linux`, `companion-desktop-macos`, and
-`companion-desktop-windows`.
+Evidence snapshot: PR #194 run `28710085809` on 2026-07-04 passed `bridge-tests`,
+`native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, and
+`companion-release-evidence`. Uploaded companion artifacts included `companion-android-apks`,
+`companion-desktop-linux`, `companion-desktop-macos`, `companion-desktop-windows`, and a
+complete `COMPANION_RELEASE_EVIDENCE.json/md` manifest.
 
 **PR / push (`firmware.yml` additions, path-filtered to `companion/**` and
 `protocol-fixtures/**`):**
