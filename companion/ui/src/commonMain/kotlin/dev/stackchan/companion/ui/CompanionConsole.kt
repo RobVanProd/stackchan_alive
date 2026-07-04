@@ -46,17 +46,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.stackchan.companion.core.CompanionIdentity
 
-private val Ink = Color(0xFF111827)
-private val Muted = Color(0xFF6B7280)
-private val Page = Color(0xFFF3F5F9)
-private val Panel = Color(0xFFFFFFFF)
-private val Line = Color(0xFFE4E7EF)
-private val Purple = Color(0xFF5A3FF2)
-private val Cyan = Color(0xFF1CCAD8)
-private val Mint = Color(0xFF70E3BE)
-private val Amber = Color(0xFFF5B82E)
-private val Danger = Color(0xFFEF5F73)
-private val Console = Color(0xFF0B1324)
+private val Ink = Color(0xFFE7F8FF)
+private val Muted = Color(0xFF88A5B3)
+private val Page = Color(0xFF05070D)
+private val Panel = Color(0xFF0B111C)
+private val PanelAlt = Color(0xFF101826)
+private val Line = Color(0xFF164E5B)
+private val Purple = Color(0xFF7C5CFF)
+private val Cyan = Color(0xFF16D9E8)
+private val Mint = Color(0xFF62E6BA)
+private val Amber = Color(0xFFF2B84B)
+private val Danger = Color(0xFFFF5D72)
+private val Console = Color(0xFF07101D)
 
 data class CompanionUiState(
     val connection: String = "Connected: Rob's Phone (This Companion)",
@@ -73,11 +74,22 @@ data class CompanionUiState(
     ),
     val audioStatus: String = "Fake output ready",
     val consoleMessage: String = "Awaiting wake-gated input on android brain...",
+    val brainService: BrainServiceUiState = BrainServiceUiState(),
     val endpoints: List<EndpointRow> = listOf(
         EndpointRow("Rob's Phone (This Companion)", "android", "SHA256:B84F17C2A0E192DDB...", 80, true, true),
         EndpointRow("Studio Mac Studio", "pc", "SHA256:A21B84C019E2FF02A...", 90, false, false),
         EndpointRow("Guest Raspberry Pi 5", "pc", "SHA256:7F452C2C0F90DA15B...", 50, false, false),
     ),
+)
+
+data class BrainServiceUiState(
+    val running: Boolean = false,
+    val status: String = "Stopped",
+    val pid: String = "n/a",
+    val endpoint: String = "0.0.0.0:8766",
+    val command: String = "python bridge/lan_service.py",
+    val exitCode: String = "n/a",
+    val recentLogs: List<String> = listOf("PC brain supervisor idle."),
 )
 
 data class TelemetryReading(
@@ -99,11 +111,15 @@ data class EndpointRow(
 fun CompanionConsole(
     targetName: String,
     state: CompanionUiState = CompanionUiState(),
+    onStartBrain: () -> Unit = {},
+    onStopBrain: () -> Unit = {},
+    onRestartBrain: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val compact = maxWidth < 820.dp
+                TacticalBackdrop()
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -115,6 +131,13 @@ fun CompanionConsole(
                     if (compact) {
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             StagePanel(state, Modifier.fillMaxWidth())
+                            BrainPanel(
+                                state = state,
+                                modifier = Modifier.fillMaxWidth(),
+                                onStartBrain = onStartBrain,
+                                onStopBrain = onStopBrain,
+                                onRestartBrain = onRestartBrain,
+                            )
                             EndpointRegistry(state, Modifier.fillMaxWidth())
                             TelemetryPanel(state, Modifier.fillMaxWidth())
                         }
@@ -135,7 +158,13 @@ fun CompanionConsole(
                                 modifier = Modifier.weight(1f),
                             ) {
                                 TelemetryPanel(state, Modifier.fillMaxWidth())
-                                BrainPanel(state, Modifier.fillMaxWidth())
+                                BrainPanel(
+                                    state = state,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onStartBrain = onStartBrain,
+                                    onStopBrain = onStopBrain,
+                                    onRestartBrain = onRestartBrain,
+                                )
                                 SecurityPanel(Modifier.fillMaxWidth())
                             }
                         }
@@ -152,7 +181,7 @@ private fun Header(targetName: String, state: CompanionUiState, compact: Boolean
     Surface(
         color = Panel,
         shape = RoundedCornerShape(8.dp),
-        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -164,15 +193,16 @@ private fun Header(targetName: String, state: CompanionUiState, compact: Boolean
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Purple),
+                    .background(Console)
+                    .border(1.dp, Cyan, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("//", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("//", color = Cyan, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text("Stackchan Alive", color = Ink, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                 Text(
-                    "Companion ${CompanionIdentity.appVersion}  /  $targetName  /  ${CompanionIdentity.protocol}",
+                    "Companion ${CompanionIdentity.appVersion}  //  $targetName  //  ${CompanionIdentity.protocol}",
                     color = Muted,
                     fontSize = 11.sp,
                     maxLines = 1,
@@ -180,8 +210,8 @@ private fun Header(targetName: String, state: CompanionUiState, compact: Boolean
                 )
             }
             if (!compact) {
-                StatusPill(state.connection, Mint, Color(0xFFE8FBF5))
-                StatusPill("Brain: ${state.brainOwner}", Purple, Color(0xFFF1EEFF))
+                StatusPill(state.connection, Mint, Color(0xFF0D2A25))
+                StatusPill("Brain: ${state.brainOwner}", Purple, Color(0xFF181536))
             }
         }
     }
@@ -193,11 +223,11 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             SectionTitle("Live Robot Stage", Mint)
             Spacer(modifier = Modifier.weight(1f))
-            StatusPill("Heartbeat: ${state.heartbeatMs}ms", Purple, Color(0xFFF7F5FF))
+            StatusPill("Heartbeat: ${state.heartbeatMs}ms", Purple, Color(0xFF181536))
         }
         Spacer(Modifier.height(14.dp))
         Surface(
-            color = Color(0xFFFBFCFE),
+            color = Console,
             shape = RoundedCornerShape(8.dp),
             border = androidx.compose.foundation.BorderStroke(1.dp, Line),
             modifier = Modifier.fillMaxWidth(),
@@ -285,20 +315,60 @@ private fun TelemetryPanel(state: CompanionUiState, modifier: Modifier) {
 }
 
 @Composable
-private fun BrainPanel(state: CompanionUiState, modifier: Modifier) {
+private fun TacticalBackdrop() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val step = 22.dp.toPx()
+        var y = 0f
+        while (y < size.height) {
+            var x = 0f
+            while (x < size.width) {
+                drawCircle(
+                    color = Color(0x223D91A3),
+                    radius = 0.7.dp.toPx(),
+                    center = Offset(x, y),
+                )
+                x += step
+            }
+            y += step
+        }
+    }
+}
+
+@Composable
+private fun BrainPanel(
+    state: CompanionUiState,
+    modifier: Modifier,
+    onStartBrain: () -> Unit = {},
+    onStopBrain: () -> Unit = {},
+    onRestartBrain: () -> Unit = {},
+) {
     PanelShell(modifier = modifier) {
-        SectionTitle("Brain & Persona", Purple)
+        SectionTitle("PC Brain Supervisor", Purple)
         Spacer(Modifier.height(12.dp))
-        Readout("Active persona", state.activePersona, Purple)
-        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxWidth()) {
+            Readout("Service", state.brainService.status, if (state.brainService.running) Mint else Amber)
+            Readout("PID", state.brainService.pid, Muted)
+            Readout("Endpoint", state.brainService.endpoint, Cyan)
+        }
+        Spacer(Modifier.height(12.dp))
         Readout("Owner", state.brainOwner, Cyan)
         Spacer(Modifier.height(10.dp))
-        Readout("Policy", "PC preferred when healthy", Muted)
+        Readout("Persona", state.activePersona, Purple)
+        Spacer(Modifier.height(10.dp))
+        Readout("Command", state.brainService.command, Muted)
         Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SmallCommand("Use phone", filled = true)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SmallCommand(
+                text = if (state.brainService.running) "Stop brain" else "Start brain",
+                filled = true,
+                onClick = if (state.brainService.running) onStopBrain else onStartBrain,
+            )
+            SmallCommand("Restart", onClick = onRestartBrain)
+            SmallCommand("Use phone")
             SmallCommand("Handoff")
         }
+        Spacer(Modifier.height(14.dp))
+        ConsoleLog(state.brainService.recentLogs.takeLast(6).joinToString("\n"))
     }
 }
 
@@ -307,6 +377,7 @@ private fun SecurityPanel(modifier: Modifier) {
     Surface(
         color = Console,
         shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF26344D)),
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -327,7 +398,7 @@ private fun PanelShell(modifier: Modifier, content: @Composable ColumnScope.() -
     Surface(
         color = Panel,
         shape = RoundedCornerShape(8.dp),
-        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(18.dp), content = content)
@@ -366,18 +437,18 @@ private fun Readout(label: String, value: String, accent: Color) {
 }
 
 @Composable
-private fun SmallCommand(text: String, filled: Boolean = false) {
+private fun SmallCommand(text: String, filled: Boolean = false, onClick: () -> Unit = {}) {
     val colors = if (filled) {
-        ButtonDefaults.buttonColors(containerColor = Purple, contentColor = Color.White)
+        ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF061018))
     } else {
-        ButtonDefaults.outlinedButtonColors(contentColor = Ink)
+        ButtonDefaults.outlinedButtonColors(contentColor = Ink, containerColor = Color.Transparent)
     }
     if (filled) {
-        Button(onClick = {}, shape = RoundedCornerShape(8.dp), colors = colors) {
+        Button(onClick = onClick, shape = RoundedCornerShape(8.dp), colors = colors) {
             Text(text, fontSize = 12.sp)
         }
     } else {
-        OutlinedButton(onClick = {}, shape = RoundedCornerShape(8.dp), colors = colors) {
+        OutlinedButton(onClick = onClick, shape = RoundedCornerShape(8.dp), colors = colors) {
             Text(text, fontSize = 12.sp)
         }
     }
@@ -386,7 +457,7 @@ private fun SmallCommand(text: String, filled: Boolean = false) {
 @Composable
 private fun ExpressionChip(text: String, selected: Boolean) {
     Surface(
-        color = if (selected) Color(0xFFFFF4C7) else Color.White,
+        color = if (selected) Color(0xFF2A2613) else PanelAlt,
         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Amber else Line),
         shape = RoundedCornerShape(8.dp),
     ) {
@@ -418,8 +489,8 @@ private fun EndpointItem(endpoint: EndpointRow) {
         else -> "PC"
     }
     Surface(
-        color = if (endpoint.activeBrain) Color(0xFFFBFBFF) else Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (endpoint.activeBrain) Color(0xFFD9D2FF) else Line),
+        color = if (endpoint.activeBrain) Color(0xFF131B33) else PanelAlt,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (endpoint.activeBrain) Purple else Line),
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -429,15 +500,15 @@ private fun EndpointItem(endpoint: EndpointRow) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Box(
-                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F4FA)),
+                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(Console).border(1.dp, Line, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(iconLabel, color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(iconLabel, color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
             Column(modifier = Modifier.weight(1f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(endpoint.name, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (endpoint.activeBrain) StatusPill("Active brain", Purple, Color(0xFFF1EEFF))
+                    if (endpoint.activeBrain) StatusPill("Active brain", Purple, Color(0xFF181536))
                 }
                 Text("Fingerprint: ${endpoint.fingerprint}", color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("stt   llm   tts   settings   ${endpoint.kind}", color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
@@ -446,7 +517,7 @@ private fun EndpointItem(endpoint: EndpointRow) {
                 Text("Priority: ${endpoint.priority}", color = Muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.height(6.dp))
                 if (endpoint.connected) {
-                    StatusPill("Connected", Color(0xFF20A878), Color(0xFFE8FBF5))
+                    StatusPill("Connected", Mint, Color(0xFF0D2A25))
                 } else {
                     Button(
                         onClick = {},
@@ -468,7 +539,7 @@ private fun TelemetryRow(reading: TelemetryReading) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFCCE7EF), RoundedCornerShape(8.dp)),
+            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Text(reading.label.take(1), color = Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)

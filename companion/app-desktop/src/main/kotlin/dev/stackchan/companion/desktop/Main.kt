@@ -28,7 +28,13 @@ fun main() {
                     delay(1_000)
                 }
             }
-            CompanionConsole(targetName = "Desktop", state = uiState.value)
+            CompanionConsole(
+                targetName = "Desktop",
+                state = uiState.value,
+                onStartBrain = { runCatching { runtime.startBrainService() } },
+                onStopBrain = { runCatching { runtime.stopBrainService() } },
+                onRestartBrain = { runCatching { runtime.restartBrainService() } },
+            )
         }
     }
 }

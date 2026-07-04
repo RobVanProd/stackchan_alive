@@ -2,6 +2,7 @@ package dev.stackchan.companion.desktop
 
 import dev.stackchan.companion.core.DiagnosticsSnapshot
 import dev.stackchan.companion.core.EndpointSessionSnapshot
+import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.EndpointRow
 import dev.stackchan.companion.ui.TelemetryReading
@@ -66,7 +67,35 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         telemetry = diagnostics.toTelemetryReadings(this, runtime),
         audioStatus = diagnostics.audio?.stringValue("engine") ?: "offline",
         consoleMessage = consoleMessage(owner, runtime),
+        brainService = runtime.brainSupervisor.toBrainServiceUiState(),
         endpoints = listOf(robotEndpoint, desktopEndpoint),
+    )
+}
+
+private fun DesktopBrainSupervisorSnapshot.toBrainServiceUiState(): BrainServiceUiState {
+    val compactCommand = buildString {
+        append(command.firstOrNull()?.substringAfterLast('\\')?.substringAfterLast('/') ?: "python")
+        append(" ")
+        append(scriptPath.fileName?.toString() ?: "lan_service.py")
+        val args = command.drop(2)
+        if (args.isNotEmpty()) {
+            append(" ")
+            append(args.joinToString(" "))
+        }
+    }
+    val status = when {
+        running -> "Running"
+        exitCode != null -> "Exited $exitCode"
+        else -> "Stopped"
+    }
+    return BrainServiceUiState(
+        running = running,
+        status = status,
+        pid = pid?.toString() ?: "n/a",
+        endpoint = "$host:$port",
+        command = compactCommand,
+        exitCode = exitCode?.toString() ?: "n/a",
+        recentLogs = recentLogs.ifEmpty { listOf("PC brain supervisor idle.") },
     )
 }
 

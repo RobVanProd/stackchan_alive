@@ -26,6 +26,7 @@ data class DesktopCompanionRuntimeConfig(
     val advertiseMdns: Boolean = System.getProperty("stackchan.companion.mdns")?.toBooleanStrictOrNull() ?: true,
     val mdnsAddress: InetAddress? = null,
     val mdnsInstanceName: String = System.getProperty("stackchan.companion.mdns.instance") ?: "stackchan-companion-desktop",
+    val brainSupervisorConfig: DesktopBrainSupervisorConfig = DesktopBrainSupervisorConfig(),
 )
 
 data class DesktopCompanionRuntimeSnapshot(
@@ -35,6 +36,7 @@ data class DesktopCompanionRuntimeSnapshot(
     val endpointId: String,
     val mdnsAdvertised: Boolean,
     val mdnsEndpoint: DiscoveredEndpoint?,
+    val brainSupervisor: DesktopBrainSupervisorSnapshot,
     val mdnsError: String = "",
 )
 
@@ -45,6 +47,7 @@ class DesktopCompanionRuntime(
     private var discovery: JmDnsDiscovery? = null
     private var registration: RegisteredService? = null
     private var requestRouter: EndpointRequestRouter? = null
+    private val brainSupervisor = DesktopBrainSupervisor(config.brainSupervisorConfig)
     private var mdnsError: String = ""
 
     fun start(): DesktopCompanionRuntime {
@@ -99,6 +102,7 @@ class DesktopCompanionRuntime(
             endpointId = config.endpointId,
             mdnsAdvertised = registration != null,
             mdnsEndpoint = registration?.endpoint,
+            brainSupervisor = brainSupervisor.snapshot(),
             mdnsError = mdnsError,
         )
 
@@ -109,7 +113,17 @@ class DesktopCompanionRuntime(
         requestRouter?.handle(DiagnosticsRequest(domains = domains)) as? DiagnosticsSnapshot
             ?: DiagnosticsSnapshot(bridge = JsonObject(emptyMap()))
 
+    fun startBrainService(): DesktopBrainSupervisorSnapshot =
+        brainSupervisor.start().snapshot()
+
+    fun stopBrainService(): DesktopBrainSupervisorSnapshot =
+        brainSupervisor.stop().snapshot()
+
+    fun restartBrainService(): DesktopBrainSupervisorSnapshot =
+        brainSupervisor.restart().snapshot()
+
     override fun close() {
+        brainSupervisor.close()
         registration?.close()
         registration = null
         discovery?.close()

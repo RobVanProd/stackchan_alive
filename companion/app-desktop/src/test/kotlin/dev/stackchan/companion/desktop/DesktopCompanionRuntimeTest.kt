@@ -137,6 +137,8 @@ class DesktopCompanionRuntimeTest {
             assertEquals("stackchan.bridge.v1", before.telemetry[0].value)
             assertEquals("Audio", before.telemetry[1].label)
             assertEquals("fake", before.telemetry[1].value)
+            assertEquals("Stopped", before.brainService.status)
+            assertEquals("0.0.0.0:8766", before.brainService.endpoint)
             assertEquals("Connected: Stackchan Bench", after.connection)
             assertEquals("hello", after.robotState)
             assertEquals(true, after.endpoints.first().connected)
