@@ -101,6 +101,7 @@ Evidence to capture:
 ## Robot Session
 
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
+- [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
 - [ ] Android notification switches from waiting to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.
@@ -135,6 +136,7 @@ farther back in the device buffer.
 Attach these to the arrival-day packet:
 
 - screenshot of the Android dashboard manual URL
+- screenshot of the Android dashboard connected robot state, including robot identity, firmware/version signal, last bridge frame, active brain owner, and service state
 - screenshot of the foreground notification
 - `android/apk-install/ANDROID_APK_INSTALL.md`, `android_apk_install.json`, and `adb_install.log`, or the repo `output/android-apk-install/latest/` equivalents
 - mDNS result or failure note

@@ -90,6 +90,10 @@ port `8766` every few seconds.
 If service discovery is unavailable on the LAN, manually point the robot bridge client at
 the `ws://<phone-lan-ip>:8765/bridge` URL shown in the Android dashboard or foreground
 notification.
+After the robot connects, capture the Android dashboard connected state. The screenshot
+must show the robot identity, firmware/version signal, last bridge frame, active brain
+owner, and foreground service state so the phone-hosted bridge path is reviewable without
+the device in hand.
 For the full Android phone/LAN validation pass, use `docs/ANDROID_COMPANION_TEST_PLAN.md`
 and attach its evidence to the packet.
 Before asking the robot to connect manually, run

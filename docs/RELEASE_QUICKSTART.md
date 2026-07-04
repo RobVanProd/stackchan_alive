@@ -171,6 +171,9 @@ excerpt under `android/logcat/` so the failure has packet-level evidence.
 
 The Android helpers write packet-local probe evidence under `android\udp-beacon-probe\` and `android\companion-probe\`.
 `RUN_ANDROID_APK_INSTALL.cmd` writes install evidence under `android\apk-install\`.
+After the robot connects through the phone, capture the Android dashboard connected state
+showing robot identity, firmware/version signal, last bridge frame, active brain owner,
+and foreground service state.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
