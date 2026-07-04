@@ -366,6 +366,11 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
       -RelativePath ([string]$metadata.androidCompanionProbes.udpBeaconProbeReport) `
       -ExpectedSchema "stackchan.android-udp-beacon-probe.v1" `
       -Description "Android UDP beacon probe"
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.logcatReport) `
+      -ExpectedSchema "stackchan.android-companion-logcat.v1" `
+      -Description "Android companion logcat capture" `
+      -PassingStatuses @("captured")
   }
 
   if ($null -ne $metadata.voiceGateStatus) {

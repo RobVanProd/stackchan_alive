@@ -209,6 +209,12 @@ function Get-AndroidProbeEvidenceStatus {
       path = [string]$probeConfig.udpBeaconProbeReport
       schema = "stackchan.android-udp-beacon-probe.v1"
       passingStatuses = @("pass")
+    },
+    [ordered]@{
+      label = "Android companion logcat capture"
+      path = [string]$probeConfig.logcatReport
+      schema = "stackchan.android-companion-logcat.v1"
+      passingStatuses = @("captured")
     }
   )
 
