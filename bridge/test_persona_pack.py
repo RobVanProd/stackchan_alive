@@ -147,6 +147,8 @@ class PersonaPackTests(unittest.TestCase):
         self.assertIn("behavior_emotion_response_missing:curiosity_arousal_delta", issues)
         self.assertIn("expressions_section_missing:neutral", issues)
         self.assertIn("expressions_think_missing:pupil_y", issues)
+        self.assertIn("voice_packaged_prompt_missing:boot", issues)
+        self.assertIn("voice_packaged_prompt_missing:safety", issues)
 
     def test_missing_pack_raises_clear_error(self):
         with self.assertRaises(PersonaPackError):

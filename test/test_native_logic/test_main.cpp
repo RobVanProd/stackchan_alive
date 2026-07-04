@@ -21,6 +21,7 @@
 #include "motion/Spring.hpp"
 #include "PersonaBehavior.hpp"
 #include "PersonaExpressions.hpp"
+#include "PersonaPromptAssets.hpp"
 #include "persona/AudioSaliency.hpp"
 #include "persona/CommandMap.hpp"
 #include "persona/EarconSynth.hpp"
@@ -1881,6 +1882,8 @@ void test_speech_prompt_bank_covers_all_spoken_intents_with_sidecars() {
   const SpeechPromptAsset* assets = SpeechPromptBank::assets(count);
   TEST_ASSERT_NOT_NULL(assets);
   TEST_ASSERT_EQUAL_UINT32(sizeof(intents) / sizeof(intents[0]), count);
+  TEST_ASSERT_EQUAL_STRING("spark", generated_persona::kPromptAssetsPersonaId);
+  TEST_ASSERT_EQUAL_UINT32(count, generated_persona::kPromptAssetCount);
 }
 
 void test_audio_out_accepts_packaged_prompt_requests() {

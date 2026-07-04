@@ -111,6 +111,23 @@ def _expression_value(spec, key, minimum, maximum, default):
     return _clamp_float(_mapping(spec).get(key), minimum, maximum, default)
 
 
+def _prompt_asset_entry(intent_key, spec):
+    intent = INTENT_ENUMS.get(intent_key)
+    if intent is None:
+        raise RuntimeError(f"Unknown persona prompt intent: {intent_key}")
+    prompt_id = str(spec.get("prompt_id", "")).strip()
+    transcript = str(spec.get("transcript", "")).strip()
+    wav_path = str(spec.get("wav_path", "")).strip().replace("\\", "/")
+    sidecar_path = str(spec.get("sidecar_path", "")).strip().replace("\\", "/")
+    if not prompt_id or not transcript or not wav_path or not sidecar_path:
+        raise RuntimeError(f"Missing persona packaged prompt fields for {intent_key}")
+    return (
+        f"    {{SpeechIntent::{intent}, PromptSource::PackagedPrompt, "
+        f"{_cpp_string(prompt_id)}, {_cpp_string(transcript)}, "
+        f"{_cpp_string(wav_path)}, {_cpp_string(sidecar_path)}}},"
+    )
+
+
 def _earcon_tones(name, spec):
     base_hz = _clamp_int(spec.get("base_hz"), 160, 2400, 660)
     chirps = _clamp_int(spec.get("chirps"), 1, 4, 1)
@@ -164,6 +181,7 @@ speech_header_path = generated_dir / "PersonaSpeechLines.hpp"
 earcon_header_path = generated_dir / "PersonaEarcons.hpp"
 behavior_header_path = generated_dir / "PersonaBehavior.hpp"
 expressions_header_path = generated_dir / "PersonaExpressions.hpp"
+prompt_assets_header_path = generated_dir / "PersonaPromptAssets.hpp"
 
 ordered_intents = (
     "boot",
@@ -495,5 +513,40 @@ if expressions_header_path.exists() and expressions_header_path.read_text(encodi
     pass
 else:
     expressions_header_path.write_text(expressions_text, encoding="utf-8")
+
+packaged_prompts = _mapping(pack.voice.get("packaged_prompts"))
+prompt_parts = [
+    "#pragma once",
+    "",
+    "#include <stddef.h>",
+    "",
+    "#include \"io/SpeechPromptBank.hpp\"",
+    "",
+    "namespace stackchan {",
+    "namespace generated_persona {",
+    "",
+    f"static constexpr const char* kPromptAssetsPersonaId = {_cpp_string(pack.pack_id)};",
+    "",
+    "static constexpr SpeechPromptAsset kPromptAssets[] = {",
+]
+for intent_key in INTENT_ENUMS:
+    prompt_parts.append(_prompt_asset_entry(intent_key, _mapping(packaged_prompts.get(intent_key))))
+prompt_parts.extend(
+    [
+        "};",
+        "",
+        "static constexpr size_t kPromptAssetCount = sizeof(kPromptAssets) / sizeof(kPromptAssets[0]);",
+        "",
+        "}  // namespace generated_persona",
+        "}  // namespace stackchan",
+        "",
+    ]
+)
+
+prompt_assets_text = "\n".join(prompt_parts)
+if prompt_assets_header_path.exists() and prompt_assets_header_path.read_text(encoding="utf-8") == prompt_assets_text:
+    pass
+else:
+    prompt_assets_header_path.write_text(prompt_assets_text, encoding="utf-8")
 
 env.Append(CPPPATH=[str(generated_dir)])
