@@ -283,6 +283,8 @@ $requiredFiles = @(
   "tools/check_android_toolchain.ps1",
   "tools/check_companion_v1_readiness.cmd",
   "tools/check_companion_v1_readiness.ps1",
+  "tools/export_companion_release_evidence.cmd",
+  "tools/export_companion_release_evidence.ps1",
   "tools/preview_python_resolver.ps1",
   "tools/render_preview.py",
   "tools/audit_published_release.cmd",
@@ -492,7 +494,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
-foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleDebug", "companion\app-android\build\outputs\apk\debug\app-android-debug.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
+foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleDebug", "companion\app-android\build\outputs\apk\debug\app-android-debug.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
     throw "QUICKSTART.md missing required guidance: $pattern"
   }
@@ -748,6 +750,13 @@ foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
   }
 }
 
+$releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
+foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json/md", "artifact SHA256s", "libs.versions.toml", "-RequireArtifacts")) {
+  if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/RELEASE_PROCESS.md missing companion C8 release evidence guidance: $pattern"
+  }
+}
+
 $repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -Raw
 foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
@@ -923,6 +932,13 @@ $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "too
 foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
+  }
+}
+
+$companionReleaseEvidenceExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_companion_release_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.companion-release-evidence.v1", "COMPANION_RELEASE_EVIDENCE.json", "COMPANION_RELEASE_EVIDENCE.md", "toolchainPins", "Get-FileHash", "AndroidArtifactRoot", "DesktopArtifactRoot", "RequireArtifacts", "evidence-pending-artifacts", "blocked-missing-artifacts")) {
+  if ($companionReleaseEvidenceExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_companion_release_evidence.ps1 missing companion release evidence export logic: $pattern"
   }
 }
 

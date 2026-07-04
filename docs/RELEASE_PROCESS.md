@@ -11,6 +11,11 @@ This project can produce a pre-device review release now and a hardware-validate
 The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the active persona pack under `personas/spark`, `persona_pack_status.json`, voice-source provenance template, companion C6 brain-supervision evidence under `companion/evidence/`, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, promotion verifiers, a manifest that names the readiness/media/voice/persona/companion evidence artifacts, and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
+For the companion C8 distribution path, run `tools/export_companion_release_evidence.cmd`
+after Android APK or desktop package artifacts are built. It writes
+`COMPANION_RELEASE_EVIDENCE.json/md` with artifact SHA256s, git commit, and
+`companion/gradle/libs.versions.toml` toolchain pins; use `-RequireArtifacts` when signed
+APK and desktop packages are required for promotion.
 
 Before flashing or publishing, run the no-hardware preflight:
 

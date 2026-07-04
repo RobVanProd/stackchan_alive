@@ -39,6 +39,15 @@ The expected source-ready state is `source-ready-pending-hardware`; physical rob
 target-phone, C8 distribution, and production voice-source gates remain pending until
 their real evidence is captured.
 
+Capture companion release evidence after APK or desktop package artifacts exist:
+
+```powershell
+.\tools\export_companion_release_evidence.cmd
+```
+
+Before a signed C8 distribution is promoted, rerun it with `-RequireArtifacts` so missing
+APK or desktop package hashes block the release evidence.
+
 Run the socket-level LAN bridge smoke report:
 
 ```powershell
