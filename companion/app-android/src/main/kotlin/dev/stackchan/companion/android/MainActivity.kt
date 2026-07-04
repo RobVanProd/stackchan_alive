@@ -283,12 +283,19 @@ private fun androidRobotSetup(
     trustedCompanionCount: Int,
 ): RobotSetupUiState {
     val serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed"
+    val robotDetected = bridgeStatus.robotSocketConnected || bridgeStatus.robotConnected
     val setupStatus = when {
         bridgeStatus.robotConnected -> "${bridgeStatus.robotDisplayName} is connected. Brain and settings controls are now available."
+        bridgeStatus.robotSocketConnected -> "Stack-chan reached this phone. Waiting for the bridge hello before controls unlock."
         serviceRunning -> "Bridge is ready. Connect Stack-chan to this phone's bridge URL."
         else -> "Start the phone bridge so Stack-chan can discover this app."
     }
     return RobotSetupUiState(
+        setupTitle = when {
+            bridgeStatus.robotConnected -> "Stack-chan ready"
+            bridgeStatus.robotSocketConnected -> "Finish Stack-chan pairing"
+            else -> "Add your Stack-chan"
+        },
         setupStatus = setupStatus,
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
@@ -311,18 +318,20 @@ private fun androidRobotSetup(
             RobotSetupStepUiState(
                 label = "Connect Stack-chan",
                 detail = "Power on Stack-chan, keep it on this Wi-Fi, and enter the phone bridge URL.",
-                completed = bridgeStatus.robotConnected,
-                current = serviceRunning && !bridgeStatus.robotConnected,
+                completed = robotDetected,
+                current = serviceRunning && !robotDetected,
             ),
             RobotSetupStepUiState(
                 label = "Confirm robot ready",
                 detail = if (bridgeStatus.robotConnected) {
                     "Robot hello received: ${bridgeStatus.robotDisplayName} / ${bridgeStatus.robotFingerprint}."
+                } else if (bridgeStatus.robotSocketConnected) {
+                    "Socket is open. Waiting for Stack-chan firmware to send the bridge hello."
                 } else {
                     "Wait here until the robot row changes from waiting to connected."
                 },
                 completed = bridgeStatus.robotConnected,
-                current = bridgeStatus.robotConnected,
+                current = robotDetected,
             ),
         ),
     )
@@ -333,7 +342,11 @@ private fun androidTelemetryReadings(bridgeStatus: AndroidBridgeRuntimeStatus): 
         TelemetryReading(
             label = "Robot",
             value = bridgeStatus.robotDisplayName,
-            detail = if (bridgeStatus.robotConnected) "Connected" else "Waiting",
+            detail = when {
+                bridgeStatus.robotConnected -> "Connected"
+                bridgeStatus.robotSocketConnected -> "Waiting for hello"
+                else -> "Waiting"
+            },
         ),
         TelemetryReading(
             label = "Firmware",

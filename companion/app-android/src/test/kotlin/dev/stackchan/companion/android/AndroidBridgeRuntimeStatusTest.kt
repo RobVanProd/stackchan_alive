@@ -109,6 +109,7 @@ class AndroidBridgeRuntimeStatusTest {
         AndroidBridgeRuntimeStatusStore.setServiceStatus("Failed", "Bridge failed: port already in use")
 
         val status = AndroidBridgeRuntimeStatusStore.status.value
+        assertFalse(status.robotSocketConnected)
         assertFalse(status.robotConnected)
         assertEquals("", status.robotId)
         assertEquals("", status.robotName)
@@ -135,10 +136,11 @@ class AndroidBridgeRuntimeStatusTest {
 
         val status = AndroidBridgeRuntimeStatusStore.status.value
 
+        assertTrue(status.robotSocketConnected)
         assertFalse(status.robotConnected)
-        assertEquals("Awaiting robot", status.robotState)
-        assertTrue(status.connectionLabel.contains("Bridge ready"))
-        assertTrue(status.consoleMessage.contains("Awaiting Stack-chan bridge handshake"))
+        assertEquals("Awaiting robot hello", status.robotState)
+        assertEquals("Robot detected: waiting for hello", status.connectionLabel)
+        assertTrue(status.consoleMessage.contains("Waiting for robot hello"))
     }
 
     @Test
@@ -284,6 +286,7 @@ class AndroidBridgeRuntimeStatusTest {
                 manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
                 serviceStatus = "Foreground",
                 serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
                 robotConnected = true,
                 robotId = "stackchan-bench-01",
                 robotName = "Stackchan Bench",
@@ -300,6 +303,33 @@ class AndroidBridgeRuntimeStatusTest {
     }
 
     @Test
+    fun androidUiStateShowsRobotDetectedBeforeHello() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; waiting for robot hello",
+                robotSocketConnected = true,
+            ),
+        )
+
+        assertFalse(uiState.robotSetup.robotConnected)
+        assertEquals("Finish Stack-chan pairing", uiState.robotSetup.setupTitle)
+        assertTrue(uiState.robotSetup.setupStatus.contains("Waiting for the bridge hello"))
+        assertEquals("Stackchan detected", uiState.robotSetup.robotName)
+        assertEquals("Bridge socket open; no robot hello yet", uiState.robotSetup.robotFingerprint)
+        assertTrue(uiState.robotSetup.steps[1].completed)
+        assertFalse(uiState.robotSetup.steps[1].current)
+        assertFalse(uiState.robotSetup.steps[2].completed)
+        assertTrue(uiState.robotSetup.steps[2].current)
+        assertEquals("Robot detected: waiting for hello", uiState.connection)
+        assertTrue(uiState.consoleMessage.contains("Waiting for robot hello"))
+        assertEquals("Waiting for hello", uiState.telemetry.first { it.label == "Robot" }.detail)
+    }
+
+    @Test
     fun androidUiStateShowsTextTurnConversationStatus() {
         val uiState = androidCompanionUiState(
             endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
@@ -312,6 +342,7 @@ class AndroidBridgeRuntimeStatusTest {
                 manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
                 serviceStatus = "Foreground",
                 serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
                 robotConnected = true,
                 robotId = "stackchan-bench-01",
                 robotName = "Stackchan Bench",
@@ -374,6 +405,7 @@ class AndroidBridgeRuntimeStatusTest {
                 manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
                 serviceStatus = "Foreground",
                 serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
                 robotConnected = true,
                 robotId = "stackchan-bench-01",
                 robotName = "Stackchan Bench",
@@ -393,8 +425,10 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("app_text_turn", bridge["last_message_type"]!!.jsonPrimitive.content)
         assertEquals(2, bridge["text_turns_submitted"]!!.jsonPrimitive.content.toInt())
         assertTrue(bridge["last_text_turn_present"]!!.jsonPrimitive.boolean)
+        assertTrue(bridge["robot_socket_connected"]!!.jsonPrimitive.boolean)
 
         val robot = export["robot"]!!.jsonObject
+        assertTrue(robot["socket_connected"]!!.jsonPrimitive.boolean)
         assertTrue(robot["connected"]!!.jsonPrimitive.boolean)
         assertEquals("stackchan-bench-01", robot["device_id"]!!.jsonPrimitive.content)
 

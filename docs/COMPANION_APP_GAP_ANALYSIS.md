@@ -24,8 +24,10 @@ current v1 companion branch.
 - G5 pairing enforcement is partially closed. Android and desktop no longer treat a raw
   WebSocket connection as a connected robot session: app text turns, audio writes, settings
   writes, Talk enablement, wake-lock promotion, and setup-complete UI now require the robot
-  `hello` handshake first. Full QR/short-code trust establishment and hardware proof still
-  remain blocking before public distribution.
+  `hello` handshake first. Android also exposes the intermediate "robot socket detected,
+  waiting for hello" state in setup, notification detail, and diagnostics export. Full
+  QR/short-code trust establishment and hardware proof still remain blocking before public
+  distribution.
 - G6 first-run Wi-Fi provisioning is still open. Current setup assumes the robot can
   already reach the phone or desktop bridge.
 - G7 Play submission remains pending on upload signing, developer verification, privacy

@@ -150,6 +150,7 @@ class CompanionBridgeService : Service() {
             while (isActive) {
                 val snapshot = runCatching { bridge.currentSnapshot() }.getOrDefault(null)
                 val connected = snapshot?.robotHelloReceived == true
+                val socketConnected = snapshot?.connected == true
                 if (connected) {
                     acquireOrRenewSessionWakeLock()
                 } else {
@@ -157,11 +158,23 @@ class CompanionBridgeService : Service() {
                 }
                 if (connected != wasConnected) {
                     wasConnected = connected
-                    val suffix = if (connected) "session wake lock active" else "waiting for robot session"
+                    val suffix = if (connected) {
+                        "session wake lock active"
+                    } else if (socketConnected) {
+                        "waiting for robot hello"
+                    } else {
+                        "waiting for robot session"
+                    }
                     updateNotification("Bridge ready at ${primaryBridgeManualUrl()}; $suffix")
                 }
                 if (snapshot != null) {
-                    val suffix = if (connected) "session wake lock active" else "waiting for robot session"
+                    val suffix = if (connected) {
+                        "session wake lock active"
+                    } else if (socketConnected) {
+                        "waiting for robot hello"
+                    } else {
+                        "waiting for robot session"
+                    }
                     AndroidBridgeRuntimeStatusStore.updateSession(
                         snapshot = snapshot,
                         detail = "Bridge ready at ${primaryBridgeManualUrl()}; $suffix",

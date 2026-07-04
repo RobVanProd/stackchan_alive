@@ -62,6 +62,7 @@ fun buildAndroidDiagnosticsJson(
             put("primary_bridge_url", bridgeStatus.primaryBridgeUrl)
             put("manual_bridge_urls", JsonArray(bridgeStatus.manualBridgeUrls.map { JsonPrimitive(it) }))
             put("connection_label", bridgeStatus.connectionLabel)
+            put("robot_socket_connected", bridgeStatus.robotSocketConnected)
             put("robot_state", bridgeStatus.robotState)
             put("last_message_type", bridgeStatus.lastMessageType)
             put("active_brain_owner", bridgeStatus.activeBrainOwner)
@@ -69,6 +70,7 @@ fun buildAndroidDiagnosticsJson(
             put("last_text_turn_present", bridgeStatus.lastTextTurn.isNotBlank())
         })
         put("robot", buildJsonObject {
+            put("socket_connected", bridgeStatus.robotSocketConnected)
             put("connected", bridgeStatus.robotConnected)
             put("device_id", bridgeStatus.robotId)
             put("device_name", bridgeStatus.robotName)

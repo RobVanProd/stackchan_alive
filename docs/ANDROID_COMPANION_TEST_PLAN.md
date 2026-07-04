@@ -128,12 +128,12 @@ Evidence to capture:
 - [ ] The disconnected robot row shows a waiting/setup action rather than an unavailable handoff action.
 - [ ] The setup card shows how many trusted companion nodes are stored before the operator removes or keeps old devices.
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
-- [ ] A raw WebSocket connection without the robot `hello` handshake does not mark setup complete, does not enable Talk, and does not promote the Android session wake lock.
+- [ ] A raw WebSocket connection without the robot `hello` handshake changes the setup card to `Finish Stack-chan pairing` / waiting for robot hello, but does not mark setup complete, does not enable Talk, and does not promote the Android session wake lock.
 - [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
 - [ ] Talk screen enables text input only after Stack-chan is connected.
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
-- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/trusted endpoint state, and redacts the last text turn to presence-only.
-- [ ] Android notification switches from waiting to session active.
+- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
+- [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.
 - [ ] Android session wake lock is released after the robot disconnects.

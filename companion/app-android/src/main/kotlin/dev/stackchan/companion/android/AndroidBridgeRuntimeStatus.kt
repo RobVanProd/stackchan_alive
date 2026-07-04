@@ -9,6 +9,7 @@ data class AndroidBridgeRuntimeStatus(
     val manualBridgeUrls: List<String> = emptyList(),
     val serviceStatus: String = "Starting",
     val serviceDetail: String = "Preparing foreground bridge service.",
+    val robotSocketConnected: Boolean = false,
     val robotConnected: Boolean = false,
     val robotId: String = "",
     val robotName: String = "",
@@ -22,10 +23,20 @@ data class AndroidBridgeRuntimeStatus(
         get() = manualBridgeUrls.firstOrNull() ?: primaryBridgeManualUrl()
 
     val robotDisplayName: String
-        get() = robotName.ifBlank { robotId.ifBlank { "Awaiting Stackchan robot" } }
+        get() = robotName.ifBlank {
+            robotId.ifBlank {
+                if (robotSocketConnected) "Stackchan detected" else "Awaiting Stackchan robot"
+            }
+        }
 
     val robotFingerprint: String
-        get() = firmwareVersion.ifBlank { if (robotConnected) robotId else "No robot hello yet" }
+        get() = firmwareVersion.ifBlank {
+            when {
+                robotConnected -> robotId
+                robotSocketConnected -> "Bridge socket open; no robot hello yet"
+                else -> "No robot hello yet"
+            }
+        }
 
     val robotState: String
         get() = when {
@@ -33,6 +44,7 @@ data class AndroidBridgeRuntimeStatus(
             serviceStatus == "Stopped" -> "Bridge stopped"
             serviceStatus == "Starting" -> "Bridge starting"
             robotConnected -> lastMessageType.ifBlank { "connected" }
+            robotSocketConnected -> "Awaiting robot hello"
             else -> "Awaiting robot"
         }
 
@@ -42,6 +54,7 @@ data class AndroidBridgeRuntimeStatus(
             serviceStatus == "Stopped" -> "Bridge stopped: $primaryBridgeUrl"
             serviceStatus == "Starting" -> "Bridge starting: $primaryBridgeUrl"
             robotConnected -> "Connected: $robotDisplayName"
+            robotSocketConnected -> "Robot detected: waiting for hello"
             else -> "Bridge ready: $primaryBridgeUrl"
         }
 
@@ -51,6 +64,7 @@ data class AndroidBridgeRuntimeStatus(
             serviceStatus == "Stopped" -> serviceDetail
             serviceStatus == "Starting" -> serviceDetail
             robotConnected -> "Robot $robotDisplayName last reported `${lastMessageType.ifBlank { "connected" }}`; brain owner: ${activeBrainOwner.ifBlank { "None" }}."
+            robotSocketConnected -> "Stack-chan opened the bridge socket. Waiting for robot hello before enabling Talk or settings."
             else -> "Awaiting Stack-chan bridge handshake at $primaryBridgeUrl."
         }
 }
@@ -69,6 +83,7 @@ object AndroidBridgeRuntimeStatusStore {
             it.copy(
                 serviceStatus = status,
                 serviceDetail = detail,
+                robotSocketConnected = if (clearSession) false else it.robotSocketConnected,
                 robotConnected = if (clearSession) false else it.robotConnected,
                 robotId = if (clearSession) "" else it.robotId,
                 robotName = if (clearSession) "" else it.robotName,
@@ -89,6 +104,7 @@ object AndroidBridgeRuntimeStatusStore {
                 it.copy(
                     serviceStatus = "Stopped",
                     serviceDetail = detail,
+                    robotSocketConnected = false,
                     robotConnected = false,
                     robotId = "",
                     robotName = "",
@@ -107,6 +123,7 @@ object AndroidBridgeRuntimeStatusStore {
             it.copy(
                 serviceStatus = "Foreground",
                 serviceDetail = detail,
+                robotSocketConnected = snapshot.connected,
                 robotConnected = snapshot.robotHelloReceived,
                 robotId = snapshot.deviceId,
                 robotName = snapshot.deviceName,
