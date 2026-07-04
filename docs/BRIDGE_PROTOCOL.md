@@ -34,10 +34,13 @@ credentials/bridge host on the CoreS3 before collecting live PC/mobile handoff e
 `BridgeAudioUplink` is the firmware turn controller for device-to-bridge speech upload: it
 is disabled by default, refuses to start unless the wake gate is open, queues a masked text
 `utterance_start`, queues bounded masked binary PCM chunks, and queues a masked text
-`utterance_end` with byte/chunk counts. It is not wired to live mic capture yet; real
-capture-to-uplink and ESP-SR wake evidence remain hardware gates. For transport bring-up,
-serial bench commands `uplink start`, `uplink chunk`, `uplink end`, and `uplink abort`
-drive the same controller with synthetic PCM; `bridge upload ...` is the equivalent alias.
+`utterance_end` with byte/chunk counts. Real capture-to-uplink and ESP-SR wake evidence
+remain hardware gates. When mic capture is
+explicitly compiled on, captured PCM windows are forwarded only while an uplink turn is
+already active; capture does not auto-start upload and the wake/explicit activation boundary
+remains the gate. For transport bring-up, serial bench commands `uplink start`,
+`uplink chunk`, `uplink end`, and `uplink abort` drive the same controller with synthetic PCM;
+`bridge upload ...` is the equivalent alias.
 Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
