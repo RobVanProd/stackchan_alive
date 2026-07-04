@@ -214,6 +214,68 @@ class EndpointServerTest {
         }
     }
 
+    @Test
+    fun endpointServerDoesNotFinishCanceledAudioTurn() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+
+            client.send(encodeControlMessage(UtteranceStart(seq = 8, sampleRate = 16000)))
+            client.sendBinary(ByteArray(64) { 3 })
+            client.send(encodeControlMessage(CancelMessage(seq = 8, reason = "barge_in")))
+            client.send(encodeControlMessage(UtteranceEnd(seq = 8, transcript = "should not answer")))
+
+            val error = assertIs<BridgeError>(decodeControlMessage(client.nextText()))
+            val snapshot = server.currentSnapshot()
+
+            assertEquals("audio_turn_not_active", error.code)
+            assertEquals(8, error.seq)
+            assertEquals(true, error.recoverable)
+            assertEquals(64, snapshot.audioBytesReceived)
+            assertEquals(0, snapshot.audioBytesSent)
+            assertEquals("audio turn is not active", snapshot.lastError)
+            client.close()
+        }
+    }
+
+    @Test
+    fun endpointServerAbortsAudioTurnWhenOwnerChanges() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(
+            EndpointServerConfig(
+                port = port,
+                endpointHello = defaultDesktopEndpointHello(endpointId = "pc-test-owner"),
+            ),
+        ).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+
+            client.send(encodeControlMessage(UtteranceStart(seq = 9, sampleRate = 16000)))
+            client.sendBinary(ByteArray(96) { 4 })
+            client.send(
+                encodeControlMessage(
+                    OwnerStatus(
+                        activeBrainOwner = "phone-owner",
+                        ownerKind = "android",
+                        state = "claimed",
+                    ),
+                ),
+            )
+            val ownerLoss = assertIs<BridgeError>(decodeControlMessage(client.nextText()))
+            client.send(encodeControlMessage(UtteranceEnd(seq = 9, transcript = "should not answer")))
+            val finishError = assertIs<BridgeError>(decodeControlMessage(client.nextText()))
+            val snapshot = server.currentSnapshot()
+
+            assertEquals("audio_turn_aborted", ownerLoss.code)
+            assertEquals("audio_turn_not_active", finishError.code)
+            assertEquals("phone-owner", snapshot.activeBrainOwner)
+            assertEquals(96, snapshot.audioBytesReceived)
+            assertEquals(0, snapshot.audioBytesSent)
+            client.close()
+        }
+    }
+
     private fun freePort(): Int =
         ServerSocket(0).use { it.localPort }
 }

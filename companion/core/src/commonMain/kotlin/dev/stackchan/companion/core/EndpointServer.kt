@@ -128,6 +128,10 @@ class CompanionEndpointServer(
                     cancelAudioTurn(message)
                     emptyList()
                 }
+                is OwnerStatus -> {
+                    recordOwnerStatus(message)
+                    abortAudioTurnIfOwnerLost(message)
+                }
                 else -> {
                     recordMessageType(message.type)
                     config.requestRouter.handle(message)?.let { textFrame(it) }.orEmpty()
@@ -248,6 +252,17 @@ class CompanionEndpointServer(
             )
             current
         }
+        if (!turn.active) {
+            recordError("audio turn is not active")
+            return textFrame(
+                BridgeError(
+                    seq = message.seq,
+                    code = "audio_turn_not_active",
+                    detail = "No active audio turn is available to finish.",
+                    recoverable = true,
+                ),
+            )
+        }
         val seq = message.seq
         val responseText = message.transcript
             ?.takeIf { it.isNotBlank() }
@@ -288,6 +303,41 @@ class CompanionEndpointServer(
                     ResponseEnd(seq = seq),
                 ),
             )
+        }
+    }
+
+    private suspend fun recordOwnerStatus(message: OwnerStatus) {
+        lock.withLock {
+            snapshot = snapshot.copy(
+                activeBrainOwner = message.activeBrainOwner.takeIf { it.isNotBlank() },
+                messagesReceived = snapshot.messagesReceived + 1,
+                lastMessageType = message.type,
+                lastError = "",
+            )
+        }
+    }
+
+    private suspend fun abortAudioTurnIfOwnerLost(message: OwnerStatus): List<OutboundFrame> {
+        val shouldAbort = lock.withLock {
+            val active = audioTurn.active
+            val stillOwner = message.activeBrainOwner == config.endpointHello.endpointId && message.state == "claimed"
+            if (active && !stillOwner) {
+                audioTurn = AudioTurnState()
+                true
+            } else {
+                false
+            }
+        }
+        return if (shouldAbort) {
+            textFrame(
+                BridgeError(
+                    code = "audio_turn_aborted",
+                    detail = "Audio turn aborted because this endpoint lost brain ownership.",
+                    recoverable = true,
+                ),
+            )
+        } else {
+            emptyList()
         }
     }
 
