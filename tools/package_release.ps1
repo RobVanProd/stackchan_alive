@@ -61,6 +61,22 @@ $provenanceDir = Join-Path $outDir "provenance"
 $toolsDir = Join-Path $outDir "tools"
 New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $provenanceDir, $toolsDir | Out-Null
 
+$releaseRootPrefix = [System.IO.Path]::GetFullPath($outDir).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+
+function Join-ReleasePackagePath {
+  param([string]$RelativePath)
+
+  $normalized = $RelativePath.Replace("\", "/").TrimStart("/")
+  if ([System.IO.Path]::IsPathRooted($normalized) -or $normalized.StartsWith("../") -or $normalized.Contains("/../")) {
+    throw "Refusing unsafe package-relative path: $RelativePath"
+  }
+  $absolutePath = [System.IO.Path]::GetFullPath((Join-Path $outDir $normalized))
+  if (-not $absolutePath.StartsWith($releaseRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing package path outside release root: $RelativePath"
+  }
+  return $absolutePath
+}
+
 function Copy-FirmwareSet {
   param(
     [string]$BuildDir,
@@ -154,10 +170,37 @@ $voiceSidecarDir = Join-Path $voiceMediaDir "sidecars"
 New-Item -ItemType Directory -Force -Path $voiceMediaDir | Out-Null
 New-Item -ItemType Directory -Force -Path $voiceRvcMediaDir | Out-Null
 New-Item -ItemType Directory -Force -Path $voiceSidecarDir | Out-Null
+$personaPromptAssetsPath = Join-Path $outDir "persona_prompt_assets.json"
+$personaPromptPython = Get-StackchanPreviewPython
+& $personaPromptPython tools/export_persona_prompt_assets.py --persona spark --out $personaPromptAssetsPath | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Persona prompt asset export failed."
+}
+$personaPromptAssets = Get-Content -LiteralPath $personaPromptAssetsPath -Raw | ConvertFrom-Json
+
+foreach ($asset in @($personaPromptAssets.assets)) {
+  $sourcePath = Join-Path $repoRoot ([string]$asset.source_path)
+  $promptWavPath = Join-ReleasePackagePath ([string]$asset.wav_path)
+  $promptSidecarPath = Join-ReleasePackagePath ([string]$asset.sidecar_path)
+  if (-not (Test-Path -LiteralPath $sourcePath)) {
+    throw "Missing persona packaged prompt source: $sourcePath"
+  }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $promptWavPath), (Split-Path -Parent $promptSidecarPath) | Out-Null
+  Copy-Item -LiteralPath $sourcePath -Destination $promptWavPath -Force
+  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1") `
+    -InputWav $promptWavPath `
+    -OutputJson $promptSidecarPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Packaged prompt sidecar generation failed for $($asset.wav_path)."
+  }
+  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_speech_envelope_sidecar.ps1") `
+    -Path $promptSidecarPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Packaged prompt sidecar verification failed for $($asset.sidecar_path)."
+  }
+}
+
 $voiceMediaFiles = @(
-  "docs/media/voice/stackchan_spark_greeting.wav",
-  "docs/media/voice/stackchan_spark_thinking.wav",
-  "docs/media/voice/stackchan_spark_safety.wav",
   "docs/media/voice/stackchan_spark_audition_warm_slow_greeting.wav",
   "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.wav",
   "docs/media/voice/stackchan_spark_audition_bright_robot_greeting.mp3",
@@ -171,28 +214,6 @@ foreach ($file in $voiceMediaFiles) {
     throw "Missing voice artifact: $file"
   }
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
-}
-
-$packagedPromptSidecars = @(
-  @{ Wav = "stackchan_spark_greeting.wav"; Sidecar = "stackchan_spark_greeting.speech_envelope.json" },
-  @{ Wav = "stackchan_spark_thinking.wav"; Sidecar = "stackchan_spark_thinking.speech_envelope.json" },
-  @{ Wav = "stackchan_spark_safety.wav"; Sidecar = "stackchan_spark_safety.speech_envelope.json" }
-)
-
-foreach ($prompt in $packagedPromptSidecars) {
-  $promptWavPath = Join-Path $voiceMediaDir $prompt.Wav
-  $promptSidecarPath = Join-Path $voiceSidecarDir $prompt.Sidecar
-  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1") `
-    -InputWav $promptWavPath `
-    -OutputJson $promptSidecarPath
-  if ($LASTEXITCODE -ne 0) {
-    throw "Packaged prompt sidecar generation failed for $($prompt.Wav)."
-  }
-  & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_speech_envelope_sidecar.ps1") `
-    -Path $promptSidecarPath
-  if ($LASTEXITCODE -ne 0) {
-    throw "Packaged prompt sidecar verification failed for $($prompt.Sidecar)."
-  }
 }
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "render_rvc_audition_mp3s.ps1") `
@@ -395,6 +416,7 @@ $releaseTools = @(
   "tools/create_persona_pack.cmd",
   "tools/create_persona_pack.ps1",
   "tools/create_persona_pack.py",
+  "tools/export_persona_prompt_assets.py",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
   "tools/verify_persona_pack.py",
@@ -466,6 +488,7 @@ Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceD
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
+Copy-Item -LiteralPath "test" -Destination (Join-Path $provenanceDir "test") -Recurse
 $dataProvenanceDir = Join-Path $provenanceDir "data"
 New-Item -ItemType Directory -Force -Path $dataProvenanceDir | Out-Null
 Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataProvenanceDir
@@ -754,6 +777,7 @@ $manifest = [ordered]@{
   activePersona = "spark"
   activePersonaPack = "personas/spark"
   activePersonaVerification = "persona_pack_status.json"
+  activePersonaPromptAssets = "persona_prompt_assets.json"
   characterRedTeamReport = "character-red-team/CHARACTER_RED_TEAM.md"
   characterRedTeamReportJson = "character-red-team/character_red_team.json"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"

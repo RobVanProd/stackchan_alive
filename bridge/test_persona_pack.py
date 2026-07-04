@@ -9,6 +9,7 @@ from persona_pack import (
     load_and_validate_persona_pack,
     load_persona_pack,
     normalize_persona_id,
+    packaged_prompt_asset_manifest,
     repo_root,
     scaffold_persona_pack,
     validate_pack,
@@ -83,6 +84,19 @@ class PersonaPackTests(unittest.TestCase):
             self.assertEqual("Unit Test", pack.manifest["author"])
             self.assertEqual("stackchan_test_bot", pack.voice["profile_id"])
             self.assertEqual([], validate_pack(pack))
+
+    def test_packaged_prompt_asset_manifest_deduplicates_runtime_assets(self):
+        pack = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
+        manifest = packaged_prompt_asset_manifest(pack)
+
+        self.assertEqual("stackchan.persona-prompt-assets.v1", manifest["schema"])
+        self.assertEqual("spark", manifest["persona"])
+        self.assertEqual(12, manifest["prompt_count"])
+        self.assertEqual(3, manifest["asset_count"])
+        sidecars = {asset["sidecar_path"] for asset in manifest["assets"]}
+        self.assertIn("media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json", sidecars)
+        self.assertIn("media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json", sidecars)
+        self.assertIn("media/voice/sidecars/stackchan_spark_safety.speech_envelope.json", sidecars)
 
     def test_validator_rejects_loosened_caps_and_bad_safety_line(self):
         with tempfile.TemporaryDirectory() as temp_dir:

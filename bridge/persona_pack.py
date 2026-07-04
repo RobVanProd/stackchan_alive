@@ -155,6 +155,51 @@ def scaffold_persona_pack(
     return load_and_validate_persona_pack(destination, root=base)
 
 
+def packaged_prompt_asset_manifest(pack: "PersonaPack") -> dict[str, object]:
+    assets_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
+    prompts: list[dict[str, object]] = []
+    for intent in FOUNDATION_SPEECH_INTENTS:
+        prompt = pack.packaged_prompt(intent)
+        prompt_id = str(prompt.get("prompt_id", "")).strip()
+        transcript = str(prompt.get("transcript", "")).strip()
+        wav_path = str(prompt.get("wav_path", "")).strip().replace("\\", "/")
+        source_path = str(prompt.get("source_path", "")).strip().replace("\\", "/")
+        sidecar_path = str(prompt.get("sidecar_path", "")).strip().replace("\\", "/")
+        prompt_entry = {
+            "intent": intent,
+            "prompt_id": prompt_id,
+            "transcript": transcript,
+            "wav_path": wav_path,
+            "source_path": source_path,
+            "sidecar_path": sidecar_path,
+        }
+        prompts.append(prompt_entry)
+        key = (wav_path, source_path, sidecar_path)
+        asset = assets_by_key.setdefault(
+            key,
+            {
+                "wav_path": wav_path,
+                "source_path": source_path,
+                "sidecar_path": sidecar_path,
+                "intents": [],
+                "prompt_ids": [],
+            },
+        )
+        asset["intents"].append(intent)
+        if prompt_id not in asset["prompt_ids"]:
+            asset["prompt_ids"].append(prompt_id)
+
+    return {
+        "schema": "stackchan.persona-prompt-assets.v1",
+        "persona": pack.pack_id,
+        "display_name": pack.display_name,
+        "prompt_count": len(prompts),
+        "asset_count": len(assets_by_key),
+        "prompts": prompts,
+        "assets": list(assets_by_key.values()),
+    }
+
+
 def _strip_inline_comment(line: str) -> str:
     in_quote = ""
     escaped = False
