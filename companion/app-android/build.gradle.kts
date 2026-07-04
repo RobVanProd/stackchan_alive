@@ -14,6 +14,14 @@ android {
         versionCode = 1
         versionName = "1.0.0"
     }
+
+    buildTypes {
+        release {
+            // Lab/arrival-day builds must be installable without committing a production
+            // signing key. Replace with real release signing before public distribution.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
 }
 
 dependencies {

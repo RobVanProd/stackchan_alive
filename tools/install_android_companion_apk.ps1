@@ -1,5 +1,5 @@
 param(
-  [string]$ApkPath = "companion/app-android/build/outputs/apk/debug/app-android-debug.apk",
+  [string]$ApkPath = "companion/app-android/build/outputs/apk/release/app-android-release.apk",
   [string]$OutputDir = "output/android-apk-install/latest",
   [string]$PackageName = "dev.stackchan.companion",
   [string]$AdbPath = "adb",
@@ -62,7 +62,7 @@ if (-not (Get-Command $AdbPath -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Test-Path -LiteralPath $ApkPath)) {
-  throw "Missing Android APK: $ApkPath. From the source checkout, build one with cd companion; .\gradlew.bat :app-android:assembleDebug, then pass the generated APK path with -ApkPath."
+  throw "Missing Android APK: $ApkPath. From the source checkout, build one with cd companion; .\gradlew.bat :app-android:assembleRelease, then pass the generated APK path with -ApkPath."
 }
 
 $apkItem = Get-Item -LiteralPath $ApkPath

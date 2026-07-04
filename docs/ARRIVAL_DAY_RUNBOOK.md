@@ -73,14 +73,12 @@ For the local bridge socket path specifically, `tools/run_lan_smoke.cmd` writes
 `LAN_SMOKE.md/json` with the real WebSocket handshake, deterministic text turn, fake mic
 upload, fake STT/TTS, and PCM16 binary downlink check.
 
-If the Android companion is the bridge host, install the debug or release APK on the phone,
-open Stackchan Companion, allow notifications when prompted on Android 13 or newer, and
-allow the app to ignore battery optimizations if prompted for screen-off bench testing.
-Build the debug APK from the source checkout with
-`.\tools\check_android_toolchain.cmd` and then
-`cd companion; .\gradlew.bat :app-android:assembleDebug` when a signed release APK has not
-already been produced. The default debug output path is
-`companion\app-android\build\outputs\apk\debug\app-android-debug.apk`.
+If the Android companion is the bridge host, install the lab-signed release APK on the
+phone, open Stackchan Companion, allow notifications when prompted on Android 13 or newer,
+and allow the app to ignore battery optimizations if prompted for screen-off bench testing.
+Build the APK from the source checkout with `.\tools\check_android_toolchain.cmd` and then
+`cd companion; .\gradlew.bat :app-android:assembleRelease`. The default lab release output
+path is `companion\app-android\build\outputs\apk\release\app-android-release.apk`.
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.
 Confirm the foreground notification reports the bridge as ready and advertised. The phone

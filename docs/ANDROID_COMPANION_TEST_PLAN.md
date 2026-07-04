@@ -32,14 +32,14 @@ screen-off robot sessions, which matches the connected-device foreground-service
 
 When using adb, install the APK and capture the install evidence before discovery checks:
 
-Build the debug APK from the source checkout first unless a signed release APK is already
-available:
+Build the lab-signed release APK from the source checkout first. The v1 PR/CI release APK
+is signed with the Android debug key for physical testing, not for public distribution:
 
 ```powershell
 .\tools\check_companion_v1_readiness.cmd
 .\tools\check_android_toolchain.cmd
 cd companion
-.\gradlew.bat :app-android:assembleDebug
+.\gradlew.bat :app-android:assembleRelease
 ```
 
 The companion readiness check verifies the v1 companion plan, protocol fixtures, KMP
@@ -49,8 +49,8 @@ phone-specific APK evidence starts.
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.
 
-The default debug APK path is
-`companion\app-android\build\outputs\apk\debug\app-android-debug.apk`.
+The default lab release APK path is
+`companion\app-android\build\outputs\apk\release\app-android-release.apk`.
 
 ```powershell
 .\tools\install_android_companion_apk.cmd -ApkPath <path-to-apk>
