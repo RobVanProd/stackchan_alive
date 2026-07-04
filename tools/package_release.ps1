@@ -1023,6 +1023,8 @@ $manifest = [ordered]@{
     "provenance/src/io/BridgeSocketWriter.cpp",
     "provenance/src/io/BridgeWiFiClientSocket.hpp",
     "provenance/src/io/BridgeWiFiClientSocket.cpp",
+    "provenance/src/io/BridgeWiFiProvisioner.hpp",
+    "provenance/src/io/BridgeWiFiProvisioner.cpp",
     "provenance/src/io/AudioOut.hpp",
     "provenance/src/io/AudioOut.cpp",
     "provenance/src/io/SpeechPromptBank.hpp",

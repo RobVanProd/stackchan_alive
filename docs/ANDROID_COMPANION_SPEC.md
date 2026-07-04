@@ -79,9 +79,10 @@ responses as masked client text frames, and `BridgeSocketWriter` can drain those
 responses through a socket sink with partial-write buffering. `BridgeNetworkSession` now
 defines the firmware TCP/WebSocket session loop for handshake, incoming frames, endpoint
 response writeback, and reconnect scheduling, with `BridgeWiFiClientSocket` as the ESP32
-`WiFiClient` binding. It still needs Wi-Fi provisioning config, boot-time task/update
-integration, and live transport evidence before the physical robot can use this control
-plane untethered.
+`WiFiClient` binding. `BridgeWiFiProvisioner` is now boot-wired behind compile-time settings.
+It remains disabled unless firmware is built with real Wi-Fi credentials and a bridge host,
+and still needs live transport evidence before the physical robot can use this control plane
+untethered.
 
 ## Multi-Endpoint Model
 
