@@ -29,6 +29,7 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] Battery optimization exemption is allowed or the denial is recorded as a test constraint.
 - [ ] The dashboard shows at least one `ws://<phone-lan-ip>:8765/bridge` manual fallback URL.
 - [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
+- [ ] The dashboard does not show sample telemetry such as `87%`, `42.5 C`, `v3.1.0`, or `Heartbeat: 8ms`.
 - [ ] The Nodes screen shows the guided `Add your Stack-chan` setup flow with the same manual URL.
 - [ ] Removing a stored trusted companion endpoint updates the registry without restarting the app.
 - [ ] The foreground notification shows the same reachable manual fallback URL.
@@ -132,7 +133,8 @@ Evidence to capture:
 - [ ] After a robot hello, the robot is saved on the phone and appears as a removable robot row; forgetting it removes the phone-side saved robot record without pretending to perform robot-side unpair.
 - [ ] Robot connects to the displayed Android URL or discovers it without manual entry.
 - [ ] A raw WebSocket connection without the robot `hello` handshake changes the setup card to `Finish Stack-chan pairing` / waiting for robot hello, but does not mark setup complete, does not enable Talk, and does not promote the Android session wake lock.
-- [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state.
+- [ ] Android dashboard switches from waiting to connected and shows the robot identity, firmware/version signal, last bridge frame, heartbeat status, active brain owner, and foreground service state.
+- [ ] The audio panel is labeled as audio status plus a signal preview unless real robot audio metering evidence is attached.
 - [ ] Talk screen enables text input only after Stack-chan is connected.
 - [ ] Push-to-talk is enabled only after Stack-chan is connected and Android speech recognition is available.
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.

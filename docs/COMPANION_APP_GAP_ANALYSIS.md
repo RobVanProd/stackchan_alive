@@ -24,7 +24,10 @@ current v1 companion branch.
   state. Writes, persona switching, and manual brain claim/release remain locked until
   robot round-trip evidence exists.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
-  disabled, and the remaining fake telemetry must continue to be labeled or replaced.
+  disabled, shared UI defaults no longer show invented battery/temperature/firmware values,
+  heartbeat is now an honest bridge status instead of a fake millisecond value, and audio
+  visualization is labeled as a preview rather than live robot output. Physical screenshots
+  still need to prove the connected-state UI only shows measured robot fields.
 - G5 pairing enforcement is partially closed. Android and desktop no longer treat a raw
   WebSocket connection as a connected robot session: app text turns, audio writes, settings
   writes, Talk enablement, wake-lock promotion, and setup-complete UI now require the robot

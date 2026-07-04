@@ -33,7 +33,7 @@ fun desktopStartingUiState(): CompanionUiState =
     CompanionUiState(
         connection = "Starting desktop bridge",
         brainOwner = "None",
-        heartbeatMs = 0,
+        heartbeatStatus = "Heartbeat: offline",
         robotState = "Starting",
         servoArmed = false,
         endpoints = emptyList(),
@@ -78,11 +78,11 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
     return CompanionUiState(
         connection = connection,
         brainOwner = owner,
-        heartbeatMs = if (robotReady) 8 else 0,
+        heartbeatStatus = heartbeatStatus(robotReady),
         robotState = if (lastMessageType.isBlank()) "Awaiting robot" else lastMessageType,
         servoArmed = false,
         telemetry = diagnostics.toTelemetryReadings(this, runtime),
-        audioStatus = diagnostics.audio?.stringValue("engine") ?: "offline",
+        audioStatus = diagnostics.audio?.stringValue("engine")?.let { "$it; no live meter" } ?: "offline",
         consoleMessage = consoleMessage(owner, runtime),
         brainService = runtime.brainSupervisor.toBrainServiceUiState(),
         settingsSurface = settings.toSettingsSurface(),
@@ -216,7 +216,15 @@ private fun DesktopCompanionRuntimeSnapshot.toDiagnosticsExportUiState(): Diagno
         else -> DiagnosticsExportUiState(
             status = "Ready",
             path = storageDir.resolve("diagnostics").resolve("DIAGNOSTICS_EXPORT.json").toString(),
-        )
+    )
+}
+
+private fun EndpointSessionSnapshot.heartbeatStatus(robotReady: Boolean): String =
+    when {
+        robotReady && lastMessageType == "heartbeat" -> "Heartbeat: received"
+        robotReady -> "Heartbeat: connected"
+        connected -> "Heartbeat: awaiting hello"
+        else -> "Heartbeat: listening"
     }
 
 private fun DesktopCompanionRuntimeSnapshot.toC6RehearsalUiState(): C6RehearsalUiState =

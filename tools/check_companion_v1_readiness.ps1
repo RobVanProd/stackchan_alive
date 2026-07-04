@@ -285,6 +285,18 @@ Test-TextEvidence `
   -Patterns @("SettingsSurfaceUiState", "DiagnosticsSurfaceUiState", "BrainHandoffUiState", "SettingsSurfacePanel", "DiagnosticsSurfacePanel", "HandoffSurfacePanel", "Select persona", "Claim phone")
 
 Test-TextEvidence `
+  -Id "shared-honest-live-telemetry" `
+  -Name "Shared UI labels non-live telemetry honestly" `
+  -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
+  -Patterns @("heartbeatStatus", "Heartbeat: not measured", "No robot telemetry", "Audio status //", "Signal preview; not live robot audio.", "Manual servos and triggers (locked)")
+
+Test-TextEvidence `
+  -Id "android-honest-live-telemetry" `
+  -Name "Android UI avoids fake heartbeat and audio meters" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
+  -Patterns @("androidHeartbeatStatus", "Heartbeat: received", "Heartbeat: awaiting hello", "Bridge connected; no live meter")
+
+Test-TextEvidence `
   -Id "android-g3-control-state" `
   -Name "Android settings diagnostics persona handoff state" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `

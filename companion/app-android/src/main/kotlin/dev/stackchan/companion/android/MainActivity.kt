@@ -335,12 +335,12 @@ internal fun androidCompanionUiState(
     return CompanionUiState(
         connection = bridgeStatus.connectionLabel,
         brainOwner = bridgeStatus.activeBrainOwner.ifBlank { "None" },
-        heartbeatMs = if (bridgeStatus.robotConnected) 8 else 0,
+        heartbeatStatus = androidHeartbeatStatus(bridgeStatus),
         activePersona = settingsSurface.activePersona,
         robotState = bridgeStatus.robotState,
         servoArmed = false,
         telemetry = androidTelemetryReadings(bridgeStatus),
-        audioStatus = if (bridgeStatus.robotConnected) "Robot bridge connected" else "Waiting for robot bridge",
+        audioStatus = if (bridgeStatus.robotConnected) "Bridge connected; no live meter" else "Waiting for robot bridge",
         brainService = BrainServiceUiState(
             running = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
             status = bridgeStatus.serviceStatus,
@@ -374,6 +374,15 @@ internal fun androidCompanionUiState(
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, savedRobots, bridgeStatus),
     )
 }
+
+private fun androidHeartbeatStatus(bridgeStatus: AndroidBridgeRuntimeStatus): String =
+    when {
+        bridgeStatus.robotConnected && bridgeStatus.lastMessageType == "heartbeat" -> "Heartbeat: received"
+        bridgeStatus.robotConnected -> "Heartbeat: waiting"
+        bridgeStatus.robotSocketConnected -> "Heartbeat: awaiting hello"
+        bridgeStatus.serviceStatus == "Foreground" || bridgeStatus.serviceStatus == "Running" -> "Heartbeat: waiting for robot"
+        else -> "Heartbeat: offline"
+    }
 
 private fun androidSettingsSurface(settingsRepository: SettingsRepository): SettingsSurfaceUiState {
     val snapshot = settingsRepository.snapshot()

@@ -143,15 +143,17 @@ class DesktopCompanionRuntimeTest {
             assertEquals("fake", before.telemetry[1].value)
             assertEquals("Stopped", before.brainService.status)
             assertEquals("0.0.0.0:8766", before.brainService.endpoint)
+            assertEquals("Heartbeat: listening", before.heartbeatStatus)
             assertEquals("Connected: Stackchan Bench", after.connection)
             assertEquals("hello", after.robotState)
+            assertEquals("Heartbeat: connected", after.heartbeatStatus)
             assertEquals(true, after.endpoints.first().connected)
             assertEquals("Stackchan Bench", after.endpoints.first().name)
             assertEquals("bench-v1", after.endpoints.first().fingerprint)
             assertEquals("pc-runtime-test", after.endpoints[1].fingerprint)
             assertEquals("Firmware", after.telemetry[3].label)
             assertEquals("bench-v1", after.telemetry[3].value)
-            assertEquals("fake", after.audioStatus)
+            assertEquals("fake; no live meter", after.audioStatus)
             client.close()
         }
     }

@@ -290,6 +290,11 @@ Minimum screens:
 - Settings: display, motion-safe controls, bridge policy, privacy/memory reset.
 - Diagnostics: logs, heartbeat state, audio stream counters, model latency, export evidence.
 
+Live UI values must be honest about their source: no sample battery, temperature,
+firmware, heartbeat latency, or audio-output values may be shown as robot telemetry.
+Unknown fields stay unknown, heartbeat is shown as bridge state until measured, and any
+decorative signal visualization must be labeled as preview.
+
 Before write controls are enabled, Android and desktop must still show readable settings,
 diagnostics, persona, and handoff status panels from the current settings repository,
 diagnostics snapshot, and live bridge state. Controls that perform `settings_set`, persona

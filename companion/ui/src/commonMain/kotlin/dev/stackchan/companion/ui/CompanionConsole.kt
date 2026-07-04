@@ -66,20 +66,20 @@ private val Danger = Color(0xFFFF5D72)
 private val Console = Color(0xFF07101D)
 
 data class CompanionUiState(
-    val connection: String = "Connected: Rob's Phone (This Companion)",
-    val brainOwner: String = "Android",
-    val heartbeatMs: Int = 8,
-    val activePersona: String = "Spark",
-    val robotState: String = "Neutral",
-    val servoArmed: Boolean = true,
+    val connection: String = "Bridge not connected",
+    val brainOwner: String = "None",
+    val heartbeatStatus: String = "Heartbeat: not measured",
+    val activePersona: String = "spark",
+    val robotState: String = "Awaiting robot",
+    val servoArmed: Boolean = false,
     val telemetry: List<TelemetryReading> = listOf(
-        TelemetryReading("Power", "87%", "Discharging"),
-        TelemetryReading("CPU temp", "42.5 C", "Nominal"),
-        TelemetryReading("Uptime", "04:12:39", "H:M:S"),
-        TelemetryReading("Firmware", "v3.1.0", "Stable"),
+        TelemetryReading("Robot", "Not connected", "Awaiting hello"),
+        TelemetryReading("Power", "Unknown", "No robot telemetry"),
+        TelemetryReading("CPU temp", "Unknown", "No robot telemetry"),
+        TelemetryReading("Firmware", "Unknown", "No robot hello"),
     ),
-    val audioStatus: String = "Fake output ready",
-    val consoleMessage: String = "Awaiting wake-gated input on android brain...",
+    val audioStatus: String = "No live audio",
+    val consoleMessage: String = "Awaiting robot hello...",
     val conversation: ConversationUiState = ConversationUiState(),
     val brainService: BrainServiceUiState = BrainServiceUiState(),
     val robotSetup: RobotSetupUiState = RobotSetupUiState(),
@@ -626,13 +626,13 @@ private fun PersonaCorePanel(state: CompanionUiState, modifier: Modifier) {
 @Composable
 private fun DirectivePanel(modifier: Modifier) {
     PanelShell(modifier = modifier) {
-        SectionTitle("Directives", Mint)
+        SectionTitle("Locked Actions", Mint)
         Spacer(Modifier.height(14.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            DirectiveItem("Initialize greeting")
-            DirectiveItem("Environmental scan")
-            DirectiveItem("Diagnostic mode")
-            DirectiveItem("Low power sleep")
+            DirectiveItem("Greeting requires robot hello")
+            DirectiveItem("Scan requires sensor telemetry")
+            DirectiveItem("Diagnostics use export panel")
+            DirectiveItem("Sleep requires command proof")
         }
     }
 }
@@ -643,7 +643,7 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boo
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             SectionTitle("Live Robot Stage", Mint)
             Spacer(modifier = Modifier.weight(1f))
-            StatusPill("Heartbeat: ${state.heartbeatMs}ms", Purple, Color(0xFF181536))
+            StatusPill(state.heartbeatStatus, Purple, Color(0xFF181536))
         }
         Spacer(Modifier.height(14.dp))
         Surface(
@@ -665,7 +665,7 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boo
             }
         }
         Spacer(Modifier.height(14.dp))
-        Text("Manual servos and triggers", color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text("Manual servos and triggers (locked)", color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SmallCommand("Look L", enabled = false)
@@ -929,9 +929,16 @@ private fun TelemetryPanel(state: CompanionUiState, modifier: Modifier) {
             TelemetryRow(reading)
         }
         Spacer(Modifier.height(16.dp))
-        Text("Audio out // ${state.audioStatus}", color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text("Audio status // ${state.audioStatus}", color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
-        AudioBars()
+        SignalPreviewBars()
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Signal preview; not live robot audio.",
+            color = Muted,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+        )
         Spacer(Modifier.height(16.dp))
         ConsoleLog(state.consoleMessage)
     }
@@ -1397,7 +1404,7 @@ private fun TelemetryRow(reading: TelemetryReading) {
 }
 
 @Composable
-private fun AudioBars() {
+private fun SignalPreviewBars() {
     Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
         val bars = 28
         val gap = size.width / (bars * 1.7f)
