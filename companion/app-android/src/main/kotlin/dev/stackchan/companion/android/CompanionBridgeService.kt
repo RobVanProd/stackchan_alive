@@ -47,6 +47,10 @@ class CompanionBridgeService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_RESTART) {
+            restartBridgeRuntime()
+            return START_STICKY
+        }
         ensureServerStarted()
         return START_STICKY
     }
@@ -54,7 +58,21 @@ class CompanionBridgeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        stopBridgeRuntime()
+        AndroidBridgeRuntimeStatusStore.setStopped("Android bridge service stopped.")
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    private fun restartBridgeRuntime() {
+        updateNotification("Restarting bridge at ${primaryBridgeManualUrl()}", status = "Starting")
+        stopBridgeRuntime()
+        ensureServerStarted()
+    }
+
+    private fun stopBridgeRuntime() {
         startJob?.cancel()
+        startJob = null
         wakeLockMonitorJob?.cancel()
         wakeLockMonitorJob = null
         releaseSessionWakeLock()
@@ -64,9 +82,6 @@ class CompanionBridgeService : Service() {
         advertisement = null
         server?.close()
         server = null
-        AndroidBridgeRuntimeStatusStore.setStopped("Android bridge service stopped.")
-        serviceScope.cancel()
-        super.onDestroy()
     }
 
     private fun ensureServerStarted() {
@@ -232,6 +247,7 @@ class CompanionBridgeService : Service() {
         private const val CHANNEL_ID = "stackchan_companion_bridge"
         private const val NOTIFICATION_ID = 8765
         private const val ACTION_STOP = "dev.stackchan.companion.android.STOP_BRIDGE"
+        private const val ACTION_RESTART = "dev.stackchan.companion.android.RESTART_BRIDGE"
         private const val SESSION_WAKE_LOCK_TAG = "StackchanCompanion:BridgeSession"
         private const val WAKE_LOCK_TIMEOUT_MS = 60_000L
         private const val WAKE_LOCK_POLL_MS = 15_000L
@@ -255,8 +271,12 @@ class CompanionBridgeService : Service() {
         }
 
         fun restart(context: Context) {
-            stop(context)
-            start(context)
+            val intent = Intent(context, CompanionBridgeService::class.java).setAction(ACTION_RESTART)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
     }
 }
