@@ -158,4 +158,54 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("Foreground", uiState.telemetry.first { it.label == "Service" }.value)
         assertTrue(uiState.telemetry.none { it.value == "87%" || it.value == "42.5 C" || it.value == "v3.1.0" })
     }
+
+    @Test
+    fun androidConnectedDashboardStateContainsArrivalDayEvidenceFields() {
+        val endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01")
+        val uiState = androidCompanionUiState(
+            endpointHello = endpointHello,
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf(
+                    "ws://192.168.1.42:8765/bridge",
+                    "ws://10.0.0.42:8765/bridge",
+                ),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                lastMessageType = "heartbeat",
+                activeBrainOwner = "phone-rob-01",
+            ),
+        )
+
+        assertEquals("Connected: Stackchan Bench", uiState.connection)
+        assertEquals("phone-rob-01", uiState.brainOwner)
+        assertEquals("ws://192.168.1.42:8765/bridge", uiState.brainService.endpoint)
+        assertEquals("Foreground", uiState.brainService.status)
+        assertEquals("Stackchan Bench", uiState.telemetry.first { it.label == "Robot" }.value)
+        assertEquals("bench-v1", uiState.telemetry.first { it.label == "Firmware" }.value)
+        assertEquals("heartbeat", uiState.telemetry.first { it.label == "Last frame" }.value)
+        assertEquals("Foreground", uiState.telemetry.first { it.label == "Service" }.value)
+        assertTrue(uiState.brainService.recentLogs.any { it == "Manual fallback URL: ws://192.168.1.42:8765/bridge" })
+        assertTrue(uiState.brainService.recentLogs.any { it == "Other LAN URLs: ws://10.0.0.42:8765/bridge" })
+        assertTrue(uiState.brainService.recentLogs.any { it == "Robot: Stackchan Bench / bench-v1" })
+        assertTrue(uiState.brainService.recentLogs.any { it == "Last bridge frame: heartbeat" })
+        assertTrue(uiState.brainService.recentLogs.any { it == "Brain owner: phone-rob-01" })
+        assertTrue(uiState.brainService.recentLogs.any { it.contains("Android NSD advertises _stackchan-bridge._tcp.local") })
+        assertTrue(uiState.brainService.recentLogs.any { it.contains("UDP beacon broadcasts endpoint metadata") })
+
+        val robotRow = uiState.endpoints.first { it.kind == "robot" }
+        assertEquals("Stackchan Bench", robotRow.name)
+        assertEquals("bench-v1", robotRow.fingerprint)
+        assertTrue(robotRow.connected)
+
+        val phoneRow = uiState.endpoints.first { it.kind == "android" }
+        assertEquals("${endpointHello.endpointName} (This Phone)", phoneRow.name)
+        assertEquals("phone-rob-01", phoneRow.fingerprint)
+        assertTrue(phoneRow.connected)
+        assertTrue(phoneRow.activeBrain)
+    }
 }

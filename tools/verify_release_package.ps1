@@ -176,6 +176,20 @@ $requiredFiles = @(
   "bridge/test_hardware_simulator.py",
   "bridge/prearrival_sim_check.py",
   "bridge/test_prearrival_sim_check.py",
+  "provenance/companion/settings.gradle.kts",
+  "provenance/companion/build.gradle.kts",
+  "provenance/companion/gradle.properties",
+  "provenance/companion/gradlew",
+  "provenance/companion/gradlew.bat",
+  "provenance/companion/gradle/libs.versions.toml",
+  "provenance/companion/app-android/build.gradle.kts",
+  "provenance/companion/app-android/src/main/AndroidManifest.xml",
+  "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt",
+  "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/CompanionBridgeService.kt",
+  "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatus.kt",
+  "provenance/companion/app-android/src/test/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatusTest.kt",
+  "provenance/companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/ProtocolMessage.kt",
+  "provenance/companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt",
   "personas/spark/pack.yaml",
   "personas/spark/character.yaml",
   "personas/spark/prompt.md",
@@ -1616,6 +1630,10 @@ if ($manifest.androidCompanionTestPlan -ne "docs/ANDROID_COMPANION_TEST_PLAN.md"
   throw "Manifest androidCompanionTestPlan mismatch: $($manifest.androidCompanionTestPlan)"
 }
 
+if ($manifest.androidCompanionSource -ne "provenance/companion") {
+  throw "Manifest androidCompanionSource mismatch: $($manifest.androidCompanionSource)"
+}
+
 if ($manifest.brainModelGuide -ne "docs/BRAIN_MODEL.md") {
   throw "Manifest brainModelGuide mismatch: $($manifest.brainModelGuide)"
 }
@@ -1709,6 +1727,27 @@ if ($manifest.voiceRvcBaseMetadata -ne "data/voice_rvc_base_metadata.json") {
 
 if ($manifest.companionEvidenceManifest -ne "companion/evidence/c6-evidence/EVIDENCE.json") {
   throw "Manifest companionEvidenceManifest mismatch: $($manifest.companionEvidenceManifest)"
+}
+
+foreach ($generatedDir in @(
+    "provenance/companion/.gradle",
+    "provenance/companion/.kotlin",
+    "provenance/companion/build",
+    "provenance/companion/app-android/build",
+    "provenance/companion/app-desktop/build",
+    "provenance/companion/core/build",
+    "provenance/companion/ui/build"
+  )) {
+  if (Test-Path -LiteralPath (Join-PackagePath $generatedDir)) {
+    throw "Android companion source provenance must not include generated Gradle cache/build directory: $generatedDir"
+  }
+}
+
+$androidRuntimeStatusTest = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/app-android/src/test/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatusTest.kt") -Raw
+foreach ($pattern in @("androidConnectedDashboardStateContainsArrivalDayEvidenceFields", "Manual fallback URL: ws://192.168.1.42:8765/bridge", "Other LAN URLs: ws://10.0.0.42:8765/bridge", "Robot: Stackchan Bench / bench-v1", "Last bridge frame: heartbeat", "Brain owner: phone-rob-01", "Android NSD advertises _stackchan-bridge._tcp.local", "UDP beacon broadcasts endpoint metadata", "phoneRow.activeBrain")) {
+  if ($androidRuntimeStatusTest -notmatch [regex]::Escape($pattern)) {
+    throw "AndroidBridgeRuntimeStatusTest.kt missing arrival-day dashboard state coverage: $pattern"
+  }
 }
 
 $expectedCompanionEvidence = @(

@@ -78,6 +78,41 @@ function Join-ReleasePackagePath {
   return $absolutePath
 }
 
+function Copy-SourceTree {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot,
+    [string[]]$ExcludedDirectoryNames = @()
+  )
+
+  $sourcePath = (Resolve-Path $SourceRoot).Path
+  New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+  $excluded = @{}
+  foreach ($name in $ExcludedDirectoryNames) {
+    $excluded[$name] = $true
+  }
+
+  function Copy-SourceTreeDirectory {
+    param(
+      [string]$CurrentSource,
+      [string]$CurrentDestination
+    )
+
+    New-Item -ItemType Directory -Force -Path $CurrentDestination | Out-Null
+    Get-ChildItem -LiteralPath $CurrentSource -File -Force | ForEach-Object {
+      Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $CurrentDestination $_.Name)
+    }
+    Get-ChildItem -LiteralPath $CurrentSource -Directory -Force | ForEach-Object {
+      if ($excluded.ContainsKey($_.Name)) {
+        return
+      }
+      Copy-SourceTreeDirectory -CurrentSource $_.FullName -CurrentDestination (Join-Path $CurrentDestination $_.Name)
+    }
+  }
+
+  Copy-SourceTreeDirectory -CurrentSource $sourcePath -CurrentDestination $DestinationRoot
+}
+
 function Copy-FirmwareSet {
   param(
     [string]$BuildDir,
@@ -537,6 +572,7 @@ Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recu
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
 Copy-Item -LiteralPath "test" -Destination (Join-Path $provenanceDir "test") -Recurse
+Copy-SourceTree -SourceRoot "companion" -DestinationRoot (Join-Path $provenanceDir "companion") -ExcludedDirectoryNames @("build", ".gradle", ".kotlin")
 $dataProvenanceDir = Join-Path $provenanceDir "data"
 New-Item -ItemType Directory -Force -Path $dataProvenanceDir | Out-Null
 Copy-Item -LiteralPath "data/commands.yaml" -Destination $dataProvenanceDir
@@ -817,6 +853,7 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
   androidCompanionTestPlan = "docs/ANDROID_COMPANION_TEST_PLAN.md"
+  androidCompanionSource = "provenance/companion"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
   gapAnalysis = "docs/GAP_ANALYSIS.md"
