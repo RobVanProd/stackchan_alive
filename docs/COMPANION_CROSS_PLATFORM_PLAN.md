@@ -218,6 +218,11 @@ and a Windows `.msi` on Windows. Every leg provisions JDK 21 and Android SDK Pla
 the shared KMP Android targets are configured consistently even during desktop packaging,
 and every leg uploads its produced platform artifact with `if-no-files-found: error`.
 
+Evidence snapshot: PR #194 run `28708831980` on 2026-07-04 passed `bridge-tests`,
+`native-tests`, firmware `build`, `companion-tests`, and all four platform artifact legs:
+`companion-android-apks`, `companion-desktop-linux`, `companion-desktop-macos`, and
+`companion-desktop-windows`.
+
 **PR / push (`firmware.yml` additions, path-filtered to `companion/**` and
 `protocol-fixtures/**`):**
 
