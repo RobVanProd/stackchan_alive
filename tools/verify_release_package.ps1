@@ -121,6 +121,7 @@ $requiredFiles = @(
   "docs/ANDROID_COMPANION_SPEC.md",
   "docs/ANDROID_COMPANION_TEST_PLAN.md",
   "docs/BRAIN_MODEL.md",
+  "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
   "docs/GAP_ANALYSIS.md",
@@ -1639,6 +1640,10 @@ if ($manifest.androidCompanionTestPlan -ne "docs/ANDROID_COMPANION_TEST_PLAN.md"
   throw "Manifest androidCompanionTestPlan mismatch: $($manifest.androidCompanionTestPlan)"
 }
 
+if ($manifest.companionCrossPlatformPlan -ne "docs/COMPANION_CROSS_PLATFORM_PLAN.md") {
+  throw "Manifest companionCrossPlatformPlan mismatch: $($manifest.companionCrossPlatformPlan)"
+}
+
 if ($manifest.androidCompanionSource -ne "provenance/companion") {
   throw "Manifest androidCompanionSource mismatch: $($manifest.androidCompanionSource)"
 }
@@ -2075,6 +2080,13 @@ $androidCompanionSpec = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID
 foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked")) {
   if ($androidCompanionSpec -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_SPEC.md missing expected Android companion contract: $pattern"
+  }
+}
+
+$companionCrossPlatformPlan = Get-Content -LiteralPath (Join-PackagePath "docs/COMPANION_CROSS_PLATFORM_PLAN.md") -Raw
+foreach ($pattern in @("Cross-Platform Build & Distribution Plan", "Kotlin Multiplatform", "Compose Multiplatform", "Hydraulic Conveyor", "Android cannot silently self-update outside a store", "C0", "Scaffold", "C1", "Protocol module", "C8", "Distribution hardening", "RELEASE_EVIDENCE.json", "First Three PRs")) {
+  if ($companionCrossPlatformPlan -notmatch [regex]::Escape($pattern)) {
+    throw "COMPANION_CROSS_PLATFORM_PLAN.md missing expected companion distribution plan guidance: $pattern"
   }
 }
 

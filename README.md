@@ -101,6 +101,7 @@ Useful docs:
 - [docs/CREATING_PERSONAS.md](docs/CREATING_PERSONAS.md): copy-edit-validate-build tutorial for creating a new Character OS persona.
 - [docs/BRAIN_MODEL.md](docs/BRAIN_MODEL.md): Gemma 4 E2B / LiteRT-LM model target and harness gate.
 - [docs/ANDROID_COMPANION_SPEC.md](docs/ANDROID_COMPANION_SPEC.md): PC/mobile brain modes, bridge handoff, trusted endpoints, and app settings contract.
+- [docs/COMPANION_CROSS_PLATFORM_PLAN.md](docs/COMPANION_CROSS_PLATFORM_PLAN.md): KMP companion build, desktop/Android distribution, and C0-C8 evidence gates.
 
 Prototype voice auditions:
 

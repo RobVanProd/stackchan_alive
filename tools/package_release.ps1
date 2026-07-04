@@ -289,6 +289,7 @@ Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
@@ -855,6 +856,7 @@ $manifest = [ordered]@{
   acceptanceChecklistJson = "release_acceptance.json"
   androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
   androidCompanionTestPlan = "docs/ANDROID_COMPANION_TEST_PLAN.md"
+  companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
   androidCompanionSource = "provenance/companion"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
