@@ -87,6 +87,8 @@ port `8766` every few seconds.
 If service discovery is unavailable on the LAN, manually point the robot bridge client at
 the `ws://<phone-lan-ip>:8765/bridge` URL shown in the Android dashboard or foreground
 notification.
+For the full Android phone/LAN validation pass, use `docs/ANDROID_COMPANION_TEST_PLAN.md`
+and attach its evidence to the packet.
 
 Import the display photo or video into the packet:
 

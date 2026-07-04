@@ -21,6 +21,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+            The bridge is a long-running local robot connection, so it uses connectedDevice only.
+            dataSync foreground services are time-limited on newer Android releases.
+        -->
         <service
             android:name=".CompanionBridgeService"
             android:exported="false"
