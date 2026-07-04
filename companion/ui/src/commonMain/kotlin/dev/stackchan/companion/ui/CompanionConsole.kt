@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -151,7 +152,7 @@ fun CompanionConsole(
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 val compact = maxWidth < 820.dp
                 val wideConsole = maxWidth >= 1180.dp
                 TacticalBackdrop()
@@ -492,7 +493,7 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boo
                     Readout("Tilt", "0 deg", Muted)
                 }
                 Spacer(Modifier.height(10.dp))
-                RobotPreview(Modifier.fillMaxWidth(if (compact) 0.86f else 0.62f).aspectRatio(1.65f))
+                RobotPreview(Modifier.fillMaxWidth(if (compact) 0.78f else 0.42f).aspectRatio(1f))
                 Spacer(Modifier.height(8.dp))
                 Text("State // ${state.robotState}", color = Muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             }
@@ -940,11 +941,12 @@ private fun RobotPreview(modifier: Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val face = Size(w * 0.94f, h * 0.74f)
-        val left = (w - face.width) * 0.5f
-        val top = h * 0.11f
-        val scaleX = face.width / 320f
-        val scaleY = face.height / 180f
+        val side = minOf(w, h)
+        val display = Size(side, side)
+        val left = (w - display.width) * 0.5f
+        val top = (h - display.height) * 0.5f
+        val scaleX = display.width / 240f
+        val scaleY = display.height / 240f
         fun sx(value: Float) = left + value * scaleX
         fun sy(value: Float) = top + value * scaleY
 
@@ -1016,12 +1018,12 @@ private fun RobotPreview(modifier: Modifier) {
             )
         }
 
-        eye(103f, 78f, -0.10f, 5f)
-        eye(217f, 78f, 0.10f, -5f)
+        eye(78f, 96f, -0.10f, 4f)
+        eye(162f, 96f, 0.10f, -4f)
 
         val mouth = Path().apply {
-            moveTo(sx(123f), sy(132f))
-            quadraticTo(sx(160f), sy(144f), sx(197f), sy(132f))
+            moveTo(sx(88f), sy(158f))
+            quadraticTo(sx(120f), sy(170f), sx(152f), sy(158f))
         }
         drawPath(
             path = mouth,
