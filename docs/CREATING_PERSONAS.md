@@ -4,6 +4,8 @@ Persona packs are the shareable Character OS layer for Stackchan: Alive. A pack 
 style, lines, prompt rules, face tuning, earcons, behavior rhythm, and voice metadata
 without editing C++ or Python.
 
+The intended workflow is copy-edit-validate-build.
+
 Keep the creator path simple:
 
 ```powershell

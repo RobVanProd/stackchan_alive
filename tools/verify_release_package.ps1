@@ -184,6 +184,7 @@ $requiredFiles = @(
   "personas/glow/earcons.yaml",
   "personas/glow/voice.yaml",
   "persona_pack_status.json",
+  "persona_prompt_assets.json",
   "character-red-team/CHARACTER_RED_TEAM.md",
   "character-red-team/character_red_team.json",
   "firmware/display_only/bootloader.bin",
@@ -299,6 +300,7 @@ $requiredFiles = @(
   "tools/create_persona_pack.cmd",
   "tools/create_persona_pack.ps1",
   "tools/create_persona_pack.py",
+  "tools/export_persona_prompt_assets.py",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
   "tools/verify_persona_pack.py",
@@ -801,6 +803,13 @@ foreach ($pattern in @("FirmwareVoiceAssets.hpp", "kFirmwareVoiceAssetsPersonaId
   }
 }
 
+$personaPromptAssetExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_persona_prompt_assets.py") -Raw
+foreach ($pattern in @("packaged_prompt_asset_manifest", "load_and_validate_persona_pack", "--persona", "--out", "write_text")) {
+  if ($personaPromptAssetExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_persona_prompt_assets.py missing persona prompt asset export logic: $pattern"
+  }
+}
+
 $personaAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_persona_assets.py") -Raw
 foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "PersonaBehavior.hpp", "PersonaExpressions.hpp", "PersonaPromptAssets.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "kIdleBreathingHz", "kIdleFidgetMinMs", "kCuriosityArousalDelta", "kExpressionsPersonaId", "kNeutralExpression", "kYawnDurationMs", "kThinkYawBiasDeg", "kPromptAssetsPersonaId", "kPromptAssetCount", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
   if ($personaAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
@@ -995,6 +1004,24 @@ if (-not $personaStatus.ok) {
 }
 if ($personaStatus.persona -ne "spark") {
   throw "persona_pack_status.json persona mismatch: $($personaStatus.persona)"
+}
+
+$personaPromptAssets = Get-Content -LiteralPath (Join-PackagePath "persona_prompt_assets.json") -Raw | ConvertFrom-Json
+if ($personaPromptAssets.schema -ne "stackchan.persona-prompt-assets.v1") {
+  throw "persona_prompt_assets.json schema mismatch: $($personaPromptAssets.schema)"
+}
+if ($personaPromptAssets.persona -ne "spark") {
+  throw "persona_prompt_assets.json persona mismatch: $($personaPromptAssets.persona)"
+}
+if ([int]$personaPromptAssets.prompt_count -ne 12) {
+  throw "persona_prompt_assets.json prompt_count mismatch: $($personaPromptAssets.prompt_count)"
+}
+if ([int]$personaPromptAssets.asset_count -lt 3) {
+  throw "persona_prompt_assets.json asset_count too low: $($personaPromptAssets.asset_count)"
+}
+foreach ($asset in @($personaPromptAssets.assets)) {
+  Assert-File ([string]$asset.wav_path) 1000
+  Assert-File ([string]$asset.sidecar_path) 1000
 }
 
 $bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
@@ -1328,12 +1355,8 @@ Assert-Bytes "media/voice/rvc/stackchan_rvc_safety_neutral.wav" ([byte[]](0x52, 
 & (Join-PackagePath "tools/verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
 & (Join-PackagePath "tools/verify_rvc_auditions.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 & (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
-foreach ($sidecar in @(
-  "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json",
-  "media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json",
-  "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json"
-)) {
-  & (Join-PackagePath "tools/verify_speech_envelope_sidecar.ps1") -Path (Join-PackagePath $sidecar)
+foreach ($asset in @($personaPromptAssets.assets)) {
+  & (Join-PackagePath "tools/verify_speech_envelope_sidecar.ps1") -Path (Join-PackagePath ([string]$asset.sidecar_path))
 }
 
 & (Join-Path $PSScriptRoot "verify_preview_media.ps1") -MediaRoot (Join-PackagePath "media")
@@ -1475,6 +1498,10 @@ if ($manifest.activePersonaPack -ne "personas/spark") {
 
 if ($manifest.activePersonaVerification -ne "persona_pack_status.json") {
   throw "Manifest activePersonaVerification mismatch: $($manifest.activePersonaVerification)"
+}
+
+if ($manifest.activePersonaPromptAssets -ne "persona_prompt_assets.json") {
+  throw "Manifest activePersonaPromptAssets mismatch: $($manifest.activePersonaPromptAssets)"
 }
 
 if ($manifest.privacyModel -ne "docs/PRIVACY.md") {

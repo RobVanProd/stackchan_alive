@@ -137,8 +137,9 @@ reference pack, and Glow now exists under `personas/glow` as the quieter second 
 proves the pack seam is not Spark-specific. The bridge prompt, character harness, firmware
 `SpeechPlanner` line table, firmware earcon tone table, firmware face/idle-life/circadian
 behavior constants, expression defaults, yawn shape, listen/think/orient motion biases,
-packaged prompt metadata, firmware WAV embedding list, and red-team dry-run harness now
-load from persona packs. The red-team gate is corpus/validator-ready, but it still
+packaged prompt metadata, firmware WAV embedding list, release prompt WAV/sidecar
+packaging, and red-team dry-run harness now load from persona packs. The red-team gate is
+corpus/validator-ready, but it still
 requires a configured real runner before it can pass as model evidence. Production voice
 assets and provenance remain the next pack-native surface.
 
@@ -160,9 +161,9 @@ assets and provenance remain the next pack-native surface.
    Spark, rename, edit YAML, validate, red-team, build/run.
 8. Extend codegen coverage as later phases land. Speech lines, earcon params,
    face/idle-life/circadian behavior constants, expression defaults, yawn shape, and
-   listen/think/orient motion biases, packaged prompt metadata, and the firmware WAV
-   embedding list are now generated from the pack; production voice assets and provenance
-   remain the next pack-native surface.
+   listen/think/orient motion biases, packaged prompt metadata, the firmware WAV
+   embedding list, and release prompt WAV/sidecar packaging are now generated from the
+   pack; production voice assets and provenance remain the next pack-native surface.
 
 Steps 1-8 can run entirely in parallel with the hardware bring-up track in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — this is host/build tooling and pure-logic firmware
