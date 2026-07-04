@@ -61,6 +61,7 @@ data class RuntimeSmokeReport(
     val ownerOk: Boolean,
     val diagnosticsOk: Boolean,
     val fakeAudioOk: Boolean,
+    val fakeAudioEvidence: FakeAudioSmokeEvidence,
     val notes: List<String>,
 ) {
     val ok: Boolean =
@@ -77,6 +78,18 @@ data class RuntimeSmokeReport(
         appendLine("- fake_audio_ok: `$fakeAudioOk`")
         appendLine("- overall_ok: `$ok`")
         appendLine()
+        appendLine("## Fake Audio Evidence")
+        appendLine()
+        appendLine("- frame_order: `${fakeAudioEvidence.frameOrder.joinToString(" -> ")}`")
+        appendLine("- upload_binary_bytes: `${fakeAudioEvidence.uploadBinaryBytes}`")
+        appendLine("- upload_utterance_audio_bytes: `${fakeAudioEvidence.uploadUtteranceAudioBytes}`")
+        appendLine("- downlink_binary_bytes: `${fakeAudioEvidence.downlinkBinaryBytes}`")
+        appendLine("- downlink_chunk_sizes: `${fakeAudioEvidence.downlinkChunkSizes.joinToString(",")}`")
+        appendLine("- stream_chunks: `${fakeAudioEvidence.streamChunks}`")
+        appendLine("- stream_chunk_bytes: `${fakeAudioEvidence.streamChunkBytes}`")
+        appendLine("- first_response_latency_ms: `${fakeAudioEvidence.firstResponseLatencyMs}`")
+        appendLine("- intent: `${fakeAudioEvidence.intent}`")
+        appendLine()
         appendLine("## Notes")
         notes.forEach { appendLine("- $it") }
     }
@@ -91,9 +104,37 @@ data class RuntimeSmokeReport(
             put("diagnostics_ok", diagnosticsOk)
             put("fake_audio_ok", fakeAudioOk)
             put("overall_ok", ok)
+            put("fake_audio", fakeAudioEvidence.toJson())
             put("notes", JsonArray(notes.map { JsonPrimitive(it) }))
         }.toString()
 }
+
+data class FakeAudioSmokeEvidence(
+    val ok: Boolean = false,
+    val frameOrder: List<String> = emptyList(),
+    val uploadBinaryBytes: Int = 0,
+    val uploadUtteranceAudioBytes: Int = 0,
+    val downlinkBinaryBytes: Int = 0,
+    val downlinkChunkSizes: List<Int> = emptyList(),
+    val streamChunks: Int = 0,
+    val streamChunkBytes: Int = 0,
+    val firstResponseLatencyMs: Long = 0,
+    val intent: String = "",
+)
+
+private fun FakeAudioSmokeEvidence.toJson() =
+    buildJsonObject {
+        put("ok", ok)
+        put("frame_order", JsonArray(frameOrder.map { JsonPrimitive(it) }))
+        put("upload_binary_bytes", uploadBinaryBytes)
+        put("upload_utterance_audio_bytes", uploadUtteranceAudioBytes)
+        put("downlink_binary_bytes", downlinkBinaryBytes)
+        put("downlink_chunk_sizes", JsonArray(downlinkChunkSizes.map { JsonPrimitive(it) }))
+        put("stream_chunks", streamChunks)
+        put("stream_chunk_bytes", streamChunkBytes)
+        put("first_response_latency_ms", firstResponseLatencyMs)
+        put("intent", intent)
+    }
 
 fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
     val notes = mutableListOf<String>()
@@ -180,28 +221,43 @@ fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
                 false
             }
 
+            var fakeAudioEvidence = FakeAudioSmokeEvidence()
             val fakeAudioOk = runCatching {
+                val startedAt = System.nanoTime()
+                val uploadBinaryBytes = 320
+                val uploadUtteranceAudioBytes = 160
                 client.send(encodeControlMessage(UtteranceStart(seq = 42, sampleRate = 16000)))
-                client.sendBinary(ByteArray(320) { 3 })
+                client.sendBinary(ByteArray(uploadBinaryBytes) { 3 })
                 client.send(
                     encodeControlMessage(
                         UtteranceAudio(
                             seq = 42,
-                            pcmB64 = Base64.getEncoder().encodeToString(ByteArray(160) { 4 }),
+                            pcmB64 = Base64.getEncoder().encodeToString(ByteArray(uploadUtteranceAudioBytes) { 4 }),
                         ),
                     ),
                 )
                 client.send(encodeControlMessage(UtteranceEnd(seq = 42, transcript = "runtime smoke audio")))
                 val thinking = decodeControlMessage(client.nextText())
+                val firstResponseLatencyMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis()
                 val response = decodeControlMessage(client.nextText()) as ResponseStart
                 val start = decodeControlMessage(client.nextText()) as AudioStreamStart
-                val binaryBytes = (1..start.chunks).sumOf { client.nextBinary().size }
+                val chunkSizes = (1..start.chunks).map { client.nextBinary().size }
+                val binaryBytes = chunkSizes.sum()
                 val mouthFrame = decodeControlMessage(client.nextText())
                 val finalMouthFrame = decodeControlMessage(client.nextText())
                 val end = decodeControlMessage(client.nextText()) as AudioStreamEnd
                 val responseEnd = decodeControlMessage(client.nextText()) as ResponseEnd
-                notes += "Fake audio turn returned ${thinking.type}, intent=${response.intent}, chunks=${start.chunks}, binary_bytes=$binaryBytes."
-                response.intent == "fake_audio_turn" &&
+                val frameOrder = listOf(
+                    thinking.type,
+                    response.type,
+                    start.type,
+                ) + chunkSizes.map { "binary" } + listOf(
+                    mouthFrame.type,
+                    finalMouthFrame.type,
+                    end.type,
+                    responseEnd.type,
+                )
+                val ok = response.intent == "fake_audio_turn" &&
                     start.format == "pcm16" &&
                     start.audioBytes == binaryBytes &&
                     end.audioBytes == start.audioBytes &&
@@ -209,6 +265,20 @@ fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
                     mouthFrame.type == "audio" &&
                     finalMouthFrame.type == "audio" &&
                     responseEnd.seq == 42
+                fakeAudioEvidence = FakeAudioSmokeEvidence(
+                    ok = ok,
+                    frameOrder = frameOrder,
+                    uploadBinaryBytes = uploadBinaryBytes,
+                    uploadUtteranceAudioBytes = uploadUtteranceAudioBytes,
+                    downlinkBinaryBytes = binaryBytes,
+                    downlinkChunkSizes = chunkSizes,
+                    streamChunks = start.chunks,
+                    streamChunkBytes = start.chunkBytes,
+                    firstResponseLatencyMs = firstResponseLatencyMs,
+                    intent = response.intent,
+                )
+                notes += "Fake audio turn returned ${thinking.type}, intent=${response.intent}, chunks=${start.chunks}, binary_bytes=$binaryBytes, first_response_latency_ms=$firstResponseLatencyMs."
+                ok
             }.getOrElse {
                 notes += "Fake audio turn failed: ${it.message}"
                 false
@@ -221,6 +291,7 @@ fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
                 ownerOk = ownerOk,
                 diagnosticsOk = diagnosticsOk,
                 fakeAudioOk = fakeAudioOk,
+                fakeAudioEvidence = fakeAudioEvidence,
                 notes = notes,
             )
         }
