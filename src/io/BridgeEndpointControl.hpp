@@ -1,0 +1,117 @@
+#pragma once
+
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "io/BridgeEndpointRegistry.hpp"
+
+namespace stackchan {
+
+constexpr size_t kBridgeEndpointControlResponseMax = 1536;
+
+enum class BridgeEndpointControlResult : uint8_t {
+  Ignored,
+  Handled,
+  Rejected,
+};
+
+struct BridgeEndpointControlTelemetry {
+  bool ready = false;
+  uint32_t handledMessages = 0;
+  uint32_t ignoredMessages = 0;
+  uint32_t rejectedMessages = 0;
+  uint32_t endpointHellos = 0;
+  uint32_t heartbeats = 0;
+  uint32_t ownerClaims = 0;
+  uint32_t ownerReleases = 0;
+  uint32_t ownerStatusRequests = 0;
+  uint32_t trustedEndpointRequests = 0;
+  uint32_t capabilityUpdates = 0;
+  uint32_t forgotten = 0;
+  uint32_t responsesDropped = 0;
+  uint32_t lastHandledMs = 0;
+};
+
+class BridgeEndpointControl {
+ public:
+  bool begin(BridgeEndpointRegistry& registry);
+  void update(uint32_t nowMs);
+
+  BridgeEndpointControlResult submitControlLine(const char* jsonLine,
+                                                char* responseOut,
+                                                size_t responseOutSize,
+                                                uint32_t nowMs);
+
+  const BridgeEndpointControlTelemetry& telemetry() const {
+    return telemetry_;
+  }
+
+ private:
+  BridgeEndpointControlResult handleEndpointHello(const JsonObjectConst& root,
+                                                  char* responseOut,
+                                                  size_t responseOutSize,
+                                                  uint32_t nowMs);
+  BridgeEndpointControlResult handleHeartbeat(const JsonObjectConst& root,
+                                              char* responseOut,
+                                              size_t responseOutSize,
+                                              uint32_t nowMs);
+  BridgeEndpointControlResult handleClaimBrain(const JsonObjectConst& root,
+                                               char* responseOut,
+                                               size_t responseOutSize,
+                                               uint32_t nowMs);
+  BridgeEndpointControlResult handleReleaseBrain(const JsonObjectConst& root,
+                                                 char* responseOut,
+                                                 size_t responseOutSize,
+                                                 uint32_t nowMs);
+  BridgeEndpointControlResult handleOwnerStatus(char* responseOut,
+                                                size_t responseOutSize,
+                                                const char* state);
+  BridgeEndpointControlResult handleTrustedEndpoints(char* responseOut, size_t responseOutSize);
+  BridgeEndpointControlResult handleForgetEndpoint(const JsonObjectConst& root,
+                                                   char* responseOut,
+                                                   size_t responseOutSize,
+                                                   uint32_t nowMs);
+  BridgeEndpointControlResult handleCapabilityUpdate(const JsonObjectConst& root,
+                                                     char* responseOut,
+                                                     size_t responseOutSize,
+                                                     uint32_t nowMs);
+
+  BridgeEndpointControlResult writeEndpointHelloResult(const BridgeEndpointRecord& endpoint,
+                                                       char* responseOut,
+                                                       size_t responseOutSize);
+  BridgeEndpointControlResult writeHeartbeatResult(const char* endpointId,
+                                                   char* responseOut,
+                                                   size_t responseOutSize);
+  BridgeEndpointControlResult writeOwnerStatus(const char* state,
+                                               char* responseOut,
+                                               size_t responseOutSize);
+  BridgeEndpointControlResult writeTrustedEndpoints(char* responseOut, size_t responseOutSize);
+  BridgeEndpointControlResult writeForgetResult(const char* endpointId,
+                                                bool ok,
+                                                char* responseOut,
+                                                size_t responseOutSize);
+  BridgeEndpointControlResult writeCapabilityResult(const BridgeEndpointRecord& endpoint,
+                                                    char* responseOut,
+                                                    size_t responseOutSize);
+  BridgeEndpointControlResult writeError(const char* code,
+                                         const char* endpointId,
+                                         char* responseOut,
+                                         size_t responseOutSize);
+
+  static BridgeEndpointKind endpointKindFromString(const char* value);
+  static const char* endpointKindToString(BridgeEndpointKind kind);
+  static uint32_t capabilitiesFromJson(const JsonVariantConst& value);
+  static void writeCapabilities(uint32_t capabilities, JsonArray& out);
+  static bool hasProtocolMismatch(const JsonObjectConst& root);
+  static bool writeJsonResponse(const JsonDocument& doc,
+                                char* responseOut,
+                                size_t responseOutSize);
+  static void copyBounded(char* out, size_t outSize, const char* value);
+
+  BridgeEndpointRegistry* registry_ = nullptr;
+  BridgeEndpointControlTelemetry telemetry_;
+};
+
+}  // namespace stackchan

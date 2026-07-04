@@ -10,10 +10,12 @@ binary WebSocket frames for downlinked TTS audio chunks. Current firmware has a 
 `BridgeWebSocketTransport` adapter that builds the upgrade request, encodes masked client
 frames, decodes unmasked server text/binary frames, and routes those frames into
 `BridgeClient`. Firmware also has a native-tested `BridgeEndpointRegistry` for the
-multi-endpoint trust/health/active-owner rules, including explicit owner claims, heartbeat
-expiration, priority promotion, disconnect recovery, and endpoint forgetting. The running
-CoreS3 firmware still needs the production Wi-Fi/TCP task, message hookup, and nonvolatile
-endpoint persistence. Once frames reach `BridgeClient`, firmware parses downlink stream
+multi-endpoint trust/health/active-owner rules and a native-tested `BridgeEndpointControl`
+adapter that parses endpoint hello, endpoint heartbeat, `claim_brain`, `release_brain`,
+`owner_status`, `trusted_endpoints`, `forget_endpoint`, and `capability_update` frames into
+bounded JSON responses. The running CoreS3 firmware still needs the production Wi-Fi/TCP
+task to feed these adapters, send their responses, and persist endpoints in nonvolatile
+storage. Once frames reach `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
 through `BridgeClientOutput`, feeds that payload to the firmware downlink consumer for
 checksum/telemetry validation, and still uses `audio` response frames for mouth/envelope

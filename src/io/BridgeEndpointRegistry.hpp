@@ -27,6 +27,10 @@ enum BridgeEndpointCapability : uint32_t {
   BridgeEndpointCapabilitySettings = 1u << 4,
   BridgeEndpointCapabilityAudioDownlink = 1u << 5,
   BridgeEndpointCapabilityPersonaSelect = 1u << 6,
+  BridgeEndpointCapabilityModelProfiles = 1u << 7,
+  BridgeEndpointCapabilityDiagnostics = 1u << 8,
+  BridgeEndpointCapabilityWakeGate = 1u << 9,
+  BridgeEndpointCapabilityPcm16Upload = 1u << 10,
 };
 
 struct BridgeEndpointRecord {

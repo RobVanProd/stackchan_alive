@@ -13,6 +13,7 @@
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
 #include "io/BridgeClient.hpp"
+#include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/CameraAdapter.hpp"
@@ -3251,6 +3252,256 @@ void test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim()
                            owner->capabilities);
 }
 
+bool bridgeEndpointControlSubmit(BridgeEndpointControl& control,
+                                 const char* line,
+                                 char* response,
+                                 uint32_t nowMs,
+                                 BridgeEndpointControlResult expected) {
+  const BridgeEndpointControlResult result =
+      control.submitControlLine(line, response, kBridgeEndpointControlResponseMax, nowMs);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(expected), static_cast<int>(result));
+  return result == expected;
+}
+
+void test_bridge_endpoint_control_registers_endpoint_and_returns_result() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+
+  char response[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"protocol\":\"stackchan.bridge.v1\","
+      "\"endpoint_id\":\"phone-rob-01\",\"endpoint_name\":\"Rob's Phone\","
+      "\"endpoint_kind\":\"android\",\"priority\":60,\"supports_binary_audio\":true,"
+      "\"capabilities\":[\"settings\",\"llm\",\"tts\",\"settings\",\"diagnostics\"]}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"endpoint_hello_result\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"endpoint_id\":\"phone-rob-01\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"trusted\":true"));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"active_brain_owner\":\"phone-rob-01\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"audio_downlink\""));
+  TEST_ASSERT_TRUE(registry.isTrusted("phone-rob-01"));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+  const BridgeEndpointRecord* endpoint = registry.findEndpoint("phone-rob-01");
+  TEST_ASSERT_NOT_NULL(endpoint);
+  TEST_ASSERT_EQUAL_UINT32(BridgeEndpointCapabilitySettings |
+                               BridgeEndpointCapabilityLlm |
+                               BridgeEndpointCapabilityTts |
+                               BridgeEndpointCapabilityAudioDownlink |
+                               BridgeEndpointCapabilityDiagnostics,
+                           endpoint->capabilities);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().endpointHellos);
+}
+
+void test_bridge_endpoint_control_claim_and_release_handoff() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"pc-studio-01\","
+      "\"endpoint_kind\":\"pc\",\"priority\":80,\"capabilities\":[\"settings\",\"stt\",\"llm\",\"tts\"]}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"priority\":60,\"capabilities\":[\"settings\",\"llm\",\"tts\"]}",
+      response,
+      120,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"claim_brain\",\"endpoint_id\":\"phone-rob-01\",\"reason\":\"user_selected\"}",
+      response,
+      140,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"owner_status\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"active_brain_owner\":\"phone-rob-01\""));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"release_brain\",\"endpoint_id\":\"pc-studio-01\"}",
+      response,
+      150,
+      BridgeEndpointControlResult::Rejected));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"code\":\"brain_owner_mismatch\""));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"release_brain\",\"endpoint_id\":\"phone-rob-01\",\"reason\":\"handoff_to_pc\"}",
+      response,
+      170,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"active_brain_owner\":\"pc-studio-01\""));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().ownerClaims);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().ownerReleases);
+}
+
+void test_bridge_endpoint_control_heartbeat_handles_endpoint_only() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"heartbeat\"}",
+      response,
+      100,
+      BridgeEndpointControlResult::Ignored));
+  TEST_ASSERT_EQUAL_STRING("", response);
+
+  TEST_ASSERT_TRUE(registry.upsertEndpoint(makeBridgeEndpoint("pc-studio-01", BridgeEndpointKind::Pc, 80), 110));
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"heartbeat\",\"endpoint_id\":\"pc-studio-01\"}",
+      response,
+      150,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"heartbeat\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"endpoint_id\":\"pc-studio-01\""));
+  const BridgeEndpointRecord* endpoint = registry.findEndpoint("pc-studio-01");
+  TEST_ASSERT_NOT_NULL(endpoint);
+  TEST_ASSERT_EQUAL_UINT32(150, endpoint->lastHeartbeatMs);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().heartbeats);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().ignoredMessages);
+}
+
+void test_bridge_endpoint_control_lists_and_forgets_endpoints() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"pc-studio-01\","
+      "\"endpoint_name\":\"Studio PC\",\"endpoint_kind\":\"pc\",\"priority\":80,"
+      "\"capabilities\":[\"settings\",\"llm\"]}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_name\":\"Rob Phone\",\"endpoint_kind\":\"android\",\"priority\":60,"
+      "\"capabilities\":[\"settings\"]}",
+      response,
+      110,
+      BridgeEndpointControlResult::Handled));
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"trusted_endpoints\"}",
+      response,
+      120,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"trusted_endpoints_result\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"endpoint_id\":\"pc-studio-01\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"endpoint_id\":\"phone-rob-01\""));
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"forget_endpoint\",\"endpoint_id\":\"pc-studio-01\"}",
+      response,
+      130,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"forget_endpoint_result\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"ok\":true"));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"active_brain_owner\":\"phone-rob-01\""));
+  TEST_ASSERT_FALSE(registry.isTrusted("pc-studio-01"));
+  TEST_ASSERT_TRUE(registry.isActiveOwner("phone-rob-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().forgotten);
+}
+
+void test_bridge_endpoint_control_updates_capabilities() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"priority\":60,\"capabilities\":[\"settings\"]}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"capability_update\",\"endpoint_id\":\"phone-rob-01\","
+      "\"capabilities\":[\"settings\",\"model_profiles\",\"diagnostics\",\"pcm16_upload\",\"unknown\"]}",
+      response,
+      130,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"capability_update_result\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"model_profiles\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"diagnostics\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"pcm16_upload\""));
+  TEST_ASSERT_NULL(std::strstr(response, "\"unknown\""));
+  const BridgeEndpointRecord* endpoint = registry.findEndpoint("phone-rob-01");
+  TEST_ASSERT_NOT_NULL(endpoint);
+  TEST_ASSERT_EQUAL_UINT32(BridgeEndpointCapabilitySettings |
+                               BridgeEndpointCapabilityModelProfiles |
+                               BridgeEndpointCapabilityDiagnostics |
+                               BridgeEndpointCapabilityPcm16Upload,
+                           endpoint->capabilities);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().capabilityUpdates);
+}
+
+void test_bridge_endpoint_control_rejects_bad_endpoint_frames_and_ignores_bridge_frames() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"hello\",\"protocol\":\"stackchan.bridge.v1\"}",
+      response,
+      100,
+      BridgeEndpointControlResult::Ignored));
+  TEST_ASSERT_EQUAL_STRING("", response);
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"protocol\":\"wrong\",\"endpoint_id\":\"pc-studio-01\"}",
+      response,
+      110,
+      BridgeEndpointControlResult::Rejected));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"code\":\"protocol_mismatch\""));
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\"",
+      response,
+      120,
+      BridgeEndpointControlResult::Rejected));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"code\":\"malformed_json\""));
+  TEST_ASSERT_FALSE(registry.isTrusted("pc-studio-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().ignoredMessages);
+  TEST_ASSERT_EQUAL_UINT32(2, control.telemetry().rejectedMessages);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_spring_converges_without_exploding);
@@ -3379,5 +3630,11 @@ int main() {
   RUN_TEST(test_bridge_endpoint_registry_forget_active_owner_promotes_next_endpoint);
   RUN_TEST(test_bridge_endpoint_registry_disconnect_active_owner_promotes_next_endpoint);
   RUN_TEST(test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim);
+  RUN_TEST(test_bridge_endpoint_control_registers_endpoint_and_returns_result);
+  RUN_TEST(test_bridge_endpoint_control_claim_and_release_handoff);
+  RUN_TEST(test_bridge_endpoint_control_heartbeat_handles_endpoint_only);
+  RUN_TEST(test_bridge_endpoint_control_lists_and_forgets_endpoints);
+  RUN_TEST(test_bridge_endpoint_control_updates_capabilities);
+  RUN_TEST(test_bridge_endpoint_control_rejects_bad_endpoint_frames_and_ignores_bridge_frames);
   return UNITY_END();
 }

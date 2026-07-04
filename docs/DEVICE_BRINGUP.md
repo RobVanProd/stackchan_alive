@@ -41,6 +41,10 @@ decoding, and disconnect handling before the real Wi-Fi/TCP task exists.
 The same native suite covers trusted-endpoint registry arbitration for PC/mobile handoff,
 heartbeat expiry, disconnect promotion, and `forget_endpoint` behavior before nonvolatile
 storage exists.
+It also covers the firmware endpoint-control adapter for `endpoint_hello`, endpoint
+heartbeat, `claim_brain`, `release_brain`, `owner_status`, `trusted_endpoints`,
+`forget_endpoint`, and `capability_update` before the production Wi-Fi/TCP task is wired to
+send responses.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the

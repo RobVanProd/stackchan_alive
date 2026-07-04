@@ -696,6 +696,13 @@ foreach ($pattern in @("BridgeEndpointRegistry::upsertEndpoint", "BridgeEndpoint
   }
 }
 
+$bridgeEndpointControlText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeEndpointControl.cpp") -Raw
+foreach ($pattern in @("BridgeEndpointControl::submitControlLine", "BridgeEndpointControl::handleEndpointHello", "BridgeEndpointControl::handleHeartbeat", "BridgeEndpointControl::handleClaimBrain", "BridgeEndpointControl::handleReleaseBrain", "BridgeEndpointControl::handleForgetEndpoint", "BridgeEndpointControl::handleCapabilityUpdate", "BridgeEndpointControl::writeTrustedEndpoints", "BridgeEndpointControl::writeCapabilities", "deserializeJson", "endpoint_hello_result", "claim_brain", "release_brain", "owner_status", "trusted_endpoints_result", "forget_endpoint_result", "capability_update_result", "BridgeEndpointCapabilityModelProfiles", "BridgeEndpointCapabilityDiagnostics", "BridgeEndpointCapabilityPcm16Upload")) {
+  if ($bridgeEndpointControlText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeEndpointControl.cpp missing firmware endpoint control support: $pattern"
+  }
+}
+
 $bridgeAudioDownlinkText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeAudioDownlink.cpp") -Raw
 foreach ($pattern in @("BridgeAudioDownlink::begin", "BridgeAudioDownlink::start", "BridgeAudioDownlink::submitChunk", "BridgeAudioDownlink::end", "BridgeAudioDownlink::abort", "BridgeAudioDownlinkSink", "startPlayback", "submitPlaybackChunk", "stopPlayback", "isPlayablePcm16Format", "playbackReady", "playbackStarts", "playbackChunks", "playbackBytes", "playbackUnsupported", "playbackErrors", "kBridgeAudioStreamChunkPayloadMax", "payloadBytes", "chunksAccepted", "bytesAccepted", "streamsCompleted", "streamsAborted", "updateChecksum")) {
   if ($bridgeAudioDownlinkText -notmatch [regex]::Escape($pattern)) {
@@ -869,9 +876,14 @@ foreach ($pattern in @("test_bridge_endpoint_registry_upserts_and_bounds_trusted
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint registry tests: $pattern"
   }
 }
+foreach ($pattern in @("test_bridge_endpoint_control_registers_endpoint_and_returns_result", "test_bridge_endpoint_control_claim_and_release_handoff", "test_bridge_endpoint_control_heartbeat_handles_endpoint_only", "test_bridge_endpoint_control_lists_and_forgets_endpoints", "test_bridge_endpoint_control_updates_capabilities", "test_bridge_endpoint_control_rejects_bad_endpoint_frames_and_ignores_bridge_frames")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint control tests: $pattern"
+  }
+}
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeWebSocketTransport.cpp>")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
