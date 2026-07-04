@@ -120,6 +120,7 @@ $requiredFiles = @(
   "voice_source_status.json",
   "docs/BRAIN_MODEL.md",
   "docs/CHARACTER_LOCK.md",
+  "docs/CREATING_PERSONAS.md",
   "docs/GAP_ANALYSIS.md",
   "docs/JOHNNY_ALIVE_PATHWAY.md",
   "docs/PERSONA_PACKS.md",
@@ -295,6 +296,9 @@ $requiredFiles = @(
   "tools/run_character_harness_tests.ps1",
   "tools/run_character_red_team.cmd",
   "tools/run_character_red_team.ps1",
+  "tools/create_persona_pack.cmd",
+  "tools/create_persona_pack.ps1",
+  "tools/create_persona_pack.py",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
   "tools/verify_persona_pack.py",
@@ -586,14 +590,21 @@ foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.
     throw "docs/README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen", "verify_persona_pack.cmd glow --Json")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen", "verify_persona_pack.cmd glow --Json", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
 
+$creatingPersonasText = Get-Content -LiteralPath (Join-PackagePath "docs/CREATING_PERSONAS.md") -Raw
+foreach ($pattern in @("create_persona_pack.cmd nova", "copy-edit-validate-build", "verify_persona_pack.cmd nova --Json", "run_character_red_team.cmd -Persona nova -Json", "STACKCHAN_PERSONA", "voice provenance gate")) {
+  if ($creatingPersonasText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/CREATING_PERSONAS.md missing creator path guidance: $pattern"
+  }
+}
+
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "packaged prompt metadata", "firmware WAV embedding list", "Speech lines, earcon params")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "packaged prompt metadata", "firmware WAV embedding list", "Speech lines, earcon params", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md", "copy-edit-validate-build")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }

@@ -231,6 +231,7 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PERSONA_PACKS.md" -Destination $docsDir
@@ -391,6 +392,9 @@ $releaseTools = @(
   "tools/run_character_harness_tests.ps1",
   "tools/run_character_red_team.cmd",
   "tools/run_character_red_team.ps1",
+  "tools/create_persona_pack.cmd",
+  "tools/create_persona_pack.ps1",
+  "tools/create_persona_pack.py",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
   "tools/verify_persona_pack.py",

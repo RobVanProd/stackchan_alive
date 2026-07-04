@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -41,6 +42,7 @@ FOUNDATION_DENIED_MEMORY_TERMS = (
 FOUNDATION_FORBIDDEN_TERMS = ("johnny", "short circuit", "number 5", "need more input")
 REQUIRED_PACK_FILES = ("character", "prompt", "behavior", "expressions", "earcons", "voice")
 REQUIRED_SPOKEN_LINES = ("boot", "listen", "think", "speak", "sleep", "safety", "error", "happy", "concern")
+PERSONA_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 
 
 class PersonaPackError(ValueError):
@@ -49,6 +51,108 @@ class PersonaPackError(ValueError):
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def normalize_persona_id(value: str) -> str:
+    text = str(value).strip().lower()
+    text = re.sub(r"[^a-z0-9_-]+", "-", text)
+    text = re.sub(r"[-_]{2,}", "-", text).strip("-_")
+    if not text:
+        raise PersonaPackError("persona id is required")
+    if not re.fullmatch(PERSONA_ID_PATTERN, text):
+        raise PersonaPackError("persona id must be 1-32 lowercase letters, digits, hyphens, or underscores")
+    return text
+
+
+def default_persona_display_name(pack_id: str) -> str:
+    words = [word for word in re.split(r"[-_]+", pack_id) if word]
+    suffix = " ".join(word.capitalize() for word in words) or pack_id.capitalize()
+    return f"Stackchan {suffix}"
+
+
+def _yaml_string(value: str) -> str:
+    return json.dumps(str(value), ensure_ascii=True)
+
+
+def _replace_yaml_scalar(text: str, key: str, value: str) -> str:
+    pattern = re.compile(rf"^({re.escape(key)}:\s*).*$", re.MULTILINE)
+    updated, count = pattern.subn(lambda match: f"{match.group(1)}{value}", text, count=1)
+    if count != 1:
+        raise PersonaPackError(f"template missing YAML key: {key}")
+    return updated
+
+
+def _set_prompt_identity(prompt_text: str, display_name: str) -> str:
+    lines = prompt_text.splitlines()
+    first_line = f"You are {display_name}, a small tabletop robot companion."
+    if lines:
+        lines[0] = first_line
+    else:
+        lines = [
+            first_line,
+            "{{character_rules}}",
+            "",
+            "Current local memory:",
+            "{{memory}}",
+            "",
+            "Context markers:",
+            "{{context_markers}}",
+        ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def scaffold_persona_pack(
+    pack_id: str,
+    *,
+    display_name: str | None = None,
+    author: str | None = None,
+    source_persona: str = DEFAULT_PERSONA_ID,
+    root: Path | None = None,
+) -> PersonaPack:
+    base = root or repo_root()
+    new_id = normalize_persona_id(pack_id)
+    name = str(display_name).strip() if display_name else default_persona_display_name(new_id)
+    pack_author = str(author).strip() if author else "TODO"
+    source_pack = load_and_validate_persona_pack(source_persona, root=base)
+    destination = (base / "personas" / new_id).resolve()
+    source_root = source_pack.root.resolve()
+    if destination == source_root:
+        raise PersonaPackError("destination persona is the same as the source persona")
+    if destination.exists():
+        raise PersonaPackError(f"persona pack already exists: {destination}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_root, destination)
+
+    pack_yaml_path = destination / "pack.yaml"
+    character_yaml_path = destination / "character.yaml"
+    prompt_path = destination / "prompt.md"
+    voice_yaml_path = destination / "voice.yaml"
+
+    pack_yaml = pack_yaml_path.read_text(encoding="utf-8")
+    pack_yaml = _replace_yaml_scalar(pack_yaml, "id", new_id)
+    pack_yaml = _replace_yaml_scalar(pack_yaml, "name", _yaml_string(name))
+    pack_yaml = _replace_yaml_scalar(pack_yaml, "author", _yaml_string(pack_author))
+    pack_yaml = _replace_yaml_scalar(
+        pack_yaml,
+        "description",
+        _yaml_string("Community Stackchan: Alive character OS persona. Edit the copied YAML, validate, then build."),
+    )
+    pack_yaml_path.write_text(pack_yaml, encoding="utf-8")
+
+    character_yaml = character_yaml_path.read_text(encoding="utf-8")
+    character_yaml = _replace_yaml_scalar(character_yaml, "id", new_id)
+    character_yaml = _replace_yaml_scalar(character_yaml, "display_name", _yaml_string(name))
+    character_yaml_path.write_text(character_yaml, encoding="utf-8")
+
+    prompt_path.write_text(_set_prompt_identity(prompt_path.read_text(encoding="utf-8"), name), encoding="utf-8")
+
+    voice_yaml = voice_yaml_path.read_text(encoding="utf-8")
+    voice_yaml = _replace_yaml_scalar(voice_yaml, "profile_id", f"stackchan_{new_id.replace('-', '_')}")
+    voice_yaml = _replace_yaml_scalar(voice_yaml, "display_name", _yaml_string(name))
+    voice_yaml_path.write_text(voice_yaml, encoding="utf-8")
+
+    return load_and_validate_persona_pack(destination, root=base)
 
 
 def _strip_inline_comment(line: str) -> str:
