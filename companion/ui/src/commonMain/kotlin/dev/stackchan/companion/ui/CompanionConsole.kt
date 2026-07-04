@@ -41,7 +41,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
@@ -941,89 +940,93 @@ private fun RobotPreview(modifier: Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val screen = Size(w * 0.90f, h * 0.82f)
-        val left = (w - screen.width) * 0.5f
-        val top = h * 0.08f
-        val scaleX = screen.width / 320f
-        val scaleY = screen.height / 240f
+        val face = Size(w * 0.94f, h * 0.74f)
+        val left = (w - face.width) * 0.5f
+        val top = h * 0.11f
+        val scaleX = face.width / 320f
+        val scaleY = face.height / 180f
         fun sx(value: Float) = left + value * scaleX
         fun sy(value: Float) = top + value * scaleY
 
-        drawRoundRect(
-            color = Color(0xFF071013),
-            topLeft = Offset(left, top),
-            size = screen,
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color(0xFF61E4D7),
-            topLeft = Offset(left, top),
-            size = screen,
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()),
-            style = Stroke(width = 1.4.dp.toPx()),
-        )
+        drawRoundRect(color = Color(0xFF071013), topLeft = Offset(0f, 0f), size = size)
 
-        var scanY = top + 12.dp.toPx()
-        while (scanY < top + screen.height - 12.dp.toPx()) {
-            drawLine(
-                color = Color(0x163D91A3),
-                start = Offset(left + 12.dp.toPx(), scanY),
-                end = Offset(left + screen.width - 12.dp.toPx(), scanY),
-                strokeWidth = 1.dp.toPx(),
-            )
-            scanY += 9.dp.toPx()
-        }
-
-        fun eye(cx: Float, cy: Float, browTilt: Float) {
-            val eyeW = 66f * scaleX
-            val eyeH = 50f * scaleY
+        fun eye(cx: Float, cy: Float, browTilt: Float, pupilDx: Float) {
+            val eyeW = 74f * scaleX
+            val eyeH = 47f * scaleY
             val eyeLeft = sx(cx) - eyeW * 0.5f
             val eyeTop = sy(cy) - eyeH * 0.5f
             drawRoundRect(
                 color = Color(0xFFF7FBFF),
                 topLeft = Offset(eyeLeft, eyeTop),
                 size = Size(eyeW, eyeH),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(eyeH * 0.48f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
             )
+            drawLine(
+                color = Color(0xFF61E4D7),
+                start = Offset(eyeLeft + eyeW * 0.04f, eyeTop + eyeH + 1.dp.toPx()),
+                end = Offset(eyeLeft + eyeW * 0.96f, eyeTop + eyeH + 1.dp.toPx()),
+                strokeWidth = 1.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            val cut = 8.dp.toPx()
+            drawPath(
+                path = Path().apply {
+                    moveTo(eyeLeft, eyeTop + eyeH - cut)
+                    lineTo(eyeLeft + cut, eyeTop + eyeH)
+                    lineTo(eyeLeft, eyeTop + eyeH)
+                    close()
+                },
+                color = Color(0xFF071013),
+            )
+            drawPath(
+                path = Path().apply {
+                    moveTo(eyeLeft + eyeW, eyeTop + eyeH - cut)
+                    lineTo(eyeLeft + eyeW - cut, eyeTop + eyeH)
+                    lineTo(eyeLeft + eyeW, eyeTop + eyeH)
+                    close()
+                },
+                color = Color(0xFF071013),
+            )
+            val pupilW = eyeW * 0.16f
+            val pupilH = eyeH * 0.52f
+            val pupilCenter = Offset(sx(cx + pupilDx), sy(cy - 2f))
             drawOval(
                 color = Color(0xFF111827),
-                topLeft = Offset(sx(cx) - eyeW * 0.07f, sy(cy) - eyeH * 0.17f),
-                size = Size(eyeW * 0.14f, eyeH * 0.34f),
+                topLeft = Offset(pupilCenter.x - pupilW * 0.5f, pupilCenter.y - pupilH * 0.5f),
+                size = Size(pupilW, pupilH),
+            )
+            drawCircle(
+                color = Color(0xFF071013),
+                radius = pupilW * 0.34f,
+                center = Offset(pupilCenter.x - pupilW * 0.38f, pupilCenter.y - pupilH * 0.28f),
             )
             drawCircle(
                 color = Color(0xFFF7FBFF),
-                radius = eyeW * 0.025f,
-                center = Offset(sx(cx) - eyeW * 0.08f, sy(cy) - eyeH * 0.16f),
+                radius = pupilW * 0.16f,
+                center = Offset(pupilCenter.x - pupilW * 0.20f, pupilCenter.y - pupilH * 0.34f),
             )
-            val browY = sy(cy - 42f)
-            val browHalf = eyeW * 0.28f
+            val browY = sy(cy - 38f)
+            val browHalf = eyeW * 0.25f
             drawLine(
                 color = Color(0xFFF7FBFF),
-                start = Offset(sx(cx) - browHalf, browY + browTilt * 7f * scaleY),
-                end = Offset(sx(cx) + browHalf, browY - browTilt * 7f * scaleY),
-                strokeWidth = 2.dp.toPx(),
+                start = Offset(sx(cx) - browHalf, browY + browTilt * 5f * scaleY),
+                end = Offset(sx(cx) + browHalf, browY - browTilt * 5f * scaleY),
+                strokeWidth = 1.5.dp.toPx(),
                 cap = StrokeCap.Round,
             )
         }
 
-        eye(104f, 104f, -0.25f)
-        eye(216f, 104f, 0.25f)
+        eye(103f, 78f, -0.10f, 5f)
+        eye(217f, 78f, 0.10f, -5f)
 
         val mouth = Path().apply {
-            moveTo(sx(122f), sy(166f))
-            quadraticTo(sx(160f), sy(184f), sx(198f), sy(166f))
+            moveTo(sx(123f), sy(132f))
+            quadraticTo(sx(160f), sy(144f), sx(197f), sy(132f))
         }
         drawPath(
             path = mouth,
             color = Color(0xFFFF6B8A),
-            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round),
-        )
-        drawLine(
-            color = Color(0xFF61E4D7),
-            start = Offset(sx(108f), sy(212f)),
-            end = Offset(sx(212f), sy(212f)),
-            strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f)),
+            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
         )
     }
 }
