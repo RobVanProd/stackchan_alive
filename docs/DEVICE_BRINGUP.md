@@ -52,6 +52,12 @@ session test:
 or fails during screen-off soak, run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` immediately and attach
 `android/logcat/`.
 
+After the robot connects, capture the Android dashboard connected state before moving to the
+robot session test. The screenshot or screen recording must show the robot identity,
+firmware/version signal, last bridge frame, active brain owner, and foreground service state so
+the release packet proves the phone-hosted bridge is live in the operator UI, not only in probe
+logs.
+
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the
 `local_runner.py` -> `litert_lm_stackchan_wrapper.py` -> `STACKCHAN_LITERT_LM_COMMAND`
