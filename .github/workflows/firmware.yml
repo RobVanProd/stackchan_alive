@@ -250,12 +250,45 @@ jobs:
       - name: Build companion platform artifact
         if: matrix.shell == 'bash'
         shell: bash
-        run: ${{ matrix.command }}
+        run: |
+          set +e
+          ${{ matrix.command }}
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Compose desktop package diagnostics"
+            if [ -d companion/app-desktop/build/compose ]; then
+              find companion/app-desktop/build/compose -type f \( -name '*.txt' -o -name '*.args.txt' \) -print | sort | while IFS= read -r file; do
+                echo "---- $file"
+                sed -n '1,240p' "$file"
+              done
+            else
+              echo "No Compose desktop build directory found."
+            fi
+            echo "::endgroup::"
+            exit "$status"
+          fi
 
       - name: Build companion platform artifact on Windows
         if: matrix.shell == 'pwsh'
         shell: pwsh
-        run: ${{ matrix.command }}
+        run: |
+          ${{ matrix.command }}
+          $status = $LASTEXITCODE
+          if ($status -ne 0) {
+            Write-Output '::group::Compose desktop package diagnostics'
+            if (Test-Path 'companion/app-desktop/build/compose') {
+              Get-ChildItem 'companion/app-desktop/build/compose' -Recurse -File -Include '*.txt','*.args.txt' |
+                Sort-Object FullName |
+                ForEach-Object {
+                  Write-Output "---- $($_.FullName)"
+                  Get-Content $_.FullName -TotalCount 240
+                }
+            } else {
+              Write-Output 'No Compose desktop build directory found.'
+            }
+            Write-Output '::endgroup::'
+            exit $status
+          }
 
       - name: Upload companion platform artifact
         uses: actions/upload-artifact@v7
