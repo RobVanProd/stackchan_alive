@@ -176,6 +176,90 @@ function Get-VoiceGateStatusMismatches {
   return @($mismatches.ToArray())
 }
 
+function Get-AndroidProbeEvidenceStatus {
+  param(
+    [string]$EvidenceRoot,
+    [object]$Metadata
+  )
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return [ordered]@{
+      status = "pass"
+      evidence = "No Android companion probe metadata; optional unless Android is the bridge host"
+      reports = @()
+    }
+  }
+
+  $probeConfig = $Metadata.androidCompanionProbes
+  $reports = @(
+    [ordered]@{
+      label = "Android companion bridge probe"
+      path = [string]$probeConfig.companionProbeReport
+      schema = "stackchan.android-companion-probe.v1"
+    },
+    [ordered]@{
+      label = "Android UDP beacon probe"
+      path = [string]$probeConfig.udpBeaconProbeReport
+      schema = "stackchan.android-udp-beacon-probe.v1"
+    }
+  )
+
+  $present = New-Object System.Collections.Generic.List[string]
+  $missing = New-Object System.Collections.Generic.List[string]
+  $failures = New-Object System.Collections.Generic.List[string]
+  foreach ($probe in $reports) {
+    if ([string]::IsNullOrWhiteSpace([string]$probe.path)) {
+      $missing.Add("$($probe.label) has no configured report path") | Out-Null
+      continue
+    }
+    $path = Join-Path $EvidenceRoot (([string]$probe.path) -replace "/", "\")
+    if (-not (Test-Path -LiteralPath $path)) {
+      $missing.Add("$($probe.label) missing at $($probe.path)") | Out-Null
+      continue
+    }
+
+    $report = Read-JsonFile $path
+    if ($null -eq $report) {
+      $failures.Add("$($probe.label) report could not be read") | Out-Null
+    } elseif ($report.schema -ne [string]$probe.schema) {
+      $failures.Add("$($probe.label) schema mismatch: $($report.schema)") | Out-Null
+    } elseif ($report.status -ne "pass") {
+      $issues = @($report.issues) -join "; "
+      $failures.Add("$($probe.label) status $($report.status): $issues") | Out-Null
+    } else {
+      $present.Add("$($probe.label) passed at $($probe.path)") | Out-Null
+    }
+  }
+
+  if ($failures.Count -gt 0) {
+    return [ordered]@{
+      status = "blocked"
+      evidence = $failures -join "; "
+      reports = @($present.ToArray())
+      missing = @($missing.ToArray())
+    }
+  }
+  if ($present.Count -gt 0) {
+    $evidence = $present -join "; "
+    if ($missing.Count -gt 0) {
+      $evidence += "; optional report not present: $($missing -join '; ')"
+    }
+    return [ordered]@{
+      status = "pass"
+      evidence = $evidence
+      reports = @($present.ToArray())
+      missing = @($missing.ToArray())
+    }
+  }
+
+  return [ordered]@{
+    status = "pass"
+    evidence = "Android companion probe reports not present; optional unless Android is the bridge host"
+    reports = @()
+    missing = @($missing.ToArray())
+  }
+}
+
 function Get-FirstGate {
   param(
     [object[]]$Gates,
@@ -422,6 +506,7 @@ try {
     $strict = Invoke-ToolCapture @((Join-Path $PSScriptRoot "verify_hardware_evidence.ps1"), "-EvidenceRoot", $evidencePath)
     $metadata = Read-JsonFile (Join-Path $evidencePath "metadata.json")
     $speechMouth = Get-SpeechMouthDemoEvidenceStatus -EvidenceRoot $evidencePath
+    $androidProbes = Get-AndroidProbeEvidenceStatus -EvidenceRoot $evidencePath -Metadata $metadata
 
     if ($progress.exitCode -eq 0) {
       Add-Gate $gates "hardware-evidence-progress" "pass" "RUN_PROGRESS_CHECK has no obvious gaps" "hardware"
@@ -440,6 +525,11 @@ try {
     Add-Gate $gates "speech-mouth-demo-evidence" ([string]$speechMouth.status) ([string]$speechMouth.evidence) "hardware"
     if ([string]$speechMouth.status -ne "pass") {
       $blockers.Add("Speech-mouth demo evidence has not passed: $($speechMouth.evidence).") | Out-Null
+    }
+
+    Add-Gate $gates "android-companion-probes" ([string]$androidProbes.status) ([string]$androidProbes.evidence) "android"
+    if ([string]$androidProbes.status -ne "pass") {
+      $blockers.Add("Android companion probe evidence has not passed: $($androidProbes.evidence).") | Out-Null
     }
 
     if ($null -ne $metadata -and $null -ne $metadata.shareVerification) {
@@ -477,11 +567,13 @@ try {
       progressOutput = $progress.text
       strictExitCode = $strict.exitCode
       strictOutput = $strict.text
+      androidCompanionProbes = $androidProbes
     }
   } else {
     Add-Gate $gates "hardware-evidence-progress" "pending" "No hardware evidence packet was passed" "hardware"
     Add-Gate $gates "strict-hardware-evidence" "pending" "No hardware evidence packet was passed" "hardware"
     Add-Gate $gates "speech-mouth-demo-evidence" "pending" "No hardware evidence packet was passed" "hardware"
+    Add-Gate $gates "android-companion-probes" "pass" "No hardware evidence packet was passed; Android probes are optional unless Android is the bridge host" "android"
     Add-Gate $gates "voice-gate-status-consistency" "pending" "No hardware evidence packet was passed" "voice"
     $blockers.Add("No hardware evidence packet was passed.") | Out-Null
   }

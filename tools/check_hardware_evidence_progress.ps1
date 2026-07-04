@@ -86,6 +86,35 @@ function Test-TextPattern {
   }
 }
 
+function Test-OptionalAndroidProbeReport {
+  param(
+    [string]$RelativePath,
+    [string]$ExpectedSchema,
+    [string]$Description
+  )
+
+  if ([string]::IsNullOrWhiteSpace($RelativePath)) {
+    Add-Pass "$Description is optional and has no configured report path"
+    return
+  }
+
+  $path = Join-EvidencePath $RelativePath
+  if (-not (Test-Path -LiteralPath $path)) {
+    Add-Pass "$Description report not present; optional unless Android is the companion bridge host"
+    return
+  }
+
+  $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+  if ($report.schema -ne $ExpectedSchema) {
+    Add-Finding "$Description report schema mismatch: $($report.schema)"
+  } elseif ($report.status -eq "pass") {
+    Add-Pass "$Description report passed"
+  } else {
+    $issues = @($report.issues) -join "; "
+    Add-Finding "$Description report did not pass: $issues"
+  }
+}
+
 function Get-FirstFindingLike {
   param([string[]]$Patterns)
 
@@ -320,6 +349,17 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
     }
   } else {
     Add-Finding "metadata.json has no shareVerification reference; hosted media review page is not pinned in this evidence packet"
+  }
+
+  if ($null -ne $metadata.androidCompanionProbes) {
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.companionProbeReport) `
+      -ExpectedSchema "stackchan.android-companion-probe.v1" `
+      -Description "Android companion bridge probe"
+    Test-OptionalAndroidProbeReport `
+      -RelativePath ([string]$metadata.androidCompanionProbes.udpBeaconProbeReport) `
+      -ExpectedSchema "stackchan.android-udp-beacon-probe.v1" `
+      -Description "Android UDP beacon probe"
   }
 
   if ($null -ne $metadata.voiceGateStatus) {
