@@ -364,8 +364,12 @@ $requiredFiles = @(
   "provenance/src/io/CameraAdapter.cpp",
   "provenance/src/io/BridgeClient.hpp",
   "provenance/src/io/BridgeClient.cpp",
+  "provenance/src/io/BridgeNetworkSession.hpp",
+  "provenance/src/io/BridgeNetworkSession.cpp",
   "provenance/src/io/BridgeSocketWriter.hpp",
   "provenance/src/io/BridgeSocketWriter.cpp",
+  "provenance/src/io/BridgeWiFiClientSocket.hpp",
+  "provenance/src/io/BridgeWiFiClientSocket.cpp",
   "provenance/src/io/BridgeAudioDownlink.hpp",
   "provenance/src/io/BridgeAudioDownlink.cpp",
   "provenance/src/persona/SpeechPlanner.hpp",
@@ -698,6 +702,20 @@ foreach ($pattern in @("BridgeSocketWriter::begin", "BridgeSocketWriter::drainPe
   }
 }
 
+$bridgeNetworkSessionText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeNetworkSession.cpp") -Raw
+foreach ($pattern in @("BridgeNetworkSession::begin", "BridgeNetworkSession::start", "BridgeNetworkSession::update", "BridgeNetworkSession::openSocket", "BridgeNetworkSession::sendHandshake", "BridgeNetworkSession::readHandshake", "BridgeNetworkSession::readConnected", "BridgeNetworkSession::drainWriter", "BridgeNetworkSession::scheduleReconnect", "BridgeNetworkSessionState::Connected", "BridgeWebSocketTransport::buildHandshakeRequest", "transport_.submitBytes", "writer_.drainPendingTextResponse", "tcp_connect_failed", "handshake_timeout", "websocket_closed")) {
+  if ($bridgeNetworkSessionText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeNetworkSession.cpp missing firmware LAN session support: $pattern"
+  }
+}
+
+$bridgeWifiClientSocketText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeWiFiClientSocket.cpp") -Raw
+foreach ($pattern in @("BridgeWiFiClientSocket::connect", "BridgeWiFiClientSocket::isConnected", "BridgeWiFiClientSocket::available", "BridgeWiFiClientSocket::read", "BridgeWiFiClientSocket::write", "BridgeWiFiClientSocket::stop", "ARDUINO_ARCH_ESP32", "client_.connect", "client_.write")) {
+  if ($bridgeWifiClientSocketText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeWiFiClientSocket.cpp missing ESP32 WiFiClient bridge support: $pattern"
+  }
+}
+
 $bridgeEndpointRegistryText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeEndpointRegistry.cpp") -Raw
 foreach ($pattern in @("BridgeEndpointRegistry::upsertEndpoint", "BridgeEndpointRegistry::restoreEndpoint", "BridgeEndpointRegistry::forgetEndpoint", "BridgeEndpointRegistry::markHeartbeat", "BridgeEndpointRegistry::markDisconnected", "BridgeEndpointRegistry::claimOwner", "BridgeEndpointRegistry::releaseOwner", "BridgeEndpointRegistry::updateCapabilities", "BridgeEndpointRegistry::chooseBestHealthyOwner", "kBridgeEndpointMax", "ownerHeartbeatTimeoutMs", "autoConnect", "ownerExpirations", "explicitClaims", "forgotten", "restores")) {
   if ($bridgeEndpointRegistryText -notmatch [regex]::Escape($pattern)) {
@@ -882,7 +900,7 @@ foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "
     throw "provenance/test/test_native_logic/test_main.cpp missing generated expression tests: $pattern"
   }
 }
-foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected", "test_bridge_websocket_routes_endpoint_control_to_pending_response", "test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame", "test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client", "test_bridge_socket_writer_no_pending_is_noop", "test_bridge_socket_writer_writes_pending_endpoint_response_frame", "test_bridge_socket_writer_retains_partial_frame_until_complete", "test_bridge_socket_writer_disconnected_keeps_pending_response")) {
+foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected", "test_bridge_websocket_routes_endpoint_control_to_pending_response", "test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame", "test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client", "test_bridge_socket_writer_no_pending_is_noop", "test_bridge_socket_writer_writes_pending_endpoint_response_frame", "test_bridge_socket_writer_retains_partial_frame_until_complete", "test_bridge_socket_writer_disconnected_keeps_pending_response", "test_bridge_network_session_starts_and_accepts_handshake", "test_bridge_network_session_feeds_server_frames_to_bridge_client", "test_bridge_network_session_writes_endpoint_control_response", "test_bridge_network_session_reconnects_after_socket_disconnect")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
   }
@@ -904,7 +922,7 @@ foreach ($pattern in @("test_bridge_endpoint_registry_restore_keeps_endpoint_unh
 }
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
@@ -1878,21 +1896,21 @@ foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/
 }
 
 $androidCompanionSpec = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_SPEC.md") -Raw
-foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "stackchan.bridge-endpoints.v1", "fresh heartbeat", "masked client text frames", "BridgeSocketWriter", "partial-write buffering")) {
+foreach ($pattern in @("PC Brain Mode", "Mobile Brain Mode", "multi-endpoint", "active brain owner", "wake-gated", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "trusted endpoint", "Character OS", "LiteRT-LM", "safety-locked", "stackchan.bridge-endpoints.v1", "fresh heartbeat", "masked client text frames", "BridgeSocketWriter", "BridgeNetworkSession", "WiFiClient", "partial-write buffering")) {
   if ($androidCompanionSpec -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_SPEC.md missing expected Android companion contract: $pattern"
   }
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "native-tested endpoint-control response framing", "native-tested socket-writer drain path", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "WiFiClient", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "native-tested endpoint-control response framing", "native-tested socket-writer drain path", "native-tested LAN session loop", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "WiFiClient", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }
 }
 
 $bridgeProtocol = Get-Content -LiteralPath (Join-PackagePath "docs/BRIDGE_PROTOCOL.md") -Raw
-foreach ($pattern in @("stackchan.bridge.v1", "stackchan.bridge-endpoints.v1", "BridgeEndpointStore", "Preferences backend", "masked client text frame", "drains queued responses through a socket sink", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
+foreach ($pattern in @("stackchan.bridge.v1", "stackchan.bridge-endpoints.v1", "BridgeEndpointStore", "Preferences backend", "masked client text frame", "drains queued responses through a socket sink", "BridgeNetworkSession", "BridgeWiFiClientSocket", "wake-word gating", "response_start", "audio", "response_end", "character_harness.py", "Accepted", "4096 bytes", "BridgeClientOutput", "downlink consumer", "bridge_downlink_playback_*", "pcm16", "offline matrix", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "ANDROID_COMPANION_SPEC.md", "active brain owner", "forget_endpoint")) {
   if ($bridgeProtocol -notmatch [regex]::Escape($pattern)) {
     throw "BRIDGE_PROTOCOL.md missing expected bridge contract: $pattern"
   }

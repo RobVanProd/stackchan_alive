@@ -22,9 +22,12 @@ on `[runtime]`, and can print endpoint-control responses over the serial bench p
 also routes endpoint-control WebSocket text frames before normal conversation frames, queues
 the bounded JSON response, and can encode that response as a masked client text frame for
 `BridgeSocketWriter`, which drains queued responses through a socket sink and keeps partially
-written frames buffered until the sink accepts the remaining bytes. It still needs the
-production Wi-Fi/TCP task to feed these adapters, bind the writer to `WiFiClient`, and
-collect live PC/mobile handoff evidence. Once frames reach
+written frames buffered until the sink accepts the remaining bytes. `BridgeNetworkSession`
+now composes those pieces into a TCP/WebSocket session loop: connect, send upgrade request,
+read handshake response, feed incoming WebSocket bytes, drain queued endpoint responses, and
+schedule reconnects. `BridgeWiFiClientSocket` is the ESP32 `WiFiClient` binding for that
+socket interface. It still needs Wi-Fi provisioning and boot-time task/update integration
+on the CoreS3 before collecting live PC/mobile handoff evidence. Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
 through `BridgeClientOutput`, feeds that payload to the firmware downlink consumer for
