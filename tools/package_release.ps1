@@ -252,6 +252,7 @@ Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDi
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
@@ -794,6 +795,7 @@ $manifest = [ordered]@{
   acceptanceChecklist = "RELEASE_ACCEPTANCE.md"
   acceptanceChecklistJson = "release_acceptance.json"
   androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
+  androidCompanionTestPlan = "docs/ANDROID_COMPANION_TEST_PLAN.md"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
   gapAnalysis = "docs/GAP_ANALYSIS.md"

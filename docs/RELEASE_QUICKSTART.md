@@ -156,6 +156,15 @@ Open the newest evidence packet folder and run:
 .\RUN_SIM_HARDWARE_COMPARE.cmd
 ```
 
+If the Android phone is the companion bridge host, also run these from the evidence packet:
+
+```powershell
+.\RUN_ANDROID_UDP_BEACON_PROBE.cmd
+.\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
+```
+
+The Android helpers write packet-local probe evidence under `android\udp-beacon-probe\` and `android\companion-probe\`.
+
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:
