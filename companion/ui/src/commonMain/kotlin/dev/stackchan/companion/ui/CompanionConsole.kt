@@ -146,7 +146,7 @@ fun CompanionConsole(
                     Header(targetName, state, compact)
                     if (compact) {
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            StagePanel(state, Modifier.fillMaxWidth())
+                            StagePanel(state, Modifier.fillMaxWidth(), compact = true)
                             BrainPanel(
                                 state = state,
                                 modifier = Modifier.fillMaxWidth(),
@@ -234,11 +234,30 @@ private fun Header(targetName: String, state: CompanionUiState, compact: Boolean
                 StatusPill("Brain: ${state.brainOwner}", Purple, Color(0xFF181536))
             }
         }
+        if (compact) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatusPill(
+                    text = state.connection,
+                    color = Mint,
+                    background = Color(0xFF0D2A25),
+                    modifier = Modifier.weight(1f),
+                )
+                StatusPill(
+                    text = "Brain: ${state.brainOwner}",
+                    color = Purple,
+                    background = Color(0xFF181536),
+                    modifier = Modifier.weight(0.72f),
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun StagePanel(state: CompanionUiState, modifier: Modifier) {
+private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boolean = false) {
     PanelShell(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             SectionTitle("Live Robot Stage", Mint)
@@ -259,7 +278,7 @@ private fun StagePanel(state: CompanionUiState, modifier: Modifier) {
                     Readout("Tilt", "0 deg", Muted)
                 }
                 Spacer(Modifier.height(10.dp))
-                RobotPreview(Modifier.fillMaxWidth(0.62f).aspectRatio(1.65f))
+                RobotPreview(Modifier.fillMaxWidth(if (compact) 0.86f else 0.62f).aspectRatio(1.65f))
                 Spacer(Modifier.height(8.dp))
                 Text("State // ${state.robotState}", color = Muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             }
@@ -464,8 +483,8 @@ private fun SectionTitle(text: String, accent: Color) {
 }
 
 @Composable
-private fun StatusPill(text: String, color: Color, background: Color) {
-    Surface(color = background, shape = RoundedCornerShape(8.dp)) {
+private fun StatusPill(text: String, color: Color, background: Color, modifier: Modifier = Modifier) {
+    Surface(color = background, shape = RoundedCornerShape(8.dp), modifier = modifier) {
         Text(
             text,
             color = color,
