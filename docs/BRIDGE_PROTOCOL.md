@@ -26,8 +26,11 @@ written frames buffered until the sink accepts the remaining bytes. `BridgeNetwo
 now composes those pieces into a TCP/WebSocket session loop: connect, send upgrade request,
 read handshake response, feed incoming WebSocket bytes, drain queued endpoint responses, and
 schedule reconnects. `BridgeWiFiClientSocket` is the ESP32 `WiFiClient` binding for that
-socket interface. It still needs Wi-Fi provisioning and boot-time task/update integration
-on the CoreS3 before collecting live PC/mobile handoff evidence. Once frames reach
+socket interface. `BridgeWiFiProvisioner` supplies compile-time Wi-Fi/bridge provisioning,
+nonblocking connection retries, boot-time session initialization, and the intent-loop update
+hook that keeps `BridgeClient` access single-threaded. It still needs real configured
+credentials/bridge host on the CoreS3 before collecting live PC/mobile handoff evidence.
+Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
 through `BridgeClientOutput`, feeds that payload to the firmware downlink consumer for

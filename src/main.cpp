@@ -13,6 +13,9 @@
 #include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeEndpointStore.hpp"
+#include "io/BridgeNetworkSession.hpp"
+#include "io/BridgeWiFiClientSocket.hpp"
+#include "io/BridgeWiFiProvisioner.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -53,6 +56,9 @@ BridgeClient gBridge;
 BridgeEndpointRegistry gBridgeEndpointRegistry;
 BridgeEndpointControl gBridgeEndpointControl;
 BridgeEndpointStore gBridgeEndpointStore;
+BridgeWiFiProvisioner gBridgeWiFi;
+BridgeNetworkSession gBridgeNetworkSession;
+BridgeWiFiClientSocket gBridgeSocket;
 #if defined(ARDUINO_ARCH_ESP32)
 BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
 #else
@@ -526,6 +532,24 @@ const __FlashStringHelper* bridgeStateName(BridgeClientState state) {
   return F("unknown");
 }
 
+const __FlashStringHelper* bridgeNetworkStateName(BridgeNetworkSessionState state) {
+  switch (state) {
+    case BridgeNetworkSessionState::Idle:
+      return F("idle");
+    case BridgeNetworkSessionState::Connecting:
+      return F("connecting");
+    case BridgeNetworkSessionState::Handshaking:
+      return F("handshaking");
+    case BridgeNetworkSessionState::Connected:
+      return F("connected");
+    case BridgeNetworkSessionState::Backoff:
+      return F("backoff");
+    case BridgeNetworkSessionState::Error:
+      return F("error");
+  }
+  return F("unknown");
+}
+
 SpeechEarcon earconForIntent(SpeechIntent intent) {
   switch (intent) {
     case SpeechIntent::Boot:
@@ -659,6 +683,38 @@ void printRuntimeStatus() {
   Serial.print(bridge.audioStreamErrors);
   Serial.print(F(" bridge_audio_stream_active="));
   Serial.print(bridge.audioStreamActive ? 1 : 0);
+  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  Serial.print(F(" bridge_wifi_ready="));
+  Serial.print(wifi.ready ? 1 : 0);
+  Serial.print(F(" bridge_wifi_configured="));
+  Serial.print(wifi.configured ? 1 : 0);
+  Serial.print(F(" bridge_wifi_connecting="));
+  Serial.print(wifi.connecting ? 1 : 0);
+  Serial.print(F(" bridge_wifi_connected="));
+  Serial.print(wifi.connected ? 1 : 0);
+  Serial.print(F(" bridge_wifi_attempts="));
+  Serial.print(wifi.beginAttempts);
+  Serial.print(F(" bridge_wifi_failures="));
+  Serial.print(wifi.connectFailures);
+  Serial.print(F(" bridge_wifi_status="));
+  Serial.print(wifi.status);
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  Serial.print(F(" bridge_network_ready="));
+  Serial.print(network.ready ? 1 : 0);
+  Serial.print(F(" bridge_network_state="));
+  Serial.print(bridgeNetworkStateName(network.state));
+  Serial.print(F(" bridge_network_connects="));
+  Serial.print(network.connectAttempts);
+  Serial.print(F(" bridge_network_handshakes="));
+  Serial.print(network.handshakesAccepted);
+  Serial.print(F(" bridge_network_reconnects="));
+  Serial.print(network.reconnectsScheduled);
+  Serial.print(F(" bridge_network_bytes_in="));
+  Serial.print(network.bytesRead);
+  Serial.print(F(" bridge_network_bytes_out="));
+  Serial.print(network.bytesWritten);
+  Serial.print(F(" bridge_network_writer_frames="));
+  Serial.print(network.writerFrames);
   const BridgeEndpointRegistryTelemetry& endpoints = gBridgeEndpointRegistry.telemetry();
   Serial.print(F(" bridge_endpoint_registry_ready="));
   Serial.print(endpoints.ready ? 1 : 0);
@@ -1140,6 +1196,26 @@ void pollBridgeOutputs(uint32_t nowMs) {
   }
 }
 
+void updateBridgeNetwork(uint32_t nowMs) {
+  gBridgeWiFi.update(nowMs);
+  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  if (!wifi.ready || !wifi.configured) {
+    return;
+  }
+
+  if (!gBridgeWiFi.isConnected()) {
+    const BridgeNetworkSessionState state = gBridgeNetworkSession.telemetry().state;
+    if (state == BridgeNetworkSessionState::Connecting ||
+        state == BridgeNetworkSessionState::Handshaking ||
+        state == BridgeNetworkSessionState::Connected) {
+      gBridgeNetworkSession.stop(nowMs);
+    }
+    return;
+  }
+
+  gBridgeNetworkSession.update(nowMs);
+}
+
 void publishFrame(const RobotFrame& frame) {
   if (gFrameQueue != nullptr) {
     xQueueOverwrite(gFrameQueue, &frame);
@@ -1236,7 +1312,9 @@ void IntentTask(void* pv) {
   bool hasPendingAudioEvent = false;
 
   while (true) {
-    gBridgeEndpointControl.update(millis());
+    const uint32_t loopMs = millis();
+    gBridgeEndpointControl.update(loopMs);
+    updateBridgeNetwork(loopMs);
 
     RobotEvent cameraEvent;
     while (gCamera.poll(&cameraEvent)) {
@@ -1288,6 +1366,7 @@ void IntentTask(void* pv) {
       pollBridgeOutputs(millis());
       printBenchControl(control);
     }
+    pollBridgeOutputs(millis());
 
     RobotFrame frame = gIntent.update(millis());
     if (hasPendingAudioEvent) {
@@ -1342,6 +1421,9 @@ void setup() {
   gBridgeEndpointStore.load(gBridgeEndpointRegistry, bootMs);
   gBridgeEndpointControl.begin(gBridgeEndpointRegistry);
   gBridgeEndpointControl.attachStore(&gBridgeEndpointStore);
+  gBridgeWiFi.begin(BridgeWiFiProvisioningConfig {}, bootMs);
+  gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), bootMs);
+  gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();

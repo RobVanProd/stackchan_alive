@@ -19,6 +19,7 @@
 #include "io/BridgeNetworkSession.hpp"
 #include "io/BridgeSocketWriter.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
+#include "io/BridgeWiFiProvisioner.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
@@ -3660,6 +3661,73 @@ void test_bridge_network_session_reconnects_after_socket_disconnect() {
                     static_cast<int>(session.telemetry().state));
 }
 
+void test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured() {
+  BridgeWiFiProvisioner wifi;
+  TEST_ASSERT_TRUE(wifi.begin(BridgeWiFiProvisioningConfig {}, 1000));
+  TEST_ASSERT_TRUE(wifi.telemetry().ready);
+  TEST_ASSERT_FALSE(wifi.telemetry().configured);
+  TEST_ASSERT_FALSE(wifi.isConnected());
+  TEST_ASSERT_EQUAL_STRING("wifi_bridge_disabled", wifi.telemetry().lastError);
+
+  const BridgeNetworkSessionConfig session = wifi.networkSessionConfig();
+  TEST_ASSERT_FALSE(session.enabled);
+}
+
+void test_bridge_wifi_provisioner_maps_config_to_network_session() {
+  BridgeWiFiProvisioningConfig config;
+  config.enabled = true;
+  config.ssid = "bench-wifi";
+  config.password = "secret";
+  config.bridgeHost = "192.168.1.40";
+  config.bridgePort = 8790;
+  config.bridgePath = "/stackchan";
+  config.secWebSocketKey = "abc123";
+  config.bridge.deviceId = "stackchan-bench";
+
+  BridgeWiFiProvisioner wifi;
+  TEST_ASSERT_TRUE(wifi.begin(config, 1100));
+  TEST_ASSERT_TRUE(wifi.telemetry().ready);
+  TEST_ASSERT_TRUE(wifi.telemetry().configured);
+  TEST_ASSERT_TRUE(wifi.telemetry().connecting);
+  TEST_ASSERT_EQUAL_UINT32(1, wifi.telemetry().beginAttempts);
+
+  const BridgeNetworkSessionConfig session = wifi.networkSessionConfig();
+  TEST_ASSERT_TRUE(session.enabled);
+  TEST_ASSERT_EQUAL_STRING("192.168.1.40", session.host);
+  TEST_ASSERT_EQUAL_UINT16(8790, session.port);
+  TEST_ASSERT_EQUAL_STRING("/stackchan", session.path);
+  TEST_ASSERT_EQUAL_STRING("abc123", session.secWebSocketKey);
+  TEST_ASSERT_EQUAL_STRING("stackchan-bench", session.bridge.deviceId);
+}
+
+void test_bridge_wifi_provisioner_schedules_retry_after_timeout() {
+  BridgeWiFiProvisioningConfig config;
+  config.enabled = true;
+  config.ssid = "bench-wifi";
+  config.password = "secret";
+  config.bridgeHost = "192.168.1.40";
+  config.connectTimeoutMs = 50;
+  config.retryDelayMs = 200;
+
+  BridgeWiFiProvisioner wifi;
+  TEST_ASSERT_TRUE(wifi.begin(config, 1200));
+  wifi.update(1249);
+  TEST_ASSERT_TRUE(wifi.telemetry().connecting);
+  TEST_ASSERT_EQUAL_UINT32(0, wifi.telemetry().connectFailures);
+
+  wifi.update(1250);
+  TEST_ASSERT_FALSE(wifi.telemetry().connecting);
+  TEST_ASSERT_FALSE(wifi.isConnected());
+  TEST_ASSERT_EQUAL_UINT32(1, wifi.telemetry().connectFailures);
+  TEST_ASSERT_EQUAL_UINT32(1, wifi.telemetry().reconnectsScheduled);
+  TEST_ASSERT_EQUAL_UINT32(1450, wifi.telemetry().nextAttemptMs);
+  TEST_ASSERT_EQUAL_STRING("wifi_connect_timeout", wifi.telemetry().lastError);
+
+  wifi.update(1450);
+  TEST_ASSERT_TRUE(wifi.telemetry().connecting);
+  TEST_ASSERT_EQUAL_UINT32(2, wifi.telemetry().beginAttempts);
+}
+
 BridgeEndpointRecord makeBridgeEndpoint(const char* id,
                                         BridgeEndpointKind kind,
                                         uint8_t priority,
@@ -4344,6 +4412,9 @@ int main() {
   RUN_TEST(test_bridge_network_session_feeds_server_frames_to_bridge_client);
   RUN_TEST(test_bridge_network_session_writes_endpoint_control_response);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
+  RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
+  RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);
+  RUN_TEST(test_bridge_wifi_provisioner_schedules_retry_after_timeout);
   RUN_TEST(test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints);
   RUN_TEST(test_bridge_endpoint_registry_explicit_claim_overrides_current_owner);
   RUN_TEST(test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint);

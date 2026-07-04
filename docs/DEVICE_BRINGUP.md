@@ -38,8 +38,10 @@ visible `thinking-latency` timing without hardware.
 When changing firmware-side WebSocket framing or LAN session code, run
 `pio test -e native_logic`; the native suite covers upgrade request generation, masked
 client frames, server text/binary downlink decoding, socket writer behavior, TCP/WebSocket
-session handshakes, endpoint response writeback, and reconnect scheduling before boot-time
-Wi-Fi integration exists.
+session handshakes, endpoint response writeback, reconnect scheduling, and the boot-time
+Wi-Fi bridge update hook.
+The suite also covers the disabled-by-default Wi-Fi bridge provisioning config, mapping
+that config into a LAN session target, and retry scheduling after connection timeout.
 The same native suite covers trusted-endpoint registry arbitration for PC/mobile handoff,
 heartbeat expiry, disconnect promotion, and `forget_endpoint` behavior. It also covers the
 trusted-endpoint persistence store for save/load/clear, malformed-store rejection, and the
@@ -55,8 +57,11 @@ The firmware WebSocket adapter also routes endpoint-control text frames before n
 conversation frames and can encode the queued endpoint response as a masked client text
 frame. `BridgeSocketWriter` can drain those frames through a socket sink with partial-write
 buffering. `BridgeNetworkSession` adds the tested TCP/WebSocket session loop, and
-`BridgeWiFiClientSocket` binds the socket interface to ESP32 `WiFiClient`; the remaining
-hardware gap is Wi-Fi provisioning plus boot-time task/update integration.
+`BridgeWiFiClientSocket` binds the socket interface to ESP32 `WiFiClient`.
+`BridgeWiFiProvisioner` is boot-wired but disabled by default unless
+`STACKCHAN_ENABLE_WIFI_BRIDGE=1`, `STACKCHAN_WIFI_SSID`, and `STACKCHAN_BRIDGE_HOST` are
+provided at build time. The remaining hardware gap is provisioning real credentials/bridge
+host and collecting live PC/mobile handoff evidence.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the
