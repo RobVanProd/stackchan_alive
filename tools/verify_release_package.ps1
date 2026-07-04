@@ -306,6 +306,8 @@ $requiredFiles = @(
   "tools/check_hardware_evidence_progress.ps1",
   "tools/test_android_apk_install_evidence_contract.cmd",
   "tools/test_android_apk_install_evidence_contract.ps1",
+  "tools/test_android_rollout_status_contract.cmd",
+  "tools/test_android_rollout_status_contract.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -524,6 +526,13 @@ $androidApkInstallEvidenceContractText = Get-Content -LiteralPath (Join-PackageP
 foreach ($pattern in @("check_hardware_evidence_progress.ps1", "stackchan.android-apk-install.v1", "BENCH_STATUS.json", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence report status: installed", "Assert-ReportLacksFinding", "Android APK install evidence contract tests passed")) {
   if ($androidApkInstallEvidenceContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_apk_install_evidence_contract.ps1 missing APK install evidence coverage: $pattern"
+  }
+}
+
+$androidRolloutStatusContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_rollout_status_contract.ps1") -Raw
+foreach ($pattern in @("export_rollout_status.ps1", "stackchan.android-apk-install.v1", "ROLLOUT_STATUS.json", "android-companion-probes", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence status installed", "Android rollout status APK evidence contract tests passed")) {
+  if ($androidRolloutStatusContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_rollout_status_contract.ps1 missing Android rollout status coverage: $pattern"
   }
 }
 
