@@ -469,7 +469,10 @@ foreach ($artifactGroup in $report.artifacts) {
     $lines += "- Detail: $($artifactGroup.detail)"
   } else {
     foreach ($entry in $artifactGroup.entries) {
-      $lines += "- `$($entry.path)` ($($entry.bytes) bytes, sha256 `$($entry.sha256)`)"
+      $entryPath = [string]$entry["path"]
+      $entryBytes = [string]$entry["bytes"]
+      $entrySha256 = [string]$entry["sha256"]
+      $lines += "- `$entryPath` ($entryBytes bytes, sha256 `$entrySha256`)"
     }
   }
 }

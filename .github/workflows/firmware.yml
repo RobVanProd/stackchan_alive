@@ -359,6 +359,7 @@ jobs:
             -Commit "${{ github.sha }}" `
             -AndroidArtifactRoot "output/companion/ci-artifacts/companion-android-apks" `
             -DesktopArtifactRoot "output/companion/ci-artifacts" `
+            -ApkSignerPath "$env:ANDROID_HOME/build-tools/36.0.0/apksigner" `
             -OutDir "output/companion/release-evidence/ci" `
             -RequireArtifacts `
             -Json
