@@ -12,7 +12,15 @@ Thumbs.db
 # Dependencies and build output
 node_modules/
 .pio/
+.gradle/
+.kotlin/
 output/
+!output/
+output/*
+!output/companion/
+output/companion/*
+!output/companion/c0-spike/
+!output/companion/c0-spike/SPIKE.md
 dist/
 build/
 out/
