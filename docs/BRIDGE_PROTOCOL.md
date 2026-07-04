@@ -35,7 +35,9 @@ credentials/bridge host on the CoreS3 before collecting live PC/mobile handoff e
 is disabled by default, refuses to start unless the wake gate is open, queues a masked text
 `utterance_start`, queues bounded masked binary PCM chunks, and queues a masked text
 `utterance_end` with byte/chunk counts. It is not wired to live mic capture yet; real
-capture-to-uplink and ESP-SR wake evidence remain hardware gates.
+capture-to-uplink and ESP-SR wake evidence remain hardware gates. For transport bring-up,
+serial bench commands `uplink start`, `uplink chunk`, `uplink end`, and `uplink abort`
+drive the same controller with synthetic PCM; `bridge upload ...` is the equivalent alias.
 Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload

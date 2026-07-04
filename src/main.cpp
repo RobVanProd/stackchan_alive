@@ -555,6 +555,22 @@ const __FlashStringHelper* bridgeNetworkStateName(BridgeNetworkSessionState stat
   return F("unknown");
 }
 
+const __FlashStringHelper* bridgeUploadActionName(BenchBridgeUploadAction action) {
+  switch (action) {
+    case BenchBridgeUploadAction::Start:
+      return F("start");
+    case BenchBridgeUploadAction::Chunk:
+      return F("chunk");
+    case BenchBridgeUploadAction::End:
+      return F("end");
+    case BenchBridgeUploadAction::Abort:
+      return F("abort");
+    case BenchBridgeUploadAction::None:
+      break;
+  }
+  return F("none");
+}
+
 SpeechEarcon earconForIntent(SpeechIntent intent) {
   switch (intent) {
     case SpeechIntent::Boot:
@@ -983,8 +999,88 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(control.bridge.controlLine);
     Serial.print(F("\""));
   }
+  if (control.hasBridgeUpload) {
+    Serial.print(F(" bridge_uplink_action="));
+    Serial.print(bridgeUploadActionName(control.bridgeUpload.action));
+    Serial.print(F(" bridge_uplink_seq="));
+    Serial.print(control.bridgeUpload.seq);
+    Serial.print(F(" bridge_uplink_bytes="));
+    Serial.print(control.bridgeUpload.bytes);
+    Serial.print(F(" bridge_uplink_wake="));
+    Serial.print(control.bridgeUpload.wakeGateOpen ? 1 : 0);
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
+}
+
+void printBridgeUplinkResult(BenchBridgeUploadAction action,
+                             bool accepted,
+                             uint32_t seq,
+                             uint16_t bytes,
+                             uint32_t nowMs) {
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  Serial.print(F("[bridge_uplink] action="));
+  Serial.print(bridgeUploadActionName(action));
+  Serial.print(F(" result="));
+  Serial.print(accepted ? F("accepted") : F("rejected"));
+  Serial.print(F(" seq="));
+  Serial.print(seq);
+  Serial.print(F(" bytes="));
+  Serial.print(bytes);
+  Serial.print(F(" active="));
+  Serial.print(uplink.active ? 1 : 0);
+  Serial.print(F(" chunks="));
+  Serial.print(uplink.chunksQueued);
+  Serial.print(F(" queued_bytes="));
+  Serial.print(uplink.bytesQueued);
+  Serial.print(F(" gate_blocks="));
+  Serial.print(uplink.gateBlocks);
+  Serial.print(F(" queue_failures="));
+  Serial.print(uplink.queueFailures);
+  Serial.print(F(" errors="));
+  Serial.print(uplink.errors);
+  Serial.print(F(" error=\""));
+  Serial.print(uplink.lastError);
+  Serial.print(F("\" at_ms="));
+  Serial.println(nowMs);
+}
+
+void handleBridgeUplinkBench(const BenchBridgeUpload& upload, uint32_t nowMs) {
+  bool accepted = false;
+  uint16_t bytes = upload.bytes;
+  uint8_t payload[512] = {};
+
+  switch (upload.action) {
+    case BenchBridgeUploadAction::Start:
+      accepted = gBridgeAudioUplink.beginTurn(upload.seq, nowMs, upload.wakeGateOpen);
+      break;
+    case BenchBridgeUploadAction::Chunk:
+      if (bytes > sizeof(payload)) {
+        bytes = sizeof(payload);
+      }
+      if ((bytes & 1u) != 0) {
+        bytes--;
+      }
+      for (uint16_t i = 0; i < bytes; ++i) {
+        payload[i] = static_cast<uint8_t>((upload.seq + i) & 0xffu);
+      }
+      accepted = gBridgeAudioUplink.submitPcmBytes(upload.seq, payload, bytes, nowMs);
+      break;
+    case BenchBridgeUploadAction::End:
+      accepted = gBridgeAudioUplink.endTurn(upload.seq, nowMs);
+      break;
+    case BenchBridgeUploadAction::Abort:
+      gBridgeAudioUplink.abort(nowMs, "bench_audio_uplink_abort");
+      accepted = true;
+      bytes = 0;
+      break;
+    case BenchBridgeUploadAction::None:
+      accepted = false;
+      bytes = 0;
+      break;
+  }
+
+  printBridgeUplinkResult(upload.action, accepted, upload.seq, bytes, nowMs);
 }
 
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
@@ -1436,6 +1532,9 @@ void IntentTask(void* pv) {
         if (!handleEndpointControlLine(control.bridge.controlLine, nowMs)) {
           gBridge.submitControlLine(control.bridge.controlLine, nowMs);
         }
+      }
+      if (control.hasBridgeUpload) {
+        handleBridgeUplinkBench(control.bridgeUpload, millis());
       }
       publishSpeechInput(control);
       publishFaceControl(control);
