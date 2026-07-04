@@ -312,6 +312,8 @@ $requiredFiles = @(
   "tools/test_android_rollout_status_contract.ps1",
   "tools/test_android_logcat_capture_contract.cmd",
   "tools/test_android_logcat_capture_contract.ps1",
+  "tools/test_android_evidence_packet_contract.cmd",
+  "tools/test_android_evidence_packet_contract.ps1",
   "tools/test_strict_android_apk_evidence_contract.cmd",
   "tools/test_strict_android_apk_evidence_contract.ps1",
   "tools/test_strict_android_dashboard_evidence_contract.cmd",
@@ -557,6 +559,13 @@ $androidLogcatCaptureContractText = Get-Content -LiteralPath (Join-PackagePath "
 foreach ($pattern in @("capture_android_companion_logcat.ps1", "fake-adb.ps1", "stackchan.android-companion-logcat.v1", "android_companion_logcat.json", "ANDROID_COMPANION_LOGCAT.md", "android_companion_logcat.txt", "android_companion_logcat_raw.txt", "CompanionBridgeService started", "ForegroundService", "FATAL EXCEPTION synthetic", "Android logcat capture contract tests passed")) {
   if ($androidLogcatCaptureContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_logcat_capture_contract.ps1 missing Android logcat capture coverage: $pattern"
+  }
+}
+
+$androidEvidencePacketContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_evidence_packet_contract.ps1") -Raw
+foreach ($pattern in @("start_hardware_evidence.ps1", "check_hardware_evidence_progress.ps1", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "androidCompanionProbes", "android/apk-install/android_apk_install.json", "android/companion-probe/android_companion_probe.json", "android/udp-beacon-probe/android_udp_beacon_probe.json", "android/logcat/android_companion_logcat.json", "Test-AndroidDashboardManifestEvidence", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android evidence packet contract tests passed")) {
+  if ($androidEvidencePacketContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_evidence_packet_contract.ps1 missing Android evidence packet coverage: $pattern"
   }
 }
 
