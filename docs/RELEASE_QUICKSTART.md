@@ -158,6 +158,16 @@ Open the newest evidence packet folder and run:
 
 If the Android phone is the companion bridge host, also run these from the evidence packet:
 
+Build the Android companion APK from the source checkout before this step:
+
+```powershell
+cd companion
+.\gradlew.bat :app-android:assembleDebug
+```
+
+Then pass the resulting `companion\app-android\build\outputs\apk\debug\app-android-debug.apk`
+path into the evidence packet installer:
+
 ```powershell
 .\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
 .\RUN_ANDROID_UDP_BEACON_PROBE.cmd

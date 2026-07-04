@@ -49,7 +49,7 @@ if (-not (Get-Command $AdbPath -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Test-Path -LiteralPath $ApkPath)) {
-  throw "Missing Android APK: $ApkPath. Build one with companion\gradlew.bat :app-android:assembleDebug or pass -ApkPath."
+  throw "Missing Android APK: $ApkPath. From the source checkout, build one with cd companion; .\gradlew.bat :app-android:assembleDebug, then pass the generated APK path with -ApkPath."
 }
 
 $apkItem = Get-Item -LiteralPath $ApkPath

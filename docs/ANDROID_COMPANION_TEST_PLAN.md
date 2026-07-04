@@ -32,6 +32,17 @@ screen-off robot sessions, which matches the connected-device foreground-service
 
 When using adb, install the APK and capture the install evidence before discovery checks:
 
+Build the debug APK from the source checkout first unless a signed release APK is already
+available:
+
+```powershell
+cd companion
+.\gradlew.bat :app-android:assembleDebug
+```
+
+The default debug APK path is
+`companion\app-android\build\outputs\apk\debug\app-android-debug.apk`.
+
 ```powershell
 .\tools\install_android_companion_apk.cmd -ApkPath <path-to-apk>
 # From a generated hardware evidence packet, prefer:

@@ -39,6 +39,16 @@ visible `thinking-latency` timing without hardware.
 If the Android phone is the companion bridge host, use the packet helpers before the robot
 session test:
 
+Build the Android companion APK from the source checkout first:
+
+```powershell
+cd companion
+.\gradlew.bat :app-android:assembleDebug
+```
+
+Use the generated `companion\app-android\build\outputs\apk\debug\app-android-debug.apk`
+or a signed release APK as `<path-to-apk>`.
+
 ```powershell
 .\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
 .\RUN_ANDROID_UDP_BEACON_PROBE.cmd

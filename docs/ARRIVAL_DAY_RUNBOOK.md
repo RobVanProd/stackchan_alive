@@ -76,6 +76,10 @@ upload, fake STT/TTS, and PCM16 binary downlink check.
 If the Android companion is the bridge host, install the debug or release APK on the phone,
 open Stackchan Companion, allow notifications when prompted on Android 13 or newer, and
 allow the app to ignore battery optimizations if prompted for screen-off bench testing.
+Build the debug APK from the source checkout with
+`cd companion; .\gradlew.bat :app-android:assembleDebug` when a signed release APK has not
+already been produced. The default debug output path is
+`companion\app-android\build\outputs\apk\debug\app-android-debug.apk`.
 Confirm the foreground notification reports the bridge as ready and advertised. The phone
 advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `proto`, and
 `capabilities` TXT metadata matching the desktop companion.
