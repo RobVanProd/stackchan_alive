@@ -545,7 +545,7 @@ foreach ($pattern in @("check_hardware_evidence_progress.ps1", "BENCH_STATUS.jso
 }
 
 $androidRolloutStatusContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_rollout_status_contract.ps1") -Raw
-foreach ($pattern in @("export_rollout_status.ps1", "stackchan.android-apk-install.v1", "ROLLOUT_STATUS.json", "android-companion-probes", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence status installed", "Android rollout status APK evidence contract tests passed")) {
+foreach ($pattern in @("export_rollout_status.ps1", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "ROLLOUT_STATUS.json", "android-companion-probes", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence status installed", "Android companion bridge probe schema mismatch", "Android UDP beacon probe status fail", "Android companion logcat capture status failed", "Android rollout status evidence contract tests passed")) {
   if ($androidRolloutStatusContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_rollout_status_contract.ps1 missing Android rollout status coverage: $pattern"
   }

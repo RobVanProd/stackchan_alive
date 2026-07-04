@@ -78,20 +78,55 @@ function New-ApkInstallReport {
   }
 }
 
+function New-ValidProbeReports {
+  return [ordered]@{
+    companion = [ordered]@{
+      schema = "stackchan.android-companion-probe.v1"
+      status = "pass"
+      issues = @()
+    }
+    udp = [ordered]@{
+      schema = "stackchan.android-udp-beacon-probe.v1"
+      status = "pass"
+      issues = @()
+    }
+    logcat = [ordered]@{
+      schema = "stackchan.android-companion-logcat.v1"
+      status = "captured"
+      issues = @()
+    }
+  }
+}
+
 function New-TestEvidenceRoot {
-  param([object]$ApkInstallReport)
+  param(
+    [object]$ApkInstallReport,
+    [object]$ProbeReports = $null
+  )
 
   $root = New-TempRoot -Prefix "stackchan-rollout-evidence-contract"
   New-Item -ItemType Directory -Force -Path (Join-Path $root "android/apk-install") | Out-Null
+
+  $companionReportPath = ""
+  $udpReportPath = ""
+  $logcatReportPath = ""
+  if ($null -ne $ProbeReports) {
+    $companionReportPath = "android/companion-probe/android_companion_probe.json"
+    $udpReportPath = "android/udp-beacon-probe/android_udp_beacon_probe.json"
+    $logcatReportPath = "android/logcat/android_companion_logcat.json"
+    Write-JsonFile -Path (Join-Path $root $companionReportPath) -Value $ProbeReports.companion
+    Write-JsonFile -Path (Join-Path $root $udpReportPath) -Value $ProbeReports.udp
+    Write-JsonFile -Path (Join-Path $root $logcatReportPath) -Value $ProbeReports.logcat
+  }
 
   Write-JsonFile -Path (Join-Path $root "metadata.json") -Value ([ordered]@{
       releaseTag = $testVersion
       commit = $testCommit
       androidCompanionProbes = [ordered]@{
         apkInstallReport = "android/apk-install/android_apk_install.json"
-        companionProbeReport = ""
-        udpBeaconProbeReport = ""
-        logcatReport = ""
+        companionProbeReport = $companionReportPath
+        udpBeaconProbeReport = $udpReportPath
+        logcatReport = $logcatReportPath
       }
     })
   Write-JsonFile -Path (Join-Path $root "android/apk-install/android_apk_install.json") -Value $ApkInstallReport
@@ -158,11 +193,12 @@ function Assert-AndroidGate {
 function Invoke-RolloutCase {
   param(
     [string]$Name,
-    [object]$ApkInstallReport
+    [object]$ApkInstallReport,
+    [object]$ProbeReports = $null
   )
 
   $packageRoot = New-TestPackageRoot
-  $evidenceRoot = New-TestEvidenceRoot -ApkInstallReport $ApkInstallReport
+  $evidenceRoot = New-TestEvidenceRoot -ApkInstallReport $ApkInstallReport -ProbeReports $ProbeReports
   $report = Invoke-RolloutStatus -PackageRoot $packageRoot -EvidenceRoot $evidenceRoot
   Write-Host "[ok] exercised $Name"
   return $report
@@ -190,7 +226,30 @@ try {
   $validResult = Invoke-RolloutCase -Name "valid APK install evidence" -ApkInstallReport $validReport
   Assert-AndroidGate -Report $validResult -ExpectedStatus "pass" -EvidenceNeedle "Android APK install evidence status installed"
 
-  Write-Host "Android rollout status APK evidence contract tests passed."
+  $companionSchemaMismatchReports = New-ValidProbeReports
+  $companionSchemaMismatchReports.companion.schema = "stackchan.unexpected.v1"
+  $companionSchemaMismatchResult = Invoke-RolloutCase -Name "companion schema mismatch" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $companionSchemaMismatchReports
+  Assert-AndroidGate -Report $companionSchemaMismatchResult -ExpectedStatus "blocked" -EvidenceNeedle "Android companion bridge probe schema mismatch"
+
+  $udpFailureReports = New-ValidProbeReports
+  $udpFailureReports.udp.status = "fail"
+  $udpFailureReports.udp.issues = @("timed out waiting for UDP beacon")
+  $udpFailureResult = Invoke-RolloutCase -Name "UDP beacon failure status" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $udpFailureReports
+  Assert-AndroidGate -Report $udpFailureResult -ExpectedStatus "blocked" -EvidenceNeedle "Android UDP beacon probe status fail"
+
+  $logcatFailureReports = New-ValidProbeReports
+  $logcatFailureReports.logcat.status = "failed"
+  $logcatFailureReports.logcat.issues = @("CompanionBridgeService not observed")
+  $logcatFailureResult = Invoke-RolloutCase -Name "logcat failure status" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $logcatFailureReports
+  Assert-AndroidGate -Report $logcatFailureResult -ExpectedStatus "blocked" -EvidenceNeedle "Android companion logcat capture status failed"
+
+  $validProbeReports = New-ValidProbeReports
+  $validProbeResult = Invoke-RolloutCase -Name "valid Android probe reports" -ApkInstallReport (New-ApkInstallReport) -ProbeReports $validProbeReports
+  Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android companion bridge probe status pass"
+  Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android UDP beacon probe status pass"
+  Assert-AndroidGate -Report $validProbeResult -ExpectedStatus "pass" -EvidenceNeedle "Android companion logcat capture status captured"
+
+  Write-Host "Android rollout status evidence contract tests passed."
 } finally {
   foreach ($root in $createdRoots) {
     if ([string]::IsNullOrWhiteSpace($root)) {
