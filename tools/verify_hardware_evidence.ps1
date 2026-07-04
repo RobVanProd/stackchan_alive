@@ -4,7 +4,8 @@ param(
   [switch]$AllowMissingPackage,
   [switch]$AllowMissingMedia,
   [switch]$AllowSyntheticEvidence,
-  [switch]$AndroidApkEvidenceContractSelfTest
+  [switch]$AndroidApkEvidenceContractSelfTest,
+  [switch]$AndroidDashboardEvidenceContractSelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -625,6 +626,19 @@ if ($AndroidApkEvidenceContractSelfTest) {
   $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
   Assert-AndroidCompanionReportEvidence $metadata
   Write-Host "Android APK strict evidence contract verified:"
+  Write-Host $evidencePath
+  return
+}
+
+if ($AndroidDashboardEvidenceContractSelfTest) {
+  $metadataPath = Join-EvidencePath "metadata.json"
+  if (-not (Test-Path -LiteralPath $metadataPath)) {
+    throw "Android dashboard evidence contract self-test requires metadata.json."
+  }
+
+  $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+  Assert-AndroidDashboardManifestEvidence $metadata
+  Write-Host "Android dashboard strict evidence contract verified:"
   Write-Host $evidencePath
   return
 }
