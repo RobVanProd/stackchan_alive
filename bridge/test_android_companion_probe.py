@@ -1,9 +1,13 @@
+import base64
+import hashlib
 import json
 import socket
 import threading
 import unittest
 
 from android_companion_probe import build_report, parse_bridge_url
+
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 class AndroidCompanionProbeTest(unittest.TestCase):
@@ -70,13 +74,16 @@ class endpoint_hello_server:
             self.ready.set()
             conn, _ = server.accept()
             with conn:
-                self._read_handshake(conn)
+                headers = self._read_handshake(conn)
+                accept = websocket_accept(headers["sec-websocket-key"])
                 conn.sendall(
-                    b"HTTP/1.1 101 Switching Protocols\r\n"
-                    b"Upgrade: websocket\r\n"
-                    b"Connection: Upgrade\r\n"
-                    b"Sec-WebSocket-Accept: test\r\n"
-                    b"\r\n"
+                    (
+                        "HTTP/1.1 101 Switching Protocols\r\n"
+                        "Upgrade: websocket\r\n"
+                        "Connection: Upgrade\r\n"
+                        f"Sec-WebSocket-Accept: {accept}\r\n"
+                        "\r\n"
+                    ).encode("ascii")
                 )
                 conn.sendall(encode_server_text(json.dumps(self.frame).encode("utf-8")))
 
@@ -88,6 +95,20 @@ class endpoint_hello_server:
             if not chunk:
                 raise RuntimeError("client closed before handshake")
             data.extend(chunk)
+        headers = {}
+        for line in data.decode("iso-8859-1").split("\r\n")[1:]:
+            if not line:
+                break
+            name, _, value = line.partition(":")
+            headers[name.strip().lower()] = value.strip()
+        if "sec-websocket-key" not in headers:
+            raise RuntimeError("client handshake missing Sec-WebSocket-Key")
+        return headers
+
+
+def websocket_accept(key):
+    digest = hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()
+    return base64.b64encode(digest).decode("ascii")
 
 
 def encode_server_text(payload):
