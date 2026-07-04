@@ -224,7 +224,7 @@ $androidArtifacts = Get-ArtifactEntries `
 $desktopArtifacts = Get-ArtifactEntries `
   -Kind "desktop-package" `
   -Roots @($DesktopArtifactRoot, "output/conveyor", "output/companion/desktop") `
-  -Patterns @("*.msix", "*.appinstaller", "*.deb", "*.dmg", "*.zip")
+  -Patterns @("*.msi", "*.msix", "*.appinstaller", "*.deb", "*.dmg", "*.zip")
 
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
