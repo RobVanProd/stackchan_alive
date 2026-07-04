@@ -310,6 +310,8 @@ $requiredFiles = @(
   "tools/test_android_probe_evidence_progress_contract.ps1",
   "tools/test_android_rollout_status_contract.cmd",
   "tools/test_android_rollout_status_contract.ps1",
+  "tools/test_android_logcat_capture_contract.cmd",
+  "tools/test_android_logcat_capture_contract.ps1",
   "tools/test_strict_android_apk_evidence_contract.cmd",
   "tools/test_strict_android_apk_evidence_contract.ps1",
   "tools/test_strict_android_dashboard_evidence_contract.cmd",
@@ -548,6 +550,13 @@ $androidRolloutStatusContractText = Get-Content -LiteralPath (Join-PackagePath "
 foreach ($pattern in @("export_rollout_status.ps1", "stackchan.android-apk-install.v1", "stackchan.android-companion-probe.v1", "stackchan.android-udp-beacon-probe.v1", "stackchan.android-companion-logcat.v1", "ROLLOUT_STATUS.json", "android-companion-probes", "missing a valid apkSha256", "missing a full sourceCommit SHA", "missing installed versionName/versionCode", "Android APK install evidence status installed", "Android companion bridge probe schema mismatch", "Android UDP beacon probe status fail", "Android companion logcat capture status failed", "Android rollout status evidence contract tests passed")) {
   if ($androidRolloutStatusContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_rollout_status_contract.ps1 missing Android rollout status coverage: $pattern"
+  }
+}
+
+$androidLogcatCaptureContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_logcat_capture_contract.ps1") -Raw
+foreach ($pattern in @("capture_android_companion_logcat.ps1", "fake-adb.ps1", "stackchan.android-companion-logcat.v1", "android_companion_logcat.json", "ANDROID_COMPANION_LOGCAT.md", "android_companion_logcat.txt", "android_companion_logcat_raw.txt", "CompanionBridgeService started", "ForegroundService", "FATAL EXCEPTION synthetic", "Android logcat capture contract tests passed")) {
+  if ($androidLogcatCaptureContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_logcat_capture_contract.ps1 missing Android logcat capture coverage: $pattern"
   }
 }
 
