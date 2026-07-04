@@ -376,6 +376,8 @@ $requiredFiles = @(
   "provenance/src/io/AudioCaptureAdapter.cpp",
   "provenance/src/io/BridgeAudioDownlink.hpp",
   "provenance/src/io/BridgeAudioDownlink.cpp",
+  "provenance/src/io/BridgeAudioUplink.hpp",
+  "provenance/src/io/BridgeAudioUplink.cpp",
   "provenance/src/persona/SpeechPlanner.hpp",
   "provenance/src/persona/SpeechPlanner.cpp",
   "provenance/src/persona/EarconSynth.hpp",
@@ -704,6 +706,13 @@ foreach ($pattern in @("AudioCaptureAdapter::begin", "AudioCaptureAdapter::poll"
   }
 }
 
+$bridgeAudioUplinkHeaderText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeAudioUplink.hpp") -Raw
+foreach ($pattern in @("STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK", "BridgeAudioUplinkConfig", "BridgeAudioUplinkTelemetry", "wakeGateRequired", "maxChunkBytes", "turnsStarted", "gateBlocks", "queueFailures", "BridgeAudioUplink")) {
+  if ($bridgeAudioUplinkHeaderText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeAudioUplink.hpp missing P7 wake-gated uplink contract: $pattern"
+  }
+}
+
 $bridgeClientText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeClient.cpp") -Raw
 foreach ($pattern in @("BridgeClient::begin", "BridgeClient::update", "BridgeClient::submitControlLine", "BridgeClient::submitBinaryFrame", "BridgeClient::poll", "BridgeClientState::Thinking", "BridgeClientOutputType::ResponseStart", "BridgeClientOutputType::AudioFrame", "BridgeClientOutputType::AudioStreamChunk", "stackchan.bridge.v1", "failAudioStream", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "audio_stream_chunk_too_large", "kBridgeAudioStreamChunkPayloadMax", "streamChunkPayload_", "payloadBytes", "std::memcpy", "failTimeout", "bridge_timeout", "parseErrors", "timeouts", "heartbeats")) {
   if ($bridgeClientText -notmatch [regex]::Escape($pattern)) {
@@ -778,6 +787,13 @@ $bridgeAudioDownlinkText = Get-Content -LiteralPath (Join-PackagePath "provenanc
 foreach ($pattern in @("BridgeAudioDownlink::begin", "BridgeAudioDownlink::start", "BridgeAudioDownlink::submitChunk", "BridgeAudioDownlink::end", "BridgeAudioDownlink::abort", "BridgeAudioDownlinkSink", "startPlayback", "submitPlaybackChunk", "stopPlayback", "isPlayablePcm16Format", "playbackReady", "playbackStarts", "playbackChunks", "playbackBytes", "playbackUnsupported", "playbackErrors", "kBridgeAudioStreamChunkPayloadMax", "payloadBytes", "chunksAccepted", "bytesAccepted", "streamsCompleted", "streamsAborted", "updateChecksum")) {
   if ($bridgeAudioDownlinkText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeAudioDownlink.cpp missing P7 downlink-consumer support: $pattern"
+  }
+}
+
+$bridgeAudioUplinkText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeAudioUplink.cpp") -Raw
+foreach ($pattern in @("BridgeAudioUplink::begin", "BridgeAudioUplink::beginTurn", "BridgeAudioUplink::submitPcmChunk", "BridgeAudioUplink::submitPcmBytes", "BridgeAudioUplink::endTurn", "BridgeAudioUplink::abort", "wake_gate_closed", "utterance_start", "utterance_end", "queueTextFrame", "queueBinaryFrame", "audio_uplink_disabled", "audio_uplink_chunk_too_large", "audio_chunk_queue_failed")) {
+  if ($bridgeAudioUplinkText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeAudioUplink.cpp missing P7 wake-gated uplink controller support: $pattern"
   }
 }
 
@@ -947,6 +963,11 @@ foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
   }
 }
+foreach ($pattern in @("test_bridge_audio_uplink_disabled_default_blocks_turn", "test_bridge_audio_uplink_requires_wake_gate_before_start", "test_bridge_audio_uplink_queues_start_chunk_and_end_frames", "test_bridge_audio_uplink_rejects_bad_sequence_and_limits")) {
+  if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/test/test_native_logic/test_main.cpp missing firmware wake-gated uplink tests: $pattern"
+  }
+}
 foreach ($pattern in @("test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints", "test_bridge_endpoint_registry_explicit_claim_overrides_current_owner", "test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint", "test_bridge_endpoint_registry_tie_breaks_by_recent_seen", "test_bridge_endpoint_registry_forget_active_owner_promotes_next_endpoint", "test_bridge_endpoint_registry_disconnect_active_owner_promotes_next_endpoint", "test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint registry tests: $pattern"
@@ -969,7 +990,7 @@ foreach ($pattern in @("FakeAudioCaptureSource", "test_audio_capture_adapter_dis
 }
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeAudioUplink.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
