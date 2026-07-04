@@ -468,6 +468,79 @@ function Resolve-EvidenceRelativeFile {
   return Get-Item -LiteralPath $resolved
 }
 
+function Test-AndroidCompanionReportPresent {
+  param([object]$Metadata)
+
+  if ($null -eq $Metadata -or $null -eq $Metadata.androidCompanionProbes) {
+    return $false
+  }
+
+  foreach ($field in @("apkInstallReport", "companionProbeReport", "udpBeaconProbeReport", "logcatReport")) {
+    $relativePath = [string]$Metadata.androidCompanionProbes.$field
+    if (-not [string]::IsNullOrWhiteSpace($relativePath) -and
+        (Test-Path -LiteralPath (Join-EvidencePath $relativePath))) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Test-AndroidDashboardManifestEntry {
+  param([object]$Entry)
+
+  $relativePath = [string]$Entry.relativePath
+  $notes = [string]$Entry.notes
+  if ([string]$Entry.kind -ne "photo" -or
+      $relativePath -notmatch "^(?i:photos)/" -or
+      [string]::IsNullOrWhiteSpace($notes)) {
+    return $false
+  }
+
+  foreach ($pattern in @(
+    "(?i)android.*dashboard|dashboard.*android",
+    "(?i)connected",
+    "(?i)robot\s+identity",
+    "(?i)firmware/version|firmware.*version|version.*firmware",
+    "(?i)last\s+bridge\s+frame",
+    "(?i)active\s+brain\s+owner",
+    "(?i)foreground\s+service|service\s+state"
+  )) {
+    if ($notes -notmatch $pattern) {
+      return $false
+    }
+  }
+
+  $file = Resolve-EvidenceRelativeFile $relativePath
+  return (Test-MediaEvidenceFile $file)
+}
+
+function Assert-AndroidDashboardManifestEvidence {
+  param([object]$Metadata)
+
+  if (-not (Test-AndroidCompanionReportPresent $Metadata)) {
+    return
+  }
+
+  $manifestPath = Join-EvidencePath "media_manifest.json"
+  if (-not (Test-Path -LiteralPath $manifestPath)) {
+    throw "Android companion reports are present, but media_manifest.json is missing. Import the connected dashboard screenshot with RUN_ADD_MEDIA.cmd -Type Photo -Notes `"Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state`" C:\path\android-dashboard.jpg"
+  }
+
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  if ($manifest.schema -ne "stackchan.hardware-media-manifest.v1") {
+    throw "media_manifest.json schema mismatch: $($manifest.schema)"
+  }
+
+  foreach ($entry in @($manifest.entries)) {
+    if (Test-AndroidDashboardManifestEntry $entry) {
+      return
+    }
+  }
+
+  throw "media_manifest.json is missing a photo/video entry whose notes identify the Android dashboard connected state with robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state."
+}
+
 $requiredFiles = @(
   "README.md",
   "BENCH_STATUS.md",
@@ -905,6 +978,8 @@ if (-not $AllowMissingMedia) {
     throw "No supported real-device speaker recording found under audio/. Add a valid .wav, .mp3, .m4a, .aac, .mp4, .mov, or .webm file."
   }
 }
+
+Assert-AndroidDashboardManifestEvidence $metadata
 
 Write-Host "Hardware evidence verified:"
 Write-Host $evidencePath
