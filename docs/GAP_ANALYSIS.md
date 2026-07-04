@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry/control/persistence slice check in this workspace: **162/162 native firmware logic
+Current firmware transport/registry/control/persistence slice check in this workspace: **166/166 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -53,8 +53,10 @@ server text before normal conversation frames, queue the bounded JSON response, 
 that response as a masked client text frame. `BridgeSocketWriter` now drains those queued
 responses through a socket sink, including partial-write retry buffering and disconnected
 socket preservation. It also has bounded one-frame masked client text and binary-upload
-queues for future `utterance_start`/`utterance_end` plus wake-gated PCM uplink, with
-partial-write retry buffering and native coverage for queue bounds. `BridgeNetworkSession` now opens the TCP socket, sends the WebSocket upgrade
+queues, and `BridgeAudioUplink` now composes disabled-by-default `utterance_start`, bounded
+PCM binary chunks, and `utterance_end` frames only after an explicit wake gate opens. Native
+coverage checks default-off behavior, wake-gate blocking, frame order, queue bounds, bad
+sequences, and chunk limits. `BridgeNetworkSession` now opens the TCP socket, sends the WebSocket upgrade
 request, accepts the handshake, feeds received bytes into the WebSocket adapter, drains
 queued endpoint responses plus queued text/binary frames through the writer, and schedules
 reconnects; an ESP32
@@ -95,11 +97,12 @@ audio path.
 left/right PCM windows) proven against WAV fixtures. Firmware now has `AudioCaptureAdapter`
 with an M5Unified mic source, disabled by default behind `STACKCHAN_ENABLE_MIC_CAPTURE`,
 plus runtime `audio_capture_*` telemetry and native fake-source coverage from PCM windows to
-`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. The network session can queue
-bounded masked text and binary WebSocket frames for future `utterance_start`/PCM/
-`utterance_end` uplink, but no turn controller is allowed to stream mic audio until wake
-gating exists. What is still missing is a CoreS3 run with the mic actually enabled, measured
-capture telemetry, and the wake/STT path that consumes capture beyond local reflex events.
+`UserSpeaking`/`SoundDirection`/`SpeechEnded` reflex events. Firmware also has
+`BridgeAudioUplink`, disabled by default behind `STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK`, to
+queue `utterance_start`, bounded PCM binary chunks, and `utterance_end` only after a wake
+gate is explicitly open. What is still missing is wiring real mic windows into that turn
+controller, a CoreS3 run with the mic actually enabled, measured capture/uplink telemetry,
+and the wake/STT path that consumes capture beyond local reflex events.
 
 ### B4. No wake word engine — and the privacy model depends on one
 

@@ -13,6 +13,7 @@
 #include "io/AudioCaptureAdapter.hpp"
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
+#include "io/BridgeAudioUplink.hpp"
 #include "io/BridgeClient.hpp"
 #include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
@@ -3862,6 +3863,26 @@ BridgeNetworkSessionConfig makeBridgeNetworkSessionConfig() {
   return config;
 }
 
+void connectBridgeNetworkSession(BridgeClient& bridge,
+                                 FakeBridgeNetworkSocket& socket,
+                                 BridgeNetworkSession& session,
+                                 uint32_t nowMs) {
+  TEST_ASSERT_TRUE(bridge.begin());
+  const BridgeNetworkSessionConfig config = makeBridgeNetworkSessionConfig();
+  TEST_ASSERT_TRUE(session.begin(bridge, socket, config, nowMs));
+  TEST_ASSERT_TRUE(session.start(nowMs + 5u));
+  socket.pushIncoming(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n");
+  session.update(nowMs + 10u);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Connected),
+                    static_cast<int>(session.telemetry().state));
+  socket.clearOutgoing();
+}
+
 void test_bridge_network_session_starts_and_accepts_handshake() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -4035,6 +4056,105 @@ void test_bridge_network_session_writes_queued_text_frame() {
   char decoded[kBridgeEndpointControlResponseMax] = {};
   TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decoded, sizeof(decoded)));
   TEST_ASSERT_EQUAL_STRING(payload, decoded);
+}
+
+void test_bridge_audio_uplink_disabled_default_blocks_turn() {
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin());
+  TEST_ASSERT_TRUE(uplink.telemetry().ready);
+  TEST_ASSERT_FALSE(uplink.telemetry().enabled);
+  TEST_ASSERT_EQUAL_STRING("audio_uplink_disabled", uplink.telemetry().lastError);
+
+  TEST_ASSERT_FALSE(uplink.beginTurn(1, 100, true));
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().errors);
+  TEST_ASSERT_EQUAL_STRING("audio_uplink_disabled", uplink.telemetry().lastError);
+}
+
+void test_bridge_audio_uplink_requires_wake_gate_before_start() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 850);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_FALSE(uplink.beginTurn(7, 870, false));
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().gateBlocks);
+  TEST_ASSERT_EQUAL_STRING("wake_gate_closed", uplink.telemetry().lastError);
+  TEST_ASSERT_TRUE(socket.outgoing.empty());
+}
+
+void test_bridge_audio_uplink_queues_start_chunk_and_end_frames() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 880);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+
+  TEST_ASSERT_TRUE(uplink.beginTurn(9, 900, true));
+  session.update(905);
+  char decodedStart[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedStart, sizeof(decodedStart)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"type\":\"utterance_start\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"seq\":9"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"format\":\"pcm16\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"sample_rate\":16000"));
+  socket.clearOutgoing();
+
+  const int16_t samples[] = {100, -200, 300, -400};
+  TEST_ASSERT_TRUE(uplink.submitPcmChunk(9, samples, 4, 910));
+  session.update(915);
+  std::vector<uint8_t> decodedAudio;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(socket.outgoing, decodedAudio));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(samples), decodedAudio.size());
+  TEST_ASSERT_EQUAL_MEMORY(reinterpret_cast<const uint8_t*>(samples), decodedAudio.data(), sizeof(samples));
+  socket.clearOutgoing();
+
+  TEST_ASSERT_TRUE(uplink.endTurn(9, 920));
+  session.update(925);
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"seq\":9"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"audio_bytes\":8"));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"chunks\":1"));
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsStarted);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().turnsCompleted);
+  TEST_ASSERT_EQUAL_UINT32(1, uplink.telemetry().chunksQueued);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(samples), uplink.telemetry().bytesQueued);
+}
+
+void test_bridge_audio_uplink_rejects_bad_sequence_and_limits() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 930);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  config.maxChunkBytes = 8;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(11, 950, true));
+  session.update(955);
+  socket.clearOutgoing();
+
+  const uint8_t valid[] = {0, 1, 2, 3};
+  TEST_ASSERT_FALSE(uplink.submitPcmBytes(12, valid, sizeof(valid), 960));
+  TEST_ASSERT_EQUAL_STRING("audio_uplink_seq_mismatch", uplink.telemetry().lastError);
+
+  const uint8_t tooLarge[] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  TEST_ASSERT_FALSE(uplink.submitPcmBytes(11, tooLarge, sizeof(tooLarge), 965));
+  TEST_ASSERT_EQUAL_STRING("audio_uplink_chunk_too_large", uplink.telemetry().lastError);
+  TEST_ASSERT_TRUE(socket.outgoing.empty());
 }
 
 void test_bridge_network_session_reconnects_after_socket_disconnect() {
@@ -4828,6 +4948,10 @@ int main() {
   RUN_TEST(test_bridge_network_session_writes_endpoint_control_response);
   RUN_TEST(test_bridge_network_session_writes_queued_binary_frame);
   RUN_TEST(test_bridge_network_session_writes_queued_text_frame);
+  RUN_TEST(test_bridge_audio_uplink_disabled_default_blocks_turn);
+  RUN_TEST(test_bridge_audio_uplink_requires_wake_gate_before_start);
+  RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
+  RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);

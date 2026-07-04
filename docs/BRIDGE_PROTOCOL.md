@@ -31,6 +31,11 @@ socket interface. `BridgeWiFiProvisioner` supplies compile-time Wi-Fi/bridge pro
 nonblocking connection retries, boot-time session initialization, and the intent-loop update
 hook that keeps `BridgeClient` access single-threaded. It still needs real configured
 credentials/bridge host on the CoreS3 before collecting live PC/mobile handoff evidence.
+`BridgeAudioUplink` is the firmware turn controller for device-to-bridge speech upload: it
+is disabled by default, refuses to start unless the wake gate is open, queues a masked text
+`utterance_start`, queues bounded masked binary PCM chunks, and queues a masked text
+`utterance_end` with byte/chunk counts. It is not wired to live mic capture yet; real
+capture-to-uplink and ESP-SR wake evidence remain hardware gates.
 Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
@@ -167,14 +172,16 @@ downlink sink.
 - `diagnostics_request`: read bridge/model/audio diagnostics.
 - `capability_update`: update capabilities for a trusted endpoint.
 - `utterance_start`: wake-gated user speech has started.
+- Binary client frames after `utterance_start`: signed 16-bit mono PCM chunks.
 - `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
 - `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. A `text` or `transcript` field bypasses STT and is useful for deterministic tests.
 - `cancel`: barge-in or local safety state interrupted playback.
 
 Firmware transport note: the WebSocket writer has one-frame bounded text and binary queues,
-and the network session drains them as masked client frames. The wake/STT turn controller
-that emits `utterance_start`, queues PCM chunks, and emits `utterance_end` is intentionally
-still gated behind real mic and wake-word bring-up.
+and the network session drains them as masked client frames. `BridgeAudioUplink` composes
+`utterance_start`, PCM binary chunk, and `utterance_end` frames only after the wake gate is
+open. Live mic capture-to-uplink wiring is still intentionally gated behind real mic and
+wake-word bring-up.
 
 Example:
 
