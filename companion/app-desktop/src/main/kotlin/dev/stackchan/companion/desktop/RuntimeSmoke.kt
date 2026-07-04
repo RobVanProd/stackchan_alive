@@ -12,6 +12,8 @@ import dev.stackchan.companion.core.SettingsResult
 import dev.stackchan.companion.core.SettingsSet
 import dev.stackchan.companion.core.AudioStreamEnd
 import dev.stackchan.companion.core.AudioStreamStart
+import dev.stackchan.companion.core.BridgeError
+import dev.stackchan.companion.core.CancelMessage
 import dev.stackchan.companion.core.ResponseEnd
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.TrustedEndpointFileStore
@@ -62,10 +64,12 @@ data class RuntimeSmokeReport(
     val diagnosticsOk: Boolean,
     val fakeAudioOk: Boolean,
     val fakeAudioEvidence: FakeAudioSmokeEvidence,
+    val fakeAudioAbortOk: Boolean,
+    val fakeAudioAbortEvidence: FakeAudioAbortEvidence,
     val notes: List<String>,
 ) {
     val ok: Boolean =
-        endpointHelloOk && settingsOk && ownerOk && diagnosticsOk && fakeAudioOk
+        endpointHelloOk && settingsOk && ownerOk && diagnosticsOk && fakeAudioOk && fakeAudioAbortOk
 
     fun toMarkdown(): String = buildString {
         appendLine("# Companion Runtime Smoke")
@@ -76,6 +80,7 @@ data class RuntimeSmokeReport(
         appendLine("- owner_ok: `$ownerOk`")
         appendLine("- diagnostics_ok: `$diagnosticsOk`")
         appendLine("- fake_audio_ok: `$fakeAudioOk`")
+        appendLine("- fake_audio_abort_ok: `$fakeAudioAbortOk`")
         appendLine("- overall_ok: `$ok`")
         appendLine()
         appendLine("## Fake Audio Evidence")
@@ -90,6 +95,16 @@ data class RuntimeSmokeReport(
         appendLine("- first_response_latency_ms: `${fakeAudioEvidence.firstResponseLatencyMs}`")
         appendLine("- intent: `${fakeAudioEvidence.intent}`")
         appendLine()
+        appendLine("## Fake Audio Abort Evidence")
+        appendLine()
+        appendLine("- cancel_error_code: `${fakeAudioAbortEvidence.cancelErrorCode}`")
+        appendLine("- cancel_recoverable: `${fakeAudioAbortEvidence.cancelRecoverable}`")
+        appendLine("- cancel_upload_bytes: `${fakeAudioAbortEvidence.cancelUploadBytes}`")
+        appendLine("- owner_loss_error_code: `${fakeAudioAbortEvidence.ownerLossErrorCode}`")
+        appendLine("- owner_loss_finish_error_code: `${fakeAudioAbortEvidence.ownerLossFinishErrorCode}`")
+        appendLine("- owner_loss_upload_bytes: `${fakeAudioAbortEvidence.ownerLossUploadBytes}`")
+        appendLine("- owner_loss_owner: `${fakeAudioAbortEvidence.ownerLossOwner}`")
+        appendLine()
         appendLine("## Notes")
         notes.forEach { appendLine("- $it") }
     }
@@ -103,8 +118,10 @@ data class RuntimeSmokeReport(
             put("owner_ok", ownerOk)
             put("diagnostics_ok", diagnosticsOk)
             put("fake_audio_ok", fakeAudioOk)
+            put("fake_audio_abort_ok", fakeAudioAbortOk)
             put("overall_ok", ok)
             put("fake_audio", fakeAudioEvidence.toJson())
+            put("fake_audio_abort", fakeAudioAbortEvidence.toJson())
             put("notes", JsonArray(notes.map { JsonPrimitive(it) }))
         }.toString()
 }
@@ -134,6 +151,29 @@ private fun FakeAudioSmokeEvidence.toJson() =
         put("stream_chunk_bytes", streamChunkBytes)
         put("first_response_latency_ms", firstResponseLatencyMs)
         put("intent", intent)
+    }
+
+data class FakeAudioAbortEvidence(
+    val ok: Boolean = false,
+    val cancelErrorCode: String = "",
+    val cancelRecoverable: Boolean = false,
+    val cancelUploadBytes: Int = 0,
+    val ownerLossErrorCode: String = "",
+    val ownerLossFinishErrorCode: String = "",
+    val ownerLossUploadBytes: Int = 0,
+    val ownerLossOwner: String = "",
+)
+
+private fun FakeAudioAbortEvidence.toJson() =
+    buildJsonObject {
+        put("ok", ok)
+        put("cancel_error_code", cancelErrorCode)
+        put("cancel_recoverable", cancelRecoverable)
+        put("cancel_upload_bytes", cancelUploadBytes)
+        put("owner_loss_error_code", ownerLossErrorCode)
+        put("owner_loss_finish_error_code", ownerLossFinishErrorCode)
+        put("owner_loss_upload_bytes", ownerLossUploadBytes)
+        put("owner_loss_owner", ownerLossOwner)
     }
 
 fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
@@ -284,6 +324,55 @@ fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
                 false
             }
 
+            var fakeAudioAbortEvidence = FakeAudioAbortEvidence()
+            val fakeAudioAbortOk = runCatching {
+                val cancelUploadBytes = 96
+                client.send(encodeControlMessage(UtteranceStart(seq = 43, sampleRate = 16000)))
+                client.sendBinary(ByteArray(cancelUploadBytes) { 5 })
+                client.send(encodeControlMessage(CancelMessage(seq = 43, reason = "runtime smoke barge-in")))
+                client.send(encodeControlMessage(UtteranceEnd(seq = 43, transcript = "canceled turn")))
+                val cancelError = decodeControlMessage(client.nextText()) as BridgeError
+
+                val ownerLossUploadBytes = 128
+                val ownerLossOwner = "phone-runtime-smoke"
+                client.send(encodeControlMessage(UtteranceStart(seq = 44, sampleRate = 16000)))
+                client.sendBinary(ByteArray(ownerLossUploadBytes) { 6 })
+                client.send(
+                    encodeControlMessage(
+                        OwnerStatus(
+                            activeBrainOwner = ownerLossOwner,
+                            ownerKind = "android",
+                            state = "claimed",
+                        ),
+                    ),
+                )
+                val ownerLossError = decodeControlMessage(client.nextText()) as BridgeError
+                client.send(encodeControlMessage(UtteranceEnd(seq = 44, transcript = "owner lost turn")))
+                val ownerLossFinishError = decodeControlMessage(client.nextText()) as BridgeError
+
+                val ok = cancelError.code == "audio_turn_not_active" &&
+                    cancelError.recoverable &&
+                    ownerLossError.code == "audio_turn_aborted" &&
+                    ownerLossError.recoverable &&
+                    ownerLossFinishError.code == "audio_turn_not_active" &&
+                    ownerLossFinishError.recoverable
+                fakeAudioAbortEvidence = FakeAudioAbortEvidence(
+                    ok = ok,
+                    cancelErrorCode = cancelError.code,
+                    cancelRecoverable = cancelError.recoverable,
+                    cancelUploadBytes = cancelUploadBytes,
+                    ownerLossErrorCode = ownerLossError.code,
+                    ownerLossFinishErrorCode = ownerLossFinishError.code,
+                    ownerLossUploadBytes = ownerLossUploadBytes,
+                    ownerLossOwner = ownerLossOwner,
+                )
+                notes += "Fake audio aborts returned cancel=${cancelError.code}, owner_loss=${ownerLossError.code}, finish=${ownerLossFinishError.code}."
+                ok
+            }.getOrElse {
+                notes += "Fake audio abort smoke failed: ${it.message}"
+                false
+            }
+
             return RuntimeSmokeReport(
                 generatedAt = Instant.now(),
                 endpointHelloOk = endpointHelloOk,
@@ -292,6 +381,8 @@ fun runRuntimeSmoke(outDir: Path): RuntimeSmokeReport {
                 diagnosticsOk = diagnosticsOk,
                 fakeAudioOk = fakeAudioOk,
                 fakeAudioEvidence = fakeAudioEvidence,
+                fakeAudioAbortOk = fakeAudioAbortOk,
+                fakeAudioAbortEvidence = fakeAudioAbortEvidence,
                 notes = notes,
             )
         }
