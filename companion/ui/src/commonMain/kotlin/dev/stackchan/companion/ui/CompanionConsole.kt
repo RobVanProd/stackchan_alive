@@ -204,53 +204,55 @@ private fun Header(targetName: String, state: CompanionUiState, compact: Boolean
         border = androidx.compose.foundation.BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Console)
-                    .border(1.dp, Cyan, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("//", color = Cyan, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Stackchan Alive", color = Ink, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                Text(
-                    "Companion ${CompanionIdentity.appVersion}  //  $targetName  //  ${CompanionIdentity.protocol}",
-                    color = Muted,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (!compact) {
-                StatusPill(state.connection, Mint, Color(0xFF0D2A25))
-                StatusPill("Brain: ${state.brainOwner}", Purple, Color(0xFF181536))
-            }
-        }
-        if (compact) {
+        Column {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                StatusPill(
-                    text = state.connection,
-                    color = Mint,
-                    background = Color(0xFF0D2A25),
-                    modifier = Modifier.weight(1f),
-                )
-                StatusPill(
-                    text = "Brain: ${state.brainOwner}",
-                    color = Purple,
-                    background = Color(0xFF181536),
-                    modifier = Modifier.weight(0.72f),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Console)
+                        .border(1.dp, Cyan, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("//", color = Cyan, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Stackchan Alive", color = Ink, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                    Text(
+                        "Companion ${CompanionIdentity.appVersion}  //  $targetName  //  ${CompanionIdentity.protocol}",
+                        color = Muted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (!compact) {
+                    StatusPill(state.connection, Mint, Color(0xFF0D2A25))
+                    StatusPill("Brain: ${state.brainOwner}", Purple, Color(0xFF181536))
+                }
+            }
+            if (compact) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatusPill(
+                        text = state.connection,
+                        color = Mint,
+                        background = Color(0xFF0D2A25),
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatusPill(
+                        text = "Brain: ${state.brainOwner}",
+                        color = Purple,
+                        background = Color(0xFF181536),
+                        modifier = Modifier.weight(0.72f),
+                    )
+                }
             }
         }
     }
