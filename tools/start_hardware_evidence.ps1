@@ -876,7 +876,7 @@ $nextSteps = @(
   "5. Run ``RUN_SPEAK_ALL_INTENTS.cmd`` while display-only firmware is still connected to exercise every packaged speech intent, earcon, and audio-output handoff, then capture ``logs/speak_all_intents_serial.log``.",
   "6. Run ``RUN_BRIDGE_REPLAY.cmd`` to exercise P7 bridge hello/listening/thinking/response/audio/end routing and capture ``logs/bridge_replay_serial.log``.",
   "7. Run ``RUN_SIM_HARDWARE_COMPARE.cmd`` to write ``SIM_HARDWARE_COMPARE.md/json`` and compare the real serial markers against the no-hardware baseline. Pending means more logs are needed; it is not promotion evidence.",
-  "8. If the Android phone is the companion bridge host, run ``RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>`` to record the installed APK hash/version, then run ``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge`` from this packet to save LAN evidence under ``android/``. After the robot connects, capture the Android dashboard connected state showing robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state. If the Android service stops, crashes, loses foreground status, or fails during screen-off soak, run ``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` immediately and attach ``android/logcat/``.",
+  "8. If the Android phone is the companion bridge host, run ``RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>`` to record the installed APK hash/source commit/version, then run ``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge`` from this packet to save LAN evidence under ``android/``. After the robot connects, capture the Android dashboard connected state showing robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state. If the Android service stops, crashes, loses foreground status, or fails during screen-off soak, run ``RUN_ANDROID_LOGCAT_CAPTURE.cmd`` immediately and attach ``android/logcat/``.",
   "9. Add a display photo or short video with ``RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg``.",
   "10. Run ``RUN_SERVO_CALIBRATION.cmd`` only with the body clear; this command includes ``-ConfirmServoRisk`` and may move the hardware.",
   "11. Update ``calibration/calibration.yaml`` with measured limits and classify yaw as ``angle``, ``velocity``, or ``disabled``.",
@@ -920,7 +920,7 @@ $readme = @(
   "",
   "``RUN_ANDROID_UDP_BEACON_PROBE.cmd`` and ``RUN_ANDROID_COMPANION_PROBE.cmd`` are optional Android companion checks when the phone is the bridge host. They write probe output under ``android/`` for packet review; they do not replace robot serial logs or physical hardware evidence.",
   "",
-  "``RUN_ANDROID_APK_INSTALL.cmd`` installs a debug or release APK with adb and writes the installed APK hash, version, device model, and package dump under ``android/apk-install/``. Use ``-ApkPath`` when the APK is not at the default Gradle debug path.",
+  "``RUN_ANDROID_APK_INSTALL.cmd`` installs a debug or release APK with adb and writes the installed APK hash, source commit, version, device model, and package dump under ``android/apk-install/``. Use ``-ApkPath`` when the APK is not at the default Gradle debug path and ``-SourceCommit`` when the APK was built outside the current source checkout.",
   "",
   "When Android is the bridge host, capture a connected-dashboard screenshot after the robot handshake. Import it with ``RUN_ADD_MEDIA.cmd -Type Photo -Notes `"Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state`" C:\path\android-dashboard.jpg``. It must show robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state so packet reviewers can verify the phone-hosted bridge without the device in hand.",
   "",
@@ -962,7 +962,7 @@ $readme = @(
   "",
   "Install the Android companion APK on the phone and capture the APK hash/version evidence:",
   "",
-  "    .\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>",
+  "    .\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>",
   "",
   "Capture Android companion UDP beacon evidence from another machine on the same LAN:",
   "",
@@ -1181,7 +1181,7 @@ $metadata = [ordered]@{
     udpBeaconProbeCommand = "RUN_ANDROID_UDP_BEACON_PROBE.cmd"
     udpBeaconProbeReport = "android/udp-beacon-probe/android_udp_beacon_probe.json"
     udpBeaconProbeSummary = "android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md"
-    apkInstallCommand = "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>"
+    apkInstallCommand = "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>"
     apkInstallReport = "android/apk-install/android_apk_install.json"
     apkInstallSummary = "android/apk-install/ANDROID_APK_INSTALL.md"
     logcatCommand = "RUN_ANDROID_LOGCAT_CAPTURE.cmd"

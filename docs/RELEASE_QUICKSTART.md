@@ -169,7 +169,7 @@ Then pass the resulting `companion\app-android\build\outputs\apk\debug\app-andro
 path into the evidence packet installer:
 
 ```powershell
-.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>
 .\RUN_ANDROID_UDP_BEACON_PROBE.cmd
 .\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
 .\RUN_ANDROID_LOGCAT_CAPTURE.cmd
@@ -180,7 +180,8 @@ loses foreground status, or fails during screen-off soak. It writes the filtered
 excerpt under `android/logcat/` so the failure has packet-level evidence.
 
 The Android helpers write packet-local probe evidence under `android\udp-beacon-probe\` and `android\companion-probe\`.
-`RUN_ANDROID_APK_INSTALL.cmd` writes install evidence under `android\apk-install\`.
+`RUN_ANDROID_APK_INSTALL.cmd` writes install evidence, including the APK source commit,
+under `android\apk-install\`.
 After the robot connects through the phone, capture the Android dashboard connected state
 showing robot identity, firmware/version signal, last bridge frame, active brain owner,
 and foreground service state.

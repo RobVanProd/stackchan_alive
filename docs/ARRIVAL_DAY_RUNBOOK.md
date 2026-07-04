@@ -83,9 +83,10 @@ already been produced. The default debug output path is
 Confirm the foreground notification reports the bridge as ready and advertised. The phone
 advertises `_stackchan-bridge._tcp.local` with `endpoint_id`, `endpoint_kind`, `proto`, and
 `capabilities` TXT metadata matching the desktop companion.
-When installing with adb, run `RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>` from the
-evidence packet first. It installs the APK and records the APK SHA256, installed version,
-device model, and package dump under `android/apk-install/`.
+When installing with adb, run
+`RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>` from the
+evidence packet first. It installs the APK and records the APK SHA256, source commit,
+installed version, device model, and package dump under `android/apk-install/`.
 Android holds a multicast lock while advertising so same-network discovery survives common
 Wi-Fi multicast filtering behavior. While a robot is connected, Android also holds a
 session-scoped partial wake lock so the bridge CPU path stays awake with the screen off.

@@ -50,13 +50,13 @@ Use the generated `companion\app-android\build\outputs\apk\debug\app-android-deb
 or a signed release APK as `<path-to-apk>`.
 
 ```powershell
-.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>
 .\RUN_ANDROID_UDP_BEACON_PROBE.cmd
 .\RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge
 ```
 
-`RUN_ANDROID_APK_INSTALL.cmd` records the APK SHA256 and installed package version under
-`android/apk-install/`. The UDP and companion probes record same-LAN discovery and
+`RUN_ANDROID_APK_INSTALL.cmd` records the APK SHA256, source commit, and installed package
+version under `android/apk-install/`. The UDP and companion probes record same-LAN discovery and
 `endpoint_hello` evidence under `android/udp-beacon-probe/` and
 `android/companion-probe/`. If the Android service stops, crashes, loses foreground status,
 or fails during screen-off soak, run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` immediately and attach

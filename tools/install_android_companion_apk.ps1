@@ -4,6 +4,7 @@ param(
   [string]$PackageName = "dev.stackchan.companion",
   [string]$AdbPath = "adb",
   [string]$Serial = "",
+  [string]$SourceCommit = "",
   [switch]$AllowDowngrade
 )
 
@@ -44,6 +45,18 @@ function Get-RegexValue {
   return $match.Groups[1].Value
 }
 
+function Get-GitCommitOrEmpty {
+  try {
+    $output = & git rev-parse HEAD 2>$null
+  } catch {
+    return ""
+  }
+  if ($LASTEXITCODE -ne 0) {
+    return ""
+  }
+  return ($output | Out-String).Trim()
+}
+
 if (-not (Get-Command $AdbPath -ErrorAction SilentlyContinue)) {
   throw "adb was not found. Install Android platform-tools or pass -AdbPath."
 }
@@ -54,6 +67,13 @@ if (-not (Test-Path -LiteralPath $ApkPath)) {
 
 $apkItem = Get-Item -LiteralPath $ApkPath
 $apkHash = Get-FileHash -Algorithm SHA256 -LiteralPath $apkItem.FullName
+$recordedSourceCommit = $SourceCommit.Trim()
+if ([string]::IsNullOrWhiteSpace($recordedSourceCommit)) {
+  $recordedSourceCommit = Get-GitCommitOrEmpty
+}
+if ([string]::IsNullOrWhiteSpace($recordedSourceCommit)) {
+  $recordedSourceCommit = "not-recorded"
+}
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -114,6 +134,7 @@ $report = [ordered]@{
   apkFileName = $apkItem.Name
   apkSizeBytes = $apkItem.Length
   apkSha256 = $apkHash.Hash.ToLowerInvariant()
+  sourceCommit = $recordedSourceCommit
   allowDowngrade = [bool]$AllowDowngrade
   versionName = $versionName
   versionCode = $versionCode
@@ -137,6 +158,7 @@ $markdown = @(
   "- APK: $($apkItem.FullName)",
   "- APK SHA256: $($apkHash.Hash.ToLowerInvariant())",
   "- APK size: $($apkItem.Length) bytes",
+  "- Source commit: $recordedSourceCommit",
   "",
   "Use this record as the arrival-day proof of which Android companion APK was installed before LAN bridge probing or robot connection testing.",
   "",
@@ -149,7 +171,7 @@ $markdown = @(
   "Install command:",
   "",
   '```powershell',
-  ".\tools\install_android_companion_apk.ps1 -ApkPath '$($apkItem.FullName)' -OutputDir '$OutputDir'",
+  ".\tools\install_android_companion_apk.ps1 -ApkPath '$($apkItem.FullName)' -OutputDir '$OutputDir' -SourceCommit '$recordedSourceCommit'",
   '```'
 )
 

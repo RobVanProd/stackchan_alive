@@ -46,13 +46,15 @@ The default debug APK path is
 ```powershell
 .\tools\install_android_companion_apk.cmd -ApkPath <path-to-apk>
 # From a generated hardware evidence packet, prefer:
-.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk>
+.\RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>
 ```
 
 The helper writes `output/android-apk-install/latest/ANDROID_APK_INSTALL.md`,
 `android_apk_install.json`, `adb_install.log`, and `adb_dumpsys_package.txt`, or
 `android/apk-install/` when run from an evidence packet. The report records the APK SHA256,
-device model, package version, and install/update timestamps.
+source commit, device model, package version, and install/update timestamps. If
+`-SourceCommit` is omitted, the helper records the current `git rev-parse HEAD` value when
+run from a source checkout.
 
 ## Discovery Checks
 
