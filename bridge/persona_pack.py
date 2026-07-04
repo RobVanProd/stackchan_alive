@@ -19,6 +19,7 @@ FOUNDATION_MAX_CHARS = 140
 FOUNDATION_MAX_SENTENCES = 2
 FOUNDATION_ALLOWED_MODES = {"idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
 FOUNDATION_ALLOWED_EARCONS = {"none", "wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety"}
+FOUNDATION_SPEECH_INTENTS = ("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")
 FOUNDATION_MEMORY_PREFIXES = ("user.", "project.", "robot.")
 FOUNDATION_DENIED_MEMORY_TERMS = (
     "password",
@@ -272,6 +273,13 @@ class PersonaPack:
     def spoken_line(self, intent: str) -> dict[str, object]:
         return mapping(self.spoken_lines.get(intent))
 
+    @property
+    def packaged_prompts(self) -> dict[str, object]:
+        return mapping(self.voice.get("packaged_prompts"))
+
+    def packaged_prompt(self, intent: str) -> dict[str, object]:
+        return mapping(self.packaged_prompts.get(intent))
+
     def character_rules(self) -> str:
         rules = list_text(self.character.get("prompt_rules"))
         if not rules:
@@ -481,6 +489,29 @@ def validate_pack(pack: PersonaPack) -> list[str]:
             check_expression_float("yawn", key, -10.0, 10.0)
         else:
             check_expression_float("yawn", key, 0.0, 1.0)
+
+    prompts = pack.packaged_prompts
+    for intent in FOUNDATION_SPEECH_INTENTS:
+        prompt = mapping(prompts.get(intent))
+        if not prompt:
+            issues.append(f"voice_packaged_prompt_missing:{intent}")
+            continue
+        for field in ("prompt_id", "transcript", "wav_path", "source_path", "sidecar_path"):
+            value = str(prompt.get(field, "")).strip()
+            if not value:
+                issues.append(f"voice_packaged_prompt_field_missing:{intent}:{field}")
+        prompt_id = str(prompt.get("prompt_id", "")).strip()
+        if prompt_id and not re.fullmatch(r"[a-z0-9_]+", prompt_id):
+            issues.append(f"voice_packaged_prompt_bad_id:{intent}")
+        wav_path = str(prompt.get("wav_path", "")).replace("\\", "/")
+        sidecar_path = str(prompt.get("sidecar_path", "")).replace("\\", "/")
+        if wav_path and not wav_path.startswith("media/voice/"):
+            issues.append(f"voice_packaged_prompt_bad_wav_path:{intent}")
+        if sidecar_path and not sidecar_path.startswith("media/voice/sidecars/"):
+            issues.append(f"voice_packaged_prompt_bad_sidecar_path:{intent}")
+        source_path = str(prompt.get("source_path", "")).replace("\\", "/")
+        if source_path and not (repo_root() / source_path).is_file():
+            issues.append(f"voice_packaged_prompt_source_missing:{intent}")
     return issues
 
 

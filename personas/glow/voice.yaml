@@ -51,6 +51,79 @@ sample_lines:
   - Soft happy signal found.
   - I am listening softly. Signal is clear.
   - Small fault seen. I will stay steady.
+packaged_prompts:
+  boot:
+    prompt_id: boot_awake
+    transcript: Hello. I am Stackchan, and I am awake.
+    wav_path: media/voice/stackchan_spark_greeting.wav
+    source_path: docs/media/voice/stackchan_spark_greeting.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json
+  idle:
+    prompt_id: idle_curiosity
+    transcript: Hello. I am Stackchan, and I am awake.
+    wav_path: media/voice/stackchan_spark_greeting.wav
+    source_path: docs/media/voice/stackchan_spark_greeting.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json
+  attend:
+    prompt_id: listen_attention
+    transcript: Hello. I am Stackchan, and I am awake.
+    wav_path: media/voice/stackchan_spark_greeting.wav
+    source_path: docs/media/voice/stackchan_spark_greeting.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json
+  listen:
+    prompt_id: listen_attention
+    transcript: Hello. I am Stackchan, and I am awake.
+    wav_path: media/voice/stackchan_spark_greeting.wav
+    source_path: docs/media/voice/stackchan_spark_greeting.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json
+  think:
+    prompt_id: think_processing
+    transcript: Input received. I am thinking now. Curiosity level rising.
+    wav_path: media/voice/stackchan_spark_thinking.wav
+    source_path: docs/media/voice/stackchan_spark_thinking.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json
+  speak:
+    prompt_id: speak_new_information
+    transcript: Input received. I am thinking now. Curiosity level rising.
+    wav_path: media/voice/stackchan_spark_thinking.wav
+    source_path: docs/media/voice/stackchan_spark_thinking.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json
+  react:
+    prompt_id: react_display_ready
+    transcript: Hello. I am Stackchan, and I am awake.
+    wav_path: media/voice/stackchan_spark_greeting.wav
+    source_path: docs/media/voice/stackchan_spark_greeting.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json
+  happy:
+    prompt_id: happy_signal
+    transcript: Hello. I am Stackchan, and I am awake.
+    wav_path: media/voice/stackchan_spark_greeting.wav
+    source_path: docs/media/voice/stackchan_spark_greeting.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json
+  concern:
+    prompt_id: concern_more_data
+    transcript: Small problem found. I can help fix it. Safety first.
+    wav_path: media/voice/stackchan_spark_safety.wav
+    source_path: docs/media/voice/stackchan_spark_safety.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_safety.speech_envelope.json
+  sleep:
+    prompt_id: sleep_systems_quiet
+    transcript: Small problem found. I can help fix it. Safety first.
+    wav_path: media/voice/stackchan_spark_safety.wav
+    source_path: docs/media/voice/stackchan_spark_safety.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_safety.speech_envelope.json
+  error:
+    prompt_id: error_small_problem
+    transcript: Small problem found. I can help fix it. Safety first.
+    wav_path: media/voice/stackchan_spark_safety.wav
+    source_path: docs/media/voice/stackchan_spark_safety.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_safety.speech_envelope.json
+  safety:
+    prompt_id: safety_servo_not_armed
+    transcript: Small problem found. I can help fix it. Safety first.
+    wav_path: media/voice/stackchan_spark_safety.wav
+    source_path: docs/media/voice/stackchan_spark_safety.wav
+    sidecar_path: media/voice/sidecars/stackchan_spark_safety.speech_envelope.json
 rollout_gates:
   - licensed_or_owned_voice_source
   - effect_chain_intelligibility_check

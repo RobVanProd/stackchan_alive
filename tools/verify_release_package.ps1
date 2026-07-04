@@ -586,14 +586,14 @@ foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.
     throw "docs/README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, and expression codegen", "verify_persona_pack.cmd glow --Json")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen", "verify_persona_pack.cmd glow --Json")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "Speech lines, earcon params")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "packaged prompt metadata", "firmware WAV embedding list", "Speech lines, earcon params")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
@@ -690,7 +690,7 @@ foreach ($pattern in @("AudioOut::begin", "AudioOut::enqueue", "AudioOut::pollSp
 }
 
 $speechPromptBankText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/SpeechPromptBank.cpp") -Raw
-foreach ($pattern in @("SpeechPromptBank::find", "SpeechPromptBank::assets", "PromptSource::PackagedPrompt", "boot_awake", "think_processing", "safety_servo_not_armed", "media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json", "media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json", "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json")) {
+foreach ($pattern in @("PersonaPromptAssets.hpp", "SpeechPromptBank::find", "SpeechPromptBank::assets", "generated_persona::kPromptAssets", "generated_persona::kPromptAssetCount")) {
   if ($speechPromptBankText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/SpeechPromptBank.cpp missing P6 prompt-bank support: $pattern"
   }
@@ -784,14 +784,14 @@ foreach ($pattern in @("stackchan.speech-envelope-sidecar.v1", "frameRateHz", "a
 }
 
 $firmwareVoiceAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_voice_assets.py") -Raw
-foreach ($pattern in @("FirmwareVoiceAssets.hpp", "stackchan_spark_greeting.wav", "stackchan_spark_thinking.wav", "stackchan_spark_safety.wav", "FirmwareVoiceAsset", "env.Append", "CPPPATH")) {
+foreach ($pattern in @("FirmwareVoiceAssets.hpp", "kFirmwareVoiceAssetsPersonaId", "load_and_validate_persona_pack", "FOUNDATION_SPEECH_INTENTS", "packaged_prompts", "source_path", "FirmwareVoiceAsset", "env.Append", "CPPPATH")) {
   if ($firmwareVoiceAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_generate_voice_assets.py missing firmware voice asset generation logic: $pattern"
   }
 }
 
 $personaAssetGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_generate_persona_assets.py") -Raw
-foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "PersonaBehavior.hpp", "PersonaExpressions.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "kIdleBreathingHz", "kIdleFidgetMinMs", "kCuriosityArousalDelta", "kExpressionsPersonaId", "kNeutralExpression", "kYawnDurationMs", "kThinkYawBiasDeg", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
+foreach ($pattern in @("PersonaSpeechLines.hpp", "PersonaEarcons.hpp", "PersonaBehavior.hpp", "PersonaExpressions.hpp", "PersonaPromptAssets.hpp", "kUsePersonaEarconPatterns", "earconPatternFor", "kIdleBreathingHz", "kIdleFidgetMinMs", "kCuriosityArousalDelta", "kExpressionsPersonaId", "kNeutralExpression", "kYawnDurationMs", "kThinkYawBiasDeg", "kPromptAssetsPersonaId", "kPromptAssetCount", "load_and_validate_persona_pack", "kSpeechLines", "STACKCHAN_PERSONA", "custom_persona", "INTENT_ENUMS", "EARCON_ENUMS", "env.Append", "CPPPATH")) {
   if ($personaAssetGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_generate_persona_assets.py missing persona speech generation logic: $pattern"
   }
@@ -819,7 +819,7 @@ foreach ($pattern in @("PersonaExpressions.hpp", "generated_persona::kListenPitc
 }
 
 $nativeLogicTestText = Get-Content -LiteralPath (Join-PackagePath "provenance/test/test_native_logic/test_main.cpp") -Raw
-foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "test_expression_mapper_uses_persona_expression_defaults")) {
+foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "test_expression_mapper_uses_persona_expression_defaults", "kPromptAssetsPersonaId", "kPromptAssetCount")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing generated expression tests: $pattern"
   }
@@ -923,14 +923,14 @@ if ([int]$characterRedTeamJson.summary.configured_runner_cases -ne 0) {
 }
 
 $personaPackLoaderText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
-foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms")) {
+foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms", "FOUNDATION_SPEECH_INTENTS", "voice_packaged_prompt_missing", "voice_packaged_prompt_source_missing")) {
   if ($personaPackLoaderText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/persona_pack.py missing persona pack support: $pattern"
   }
 }
 
 $personaPackTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_persona_pack.py") -Raw
-foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y")) {
+foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y", "voice_packaged_prompt_missing:boot")) {
   if ($personaPackTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_persona_pack.py missing persona pack test coverage: $pattern"
   }
@@ -950,6 +950,13 @@ foreach ($pattern in @("display_name: Stackchan Spark", "max_chars: 140", "contr
   }
 }
 
+$sparkVoiceText = Get-Content -LiteralPath (Join-PackagePath "personas/spark/voice.yaml") -Raw
+foreach ($pattern in @("packaged_prompts:", "prompt_id: boot_awake", "prompt_id: think_processing", "prompt_id: safety_servo_not_armed", "source_path: docs/media/voice/stackchan_spark_greeting.wav", "sidecar_path: media/voice/sidecars/stackchan_spark_safety.speech_envelope.json")) {
+  if ($sparkVoiceText -notmatch [regex]::Escape($pattern)) {
+    throw "personas/spark/voice.yaml missing Spark packaged prompt metadata: $pattern"
+  }
+}
+
 $glowPackText = Get-Content -LiteralPath (Join-PackagePath "personas/glow/pack.yaml") -Raw
 foreach ($pattern in @("schema: stackchan.persona-pack.v1", "id: glow", "character: character.yaml", "prompt: prompt.md", "voice: voice.yaml")) {
   if ($glowPackText -notmatch [regex]::Escape($pattern)) {
@@ -961,6 +968,13 @@ $glowCharacterText = Get-Content -LiteralPath (Join-PackagePath "personas/glow/c
 foreach ($pattern in @("display_name: Stackchan Glow", "max_chars: 140", "contractions: forbidden", "Servo test is not armed. Safety stays first.", "earcon: safety", "Never claim to be alive or human")) {
   if ($glowCharacterText -notmatch [regex]::Escape($pattern)) {
     throw "personas/glow/character.yaml missing Glow character rule: $pattern"
+  }
+}
+
+$glowVoiceText = Get-Content -LiteralPath (Join-PackagePath "personas/glow/voice.yaml") -Raw
+foreach ($pattern in @("packaged_prompts:", "prompt_id: boot_awake", "source_path: docs/media/voice/stackchan_spark_greeting.wav", "sidecar_path: media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json")) {
+  if ($glowVoiceText -notmatch [regex]::Escape($pattern)) {
+    throw "personas/glow/voice.yaml missing shared prototype packaged prompt metadata: $pattern"
   }
 }
 

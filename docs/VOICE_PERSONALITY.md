@@ -89,7 +89,7 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - `SpeechCue` carries text, priority, a typed earcon, and a phrase-timing offset so host playback can place matching beeps or boops without hard-coded phrase tables
 - a speech adapter selects the TTS source, face mode, and the actual earcon waveform for each typed cue
 - `persona/EarconSynth` renders each typed `SpeechEarcon` into a short deterministic PCM chirp/boop with no allocation; hardware playback can consume this directly before or between spoken prompts
-- `io/SpeechPromptBank` owns the packaged prompt metadata for each spoken intent, including the prompt ID, Stackchan Spark WAV path, and generated speech-envelope sidecar path
+- persona `voice.yaml` owns the packaged prompt metadata for each spoken intent; build-time codegen emits the `SpeechPromptBank` table plus the firmware WAV embedding list from those pack entries
 - `io/SpeechAdapter` consumes `SpeechCue`, selects the packaged prompt asset, renders the earcon plan, and reports `[speech_audio]` telemetry; the AW88298/M5 speaker layer consumes that same plan rather than reinterpreting cues
 - `io/AudioOut` owns the speaker-path playback request boundary, generated firmware WAV playback, packaged-prompt sidecar timing, mouth-frame streaming, M5 speaker carrier fallback, barge-in ducking, and `[audio_out]` telemetry; the display firmware already feeds synchronized mouth frames and audible playback from the selected prompt sidecar
 - TTS generation can run off-device at first
