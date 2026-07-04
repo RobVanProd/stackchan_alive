@@ -217,6 +217,10 @@ Android debug/release APKs on Ubuntu, a Linux `.deb` on Ubuntu, a macOS `.dmg` o
 and a Windows `.msi` on Windows. Every leg provisions JDK 21 and Android SDK Platform 36 so
 the shared KMP Android targets are configured consistently even during desktop packaging,
 and every leg uploads its produced platform artifact with `if-no-files-found: error`.
+A follow-on `companion-release-evidence` job downloads those four platform artifacts,
+runs `tools/export_companion_release_evidence.ps1 -RequireArtifacts`, and uploads
+`COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, byte counts, SHA256 hashes,
+the producing commit, and Gradle toolchain pins.
 
 Evidence snapshot: PR #194 run `28708831980` on 2026-07-04 passed `bridge-tests`,
 `native-tests`, firmware `build`, `companion-tests`, and all four platform artifact legs:

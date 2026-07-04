@@ -307,6 +307,58 @@ jobs:
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
 
+  companion-release-evidence:
+    needs: [changes, companion-platform-builds]
+    if: needs.changes.outputs.companion == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download companion Android APK artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-apks
+          path: output/companion/ci-artifacts/companion-android-apks
+
+      - name: Download companion Linux desktop artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-linux
+          path: output/companion/ci-artifacts/companion-desktop-linux
+
+      - name: Download companion macOS desktop artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-macos
+          path: output/companion/ci-artifacts/companion-desktop-macos
+
+      - name: Download companion Windows desktop artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-windows
+          path: output/companion/ci-artifacts/companion-desktop-windows
+
+      - name: Export companion release evidence
+        shell: pwsh
+        run: |
+          ./tools/export_companion_release_evidence.ps1 `
+            -Version "${{ github.sha }}" `
+            -Commit "${{ github.sha }}" `
+            -AndroidArtifactRoot "output/companion/ci-artifacts/companion-android-apks" `
+            -DesktopArtifactRoot "output/companion/ci-artifacts" `
+            -OutDir "output/companion/release-evidence/ci" `
+            -RequireArtifacts `
+            -Json
+
+      - name: Upload companion release evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-release-evidence
+          path: |
+            output/companion/release-evidence/ci/COMPANION_RELEASE_EVIDENCE.json
+            output/companion/release-evidence/ci/COMPANION_RELEASE_EVIDENCE.md
+          if-no-files-found: error
+
   native-tests:
     runs-on: ubuntu-latest
     steps:

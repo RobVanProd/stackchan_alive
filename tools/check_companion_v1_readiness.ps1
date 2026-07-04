@@ -255,7 +255,7 @@ Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
-  -Patterns @("companion-tests", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "./gradlew check :app-desktop:c0Spike")
+  -Patterns @("companion-tests", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "./gradlew check :app-desktop:c0Spike")
 
 Test-TextEvidence `
   -Id "android-toolchain-check" `
