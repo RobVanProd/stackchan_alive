@@ -3,6 +3,7 @@ package dev.stackchan.companion.android
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.Test
 
 class AndroidBridgeRuntimeStatusTest {
@@ -64,5 +65,33 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("CompanionBridgeService", uiState.brainService.command)
         assertEquals("ws://192.168.1.42:8765/bridge", uiState.brainService.endpoint)
         assertFalse(uiState.brainService.showBrainHandoffActions)
+    }
+
+    @Test
+    fun androidUiStateUsesLiveBridgeTelemetryInsteadOfDemoDefaults() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                lastMessageType = "heartbeat",
+                activeBrainOwner = "phone-rob-01",
+            ),
+        )
+
+        assertFalse(uiState.servoArmed)
+        assertEquals("Android bridge", uiState.activePersona)
+        assertEquals("Robot bridge connected", uiState.audioStatus)
+        assertEquals("Stackchan Bench", uiState.telemetry.first { it.label == "Robot" }.value)
+        assertEquals("bench-v1", uiState.telemetry.first { it.label == "Firmware" }.value)
+        assertEquals("heartbeat", uiState.telemetry.first { it.label == "Last frame" }.value)
+        assertEquals("Foreground", uiState.telemetry.first { it.label == "Service" }.value)
+        assertTrue(uiState.telemetry.none { it.value == "87%" || it.value == "42.5 C" || it.value == "v3.1.0" })
     }
 }

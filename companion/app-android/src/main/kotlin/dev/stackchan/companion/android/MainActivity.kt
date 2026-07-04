@@ -22,6 +22,7 @@ import dev.stackchan.companion.ui.BrainServiceUiState
 import dev.stackchan.companion.ui.CompanionConsole
 import dev.stackchan.companion.ui.CompanionUiState
 import dev.stackchan.companion.ui.EndpointRow
+import dev.stackchan.companion.ui.TelemetryReading
 
 class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -142,7 +143,11 @@ internal fun androidCompanionUiState(
         connection = bridgeStatus.connectionLabel,
         brainOwner = bridgeStatus.activeBrainOwner.ifBlank { "None" },
         heartbeatMs = if (bridgeStatus.robotConnected) 8 else 0,
+        activePersona = "Android bridge",
         robotState = bridgeStatus.robotState,
+        servoArmed = false,
+        telemetry = androidTelemetryReadings(bridgeStatus),
+        audioStatus = if (bridgeStatus.robotConnected) "Robot bridge connected" else "Waiting for robot bridge",
         brainService = BrainServiceUiState(
             running = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
             status = bridgeStatus.serviceStatus,
@@ -158,6 +163,30 @@ internal fun androidCompanionUiState(
         ),
         consoleMessage = bridgeStatus.consoleMessage,
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, bridgeStatus),
+    )
+
+private fun androidTelemetryReadings(bridgeStatus: AndroidBridgeRuntimeStatus): List<TelemetryReading> =
+    listOf(
+        TelemetryReading(
+            label = "Robot",
+            value = bridgeStatus.robotDisplayName,
+            detail = if (bridgeStatus.robotConnected) "Connected" else "Waiting",
+        ),
+        TelemetryReading(
+            label = "Firmware",
+            value = bridgeStatus.robotFingerprint,
+            detail = if (bridgeStatus.robotConnected) "Version signal" else "No robot hello",
+        ),
+        TelemetryReading(
+            label = "Last frame",
+            value = bridgeStatus.lastMessageType.ifBlank { if (bridgeStatus.robotConnected) "connected" else "none" },
+            detail = "Bridge frame",
+        ),
+        TelemetryReading(
+            label = "Service",
+            value = bridgeStatus.serviceStatus,
+            detail = "Foreground state",
+        ),
     )
 
 private fun androidEndpointRows(
