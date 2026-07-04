@@ -51,8 +51,9 @@ prints endpoint telemetry in `[runtime]`; serial bench `bridge ...` JSON can exe
 endpoint-control response path before live Wi-Fi exists.
 The firmware WebSocket adapter also routes endpoint-control text frames before normal
 conversation frames and can encode the queued endpoint response as a masked client text
-frame; the remaining hardware gap is the Wi-Fi/TCP task that writes those bytes to the
-socket.
+frame. `BridgeSocketWriter` can drain those frames through a socket sink with partial-write
+buffering; the remaining hardware gap is the Wi-Fi/TCP task that binds it to a real
+`WiFiClient` socket.
 
 When changing the mobile brain path, run `tools/run_litert_lm_smoke.cmd`. It writes
 `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the

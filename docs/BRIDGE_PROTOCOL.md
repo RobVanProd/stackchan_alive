@@ -21,9 +21,10 @@ store to endpoint control, periodically updates endpoint health, exposes endpoin
 on `[runtime]`, and can print endpoint-control responses over the serial bench path. It
 also routes endpoint-control WebSocket text frames before normal conversation frames, queues
 the bounded JSON response, and can encode that response as a masked client text frame for
-the future socket writer. It still needs the production Wi-Fi/TCP task to feed these
-adapters, write queued responses over the network socket, and collect live PC/mobile handoff
-evidence. Once frames reach
+`BridgeSocketWriter`, which drains queued responses through a socket sink and keeps partially
+written frames buffered until the sink accepts the remaining bytes. It still needs the
+production Wi-Fi/TCP task to feed these adapters, bind the writer to `WiFiClient`, and
+collect live PC/mobile handoff evidence. Once frames reach
 `BridgeClient`, firmware parses downlink stream
 metadata, copies each accepted chunk into a bounded buffer, exposes the current payload
 through `BridgeClientOutput`, feeds that payload to the firmware downlink consumer for

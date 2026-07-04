@@ -16,6 +16,7 @@
 #include "io/BridgeEndpointControl.hpp"
 #include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeEndpointStore.hpp"
+#include "io/BridgeSocketWriter.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -2885,6 +2886,56 @@ size_t encodeServerWebSocketText(const char* payload, uint8_t* out, size_t outSi
                                     outSize);
 }
 
+class CapturingBridgeSocketSink final : public BridgeSocketWriterSink {
+ public:
+  bool isConnected() const override {
+    return connected;
+  }
+
+  size_t write(const uint8_t* data, size_t length) override {
+    if (!connected || data == nullptr || length == 0) {
+      return 0;
+    }
+    const size_t allowed = maxWriteBytes == 0 || maxWriteBytes > length ? length : maxWriteBytes;
+    bytes.insert(bytes.end(), data, data + allowed);
+    writes++;
+    return allowed;
+  }
+
+  bool connected = true;
+  size_t maxWriteBytes = 0;
+  uint32_t writes = 0;
+  std::vector<uint8_t> bytes;
+};
+
+bool decodeMaskedClientTextFrame(const std::vector<uint8_t>& frame, char* out, size_t outSize) {
+  if (out == nullptr || outSize == 0 || frame.size() < 6 || frame[0] != 0x81 ||
+      (frame[1] & 0x80) == 0) {
+    return false;
+  }
+
+  size_t payloadLength = frame[1] & 0x7f;
+  size_t maskOffset = 2;
+  if (payloadLength == 126) {
+    if (frame.size() < 8) {
+      return false;
+    }
+    payloadLength = (static_cast<size_t>(frame[2]) << 8) | frame[3];
+    maskOffset = 4;
+  }
+
+  const size_t payloadOffset = maskOffset + 4u;
+  if (frame.size() < payloadOffset + payloadLength || outSize <= payloadLength) {
+    return false;
+  }
+  const uint8_t* mask = frame.data() + maskOffset;
+  for (size_t i = 0; i < payloadLength; ++i) {
+    out[i] = static_cast<char>(frame[payloadOffset + i] ^ mask[i % 4u]);
+  }
+  out[payloadLength] = '\0';
+  return true;
+}
+
 void test_bridge_websocket_builds_upgrade_request_and_accepts_response() {
   BridgeClientConfig config;
   config.deviceId = "stackchan-test";
@@ -3225,6 +3276,161 @@ void test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_clie
   TEST_ASSERT_TRUE(bridge.poll(&output));
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
   TEST_ASSERT_EQUAL_STRING("ws-bridge", output.sessionId);
+}
+
+void test_bridge_socket_writer_no_pending_is_noop() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 600));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      605));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x12345678));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::NoPending),
+                    static_cast<int>(writer.drainPendingTextResponse(610)));
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().drainAttempts);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().framesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().framesWritten);
+  TEST_ASSERT_EQUAL_UINT32(0, sink.writes);
+  TEST_ASSERT_TRUE(sink.bytes.empty());
+}
+
+void test_bridge_socket_writer_writes_pending_endpoint_response_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl endpointControl;
+  TEST_ASSERT_TRUE(endpointControl.begin(registry));
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 620));
+  transport.attachEndpointControl(&endpointControl);
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      625));
+
+  const char* status = "{\"type\":\"owner_status\",\"protocol\":\"stackchan.bridge.v1\"}";
+  uint8_t serverFrame[160] = {};
+  const size_t serverFrameBytes = encodeServerWebSocketText(status, serverFrame, sizeof(serverFrame));
+  TEST_ASSERT_TRUE(transport.submitBytes(serverFrame, serverFrameBytes, 630));
+  TEST_ASSERT_TRUE(transport.hasPendingTextResponse());
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x22334455));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingTextResponse(635)));
+  TEST_ASSERT_FALSE(transport.hasPendingTextResponse());
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
+  TEST_ASSERT_EQUAL_UINT32(1, transport.telemetry().outgoingTextFramesEncoded);
+  TEST_ASSERT_GREATER_THAN_UINT32(0, writer.telemetry().bytesWritten);
+
+  char decoded[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(sink.bytes, decoded, sizeof(decoded)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decoded, "\"type\":\"owner_status\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decoded, "\"active_brain_owner\":\"\""));
+}
+
+void test_bridge_socket_writer_retains_partial_frame_until_complete() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl endpointControl;
+  TEST_ASSERT_TRUE(endpointControl.begin(registry));
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 640));
+  transport.attachEndpointControl(&endpointControl);
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      645));
+
+  const char* status = "{\"type\":\"owner_status\",\"protocol\":\"stackchan.bridge.v1\"}";
+  uint8_t serverFrame[160] = {};
+  const size_t serverFrameBytes = encodeServerWebSocketText(status, serverFrame, sizeof(serverFrame));
+  TEST_ASSERT_TRUE(transport.submitBytes(serverFrame, serverFrameBytes, 650));
+
+  CapturingBridgeSocketSink sink;
+  sink.maxWriteBytes = 5;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x33445566));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::Partial),
+                    static_cast<int>(writer.drainPendingTextResponse(655)));
+  TEST_ASSERT_FALSE(transport.hasPendingTextResponse());
+  TEST_ASSERT_TRUE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().framesWritten);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().partialWrites);
+
+  BridgeSocketWriterDrainResult result = BridgeSocketWriterDrainResult::Partial;
+  for (size_t i = 0; i < 80 && result == BridgeSocketWriterDrainResult::Partial; ++i) {
+    result = writer.drainPendingTextResponse(660 + static_cast<uint32_t>(i));
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame), static_cast<int>(result));
+  TEST_ASSERT_FALSE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
+  TEST_ASSERT_GREATER_THAN_UINT32(1, sink.writes);
+
+  char decoded[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(sink.bytes, decoded, sizeof(decoded)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decoded, "\"type\":\"owner_status\""));
+}
+
+void test_bridge_socket_writer_disconnected_keeps_pending_response() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl endpointControl;
+  TEST_ASSERT_TRUE(endpointControl.begin(registry));
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 680));
+  transport.attachEndpointControl(&endpointControl);
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      685));
+
+  const char* status = "{\"type\":\"owner_status\",\"protocol\":\"stackchan.bridge.v1\"}";
+  uint8_t serverFrame[160] = {};
+  const size_t serverFrameBytes = encodeServerWebSocketText(status, serverFrame, sizeof(serverFrame));
+  TEST_ASSERT_TRUE(transport.submitBytes(serverFrame, serverFrameBytes, 690));
+
+  CapturingBridgeSocketSink sink;
+  sink.connected = false;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x44556677));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::NotConnected),
+                    static_cast<int>(writer.drainPendingTextResponse(695)));
+  TEST_ASSERT_TRUE(transport.hasPendingTextResponse());
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().framesEncoded);
+  TEST_ASSERT_EQUAL_STRING("socket_not_connected", writer.telemetry().lastError);
+
+  sink.connected = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingTextResponse(700)));
+  TEST_ASSERT_FALSE(transport.hasPendingTextResponse());
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
 }
 
 BridgeEndpointRecord makeBridgeEndpoint(const char* id,
@@ -3903,6 +4109,10 @@ int main() {
   RUN_TEST(test_bridge_websocket_routes_endpoint_control_to_pending_response);
   RUN_TEST(test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame);
   RUN_TEST(test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client);
+  RUN_TEST(test_bridge_socket_writer_no_pending_is_noop);
+  RUN_TEST(test_bridge_socket_writer_writes_pending_endpoint_response_frame);
+  RUN_TEST(test_bridge_socket_writer_retains_partial_frame_until_complete);
+  RUN_TEST(test_bridge_socket_writer_disconnected_keeps_pending_response);
   RUN_TEST(test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints);
   RUN_TEST(test_bridge_endpoint_registry_explicit_claim_overrides_current_owner);
   RUN_TEST(test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint);

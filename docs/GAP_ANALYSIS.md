@@ -1,7 +1,7 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
-Current firmware transport/registry/control/persistence slice check in this workspace: **140/140 native firmware logic
+Current firmware transport/registry/control/persistence slice check in this workspace: **144/144 native firmware logic
 tests pass**. The status table in
 [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md) is honest about what is simulated.
 
@@ -21,7 +21,7 @@ piece of real hardware input and the real network transport:
 | Wake word + commands (P4) | Command map done, tested | **No ESP-SR**; wake/commands are bench text |
 | Face tracking (P5) | GazeTracker done, tested | CameraAdapter has no camera (no `esp_camera`/ESP-DL; `STACKCHAN_ENABLE_CAMERA` never set) |
 | Voice out (P6) | Done | **Real** (`M5.Speaker`, packaged WAVs, PCM16 downlink playback) |
-| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec, endpoint-control response framing, endpoint registry, endpoint-control adapter, endpoint persistence store, boot load/attach, and serial-bench endpoint responses are implemented; **no production Wi-Fi/TCP task or live socket write path in firmware** |
+| Bridge (P7) | Full protocol both sides, tested | WebSocket frame codec, endpoint-control response framing, socket-writer drain path, endpoint registry, endpoint-control adapter, endpoint persistence store, boot load/attach, and serial-bench endpoint responses are implemented; **no production Wi-Fi/TCP task or live socket session in firmware** |
 | LLM / STT / TTS | Contracts, harness, benchmark tooling | All engines deterministic placeholders / `unconfigured` |
 
 So the demo that currently exists is: a Python simulator talking to a Python service, or a
@@ -50,9 +50,10 @@ persisted trusted endpoints, attaches persistence to endpoint control, periodica
 endpoint health, prints endpoint telemetry in `[runtime]`, and can print endpoint-control
 responses on the serial bench path. The WebSocket adapter can now route endpoint-control
 server text before normal conversation frames, queue the bounded JSON response, and encode
-that response as a masked client text frame. What is still missing is the production
-Wi-Fi/TCP task, provisioning config, socket write integration for queued responses, and
-reconnect/failover loop.
+that response as a masked client text frame. `BridgeSocketWriter` now drains those queued
+responses through a socket sink, including partial-write retry buffering and disconnected
+socket preservation. What is still missing is the production Wi-Fi/TCP task, provisioning
+config, real `WiFiClient` integration around that writer, and reconnect/failover loop.
 `BridgeClient` is still fed by the 115200-baud serial bench in the running firmware, so the
 P7 loop cannot run untethered.
 
@@ -64,8 +65,8 @@ messages for trusted endpoint registration, active brain ownership, settings, di
 capability updates, and endpoint forgetting, and `bridge/lan_smoke.py` has an
 `endpoint-controls` socket scenario. Current firmware-side progress is frame-level,
 registry-rule-level, endpoint-control-adapter-level, endpoint-store-level, boot-wire-level,
-and WebSocket response-frame-level; it still cannot reach the service without the serial
-bench until Wi-Fi/TCP wiring lands.
+WebSocket response-frame-level, and socket-writer-level; it still cannot reach the service
+without the serial bench until Wi-Fi/TCP wiring lands.
 
 ### B2. The serial link physically cannot carry the audio design
 
