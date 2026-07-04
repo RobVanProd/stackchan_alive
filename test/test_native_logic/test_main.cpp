@@ -3136,6 +3136,35 @@ bool decodeMaskedClientTextFrame(const std::vector<uint8_t>& frame, char* out, s
   return true;
 }
 
+bool decodeMaskedClientBinaryFrame(const std::vector<uint8_t>& frame,
+                                   std::vector<uint8_t>& payloadOut) {
+  if (frame.size() < 6 || frame[0] != 0x82 || (frame[1] & 0x80) == 0) {
+    return false;
+  }
+
+  size_t payloadLength = frame[1] & 0x7f;
+  size_t maskOffset = 2;
+  if (payloadLength == 126) {
+    if (frame.size() < 8) {
+      return false;
+    }
+    payloadLength = (static_cast<size_t>(frame[2]) << 8) | frame[3];
+    maskOffset = 4;
+  }
+
+  const size_t payloadOffset = maskOffset + 4u;
+  if (frame.size() < payloadOffset + payloadLength) {
+    return false;
+  }
+  payloadOut.clear();
+  payloadOut.reserve(payloadLength);
+  const uint8_t* mask = frame.data() + maskOffset;
+  for (size_t i = 0; i < payloadLength; ++i) {
+    payloadOut.push_back(frame[payloadOffset + i] ^ mask[i % 4u]);
+  }
+  return true;
+}
+
 void test_bridge_websocket_builds_upgrade_request_and_accepts_response() {
   BridgeClientConfig config;
   config.deviceId = "stackchan-test";
@@ -3633,6 +3662,122 @@ void test_bridge_socket_writer_disconnected_keeps_pending_response() {
   TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
 }
 
+void test_bridge_socket_writer_writes_queued_binary_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 710));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      715));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x55667788));
+  const uint8_t payload[] = {0x00, 0x01, 0x7f, 0x80, 0xff};
+  TEST_ASSERT_TRUE(writer.queueBinaryFrame(payload, sizeof(payload)));
+  TEST_ASSERT_TRUE(writer.telemetry().binaryFrameQueued);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(720)));
+
+  TEST_ASSERT_FALSE(writer.telemetry().binaryFrameQueued);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().framesWritten);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().binaryFramesQueued);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().binaryFramesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().binaryFramesWritten);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), writer.telemetry().binaryBytesQueued);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), writer.telemetry().binaryBytesWritten);
+
+  std::vector<uint8_t> decoded;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(sink.bytes, decoded));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), decoded.size());
+  for (size_t i = 0; i < sizeof(payload); ++i) {
+    TEST_ASSERT_EQUAL_HEX8(payload[i], decoded[i]);
+  }
+}
+
+void test_bridge_socket_writer_retains_partial_binary_frame_until_complete() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 730));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      735));
+
+  uint8_t payload[160] = {};
+  for (size_t i = 0; i < sizeof(payload); ++i) {
+    payload[i] = static_cast<uint8_t>(i & 0xff);
+  }
+
+  CapturingBridgeSocketSink sink;
+  sink.maxWriteBytes = 11;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x66778899));
+  TEST_ASSERT_TRUE(writer.queueBinaryFrame(payload, sizeof(payload)));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::Partial),
+                    static_cast<int>(writer.drainPendingFrame(740)));
+  TEST_ASSERT_FALSE(writer.telemetry().binaryFrameQueued);
+  TEST_ASSERT_TRUE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().binaryFramesEncoded);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().binaryFramesWritten);
+
+  BridgeSocketWriterDrainResult result = BridgeSocketWriterDrainResult::Partial;
+  for (size_t i = 0; i < 80 && result == BridgeSocketWriterDrainResult::Partial; ++i) {
+    result = writer.drainPendingFrame(745 + static_cast<uint32_t>(i));
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame), static_cast<int>(result));
+  TEST_ASSERT_FALSE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().binaryFramesWritten);
+  TEST_ASSERT_GREATER_THAN_UINT32(1, sink.writes);
+
+  std::vector<uint8_t> decoded;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(sink.bytes, decoded));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), decoded.size());
+  for (size_t i = 0; i < sizeof(payload); ++i) {
+    TEST_ASSERT_EQUAL_HEX8(payload[i], decoded[i]);
+  }
+}
+
+void test_bridge_socket_writer_bounds_binary_queue() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 760));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      765));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x778899aa));
+
+  uint8_t oversized[kBridgeWebSocketFramePayloadMax + 1u] = {};
+  TEST_ASSERT_FALSE(writer.queueBinaryFrame(oversized, sizeof(oversized)));
+  TEST_ASSERT_EQUAL_STRING("socket_binary_payload_invalid", writer.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(1, writer.telemetry().binaryFramesDropped);
+
+  const uint8_t first[] = {0x10, 0x11};
+  const uint8_t second[] = {0x20, 0x21};
+  TEST_ASSERT_TRUE(writer.queueBinaryFrame(first, sizeof(first)));
+  TEST_ASSERT_FALSE(writer.queueBinaryFrame(second, sizeof(second)));
+  TEST_ASSERT_EQUAL_STRING("socket_binary_queue_full", writer.telemetry().lastError);
+  TEST_ASSERT_EQUAL_UINT32(2, writer.telemetry().binaryFramesDropped);
+}
+
 BridgeNetworkSessionConfig makeBridgeNetworkSessionConfig() {
   BridgeNetworkSessionConfig config;
   config.enabled = true;
@@ -3750,6 +3895,43 @@ void test_bridge_network_session_writes_endpoint_control_response() {
   char decoded[kBridgeEndpointControlResponseMax] = {};
   TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decoded, sizeof(decoded)));
   TEST_ASSERT_NOT_NULL(std::strstr(decoded, "\"type\":\"owner_status\""));
+}
+
+void test_bridge_network_session_writes_queued_binary_frame() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  const BridgeNetworkSessionConfig config = makeBridgeNetworkSessionConfig();
+  TEST_ASSERT_TRUE(session.begin(bridge, socket, config, 810));
+  TEST_ASSERT_TRUE(session.start(815));
+  socket.pushIncoming(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n");
+  session.update(820);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Connected),
+                    static_cast<int>(session.telemetry().state));
+  socket.clearOutgoing();
+
+  const uint8_t payload[] = {0x33, 0x44, 0x55, 0x66};
+  TEST_ASSERT_TRUE(session.queueBinaryFrame(payload, sizeof(payload)));
+  session.update(825);
+
+  TEST_ASSERT_FALSE(socket.outgoing.empty());
+  TEST_ASSERT_EQUAL_UINT32(1, session.telemetry().writerFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, session.telemetry().writerBinaryFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, session.writer().telemetry().binaryFramesWritten);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), session.writer().telemetry().binaryBytesWritten);
+
+  std::vector<uint8_t> decoded;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(socket.outgoing, decoded));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(payload), decoded.size());
+  for (size_t i = 0; i < sizeof(payload); ++i) {
+    TEST_ASSERT_EQUAL_HEX8(payload[i], decoded[i]);
+  }
 }
 
 void test_bridge_network_session_reconnects_after_socket_disconnect() {
@@ -4533,9 +4715,13 @@ int main() {
   RUN_TEST(test_bridge_socket_writer_writes_pending_endpoint_response_frame);
   RUN_TEST(test_bridge_socket_writer_retains_partial_frame_until_complete);
   RUN_TEST(test_bridge_socket_writer_disconnected_keeps_pending_response);
+  RUN_TEST(test_bridge_socket_writer_writes_queued_binary_frame);
+  RUN_TEST(test_bridge_socket_writer_retains_partial_binary_frame_until_complete);
+  RUN_TEST(test_bridge_socket_writer_bounds_binary_queue);
   RUN_TEST(test_bridge_network_session_starts_and_accepts_handshake);
   RUN_TEST(test_bridge_network_session_feeds_server_frames_to_bridge_client);
   RUN_TEST(test_bridge_network_session_writes_endpoint_control_response);
+  RUN_TEST(test_bridge_network_session_writes_queued_binary_frame);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);

@@ -21,8 +21,9 @@ store to endpoint control, periodically updates endpoint health, exposes endpoin
 on `[runtime]`, and can print endpoint-control responses over the serial bench path. It
 also routes endpoint-control WebSocket text frames before normal conversation frames, queues
 the bounded JSON response, and can encode that response as a masked client text frame for
-`BridgeSocketWriter`, which drains queued responses through a socket sink and keeps partially
-written frames buffered until the sink accepts the remaining bytes. `BridgeNetworkSession`
+`BridgeSocketWriter`, which drains queued responses through a socket sink and also drains
+bounded client binary frames through the same sink, keeping partially written frames buffered
+until the sink accepts the remaining bytes. `BridgeNetworkSession`
 now composes those pieces into a TCP/WebSocket session loop: connect, send upgrade request,
 read handshake response, feed incoming WebSocket bytes, drain queued endpoint responses, and
 schedule reconnects. `BridgeWiFiClientSocket` is the ESP32 `WiFiClient` binding for that
@@ -169,6 +170,11 @@ downlink sink.
 - `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
 - `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. A `text` or `transcript` field bypasses STT and is useful for deterministic tests.
 - `cancel`: barge-in or local safety state interrupted playback.
+
+Firmware transport note: the WebSocket writer has a one-frame bounded binary queue and the
+network session drains it as a masked client binary frame. The wake/STT turn controller that
+emits `utterance_start`, queues PCM chunks, and emits `utterance_end` is intentionally still
+gated behind real mic and wake-word bring-up.
 
 Example:
 
