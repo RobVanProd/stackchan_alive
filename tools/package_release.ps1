@@ -1017,6 +1017,8 @@ $manifest = [ordered]@{
     "provenance/src/io/CameraAdapter.cpp",
     "provenance/src/io/BridgeClient.hpp",
     "provenance/src/io/BridgeClient.cpp",
+    "provenance/src/io/BridgeSocketWriter.hpp",
+    "provenance/src/io/BridgeSocketWriter.cpp",
     "provenance/src/io/AudioOut.hpp",
     "provenance/src/io/AudioOut.cpp",
     "provenance/src/io/SpeechPromptBank.hpp",
