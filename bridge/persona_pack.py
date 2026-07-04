@@ -14,6 +14,7 @@ from typing import Any, Iterable
 PACK_SCHEMA = "stackchan.persona-pack.v1"
 CHARACTER_SCHEMA = "stackchan.persona-character.v1"
 BEHAVIOR_SCHEMA = "stackchan.persona-behavior.v1"
+VOICE_PROVENANCE_SCHEMA = "stackchan.voice-source-provenance.v1"
 DEFAULT_PERSONA_ID = "spark"
 
 FOUNDATION_MAX_CHARS = 140
@@ -43,6 +44,15 @@ FOUNDATION_FORBIDDEN_TERMS = ("johnny", "short circuit", "number 5", "need more 
 REQUIRED_PACK_FILES = ("character", "prompt", "behavior", "expressions", "earcons", "voice")
 REQUIRED_SPOKEN_LINES = ("boot", "listen", "think", "speak", "sleep", "safety", "error", "happy", "concern")
 PERSONA_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
+VOICE_PROVENANCE_FORBIDDEN_ATTESTATIONS = (
+    "soundboard clips",
+    "named character or actor voice clones",
+    "copyrighted movie quotes or catchphrases",
+)
+VOICE_PROVENANCE_REQUIRED_EVIDENCE = (
+    "licensed_or_owned_production_voice_source",
+    "completed_voice_source_provenance_template",
+)
 
 
 class PersonaPackError(ValueError):
@@ -363,6 +373,13 @@ def float_value(value: object, default: float) -> float:
         return default
 
 
+def resolve_pack_reference(pack: "PersonaPack", value: object) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return (pack.root / text).resolve()
+
+
 @dataclass(frozen=True)
 class PersonaPack:
     root: Path
@@ -640,6 +657,34 @@ def validate_pack(pack: PersonaPack) -> list[str]:
             check_expression_float("yawn", key, 0.0, 1.0)
 
     prompts = pack.packaged_prompts
+    has_packaged_prompt_assets = any(bool(mapping(prompts.get(intent))) for intent in FOUNDATION_SPEECH_INTENTS)
+    provenance = mapping(pack.manifest.get("provenance"))
+    voice_policy_path = resolve_pack_reference(pack, provenance.get("voice_policy"))
+    if has_packaged_prompt_assets and voice_policy_path is None:
+        issues.append("voice_provenance_policy_missing")
+    voice_policy: dict[str, object] = {}
+    if voice_policy_path is not None:
+        if not voice_policy_path.is_file():
+            issues.append("voice_provenance_policy_file_missing")
+        else:
+            try:
+                voice_policy = load_yaml_subset(voice_policy_path)
+            except PersonaPackError:
+                issues.append("voice_provenance_policy_invalid")
+    if voice_policy:
+        if voice_policy.get("schema") != VOICE_PROVENANCE_SCHEMA:
+            issues.append("voice_provenance_schema_invalid")
+        forbidden_attested = set(list_text(voice_policy.get("forbidden_sources_attested")))
+        for term in VOICE_PROVENANCE_FORBIDDEN_ATTESTATIONS:
+            if term not in forbidden_attested:
+                issues.append(f"voice_provenance_forbidden_attestation_missing:{term}")
+        rollout_evidence = set(list_text(voice_policy.get("required_rollout_evidence")))
+        for evidence in VOICE_PROVENANCE_REQUIRED_EVIDENCE:
+            if evidence not in rollout_evidence:
+                issues.append(f"voice_provenance_rollout_evidence_missing:{evidence}")
+        rollout_gate = str(voice_policy.get("rollout_gate", "")).strip()
+        if not rollout_gate:
+            issues.append("voice_provenance_rollout_gate_missing")
     for intent in FOUNDATION_SPEECH_INTENTS:
         prompt = mapping(prompts.get(intent))
         if not prompt:

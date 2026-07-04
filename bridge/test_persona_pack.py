@@ -73,8 +73,11 @@ class PersonaPackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             temp_personas = temp_root / "personas"
+            temp_data = temp_root / "data"
             temp_personas.mkdir()
+            temp_data.mkdir()
             shutil.copytree(repo_root() / "personas" / "spark", temp_personas / "spark")
+            shutil.copy(repo_root() / "data" / "voice_source_provenance.yaml", temp_data / "voice_source_provenance.yaml")
 
             pack = scaffold_persona_pack("test-bot", display_name="Stackchan Test Bot", author="Unit Test", root=temp_root)
 
@@ -97,6 +100,65 @@ class PersonaPackTests(unittest.TestCase):
         self.assertIn("media/voice/sidecars/stackchan_spark_greeting.speech_envelope.json", sidecars)
         self.assertIn("media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json", sidecars)
         self.assertIn("media/voice/sidecars/stackchan_spark_safety.speech_envelope.json", sidecars)
+
+    def test_validator_requires_voice_provenance_for_packaged_prompts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            temp_personas = temp_root / "personas"
+            temp_personas.mkdir()
+            shutil.copytree(repo_root() / "personas" / "spark", temp_personas / "spark")
+            pack_yaml = temp_personas / "spark" / "pack.yaml"
+            pack_yaml.write_text(
+                "\n".join(
+                    line for line in pack_yaml.read_text(encoding="utf-8").splitlines()
+                    if "voice_policy:" not in line
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            pack = load_persona_pack("spark", root=temp_root)
+            issues = validate_pack(pack)
+
+        self.assertIn("voice_provenance_policy_missing", issues)
+
+    def test_validator_checks_voice_provenance_schema_and_attestations(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            temp_personas = temp_root / "personas"
+            temp_personas.mkdir()
+            shutil.copytree(repo_root() / "personas" / "spark", temp_personas / "spark")
+            policy = temp_root / "voice_policy.yaml"
+            policy.write_text(
+                "\n".join(
+                    [
+                        "schema: wrong.schema",
+                        "forbidden_sources_attested:",
+                        "  - soundboard clips",
+                        "required_rollout_evidence:",
+                        "  - licensed_or_owned_production_voice_source",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            pack_yaml = temp_personas / "spark" / "pack.yaml"
+            pack_yaml.write_text(
+                pack_yaml.read_text(encoding="utf-8").replace(
+                    "../../data/voice_source_provenance.yaml",
+                    "../../voice_policy.yaml",
+                ),
+                encoding="utf-8",
+            )
+
+            pack = load_persona_pack("spark", root=temp_root)
+            issues = validate_pack(pack)
+
+        self.assertIn("voice_provenance_schema_invalid", issues)
+        self.assertIn("voice_provenance_forbidden_attestation_missing:named character or actor voice clones", issues)
+        self.assertIn("voice_provenance_forbidden_attestation_missing:copyrighted movie quotes or catchphrases", issues)
+        self.assertIn("voice_provenance_rollout_evidence_missing:completed_voice_source_provenance_template", issues)
+        self.assertIn("voice_provenance_rollout_gate_missing", issues)
 
     def test_validator_rejects_loosened_caps_and_bad_safety_line(self):
         with tempfile.TemporaryDirectory() as temp_dir:

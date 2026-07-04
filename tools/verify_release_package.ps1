@@ -1097,14 +1097,14 @@ if ([int]$characterRedTeamJson.summary.configured_runner_cases -ne 0) {
 }
 
 $personaPackLoaderText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
-foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms", "FOUNDATION_SPEECH_INTENTS", "voice_packaged_prompt_missing", "voice_packaged_prompt_source_missing")) {
+foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms", "FOUNDATION_SPEECH_INTENTS", "voice_packaged_prompt_missing", "voice_packaged_prompt_source_missing", "VOICE_PROVENANCE_SCHEMA", "voice_provenance_policy_missing", "voice_provenance_forbidden_attestation_missing", "voice_provenance_rollout_evidence_missing")) {
   if ($personaPackLoaderText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/persona_pack.py missing persona pack support: $pattern"
   }
 }
 
 $personaPackTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_persona_pack.py") -Raw
-foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y", "voice_packaged_prompt_missing:boot")) {
+foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "test_validator_requires_voice_provenance_for_packaged_prompts", "test_validator_checks_voice_provenance_schema_and_attestations", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y", "voice_packaged_prompt_missing:boot", "voice_provenance_policy_missing")) {
   if ($personaPackTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_persona_pack.py missing persona pack test coverage: $pattern"
   }
