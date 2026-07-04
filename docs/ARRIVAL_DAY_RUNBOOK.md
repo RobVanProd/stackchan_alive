@@ -92,6 +92,8 @@ and attach its evidence to the packet.
 Before asking the robot to connect manually, run
 `tools/run_android_companion_probe.cmd -Url ws://<phone-lan-ip>:8765/bridge` from the repo
 or extracted release package to verify the Android endpoint handshake.
+If mDNS discovery is unreliable, run `tools/run_android_udp_beacon_probe.cmd` from another
+machine on the same LAN to capture the Android UDP discovery beacon.
 
 Import the display photo or video into the packet:
 

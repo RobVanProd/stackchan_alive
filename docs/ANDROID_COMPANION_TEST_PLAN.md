@@ -43,10 +43,17 @@ Expected:
 - [ ] The Android bridge appears as `_stackchan-bridge._tcp.local`, or mDNS failure is recorded with router/client-isolation notes.
 - [ ] TXT metadata includes `endpoint_id`, `endpoint_kind=android`, `proto=stackchan.bridge.v1`, and `capabilities`.
 
-If mDNS does not resolve, test the UDP fallback with a packet capture or small listener on
-port `8766`. Expected:
+If mDNS does not resolve, test the UDP fallback:
 
-- [ ] A `stackchan_bridge_beacon` JSON payload arrives every few seconds.
+```powershell
+.\tools\run_android_udp_beacon_probe.cmd
+```
+
+The helper listens on UDP port `8766` and writes
+`output/android-udp-beacon/latest/ANDROID_UDP_BEACON_PROBE.md` plus
+`android_udp_beacon_probe.json`. Expected:
+
+- [ ] `tools/run_android_udp_beacon_probe.cmd` captures a `stackchan_bridge_beacon` JSON payload.
 - [ ] The payload endpoint ID matches the Android dashboard identity.
 - [ ] The payload port is `8765`.
 
@@ -96,7 +103,7 @@ Attach these to the arrival-day packet:
 - screenshot of the Android dashboard manual URL
 - screenshot of the foreground notification
 - mDNS result or failure note
-- UDP beacon capture or failure note
+- `output/android-udp-beacon/latest/ANDROID_UDP_BEACON_PROBE.md/json` or a failure note
 - `output/android-companion-probe/latest/ANDROID_COMPANION_PROBE.md/json`
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - Android logcat excerpt if the service stops, crashes, or loses foreground status
