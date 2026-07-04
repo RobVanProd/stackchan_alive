@@ -1,5 +1,6 @@
 package dev.stackchan.companion.core
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -33,6 +34,12 @@ data class SettingsSetOutcome(
     val rejectedPaths: List<String> = emptyList(),
 )
 
+@Serializable
+data class SettingsRepositoryState(
+    val version: Int = 1,
+    val settings: JsonObject = defaultSettings(),
+)
+
 class SettingsRepository(
     initialSettings: JsonObject = defaultSettings(),
     initialVersion: Int = 1,
@@ -53,6 +60,12 @@ class SettingsRepository(
 
     fun handleSet(message: SettingsSet): SettingsSetOutcome =
         set(message.version, message.settings)
+
+    fun snapshotState(): SettingsRepositoryState =
+        SettingsRepositoryState(version = version, settings = settings)
+
+    fun encode(): String =
+        companionJson.encodeToString(SettingsRepositoryState.serializer(), snapshotState())
 
     fun set(expectedVersion: Int, patch: JsonObject): SettingsSetOutcome {
         val normalizedPatch = normalizeSettings(patch)
@@ -81,6 +94,13 @@ class SettingsRepository(
         val normalized = if (requested.isEmpty()) settingsDomains else requested
         require(normalized.all { it in settingsDomains }) { "unknown settings domain" }
         return normalized
+    }
+
+    companion object {
+        fun decode(text: String): SettingsRepository {
+            val state = companionJson.decodeFromString(SettingsRepositoryState.serializer(), text).normalized()
+            return SettingsRepository(initialSettings = state.settings, initialVersion = state.version)
+        }
     }
 }
 
@@ -127,6 +147,12 @@ private fun normalizeSettings(value: JsonObject): JsonObject {
     }
     return value
 }
+
+private fun SettingsRepositoryState.normalized(): SettingsRepositoryState =
+    copy(
+        version = maxOf(1, version),
+        settings = deepMerge(defaultSettings(), normalizeSettings(settings)),
+    )
 
 private fun lockedPathsIn(patch: JsonObject): List<String> =
     patch.flatMap { (domain, element) ->
