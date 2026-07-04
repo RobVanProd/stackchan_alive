@@ -140,6 +140,7 @@ fun CompanionConsole(
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val compact = maxWidth < 820.dp
+                val wideConsole = maxWidth >= 1180.dp
                 TacticalBackdrop()
                 Column(
                     modifier = Modifier
@@ -163,6 +164,43 @@ fun CompanionConsole(
                             )
                             EndpointRegistry(state, Modifier.fillMaxWidth())
                             TelemetryPanel(state, Modifier.fillMaxWidth())
+                            SecurityPanel(Modifier.fillMaxWidth())
+                        }
+                    } else if (wideConsole) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(0.82f),
+                            ) {
+                                PersonaCorePanel(state, Modifier.fillMaxWidth())
+                                DirectivePanel(Modifier.fillMaxWidth())
+                                SecurityPanel(Modifier.fillMaxWidth())
+                            }
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(1.62f),
+                            ) {
+                                StagePanel(state, Modifier.fillMaxWidth())
+                                EndpointRegistry(state, Modifier.fillMaxWidth())
+                            }
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(0.96f),
+                            ) {
+                                TelemetryPanel(state, Modifier.fillMaxWidth())
+                                BrainPanel(
+                                    state = state,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onStartBrain = onStartBrain,
+                                    onStopBrain = onStopBrain,
+                                    onRestartBrain = onRestartBrain,
+                                    onExportDiagnostics = onExportDiagnostics,
+                                    onRunC6Rehearsal = onRunC6Rehearsal,
+                                )
+                            }
                         }
                     } else {
                         Row(
@@ -264,6 +302,44 @@ private fun Header(targetName: String, state: CompanionUiState, compact: Boolean
 }
 
 @Composable
+private fun PersonaCorePanel(state: CompanionUiState, modifier: Modifier) {
+    PanelShell(modifier = modifier) {
+        SectionTitle("Persona Core", Cyan)
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            PersonaMode("Spark", selected = true, modifier = Modifier.weight(1f))
+            PersonaMode("Glow", selected = false, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(14.dp))
+        Readout("Active", state.activePersona, Mint)
+        Spacer(Modifier.height(10.dp))
+        Readout("State", state.robotState, Cyan)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "> energetic / curious / high-frequency responses",
+            color = Muted,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            lineHeight = 16.sp,
+        )
+    }
+}
+
+@Composable
+private fun DirectivePanel(modifier: Modifier) {
+    PanelShell(modifier = modifier) {
+        SectionTitle("Directives", Mint)
+        Spacer(Modifier.height(14.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            DirectiveItem("Initialize greeting")
+            DirectiveItem("Environmental scan")
+            DirectiveItem("Diagnostic mode")
+            DirectiveItem("Low power sleep")
+        }
+    }
+}
+
+@Composable
 private fun StagePanel(state: CompanionUiState, modifier: Modifier, compact: Boolean = false) {
     PanelShell(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -339,7 +415,6 @@ private fun EndpointRegistry(state: CompanionUiState, modifier: Modifier) {
             }
         }
         Spacer(Modifier.height(14.dp))
-        SecurityPanel(Modifier.fillMaxWidth())
     }
 }
 
@@ -394,9 +469,9 @@ private fun BrainPanel(
         SectionTitle(state.brainService.panelTitle, Purple)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxWidth()) {
-            Readout("Service", state.brainService.status, if (state.brainService.running) Mint else Amber)
-            Readout("PID", state.brainService.pid, Muted)
-            Readout("Endpoint", state.brainService.endpoint, Cyan)
+            Readout("Service", state.brainService.status, if (state.brainService.running) Mint else Amber, Modifier.weight(0.9f))
+            Readout("PID", state.brainService.pid, Muted, Modifier.weight(0.7f))
+            Readout("Endpoint", state.brainService.endpoint, Cyan, Modifier.weight(1.35f))
         }
         Spacer(Modifier.height(12.dp))
         Readout("Owner", state.brainOwner, Cyan)
@@ -511,10 +586,18 @@ private fun StatusPill(text: String, color: Color, background: Color, modifier: 
 }
 
 @Composable
-private fun Readout(label: String, value: String, accent: Color) {
-    Column {
+private fun Readout(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
         Text(label.uppercase(), color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-        Text(value, color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(
+            value,
+            color = accent,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -533,6 +616,46 @@ private fun SmallCommand(text: String, filled: Boolean = false, onClick: () -> U
         OutlinedButton(onClick = onClick, shape = RoundedCornerShape(8.dp), colors = colors) {
             Text(text, fontSize = 12.sp)
         }
+    }
+}
+
+@Composable
+private fun PersonaMode(text: String, selected: Boolean, modifier: Modifier = Modifier) {
+    Surface(
+        color = if (selected) Color(0xFF092832) else Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Cyan else Line),
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier,
+    ) {
+        Text(
+            text.uppercase(),
+            color = if (selected) Ink else Muted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun DirectiveItem(text: String) {
+    OutlinedButton(
+        onClick = {},
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink, containerColor = Console),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text.uppercase(),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
