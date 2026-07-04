@@ -167,6 +167,10 @@ $requiredFiles = @(
   "bridge/test_lan_service.py",
   "bridge/lan_smoke.py",
   "bridge/test_lan_smoke.py",
+  "bridge/android_companion_probe.py",
+  "bridge/test_android_companion_probe.py",
+  "bridge/android_udp_beacon_probe.py",
+  "bridge/test_android_udp_beacon_probe.py",
   "bridge/test_android_dashboard_media_gate.py",
   "bridge/hardware_simulator.py",
   "bridge/test_hardware_simulator.py",
@@ -415,6 +419,10 @@ $requiredFiles = @(
   "provenance/bridge/test_lan_service.py",
   "provenance/bridge/lan_smoke.py",
   "provenance/bridge/test_lan_smoke.py",
+  "provenance/bridge/android_companion_probe.py",
+  "provenance/bridge/test_android_companion_probe.py",
+  "provenance/bridge/android_udp_beacon_probe.py",
+  "provenance/bridge/test_android_udp_beacon_probe.py",
   "provenance/bridge/test_android_dashboard_media_gate.py",
   "provenance/bridge/hardware_simulator.py",
   "provenance/bridge/test_hardware_simulator.py",
@@ -514,6 +522,20 @@ $androidDashboardMediaGateTestText = Get-Content -LiteralPath (Join-PackagePath 
 foreach ($pattern in @("AndroidDashboardMediaGateTest", "check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "test_android_probe_requires_dashboard_media_notes", "test_matching_dashboard_media_notes_clear_android_dashboard_finding", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "media_manifest.json is missing the connected-dashboard", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state")) {
   if ($androidDashboardMediaGateTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_android_dashboard_media_gate.py missing dashboard media gate coverage: $pattern"
+  }
+}
+
+$androidCompanionProbeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_companion_probe.py") -Raw
+foreach ($pattern in @("AndroidCompanionProbeTest", "test_parse_requires_ws_bridge_url", "test_probe_accepts_android_endpoint_hello", "test_probe_rejects_non_android_endpoint_by_default", "endpoint_kind", "android", "expected endpoint_kind android")) {
+  if ($androidCompanionProbeTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_companion_probe.py missing Android companion probe test coverage: $pattern"
+  }
+}
+
+$androidUdpBeaconProbeTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_udp_beacon_probe.py") -Raw
+foreach ($pattern in @("AndroidUdpBeaconProbeTest", "test_validate_accepts_android_beacon", "test_validate_rejects_wrong_kind_and_port", "test_probe_listens_for_one_beacon", "stackchan_bridge_beacon", "expected bridge port 8765", "endpoint_kind android")) {
+  if ($androidUdpBeaconProbeTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_android_udp_beacon_probe.py missing Android UDP beacon probe test coverage: $pattern"
   }
 }
 
