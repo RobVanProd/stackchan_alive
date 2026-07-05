@@ -75,9 +75,13 @@ current v1 companion branch.
   tokens, and `wifi clear`. The command preserves case-sensitive credentials, does not print
   the password, and restarts the bridge client without reflashing. Persistent consumer-grade
   robot-side credential entry plus hardware proof remain open.
-- G7 Play submission remains pending on upload signing, developer verification, privacy
-  policy URL, data-safety answers, foreground-service declaration evidence, screenshots,
-  and closed testing.
+- G7 Play submission remains pending on upload signing, developer verification,
+  a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
+  Source-side Play prep now includes a policy/data-safety declaration draft for
+  `dev.stackchan.companion`, foreground-service `connectedDevice` justification,
+  microphone/battery/network permission review, and improved Play evidence packet
+  templates. Those answers still must be reviewed against the exact uploaded build
+  before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.

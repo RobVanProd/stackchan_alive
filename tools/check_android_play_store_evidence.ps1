@@ -141,14 +141,16 @@ tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-st
   @"
 # Data Safety Review
 
-Complete before Play submission.
+Complete before Play submission. Start from
+``docs/ANDROID_PLAY_POLICY_DECLARATIONS.md`` and verify every answer against the
+uploaded build.
 
-- Network behavior:
-- Audio or microphone behavior:
-- Diagnostics/logging behavior:
-- User data collected:
-- User data shared:
-- Retention/deletion notes:
+- Network behavior: Local WebSocket bridge, mDNS/UDP discovery, no cloud endpoint controlled by the app.
+- Audio or microphone behavior: Explicit Push-to-talk uses Android SpeechRecognizer transcript capture; raw microphone audio is not stored or exported by app diagnostics.
+- Diagnostics/logging behavior: User-initiated diagnostics share sheet only; last text turn is redacted to presence-only; Wi-Fi provisioning uses placeholders.
+- User data collected: None collected by developer. Local-only saved robots, trusted endpoints, settings, model state, and diagnostics stay on device unless the user shares an export.
+- User data shared: None by the app except user-initiated Android share-sheet export.
+- Retention/deletion notes: Forget/Remove clear phone-side robot and trusted endpoint records; uninstall removes app-private stores; robot-side unpair remains firmware-managed.
 - Reviewer:
 - Review date:
 "@ | Set-Content -Path (Join-Path $EvidenceRoot "DATA_SAFETY_REVIEW.md") -Encoding UTF8
@@ -156,13 +158,16 @@ Complete before Play submission.
   @"
 # Policy Review
 
-Complete before Play submission.
+Complete before Play submission. Start from
+``docs/ANDROID_PLAY_POLICY_DECLARATIONS.md`` and verify every answer against the
+uploaded build.
 
-- Foreground service declaration:
-- Battery optimization request explanation:
-- Local-network/discovery explanation:
-- Notification behavior:
-- Target audience:
+- Foreground service declaration: Type ``connectedDevice``; hosts the user-visible local Stack-chan bridge while the phone is the active companion.
+- Battery optimization request explanation: Optional screen-off reliability prompt for robot bridge testing; not required for ordinary browsing.
+- Local-network/discovery explanation: INTERNET, ACCESS_NETWORK_STATE, and CHANGE_WIFI_MULTICAST_STATE support local LAN bridge, mDNS, UDP discovery, and manual URL pairing.
+- Notification behavior: Foreground service status notification for the active bridge on Android 13+.
+- Microphone behavior: RECORD_AUDIO is requested only for explicit Push-to-talk; denial records a not-sent mic message.
+- Target audience: Not directed to children; requires paired Stack-chan hardware for connected flows.
 - Reviewer:
 - Review date:
 "@ | Set-Content -Path (Join-Path $EvidenceRoot "POLICY_REVIEW.md") -Encoding UTF8

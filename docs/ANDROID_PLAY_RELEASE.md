@@ -71,6 +71,7 @@ Prepared source-controlled assets:
 - Play high-resolution icon: `docs/store-assets/play/icon-512.png`
 - Play feature graphic: `docs/store-assets/play/feature-graphic-1024x500.png`
 - Listing metadata: `fastlane/metadata/android/en-US/`
+- Play policy/data-safety declaration draft: `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md`
 
 Screenshots still need to be captured from the final phone build after physical
 robot validation, because the store screenshots should show a real connected
@@ -92,6 +93,11 @@ tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-st
 ```
 
 ## Manifest And Policy Review
+
+Use `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md` as the source-side draft for the
+Play Console Data safety form, privacy-policy page, foreground-service
+declaration, and permission review. Before upload, compare it against the exact
+release build and copy the final reviewed answers into the Play evidence packet.
 
 Before upload, confirm that each Android permission maps to an app behavior visible
 in the release:
