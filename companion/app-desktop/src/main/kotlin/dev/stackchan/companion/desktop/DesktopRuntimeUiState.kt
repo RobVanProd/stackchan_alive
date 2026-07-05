@@ -12,6 +12,8 @@ import dev.stackchan.companion.ui.ConversationUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.DiagnosticsSurfaceUiState
 import dev.stackchan.companion.ui.EndpointRow
+import dev.stackchan.companion.ui.ModelAssetUiState
+import dev.stackchan.companion.ui.PersonaLibraryUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.SettingsSurfaceUiState
 import dev.stackchan.companion.ui.TelemetryReading
@@ -26,7 +28,9 @@ suspend fun DesktopCompanionRuntime.toCompanionUiState(): CompanionUiState {
     val session = sessionSnapshot()
     val diagnostics = diagnosticsSnapshot(domains = listOf("bridge", "audio", "model", "firmware", "battery"))
     val settings = settingsSnapshot()
-    return session.toCompanionUiState(runtime, diagnostics, settings)
+    val modelAsset = modelAssetStatus()
+    val personaLibrary = personaLibraryStatus()
+    return session.toCompanionUiState(runtime, diagnostics, settings, modelAsset, personaLibrary)
 }
 
 fun desktopStartingUiState(): CompanionUiState =
@@ -43,6 +47,8 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
     runtime: DesktopCompanionRuntimeSnapshot,
     diagnostics: DiagnosticsSnapshot,
     settings: SettingsSnapshot,
+    modelAsset: DesktopModelAssetStatus,
+    personaLibrary: DesktopPersonaLibraryStatus,
 ): CompanionUiState {
     val robotReady = connected && robotHelloReceived
     val connection = if (robotReady) {
@@ -88,6 +94,8 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         settingsSurface = settings.toSettingsSurface(),
         diagnosticsSurface = diagnostics.toDiagnosticsSurface(),
         handoffSurface = toHandoffSurface(owner, diagnostics),
+        modelAsset = modelAsset.toModelAssetSurface(diagnostics),
+        personaLibrary = settings.toPersonaLibrarySurface(personaLibrary),
         robotSetup = RobotSetupUiState(
             primaryBridgeUrl = "ws://${runtime.host}:${runtime.port}/bridge",
             serviceRunning = runtime.brainSupervisor.running || runtime.mdnsAdvertised,
@@ -101,6 +109,47 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         endpoints = listOf(robotEndpoint, desktopEndpoint),
     )
 }
+
+private fun DesktopModelAssetStatus.toModelAssetSurface(diagnostics: DiagnosticsSnapshot): ModelAssetUiState {
+    val profile = diagnostics.model?.stringValue("profile")?.takeIf { it.isNotBlank() } ?: "fake"
+    val runner = diagnostics.model?.stringValue("runner_status")?.takeIf { it.isNotBlank() } ?: "deterministic_fake"
+    val downloadStatus = when {
+        downloaded -> "Downloaded and cached on this computer."
+        downloadInProgress -> "Download running for the LiteRT-LM Gemma-4-E2B provider asset."
+        else -> "Download required for Mobile Brain parity. Uses the LiteRT-LM Gemma-4-E2B provider asset."
+    }
+    val loadStatus = when {
+        loaded -> "Loaded for local Mobile Brain routing."
+        downloaded -> "Downloaded; tap Load before using this model."
+        else -> "Not loaded; current runner profile remains $profile / $runner."
+    }
+    return ModelAssetUiState(
+        modelId = "Gemma-4-E2B",
+        runtime = "LiteRT-LM",
+        sizeLabel = "2.58 GB",
+        sourceLabel = "Google AI Edge LiteRT-LM model card",
+        sourceUrl = "https://ai.google.dev/edge/litert-lm/models/gemma-4",
+        localPath = localPath,
+        downloadStatus = downloadStatus,
+        loadStatus = loadStatus,
+        settingsSummary = "Settings: Gemma-4-E2B, GPU preferred with CPU fallback, no cloud fallback, local prompts only.",
+        downloadEnabled = !downloaded && !downloadInProgress,
+        loadEnabled = downloaded && !loaded,
+        ejectEnabled = loaded,
+        settingsEnabled = downloaded,
+    )
+}
+
+private fun SettingsSnapshot.toPersonaLibrarySurface(status: DesktopPersonaLibraryStatus): PersonaLibraryUiState =
+    PersonaLibraryUiState(
+        activePersona = settings.stringValue("persona", "active", "spark"),
+        installedPersonas = status.installedPersonas,
+        storageLabel = "Repository personas directory plus future imported packs",
+        importStatus = status.importStatus,
+        exportStatus = status.exportStatus,
+        importEnabled = true,
+        exportEnabled = settings.stringValue("persona", "active", "spark") in status.installedPersonas,
+    )
 
 private fun SettingsSnapshot.toSettingsSurface(): SettingsSurfaceUiState =
     SettingsSurfaceUiState(

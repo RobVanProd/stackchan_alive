@@ -17,12 +17,16 @@ current v1 companion branch.
   robot-gated text-turn path. Target-phone STT behavior, denial/retry UX, and physical robot
   transcript evidence still need to be captured before G1 is complete.
 - G2 real Mobile Brain Mode is still open. The current text-turn and audio-turn path uses
-  deterministic fake output, not Android STT, LiteRT-LM, or Android TTS.
+  deterministic fake output, not Android STT, LiteRT-LM, or Android TTS. Android and desktop
+  now expose a Gemma-4-E2B LiteRT-LM model asset panel with working download/cache,
+  load/eject, and settings entry points. The remaining G2 gap is real-device download proof,
+  LiteRT runtime inference wiring, benchmark evidence, and robot audio/TTS validation.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially
   closed. Android and desktop now expose user-facing settings, diagnostics, persona, and
   handoff status panels from the settings repository, diagnostics snapshot, and live bridge
   state. Writes, persona switching, and manual brain claim/release remain locked until
-  robot round-trip evidence exists.
+  robot round-trip evidence exists. Android and desktop now support persona import/export
+  through platform file pickers using validated `stackchan.persona-pack.v1` zip files.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, shared UI defaults no longer show invented battery/temperature/firmware values,
   heartbeat is now an honest bridge status instead of a fake millisecond value, and audio
@@ -55,4 +59,5 @@ current v1 companion branch.
 2. Finish G3 with settings writes, persona switching, and manual brain handoff round-trip evidence.
 3. Finish G5 with QR/short-code robot-side trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
-5. Coordinate G6 runtime Wi-Fi provisioning with firmware.
+5. Implement and validate Gemma-4-E2B model download/load/eject plus persona import/export.
+6. Coordinate G6 runtime Wi-Fi provisioning with firmware.

@@ -8,6 +8,9 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.stackchan.companion.core.CompanionIdentity
 import dev.stackchan.companion.ui.CompanionConsole
+import java.awt.FileDialog
+import java.awt.Frame
+import java.nio.file.Path
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -42,6 +45,35 @@ fun main() {
                         runCatching { runtime.exportDiagnosticsEvidenceFile() }
                     }
                 },
+                onDownloadModel = {
+                    scope.launch {
+                        runCatching { runtime.downloadGemmaModel() }
+                    }
+                },
+                onLoadModel = {
+                    runCatching { runtime.loadGemmaModel() }
+                },
+                onEjectModel = {
+                    runCatching { runtime.ejectGemmaModel() }
+                },
+                onModelSettings = {
+                    runCatching { runtime.modelAssetStatus() }
+                },
+                onImportPersona = {
+                    choosePersonaImportZip()?.let { input ->
+                        scope.launch {
+                            runCatching { runtime.importPersonaZip(input) }
+                        }
+                    }
+                },
+                onExportPersona = {
+                    val activePersona = uiState.value.personaLibrary.activePersona
+                    choosePersonaExportZip("${activePersona}-persona.zip")?.let { output ->
+                        scope.launch {
+                            runCatching { runtime.exportPersonaZip(activePersona, output) }
+                        }
+                    }
+                },
                 onRunC6Rehearsal = {
                     scope.launch {
                         runCatching { runtime.runC6GuiRehearsal() }
@@ -55,4 +87,22 @@ fun main() {
             )
         }
     }
+}
+
+private fun choosePersonaImportZip(): Path? {
+    val dialog = FileDialog(null as Frame?, "Import Stackchan persona", FileDialog.LOAD)
+    dialog.file = "*.zip"
+    dialog.isVisible = true
+    val file = dialog.file ?: return null
+    val directory = dialog.directory ?: return null
+    return Path.of(directory, file)
+}
+
+private fun choosePersonaExportZip(defaultFileName: String): Path? {
+    val dialog = FileDialog(null as Frame?, "Export Stackchan persona", FileDialog.SAVE)
+    dialog.file = defaultFileName
+    dialog.isVisible = true
+    val file = dialog.file ?: return null
+    val directory = dialog.directory ?: return null
+    return Path.of(directory, file)
 }

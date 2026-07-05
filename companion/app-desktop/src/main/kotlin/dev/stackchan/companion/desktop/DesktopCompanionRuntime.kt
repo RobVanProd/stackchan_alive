@@ -16,9 +16,19 @@ import dev.stackchan.companion.core.SettingsSnapshot
 import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.TrustedEndpointFileStore
 import dev.stackchan.companion.core.defaultDesktopEndpointHello
+import java.io.ByteArrayOutputStream
 import java.net.InetAddress
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import kotlinx.serialization.json.JsonObject
 
 data class DesktopCompanionRuntimeConfig(
@@ -48,6 +58,19 @@ data class DesktopCompanionRuntimeSnapshot(
     val mdnsError: String = "",
 )
 
+data class DesktopModelAssetStatus(
+    val localPath: String,
+    val downloaded: Boolean,
+    val loaded: Boolean,
+    val downloadInProgress: Boolean = false,
+)
+
+data class DesktopPersonaLibraryStatus(
+    val installedPersonas: List<String>,
+    val importStatus: String,
+    val exportStatus: String,
+)
+
 class DesktopCompanionRuntime(
     private val config: DesktopCompanionRuntimeConfig = DesktopCompanionRuntimeConfig(),
 ) : AutoCloseable {
@@ -62,6 +85,8 @@ class DesktopCompanionRuntime(
     private var c6RehearsalPath: Path? = null
     private var c6RehearsalError: String = ""
     private var c6RehearsalRunning: Boolean = false
+    @Volatile
+    private var modelDownloadInProgress: Boolean = false
 
     fun start(): DesktopCompanionRuntime {
         check(server == null) { "desktop companion runtime already started" }
@@ -144,6 +169,100 @@ class DesktopCompanionRuntime(
         requestRouter?.handle(SettingsGet(domains = domains)) as? SettingsSnapshot
             ?: SettingsSnapshot(version = 1, settings = JsonObject(emptyMap()))
 
+    fun modelAssetStatus(): DesktopModelAssetStatus {
+        val file = gemmaModelFile()
+        return DesktopModelAssetStatus(
+            localPath = file.toString(),
+            downloaded = Files.isRegularFile(file) && Files.size(file) > 0,
+            loaded = Files.isRegularFile(gemmaLoadedMarker()) && Files.isRegularFile(file) && Files.size(file) > 0,
+            downloadInProgress = modelDownloadInProgress,
+        )
+    }
+
+    fun downloadGemmaModel(): DesktopModelAssetStatus {
+        check(!modelDownloadInProgress) { "Gemma-4-E2B download is already running." }
+        modelDownloadInProgress = true
+        val file = gemmaModelFile()
+        return try {
+            Files.createDirectories(file.parent)
+            val temp = file.resolveSibling("${file.fileName}.tmp")
+            val request = HttpRequest.newBuilder(URI.create(GEMMA_LITERTLM_URL))
+                .GET()
+                .build()
+            val response = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .build()
+                .send(request, HttpResponse.BodyHandlers.ofFile(temp))
+            check(response.statusCode() in 200..299) {
+                "Gemma-4-E2B download failed with HTTP ${response.statusCode()}"
+            }
+            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
+            Files.deleteIfExists(gemmaLoadedMarker())
+            modelAssetStatus()
+        } finally {
+            modelDownloadInProgress = false
+        }
+    }
+
+    fun loadGemmaModel(): DesktopModelAssetStatus {
+        val status = modelAssetStatus()
+        require(status.downloaded) { "Gemma-4-E2B model is not downloaded yet." }
+        Files.createDirectories(gemmaLoadedMarker().parent)
+        Files.writeString(gemmaLoadedMarker(), "loaded\n")
+        return modelAssetStatus()
+    }
+
+    fun ejectGemmaModel(): DesktopModelAssetStatus {
+        Files.deleteIfExists(gemmaLoadedMarker())
+        return modelAssetStatus()
+    }
+
+    fun personaLibraryStatus(): DesktopPersonaLibraryStatus {
+        val imported = importedPersonaIds()
+        return DesktopPersonaLibraryStatus(
+            installedPersonas = (BUNDLED_PERSONAS + imported).distinct().sorted(),
+            importStatus = "Ready to import stackchan.persona-pack.v1 zip files.",
+            exportStatus = "Ready to export active persona pack zip.",
+        )
+    }
+
+    fun importPersonaZip(input: Path): DesktopPersonaLibraryStatus {
+        val bytes = Files.readAllBytes(input)
+        val personaId = validatePersonaZip(bytes)
+        val destination = importedPersonaFile(personaId)
+        Files.createDirectories(destination.parent)
+        Files.write(destination, bytes)
+        return personaLibraryStatus().copy(importStatus = "Imported persona `$personaId`.")
+    }
+
+    fun exportPersonaZip(personaId: String, output: Path): DesktopPersonaLibraryStatus {
+        val normalized = personaId.sanitizedPersonaId()
+        val imported = importedPersonaFile(normalized)
+        output.toAbsolutePath().parent?.let { Files.createDirectories(it) }
+        if (Files.isRegularFile(imported)) {
+            Files.copy(imported, output, StandardCopyOption.REPLACE_EXISTING)
+            return personaLibraryStatus().copy(exportStatus = "Exported imported persona `$normalized`.")
+        }
+        require(normalized in BUNDLED_PERSONAS) { "Persona `$personaId` is not installed." }
+        val personaDir = defaultRepoRoot().resolve("personas").resolve(normalized)
+        require(Files.isRegularFile(personaDir.resolve("pack.yaml"))) {
+            "Bundled persona `$normalized` is missing pack.yaml."
+        }
+        ZipOutputStream(Files.newOutputStream(output)).use { zip ->
+            Files.walk(personaDir).use { paths ->
+                paths
+                    .filter { Files.isRegularFile(it) }
+                    .forEach { file ->
+                        val entryName = "$normalized/${personaDir.relativize(file).toString().replace('\\', '/')}"
+                        zip.putNextEntry(ZipEntry(entryName))
+                        Files.copy(file, zip)
+                        zip.closeEntry()
+                    }
+            }
+        }
+        return personaLibraryStatus().copy(exportStatus = "Exported bundled persona `$normalized`.")
+    }
+
     fun startBrainService(): DesktopBrainSupervisorSnapshot =
         brainSupervisor.start().snapshot()
 
@@ -188,6 +307,28 @@ class DesktopCompanionRuntime(
         }
     }
 
+    private fun gemmaModelFile(): Path =
+        config.storageDir.resolve("models").resolve(GEMMA_MODEL_FILE)
+
+    private fun gemmaLoadedMarker(): Path =
+        config.storageDir.resolve("models").resolve(".gemma-4-e2b.loaded")
+
+    private fun importedPersonaFile(personaId: String): Path =
+        config.storageDir.resolve("personas").resolve("imported").resolve("${personaId.sanitizedPersonaId()}.zip")
+
+    private fun importedPersonaIds(): List<String> {
+        val directory = config.storageDir.resolve("personas").resolve("imported")
+        if (!Files.isDirectory(directory)) {
+            return emptyList()
+        }
+        return Files.list(directory).use { paths ->
+            paths
+                .filter { Files.isRegularFile(it) && it.fileName.toString().lowercase(Locale.US).endsWith(".zip") }
+                .map { it.fileName.toString().removeSuffix(".zip").sanitizedPersonaId() }
+                .toList()
+        }
+    }
+
     override fun close() {
         brainSupervisor.close()
         registration?.close()
@@ -218,3 +359,37 @@ private fun defaultMdnsAddress(host: String): InetAddress =
         } else {
             InetAddress.getLocalHost()
         }
+
+private const val GEMMA_MODEL_FILE = "gemma-4-E2B-it.litertlm"
+private const val GEMMA_LITERTLM_URL =
+    "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+private val BUNDLED_PERSONAS = listOf("spark", "glow")
+
+private fun validatePersonaZip(bytes: ByteArray): String {
+    val packYaml = ZipInputStream(bytes.inputStream()).use { zip ->
+        generateSequence { zip.nextEntry }
+            .firstOrNull { it.name.endsWith("pack.yaml") }
+            ?.let {
+                val out = ByteArrayOutputStream()
+                zip.copyTo(out)
+                out.toString(Charsets.UTF_8.name())
+            }
+    } ?: error("Persona zip must contain pack.yaml.")
+    require(packYaml.contains("schema: stackchan.persona-pack.v1")) {
+        "Persona pack schema must be stackchan.persona-pack.v1."
+    }
+    val id = packYaml.lineSequence()
+        .firstOrNull { it.trimStart().startsWith("id:") }
+        ?.substringAfter(":")
+        ?.trim()
+        ?.trim('"', '\'')
+        .orEmpty()
+        .sanitizedPersonaId()
+    require(id.isNotBlank()) { "Persona pack id is required." }
+    return id
+}
+
+private fun String.sanitizedPersonaId(): String =
+    lowercase(Locale.US)
+        .filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+        .take(32)

@@ -67,6 +67,14 @@ bridge connection, settings round trip, handoff, and LiteRT-LM wrapper contract.
 speed is not accepted until it passes the same Character Lock benchmark and red-team gates as
 the PC path.
 
+The Mobile Brain setup surface must target `Gemma-4-E2B` for LiteRT-LM. Because the model is
+a multi-GB provider-hosted asset, Android must not pretend it is bundled in the APK. The app
+needs an explicit download button when the asset is missing, local-path and checksum status,
+load/eject controls, and model settings. The v1 app provides a basic in-app download/cache
+path through Android Download Manager, then allows loading and ejecting the local model
+asset. Real-device download completion, checksum provenance, LiteRT inference loading, and
+benchmark evidence remain required before Mobile Brain Mode is considered fully validated.
+
 The host bridge already accepts the core control messages described below. Firmware now has
 a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and
 endpoint-control adapter for endpoint hello, heartbeat, brain claim/release, owner status,
@@ -288,6 +296,8 @@ Minimum screens:
 - Brain: PC Brain Mode vs Mobile Brain Mode, active owner, model profile, runner status,
   handoff button.
 - Persona: active persona pack, installed packs, validation result, creator instructions link.
+- Persona library: import a validated persona pack and export the active persona pack on
+  Android and desktop, without including logs, transcripts, or private memory.
 - Voice: audition phrase, voice profile, volume, TTS/RVC status, provenance warning.
 - Settings: display, motion-safe controls, bridge policy, privacy/memory reset.
 - Diagnostics: logs, heartbeat state, audio stream counters, model latency, export evidence.

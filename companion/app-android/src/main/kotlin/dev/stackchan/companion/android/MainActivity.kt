@@ -10,7 +10,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +36,8 @@ import dev.stackchan.companion.ui.ConversationUiState
 import dev.stackchan.companion.ui.DiagnosticsSurfaceUiState
 import dev.stackchan.companion.ui.DiagnosticsExportUiState
 import dev.stackchan.companion.ui.EndpointRow
+import dev.stackchan.companion.ui.ModelAssetUiState
+import dev.stackchan.companion.ui.PersonaLibraryUiState
 import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.SettingsSurfaceUiState
@@ -91,6 +95,11 @@ class MainActivity : ComponentActivity() {
                     ),
                 )
             }
+            var modelAssetStatus by remember { mutableStateOf(stores.modelAssetStatus()) }
+            var personaLibraryStatus by remember { mutableStateOf(stores.personaLibraryStatus()) }
+            var pendingPersonaExportId by remember {
+                mutableStateOf(settingsRepository.snapshot().settings.stringValue("persona", "active", "spark"))
+            }
             var pushToTalkStatus by remember { mutableStateOf("Microphone turns use Android speech recognition.") }
             val speechController = remember {
                 AndroidSpeechTurnController(applicationContext).also {
@@ -98,6 +107,41 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val coroutineScope = rememberCoroutineScope()
+            val personaImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri == null) {
+                    return@rememberLauncherForActivityResult
+                }
+                runCatching {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        stores.importPersonaZip(input)
+                    } ?: error("Could not open persona zip.")
+                }.onSuccess { status ->
+                    personaLibraryStatus = status
+                    Toast.makeText(this@MainActivity, status.importStatus, Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    personaLibraryStatus = personaLibraryStatus.copy(
+                        importStatus = "Import failed: ${error.message ?: error.javaClass.simpleName}",
+                    )
+                }
+            }
+            val personaExportLauncher =
+                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+                    if (uri == null) {
+                        return@rememberLauncherForActivityResult
+                    }
+                    runCatching {
+                        contentResolver.openOutputStream(uri)?.use { output ->
+                            stores.exportPersonaZip(pendingPersonaExportId, output)
+                        } ?: error("Could not create persona zip.")
+                    }.onSuccess { status ->
+                        personaLibraryStatus = status
+                        Toast.makeText(this@MainActivity, status.exportStatus, Toast.LENGTH_SHORT).show()
+                    }.onFailure { error ->
+                        personaLibraryStatus = personaLibraryStatus.copy(
+                            exportStatus = "Export failed: ${error.message ?: error.javaClass.simpleName}",
+                        )
+                    }
+                }
             LaunchedEffect(
                 bridgeStatus.robotConnected,
                 bridgeStatus.robotId,
@@ -145,6 +189,8 @@ class MainActivity : ComponentActivity() {
                     diagnosticsExport = diagnosticsExport,
                     pushToTalkAvailable = speechController.isAvailable(),
                     pushToTalkStatus = pushToTalkStatus,
+                    modelAssetStatus = modelAssetStatus,
+                    personaLibraryStatus = personaLibraryStatus,
                 ),
                 onStartBrain = { startBridgeServiceOnce() },
                 onStopBrain = { stopBridgeService() },
@@ -160,6 +206,49 @@ class MainActivity : ComponentActivity() {
                 },
                 onSendTextTurn = { text ->
                     submitTurn(text)
+                },
+                onDownloadModel = {
+                    runCatching { stores.startGemmaModelDownload() }
+                        .onSuccess { status ->
+                            modelAssetStatus = status
+                            Toast.makeText(this@MainActivity, "Gemma-4-E2B download started.", Toast.LENGTH_SHORT)
+                                .show()
+                        }
+                        .onFailure { error ->
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Model download failed: ${error.message ?: error.javaClass.simpleName}",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                },
+                onLoadModel = {
+                    runCatching { stores.loadGemmaModel() }
+                        .onSuccess { status -> modelAssetStatus = status }
+                        .onFailure { error ->
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Load failed: ${error.message ?: error.javaClass.simpleName}",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                },
+                onEjectModel = {
+                    modelAssetStatus = stores.ejectGemmaModel()
+                },
+                onModelSettings = {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Gemma-4-E2B uses LiteRT-LM, local prompts, GPU preferred with CPU fallback.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                },
+                onImportPersona = {
+                    personaImportLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                },
+                onExportPersona = {
+                    pendingPersonaExportId = settingsRepository.snapshot().settings.stringValue("persona", "active", "spark")
+                    personaExportLauncher.launch("${pendingPersonaExportId}-persona.zip")
                 },
                 onPushToTalk = {
                     if (!bridgeStatus.robotConnected) {
@@ -330,6 +419,18 @@ internal fun androidCompanionUiState(
     diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     pushToTalkAvailable: Boolean = false,
     pushToTalkStatus: String = "",
+    modelAssetStatus: AndroidModelAssetStatus = AndroidModelAssetStatus(
+        localPath = "Android app model cache: missing",
+        downloaded = false,
+        loaded = false,
+        downloadId = null,
+        downloadInProgress = false,
+    ),
+    personaLibraryStatus: AndroidPersonaLibraryStatus = AndroidPersonaLibraryStatus(
+        installedPersonas = listOf("spark", "glow"),
+        importStatus = "Ready to import stackchan.persona-pack.v1 zip files.",
+        exportStatus = "Ready to export active persona pack zip.",
+    ),
 ): CompanionUiState {
     val settingsSurface = androidSettingsSurface(settingsRepository)
     return CompanionUiState(
@@ -357,6 +458,8 @@ internal fun androidCompanionUiState(
         settingsSurface = settingsSurface,
         diagnosticsSurface = androidDiagnosticsSurface(settingsRepository, trustedEndpoints, bridgeStatus),
         handoffSurface = androidHandoffSurface(endpointHello, trustedEndpoints, bridgeStatus),
+        modelAsset = androidModelAssetSurface(modelAssetStatus),
+        personaLibrary = androidPersonaLibrarySurface(settingsSurface, personaLibraryStatus),
         robotSetup = androidRobotSetup(
             endpointHello = endpointHello,
             bridgeStatus = bridgeStatus,
@@ -374,6 +477,48 @@ internal fun androidCompanionUiState(
         endpoints = androidEndpointRows(endpointHello, trustedEndpoints, savedRobots, bridgeStatus),
     )
 }
+
+private fun androidModelAssetSurface(status: AndroidModelAssetStatus): ModelAssetUiState {
+    val downloadStatus = when {
+        status.downloaded -> "Downloaded and cached on this device."
+        status.downloadInProgress -> "Download running in Android Download Manager: ${status.downloadId}."
+        else -> "Download required for Mobile Brain. Uses the LiteRT-LM Gemma-4-E2B provider asset."
+    }
+    val loadStatus = when {
+        status.loaded -> "Loaded for local Mobile Brain routing."
+        status.downloaded -> "Downloaded; tap Load before using this model."
+        else -> "Not loaded; deterministic fake runner remains active until the model is downloaded."
+    }
+    return ModelAssetUiState(
+        modelId = "Gemma-4-E2B",
+        runtime = "LiteRT-LM",
+        sizeLabel = "2.58 GB",
+        sourceLabel = "Google AI Edge LiteRT-LM model card",
+        sourceUrl = "https://ai.google.dev/edge/litert-lm/models/gemma-4",
+        localPath = status.localPath,
+        downloadStatus = downloadStatus,
+        loadStatus = loadStatus,
+        settingsSummary = "Settings: Gemma-4-E2B, GPU preferred with CPU fallback, no cloud fallback, local prompts only.",
+        downloadEnabled = !status.downloaded && !status.downloadInProgress,
+        loadEnabled = status.downloaded && !status.loaded,
+        ejectEnabled = status.loaded,
+        settingsEnabled = status.downloaded,
+    )
+}
+
+private fun androidPersonaLibrarySurface(
+    settingsSurface: SettingsSurfaceUiState,
+    status: AndroidPersonaLibraryStatus,
+): PersonaLibraryUiState =
+    PersonaLibraryUiState(
+        activePersona = settingsSurface.activePersona,
+        installedPersonas = status.installedPersonas,
+        storageLabel = "Android app persona store plus bundled packs",
+        importStatus = status.importStatus,
+        exportStatus = status.exportStatus,
+        importEnabled = true,
+        exportEnabled = settingsSurface.activePersona in status.installedPersonas,
+    )
 
 private fun androidHeartbeatStatus(bridgeStatus: AndroidBridgeRuntimeStatus): String =
     when {

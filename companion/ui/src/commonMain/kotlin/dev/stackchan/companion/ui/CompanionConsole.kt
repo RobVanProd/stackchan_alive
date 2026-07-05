@@ -86,6 +86,8 @@ data class CompanionUiState(
     val settingsSurface: SettingsSurfaceUiState = SettingsSurfaceUiState(),
     val diagnosticsSurface: DiagnosticsSurfaceUiState = DiagnosticsSurfaceUiState(),
     val handoffSurface: BrainHandoffUiState = BrainHandoffUiState(),
+    val modelAsset: ModelAssetUiState = ModelAssetUiState(),
+    val personaLibrary: PersonaLibraryUiState = PersonaLibraryUiState(),
     val diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     val c6Rehearsal: C6RehearsalUiState = C6RehearsalUiState(),
     val endpoints: List<EndpointRow> = listOf(
@@ -172,6 +174,32 @@ data class SettingsSurfaceUiState(
     val writesEnabled: Boolean = false,
 )
 
+data class ModelAssetUiState(
+    val modelId: String = "Gemma-4-E2B",
+    val runtime: String = "LiteRT-LM",
+    val sizeLabel: String = "2.58 GB",
+    val sourceLabel: String = "Google AI Edge / LiteRT-LM",
+    val sourceUrl: String = "https://ai.google.dev/edge/litert-lm/models/gemma-4",
+    val localPath: String = "Not downloaded",
+    val downloadStatus: String = "Required for Mobile Brain. Download Gemma-4-E2B after accepting the provider model terms.",
+    val loadStatus: String = "Not loaded; deterministic fake runner is active.",
+    val settingsSummary: String = "Target settings: GPU preferred, CPU fallback, no cloud fallback, raw prompts remain local.",
+    val downloadEnabled: Boolean = true,
+    val loadEnabled: Boolean = false,
+    val ejectEnabled: Boolean = false,
+    val settingsEnabled: Boolean = false,
+)
+
+data class PersonaLibraryUiState(
+    val activePersona: String = "spark",
+    val installedPersonas: List<String> = listOf("spark", "glow"),
+    val storageLabel: String = "Bundled persona packs",
+    val importStatus: String = "Import accepts a zip containing a stackchan.persona-pack.v1 pack.yaml.",
+    val exportStatus: String = "Export writes the active persona as a shareable zip without logs or private memory.",
+    val importEnabled: Boolean = true,
+    val exportEnabled: Boolean = true,
+)
+
 data class DiagnosticsSurfaceUiState(
     val protocol: String = "",
     val settingsVersion: String = "",
@@ -248,6 +276,12 @@ fun CompanionConsole(
     onForgetRobot: (String) -> Unit = {},
     onSendTextTurn: (String) -> Unit = {},
     onPushToTalk: () -> Unit = {},
+    onDownloadModel: () -> Unit = {},
+    onLoadModel: () -> Unit = {},
+    onEjectModel: () -> Unit = {},
+    onModelSettings: () -> Unit = {},
+    onImportPersona: () -> Unit = {},
+    onExportPersona: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -268,6 +302,12 @@ fun CompanionConsole(
                         onForgetRobot = onForgetRobot,
                         onSendTextTurn = onSendTextTurn,
                         onPushToTalk = onPushToTalk,
+                        onDownloadModel = onDownloadModel,
+                        onLoadModel = onLoadModel,
+                        onEjectModel = onEjectModel,
+                        onModelSettings = onModelSettings,
+                        onImportPersona = onImportPersona,
+                        onExportPersona = onExportPersona,
                     )
                 } else {
                     Column(
@@ -290,6 +330,12 @@ fun CompanionConsole(
                                 onForgetRobot = onForgetRobot,
                                 onSendTextTurn = onSendTextTurn,
                                 onPushToTalk = onPushToTalk,
+                                onDownloadModel = onDownloadModel,
+                                onLoadModel = onLoadModel,
+                                onEjectModel = onEjectModel,
+                                onModelSettings = onModelSettings,
+                                onImportPersona = onImportPersona,
+                                onExportPersona = onExportPersona,
                             )
                         } else {
                             TabletConsole(
@@ -303,6 +349,12 @@ fun CompanionConsole(
                                 onForgetRobot = onForgetRobot,
                                 onSendTextTurn = onSendTextTurn,
                                 onPushToTalk = onPushToTalk,
+                                onDownloadModel = onDownloadModel,
+                                onLoadModel = onLoadModel,
+                                onEjectModel = onEjectModel,
+                                onModelSettings = onModelSettings,
+                                onImportPersona = onImportPersona,
+                                onExportPersona = onExportPersona,
                             )
                         }
                         Footer()
@@ -326,6 +378,12 @@ private fun MobileConsole(
     onForgetRobot: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
     onPushToTalk: () -> Unit,
+    onDownloadModel: () -> Unit,
+    onLoadModel: () -> Unit,
+    onEjectModel: () -> Unit,
+    onModelSettings: () -> Unit,
+    onImportPersona: () -> Unit,
+    onExportPersona: () -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -356,6 +414,12 @@ private fun MobileConsole(
                     onRestartBrain = onRestartBrain,
                     onExportDiagnostics = onExportDiagnostics,
                     onRunC6Rehearsal = onRunC6Rehearsal,
+                    onDownloadModel = onDownloadModel,
+                    onLoadModel = onLoadModel,
+                    onEjectModel = onEjectModel,
+                    onModelSettings = onModelSettings,
+                    onImportPersona = onImportPersona,
+                    onExportPersona = onExportPersona,
                 )
                 MobileSection.Nodes -> EndpointRegistry(
                     state = state,
@@ -385,6 +449,12 @@ private fun WideConsole(
     onForgetRobot: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
     onPushToTalk: () -> Unit,
+    onDownloadModel: () -> Unit,
+    onLoadModel: () -> Unit,
+    onEjectModel: () -> Unit,
+    onModelSettings: () -> Unit,
+    onImportPersona: () -> Unit,
+    onExportPersona: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -430,6 +500,12 @@ private fun WideConsole(
                 onRestartBrain = onRestartBrain,
                 onExportDiagnostics = onExportDiagnostics,
                 onRunC6Rehearsal = onRunC6Rehearsal,
+                onDownloadModel = onDownloadModel,
+                onLoadModel = onLoadModel,
+                onEjectModel = onEjectModel,
+                onModelSettings = onModelSettings,
+                onImportPersona = onImportPersona,
+                onExportPersona = onExportPersona,
             )
         }
     }
@@ -447,6 +523,12 @@ private fun TabletConsole(
     onForgetRobot: (String) -> Unit,
     onSendTextTurn: (String) -> Unit,
     onPushToTalk: () -> Unit,
+    onDownloadModel: () -> Unit,
+    onLoadModel: () -> Unit,
+    onEjectModel: () -> Unit,
+    onModelSettings: () -> Unit,
+    onImportPersona: () -> Unit,
+    onExportPersona: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -484,6 +566,12 @@ private fun TabletConsole(
                 onRestartBrain = onRestartBrain,
                 onExportDiagnostics = onExportDiagnostics,
                 onRunC6Rehearsal = onRunC6Rehearsal,
+                onDownloadModel = onDownloadModel,
+                onLoadModel = onLoadModel,
+                onEjectModel = onEjectModel,
+                onModelSettings = onModelSettings,
+                onImportPersona = onImportPersona,
+                onExportPersona = onExportPersona,
             )
             SecurityPanel(Modifier.fillMaxWidth())
         }
@@ -985,6 +1073,12 @@ private fun BrainPanel(
     onRestartBrain: () -> Unit = {},
     onExportDiagnostics: () -> Unit = {},
     onRunC6Rehearsal: () -> Unit = {},
+    onDownloadModel: () -> Unit = {},
+    onLoadModel: () -> Unit = {},
+    onEjectModel: () -> Unit = {},
+    onModelSettings: () -> Unit = {},
+    onImportPersona: () -> Unit = {},
+    onExportPersona: () -> Unit = {},
 ) {
     PanelShell(modifier = modifier) {
         SectionTitle(state.brainService.panelTitle, Purple)
@@ -1048,6 +1142,20 @@ private fun BrainPanel(
         Spacer(Modifier.height(14.dp))
         SettingsSurfacePanel(state.settingsSurface)
         Spacer(Modifier.height(14.dp))
+        ModelAssetPanel(
+            model = state.modelAsset,
+            onDownloadModel = onDownloadModel,
+            onLoadModel = onLoadModel,
+            onEjectModel = onEjectModel,
+            onModelSettings = onModelSettings,
+        )
+        Spacer(Modifier.height(14.dp))
+        PersonaLibraryPanel(
+            personas = state.personaLibrary,
+            onImportPersona = onImportPersona,
+            onExportPersona = onExportPersona,
+        )
+        Spacer(Modifier.height(14.dp))
         HandoffSurfacePanel(state.handoffSurface)
         Spacer(Modifier.height(14.dp))
         DiagnosticsSurfacePanel(state.diagnosticsSurface)
@@ -1085,6 +1193,71 @@ private fun SettingsSurfacePanel(settings: SettingsSurfaceUiState) {
                 SmallCommand("Select persona", enabled = settings.writesEnabled)
                 SmallCommand("Save display", enabled = settings.writesEnabled)
                 SmallCommand("Privacy", enabled = settings.writesEnabled)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelAssetPanel(
+    model: ModelAssetUiState,
+    onDownloadModel: () -> Unit,
+    onLoadModel: () -> Unit,
+    onEjectModel: () -> Unit,
+    onModelSettings: () -> Unit,
+) {
+    Surface(
+        color = Console,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle("Mobile Model", Purple)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Model", model.modelId, Mint, Modifier.weight(1f))
+                Readout("Runtime", model.runtime, Cyan, Modifier.weight(0.8f))
+                Readout("Size", model.sizeLabel, Amber, Modifier.weight(0.7f))
+            }
+            Readout("Source", model.sourceLabel, Muted)
+            Readout("Local file", model.localPath, Muted)
+            Text(model.downloadStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            Text(model.loadStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            Text(model.settingsSummary, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallCommand("Download model", filled = true, enabled = model.downloadEnabled, onClick = onDownloadModel)
+                SmallCommand("Load", enabled = model.loadEnabled, onClick = onLoadModel)
+                SmallCommand("Eject", enabled = model.ejectEnabled, onClick = onEjectModel)
+                SmallCommand("Model settings", enabled = model.settingsEnabled, onClick = onModelSettings)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonaLibraryPanel(
+    personas: PersonaLibraryUiState,
+    onImportPersona: () -> Unit,
+    onExportPersona: () -> Unit,
+) {
+    Surface(
+        color = Console,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle("Personas", Mint)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Readout("Active", personas.activePersona, Mint, Modifier.weight(0.8f))
+                Readout("Installed", personas.installedPersonas.joinToString(", "), Cyan, Modifier.weight(1.2f))
+            }
+            Readout("Storage", personas.storageLabel, Muted)
+            Text(personas.importStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            Text(personas.exportStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallCommand("Import persona", filled = true, enabled = personas.importEnabled, onClick = onImportPersona)
+                SmallCommand("Export active", enabled = personas.exportEnabled, onClick = onExportPersona)
             }
         }
     }

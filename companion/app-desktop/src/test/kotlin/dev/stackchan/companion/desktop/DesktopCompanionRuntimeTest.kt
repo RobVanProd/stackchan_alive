@@ -16,12 +16,15 @@ import java.net.http.WebSocket
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -154,7 +157,81 @@ class DesktopCompanionRuntimeTest {
             assertEquals("Firmware", after.telemetry[3].label)
             assertEquals("bench-v1", after.telemetry[3].value)
             assertEquals("fake; no live meter", after.audioStatus)
+            assertEquals("Gemma-4-E2B", after.modelAsset.modelId)
+            assertEquals("LiteRT-LM", after.modelAsset.runtime)
+            assertTrue(after.modelAsset.loadStatus.contains("fake"))
+            assertTrue(after.modelAsset.downloadEnabled)
+            assertFalse(after.modelAsset.loadEnabled)
+            assertFalse(after.modelAsset.ejectEnabled)
+            assertEquals("spark", after.personaLibrary.activePersona)
+            assertTrue(after.personaLibrary.installedPersonas.contains("glow"))
+            assertTrue(after.personaLibrary.importStatus.contains("stackchan.persona-pack.v1"))
+            assertTrue(after.personaLibrary.importEnabled)
+            assertTrue(after.personaLibrary.exportEnabled)
             client.close()
+        }
+    }
+
+    @Test
+    fun runtimeTracksGemmaModelLoadAndEjectState() = runBlocking {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-model-assets"))
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+            val missing = runtime.toCompanionUiState()
+
+            assertTrue(missing.modelAsset.downloadEnabled)
+            assertFalse(missing.modelAsset.loadEnabled)
+
+            val modelFile = config.storageDir.resolve("models").resolve("gemma-4-E2B-it.litertlm")
+            Files.createDirectories(modelFile.parent)
+            Files.writeString(modelFile, "fake-litertlm-for-unit-test")
+            val loaded = runtime.loadGemmaModel()
+            val loadedUi = runtime.toCompanionUiState()
+
+            assertTrue(loaded.downloaded)
+            assertTrue(loaded.loaded)
+            assertFalse(loadedUi.modelAsset.downloadEnabled)
+            assertFalse(loadedUi.modelAsset.loadEnabled)
+            assertTrue(loadedUi.modelAsset.ejectEnabled)
+
+            val ejected = runtime.ejectGemmaModel()
+            val ejectedUi = runtime.toCompanionUiState()
+
+            assertTrue(ejected.downloaded)
+            assertFalse(ejected.loaded)
+            assertTrue(ejectedUi.modelAsset.loadEnabled)
+            assertFalse(ejectedUi.modelAsset.ejectEnabled)
+        }
+    }
+
+    @Test
+    fun runtimeImportsAndExportsPersonaPackZips() {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-persona-assets"))
+        val input = Files.createTempFile("stackchan-persona-import", ".zip")
+        ZipOutputStream(Files.newOutputStream(input)).use { zip ->
+            zip.putNextEntry(ZipEntry("nova/pack.yaml"))
+            zip.write(
+                """
+                schema: stackchan.persona-pack.v1
+                id: nova
+                name: Nova
+                """.trimIndent().toByteArray(Charsets.UTF_8),
+            )
+            zip.closeEntry()
+        }
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+            val imported = runtime.importPersonaZip(input)
+            val exported = Files.createTempFile("stackchan-persona-export", ".zip")
+            val exportedStatus = runtime.exportPersonaZip("nova", exported)
+
+            assertTrue(imported.installedPersonas.contains("nova"))
+            assertTrue(imported.importStatus.contains("nova"))
+            assertTrue(Files.isRegularFile(exported))
+            assertTrue(Files.size(exported) > 0)
+            assertTrue(exportedStatus.exportStatus.contains("nova"))
         }
     }
 

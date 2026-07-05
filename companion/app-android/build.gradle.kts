@@ -51,6 +51,12 @@ android {
             signingConfig = signingConfigs.getByName(if (hasPlayReleaseSigning) "playRelease" else "debug")
         }
     }
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../personas")
+        }
+    }
 }
 
 dependencies {

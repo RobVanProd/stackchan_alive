@@ -508,6 +508,22 @@ class AndroidBridgeRuntimeStatusTest {
         assertFalse(uiState.settingsSurface.writesEnabled)
         assertTrue(uiState.settingsSurface.writeStatus.contains("settings_set"))
 
+        assertEquals("Gemma-4-E2B", uiState.modelAsset.modelId)
+        assertEquals("LiteRT-LM", uiState.modelAsset.runtime)
+        assertEquals("2.58 GB", uiState.modelAsset.sizeLabel)
+        assertTrue(uiState.modelAsset.sourceUrl.contains("ai.google.dev/edge/litert-lm/models/gemma-4"))
+        assertTrue(uiState.modelAsset.downloadStatus.contains("LiteRT-LM"))
+        assertTrue(uiState.modelAsset.downloadEnabled)
+        assertFalse(uiState.modelAsset.loadEnabled)
+        assertFalse(uiState.modelAsset.ejectEnabled)
+
+        assertEquals("spark", uiState.personaLibrary.activePersona)
+        assertTrue(uiState.personaLibrary.installedPersonas.contains("glow"))
+        assertTrue(uiState.personaLibrary.importStatus.contains("stackchan.persona-pack.v1"))
+        assertTrue(uiState.personaLibrary.exportStatus.contains("active persona pack"))
+        assertTrue(uiState.personaLibrary.importEnabled)
+        assertTrue(uiState.personaLibrary.exportEnabled)
+
         assertEquals("stackchan.bridge.v1", uiState.diagnosticsSurface.protocol)
         assertEquals("v1", uiState.diagnosticsSurface.settingsVersion)
         assertEquals("1", uiState.diagnosticsSurface.trustedEndpointCount)
@@ -521,6 +537,40 @@ class AndroidBridgeRuntimeStatusTest {
         assertFalse(uiState.handoffSurface.claimEnabled)
         assertFalse(uiState.handoffSurface.releaseEnabled)
         assertTrue(uiState.handoffSurface.status.contains("owner_status"))
+    }
+
+    @Test
+    fun androidUiStateProjectsModelAndPersonaAssetStatus() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge",
+            ),
+            modelAssetStatus = AndroidModelAssetStatus(
+                localPath = "/storage/emulated/0/Android/data/dev.stackchan.companion/files/Download/models/gemma-4-E2B-it.litertlm",
+                downloaded = true,
+                loaded = true,
+                downloadId = 42,
+            ),
+            personaLibraryStatus = AndroidPersonaLibraryStatus(
+                installedPersonas = listOf("glow", "nova", "spark"),
+                importStatus = "Imported persona `nova`.",
+                exportStatus = "Exported imported persona `nova`.",
+            ),
+        )
+
+        assertFalse(uiState.modelAsset.downloadEnabled)
+        assertFalse(uiState.modelAsset.loadEnabled)
+        assertTrue(uiState.modelAsset.ejectEnabled)
+        assertTrue(uiState.modelAsset.settingsEnabled)
+        assertTrue(uiState.modelAsset.localPath.contains("gemma-4-E2B-it.litertlm"))
+        assertTrue(uiState.modelAsset.loadStatus.contains("Loaded"))
+        assertTrue(uiState.personaLibrary.installedPersonas.contains("nova"))
+        assertTrue(uiState.personaLibrary.importEnabled)
+        assertTrue(uiState.personaLibrary.exportEnabled)
     }
 
     @Test

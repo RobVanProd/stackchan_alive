@@ -31,6 +31,8 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
 - [ ] The dashboard does not show sample telemetry such as `87%`, `42.5 C`, `v3.1.0`, or `Heartbeat: 8ms`.
 - [ ] The Nodes screen shows the guided `Add your Stack-chan` setup flow with the same manual URL.
+- [ ] The Brain screen shows Gemma-4-E2B LiteRT-LM as the Mobile Brain model target, with download, load, eject, and model-settings controls.
+- [ ] The Brain screen shows persona import/export controls, can import and export persona packs, and imported packs must pass `stackchan.persona-pack.v1` validation.
 - [ ] Removing a stored trusted companion endpoint updates the registry without restarting the app.
 - [ ] The foreground notification shows the same reachable manual fallback URL.
 
@@ -139,6 +141,10 @@ Evidence to capture:
 - [ ] The audio panel is labeled as audio status plus a signal preview unless real robot audio metering evidence is attached.
 - [ ] Talk screen enables text input only after Stack-chan is connected.
 - [ ] Push-to-talk is enabled only after Stack-chan is connected and Android speech recognition is available.
+- [ ] Tapping Gemma-4-E2B download starts Android Download Manager for the LiteRT-LM asset, reports the local cache path, and enables Load after the file exists.
+- [ ] Load marks the cached Gemma-4-E2B asset active; Eject clears that active state without deleting the cached model.
+- [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
+- [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
 - [ ] Denying microphone permission leaves push-to-talk disabled for that turn and records a not-sent microphone message.
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
