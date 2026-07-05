@@ -562,9 +562,33 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("studio-mac-01", uiState.handoffSurface.owner)
         assertEquals("pc", uiState.handoffSurface.ownerKind)
         assertEquals("active", uiState.handoffSurface.state)
-        assertFalse(uiState.handoffSurface.claimEnabled)
+        assertTrue(uiState.handoffSurface.claimEnabled)
         assertFalse(uiState.handoffSurface.releaseEnabled)
         assertTrue(uiState.handoffSurface.status.contains("owner_status"))
+    }
+
+    @Test
+    fun androidUiStateEnablesBrainReleaseWhenPhoneOwnsBrain() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+                robotName = "Stackchan Bench",
+                firmwareVersion = "bench-v1",
+                activeBrainOwner = "phone-rob-01",
+            ),
+        )
+
+        assertFalse(uiState.handoffSurface.claimEnabled)
+        assertTrue(uiState.handoffSurface.releaseEnabled)
+        assertEquals("phone-rob-01", uiState.handoffSurface.owner)
+        assertEquals("android", uiState.handoffSurface.ownerKind)
     }
 
     @Test

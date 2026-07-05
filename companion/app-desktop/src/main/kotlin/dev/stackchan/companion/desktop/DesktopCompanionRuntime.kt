@@ -1,5 +1,6 @@
 package dev.stackchan.companion.desktop
 
+import dev.stackchan.companion.core.ClaimBrain
 import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
 import dev.stackchan.companion.core.DiagnosticsRequest
@@ -9,7 +10,9 @@ import dev.stackchan.companion.core.EndpointRequestRouter
 import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.core.EndpointServerConfig
 import dev.stackchan.companion.core.JmDnsDiscovery
+import dev.stackchan.companion.core.ProtectedControlSubmitResult
 import dev.stackchan.companion.core.RegisteredService
+import dev.stackchan.companion.core.ReleaseBrain
 import dev.stackchan.companion.core.SettingsRepositoryFileStore
 import dev.stackchan.companion.core.SettingsGet
 import dev.stackchan.companion.core.SettingsSet
@@ -166,6 +169,30 @@ class DesktopCompanionRuntime(
                 detail = "Desktop bridge runtime is not running.",
             )
         return bridge.submitTextTurn(text)
+    }
+
+    suspend fun claimBrain(): ProtectedControlSubmitResult {
+        val bridge = server
+            ?: return ProtectedControlSubmitResult(
+                accepted = false,
+                messageType = "claim_brain",
+                detail = "Desktop bridge runtime is not running.",
+            )
+        return bridge.submitProtectedControl(
+            ClaimBrain(endpointId = config.endpointId, reason = "operator selected desktop brain"),
+        )
+    }
+
+    suspend fun releaseBrain(): ProtectedControlSubmitResult {
+        val bridge = server
+            ?: return ProtectedControlSubmitResult(
+                accepted = false,
+                messageType = "release_brain",
+                detail = "Desktop bridge runtime is not running.",
+            )
+        return bridge.submitProtectedControl(
+            ReleaseBrain(endpointId = config.endpointId, reason = "operator released desktop brain"),
+        )
     }
 
     fun diagnosticsSnapshot(domains: List<String> = emptyList()): DiagnosticsSnapshot =

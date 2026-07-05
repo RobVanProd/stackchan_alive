@@ -2,6 +2,9 @@ package dev.stackchan.companion.desktop
 
 import dev.stackchan.companion.core.DeviceHello
 import dev.stackchan.companion.core.EndpointHello
+import dev.stackchan.companion.core.ClaimBrain
+import dev.stackchan.companion.core.OwnerStatus
+import dev.stackchan.companion.core.ReleaseBrain
 import dev.stackchan.companion.core.SettingsGet
 import dev.stackchan.companion.core.SettingsResult
 import dev.stackchan.companion.core.SettingsSet
@@ -94,6 +97,17 @@ class DesktopCompanionRuntimeTest {
 
     private fun freePort(): Int =
         ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+
+    private fun waitFor(label: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
+        while (System.nanoTime() < deadline) {
+            if (condition()) {
+                return
+            }
+            Thread.sleep(25)
+        }
+        error("timed out waiting for $label")
+    }
 
     @Test
     fun runtimeAdvertisesBridgeEndpointWhenMdnsIsEnabled() {
@@ -262,6 +276,63 @@ class DesktopCompanionRuntimeTest {
             )
             assertEquals("glow", after.settingsSurface.activePersona)
             assertTrue(after.settingsSurface.displayReducedMotion)
+        }
+    }
+
+    @Test
+    fun runtimeSubmitsBrainClaimAndReleaseThroughConnectedRobotSession() = runBlocking {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-handoff-actions"))
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:${config.port}/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            val before = runtime.toCompanionUiState()
+            val claim = runtime.claimBrain()
+            val claimFrame = assertIs<ClaimBrain>(decodeControlMessage(client.nextText()))
+            client.send(
+                encodeControlMessage(
+                    OwnerStatus(
+                        activeBrainOwner = config.endpointId,
+                        ownerKind = "pc",
+                        state = "claimed",
+                    ),
+                ),
+            )
+            waitFor("desktop owner claim") {
+                runBlocking { runtime.sessionSnapshot().activeBrainOwner == config.endpointId }
+            }
+            val claimed = runtime.toCompanionUiState()
+
+            val release = runtime.releaseBrain()
+            val releaseFrame = assertIs<ReleaseBrain>(decodeControlMessage(client.nextText()))
+            client.send(
+                encodeControlMessage(
+                    OwnerStatus(
+                        activeBrainOwner = "",
+                        ownerKind = "none",
+                        state = "released",
+                    ),
+                ),
+            )
+            waitFor("desktop owner release") {
+                runBlocking { runtime.sessionSnapshot().activeBrainOwner == null }
+            }
+            val released = runtime.toCompanionUiState()
+
+            assertTrue(before.handoffSurface.claimEnabled)
+            assertFalse(before.handoffSurface.releaseEnabled)
+            assertTrue(claim.accepted)
+            assertEquals(config.endpointId, claimFrame.endpointId)
+            assertFalse(claimed.handoffSurface.claimEnabled)
+            assertTrue(claimed.handoffSurface.releaseEnabled)
+            assertTrue(release.accepted)
+            assertEquals(config.endpointId, releaseFrame.endpointId)
+            assertTrue(released.handoffSurface.claimEnabled)
+            assertFalse(released.handoffSurface.releaseEnabled)
+            client.close()
         }
     }
 

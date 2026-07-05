@@ -93,7 +93,7 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
         brainService = runtime.brainSupervisor.toBrainServiceUiState(),
         settingsSurface = settings.toSettingsSurface(),
         diagnosticsSurface = diagnostics.toDiagnosticsSurface(),
-        handoffSurface = toHandoffSurface(owner, diagnostics),
+        handoffSurface = toHandoffSurface(owner, diagnostics, runtime.endpointId),
         modelAsset = modelAsset.toModelAssetSurface(diagnostics),
         personaLibrary = settings.toPersonaLibrarySurface(personaLibrary),
         robotSetup = RobotSetupUiState(
@@ -180,15 +180,19 @@ private fun DiagnosticsSnapshot.toDiagnosticsSurface(): DiagnosticsSurfaceUiStat
         batterySource = battery?.stringValue("source").orEmpty(),
     )
 
-private fun EndpointSessionSnapshot.toHandoffSurface(owner: String, diagnostics: DiagnosticsSnapshot): BrainHandoffUiState =
+private fun EndpointSessionSnapshot.toHandoffSurface(
+    owner: String,
+    diagnostics: DiagnosticsSnapshot,
+    endpointId: String,
+): BrainHandoffUiState =
     BrainHandoffUiState(
         owner = owner,
         ownerKind = diagnostics.bridge.stringValue("owner_kind").ifBlank { "none" },
         state = diagnostics.bridge.stringValue("owner_state").ifBlank { if (owner == "None") "idle" else "active" },
-        claimEnabled = false,
-        releaseEnabled = false,
+        claimEnabled = robotHelloReceived && activeBrainOwner != endpointId,
+        releaseEnabled = robotHelloReceived && activeBrainOwner == endpointId,
         status = if (robotHelloReceived) {
-            "Robot is connected. Manual claim/release stays locked until GUI owner round-trip evidence is captured."
+            "Robot is connected. Claim sends claim_brain; Release sends release_brain and waits for owner_status owner round-trip evidence."
         } else {
             "Connect Stack-chan before brain handoff can be tested."
         },

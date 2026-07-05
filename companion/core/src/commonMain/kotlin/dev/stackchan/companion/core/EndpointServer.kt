@@ -51,6 +51,12 @@ data class TextTurnSubmitResult(
     val detail: String,
 )
 
+data class ProtectedControlSubmitResult(
+    val accepted: Boolean,
+    val messageType: String = "",
+    val detail: String,
+)
+
 private data class AudioTurnState(
     val active: Boolean = false,
     val seq: Int = 0,
@@ -70,13 +76,18 @@ private data class OutboundTurn(
     val frames: List<OutboundFrame>,
 )
 
+private sealed interface OutboundItem {
+    data class Turn(val value: OutboundTurn) : OutboundItem
+    data class Control(val message: BridgeMessage, val frame: OutboundFrame.Text) : OutboundItem
+}
+
 class CompanionEndpointServer(
     private val config: EndpointServerConfig,
 ) : AutoCloseable {
     private val lock = Mutex()
     private var snapshot = EndpointSessionSnapshot()
     private var audioTurn = AudioTurnState()
-    private var outboundTurns: Channel<OutboundTurn>? = null
+    private var outboundItems: Channel<OutboundItem>? = null
     private var nextLocalSeq = 10_000
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
 
@@ -86,14 +97,22 @@ class CompanionEndpointServer(
             install(WebSockets)
             routing {
                 webSocket(config.path) {
-                    val turnChannel = Channel<OutboundTurn>(Channel.BUFFERED)
-                    setOutboundTurns(turnChannel)
+                    val outboundChannel = Channel<OutboundItem>(Channel.BUFFERED)
+                    setOutboundItems(outboundChannel)
                     val senderJob = launch {
-                        for (turn in turnChannel) {
-                            turn.frames.forEach { response ->
-                                sendOutboundFrame(response)
+                        for (item in outboundChannel) {
+                            when (item) {
+                                is OutboundItem.Turn -> {
+                                    item.value.frames.forEach { response ->
+                                        sendOutboundFrame(response)
+                                    }
+                                    recordSubmittedTextTurn(item.value)
+                                }
+                                is OutboundItem.Control -> {
+                                    sendOutboundFrame(item.frame)
+                                    recordSubmittedControlMessage(item.message)
+                                }
                             }
-                            recordSubmittedTextTurn(turn)
                         }
                     }
                     updateConnected(true)
@@ -111,8 +130,8 @@ class CompanionEndpointServer(
                     } catch (_: ClosedReceiveChannelException) {
                         // Normal peer disconnect.
                     } finally {
-                        clearOutboundTurns(turnChannel)
-                        turnChannel.close()
+                        clearOutboundItems(outboundChannel)
+                        outboundChannel.close()
                         senderJob.cancel()
                         updateConnected(false)
                     }
@@ -133,7 +152,7 @@ class CompanionEndpointServer(
             )
         }
         val prepared = lock.withLock {
-            val channel = outboundTurns
+            val channel = outboundItems
             if (!snapshot.connected || channel == null) {
                 return TextTurnSubmitResult(
                     accepted = false,
@@ -154,7 +173,7 @@ class CompanionEndpointServer(
             )
             channel to turn
         }
-        val sent = prepared.first.trySend(prepared.second).isSuccess
+        val sent = prepared.first.trySend(OutboundItem.Turn(prepared.second)).isSuccess
         return if (sent) {
             TextTurnSubmitResult(
                 accepted = true,
@@ -166,6 +185,47 @@ class CompanionEndpointServer(
             TextTurnSubmitResult(
                 accepted = false,
                 detail = "Stack-chan session is no longer accepting text turns.",
+            )
+        }
+    }
+
+    suspend fun submitProtectedControl(message: BridgeMessage): ProtectedControlSubmitResult {
+        require(message is SettingsSet || message is ClaimBrain || message is ReleaseBrain) {
+            "protected control message must be settings_set, claim_brain, or release_brain"
+        }
+        val prepared = lock.withLock {
+            val channel = outboundItems
+            if (!snapshot.connected || channel == null) {
+                return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = message.type,
+                    detail = "No Stack-chan robot session is connected.",
+                )
+            }
+            if (!snapshot.robotHelloReceived) {
+                return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = message.type,
+                    detail = "Stack-chan has not completed the bridge hello yet.",
+                )
+            }
+            channel to OutboundItem.Control(
+                message = message,
+                frame = OutboundFrame.Text(encodeControlMessage(message)),
+            )
+        }
+        val sent = prepared.first.trySend(prepared.second).isSuccess
+        return if (sent) {
+            ProtectedControlSubmitResult(
+                accepted = true,
+                messageType = message.type,
+                detail = "Protected control message `${message.type}` sent to the connected Stack-chan session.",
+            )
+        } else {
+            ProtectedControlSubmitResult(
+                accepted = false,
+                messageType = message.type,
+                detail = "Stack-chan session is no longer accepting protected control messages.",
             )
         }
     }
@@ -422,16 +482,16 @@ class CompanionEndpointServer(
         }
     }
 
-    private suspend fun setOutboundTurns(channel: Channel<OutboundTurn>) {
+    private suspend fun setOutboundItems(channel: Channel<OutboundItem>) {
         lock.withLock {
-            outboundTurns = channel
+            outboundItems = channel
         }
     }
 
-    private suspend fun clearOutboundTurns(channel: Channel<OutboundTurn>) {
+    private suspend fun clearOutboundItems(channel: Channel<OutboundItem>) {
         lock.withLock {
-            if (outboundTurns === channel) {
-                outboundTurns = null
+            if (outboundItems === channel) {
+                outboundItems = null
             }
         }
     }
@@ -444,6 +504,16 @@ class CompanionEndpointServer(
                 audioBytesSent = snapshot.audioBytesSent + turn.audioBytes,
                 textTurnsSubmitted = snapshot.textTurnsSubmitted + 1,
                 lastTextTurn = turn.text,
+            )
+        }
+    }
+
+    private suspend fun recordSubmittedControlMessage(message: BridgeMessage) {
+        lock.withLock {
+            snapshot = snapshot.copy(
+                lastMessageType = message.type,
+                lastError = "",
+                messagesReceived = snapshot.messagesReceived + 1,
             )
         }
     }

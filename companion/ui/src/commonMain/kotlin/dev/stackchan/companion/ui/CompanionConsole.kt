@@ -1187,8 +1187,8 @@ private fun BrainPanel(
             SmallCommand("Export diagnostics", onClick = onExportDiagnostics)
             SmallCommand("Run C6 rehearsal", onClick = onRunC6Rehearsal)
             if (state.brainService.showBrainHandoffActions) {
-                SmallCommand("Use phone", enabled = false)
-                SmallCommand("Handoff", enabled = false)
+                SmallCommand("Claim brain", enabled = state.handoffSurface.claimEnabled, onClick = onClaimBrain)
+                SmallCommand("Release", enabled = state.handoffSurface.releaseEnabled, onClick = onReleaseBrain)
             }
         }
         Spacer(Modifier.height(12.dp))

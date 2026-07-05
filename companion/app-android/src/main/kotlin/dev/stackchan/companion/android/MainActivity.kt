@@ -187,6 +187,16 @@ class MainActivity : ComponentActivity() {
                 if (serviceResult?.ok == true) {
                     settingsRepository = stores.loadSettings()
                     Toast.makeText(this@MainActivity, successMessage, Toast.LENGTH_SHORT).show()
+                    if (bridgeStatus.robotConnected) {
+                        coroutineScope.launch {
+                            val robotResult = CompanionBridgeService.submitSettingsPatchToRobot(patch)
+                            Toast.makeText(
+                                this@MainActivity,
+                                robotResult.detail,
+                                if (robotResult.accepted) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
                     return
                 }
                 val localResult = settingsRepository.set(settingsRepository.snapshot().version, patch)
@@ -194,6 +204,16 @@ class MainActivity : ComponentActivity() {
                     stores.saveSettings(settingsRepository)
                     settingsRepository = stores.loadSettings()
                     Toast.makeText(this@MainActivity, successMessage, Toast.LENGTH_SHORT).show()
+                    if (bridgeStatus.robotConnected) {
+                        coroutineScope.launch {
+                            val robotResult = CompanionBridgeService.submitSettingsPatchToRobot(patch)
+                            Toast.makeText(
+                                this@MainActivity,
+                                robotResult.detail,
+                                if (robotResult.accepted) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
                 } else {
                     Toast.makeText(
                         this@MainActivity,
@@ -313,6 +333,26 @@ class MainActivity : ComponentActivity() {
                             })
                         },
                     )
+                },
+                onClaimBrain = {
+                    coroutineScope.launch {
+                        val result = CompanionBridgeService.claimBrain()
+                        Toast.makeText(
+                            this@MainActivity,
+                            result.detail,
+                            if (result.accepted) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                onReleaseBrain = {
+                    coroutineScope.launch {
+                        val result = CompanionBridgeService.releaseBrain()
+                        Toast.makeText(
+                            this@MainActivity,
+                            result.detail,
+                            if (result.accepted) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 },
                 onOpenWifiSettings = {
                     wifiConnected = isWifiConnected()
@@ -649,10 +689,10 @@ private fun androidHandoffSurface(
         owner = owner,
         ownerKind = ownerKind,
         state = if (bridgeStatus.activeBrainOwner.isBlank()) "idle" else "active",
-        claimEnabled = false,
-        releaseEnabled = false,
+        claimEnabled = bridgeStatus.robotConnected && bridgeStatus.activeBrainOwner != endpointHello.endpointId,
+        releaseEnabled = bridgeStatus.robotConnected && bridgeStatus.activeBrainOwner == endpointHello.endpointId,
         status = if (bridgeStatus.robotConnected) {
-            "Robot is connected. Manual claim/release stays locked until owner_status round-trip evidence is captured."
+            "Robot is connected. Claim sends claim_brain; Release sends release_brain and waits for owner_status from firmware."
         } else {
             "Connect Stack-chan before brain handoff can be tested."
         },

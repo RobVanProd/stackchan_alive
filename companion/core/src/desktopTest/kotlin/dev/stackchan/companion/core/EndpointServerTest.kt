@@ -300,6 +300,117 @@ class EndpointServerTest {
     }
 
     @Test
+    fun endpointServerSendsProtectedSettingsSetToConnectedRobot() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            val submitted = server.submitProtectedControl(
+                SettingsSet(
+                    version = 7,
+                    settings = buildJsonObject {
+                        put("display", buildJsonObject {
+                            put("reduced_motion", JsonPrimitive(true))
+                        })
+                    },
+                ),
+            )
+            val robotFrame = assertIs<SettingsSet>(decodeControlMessage(client.nextText()))
+            client.send(encodeControlMessage(SettingsResult(ok = true, version = 8)))
+            server.waitForSnapshot { it.lastMessageType == "settings_result" }
+            val snapshot = server.currentSnapshot()
+
+            assertTrue(submitted.accepted)
+            assertEquals("settings_set", submitted.messageType)
+            assertEquals(7, robotFrame.version)
+            assertEquals(
+                true,
+                robotFrame.settings["display"]!!.jsonObject["reduced_motion"]!!.jsonPrimitive.content.toBoolean(),
+            )
+            assertEquals("settings_result", snapshot.lastMessageType)
+            client.close()
+        }
+    }
+
+    @Test
+    fun endpointServerSendsProtectedBrainClaimAndReleaseToConnectedRobot() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(
+            EndpointServerConfig(
+                port = port,
+                endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            ),
+        ).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            val claim = server.submitProtectedControl(
+                ClaimBrain(endpointId = "phone-rob-01", reason = "operator selected phone brain"),
+            )
+            val claimFrame = assertIs<ClaimBrain>(decodeControlMessage(client.nextText()))
+            client.send(
+                encodeControlMessage(
+                    OwnerStatus(
+                        activeBrainOwner = "phone-rob-01",
+                        ownerKind = "android",
+                        state = "claimed",
+                    ),
+                ),
+            )
+            server.waitForSnapshot { it.activeBrainOwner == "phone-rob-01" }
+
+            val release = server.submitProtectedControl(
+                ReleaseBrain(endpointId = "phone-rob-01", reason = "operator released phone brain"),
+            )
+            val releaseFrame = assertIs<ReleaseBrain>(decodeControlMessage(client.nextText()))
+            client.send(
+                encodeControlMessage(
+                    OwnerStatus(
+                        activeBrainOwner = "",
+                        ownerKind = "none",
+                        state = "released",
+                    ),
+                ),
+            )
+            server.waitForSnapshot { it.lastMessageType == "owner_status" && it.activeBrainOwner == null }
+            val snapshot = server.currentSnapshot()
+
+            assertTrue(claim.accepted)
+            assertEquals("claim_brain", claim.messageType)
+            assertEquals("phone-rob-01", claimFrame.endpointId)
+            assertTrue(release.accepted)
+            assertEquals("release_brain", release.messageType)
+            assertEquals("phone-rob-01", releaseFrame.endpointId)
+            assertEquals(null, snapshot.activeBrainOwner)
+            client.close()
+        }
+    }
+
+    @Test
+    fun endpointServerRejectsProtectedControlBeforeRobotHello() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            server.waitForSnapshot { it.connected && !it.robotHelloReceived }
+
+            val submitted = server.submitProtectedControl(
+                ClaimBrain(endpointId = "pc-companion-c0", reason = "too early"),
+            )
+
+            assertEquals(false, submitted.accepted)
+            assertEquals("claim_brain", submitted.messageType)
+            assertEquals("Stack-chan has not completed the bridge hello yet.", submitted.detail)
+            client.close()
+        }
+    }
+
+    @Test
     fun endpointServerRejectsAudioAndSettingsWritesBeforeRobotHello() = runBlocking {
         val port = freePort()
         CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->

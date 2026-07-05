@@ -241,19 +241,25 @@ Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
-  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
+  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "settings_result", "owner_status", "hello-connected robot session", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
 
 Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
   -Name "Robot hello gates protected companion writes" `
   -RelativePaths @("companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/EndpointServer.kt") `
   -Patterns @("robotHelloReceived", "robot_hello_required", "audio, settings writes, or app text turns", "Stack-chan has not completed the bridge hello yet.")
+
+Test-TextEvidence `
+  -Id "protected-control-outbound" `
+  -Name "Protected control outbound path" `
+  -RelativePaths @("companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/EndpointServer.kt") `
+  -Patterns @("submitProtectedControl", "ProtectedControlSubmitResult", "SettingsSet", "ClaimBrain", "ReleaseBrain", "Protected control message", "robotHelloReceived")
 
 Test-TextEvidence `
   -Id "android-pairing-walkthrough" `
@@ -331,7 +337,7 @@ Test-TextEvidence `
   -Id "android-g3-control-state" `
   -Name "Android settings diagnostics persona handoff state" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
-  -Patterns @("androidSettingsSurface", "androidDiagnosticsSurface", "androidHandoffSurface", "SettingsRepository", "applySettingsPatch", "onSelectPersona", "onSaveDisplaySettings", "onPrivacySettings", "settings_set", "owner_status")
+  -Patterns @("androidSettingsSurface", "androidDiagnosticsSurface", "androidHandoffSurface", "SettingsRepository", "applySettingsPatch", "submitSettingsPatchToRobot", "onSelectPersona", "onSaveDisplaySettings", "onPrivacySettings", "onClaimBrain", "onReleaseBrain", "settings_set", "owner_status")
 
 Test-TextEvidence `
   -Id "desktop-g3-control-state" `
@@ -343,7 +349,7 @@ Test-TextEvidence `
   -Id "desktop-g3-settings-actions" `
   -Name "Desktop safe settings actions" `
   -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopCompanionRuntime.kt") `
-  -Patterns @("selectNextPersona", "toggleDisplayReducedMotion", "toggleDiagnosticsLogExport", "SettingsSet")
+  -Patterns @("selectNextPersona", "toggleDisplayReducedMotion", "toggleDiagnosticsLogExport", "SettingsSet", "claimBrain", "releaseBrain", "submitProtectedControl")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-preflight" `

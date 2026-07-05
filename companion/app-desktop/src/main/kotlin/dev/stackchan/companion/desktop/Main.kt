@@ -93,6 +93,16 @@ fun main() {
                         runCatching { runtime.submitTextTurn(text) }
                     }
                 },
+                onClaimBrain = {
+                    scope.launch {
+                        runCatching { runtime.claimBrain() }
+                    }
+                },
+                onReleaseBrain = {
+                    scope.launch {
+                        runCatching { runtime.releaseBrain() }
+                    }
+                },
             )
         }
     }

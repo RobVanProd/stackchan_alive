@@ -315,8 +315,11 @@ decorative signal visualization must be labeled as preview.
 Before write controls are enabled, Android and desktop must still show readable settings,
 diagnostics, persona, and handoff status panels from the current settings repository,
 diagnostics snapshot, and live bridge state. Controls that perform `settings_set`, persona
-switching, or `claim_brain` / `release_brain` must remain locked until the app has robot
-round-trip evidence for those writes.
+switching, or `claim_brain` / `release_brain` must be gated on a robot `hello`. The v1 app
+submits protected `settings_set`, `claim_brain`, and `release_brain` frames only over a
+hello-connected robot session, then waits for firmware `settings_result` or `owner_status`
+frames to update app state. Physical hardware evidence is still required before these
+write paths can be considered field-validated.
 
 Android service boundaries:
 

@@ -152,7 +152,10 @@ Evidence to capture:
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - [ ] The Brain screen shows settings, diagnostics, persona, and handoff status from the current settings repository, diagnostics snapshot, and live bridge state.
 - [ ] Safe local settings actions work: Select persona cycles the active persona, Save display toggles display reduced-motion, and Privacy toggles diagnostics log-export preference.
-- [ ] Protected robot settings writes and manual brain claim/release actions remain disabled until `settings_set` and `owner_status` round-trip evidence exists.
+- [ ] Before robot `hello`, protected settings writes and manual brain claim/release actions remain unavailable or return the robot-hello-required state.
+- [ ] After robot `hello`, changing persona/display/privacy sends the safe local save and a protected `settings_set` frame to Stack-chan; firmware replies with `settings_result`.
+- [ ] Manual brain Claim sends `claim_brain`; firmware replies with `owner_status` naming this phone as active owner; the UI enables Release and disables Claim.
+- [ ] Manual brain Release sends `release_brain`; firmware replies with `owner_status` released/idle; the UI enables Claim again.
 - [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/saved robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.

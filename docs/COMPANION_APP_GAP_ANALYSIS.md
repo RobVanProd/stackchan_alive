@@ -27,8 +27,13 @@ current v1 companion branch.
   state. Safe local settings now save through the existing `settings_set` repository path,
   including persona switching, display reduced-motion, and diagnostics log-export preference.
   Android and desktop also support persona import/export through platform file pickers using
-  validated `stackchan.persona-pack.v1` zip files. Protected robot writes and manual brain
-  claim/release remain locked until robot round-trip evidence exists.
+  validated `stackchan.persona-pack.v1` zip files. The shared bridge server now has a
+  robot-hello-gated protected outbound control path for `settings_set`, `claim_brain`, and
+  `release_brain`; Android submits protected settings writes after local save when a robot
+  is connected, and Android/desktop manual brain claim/release buttons send real
+  `claim_brain` / `release_brain` frames. Simulated robot tests prove `settings_result` and
+  `owner_status` responses update app state. Physical robot round-trip evidence is still
+  required before G3 is complete.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, shared UI defaults no longer show invented battery/temperature/firmware values,
   heartbeat is now an honest bridge status instead of a fake millisecond value, and audio
@@ -65,7 +70,7 @@ current v1 companion branch.
 ## Next Attack Order
 
 1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
-2. Finish G3 with protected robot settings writes and manual brain handoff round-trip evidence.
+2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware.
 3. Finish G5 with QR/short-code robot-side trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.

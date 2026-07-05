@@ -11,10 +11,14 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import dev.stackchan.companion.core.ClaimBrain
 import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
+import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.EndpointRequestRouter
 import dev.stackchan.companion.core.EndpointServerConfig
+import dev.stackchan.companion.core.ProtectedControlSubmitResult
+import dev.stackchan.companion.core.ReleaseBrain
 import dev.stackchan.companion.core.SettingsGet
 import dev.stackchan.companion.core.SettingsResult
 import dev.stackchan.companion.core.SettingsSet
@@ -90,6 +94,7 @@ class CompanionBridgeService : Service() {
         if (activeServer === server) {
             activeServer = null
         }
+        activeEndpointHello = null
         activeRouter = null
         server = null
     }
@@ -123,6 +128,7 @@ class CompanionBridgeService : Service() {
             }.onSuccess { bridge ->
                 server = bridge
                 activeServer = bridge
+                activeEndpointHello = endpointHello
                 activeRouter = router
                 startWakeLockMonitor(bridge)
                 udpBeaconBroadcaster = AndroidUdpBeaconBroadcaster(
@@ -319,8 +325,68 @@ class CompanionBridgeService : Service() {
             return router.handle(SettingsSet(version = snapshot.version, settings = patch)) as? SettingsResult
         }
 
+        suspend fun submitSettingsPatchToRobot(patch: JsonObject): ProtectedControlSubmitResult {
+            val bridge = activeServer
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "settings_set",
+                    detail = "Android bridge service is not running.",
+                )
+            val router = activeRouter
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "settings_set",
+                    detail = "Android settings router is not available.",
+                )
+            val snapshot = router.handle(SettingsGet(domains = emptyList())) as? SettingsSnapshot
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "settings_set",
+                    detail = "Android settings snapshot is not available.",
+                )
+            return bridge.submitProtectedControl(SettingsSet(version = snapshot.version, settings = patch))
+        }
+
+        suspend fun claimBrain(): ProtectedControlSubmitResult {
+            val bridge = activeServer
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "claim_brain",
+                    detail = "Android bridge service is not running.",
+                )
+            val endpoint = activeEndpointHello
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "claim_brain",
+                    detail = "Android endpoint identity is not available.",
+                )
+            return bridge.submitProtectedControl(
+                ClaimBrain(endpointId = endpoint.endpointId, reason = "operator selected Android brain"),
+            )
+        }
+
+        suspend fun releaseBrain(): ProtectedControlSubmitResult {
+            val bridge = activeServer
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "release_brain",
+                    detail = "Android bridge service is not running.",
+                )
+            val endpoint = activeEndpointHello
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "release_brain",
+                    detail = "Android endpoint identity is not available.",
+                )
+            return bridge.submitProtectedControl(
+                ReleaseBrain(endpointId = endpoint.endpointId, reason = "operator released Android brain"),
+            )
+        }
+
         @Volatile
         private var activeServer: CompanionEndpointServer? = null
+        @Volatile
+        private var activeEndpointHello: EndpointHello? = null
         @Volatile
         private var activeRouter: EndpointRequestRouter? = null
     }
