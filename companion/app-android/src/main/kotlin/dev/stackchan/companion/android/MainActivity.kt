@@ -45,9 +45,12 @@ import dev.stackchan.companion.ui.TelemetryReading
 import java.security.MessageDigest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -69,11 +72,11 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionOrStartBridge()
         val stores = AndroidBridgeStores(this)
         val endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId())
-        val settingsRepository = stores.loadSettings()
         val manualBridgeUrls = localBridgeManualUrls()
         AndroidBridgeRuntimeStatusStore.setManualBridgeUrls(manualBridgeUrls)
         setContent {
             val bridgeStatus by AndroidBridgeRuntimeStatusStore.status.collectAsState()
+            var settingsRepository by remember { mutableStateOf(stores.loadSettings()) }
             var trustedEndpoints by remember { mutableStateOf(stores.loadTrustedEndpoints().snapshot().endpoints) }
             var savedRobots by remember { mutableStateOf(stores.loadSavedRobots()) }
             var conversationMessages by remember {
@@ -176,6 +179,26 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+            fun applySettingsPatch(successMessage: String, patch: JsonObject) {
+                val serviceResult = CompanionBridgeService.applySettingsPatch(patch)
+                if (serviceResult?.ok == true) {
+                    settingsRepository = stores.loadSettings()
+                    Toast.makeText(this@MainActivity, successMessage, Toast.LENGTH_SHORT).show()
+                    return
+                }
+                val localResult = settingsRepository.set(settingsRepository.snapshot().version, patch)
+                if (localResult.result.ok) {
+                    stores.saveSettings(settingsRepository)
+                    settingsRepository = stores.loadSettings()
+                    Toast.makeText(this@MainActivity, successMessage, Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Settings not saved: ${localResult.errorCode.ifBlank { "version conflict" }}",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
 
             CompanionConsole(
                 targetName = "Android",
@@ -249,6 +272,43 @@ class MainActivity : ComponentActivity() {
                 onExportPersona = {
                     pendingPersonaExportId = settingsRepository.snapshot().settings.stringValue("persona", "active", "spark")
                     personaExportLauncher.launch("${pendingPersonaExportId}-persona.zip")
+                },
+                onSelectPersona = {
+                    val installed = personaLibraryStatus.installedPersonas.ifEmpty { listOf("spark", "glow") }
+                    val active = settingsRepository.snapshot().settings.stringValue("persona", "active", "spark")
+                    val next = installed.nextAfter(active)
+                    applySettingsPatch(
+                        successMessage = "Persona switched to $next.",
+                        patch = buildJsonObject {
+                            put("persona", buildJsonObject {
+                                put("active", JsonPrimitive(next))
+                            })
+                        },
+                    )
+                },
+                onSaveDisplaySettings = {
+                    val current = settingsRepository.snapshot().settings.booleanValue("display", "reduced_motion")
+                    val next = !current
+                    applySettingsPatch(
+                        successMessage = if (next) "Reduced display motion enabled." else "Normal display motion enabled.",
+                        patch = buildJsonObject {
+                            put("display", buildJsonObject {
+                                put("reduced_motion", JsonPrimitive(next))
+                            })
+                        },
+                    )
+                },
+                onPrivacySettings = {
+                    val current = settingsRepository.snapshot().settings.booleanValue("privacy", "export_logs")
+                    val next = !current
+                    applySettingsPatch(
+                        successMessage = if (next) "Diagnostics log export enabled." else "Diagnostics log export disabled.",
+                        patch = buildJsonObject {
+                            put("privacy", buildJsonObject {
+                                put("export_logs", JsonPrimitive(next))
+                            })
+                        },
+                    )
                 },
                 onPushToTalk = {
                     if (!bridgeStatus.robotConnected) {
@@ -543,8 +603,8 @@ private fun androidSettingsSurface(settingsRepository: SettingsRepository): Sett
         rawAudioRetention = settings.stringValue("privacy", "raw_audio_retention", "none"),
         modelProfile = settings.stringValue("model", "profile", "fake"),
         modelStatus = settings.stringValue("model", "runner_status", "deterministic_fake"),
-        writeStatus = "Settings are visible here. Writes stay locked until robot settings_set round-trip evidence exists.",
-        writesEnabled = false,
+        writeStatus = "Safe local settings are saved on this phone; protected robot writes still require settings_set round-trip evidence.",
+        writesEnabled = true,
     )
 }
 
@@ -849,3 +909,12 @@ private fun JsonObject.stringValue(domain: String, key: String, fallback: String
 
 private fun JsonObject.booleanValue(domain: String, key: String): Boolean =
     stringValue(domain, key, "false").toBooleanStrictOrNull() ?: false
+
+private fun List<String>.nextAfter(current: String): String {
+    val normalized = distinct().sorted()
+    if (normalized.isEmpty()) {
+        return current
+    }
+    val index = normalized.indexOf(current)
+    return normalized[(if (index < 0) 0 else index + 1) % normalized.size]
+}

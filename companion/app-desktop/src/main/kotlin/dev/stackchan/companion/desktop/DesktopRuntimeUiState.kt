@@ -163,8 +163,8 @@ private fun SettingsSnapshot.toSettingsSurface(): SettingsSurfaceUiState =
         rawAudioRetention = settings.stringValue("privacy", "raw_audio_retention", "none"),
         modelProfile = settings.stringValue("model", "profile", "fake"),
         modelStatus = settings.stringValue("model", "runner_status", "deterministic_fake"),
-        writeStatus = "Settings are visible here. Writes stay locked until GUI settings_set evidence is captured.",
-        writesEnabled = false,
+        writeStatus = "Safe local settings save through settings_set; protected robot writes still require hardware round-trip evidence.",
+        writesEnabled = true,
     )
 
 private fun DiagnosticsSnapshot.toDiagnosticsSurface(): DiagnosticsSurfaceUiState =

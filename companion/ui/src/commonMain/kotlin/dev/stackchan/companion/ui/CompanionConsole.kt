@@ -282,6 +282,11 @@ fun CompanionConsole(
     onModelSettings: () -> Unit = {},
     onImportPersona: () -> Unit = {},
     onExportPersona: () -> Unit = {},
+    onSelectPersona: () -> Unit = {},
+    onSaveDisplaySettings: () -> Unit = {},
+    onPrivacySettings: () -> Unit = {},
+    onClaimBrain: () -> Unit = {},
+    onReleaseBrain: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -308,6 +313,11 @@ fun CompanionConsole(
                         onModelSettings = onModelSettings,
                         onImportPersona = onImportPersona,
                         onExportPersona = onExportPersona,
+                        onSelectPersona = onSelectPersona,
+                        onSaveDisplaySettings = onSaveDisplaySettings,
+                        onPrivacySettings = onPrivacySettings,
+                        onClaimBrain = onClaimBrain,
+                        onReleaseBrain = onReleaseBrain,
                     )
                 } else {
                     Column(
@@ -336,6 +346,11 @@ fun CompanionConsole(
                                 onModelSettings = onModelSettings,
                                 onImportPersona = onImportPersona,
                                 onExportPersona = onExportPersona,
+                                onSelectPersona = onSelectPersona,
+                                onSaveDisplaySettings = onSaveDisplaySettings,
+                                onPrivacySettings = onPrivacySettings,
+                                onClaimBrain = onClaimBrain,
+                                onReleaseBrain = onReleaseBrain,
                             )
                         } else {
                             TabletConsole(
@@ -355,6 +370,11 @@ fun CompanionConsole(
                                 onModelSettings = onModelSettings,
                                 onImportPersona = onImportPersona,
                                 onExportPersona = onExportPersona,
+                                onSelectPersona = onSelectPersona,
+                                onSaveDisplaySettings = onSaveDisplaySettings,
+                                onPrivacySettings = onPrivacySettings,
+                                onClaimBrain = onClaimBrain,
+                                onReleaseBrain = onReleaseBrain,
                             )
                         }
                         Footer()
@@ -384,6 +404,11 @@ private fun MobileConsole(
     onModelSettings: () -> Unit,
     onImportPersona: () -> Unit,
     onExportPersona: () -> Unit,
+    onSelectPersona: () -> Unit,
+    onSaveDisplaySettings: () -> Unit,
+    onPrivacySettings: () -> Unit,
+    onClaimBrain: () -> Unit,
+    onReleaseBrain: () -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -420,6 +445,11 @@ private fun MobileConsole(
                     onModelSettings = onModelSettings,
                     onImportPersona = onImportPersona,
                     onExportPersona = onExportPersona,
+                    onSelectPersona = onSelectPersona,
+                    onSaveDisplaySettings = onSaveDisplaySettings,
+                    onPrivacySettings = onPrivacySettings,
+                    onClaimBrain = onClaimBrain,
+                    onReleaseBrain = onReleaseBrain,
                 )
                 MobileSection.Nodes -> EndpointRegistry(
                     state = state,
@@ -455,6 +485,11 @@ private fun WideConsole(
     onModelSettings: () -> Unit,
     onImportPersona: () -> Unit,
     onExportPersona: () -> Unit,
+    onSelectPersona: () -> Unit,
+    onSaveDisplaySettings: () -> Unit,
+    onPrivacySettings: () -> Unit,
+    onClaimBrain: () -> Unit,
+    onReleaseBrain: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -506,6 +541,11 @@ private fun WideConsole(
                 onModelSettings = onModelSettings,
                 onImportPersona = onImportPersona,
                 onExportPersona = onExportPersona,
+                onSelectPersona = onSelectPersona,
+                onSaveDisplaySettings = onSaveDisplaySettings,
+                onPrivacySettings = onPrivacySettings,
+                onClaimBrain = onClaimBrain,
+                onReleaseBrain = onReleaseBrain,
             )
         }
     }
@@ -529,6 +569,11 @@ private fun TabletConsole(
     onModelSettings: () -> Unit,
     onImportPersona: () -> Unit,
     onExportPersona: () -> Unit,
+    onSelectPersona: () -> Unit,
+    onSaveDisplaySettings: () -> Unit,
+    onPrivacySettings: () -> Unit,
+    onClaimBrain: () -> Unit,
+    onReleaseBrain: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -572,6 +617,11 @@ private fun TabletConsole(
                 onModelSettings = onModelSettings,
                 onImportPersona = onImportPersona,
                 onExportPersona = onExportPersona,
+                onSelectPersona = onSelectPersona,
+                onSaveDisplaySettings = onSaveDisplaySettings,
+                onPrivacySettings = onPrivacySettings,
+                onClaimBrain = onClaimBrain,
+                onReleaseBrain = onReleaseBrain,
             )
             SecurityPanel(Modifier.fillMaxWidth())
         }
@@ -1079,6 +1129,11 @@ private fun BrainPanel(
     onModelSettings: () -> Unit = {},
     onImportPersona: () -> Unit = {},
     onExportPersona: () -> Unit = {},
+    onSelectPersona: () -> Unit = {},
+    onSaveDisplaySettings: () -> Unit = {},
+    onPrivacySettings: () -> Unit = {},
+    onClaimBrain: () -> Unit = {},
+    onReleaseBrain: () -> Unit = {},
 ) {
     PanelShell(modifier = modifier) {
         SectionTitle(state.brainService.panelTitle, Purple)
@@ -1140,7 +1195,12 @@ private fun BrainPanel(
             )
         }
         Spacer(Modifier.height(14.dp))
-        SettingsSurfacePanel(state.settingsSurface)
+        SettingsSurfacePanel(
+            settings = state.settingsSurface,
+            onSelectPersona = onSelectPersona,
+            onSaveDisplaySettings = onSaveDisplaySettings,
+            onPrivacySettings = onPrivacySettings,
+        )
         Spacer(Modifier.height(14.dp))
         ModelAssetPanel(
             model = state.modelAsset,
@@ -1156,7 +1216,11 @@ private fun BrainPanel(
             onExportPersona = onExportPersona,
         )
         Spacer(Modifier.height(14.dp))
-        HandoffSurfacePanel(state.handoffSurface)
+        HandoffSurfacePanel(
+            handoff = state.handoffSurface,
+            onClaimBrain = onClaimBrain,
+            onReleaseBrain = onReleaseBrain,
+        )
         Spacer(Modifier.height(14.dp))
         DiagnosticsSurfacePanel(state.diagnosticsSurface)
         Spacer(Modifier.height(14.dp))
@@ -1165,7 +1229,12 @@ private fun BrainPanel(
 }
 
 @Composable
-private fun SettingsSurfacePanel(settings: SettingsSurfaceUiState) {
+private fun SettingsSurfacePanel(
+    settings: SettingsSurfaceUiState,
+    onSelectPersona: () -> Unit,
+    onSaveDisplaySettings: () -> Unit,
+    onPrivacySettings: () -> Unit,
+) {
     Surface(
         color = Console,
         shape = RoundedCornerShape(8.dp),
@@ -1190,9 +1259,9 @@ private fun SettingsSurfacePanel(settings: SettingsSurfaceUiState) {
             }
             Text(settings.writeStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SmallCommand("Select persona", enabled = settings.writesEnabled)
-                SmallCommand("Save display", enabled = settings.writesEnabled)
-                SmallCommand("Privacy", enabled = settings.writesEnabled)
+                SmallCommand("Select persona", enabled = settings.writesEnabled, onClick = onSelectPersona)
+                SmallCommand("Save display", enabled = settings.writesEnabled, onClick = onSaveDisplaySettings)
+                SmallCommand("Privacy", enabled = settings.writesEnabled, onClick = onPrivacySettings)
             }
         }
     }
@@ -1264,7 +1333,11 @@ private fun PersonaLibraryPanel(
 }
 
 @Composable
-private fun HandoffSurfacePanel(handoff: BrainHandoffUiState) {
+private fun HandoffSurfacePanel(
+    handoff: BrainHandoffUiState,
+    onClaimBrain: () -> Unit,
+    onReleaseBrain: () -> Unit,
+) {
     Surface(
         color = Console,
         shape = RoundedCornerShape(8.dp),
@@ -1280,8 +1353,8 @@ private fun HandoffSurfacePanel(handoff: BrainHandoffUiState) {
             }
             Text(handoff.status, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SmallCommand("Claim phone", enabled = handoff.claimEnabled)
-                SmallCommand("Release", enabled = handoff.releaseEnabled)
+                SmallCommand("Claim phone", enabled = handoff.claimEnabled, onClick = onClaimBrain)
+                SmallCommand("Release", enabled = handoff.releaseEnabled, onClick = onReleaseBrain)
             }
         }
     }

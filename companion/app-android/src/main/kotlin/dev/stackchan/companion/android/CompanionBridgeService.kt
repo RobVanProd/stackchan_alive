@@ -15,6 +15,10 @@ import dev.stackchan.companion.core.CompanionEndpointServer
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
 import dev.stackchan.companion.core.EndpointRequestRouter
 import dev.stackchan.companion.core.EndpointServerConfig
+import dev.stackchan.companion.core.SettingsGet
+import dev.stackchan.companion.core.SettingsResult
+import dev.stackchan.companion.core.SettingsSet
+import dev.stackchan.companion.core.SettingsSnapshot
 import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +29,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 
 class CompanionBridgeService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -85,6 +90,7 @@ class CompanionBridgeService : Service() {
         if (activeServer === server) {
             activeServer = null
         }
+        activeRouter = null
         server = null
     }
 
@@ -117,6 +123,7 @@ class CompanionBridgeService : Service() {
             }.onSuccess { bridge ->
                 server = bridge
                 activeServer = bridge
+                activeRouter = router
                 startWakeLockMonitor(bridge)
                 udpBeaconBroadcaster = AndroidUdpBeaconBroadcaster(
                     endpointHello = endpointHello,
@@ -306,7 +313,15 @@ class CompanionBridgeService : Service() {
             return bridge.submitTextTurn(text)
         }
 
+        fun applySettingsPatch(patch: JsonObject): SettingsResult? {
+            val router = activeRouter ?: return null
+            val snapshot = router.handle(SettingsGet(domains = emptyList())) as? SettingsSnapshot ?: return null
+            return router.handle(SettingsSet(version = snapshot.version, settings = patch)) as? SettingsResult
+        }
+
         @Volatile
         private var activeServer: CompanionEndpointServer? = null
+        @Volatile
+        private var activeRouter: EndpointRequestRouter? = null
     }
 }

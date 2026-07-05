@@ -283,7 +283,7 @@ Test-TextEvidence `
   -Id "shared-g3-control-surfaces" `
   -Name "Shared settings diagnostics persona handoff surfaces" `
   -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
-  -Patterns @("SettingsSurfaceUiState", "DiagnosticsSurfaceUiState", "BrainHandoffUiState", "SettingsSurfacePanel", "DiagnosticsSurfacePanel", "HandoffSurfacePanel", "Select persona", "Claim phone")
+  -Patterns @("SettingsSurfaceUiState", "DiagnosticsSurfaceUiState", "BrainHandoffUiState", "SettingsSurfacePanel", "DiagnosticsSurfacePanel", "HandoffSurfacePanel", "Select persona", "onSelectPersona", "onSaveDisplaySettings", "onPrivacySettings", "Claim phone")
 
 Test-TextEvidence `
   -Id "shared-model-persona-surfaces" `
@@ -325,13 +325,19 @@ Test-TextEvidence `
   -Id "android-g3-control-state" `
   -Name "Android settings diagnostics persona handoff state" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
-  -Patterns @("androidSettingsSurface", "androidDiagnosticsSurface", "androidHandoffSurface", "SettingsRepository", "settings_set", "owner_status")
+  -Patterns @("androidSettingsSurface", "androidDiagnosticsSurface", "androidHandoffSurface", "SettingsRepository", "applySettingsPatch", "onSelectPersona", "onSaveDisplaySettings", "onPrivacySettings", "settings_set", "owner_status")
 
 Test-TextEvidence `
   -Id "desktop-g3-control-state" `
   -Name "Desktop settings diagnostics persona handoff state" `
   -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopRuntimeUiState.kt", "provenance/companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopRuntimeUiState.kt") `
   -Patterns @("toSettingsSurface", "toDiagnosticsSurface", "toHandoffSurface", "SettingsSnapshot", "settings_set", "owner round-trip")
+
+Test-TextEvidence `
+  -Id "desktop-g3-settings-actions" `
+  -Name "Desktop safe settings actions" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopCompanionRuntime.kt") `
+  -Patterns @("selectNextPersona", "toggleDisplayReducedMotion", "toggleDiagnosticsLogExport", "SettingsSet")
 
 Test-TextEvidence `
   -Id "android-push-to-talk-permission" `

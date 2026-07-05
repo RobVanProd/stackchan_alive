@@ -236,6 +236,35 @@ class DesktopCompanionRuntimeTest {
     }
 
     @Test
+    fun runtimeAppliesSafeGuiSettingsThroughSettingsSet() = runBlocking {
+        val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-settings-actions"))
+
+        DesktopCompanionRuntime(config).use { runtime ->
+            runtime.start()
+
+            val before = runtime.toCompanionUiState()
+            val persona = runtime.selectNextPersona()
+            val display = runtime.toggleDisplayReducedMotion()
+            val privacy = runtime.toggleDiagnosticsLogExport()
+            val after = runtime.toCompanionUiState()
+
+            assertTrue(before.settingsSurface.writesEnabled)
+            assertTrue(before.settingsSurface.writeStatus.contains("settings_set"))
+            assertEquals("glow", persona.settings["persona"]!!.jsonObject["active"]!!.jsonPrimitive.content)
+            assertEquals(
+                true,
+                display.settings["display"]!!.jsonObject["reduced_motion"]!!.jsonPrimitive.content.toBoolean(),
+            )
+            assertEquals(
+                true,
+                privacy.settings["privacy"]!!.jsonObject["export_logs"]!!.jsonPrimitive.content.toBoolean(),
+            )
+            assertEquals("glow", after.settingsSurface.activePersona)
+            assertTrue(after.settingsSurface.displayReducedMotion)
+        }
+    }
+
+    @Test
     fun runtimeExportsDiagnosticsEvidenceJson() = runBlocking {
         val config = runtimeConfig(Files.createTempDirectory("stackchan-desktop-diagnostics-export"))
 

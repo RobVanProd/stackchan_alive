@@ -74,6 +74,15 @@ fun main() {
                         }
                     }
                 },
+                onSelectPersona = {
+                    runCatching { runtime.selectNextPersona() }
+                },
+                onSaveDisplaySettings = {
+                    runCatching { runtime.toggleDisplayReducedMotion() }
+                },
+                onPrivacySettings = {
+                    runCatching { runtime.toggleDiagnosticsLogExport() }
+                },
                 onRunC6Rehearsal = {
                     scope.launch {
                         runCatching { runtime.runC6GuiRehearsal() }

@@ -12,6 +12,7 @@ import dev.stackchan.companion.core.JmDnsDiscovery
 import dev.stackchan.companion.core.RegisteredService
 import dev.stackchan.companion.core.SettingsRepositoryFileStore
 import dev.stackchan.companion.core.SettingsGet
+import dev.stackchan.companion.core.SettingsSet
 import dev.stackchan.companion.core.SettingsSnapshot
 import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.TrustedEndpointFileStore
@@ -30,6 +31,12 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 data class DesktopCompanionRuntimeConfig(
     val host: String = System.getProperty("stackchan.companion.host") ?: "0.0.0.0",
@@ -168,6 +175,52 @@ class DesktopCompanionRuntime(
     fun settingsSnapshot(domains: List<String> = emptyList()): SettingsSnapshot =
         requestRouter?.handle(SettingsGet(domains = domains)) as? SettingsSnapshot
             ?: SettingsSnapshot(version = 1, settings = JsonObject(emptyMap()))
+
+    fun selectNextPersona(): SettingsSnapshot {
+        val snapshot = settingsSnapshot()
+        val installed = personaLibraryStatus().installedPersonas.ifEmpty { BUNDLED_PERSONAS }
+        val active = snapshot.settings.stringValue("persona", "active", "spark")
+        val next = installed.nextAfter(active)
+        return applySettingsPatch(
+            buildJsonObject {
+                put("persona", buildJsonObject {
+                    put("active", JsonPrimitive(next))
+                })
+            },
+        )
+    }
+
+    fun toggleDisplayReducedMotion(): SettingsSnapshot {
+        val snapshot = settingsSnapshot()
+        val next = !snapshot.settings.booleanValue("display", "reduced_motion")
+        return applySettingsPatch(
+            buildJsonObject {
+                put("display", buildJsonObject {
+                    put("reduced_motion", JsonPrimitive(next))
+                })
+            },
+        )
+    }
+
+    fun toggleDiagnosticsLogExport(): SettingsSnapshot {
+        val snapshot = settingsSnapshot()
+        val next = !snapshot.settings.booleanValue("privacy", "export_logs")
+        return applySettingsPatch(
+            buildJsonObject {
+                put("privacy", buildJsonObject {
+                    put("export_logs", JsonPrimitive(next))
+                })
+            },
+        )
+    }
+
+    private fun applySettingsPatch(patch: JsonObject): SettingsSnapshot {
+        val router = requestRouter ?: error("Desktop bridge runtime is not running.")
+        val snapshot = settingsSnapshot()
+        val result = router.handle(SettingsSet(version = snapshot.version, settings = patch))
+        check((result as? dev.stackchan.companion.core.SettingsResult)?.ok == true) { "Settings update was rejected." }
+        return settingsSnapshot()
+    }
 
     fun modelAssetStatus(): DesktopModelAssetStatus {
         val file = gemmaModelFile()
@@ -393,3 +446,24 @@ private fun String.sanitizedPersonaId(): String =
     lowercase(Locale.US)
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' }
         .take(32)
+
+private fun JsonObject.stringValue(domain: String, key: String, fallback: String): String =
+    this[domain]
+        ?.let { runCatching { it.jsonObject }.getOrNull() }
+        ?.get(key)
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.takeIf { it.isNotBlank() }
+        ?: fallback
+
+private fun JsonObject.booleanValue(domain: String, key: String): Boolean =
+    stringValue(domain, key, "false").toBooleanStrictOrNull() ?: false
+
+private fun List<String>.nextAfter(current: String): String {
+    val normalized = distinct().sorted()
+    if (normalized.isEmpty()) {
+        return current
+    }
+    val index = normalized.indexOf(current)
+    return normalized[(if (index < 0) 0 else index + 1) % normalized.size]
+}

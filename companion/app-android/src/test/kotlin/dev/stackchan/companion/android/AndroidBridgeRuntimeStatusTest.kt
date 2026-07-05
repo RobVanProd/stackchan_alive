@@ -505,8 +505,8 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("spark", uiState.settingsSurface.activePersona)
         assertEquals("review_synth", uiState.settingsSurface.voiceProfile)
         assertEquals("80", uiState.settingsSurface.displayBrightness)
-        assertFalse(uiState.settingsSurface.writesEnabled)
-        assertTrue(uiState.settingsSurface.writeStatus.contains("settings_set"))
+        assertTrue(uiState.settingsSurface.writesEnabled)
+        assertTrue(uiState.settingsSurface.writeStatus.contains("Safe local settings"))
 
         assertEquals("Gemma-4-E2B", uiState.modelAsset.modelId)
         assertEquals("LiteRT-LM", uiState.modelAsset.runtime)
