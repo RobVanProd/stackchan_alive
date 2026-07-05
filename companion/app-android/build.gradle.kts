@@ -63,7 +63,9 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":ui"))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.litertlm.android)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
 }

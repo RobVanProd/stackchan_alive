@@ -407,9 +407,21 @@ Test-TextEvidence `
 
 Test-TextEvidence `
   -Id "android-staged-gemma-brain-engine" `
-  -Name "Android staged Gemma brain engine honesty" `
+  -Name "Android LiteRT Gemma brain engine honesty" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidMobileBrainTurnEngine.kt") `
-  -Patterns @("androidBrainTurnEngine", "StagedGemmaBrainTurnEngine", "mobile_brain_staged_pending_litert", "LiteRT runtime inference is not validated")
+  -Patterns @("androidBrainTurnEngine", "LiteRtGemmaBrainTurnEngine", "EngineConfig", "Backend.GPU()", "Backend.CPU()", "ConversationConfig", "mobile_brain_litert_turn", "mobile_brain_litert_error", "StagedGemmaBrainTurnEngine", "mobile_brain_staged_pending_litert")
+
+Test-TextEvidence `
+  -Id "android-litertlm-dependency" `
+  -Name "Android LiteRT-LM dependency and native library declarations" `
+  -RelativePaths @("companion/gradle/libs.versions.toml") `
+  -Patterns @("litertlm = ""0.13.1""", "com.google.ai.edge.litertlm:litertlm-android")
+
+Test-TextEvidence `
+  -Id "android-litertlm-native-libraries" `
+  -Name "Android LiteRT-LM optional native library declarations" `
+  -RelativePaths @("companion/app-android/src/main/AndroidManifest.xml") `
+  -Patterns @("libvndksupport.so", "libOpenCL.so", "android:required=""false""")
 
 Test-TextEvidence `
   -Id "brain-turn-engine-tests" `

@@ -17,16 +17,19 @@ current v1 companion branch.
   robot-gated text-turn path. Target-phone STT behavior, denial/retry UX, and physical robot
   transcript evidence still need to be captured before G1 is complete.
 - G2 real Mobile Brain Mode is still open. The bridge text-turn and audio-turn path now
-  runs through a `BrainTurnEngine` boundary with deterministic fake output as the default,
-  so a real LiteRT-LM adapter can replace the responder without changing the bridge
-  protocol. Android selects a transparent staged Gemma engine when the verified local asset
-  is loaded; it reports that LiteRT inference is not validated instead of pretending model
-  output is live. Android and desktop now expose a Gemma-4-E2B LiteRT-LM model asset panel
-  with working download/cache, load/eject, and settings entry points. Load/eject are now
-  explicitly described as staging or unstaging the verified asset, not as proof that real
-  inference is active. The app now targets the LiteRT Community
+  runs through a `BrainTurnEngine` boundary with deterministic fake output as the default.
+  Android now includes the pinned `com.google.ai.edge.litertlm:litertlm-android:0.13.1`
+  dependency, GPU/CPU backend initialization code, and the optional native-library manifest
+  entries recommended for LiteRT GPU loading. When the verified local Gemma asset is loaded,
+  Android routes turns through that LiteRT adapter and falls back to an explicit
+  `mobile_brain_litert_error` response if runtime initialization or generation fails on
+  device; host tests still use the transparent staged engine so CI does not pretend to run
+  the model. Android and desktop now expose a Gemma-4-E2B LiteRT-LM model asset panel with
+  working download/cache, load/eject, and settings entry points. Load/eject are now explicitly
+  described as staging or unstaging the verified asset, not as proof that real inference is
+  active. The app now targets the LiteRT Community
   `gemma-4-E2B-it.litertlm` artifact and rejects partial/wrong-size files before Load.
-  The remaining G2 gap is real-device download proof, LiteRT runtime inference wiring,
+  The remaining G2 gap is real-device download proof, successful LiteRT runtime inference,
   benchmark evidence, and robot audio/TTS validation.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially
   closed. Android and desktop now expose user-facing settings, diagnostics, persona, and

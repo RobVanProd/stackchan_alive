@@ -127,7 +127,7 @@ class CompanionBridgeService : Service() {
                         port = DEFAULT_BRIDGE_PORT,
                         endpointHello = endpointHello,
                         requestRouter = router,
-                        brainTurnEngine = androidBrainTurnEngine(modelAssetStatus),
+                        brainTurnEngine = androidBrainTurnEngine(applicationContext, modelAssetStatus),
                     ),
                 ).start()
             }.onSuccess { bridge ->

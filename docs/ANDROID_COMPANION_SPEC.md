@@ -84,10 +84,12 @@ needs an explicit download button when the asset is missing, local-path and chec
 load/eject controls, and model settings. The v1 app provides a basic in-app download/cache
 path through Android Download Manager, then allows staging and unstaging the local model
 asset with Load/Eject controls. Those controls must not imply real inference is active until
-the Android LiteRT runtime adapter is wired, benchmarked, and validated. The bridge response
-path exposes a `BrainTurnEngine` boundary; Android currently swaps in a transparent staged
-Gemma engine after Load that states LiteRT inference is still unvalidated, while the default
-engine remains deterministic. The v1 target artifact is
+the Android LiteRT runtime adapter is benchmarked and validated. The bridge response path
+exposes a `BrainTurnEngine` boundary; Android includes the pinned
+`com.google.ai.edge.litertlm:litertlm-android:0.13.1` adapter, initializes GPU first with CPU
+fallback, and returns an explicit `mobile_brain_litert_error` response if the loaded asset
+cannot initialize or generate on device. The default no-model engine remains deterministic.
+The v1 target artifact is
 `litert-community/gemma-4-E2B-it-litert-lm` /
 `gemma-4-E2B-it.litertlm`; the app rejects partial or wrong-size downloads before enabling
 Load. Published artifact checks: 2588147712 bytes and SHA-256
