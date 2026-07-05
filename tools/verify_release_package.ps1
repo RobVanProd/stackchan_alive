@@ -452,6 +452,8 @@ $requiredFiles = @(
   "provenance/src/io/BridgeAudioDownlink.cpp",
   "provenance/src/io/BridgeAudioUplink.hpp",
   "provenance/src/io/BridgeAudioUplink.cpp",
+  "provenance/src/io/BridgeWakeGate.hpp",
+  "provenance/src/io/BridgeWakeGate.cpp",
   "provenance/src/persona/SpeechPlanner.hpp",
   "provenance/src/persona/SpeechPlanner.cpp",
   "provenance/src/persona/EarconSynth.hpp",
@@ -915,7 +917,7 @@ foreach ($pattern in @("CameraAdapter::begin", "CameraAdapter::submitFace", "Cam
 }
 
 $audioCaptureHeaderText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/AudioCaptureAdapter.hpp") -Raw
-foreach ($pattern in @("STACKCHAN_ENABLE_MIC_CAPTURE", "AudioCaptureConfig", "AudioCaptureTelemetry", "AudioCaptureSource", "M5MicAudioCaptureSource", "AudioCaptureAdapter", "kAudioCaptureSampleRate", "kAudioCaptureWindowSamples")) {
+foreach ($pattern in @("STACKCHAN_ENABLE_MIC_CAPTURE", "AudioCaptureConfig", "AudioCaptureTelemetry", "AudioCaptureSource", "M5MicAudioCaptureSource", "AudioCaptureAdapter", "kAudioCaptureSampleRate", "kAudioCaptureWindowSamples", "lastPcmWindow", "lastPcmSampleCount")) {
   if ($audioCaptureHeaderText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/AudioCaptureAdapter.hpp missing P3 mic capture adapter contract: $pattern"
   }
@@ -932,6 +934,13 @@ $bridgeAudioUplinkHeaderText = Get-Content -LiteralPath (Join-PackagePath "prove
 foreach ($pattern in @("STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK", "BridgeAudioUplinkConfig", "BridgeAudioUplinkTelemetry", "wakeGateRequired", "maxChunkBytes", "turnsStarted", "gateBlocks", "queueFailures", "BridgeAudioUplink")) {
   if ($bridgeAudioUplinkHeaderText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeAudioUplink.hpp missing P7 wake-gated uplink contract: $pattern"
+  }
+}
+
+$bridgeWakeGateHeaderText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeWakeGate.hpp") -Raw
+foreach ($pattern in @("BridgeWakeGateConfig", "BridgeWakeGateTelemetry", "gateOpenMs", "maxTurnMs", "gatesOpened", "turnsStarted", "suppressedStarts", "BridgeWakeGate")) {
+  if ($bridgeWakeGateHeaderText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeWakeGate.hpp missing P7 wake-gate controller contract: $pattern"
   }
 }
 
@@ -1019,6 +1028,13 @@ foreach ($pattern in @("BridgeAudioUplink::begin", "BridgeAudioUplink::beginTurn
   }
 }
 
+$bridgeWakeGateText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeWakeGate.cpp") -Raw
+foreach ($pattern in @("BridgeWakeGate::begin", "BridgeWakeGate::applyEvent", "BridgeWakeGate::update", "BridgeWakeGate::isGateOpen", "EventType::WakeWord", "EventType::UserSpeaking", "EventType::SpeechEnded", "beginTurn", "endTurn", "bridge_wake_gate_uplink_unavailable", "bridge_wake_gate_timeout", "bridge_wake_gate_max_turn")) {
+  if ($bridgeWakeGateText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/io/BridgeWakeGate.cpp missing P7 wake-gate controller support: $pattern"
+  }
+}
+
 $earconSynthText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/persona/EarconSynth.cpp") -Raw
 foreach ($pattern in @("PersonaEarcons.hpp", "generated_persona::kUsePersonaEarconPatterns", "generated_persona::earconPatternFor", "renderPattern", "durationForPattern", "EarconSynth::render", "EarconSynth::expectedDurationMs", "SpeechEarcon::Wake", "SpeechEarcon::Confirm", "SpeechEarcon::Think", "SpeechEarcon::Happy", "SpeechEarcon::Concern", "SpeechEarcon::Sleep", "SpeechEarcon::Error", "SpeechEarcon::Safety", "checksum", "truncated", "sinf")) {
   if ($earconSynthText -notmatch [regex]::Escape($pattern)) {
@@ -1048,9 +1064,14 @@ foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "Spee
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeAudioUplink", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeAudioUplink", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeAudioUplink.begin", "gBridgeNetworkSession.update", "handleEndpointControlLine", "handleBridgeUplinkBench", "printBridgeUplinkResult", "submitPcmBytes", "beginTurn", "endTurn", "bench_audio_uplink_abort", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_network_writer_text_frames=", "bridge_network_writer_binary_frames=", "bridge_network_text_queued=", "bridge_network_text_dropped=", "bridge_network_binary_queued=", "bridge_network_binary_dropped=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_uplink_ready=", "bridge_uplink_enabled=", "bridge_uplink_active=", "bridge_uplink_wake_gate_required=", "bridge_uplink_turns=", "bridge_uplink_completed=", "bridge_uplink_chunks=", "bridge_uplink_bytes=", "bridge_uplink_errors=", "bridge_uplink_gate_blocks=", "bridge_uplink_queue_failures=", "bridge_timeouts=", "[bridge]", "[bridge_uplink]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeAudioUplink", "BridgeWakeGate", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeAudioUplink", "gBridgeWakeGate", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeAudioUplink.begin", "gBridgeWakeGate.begin", "gBridgeWakeGate.update", "gBridgeWakeGate.applyEvent", "gBridgeNetworkSession.update", "handleEndpointControlLine", "handleBridgeUplinkBench", "printBridgeUplinkResult", "submitPcmBytes", "beginTurn", "endTurn", "bench_audio_uplink_abort", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_network_writer_text_frames=", "bridge_network_writer_binary_frames=", "bridge_network_text_queued=", "bridge_network_text_dropped=", "bridge_network_binary_queued=", "bridge_network_binary_dropped=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_uplink_ready=", "bridge_uplink_enabled=", "bridge_uplink_active=", "bridge_uplink_wake_gate_required=", "bridge_uplink_turns=", "bridge_uplink_completed=", "bridge_uplink_chunks=", "bridge_uplink_bytes=", "bridge_uplink_errors=", "bridge_uplink_gate_blocks=", "bridge_uplink_queue_failures=", "bridge_wake_gate_ready=", "bridge_wake_gate_open=", "bridge_wake_gate_turn_active=", "bridge_wake_gate_opens=", "bridge_wake_gate_completed=", "bridge_timeouts=", "[bridge]", "[bridge_uplink]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
+  }
+}
+foreach ($pattern in @("submitCapturedAudioWindowToBridgeUplink", "lastPcmWindow", "lastPcmSampleCount", "submitPcmChunk", "audioWindowsBefore")) {
+  if ($mainText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/src/main.cpp missing mic capture to uplink handoff support: $pattern"
   }
 }
 foreach ($pattern in @("AudioCaptureAdapter", "M5MicAudioCaptureSource", "gAudioCapture", "gAudioCapture.begin", "gAudioCapture.poll", "audio_capture_ready=", "audio_capture_enabled=", "audio_capture_hw_ready=", "audio_capture_windows=", "audio_capture_drops=", "audio_capture_events=", "audio_capture_level=", "audio_capture_zcr=")) {
@@ -1220,7 +1241,7 @@ foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
   }
 }
-foreach ($pattern in @("test_bridge_audio_uplink_disabled_default_blocks_turn", "test_bridge_audio_uplink_requires_wake_gate_before_start", "test_bridge_audio_uplink_queues_start_chunk_and_end_frames", "test_bridge_audio_uplink_rejects_bad_sequence_and_limits")) {
+foreach ($pattern in @("test_bridge_audio_uplink_disabled_default_blocks_turn", "test_bridge_audio_uplink_requires_wake_gate_before_start", "test_bridge_audio_uplink_queues_start_chunk_and_end_frames", "test_bridge_audio_uplink_rejects_bad_sequence_and_limits", "test_bridge_wake_gate_suppresses_turn_when_uplink_disabled", "test_bridge_wake_gate_starts_and_completes_uplink_turn", "test_bridge_wake_gate_renews_on_speech_and_expires")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware wake-gated uplink tests: $pattern"
   }
@@ -1240,7 +1261,7 @@ foreach ($pattern in @("test_bridge_endpoint_registry_restore_keeps_endpoint_unh
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware endpoint persistence tests: $pattern"
   }
 }
-foreach ($pattern in @("FakeAudioCaptureSource", "test_audio_capture_adapter_disabled_default_is_ready_without_source", "test_audio_capture_adapter_rejects_oversized_window", "test_audio_capture_adapter_records_pcm_and_emits_reflex_events")) {
+foreach ($pattern in @("FakeAudioCaptureSource", "test_audio_capture_adapter_disabled_default_is_ready_without_source", "test_audio_capture_adapter_rejects_oversized_window", "test_audio_capture_adapter_records_pcm_and_emits_reflex_events", "lastPcmWindow", "lastPcmSampleCount")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware mic capture tests: $pattern"
   }
@@ -1252,7 +1273,7 @@ foreach ($pattern in @("test_sensor_adapter_parses_bridge_uplink_commands", "Ben
 }
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeAudioUplink.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeAudioUplink.cpp>", "+<io/BridgeWakeGate.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
   }
@@ -1349,14 +1370,14 @@ if ([int]$characterRedTeamJson.summary.configured_runner_cases -ne 0) {
 }
 
 $personaPackLoaderText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
-foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms", "FOUNDATION_SPEECH_INTENTS", "voice_packaged_prompt_missing", "voice_packaged_prompt_source_missing")) {
+foreach ($pattern in @("stackchan.persona-pack.v1", "load_persona_pack", "validate_pack", "load_and_validate_persona_pack", "FOUNDATION_MAX_CHARS", "FOUNDATION_ALLOWED_EARCONS", "memory_prefixes_loosened", "expressions_section_missing", "check_expression_float", "expressions_yawn_out_of_range:duration_ms", "FOUNDATION_SPEECH_INTENTS", "voice_packaged_prompt_missing", "voice_packaged_prompt_source_missing", "VOICE_PROVENANCE_SCHEMA", "voice_provenance_policy_missing", "voice_provenance_forbidden_attestation_missing", "voice_provenance_rollout_evidence_missing")) {
   if ($personaPackLoaderText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/persona_pack.py missing persona pack support: $pattern"
   }
 }
 
 $personaPackTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_persona_pack.py") -Raw
-foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y", "voice_packaged_prompt_missing:boot")) {
+foreach ($pattern in @("PersonaPackTests", "test_spark_pack_loads_and_exposes_spoken_lines", "test_glow_pack_loads_as_second_persona", "test_glow_prompt_uses_template_slots_without_clone_markers", "test_validator_rejects_loosened_caps_and_bad_safety_line", "test_validator_requires_voice_provenance_for_packaged_prompts", "test_validator_checks_voice_provenance_schema_and_attestations", "expressions_section_missing:neutral", "expressions_think_missing:pupil_y", "voice_packaged_prompt_missing:boot", "voice_provenance_policy_missing")) {
   if ($personaPackTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_persona_pack.py missing persona pack test coverage: $pattern"
   }

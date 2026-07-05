@@ -16,6 +16,7 @@
 #include "io/BridgeEndpointRegistry.hpp"
 #include "io/BridgeEndpointStore.hpp"
 #include "io/BridgeNetworkSession.hpp"
+#include "io/BridgeWakeGate.hpp"
 #include "io/BridgeWiFiClientSocket.hpp"
 #include "io/BridgeWiFiProvisioner.hpp"
 #include "io/CameraAdapter.hpp"
@@ -65,6 +66,7 @@ BridgeClient gBridge;
 BridgeEndpointRegistry gBridgeEndpointRegistry;
 BridgeEndpointControl gBridgeEndpointControl;
 BridgeEndpointStore gBridgeEndpointStore;
+BridgeWakeGate gBridgeWakeGate;
 BridgeWiFiProvisioner gBridgeWiFi;
 BridgeNetworkSession gBridgeNetworkSession;
 BridgeWiFiClientSocket gBridgeSocket;
@@ -867,6 +869,26 @@ void printRuntimeStatus() {
   Serial.print(uplink.queueFailures);
   Serial.print(F(" bridge_uplink_last_seq="));
   Serial.print(uplink.lastSeq);
+  const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
+  Serial.print(F(" bridge_wake_gate_ready="));
+  Serial.print(wakeGate.ready ? 1 : 0);
+  Serial.print(F(" bridge_wake_gate_open="));
+  Serial.print(wakeGate.gateOpen ? 1 : 0);
+  Serial.print(F(" bridge_wake_gate_turn_active="));
+  Serial.print(wakeGate.turnActive ? 1 : 0);
+  Serial.print(F(" bridge_wake_gate_opens="));
+  Serial.print(wakeGate.gatesOpened);
+  Serial.print(F(" bridge_wake_gate_expired="));
+  Serial.print(wakeGate.gatesExpired);
+  Serial.print(F(" bridge_wake_gate_turns="));
+  Serial.print(wakeGate.turnsStarted);
+  Serial.print(F(" bridge_wake_gate_completed="));
+  Serial.print(wakeGate.turnsCompleted);
+  Serial.print(F(" bridge_wake_gate_suppressed="));
+  Serial.print(wakeGate.suppressedStarts);
+  Serial.print(F(" bridge_wake_gate_error=\""));
+  Serial.print(wakeGate.lastError);
+  Serial.print(F("\""));
   Serial.print(F(" bridge_timeouts="));
   Serial.println(bridge.timeouts);
 }
@@ -1118,6 +1140,22 @@ void handlePairingControl(const BenchPairingControl& pairing, uint32_t nowMs) {
   Serial.println(nowMs);
 }
 
+void submitCapturedAudioWindowToBridgeUplink(uint32_t nowMs) {
+  gBridgeWakeGate.update(nowMs);
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  if (!uplink.active) {
+    return;
+  }
+
+  const int16_t* samples = gAudioCapture.lastPcmWindow();
+  const uint16_t sampleCount = gAudioCapture.lastPcmSampleCount();
+  if (samples == nullptr || sampleCount == 0) {
+    return;
+  }
+
+  gBridgeAudioUplink.submitPcmChunk(uplink.lastSeq, samples, sampleCount, nowMs);
+}
+
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   Serial.print(F("[bridge] type="));
   Serial.print(bridgeOutputTypeName(output.type));
@@ -1342,6 +1380,7 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
       output.type == BridgeClientOutputType::ResponseEnd ||
       output.type == BridgeClientOutputType::Error) {
     gIntent.applyEvent(output.event, bridgeModeForEvent(output.event.type));
+    gBridgeWakeGate.applyEvent(output.event, nowMs);
     if (output.event.type == EventType::UserSpeaking) {
       gAudioOut.duck(nowMs);
     }
@@ -1349,6 +1388,7 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
 
   if (output.type == BridgeClientOutputType::ResponseStart) {
     gIntent.applyEvent(output.event, CharacterMode::Speak);
+    gBridgeWakeGate.applyEvent(output.event, nowMs);
     strncpy(gBridgeSpeechText, output.response.text, sizeof(gBridgeSpeechText) - 1);
     gBridgeSpeechText[sizeof(gBridgeSpeechText) - 1] = '\0';
 
@@ -1506,10 +1546,15 @@ void IntentTask(void* pv) {
   while (true) {
     const uint32_t loopMs = millis();
     gBridgeEndpointControl.update(loopMs);
+    gBridgeWakeGate.update(loopMs);
     updateBridgeNetwork(loopMs);
 
     AudioReflexEvent audioEvents[3];
+    const uint32_t audioWindowsBefore = gAudioCapture.telemetry().windowsCaptured;
     const uint8_t audioEventCount = gAudioCapture.poll(loopMs, audioEvents, 3);
+    if (gAudioCapture.telemetry().windowsCaptured != audioWindowsBefore) {
+      submitCapturedAudioWindowToBridgeUplink(loopMs);
+    }
     for (uint8_t i = 0; i < audioEventCount; ++i) {
       if (!audioEvents[i].valid) {
         continue;
@@ -1518,6 +1563,7 @@ void IntentTask(void* pv) {
       if (pendingAudioEventCount < 4) {
         pendingAudioEvents[pendingAudioEventCount++] = audioEvents[i].event;
       }
+      gBridgeWakeGate.applyEvent(audioEvents[i].event, loopMs);
       if (audioEvents[i].event.type == EventType::UserSpeaking) {
         gAudioOut.duck(loopMs);
       }
@@ -1533,6 +1579,7 @@ void IntentTask(void* pv) {
     while (gSensors.poll(&control)) {
       if (control.hasEvent) {
         gIntent.applyEvent(control.event, control.mode);
+        gBridgeWakeGate.applyEvent(control.event, millis());
         if (isAudioTelemetryEvent(control.event.type)) {
           if (pendingAudioEventCount < 4) {
             pendingAudioEvents[pendingAudioEventCount++] = control.event;
@@ -1642,6 +1689,7 @@ void setup() {
   gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), bootMs);
   gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
   gBridgeAudioUplink.begin(BridgeAudioUplinkConfig {}, &gBridgeNetworkSession);
+  gBridgeWakeGate.begin(BridgeWakeGateConfig {}, &gBridgeAudioUplink);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();

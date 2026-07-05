@@ -20,6 +20,7 @@
 #include "io/BridgeEndpointStore.hpp"
 #include "io/BridgeNetworkSession.hpp"
 #include "io/BridgeSocketWriter.hpp"
+#include "io/BridgeWakeGate.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/BridgeWiFiProvisioner.hpp"
 #include "io/CameraAdapter.hpp"
@@ -529,6 +530,10 @@ void test_audio_capture_adapter_records_pcm_and_emits_reflex_events() {
   TEST_ASSERT_EQUAL_UINT32(2, capture.telemetry().eventsPublished);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, capture.telemetry().lastLevel);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.05f, capture.telemetry().lastZeroCrossingRate);
+  TEST_ASSERT_NOT_NULL(capture.lastPcmWindow());
+  TEST_ASSERT_EQUAL_UINT16(kAudioCaptureWindowSamples, capture.lastPcmSampleCount());
+  TEST_ASSERT_EQUAL_INT16(source.samples[0], capture.lastPcmWindow()[0]);
+  TEST_ASSERT_EQUAL_INT16(source.samples[7], capture.lastPcmWindow()[7]);
 
   TEST_ASSERT_EQUAL_UINT8(0, capture.poll(105, events, 3));
   TEST_ASSERT_EQUAL_UINT32(1, source.recordCalls);
@@ -4214,6 +4219,112 @@ void test_bridge_audio_uplink_rejects_bad_sequence_and_limits() {
   TEST_ASSERT_TRUE(socket.outgoing.empty());
 }
 
+void test_bridge_wake_gate_suppresses_turn_when_uplink_disabled() {
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin());
+
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(BridgeWakeGateConfig {}, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  wake.timestampMs = 1000;
+  gate.applyEvent(wake, 1000);
+
+  TEST_ASSERT_TRUE(gate.telemetry().gateOpen);
+  TEST_ASSERT_TRUE(gate.isGateOpen(1200));
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().gatesOpened);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().suppressedStarts);
+  TEST_ASSERT_EQUAL_STRING("bridge_wake_gate_uplink_unavailable", gate.telemetry().lastError);
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().errors);
+}
+
+void test_bridge_wake_gate_starts_and_completes_uplink_turn() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 970);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+
+  BridgeWakeGateConfig gateConfig;
+  gateConfig.firstSeq = 41;
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(gateConfig, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 1000);
+  TEST_ASSERT_TRUE(gate.telemetry().gateOpen);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  TEST_ASSERT_TRUE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(41, gate.telemetry().lastSeq);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsStarted);
+
+  session.update(1005);
+  char decodedStart[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedStart, sizeof(decodedStart)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"type\":\"utterance_start\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"seq\":41"));
+  socket.clearOutgoing();
+
+  RobotEvent ended;
+  ended.type = EventType::SpeechEnded;
+  gate.applyEvent(ended, 1200);
+  TEST_ASSERT_FALSE(gate.telemetry().gateOpen);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+
+  session.update(1205);
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"seq\":41"));
+}
+
+void test_bridge_wake_gate_renews_on_speech_and_expires() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 1220);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+
+  BridgeWakeGateConfig gateConfig;
+  gateConfig.gateOpenMs = 1000;
+  gateConfig.maxTurnMs = 5000;
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(gateConfig, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 2000);
+  TEST_ASSERT_EQUAL_UINT32(3000, gate.telemetry().closeAtMs);
+  session.update(2005);
+  socket.clearOutgoing();
+
+  RobotEvent speaking;
+  speaking.type = EventType::UserSpeaking;
+  gate.applyEvent(speaking, 2600);
+  TEST_ASSERT_EQUAL_UINT32(3600, gate.telemetry().closeAtMs);
+  TEST_ASSERT_TRUE(gate.isGateOpen(3500));
+
+  gate.update(3600);
+  TEST_ASSERT_FALSE(gate.telemetry().gateOpen);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().gatesExpired);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+}
+
 void test_bridge_network_session_reconnects_after_socket_disconnect() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -5082,6 +5193,9 @@ int main() {
   RUN_TEST(test_bridge_audio_uplink_requires_wake_gate_before_start);
   RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
+  RUN_TEST(test_bridge_wake_gate_suppresses_turn_when_uplink_disabled);
+  RUN_TEST(test_bridge_wake_gate_starts_and_completes_uplink_turn);
+  RUN_TEST(test_bridge_wake_gate_renews_on_speech_and_expires);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);

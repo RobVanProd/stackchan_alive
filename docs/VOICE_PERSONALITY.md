@@ -94,6 +94,7 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - `io/AudioOut` owns the speaker-path playback request boundary, generated firmware WAV playback, packaged-prompt sidecar timing, mouth-frame streaming, M5 speaker carrier fallback, barge-in ducking, and `[audio_out]` telemetry; the display firmware already feeds synchronized mouth frames and audible playback from the selected prompt sidecar
 - TTS generation can run off-device at first
 - packaged WAV/MP3 prompts and `media/voice/sidecars/*.speech_envelope.json` files can be used for hardware soak tests and synced mouth playback
+- persona packs with packaged prompt audio must declare `pack.yaml` `provenance.voice_policy`; `tools/verify_persona_pack.cmd` rejects undocumented voice sources
 - hardware evidence should include at least one speaker/audio check before consumer promotion
 
 Current firmware carries `SpeechCue speech` plus `speechSeq` on each `RobotFrame`. `IntentEngine` emits a cue on external/demo mode changes, holds it briefly for output adapters, and keeps the same sequence number during the hold window so host playback can dedupe without polling races.
