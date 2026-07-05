@@ -96,6 +96,16 @@ port `8766` every few seconds.
 If service discovery is unavailable on the LAN, manually point the robot bridge client at
 the `ws://<phone-lan-ip>:8765/bridge` URL shown in the Android dashboard or foreground
 notification.
+For lab firmware without persistent Wi-Fi setup, use the serial console after the phone
+bridge is ready:
+
+```text
+wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
+```
+
+The firmware should log `[wifi] enabled=1`, `ssid_set=1`, the expected host/port/path, and
+then the Android dashboard should advance after the robot `hello`. The log must not echo the
+password. Send `wifi clear` before returning the robot to build-time bridge settings.
 After the robot connects, capture the Android dashboard connected state. The screenshot
 must show the robot identity, firmware/version signal, last bridge frame, active brain
 owner, and foreground service state so the phone-hosted bridge path is reviewable without
