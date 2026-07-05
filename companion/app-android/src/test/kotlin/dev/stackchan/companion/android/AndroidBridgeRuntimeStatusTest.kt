@@ -1,5 +1,7 @@
 package dev.stackchan.companion.android
 
+import dev.stackchan.companion.core.BrainTurnRequest
+import dev.stackchan.companion.core.BrainTurnSource
 import dev.stackchan.companion.core.EndpointSessionSnapshot
 import dev.stackchan.companion.core.SettingsRepository
 import dev.stackchan.companion.core.TrustedEndpoint
@@ -9,6 +11,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -630,6 +633,32 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.personaLibrary.installedPersonas.contains("nova"))
         assertTrue(uiState.personaLibrary.importEnabled)
         assertTrue(uiState.personaLibrary.exportEnabled)
+    }
+
+    @Test
+    fun stagedGemmaAssetSelectsTransparentPendingLiteRtBrainEngine() = runBlocking {
+        val engine = androidBrainTurnEngine(
+            AndroidModelAssetStatus(
+                localPath = "/storage/emulated/0/Android/data/dev.stackchan.companion/files/Download/models/gemma-4-E2B-it.litertlm",
+                bytes = 2_588_147_712L,
+                downloaded = true,
+                loaded = true,
+                downloadId = null,
+            ),
+        )
+
+        val response = engine.respond(
+            BrainTurnRequest(
+                seq = 81,
+                text = "hello stackchan",
+                source = BrainTurnSource.APP_TEXT,
+            ),
+        )
+
+        assertEquals("mobile_brain_staged_pending_litert", response.intent)
+        assertTrue(response.text.contains("Gemma-4-E2B asset is staged"))
+        assertTrue(response.text.contains("LiteRT runtime inference is not validated"))
+        assertTrue(response.text.contains("hello stackchan"))
     }
 
     @Test

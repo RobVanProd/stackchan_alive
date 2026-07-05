@@ -394,6 +394,36 @@ Test-TextEvidence `
   -Patterns @("gemma-4-E2B-it.litertlm", "GEMMA_LITERTLM_BYTES", "2_588_147_712L", "GEMMA_LITERTLM_SHA256", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c")
 
 Test-TextEvidence `
+  -Id "brain-turn-engine-boundary" `
+  -Name "Bridge brain turn engine boundary" `
+  -RelativePaths @("companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/BrainTurnEngine.kt") `
+  -Patterns @("BrainTurnEngine", "BrainTurnRequest", "BrainTurnResponse", "DeterministicBrainTurnEngine")
+
+Test-TextEvidence `
+  -Id "endpoint-server-brain-turn-engine-route" `
+  -Name "Endpoint server routes turns through brain engine" `
+  -RelativePaths @("companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/EndpointServer.kt") `
+  -Patterns @("brainTurnEngine", "BrainTurnRequest", "BrainTurnSource.APP_TEXT", "BrainTurnSource.ROBOT_AUDIO", "brain_turn_failed")
+
+Test-TextEvidence `
+  -Id "android-staged-gemma-brain-engine" `
+  -Name "Android staged Gemma brain engine honesty" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidMobileBrainTurnEngine.kt") `
+  -Patterns @("androidBrainTurnEngine", "StagedGemmaBrainTurnEngine", "mobile_brain_staged_pending_litert", "LiteRT runtime inference is not validated")
+
+Test-TextEvidence `
+  -Id "brain-turn-engine-tests" `
+  -Name "Brain turn engine route tests" `
+  -RelativePaths @("companion/core/src/desktopTest/kotlin/dev/stackchan/companion/core/EndpointServerTest.kt", "companion/app-android/src/test/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatusTest.kt") `
+  -Patterns @("endpointServerRoutesSubmittedTextTurnsThroughConfiguredBrainEngine", "endpointServerRoutesAudioTurnsThroughConfiguredBrainEngine")
+
+Test-TextEvidence `
+  -Id "android-staged-gemma-engine-test" `
+  -Name "Android staged Gemma brain engine test" `
+  -RelativePaths @("companion/app-android/src/test/kotlin/dev/stackchan/companion/android/AndroidBridgeRuntimeStatusTest.kt") `
+  -Patterns @("stagedGemmaAssetSelectsTransparentPendingLiteRtBrainEngine", "mobile_brain_staged_pending_litert", "LiteRT runtime inference is not validated")
+
+Test-TextEvidence `
   -Id "desktop-persona-file-picker" `
   -Name "Desktop persona import export file picker" `
   -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt") `

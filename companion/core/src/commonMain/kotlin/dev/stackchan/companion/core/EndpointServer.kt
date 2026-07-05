@@ -24,6 +24,7 @@ data class EndpointServerConfig(
     val path: String = "/bridge",
     val endpointHello: EndpointHello = defaultDesktopEndpointHello(),
     val requestRouter: EndpointRequestRouter = EndpointRequestRouter(),
+    val brainTurnEngine: BrainTurnEngine = DeterministicBrainTurnEngine,
 )
 
 data class EndpointSessionSnapshot(
@@ -166,19 +167,34 @@ class CompanionEndpointServer(
                 )
             }
             nextLocalSeq += 1
-            val turn = buildResponseTurn(
+            val request = BrainTurnRequest(
                 seq = nextLocalSeq,
-                responseText = cleanedText,
-                intent = "app_text_turn",
+                text = cleanedText,
+                source = BrainTurnSource.APP_TEXT,
+                deviceId = snapshot.deviceId,
+                activeBrainOwner = snapshot.activeBrainOwner,
             )
-            channel to turn
+            channel to request
         }
-        val sent = prepared.first.trySend(OutboundItem.Turn(prepared.second)).isSuccess
+        val response = runCatching { config.brainTurnEngine.respond(prepared.second) }
+            .getOrElse { error ->
+                recordError(error.message ?: error::class.simpleName.orEmpty())
+                return TextTurnSubmitResult(
+                    accepted = false,
+                    detail = "Brain turn engine failed before sending the text turn.",
+                )
+            }
+        val turn = buildResponseTurn(
+            seq = prepared.second.seq,
+            response = response,
+            fallbackIntent = "app_text_turn",
+        )
+        val sent = prepared.first.trySend(OutboundItem.Turn(turn)).isSuccess
         return if (sent) {
             TextTurnSubmitResult(
                 accepted = true,
-                seq = prepared.second.seq,
-                responseText = prepared.second.text,
+                seq = turn.seq,
+                responseText = turn.text,
                 detail = "Text turn sent to the connected Stack-chan session.",
             )
         } else {
@@ -421,11 +437,35 @@ class CompanionEndpointServer(
             )
         }
         val seq = message.seq
-        val responseText = message.transcript
+        val requestText = message.transcript
             ?.takeIf { it.isNotBlank() }
             ?: message.text?.takeIf { it.isNotBlank() }
-            ?: "Fake audio turn received ${turn.bytesReceived} bytes at ${turn.sampleRate}Hz."
-        val responseTurn = buildResponseTurn(seq = seq, responseText = responseText, intent = "fake_audio_turn")
+            ?: ""
+        val request = lock.withLock {
+            BrainTurnRequest(
+                seq = seq,
+                text = requestText,
+                source = BrainTurnSource.ROBOT_AUDIO,
+                audioBytesReceived = turn.bytesReceived,
+                inputSampleRate = turn.sampleRate,
+                deviceId = snapshot.deviceId,
+                activeBrainOwner = snapshot.activeBrainOwner,
+            )
+        }
+        val response = runCatching { config.brainTurnEngine.respond(request) }
+            .getOrElse { error ->
+                val detail = error.message ?: error::class.simpleName.orEmpty()
+                recordError(detail)
+                return textFrame(
+                    BridgeError(
+                        seq = seq,
+                        code = "brain_turn_failed",
+                        detail = "Brain turn engine failed before a response could be sent.",
+                        recoverable = true,
+                    ),
+                )
+            }
+        val responseTurn = buildResponseTurn(seq = seq, response = response, fallbackIntent = "fake_audio_turn")
         recordAudioBytesSent(responseTurn.audioBytes)
         return responseTurn.frames
     }
@@ -545,8 +585,10 @@ class CompanionEndpointServer(
     private fun textFrames(vararg messages: BridgeMessage): List<OutboundFrame> =
         messages.map { OutboundFrame.Text(encodeControlMessage(it)) }
 
-    private fun buildResponseTurn(seq: Int, responseText: String, intent: String): OutboundTurn {
-        val pcm = fakePcm16(responseText)
+    private fun buildResponseTurn(seq: Int, response: BrainTurnResponse, fallbackIntent: String): OutboundTurn {
+        val responseText = response.text.ifBlank { "I heard you." }
+        val responseIntent = response.intent.ifBlank { fallbackIntent }
+        val pcm = response.audioPcm16 ?: fakePcm16(responseText)
         val chunkSize = 512
         val chunks = pcm.asIterable().chunked(chunkSize).map { it.toByteArray() }
         val frames = buildList {
@@ -555,15 +597,15 @@ class CompanionEndpointServer(
                     Thinking(seq = seq),
                     ResponseStart(
                         seq = seq,
-                        intent = intent,
+                        intent = responseIntent,
                         text = responseText,
-                        arousal = 0.42,
-                        valence = 0.64,
+                        arousal = response.arousal,
+                        valence = response.valence,
                     ),
                     AudioStreamStart(
                         seq = seq,
                         format = "pcm16",
-                        sampleRate = 24000,
+                        sampleRate = response.audioSampleRate,
                         audioBytes = pcm.size,
                         chunkBytes = chunkSize,
                         chunks = chunks.size,

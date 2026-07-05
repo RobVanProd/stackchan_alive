@@ -16,13 +16,16 @@ current v1 companion branch.
   transcript capture when available, and submits the final transcript through the existing
   robot-gated text-turn path. Target-phone STT behavior, denial/retry UX, and physical robot
   transcript evidence still need to be captured before G1 is complete.
-- G2 real Mobile Brain Mode is still open. The current text-turn and audio-turn path uses
-  deterministic fake output, not Android STT, LiteRT-LM, or Android TTS. Android and desktop
-  now expose a Gemma-4-E2B LiteRT-LM model asset panel with working download/cache,
-  load/eject, and settings entry points. Load/eject are now explicitly described as staging
-  or unstaging the verified asset, not as proof that real inference is active. The app now
-  targets the LiteRT Community `gemma-4-E2B-it.litertlm` artifact and rejects
-  partial/wrong-size files before Load.
+- G2 real Mobile Brain Mode is still open. The bridge text-turn and audio-turn path now
+  runs through a `BrainTurnEngine` boundary with deterministic fake output as the default,
+  so a real LiteRT-LM adapter can replace the responder without changing the bridge
+  protocol. Android selects a transparent staged Gemma engine when the verified local asset
+  is loaded; it reports that LiteRT inference is not validated instead of pretending model
+  output is live. Android and desktop now expose a Gemma-4-E2B LiteRT-LM model asset panel
+  with working download/cache, load/eject, and settings entry points. Load/eject are now
+  explicitly described as staging or unstaging the verified asset, not as proof that real
+  inference is active. The app now targets the LiteRT Community
+  `gemma-4-E2B-it.litertlm` artifact and rejects partial/wrong-size files before Load.
   The remaining G2 gap is real-device download proof, LiteRT runtime inference wiring,
   benchmark evidence, and robot audio/TTS validation.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially

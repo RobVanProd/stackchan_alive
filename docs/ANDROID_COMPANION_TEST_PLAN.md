@@ -148,6 +148,7 @@ Evidence to capture:
 - [ ] Tapping Gemma-4-E2B download starts Android Download Manager for the LiteRT-LM asset, reports the local cache path, and enables Load after the file exists.
 - [ ] Load stays disabled for partial or wrong-size Gemma downloads; the expected LiteRT-LM artifact is `gemma-4-E2B-it.litertlm`, 2588147712 bytes, SHA-256 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`.
 - [ ] Load marks the cached Gemma-4-E2B asset staged; Eject clears that staged state without deleting the cached model, and the UI still states that real inference is gated on LiteRT runtime validation.
+- [ ] With Gemma staged, a text turn routes through the Android staged-model brain engine and explicitly reports that LiteRT runtime inference is not validated; it must not claim live model output until a real-device LiteRT smoke passes.
 - [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
 - [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.

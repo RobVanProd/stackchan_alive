@@ -108,6 +108,7 @@ class CompanionBridgeService : Service() {
             val stores = AndroidBridgeStores(applicationContext)
             val settings = stores.loadSettings()
             val trustedEndpoints = stores.loadTrustedEndpoints()
+            val modelAssetStatus = stores.modelAssetStatus()
             val endpointBase = defaultAndroidEndpointHello(endpointId = stores.endpointId())
             val endpointHello = endpointBase.copy(
                 pairingCode = androidPairingShortCode(endpointBase, primaryBridgeManualUrl()),
@@ -126,6 +127,7 @@ class CompanionBridgeService : Service() {
                         port = DEFAULT_BRIDGE_PORT,
                         endpointHello = endpointHello,
                         requestRouter = router,
+                        brainTurnEngine = androidBrainTurnEngine(modelAssetStatus),
                     ),
                 ).start()
             }.onSuccess { bridge ->

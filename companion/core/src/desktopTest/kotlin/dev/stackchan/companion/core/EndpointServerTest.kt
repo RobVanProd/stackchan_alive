@@ -269,6 +269,85 @@ class EndpointServerTest {
     }
 
     @Test
+    fun endpointServerRoutesSubmittedTextTurnsThroughConfiguredBrainEngine() = runBlocking {
+        val port = freePort()
+        val engine = BrainTurnEngine { request ->
+            BrainTurnResponse(
+                text = "engine saw ${request.source} ${request.text}",
+                intent = "engine_text_turn",
+                arousal = 0.7,
+                valence = 0.8,
+                audioPcm16 = ByteArray(256) { 9 },
+                audioSampleRate = 16000,
+            )
+        }
+        CompanionEndpointServer(EndpointServerConfig(port = port, brainTurnEngine = engine)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            val submit = server.submitTextTurn("hello model")
+
+            assertIs<Thinking>(decodeControlMessage(client.nextText()))
+            val response = assertIs<ResponseStart>(decodeControlMessage(client.nextText()))
+            val streamStart = assertIs<AudioStreamStart>(decodeControlMessage(client.nextText()))
+            val chunk = client.nextBinary()
+            assertIs<AudioFrame>(decodeControlMessage(client.nextText()))
+            assertIs<AudioFrame>(decodeControlMessage(client.nextText()))
+            val streamEnd = assertIs<AudioStreamEnd>(decodeControlMessage(client.nextText()))
+            assertIs<ResponseEnd>(decodeControlMessage(client.nextText()))
+
+            assertTrue(submit.accepted)
+            assertEquals("engine_text_turn", response.intent)
+            assertEquals("engine saw APP_TEXT hello model", response.text)
+            assertEquals(0.7, response.arousal)
+            assertEquals(0.8, response.valence)
+            assertEquals(16000, streamStart.sampleRate)
+            assertEquals(256, streamStart.audioBytes)
+            assertEquals(256, chunk.size)
+            assertEquals(256, streamEnd.audioBytes)
+            client.close()
+        }
+    }
+
+    @Test
+    fun endpointServerRoutesAudioTurnsThroughConfiguredBrainEngine() = runBlocking {
+        val port = freePort()
+        val engine = BrainTurnEngine { request ->
+            BrainTurnResponse(
+                text = "audio bytes=${request.audioBytesReceived} sr=${request.inputSampleRate} text=${request.text}",
+                intent = "engine_audio_turn",
+            )
+        }
+        CompanionEndpointServer(EndpointServerConfig(port = port, brainTurnEngine = engine)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            client.send(encodeControlMessage(UtteranceStart(seq = 17, sampleRate = 16000)))
+            client.sendBinary(ByteArray(32) { 1 })
+            client.send(
+                encodeControlMessage(
+                    UtteranceAudio(
+                        seq = 17,
+                        pcmB64 = Base64.getEncoder().encodeToString(ByteArray(48) { 2 }),
+                    ),
+                ),
+            )
+            client.send(encodeControlMessage(UtteranceEnd(seq = 17, transcript = "robot transcript")))
+
+            assertIs<Thinking>(decodeControlMessage(client.nextText()))
+            val response = assertIs<ResponseStart>(decodeControlMessage(client.nextText()))
+
+            assertEquals("engine_audio_turn", response.intent)
+            assertEquals("audio bytes=80 sr=16000 text=robot transcript", response.text)
+            client.close()
+        }
+    }
+
+    @Test
     fun endpointServerRejectsSubmittedTextTurnWithoutRobotSession() = runBlocking {
         CompanionEndpointServer(EndpointServerConfig(port = freePort())).use { server ->
             server.start()

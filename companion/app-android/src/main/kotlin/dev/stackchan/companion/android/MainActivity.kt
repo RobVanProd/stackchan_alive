@@ -270,7 +270,10 @@ class MainActivity : ComponentActivity() {
                 },
                 onLoadModel = {
                     runCatching { stores.loadGemmaModel() }
-                        .onSuccess { status -> modelAssetStatus = status }
+                        .onSuccess { status ->
+                            modelAssetStatus = status
+                            restartBridgeService()
+                        }
                         .onFailure { error ->
                             Toast.makeText(
                                 this@MainActivity,
@@ -281,6 +284,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onEjectModel = {
                     modelAssetStatus = stores.ejectGemmaModel()
+                    restartBridgeService()
                 },
                 onModelSettings = {
                     Toast.makeText(
