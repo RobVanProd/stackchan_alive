@@ -435,6 +435,7 @@ class AndroidBridgeRuntimeStatusTest {
                 firmwareVersion = "bench-v1",
             ),
             pushToTalkAvailable = true,
+            pushToTalkPermissionGranted = true,
             pushToTalkStatus = "Microphone turns use Android speech recognition.",
         )
 
@@ -443,6 +444,58 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals("Push-to-talk", uiState.conversation.pushToTalkLabel)
         assertEquals(
             "Microphone turns use Android speech recognition.",
+            uiState.conversation.pushToTalkStatus,
+        )
+    }
+
+    @Test
+    fun androidUiStatePromptsForMicrophonePermissionBeforePushToTalk() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+            ),
+            pushToTalkAvailable = true,
+            pushToTalkPermissionGranted = false,
+            pushToTalkPermissionDenied = false,
+            pushToTalkStatus = "Microphone turns use Android speech recognition.",
+        )
+
+        assertTrue(uiState.conversation.pushToTalkEnabled)
+        assertEquals("Allow mic", uiState.conversation.pushToTalkLabel)
+        assertTrue(uiState.conversation.pushToTalkStatus.contains("approve microphone access"))
+        assertTrue(uiState.conversation.pushToTalkStatus.contains("Denied turns are not sent"))
+    }
+
+    @Test
+    fun androidUiStateExplainsMicrophonePermissionDenialAndRetry() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge; session wake lock active",
+                robotSocketConnected = true,
+                robotConnected = true,
+                robotId = "stackchan-bench-01",
+            ),
+            pushToTalkAvailable = true,
+            pushToTalkPermissionGranted = false,
+            pushToTalkPermissionDenied = true,
+            pushToTalkStatus = "Microphone turns use Android speech recognition.",
+        )
+
+        assertTrue(uiState.conversation.pushToTalkEnabled)
+        assertEquals("Allow mic", uiState.conversation.pushToTalkLabel)
+        assertEquals(
+            "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent.",
             uiState.conversation.pushToTalkStatus,
         )
     }
@@ -485,6 +538,7 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.conversation.inputEnabled)
         assertFalse(uiState.conversation.pushToTalkEnabled)
         assertEquals("Mic unavailable", uiState.conversation.pushToTalkLabel)
+        assertTrue(uiState.conversation.pushToTalkStatus.contains("Android speech recognition is unavailable"))
     }
 
     @Test

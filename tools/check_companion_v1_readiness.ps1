@@ -523,7 +523,7 @@ Test-TextEvidence `
   -Id "android-push-to-talk-submit" `
   -Name "Android push-to-talk transcript submission" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
-  -Patterns @("speechPermissionLauncher", "Manifest.permission.RECORD_AUDIO", "CompanionBridgeService.submitTextTurn", "Speech transcript")
+  -Patterns @("speechPermissionLauncher", "Manifest.permission.RECORD_AUDIO", "CompanionBridgeService.submitTextTurn", "Speech transcript", "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent.", "Settings.ACTION_APPLICATION_DETAILS_SETTINGS")
 
 Test-TextEvidence `
   -Id "shared-push-to-talk-ui" `

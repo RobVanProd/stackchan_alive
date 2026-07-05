@@ -14,8 +14,11 @@ current v1 companion branch.
   `audio_stream_start`, binary audio chunks, `audio_stream_end`, `response_end`).
 - Android push-to-talk now requests `RECORD_AUDIO`, uses Android `SpeechRecognizer` for
   transcript capture when available, and submits the final transcript through the existing
-  robot-gated text-turn path. Target-phone STT behavior, denial/retry UX, and physical robot
-  transcript evidence still need to be captured before G1 is complete.
+  robot-gated text-turn path. The Android UI now distinguishes speech recognizer unavailable,
+  microphone permission required, and microphone permission denied states, and denial opens
+  the Android app-settings retry path without submitting a transcript. Target-phone STT
+  behavior and physical robot transcript evidence still need to be captured before G1 is
+  complete.
 - G2 real Mobile Brain Mode is still open. The bridge text-turn and audio-turn path now
   runs through a `BrainTurnEngine` boundary with deterministic fake output as the default.
   Android now includes the pinned `com.google.ai.edge.litertlm:litertlm-android:0.13.1`

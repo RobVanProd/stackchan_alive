@@ -152,7 +152,7 @@ Evidence to capture:
 - [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
 - [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
-- [ ] Denying microphone permission leaves push-to-talk disabled for that turn and records a not-sent microphone message.
+- [ ] Denying microphone permission leaves that turn unsent, records a not-sent microphone message, and changes the Talk status to `Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent.`
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - [ ] The Brain screen shows settings, diagnostics, persona, and handoff status from the current settings repository, diagnostics snapshot, and live bridge state.
 - [ ] Safe local settings actions work: Select persona cycles the active persona, Save display toggles display reduced-motion, and Privacy toggles diagnostics log-export preference.

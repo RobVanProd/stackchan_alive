@@ -105,6 +105,7 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(settingsRepository.snapshot().settings.stringValue("persona", "active", "spark"))
             }
             var pushToTalkStatus by remember { mutableStateOf("Microphone turns use Android speech recognition.") }
+            var microphonePermissionDenied by remember { mutableStateOf(false) }
             var wifiConnected by remember { mutableStateOf(isWifiConnected()) }
             val speechController = remember {
                 AndroidSpeechTurnController(applicationContext).also {
@@ -233,6 +234,9 @@ class MainActivity : ComponentActivity() {
                     conversationMessages = conversationMessages,
                     diagnosticsExport = diagnosticsExport,
                     pushToTalkAvailable = speechController.isAvailable(),
+                    pushToTalkPermissionGranted =
+                        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
+                    pushToTalkPermissionDenied = microphonePermissionDenied,
                     pushToTalkStatus = pushToTalkStatus,
                     modelAssetStatus = modelAssetStatus,
                     personaLibraryStatus = personaLibraryStatus,
@@ -367,6 +371,7 @@ class MainActivity : ComponentActivity() {
                         return@CompanionConsole
                     }
                     val startListening = {
+                        microphonePermissionDenied = false
                         pushToTalkStatus = "Listening..."
                         conversationMessages = conversationMessages + ConversationMessage("Mic", "Listening for a short turn.", "Push-to-talk")
                         speechController.start(
@@ -390,14 +395,35 @@ class MainActivity : ComponentActivity() {
                         startListening()
                     } else {
                         pushToTalkStatus = "Microphone permission is required for push-to-talk."
+                        if (
+                            microphonePermissionDenied &&
+                            !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+                        ) {
+                            pushToTalkStatus =
+                                "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent."
+                            conversationMessages = conversationMessages + ConversationMessage(
+                                sender = "Mic",
+                                text = "Microphone permission denied. Open Android app settings to allow it, then retry.",
+                                detail = "Not sent",
+                            )
+                            startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                },
+                            )
+                            return@CompanionConsole
+                        }
                         pendingSpeechPermissionResult = { granted ->
                             if (granted) {
+                                microphonePermissionDenied = false
                                 startListening()
                             } else {
-                                pushToTalkStatus = "Microphone permission was denied."
+                                microphonePermissionDenied = true
+                                pushToTalkStatus =
+                                    "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent."
                                 conversationMessages = conversationMessages + ConversationMessage(
                                     sender = "Mic",
-                                    text = "Microphone permission was denied.",
+                                    text = "Microphone permission denied. No transcript was sent.",
                                     detail = "Not sent",
                                 )
                             }
@@ -530,6 +556,8 @@ internal fun androidCompanionUiState(
     conversationMessages: List<ConversationMessage> = emptyList(),
     diagnosticsExport: DiagnosticsExportUiState = DiagnosticsExportUiState(),
     pushToTalkAvailable: Boolean = false,
+    pushToTalkPermissionGranted: Boolean = false,
+    pushToTalkPermissionDenied: Boolean = false,
     pushToTalkStatus: String = "",
     modelAssetStatus: AndroidModelAssetStatus = AndroidModelAssetStatus(
         localPath = "Android app model cache: missing",
@@ -584,6 +612,8 @@ internal fun androidCompanionUiState(
             bridgeStatus = bridgeStatus,
             conversationMessages = conversationMessages,
             pushToTalkAvailable = pushToTalkAvailable,
+            pushToTalkPermissionGranted = pushToTalkPermissionGranted,
+            pushToTalkPermissionDenied = pushToTalkPermissionDenied,
             pushToTalkStatus = pushToTalkStatus,
         ),
         diagnosticsExport = diagnosticsExport,
@@ -708,14 +738,30 @@ private fun androidConversationUiState(
     bridgeStatus: AndroidBridgeRuntimeStatus,
     conversationMessages: List<ConversationMessage>,
     pushToTalkAvailable: Boolean,
+    pushToTalkPermissionGranted: Boolean,
+    pushToTalkPermissionDenied: Boolean,
     pushToTalkStatus: String,
 ): ConversationUiState {
     val connected = bridgeStatus.robotConnected
+    val effectivePushToTalkStatus = when {
+        !pushToTalkAvailable ->
+            "Android speech recognition is unavailable. Enable Android Speech Services, then retry."
+        connected && !pushToTalkPermissionGranted && pushToTalkPermissionDenied ->
+            "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent."
+        connected && !pushToTalkPermissionGranted ->
+            "Tap Allow mic and approve microphone access. Denied turns are not sent."
+        pushToTalkStatus.isNotBlank() -> pushToTalkStatus
+        else -> "Microphone turns use Android speech recognition."
+    }
     return ConversationUiState(
         inputEnabled = connected,
         pushToTalkEnabled = connected && pushToTalkAvailable,
-        pushToTalkLabel = if (pushToTalkAvailable) "Push-to-talk" else "Mic unavailable",
-        pushToTalkStatus = pushToTalkStatus,
+        pushToTalkLabel = when {
+            !pushToTalkAvailable -> "Mic unavailable"
+            connected && !pushToTalkPermissionGranted -> "Allow mic"
+            else -> "Push-to-talk"
+        },
+        pushToTalkStatus = effectivePushToTalkStatus,
         status = when {
             connected && bridgeStatus.textTurnsSubmitted > 0 ->
                 "Text turns sent: ${bridgeStatus.textTurnsSubmitted}. Last turn: ${bridgeStatus.lastTextTurn.ifBlank { "n/a" }}"
