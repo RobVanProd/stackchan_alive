@@ -4493,6 +4493,49 @@ void test_bridge_endpoint_control_registers_endpoint_and_returns_result() {
   TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().endpointHellos);
 }
 
+void test_bridge_endpoint_control_requires_pairing_code_when_configured() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControlConfig config;
+  config.requiredPairingCode = "7k-9p q2";
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry, config));
+
+  char response[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"pairing_code\":\"BAD000\"}",
+      response,
+      100,
+      BridgeEndpointControlResult::Rejected));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"code\":\"pairing_code_mismatch\""));
+  TEST_ASSERT_FALSE(registry.isTrusted("phone-rob-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().pairingRejects);
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"pairing_code\":\"7K9PQ2\","
+      "\"capabilities\":[\"settings\"]}",
+      response,
+      120,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"endpoint_hello_result\""));
+  TEST_ASSERT_TRUE(registry.isTrusted("phone-rob-01"));
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().endpointHellos);
+}
+
+void test_bridge_endpoint_control_rejects_malformed_pairing_config() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControlConfig config;
+  config.requiredPairingCode = "BAD";
+  BridgeEndpointControl control;
+  TEST_ASSERT_FALSE(control.begin(registry, config));
+  TEST_ASSERT_FALSE(control.telemetry().ready);
+}
+
 void test_bridge_endpoint_control_claim_and_release_handoff() {
   BridgeEndpointRegistry registry;
   TEST_ASSERT_TRUE(registry.begin());
@@ -5001,6 +5044,8 @@ int main() {
   RUN_TEST(test_bridge_endpoint_registry_disconnect_active_owner_promotes_next_endpoint);
   RUN_TEST(test_bridge_endpoint_registry_auto_connect_false_waits_for_explicit_claim);
   RUN_TEST(test_bridge_endpoint_control_registers_endpoint_and_returns_result);
+  RUN_TEST(test_bridge_endpoint_control_requires_pairing_code_when_configured);
+  RUN_TEST(test_bridge_endpoint_control_rejects_malformed_pairing_config);
   RUN_TEST(test_bridge_endpoint_control_claim_and_release_handoff);
   RUN_TEST(test_bridge_endpoint_control_heartbeat_handles_endpoint_only);
   RUN_TEST(test_bridge_endpoint_control_lists_and_forgets_endpoints);

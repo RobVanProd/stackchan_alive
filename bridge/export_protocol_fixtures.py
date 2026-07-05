@@ -43,6 +43,7 @@ def fixture_documents() -> dict[str, dict[str, Any]]:
             "endpoint_name": "Rob's Phone",
             "endpoint_kind": "android",
             "app_version": "1.0.0",
+            "pairing_code": "7K9PQ2",
             "priority": 60,
             "supports_binary_audio": True,
             "capabilities": [

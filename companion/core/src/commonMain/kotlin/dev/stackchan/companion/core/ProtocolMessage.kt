@@ -48,6 +48,7 @@ data class EndpointHello(
     @SerialName("endpoint_name") val endpointName: String,
     @SerialName("endpoint_kind") val endpointKind: String,
     @SerialName("app_version") val appVersion: String = CompanionIdentity.appVersion,
+    @SerialName("pairing_code") val pairingCode: String? = null,
     val priority: Int,
     @SerialName("supports_binary_audio") val supportsBinaryAudio: Boolean,
     val capabilities: List<String>,
@@ -267,9 +268,13 @@ data class UnknownMessage(
     val raw: JsonObject,
 ) : BridgeMessage
 
-fun defaultDesktopEndpointHello(endpointId: String = "pc-companion-c0"): EndpointHello =
+fun defaultDesktopEndpointHello(
+    endpointId: String = "pc-companion-c0",
+    pairingCode: String? = null,
+): EndpointHello =
     EndpointHello(
         endpointId = endpointId,
+        pairingCode = pairingCode,
         endpointName = "Stackchan Desktop Companion",
         endpointKind = "pc",
         priority = 50,
@@ -277,9 +282,13 @@ fun defaultDesktopEndpointHello(endpointId: String = "pc-companion-c0"): Endpoin
         capabilities = listOf("settings", "diagnostics", "brain_owner"),
     )
 
-fun defaultAndroidEndpointHello(endpointId: String = "android-companion-c0"): EndpointHello =
+fun defaultAndroidEndpointHello(
+    endpointId: String = "android-companion-c0",
+    pairingCode: String? = null,
+): EndpointHello =
     EndpointHello(
         endpointId = endpointId,
+        pairingCode = pairingCode,
         endpointName = "Stackchan Android Companion",
         endpointKind = "android",
         priority = 60,

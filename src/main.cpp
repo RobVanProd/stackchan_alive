@@ -38,6 +38,10 @@
 #define STACKCHAN_ENABLE_SPEAKER 0
 #endif
 
+#ifndef STACKCHAN_PAIRING_SHORT_CODE
+#define STACKCHAN_PAIRING_SHORT_CODE ""
+#endif
+
 using namespace stackchan;
 
 namespace {
@@ -1595,7 +1599,9 @@ void setup() {
   gBridgeEndpointRegistry.begin();
   gBridgeEndpointStore.begin(gBridgeEndpointStoreBackend);
   gBridgeEndpointStore.load(gBridgeEndpointRegistry, bootMs);
-  gBridgeEndpointControl.begin(gBridgeEndpointRegistry);
+  BridgeEndpointControlConfig endpointControlConfig;
+  endpointControlConfig.requiredPairingCode = STACKCHAN_PAIRING_SHORT_CODE;
+  gBridgeEndpointControl.begin(gBridgeEndpointRegistry, endpointControlConfig);
   gBridgeEndpointControl.attachStore(&gBridgeEndpointStore);
   gAudioCapture.begin(AudioCaptureConfig {}, &gAudioCaptureSource);
   gBridgeWiFi.begin(BridgeWiFiProvisioningConfig {}, bootMs);

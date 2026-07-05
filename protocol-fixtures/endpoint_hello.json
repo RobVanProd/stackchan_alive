@@ -12,6 +12,7 @@
   "endpoint_id": "phone-rob-01",
   "endpoint_kind": "android",
   "endpoint_name": "Rob's Phone",
+  "pairing_code": "7K9PQ2",
   "priority": 60,
   "protocol": "stackchan.bridge.v1",
   "supports_binary_audio": true,

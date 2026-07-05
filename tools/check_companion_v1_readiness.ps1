@@ -241,13 +241,13 @@ Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
-  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "settings_result", "owner_status", "hello-connected robot session", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
+  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing_code_mismatch", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "settings_result", "owner_status", "hello-connected robot session", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
 
 Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing_code_mismatch", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
@@ -266,6 +266,42 @@ Test-TextEvidence `
   -Name "Android guided robot pairing walkthrough" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
   -Patterns @("pairingShortCode", "pairingFingerprint", "pairingInstruction", "nextActionTitle", "nextActionDetail", "removalGuidance", "SavedRobot", "rememberRobot", "onForgetRobot")
+
+Test-TextEvidence `
+  -Id "android-pairing-code-hello" `
+  -Name "Android pairing code helper matches setup ticket" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidLanAddresses.kt") `
+  -Patterns @("androidPairingShortCode", "androidPairingFingerprint", "endpointHello.endpointId", "endpointHello.appVersion")
+
+Test-TextEvidence `
+  -Id "android-pairing-code-service" `
+  -Name "Android endpoint hello carries displayed pairing code" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/CompanionBridgeService.kt") `
+  -Patterns @("endpointBase", "pairingCode = androidPairingShortCode", "EndpointServerConfig")
+
+Test-TextEvidence `
+  -Id "firmware-pairing-code-config" `
+  -Name "Firmware endpoint trust pairing config" `
+  -RelativePaths @("src/io/BridgeEndpointControl.hpp") `
+  -Patterns @("BridgeEndpointControlConfig", "requiredPairingCode", "pairingRejects")
+
+Test-TextEvidence `
+  -Id "firmware-pairing-code-gate" `
+  -Name "Firmware endpoint trust pairing code gate" `
+  -RelativePaths @("src/io/BridgeEndpointControl.cpp") `
+  -Patterns @("pairing_code", "pairing_code_mismatch", "normalizePairingCode", "pairingCodeMatches")
+
+Test-TextEvidence `
+  -Id "firmware-pairing-code-boot" `
+  -Name "Firmware boot wires optional pairing code gate" `
+  -RelativePaths @("src/main.cpp") `
+  -Patterns @("STACKCHAN_PAIRING_SHORT_CODE", "BridgeEndpointControlConfig", "endpointControlConfig.requiredPairingCode")
+
+Test-TextEvidence `
+  -Id "firmware-pairing-code-test" `
+  -Name "Firmware pairing code native regression test" `
+  -RelativePaths @("test/test_native_logic/test_main.cpp") `
+  -Patterns @("test_bridge_endpoint_control_requires_pairing_code_when_configured", "pairing_code_mismatch", "7K9PQ2")
 
 Test-TextEvidence `
   -Id "android-saved-robot-store" `

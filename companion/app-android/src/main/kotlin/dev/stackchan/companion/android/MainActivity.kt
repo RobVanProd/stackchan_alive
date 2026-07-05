@@ -44,7 +44,6 @@ import dev.stackchan.companion.ui.RobotSetupStepUiState
 import dev.stackchan.companion.ui.RobotSetupUiState
 import dev.stackchan.companion.ui.SettingsSurfaceUiState
 import dev.stackchan.companion.ui.TelemetryReading
-import java.security.MessageDigest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -743,9 +742,9 @@ private fun androidRobotSetup(
 ): RobotSetupUiState {
     val serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed"
     val robotDetected = bridgeStatus.robotSocketConnected || bridgeStatus.robotConnected
-    val pairingSeed = "${endpointHello.endpointId}|${endpointHello.appVersion}|${bridgeStatus.primaryBridgeUrl}"
-    val pairingFingerprint = "sha256:${sha256Hex(pairingSeed).take(32)}"
-    val pairingShortCode = sha256Hex("$pairingSeed|pair").take(6).uppercase()
+    val pairingFingerprint = androidPairingFingerprint(endpointHello, bridgeStatus.primaryBridgeUrl)
+    val pairingShortCode = endpointHello.pairingCode
+        ?: androidPairingShortCode(endpointHello, bridgeStatus.primaryBridgeUrl)
     val pairingInstruction = when {
         bridgeStatus.robotConnected ->
             "This phone is saved for ${bridgeStatus.robotDisplayName}. Use Forget below before pairing a replacement robot."
@@ -973,11 +972,6 @@ internal fun androidRecentLogs(
     add("Android NSD advertises _stackchan-bridge._tcp.local.")
     add("UDP beacon broadcasts endpoint metadata on port 8766.")
 }
-
-private fun sha256Hex(value: String): String =
-    MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray(Charsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
 
 private fun JsonObject.stringValue(domain: String, key: String, fallback: String): String =
     this[domain]

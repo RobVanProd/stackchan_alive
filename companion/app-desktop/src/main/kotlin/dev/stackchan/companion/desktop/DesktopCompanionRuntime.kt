@@ -46,6 +46,7 @@ data class DesktopCompanionRuntimeConfig(
     val port: Int = System.getProperty("stackchan.companion.port")?.toIntOrNull() ?: DEFAULT_BRIDGE_PORT,
     val storageDir: Path = defaultCompanionStorageDir(),
     val endpointId: String = System.getProperty("stackchan.companion.endpoint_id") ?: "pc-companion-desktop",
+    val pairingCode: String? = System.getProperty("stackchan.companion.pairing_code")?.takeIf { it.isNotBlank() },
     val advertiseMdns: Boolean = System.getProperty("stackchan.companion.mdns")?.toBooleanStrictOrNull() ?: true,
     val mdnsAddress: InetAddress? = null,
     val mdnsInstanceName: String = System.getProperty("stackchan.companion.mdns.instance") ?: "stackchan-companion-desktop",
@@ -104,7 +105,10 @@ class DesktopCompanionRuntime(
         require(config.host.isNotBlank()) { "host is required" }
         require(config.port in 1..65535) { "port must be 1..65535" }
         Files.createDirectories(config.storageDir)
-        val endpointHello = defaultDesktopEndpointHello(endpointId = config.endpointId)
+        val endpointHello = defaultDesktopEndpointHello(
+            endpointId = config.endpointId,
+            pairingCode = config.pairingCode,
+        )
 
         val settingsStore = SettingsRepositoryFileStore(config.storageDir.resolve("settings.json"))
         val trustStore = TrustedEndpointFileStore(config.storageDir.resolve("trusted_endpoints.json"))

@@ -1,10 +1,12 @@
 package dev.stackchan.companion.android
 
 import dev.stackchan.companion.core.DEFAULT_BRIDGE_PORT
+import dev.stackchan.companion.core.EndpointHello
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.security.MessageDigest
 import java.util.Collections
 import java.util.Enumeration
 
@@ -33,6 +35,14 @@ fun localBridgeManualUrls(port: Int = DEFAULT_BRIDGE_PORT): List<String> {
 fun primaryBridgeManualUrl(port: Int = DEFAULT_BRIDGE_PORT): String =
     localBridgeManualUrls(port).first()
 
+fun androidPairingShortCode(endpointHello: EndpointHello, primaryBridgeUrl: String): String =
+    sha256Hex("${endpointHello.endpointId}|${endpointHello.appVersion}|$primaryBridgeUrl|pair")
+        .take(6)
+        .uppercase()
+
+fun androidPairingFingerprint(endpointHello: EndpointHello, primaryBridgeUrl: String): String =
+    "sha256:${sha256Hex("${endpointHello.endpointId}|${endpointHello.appVersion}|$primaryBridgeUrl").take(32)}"
+
 private fun InetAddress.isUsableLanAddress(): Boolean =
     !isAnyLocalAddress &&
         !isLoopbackAddress &&
@@ -47,3 +57,8 @@ private fun InetAddress.toUrlHost(): String {
 
 private fun <T> Enumeration<T>?.toList(): List<T> =
     this?.let { Collections.list(it) }.orEmpty()
+
+private fun sha256Hex(value: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }

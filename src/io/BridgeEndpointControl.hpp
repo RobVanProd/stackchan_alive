@@ -18,6 +18,10 @@ enum class BridgeEndpointControlResult : uint8_t {
   Rejected,
 };
 
+struct BridgeEndpointControlConfig {
+  const char* requiredPairingCode = nullptr;
+};
+
 struct BridgeEndpointControlTelemetry {
   bool ready = false;
   uint32_t handledMessages = 0;
@@ -31,6 +35,7 @@ struct BridgeEndpointControlTelemetry {
   uint32_t trustedEndpointRequests = 0;
   uint32_t capabilityUpdates = 0;
   uint32_t forgotten = 0;
+  uint32_t pairingRejects = 0;
   uint32_t persistenceSaves = 0;
   uint32_t persistenceErrors = 0;
   uint32_t responsesDropped = 0;
@@ -39,7 +44,8 @@ struct BridgeEndpointControlTelemetry {
 
 class BridgeEndpointControl {
  public:
-  bool begin(BridgeEndpointRegistry& registry);
+  bool begin(BridgeEndpointRegistry& registry,
+             const BridgeEndpointControlConfig& config = BridgeEndpointControlConfig {});
   void attachStore(BridgeEndpointStore* store);
   void update(uint32_t nowMs);
 
@@ -113,11 +119,14 @@ class BridgeEndpointControl {
                                 char* responseOut,
                                 size_t responseOutSize);
   static void copyBounded(char* out, size_t outSize, const char* value);
+  static bool normalizePairingCode(const char* value, char* out, size_t outSize);
+  bool pairingCodeMatches(const char* value) const;
   bool persistRegistry(uint32_t nowMs);
 
   BridgeEndpointRegistry* registry_ = nullptr;
   BridgeEndpointStore* store_ = nullptr;
   BridgeEndpointControlTelemetry telemetry_;
+  char requiredPairingCode_[7] = {};
 };
 
 }  // namespace stackchan

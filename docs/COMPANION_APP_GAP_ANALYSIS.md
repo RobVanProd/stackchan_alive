@@ -47,9 +47,11 @@ current v1 companion branch.
   `hello` handshake first. Android also exposes the intermediate "robot socket detected,
   waiting for hello" state in setup, notification detail, and diagnostics export. Android now
   shows a phone-side pairing ticket with pairing code, fingerprint, bridge URL, discovery
-  mode, a current next step, and saved-robot add/remove guidance after a robot `hello`.
-  Full QR/short-code robot-side trust establishment and hardware proof still remain
-  blocking before public distribution.
+  mode, a current next step, and saved-robot add/remove guidance after a robot `hello`. The
+  bridge endpoint now sends that same short code in `endpoint_hello.pairing_code`, and
+  firmware can be built with `STACKCHAN_PAIRING_SHORT_CODE` to reject endpoint trust unless
+  the normalized six-character code matches. Full QR flow, firmware UI entry, and hardware
+  proof still remain blocking before public distribution.
 - G6 first-run Wi-Fi provisioning is partially closed on the app side. The Android Nodes
   setup flow now starts with a Wi-Fi bootstrap step, reports whether the phone is currently
   on Wi-Fi, opens native Wi-Fi settings, and explains that firmware still needs Wi-Fi
@@ -73,7 +75,7 @@ current v1 companion branch.
 
 1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware.
-3. Finish G5 with QR/short-code robot-side trust establishment and real hardware pairing evidence.
+3. Finish G5 with QR/short-code robot UI entry and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.
 6. Finish G6 with robot-side Wi-Fi credential entry/provisioning transport and hardware proof.

@@ -16,15 +16,33 @@ bool equals(const char* left, const char* right) {
   return left != nullptr && right != nullptr && std::strcmp(left, right) == 0;
 }
 
+bool isBase36(char value) {
+  return (value >= '0' && value <= '9') || (value >= 'A' && value <= 'Z') ||
+         (value >= 'a' && value <= 'z');
+}
+
+char uppercaseAscii(char value) {
+  return value >= 'a' && value <= 'z' ? static_cast<char>(value - 'a' + 'A') : value;
+}
+
 uint8_t clampPriority(uint32_t value) {
   return value > 255u ? 255u : static_cast<uint8_t>(value);
 }
 }
 
-bool BridgeEndpointControl::begin(BridgeEndpointRegistry& registry) {
+bool BridgeEndpointControl::begin(BridgeEndpointRegistry& registry,
+                                  const BridgeEndpointControlConfig& config) {
   registry_ = &registry;
   store_ = nullptr;
   telemetry_ = BridgeEndpointControlTelemetry {};
+  requiredPairingCode_[0] = '\0';
+  if (!isEmpty(config.requiredPairingCode) &&
+      !normalizePairingCode(config.requiredPairingCode,
+                            requiredPairingCode_,
+                            sizeof(requiredPairingCode_))) {
+    telemetry_.ready = false;
+    return false;
+  }
   telemetry_.ready = registry_->telemetry().ready;
   return telemetry_.ready;
 }
@@ -115,6 +133,10 @@ BridgeEndpointControlResult BridgeEndpointControl::handleEndpointHello(const Jso
   copyBounded(endpoint.endpointId, sizeof(endpoint.endpointId), root["endpoint_id"] | "");
   if (isEmpty(endpoint.endpointId)) {
     return writeError("endpoint_id_required", nullptr, responseOut, responseOutSize);
+  }
+  if (!pairingCodeMatches(root["pairing_code"] | "")) {
+    telemetry_.pairingRejects++;
+    return writeError("pairing_code_mismatch", endpoint.endpointId, responseOut, responseOutSize);
   }
   copyBounded(endpoint.endpointName, sizeof(endpoint.endpointName), root["endpoint_name"] | "");
   copyBounded(endpoint.publicKeyFingerprint,
@@ -491,6 +513,42 @@ void BridgeEndpointControl::copyBounded(char* out, size_t outSize, const char* v
   const size_t copyLen = sourceLen < (outSize - 1u) ? sourceLen : (outSize - 1u);
   std::memcpy(out, value, copyLen);
   out[copyLen] = '\0';
+}
+
+bool BridgeEndpointControl::normalizePairingCode(const char* value, char* out, size_t outSize) {
+  if (out == nullptr || outSize < 7) {
+    return false;
+  }
+  out[0] = '\0';
+  if (isEmpty(value)) {
+    return false;
+  }
+  size_t count = 0;
+  for (const char* cursor = value; *cursor != '\0'; ++cursor) {
+    if (*cursor == '-' || *cursor == ' ') {
+      continue;
+    }
+    if (!isBase36(*cursor) || count >= 6) {
+      out[0] = '\0';
+      return false;
+    }
+    out[count++] = uppercaseAscii(*cursor);
+  }
+  if (count != 6) {
+    out[0] = '\0';
+    return false;
+  }
+  out[count] = '\0';
+  return true;
+}
+
+bool BridgeEndpointControl::pairingCodeMatches(const char* value) const {
+  if (requiredPairingCode_[0] == '\0') {
+    return true;
+  }
+  char normalized[sizeof(requiredPairingCode_)] = {};
+  return normalizePairingCode(value, normalized, sizeof(normalized)) &&
+         std::strcmp(normalized, requiredPairingCode_) == 0;
 }
 
 bool BridgeEndpointControl::persistRegistry(uint32_t nowMs) {

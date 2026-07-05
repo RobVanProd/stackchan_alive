@@ -54,6 +54,7 @@ class ProtocolMessageTest {
               "endpoint_name": "Rob's Phone",
               "endpoint_kind": "android",
               "app_version": "1.0.0",
+              "pairing_code": "7K9PQ2",
               "priority": 60,
               "supports_binary_audio": true,
               "capabilities": ["settings", "diagnostics"]
@@ -64,6 +65,7 @@ class ProtocolMessageTest {
         val hello = assertIs<EndpointHello>(decoded)
         assertEquals("phone-rob-01", hello.endpointId)
         assertEquals("android", hello.endpointKind)
+        assertEquals("7K9PQ2", hello.pairingCode)
     }
 
     @Test

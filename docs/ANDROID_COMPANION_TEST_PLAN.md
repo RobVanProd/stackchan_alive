@@ -124,6 +124,7 @@ Evidence to capture:
 - [ ] `tools/run_android_companion_probe.cmd` passes against `/bridge`
 - [ ] `endpoint_hello.endpoint_kind` is `android`
 - [ ] `endpoint_hello.protocol` is `stackchan.bridge.v1`
+- [ ] `endpoint_hello.pairing_code` matches the six-character pairing code displayed by the setup card
 - [ ] advertised capabilities include settings/diagnostics and brain ownership capability if enabled for the test build
 
 ## Robot Session
@@ -160,6 +161,8 @@ Evidence to capture:
 - [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/saved robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
+- [ ] A firmware build configured with `STACKCHAN_PAIRING_SHORT_CODE` rejects missing or wrong `endpoint_hello.pairing_code` with `pairing_code_mismatch` and does not persist that endpoint as trusted.
+- [ ] The same firmware build accepts the displayed Android pairing code, stores the endpoint as trusted, and reports the phone in `trusted_endpoints_result`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.
 - [ ] Android session wake lock is released after the robot disconnects.
 - [ ] Reopening the app still shows the same endpoint identity.

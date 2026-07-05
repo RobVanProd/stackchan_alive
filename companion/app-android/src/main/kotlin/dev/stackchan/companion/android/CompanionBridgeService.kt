@@ -108,7 +108,10 @@ class CompanionBridgeService : Service() {
             val stores = AndroidBridgeStores(applicationContext)
             val settings = stores.loadSettings()
             val trustedEndpoints = stores.loadTrustedEndpoints()
-            val endpointHello = defaultAndroidEndpointHello(endpointId = stores.endpointId())
+            val endpointBase = defaultAndroidEndpointHello(endpointId = stores.endpointId())
+            val endpointHello = endpointBase.copy(
+                pairingCode = androidPairingShortCode(endpointBase, primaryBridgeManualUrl()),
+            )
             val router = EndpointRequestRouter(
                 settingsRepository = settings,
                 trustedEndpointRegistry = trustedEndpoints,
