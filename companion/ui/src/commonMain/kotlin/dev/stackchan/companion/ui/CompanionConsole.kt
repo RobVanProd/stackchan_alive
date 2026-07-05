@@ -1,6 +1,7 @@
 package dev.stackchan.companion.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.stackchan.companion.core.CompanionIdentity
+import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
+import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 
 private val Ink = Color(0xFFE7F8FF)
 private val Muted = Color(0xFF88A5B3)
@@ -128,6 +131,7 @@ data class RobotSetupUiState(
     val pairingShortCode: String = "------",
     val pairingFingerprint: String = "No pairing ticket yet",
     val pairingMode: String = "Manual bridge",
+    val pairingQrPayload: String = "",
     val pairingInstruction: String = "Start the bridge to generate a pairing ticket for Stack-chan.",
     val serviceRunning: Boolean = false,
     val robotConnected: Boolean = false,
@@ -1025,6 +1029,9 @@ private fun RobotSetupCard(
                     Readout("Mode", setup.pairingMode, Cyan, Modifier.weight(1.25f))
                 }
                 Readout("Phone fingerprint", setup.pairingFingerprint, Muted)
+                if (setup.pairingQrPayload.isNotBlank()) {
+                    PairingQrTicket(setup)
+                }
                 Text(
                     setup.pairingInstruction,
                     color = Muted,
@@ -1064,6 +1071,36 @@ private fun RobotSetupCard(
                         onClick = onRestartBridge,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingQrTicket(setup: RobotSetupUiState) {
+    Surface(
+        color = Color(0xFFEFF7F7),
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Cyan),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Image(
+                painter = rememberQrCodePainter(
+                    data = setup.pairingQrPayload,
+                    errorCorrectionLevel = QrErrorCorrectionLevel.Medium,
+                ),
+                contentDescription = "Stack-chan pairing QR code",
+                modifier = Modifier.size(116.dp),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("SCAN OR ENTER", color = Color(0xFF0B111C), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Text(setup.primaryBridgeUrl, color = Color(0xFF0B111C), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("Code ${setup.pairingShortCode}", color = Color(0xFF7A4E00), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Text(setup.pairingQrPayload, color = Color(0xFF35505A), fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

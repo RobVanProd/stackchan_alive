@@ -52,8 +52,10 @@ current v1 companion branch.
   firmware can be built with `STACKCHAN_PAIRING_SHORT_CODE` to reject endpoint trust unless
   the normalized six-character code matches. Firmware also exposes a native-tested
   `pairing code <ABC123>` / `pairing clear` serial control path for lab bring-up without
-  reflashing. Full QR flow, on-device menu entry, and hardware proof still remain blocking
-  before public distribution.
+  reflashing. Android now renders a scannable `stackchan://pair` QR ticket for the same
+  bridge URL, short code, phone fingerprint, and endpoint id shown in the manual flow.
+  Robot-side QR scanning/menu entry and hardware proof still remain blocking before public
+  distribution.
 - G6 first-run Wi-Fi provisioning is partially closed on the app side. The Android Nodes
   setup flow now starts with a Wi-Fi bootstrap step, reports whether the phone is currently
   on Wi-Fi, opens native Wi-Fi settings, and explains that firmware still needs Wi-Fi
@@ -77,7 +79,7 @@ current v1 companion branch.
 
 1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware.
-3. Finish G5 with QR/short-code robot UI entry and real hardware pairing evidence.
+3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.
 6. Finish G6 with robot-side Wi-Fi credential entry/provisioning transport and hardware proof.

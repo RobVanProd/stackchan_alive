@@ -745,6 +745,12 @@ private fun androidRobotSetup(
     val pairingFingerprint = androidPairingFingerprint(endpointHello, bridgeStatus.primaryBridgeUrl)
     val pairingShortCode = endpointHello.pairingCode
         ?: androidPairingShortCode(endpointHello, bridgeStatus.primaryBridgeUrl)
+    val pairingQrPayload = androidPairingQrPayload(
+        bridgeUrl = bridgeStatus.primaryBridgeUrl,
+        pairingShortCode = pairingShortCode,
+        pairingFingerprint = pairingFingerprint,
+        endpointId = endpointHello.endpointId,
+    )
     val pairingInstruction = when {
         bridgeStatus.robotConnected ->
             "This phone is saved for ${bridgeStatus.robotDisplayName}. Use Forget below before pairing a replacement robot."
@@ -808,6 +814,7 @@ private fun androidRobotSetup(
         pairingShortCode = pairingShortCode,
         pairingFingerprint = pairingFingerprint,
         pairingMode = if (serviceRunning) "mDNS + UDP + manual URL" else "Bridge stopped",
+        pairingQrPayload = if (serviceRunning && bridgeStatus.primaryBridgeUrl.isNotBlank()) pairingQrPayload else "",
         pairingInstruction = pairingInstruction,
         serviceRunning = serviceRunning,
         robotConnected = bridgeStatus.robotConnected,
@@ -858,6 +865,39 @@ private fun androidRobotSetup(
         ),
     )
 }
+
+internal fun androidPairingQrPayload(
+    bridgeUrl: String,
+    pairingShortCode: String,
+    pairingFingerprint: String,
+    endpointId: String,
+): String =
+    "stackchan://pair" +
+        "?bridge=${bridgeUrl.qrQueryValue()}" +
+        "&code=${pairingShortCode.qrQueryValue()}" +
+        "&fingerprint=${pairingFingerprint.qrQueryValue()}" +
+        "&endpoint_id=${endpointId.qrQueryValue()}"
+
+private fun String.qrQueryValue(): String =
+    buildString {
+        for (char in this@qrQueryValue) {
+            if (char.isQrQueryUnreserved()) {
+                append(char)
+            } else {
+                append('%')
+                append(char.code.toString(16).uppercase().padStart(2, '0'))
+            }
+        }
+    }
+
+private fun Char.isQrQueryUnreserved(): Boolean =
+    this in 'A'..'Z' ||
+        this in 'a'..'z' ||
+        this in '0'..'9' ||
+        this == '-' ||
+        this == '_' ||
+        this == '.' ||
+        this == '~'
 
 private fun Context.isWifiConnected(): Boolean {
     val connectivityManager = getSystemService(ConnectivityManager::class.java) ?: return false

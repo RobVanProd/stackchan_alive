@@ -27,6 +27,7 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.runtime)
             implementation(compose.ui)
+            implementation(libs.qrose)
         }
     }
 }
