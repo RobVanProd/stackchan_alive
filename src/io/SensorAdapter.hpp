@@ -44,6 +44,11 @@ struct BenchBridgeUpload {
   bool wakeGateOpen = true;
 };
 
+struct BenchPairingControl {
+  bool clear = false;
+  char code[7] = {};
+};
+
 struct BenchControl {
   bool wantsHelp = false;
   bool wantsStatus = false;
@@ -57,6 +62,7 @@ struct BenchControl {
   bool hasSpeechCue = false;
   bool hasBridge = false;
   bool hasBridgeUpload = false;
+  bool hasPairingControl = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
@@ -67,6 +73,7 @@ struct BenchControl {
   BenchAmbientReading ambient;
   BenchBridgeControl bridge;
   BenchBridgeUpload bridgeUpload;
+  BenchPairingControl pairing;
   SpeechCue speechCue;
   const char* command = "";
 };

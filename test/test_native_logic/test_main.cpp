@@ -1583,6 +1583,27 @@ void test_sensor_adapter_parses_bridge_uplink_commands() {
                     static_cast<int>(control.bridgeUpload.action));
 }
 
+void test_sensor_adapter_parses_pairing_code_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("pairing code 7K9PQ2", 4121, &control));
+  TEST_ASSERT_FALSE(control.hasBridge);
+  TEST_ASSERT_TRUE(control.hasPairingControl);
+  TEST_ASSERT_FALSE(control.pairing.clear);
+  TEST_ASSERT_EQUAL_STRING("7k9pq2", control.pairing.code);
+  TEST_ASSERT_EQUAL_STRING("pairing_code", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("pair abc123", 4122, &control));
+  TEST_ASSERT_TRUE(control.hasPairingControl);
+  TEST_ASSERT_FALSE(control.pairing.clear);
+  TEST_ASSERT_EQUAL_STRING("abc123", control.pairing.code);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("pairing clear", 4123, &control));
+  TEST_ASSERT_TRUE(control.hasPairingControl);
+  TEST_ASSERT_TRUE(control.pairing.clear);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("pairing code short", 4124, &control));
+}
+
 void test_sensor_adapter_parses_audio_awareness_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("sound dir=-45 level=0.70", 4081, &control));
@@ -4536,6 +4557,34 @@ void test_bridge_endpoint_control_rejects_malformed_pairing_config() {
   TEST_ASSERT_FALSE(control.telemetry().ready);
 }
 
+void test_bridge_endpoint_control_allows_runtime_pairing_code_changes() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  TEST_ASSERT_FALSE(control.pairingCodeRequired());
+
+  TEST_ASSERT_TRUE(control.setRequiredPairingCode("abc123"));
+  TEST_ASSERT_TRUE(control.pairingCodeRequired());
+  TEST_ASSERT_EQUAL_STRING("ABC123", control.requiredPairingCode());
+  TEST_ASSERT_FALSE(control.setRequiredPairingCode("bad"));
+  TEST_ASSERT_EQUAL_STRING("ABC123", control.requiredPairingCode());
+
+  char response[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"pairing_code\":\"ABC123\"}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_TRUE(registry.isTrusted("phone-rob-01"));
+
+  control.clearRequiredPairingCode();
+  TEST_ASSERT_FALSE(control.pairingCodeRequired());
+  TEST_ASSERT_EQUAL_STRING("", control.requiredPairingCode());
+}
+
 void test_bridge_endpoint_control_claim_and_release_handoff() {
   BridgeEndpointRegistry registry;
   TEST_ASSERT_TRUE(registry.begin());
@@ -4958,6 +5007,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_direct_speech_intent_cues);
   RUN_TEST(test_sensor_adapter_parses_bridge_conversation_commands);
   RUN_TEST(test_sensor_adapter_parses_bridge_uplink_commands);
+  RUN_TEST(test_sensor_adapter_parses_pairing_code_commands);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
@@ -5046,6 +5096,7 @@ int main() {
   RUN_TEST(test_bridge_endpoint_control_registers_endpoint_and_returns_result);
   RUN_TEST(test_bridge_endpoint_control_requires_pairing_code_when_configured);
   RUN_TEST(test_bridge_endpoint_control_rejects_malformed_pairing_config);
+  RUN_TEST(test_bridge_endpoint_control_allows_runtime_pairing_code_changes);
   RUN_TEST(test_bridge_endpoint_control_claim_and_release_handoff);
   RUN_TEST(test_bridge_endpoint_control_heartbeat_handles_endpoint_only);
   RUN_TEST(test_bridge_endpoint_control_lists_and_forgets_endpoints);

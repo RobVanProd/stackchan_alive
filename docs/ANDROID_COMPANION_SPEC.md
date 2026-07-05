@@ -72,8 +72,10 @@ short code in the **Add your Stack-chan** setup path and sends that same code as
 `endpoint_hello.pairing_code`. Firmware builds may set `STACKCHAN_PAIRING_SHORT_CODE`
 to the expected code; the endpoint-control adapter normalizes case, spaces, and hyphens,
 then rejects mismatches with `pairing_code_mismatch` without storing the endpoint as
-trusted. Firmware menu/QR entry and physical robot proof are still required before this is
-called consumer-ready.
+trusted. Firmware also accepts the lab bring-up command `pairing code <ABC123>` over the
+serial bench control path and `pairing clear` to disable the temporary requirement without
+reflashing. Firmware menu/QR entry and physical robot proof are still required before this
+is called consumer-ready.
 
 The Mobile Brain setup surface must target `Gemma-4-E2B` for LiteRT-LM. Because the model is
 a multi-GB provider-hosted asset, Android must not pretend it is bundled in the APK. The app

@@ -36,10 +36,7 @@ bool BridgeEndpointControl::begin(BridgeEndpointRegistry& registry,
   store_ = nullptr;
   telemetry_ = BridgeEndpointControlTelemetry {};
   requiredPairingCode_[0] = '\0';
-  if (!isEmpty(config.requiredPairingCode) &&
-      !normalizePairingCode(config.requiredPairingCode,
-                            requiredPairingCode_,
-                            sizeof(requiredPairingCode_))) {
+  if (!isEmpty(config.requiredPairingCode) && !setRequiredPairingCode(config.requiredPairingCode)) {
     telemetry_.ready = false;
     return false;
   }
@@ -56,6 +53,19 @@ void BridgeEndpointControl::update(uint32_t nowMs) {
     return;
   }
   registry_->update(nowMs);
+}
+
+bool BridgeEndpointControl::setRequiredPairingCode(const char* value) {
+  char normalized[sizeof(requiredPairingCode_)] = {};
+  if (!normalizePairingCode(value, normalized, sizeof(normalized))) {
+    return false;
+  }
+  std::memcpy(requiredPairingCode_, normalized, sizeof(requiredPairingCode_));
+  return true;
+}
+
+void BridgeEndpointControl::clearRequiredPairingCode() {
+  requiredPairingCode_[0] = '\0';
 }
 
 BridgeEndpointControlResult BridgeEndpointControl::submitControlLine(const char* jsonLine,

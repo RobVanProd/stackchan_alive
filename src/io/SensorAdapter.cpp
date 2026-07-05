@@ -651,6 +651,41 @@ bool fillBridgeUpload(char** tokens, uint8_t tokenCount, BenchControl* controlOu
   return false;
 }
 
+bool fillPairingControl(const char* first, char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  if (controlOut == nullptr) {
+    return false;
+  }
+
+  const char* action = tokenCount >= 1 ? tokens[0] : "";
+  const char* code = tokenCount >= 2 ? tokens[1] : nullptr;
+  if (strcmp(first, "pair") == 0 && tokenCount >= 1 &&
+      strcmp(action, "code") != 0 && strcmp(action, "set") != 0 &&
+      strcmp(action, "require") != 0 && strcmp(action, "clear") != 0 &&
+      strcmp(action, "off") != 0 && strcmp(action, "none") != 0) {
+    code = action;
+    action = "code";
+  }
+
+  BenchControl parsed;
+  parsed.hasPairingControl = true;
+  parsed.command = "pairing_code";
+  if (strcmp(action, "clear") == 0 || strcmp(action, "off") == 0 ||
+      strcmp(action, "none") == 0 || strcmp(action, "disable") == 0) {
+    parsed.pairing.clear = true;
+    *controlOut = parsed;
+    return true;
+  }
+  if ((strcmp(action, "code") == 0 || strcmp(action, "set") == 0 ||
+       strcmp(action, "require") == 0) &&
+      code != nullptr && strlen(code) == 6) {
+    strncpy(parsed.pairing.code, code, sizeof(parsed.pairing.code) - 1);
+    parsed.pairing.code[sizeof(parsed.pairing.code) - 1] = '\0';
+    *controlOut = parsed;
+    return true;
+  }
+  return false;
+}
+
 bool fillBridgeControl(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
   if (tokens == nullptr || tokenCount == 0 || tokens[0] == nullptr) {
     return false;
@@ -1234,6 +1269,9 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "upload") == 0) {
     return fillBridgeUpload(ambientTokens, ambientTokenCount, controlOut);
   }
+  if (strcmp(first, "pairing") == 0 || strcmp(first, "pair") == 0) {
+    return fillPairingControl(first, ambientTokens, ambientTokenCount, controlOut);
+  }
   if ((strcmp(first, "bridge") == 0 || strcmp(first, "conversation") == 0 ||
        strcmp(first, "conv") == 0) &&
       second != nullptr &&
@@ -1356,6 +1394,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: speak <boot|idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety>"));
   Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
   Serial.println(F("[control] help: uplink start <seq> [wake|closed]; uplink chunk <seq> [bytes]; uplink end <seq>; uplink abort"));
+  Serial.println(F("[control] help: pairing code <ABC123>; pairing clear"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));

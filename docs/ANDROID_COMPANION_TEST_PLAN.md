@@ -162,6 +162,7 @@ Evidence to capture:
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] A firmware build configured with `STACKCHAN_PAIRING_SHORT_CODE` rejects missing or wrong `endpoint_hello.pairing_code` with `pairing_code_mismatch` and does not persist that endpoint as trusted.
+- [ ] Over serial/lab control, `pairing code <ABC123>` enables the same pairing gate without reflashing, and `pairing clear` disables the temporary requirement.
 - [ ] The same firmware build accepts the displayed Android pairing code, stores the endpoint as trusted, and reports the phone in `trusted_endpoints_result`.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.
 - [ ] Android session wake lock is released after the robot disconnects.

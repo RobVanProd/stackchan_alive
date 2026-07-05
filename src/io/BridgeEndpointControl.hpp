@@ -48,6 +48,14 @@ class BridgeEndpointControl {
              const BridgeEndpointControlConfig& config = BridgeEndpointControlConfig {});
   void attachStore(BridgeEndpointStore* store);
   void update(uint32_t nowMs);
+  bool setRequiredPairingCode(const char* value);
+  void clearRequiredPairingCode();
+  bool pairingCodeRequired() const {
+    return requiredPairingCode_[0] != '\0';
+  }
+  const char* requiredPairingCode() const {
+    return requiredPairingCode_;
+  }
 
   BridgeEndpointControlResult submitControlLine(const char* jsonLine,
                                                 char* responseOut,

@@ -50,8 +50,10 @@ current v1 companion branch.
   mode, a current next step, and saved-robot add/remove guidance after a robot `hello`. The
   bridge endpoint now sends that same short code in `endpoint_hello.pairing_code`, and
   firmware can be built with `STACKCHAN_PAIRING_SHORT_CODE` to reject endpoint trust unless
-  the normalized six-character code matches. Full QR flow, firmware UI entry, and hardware
-  proof still remain blocking before public distribution.
+  the normalized six-character code matches. Firmware also exposes a native-tested
+  `pairing code <ABC123>` / `pairing clear` serial control path for lab bring-up without
+  reflashing. Full QR flow, on-device menu entry, and hardware proof still remain blocking
+  before public distribution.
 - G6 first-run Wi-Fi provisioning is partially closed on the app side. The Android Nodes
   setup flow now starts with a Wi-Fi bootstrap step, reports whether the phone is currently
   on Wi-Fi, opens native Wi-Fi settings, and explains that firmware still needs Wi-Fi

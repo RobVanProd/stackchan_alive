@@ -786,6 +786,12 @@ void printRuntimeStatus() {
   Serial.print(endpointControl.handledMessages);
   Serial.print(F(" bridge_endpoint_rejected="));
   Serial.print(endpointControl.rejectedMessages);
+  Serial.print(F(" bridge_endpoint_pairing_required="));
+  Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
+  Serial.print(F(" bridge_endpoint_pairing_code="));
+  Serial.print(gBridgeEndpointControl.requiredPairingCode());
+  Serial.print(F(" bridge_endpoint_pairing_rejects="));
+  Serial.print(endpointControl.pairingRejects);
   Serial.print(F(" bridge_endpoint_persistence_saves="));
   Serial.print(endpointControl.persistenceSaves);
   Serial.print(F(" bridge_endpoint_persistence_errors="));
@@ -1013,6 +1019,14 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" bridge_uplink_wake="));
     Serial.print(control.bridgeUpload.wakeGateOpen ? 1 : 0);
   }
+  if (control.hasPairingControl) {
+    Serial.print(F(" pairing_action="));
+    Serial.print(control.pairing.clear ? F("clear") : F("set"));
+    if (!control.pairing.clear) {
+      Serial.print(F(" pairing_code="));
+      Serial.print(control.pairing.code);
+    }
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -1085,6 +1099,23 @@ void handleBridgeUplinkBench(const BenchBridgeUpload& upload, uint32_t nowMs) {
   }
 
   printBridgeUplinkResult(upload.action, accepted, upload.seq, bytes, nowMs);
+}
+
+void handlePairingControl(const BenchPairingControl& pairing, uint32_t nowMs) {
+  const bool accepted = pairing.clear ? true : gBridgeEndpointControl.setRequiredPairingCode(pairing.code);
+  if (pairing.clear) {
+    gBridgeEndpointControl.clearRequiredPairingCode();
+  }
+  Serial.print(F("[pairing] action="));
+  Serial.print(pairing.clear ? F("clear") : F("set"));
+  Serial.print(F(" result="));
+  Serial.print(accepted ? F("accepted") : F("rejected"));
+  Serial.print(F(" required="));
+  Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
+  Serial.print(F(" code="));
+  Serial.print(gBridgeEndpointControl.requiredPairingCode());
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
 }
 
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
@@ -1539,6 +1570,9 @@ void IntentTask(void* pv) {
       }
       if (control.hasBridgeUpload) {
         handleBridgeUplinkBench(control.bridgeUpload, millis());
+      }
+      if (control.hasPairingControl) {
+        handlePairingControl(control.pairing, millis());
       }
       publishSpeechInput(control);
       publishFaceControl(control);
