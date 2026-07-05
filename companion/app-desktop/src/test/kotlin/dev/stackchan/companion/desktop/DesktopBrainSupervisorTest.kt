@@ -85,6 +85,24 @@ class DesktopBrainSupervisorTest {
         }
     }
 
+    @Test
+    fun supervisorReportsUnavailablePythonRuntimeBeforeStart() {
+        val script = writeLoopScript("brain-supervisor-missing-python")
+        val config = testConfig(script).copy(
+            pythonCommand = "stackchan-python-command-that-does-not-exist",
+        )
+        val supervisor = DesktopBrainSupervisor(config)
+
+        val snapshot = supervisor.snapshot()
+
+        assertEquals(false, snapshot.pythonRuntime.available)
+        assertEquals(true, snapshot.pythonRuntime.scriptAvailable)
+        assertTrue(snapshot.pythonRuntime.detail.contains("Python runtime unavailable"))
+        assertFailsWith<IllegalArgumentException> {
+            supervisor.start()
+        }
+    }
+
     private fun testConfig(script: Path, maxLogLines: Int = 20): DesktopBrainSupervisorConfig =
         DesktopBrainSupervisorConfig(
             pythonCommand = pythonCommand(),

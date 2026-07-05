@@ -237,8 +237,16 @@ private fun DesktopBrainSupervisorSnapshot.toBrainServiceUiState(): BrainService
     }
     val status = when {
         running -> "Running"
+        !pythonRuntime.available -> "Python unavailable"
+        !pythonRuntime.scriptAvailable -> "Brain script missing"
         exitCode != null -> "Exited $exitCode"
         else -> "Stopped"
+    }
+    val logs = recentLogs.ifEmpty {
+        listOf(
+            pythonRuntime.detail,
+            "PC brain supervisor idle.",
+        )
     }
     return BrainServiceUiState(
         running = running,
@@ -247,7 +255,7 @@ private fun DesktopBrainSupervisorSnapshot.toBrainServiceUiState(): BrainService
         endpoint = "$host:$port",
         command = compactCommand,
         exitCode = exitCode?.toString() ?: "n/a",
-        recentLogs = recentLogs.ifEmpty { listOf("PC brain supervisor idle.") },
+        recentLogs = logs,
     )
 }
 

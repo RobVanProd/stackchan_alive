@@ -76,8 +76,20 @@ private fun DesktopBrainSupervisorSnapshot.toJson(): JsonObject =
         put("port", port)
         put("script_path", scriptPath.toString())
         put("command", JsonArray(command.map { JsonPrimitive(it) }))
+        put("python_runtime", pythonRuntime.toJson())
         startedAt?.let { put("started_at", it.toString()) }
         stoppedAt?.let { put("stopped_at", it.toString()) }
         exitCode?.let { put("exit_code", it) }
         put("recent_logs", JsonArray(recentLogs.map { JsonPrimitive(it) }))
+    }
+
+private fun DesktopPythonRuntimeStatus.toJson(): JsonObject =
+    buildJsonObject {
+        put("command", command)
+        put("available", available)
+        put("version", version)
+        put("script_available", scriptAvailable)
+        workingDirectory?.let { put("working_directory", it.toString()) }
+        put("detail", detail)
+        put("searched_commands", JsonArray(searchedCommands.map { JsonPrimitive(it) }))
     }

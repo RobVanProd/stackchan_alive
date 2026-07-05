@@ -53,7 +53,11 @@ current v1 companion branch.
   to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet. The export redacts
   the last text turn to a presence-only flag. Hardware-run capture and support review are
   still required before calling G8 complete.
-- G9 desktop Python runtime packaging/detection remains open.
+- G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
+  the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
+  missing interpreters or missing `bridge/lan_service.py` in the Brain panel, and includes the
+  command/version/script status in diagnostics and C6 rehearsal evidence. Packaging a managed
+  Python runtime with desktop installers remains open.
 
 ## Next Attack Order
 

@@ -251,10 +251,22 @@ internal fun DesktopBrainSupervisorSnapshot.toBrainSupervisorEvidenceJson() =
         put("port", port)
         put("script_path", scriptPath.toString())
         put("command", JsonArray(command.map { JsonPrimitive(it) }))
+        put("python_runtime", pythonRuntime.toBrainSupervisorEvidenceJson())
         startedAt?.let { put("started_at", it.toString()) }
         stoppedAt?.let { put("stopped_at", it.toString()) }
         exitCode?.let { put("exit_code", it) }
         put("recent_logs", JsonArray(recentLogs.map { JsonPrimitive(it) }))
+    }
+
+internal fun DesktopPythonRuntimeStatus.toBrainSupervisorEvidenceJson() =
+    buildJsonObject {
+        put("command", command)
+        put("available", available)
+        put("version", version)
+        put("script_available", scriptAvailable)
+        workingDirectory?.let { put("working_directory", it.toString()) }
+        put("detail", detail)
+        put("searched_commands", JsonArray(searchedCommands.map { JsonPrimitive(it) }))
     }
 
 internal fun driveBrainSupervisorTextTurn(port: Int, deviceId: String, seq: Int): BrainTurnEvidence {

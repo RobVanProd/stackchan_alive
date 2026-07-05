@@ -340,6 +340,18 @@ Test-TextEvidence `
   -Patterns @("selectNextPersona", "toggleDisplayReducedMotion", "toggleDiagnosticsLogExport", "SettingsSet")
 
 Test-TextEvidence `
+  -Id "desktop-python-runtime-preflight" `
+  -Name "Desktop Python brain runtime preflight" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopBrainSupervisor.kt") `
+  -Patterns @("DesktopPythonRuntimeStatus", "inspectDesktopPythonRuntime", "Python 3.10+", "STACKCHAN_BRAIN_PYTHON", "scriptAvailable", "searchedCommands")
+
+Test-TextEvidence `
+  -Id "desktop-python-runtime-evidence" `
+  -Name "Desktop Python runtime diagnostics evidence" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopDiagnosticsExport.kt", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/BrainSupervisorRehearsal.kt") `
+  -Patterns @("python_runtime", "available", "version", "script_available", "searched_commands")
+
+Test-TextEvidence `
   -Id "android-push-to-talk-permission" `
   -Name "Android push-to-talk microphone permission" `
   -RelativePaths @("companion/app-android/src/main/AndroidManifest.xml", "provenance/companion/app-android/src/main/AndroidManifest.xml") `
