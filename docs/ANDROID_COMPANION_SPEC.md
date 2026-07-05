@@ -74,8 +74,11 @@ Firmware builds may set `STACKCHAN_PAIRING_SHORT_CODE` to the expected code; the
 endpoint-control adapter normalizes case, spaces, and hyphens, then rejects mismatches with
 `pairing_code_mismatch` without storing the endpoint as trusted. Firmware also accepts the
 lab bring-up command `pairing code <ABC123>` over the serial bench control path and
-`pairing clear` to disable the temporary requirement without reflashing. Firmware menu QR
-scanning/entry and physical robot proof are still required before this is called
+`pairing clear` to disable the temporary requirement without reflashing. Firmware also accepts
+the same Android `stackchan://pair?...` ticket over the bench/setup path with
+`pair ticket <payload>` or the raw payload; that source path extracts `code=` and the
+percent-decoded bridge URL, then can retarget the bridge when Wi-Fi credentials are already
+configured. Physical QR scanning/menu proof is still required before this is called
 consumer-ready.
 
 The Mobile Brain setup surface must target `Gemma-4-E2B` for LiteRT-LM. Because the model is
@@ -116,6 +119,9 @@ Firmware now saves that runtime Wi-Fi bridge record in the `stackchan.bridge-wif
 schema using an ESP32 Preferences backend, loads it at boot, exposes store telemetry, and
 clears it with `wifi clear` without echoing the password in serial status. Live transport
 evidence is still required before the physical robot can use this control plane untethered.
+When the robot already has Wi-Fi credentials from build, runtime, or store, the Android
+pairing ticket can update the bridge host/port/path without carrying or logging a Wi-Fi
+password.
 
 ## Multi-Endpoint Model
 
@@ -211,6 +217,9 @@ menu, or the serial command `wifi set ssid <name> pass <password> url <ws://host
 before it can reach the phone bridge URL. The serial command saves the robot-side record
 persistently and must never echo the password back in logs; it remains a bring-up path until
 a consumer setup menu or BLE provisioning flow lands.
+Firmware setup input can also consume the app's `stackchan://pair` ticket directly for the
+pairing code and bridge target, but the ticket intentionally does not contain Wi-Fi
+credentials.
 When the phone bridge is running, Android must generate the same command template with the
 current phone bridge URL and placeholder network values. Diagnostics may include that
 template and a password-redacted flag, but must not persist real Wi-Fi credentials.

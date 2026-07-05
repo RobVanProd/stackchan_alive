@@ -169,6 +169,49 @@ bool splitKeyValue(char* token, char** keyOut, char** valueOut) {
   return true;
 }
 
+int hexValue(char ch) {
+  if (ch >= '0' && ch <= '9') {
+    return ch - '0';
+  }
+  if (ch >= 'a' && ch <= 'f') {
+    return 10 + (ch - 'a');
+  }
+  if (ch >= 'A' && ch <= 'F') {
+    return 10 + (ch - 'A');
+  }
+  return -1;
+}
+
+bool urlDecode(char* out, size_t outSize, const char* value, size_t valueLen) {
+  if (out == nullptr || outSize == 0 || value == nullptr) {
+    return false;
+  }
+  size_t outLen = 0;
+  for (size_t i = 0; i < valueLen; ++i) {
+    if (outLen + 1u >= outSize) {
+      return false;
+    }
+    if (value[i] == '%') {
+      if (i + 2u >= valueLen) {
+        return false;
+      }
+      const int high = hexValue(value[i + 1u]);
+      const int low = hexValue(value[i + 2u]);
+      if (high < 0 || low < 0) {
+        return false;
+      }
+      out[outLen++] = static_cast<char>((high << 4) | low);
+      i += 2u;
+    } else if (value[i] == '+') {
+      out[outLen++] = ' ';
+    } else {
+      out[outLen++] = value[i];
+    }
+  }
+  out[outLen] = '\0';
+  return true;
+}
+
 bool parseBridgeUrl(const char* url, BenchWiFiProvisioningControl* wifi) {
   if (url == nullptr || wifi == nullptr) {
     return false;
@@ -217,6 +260,124 @@ bool parseBridgeUrl(const char* url, BenchWiFiProvisioningControl* wifi) {
   } else if (*cursor != '\0') {
     return false;
   }
+  return true;
+}
+
+bool parsePairingTicketBridgeUrl(const char* url, BenchPairingTicketControl* ticket) {
+  if (ticket == nullptr) {
+    return false;
+  }
+  BenchWiFiProvisioningControl wifi;
+  if (!parseBridgeUrl(url, &wifi)) {
+    return false;
+  }
+  copyBounded(ticket->bridgeHost, sizeof(ticket->bridgeHost), wifi.bridgeHost);
+  ticket->bridgePort = wifi.bridgePort;
+  copyBounded(ticket->bridgePath, sizeof(ticket->bridgePath), wifi.bridgePath);
+  return true;
+}
+
+bool queryValue(const char* payload, const char* key, char* out, size_t outSize) {
+  if (payload == nullptr || key == nullptr || out == nullptr || outSize == 0) {
+    return false;
+  }
+  out[0] = '\0';
+  const char* cursor = strchr(payload, '?');
+  if (cursor == nullptr) {
+    return false;
+  }
+  ++cursor;
+  const size_t keyLen = strlen(key);
+  while (*cursor != '\0') {
+    const char* itemEnd = strchr(cursor, '&');
+    if (itemEnd == nullptr) {
+      itemEnd = cursor + strlen(cursor);
+    }
+    const char* equals = static_cast<const char*>(memchr(cursor, '=', static_cast<size_t>(itemEnd - cursor)));
+    if (equals != nullptr && static_cast<size_t>(equals - cursor) == keyLen &&
+        strncmp(cursor, key, keyLen) == 0) {
+      return urlDecode(out, outSize, equals + 1, static_cast<size_t>(itemEnd - equals - 1));
+    }
+    cursor = *itemEnd == '&' ? itemEnd + 1 : itemEnd;
+  }
+  return false;
+}
+
+void normalizePairingTicketCode(char* code) {
+  if (code == nullptr) {
+    return;
+  }
+  for (size_t i = 0; code[i] != '\0'; ++i) {
+    code[i] = static_cast<char>(tolower(static_cast<unsigned char>(code[i])));
+  }
+}
+
+const char* pairingTicketPayloadFromLine(const char* line) {
+  if (line == nullptr) {
+    return nullptr;
+  }
+  while (*line == ' ' || *line == '\t') {
+    ++line;
+  }
+  if (startsWithIgnoreCase(line, "stackchan://pair?")) {
+    return line;
+  }
+
+  const char* cursor = line;
+  if (startsWithIgnoreCase(cursor, "pairing")) {
+    cursor += 7;
+  } else if (startsWithIgnoreCase(cursor, "pair")) {
+    cursor += 4;
+  } else if (startsWithIgnoreCase(cursor, "setup")) {
+    cursor += 5;
+  } else {
+    return nullptr;
+  }
+  while (*cursor == ' ' || *cursor == '\t') {
+    ++cursor;
+  }
+  if (startsWithIgnoreCase(cursor, "ticket")) {
+    cursor += 6;
+  } else if (startsWithIgnoreCase(cursor, "qr")) {
+    cursor += 2;
+  } else if (startsWithIgnoreCase(cursor, "scan")) {
+    cursor += 4;
+  }
+  while (*cursor == ' ' || *cursor == '\t') {
+    ++cursor;
+  }
+  return startsWithIgnoreCase(cursor, "stackchan://pair?") ? cursor : nullptr;
+}
+
+bool fillPairingTicketControlRaw(const char* line, BenchControl* controlOut) {
+  if (controlOut == nullptr) {
+    return false;
+  }
+  const char* payload = pairingTicketPayloadFromLine(line);
+  if (payload == nullptr) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasPairingTicket = true;
+  parsed.hasPairingControl = true;
+  parsed.command = "pairing_ticket";
+
+  char bridgeUrl[96] = {};
+  if (!queryValue(payload, "bridge", bridgeUrl, sizeof(bridgeUrl)) ||
+      !parsePairingTicketBridgeUrl(bridgeUrl, &parsed.pairingTicket)) {
+    return false;
+  }
+  if (!queryValue(payload, "code", parsed.pairingTicket.code, sizeof(parsed.pairingTicket.code)) ||
+      strlen(parsed.pairingTicket.code) != 6) {
+    return false;
+  }
+  normalizePairingTicketCode(parsed.pairingTicket.code);
+  copyBounded(parsed.pairing.code, sizeof(parsed.pairing.code), parsed.pairingTicket.code);
+  queryValue(payload, "endpoint_id", parsed.pairingTicket.endpointId, sizeof(parsed.pairingTicket.endpointId));
+  queryValue(payload, "fingerprint", parsed.pairingTicket.fingerprint, sizeof(parsed.pairingTicket.fingerprint));
+
+  *controlOut = parsed;
   return true;
 }
 
@@ -917,7 +1078,9 @@ bool fillPairingControl(const char* first, char** tokens, uint8_t tokenCount, Be
   if (strcmp(first, "pair") == 0 && tokenCount >= 1 &&
       strcmp(action, "code") != 0 && strcmp(action, "set") != 0 &&
       strcmp(action, "require") != 0 && strcmp(action, "clear") != 0 &&
-      strcmp(action, "off") != 0 && strcmp(action, "none") != 0) {
+      strcmp(action, "off") != 0 && strcmp(action, "none") != 0 &&
+      strcmp(action, "ticket") != 0 && strcmp(action, "qr") != 0 &&
+      strcmp(action, "scan") != 0) {
     code = action;
     action = "code";
   }
@@ -1457,6 +1620,10 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return false;
   }
 
+  if (fillPairingTicketControlRaw(line, controlOut)) {
+    return true;
+  }
+
   if (fillWiFiProvisioningControlRaw(line, controlOut)) {
     return true;
   }
@@ -1654,7 +1821,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: speak <boot|idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety>"));
   Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
   Serial.println(F("[control] help: uplink start <seq> [wake|closed]; uplink chunk <seq> [bytes]; uplink end <seq>; uplink abort"));
-  Serial.println(F("[control] help: pairing code <ABC123>; pairing clear"));
+  Serial.println(F("[control] help: pairing code <ABC123>; pairing clear; pair ticket <stackchan://pair?...>"));
   Serial.println(F("[control] help: wifi set ssid <name> pass <password> host <ip> port <8765> path </bridge>; wifi set ssid <name> url <ws://host:port/bridge>; wifi clear; saved to robot flash without echoing password"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));

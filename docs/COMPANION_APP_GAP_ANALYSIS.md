@@ -62,8 +62,11 @@ current v1 companion branch.
   `pairing code <ABC123>` / `pairing clear` serial control path for lab bring-up without
   reflashing. Android now renders a scannable `stackchan://pair` QR ticket for the same
   bridge URL, short code, phone fingerprint, and endpoint id shown in the manual flow.
-  Robot-side QR scanning/menu entry and hardware proof still remain blocking before public
-  distribution.
+  Firmware now accepts that same ticket payload over the bench/setup path as either
+  `pair ticket <stackchan://pair?...>` or the raw payload, extracts the pairing code and
+  percent-decoded bridge URL, and can retarget the bridge when robot Wi-Fi credentials are
+  already configured. Physical robot QR scanning/menu proof still remains blocking before
+  public distribution.
 - G6 first-run Wi-Fi provisioning is partially closed. The Android Nodes setup flow now
   starts with a Wi-Fi bootstrap step, reports whether the phone is currently on Wi-Fi,
   opens native Wi-Fi settings, and explains that the robot must reach the phone bridge URL.
@@ -75,7 +78,9 @@ current v1 companion branch.
   tokens, and `wifi clear`. The command preserves case-sensitive credentials in a
   `stackchan.bridge-wifi.v1` Preferences-backed store, loads the saved bridge target at boot,
   does not print the password, and restarts the bridge client without reflashing. A polished
-  consumer robot-side menu/BLE provisioning flow plus hardware proof remain open.
+  consumer robot-side menu/BLE provisioning flow plus hardware proof remain open; the
+  `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields, not
+  Wi-Fi credentials.
 - G7 Play submission remains pending on upload signing, developer verification,
   a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
   Source-side Play prep now includes a policy/data-safety declaration draft for

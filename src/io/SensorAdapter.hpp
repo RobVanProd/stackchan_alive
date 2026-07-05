@@ -49,6 +49,15 @@ struct BenchPairingControl {
   char code[7] = {};
 };
 
+struct BenchPairingTicketControl {
+  char code[7] = {};
+  char bridgeHost[64] = {};
+  uint16_t bridgePort = 8788;
+  char bridgePath[64] = "/bridge";
+  char endpointId[64] = {};
+  char fingerprint[80] = {};
+};
+
 struct BenchWiFiProvisioningControl {
   bool clear = false;
   char ssid[33] = {};
@@ -72,6 +81,7 @@ struct BenchControl {
   bool hasBridge = false;
   bool hasBridgeUpload = false;
   bool hasPairingControl = false;
+  bool hasPairingTicket = false;
   bool hasWiFiProvisioning = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
@@ -84,6 +94,7 @@ struct BenchControl {
   BenchBridgeControl bridge;
   BenchBridgeUpload bridgeUpload;
   BenchPairingControl pairing;
+  BenchPairingTicketControl pairingTicket;
   BenchWiFiProvisioningControl wifi;
   SpeechCue speechCue;
   const char* command = "";
@@ -100,7 +111,7 @@ class SensorAdapter {
  private:
   void printHelp() const;
 
-  char line_[192] = {};
+  char line_[256] = {};
   uint8_t lineLength_ = 0;
 };
 

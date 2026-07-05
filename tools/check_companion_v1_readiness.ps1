@@ -316,6 +316,24 @@ Test-TextEvidence `
   -Patterns @("fillPairingControl", "pairing code <ABC123>", "pairing clear", "hasPairingControl")
 
 Test-TextEvidence `
+  -Id "firmware-pairing-ticket-command" `
+  -Name "Firmware Android pairing ticket setup command" `
+  -RelativePaths @("src/io/SensorAdapter.cpp") `
+  -Patterns @("fillPairingTicketControlRaw", "stackchan://pair?", "pair ticket <stackchan://pair?...>", "queryValue", "parsePairingTicketBridgeUrl", "hasPairingTicket")
+
+Test-TextEvidence `
+  -Id "firmware-pairing-ticket-handler" `
+  -Name "Firmware Android pairing ticket runtime handler" `
+  -RelativePaths @("src/main.cpp") `
+  -Patterns @("handlePairingTicketControl", "setRequiredPairingCode", "bridge_url_applied", "bridge_ssid_available", "runtimeBridgeWiFiRecord", "restartBridgeWiFi")
+
+Test-TextEvidence `
+  -Id "firmware-pairing-ticket-test" `
+  -Name "Firmware Android pairing ticket native regression test" `
+  -RelativePaths @("test/test_native_logic/test_main.cpp") `
+  -Patterns @("test_sensor_adapter_parses_pairing_ticket_payload", "stackchan://pair?bridge=ws%3A%2F%2F192.168.1.42%3A8765%2Fbridge", "fingerprint=sha256%3Aabc123", "wss%3A%2F%2F10.0.0.5")
+
+Test-TextEvidence `
   -Id "firmware-wifi-runtime-command" `
   -Name "Firmware serial Wi-Fi bridge provisioning command" `
   -RelativePaths @("src/io/SensorAdapter.cpp", "src/io/SensorAdapter.hpp") `

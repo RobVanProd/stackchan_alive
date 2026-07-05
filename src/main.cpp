@@ -1073,6 +1073,19 @@ void printBenchControl(const BenchControl& control) {
       Serial.print(control.pairing.code);
     }
   }
+  if (control.hasPairingTicket) {
+    Serial.print(F(" pairing_ticket=1"));
+    Serial.print(F(" ticket_bridge_host="));
+    Serial.print(control.pairingTicket.bridgeHost);
+    Serial.print(F(" ticket_bridge_port="));
+    Serial.print(control.pairingTicket.bridgePort);
+    Serial.print(F(" ticket_bridge_path="));
+    Serial.print(control.pairingTicket.bridgePath);
+    Serial.print(F(" ticket_endpoint_id="));
+    Serial.print(control.pairingTicket.endpointId);
+    Serial.print(F(" ticket_fingerprint_set="));
+    Serial.print(control.pairingTicket.fingerprint[0] != '\0' ? 1 : 0);
+  }
   if (control.hasWiFiProvisioning) {
     Serial.print(F(" wifi_action="));
     Serial.print(control.wifi.clear ? F("clear") : F("set"));
@@ -1294,6 +1307,59 @@ void handlePairingControl(const BenchPairingControl& pairing, uint32_t nowMs) {
   Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
   Serial.print(F(" code="));
   Serial.print(gBridgeEndpointControl.requiredPairingCode());
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
+}
+
+void handlePairingTicketControl(const BenchPairingTicketControl& ticket, uint32_t nowMs) {
+  const bool pairingAccepted = gBridgeEndpointControl.setRequiredPairingCode(ticket.code);
+  bool bridgeUpdated = false;
+  bool persisted = false;
+  bool ssidAvailable = false;
+
+  if (ticket.bridgeHost[0] != '\0') {
+    const char* ssid = gRuntimeWiFiSsid[0] != '\0' ? gRuntimeWiFiSsid : STACKCHAN_WIFI_SSID;
+    const char* password =
+        gRuntimeWiFiSsid[0] != '\0' ? gRuntimeWiFiPassword : STACKCHAN_WIFI_PASSWORD;
+    ssidAvailable = ssid != nullptr && ssid[0] != '\0';
+    if (ssidAvailable) {
+      copyRuntimeString(gRuntimeWiFiSsid, sizeof(gRuntimeWiFiSsid), ssid);
+      copyRuntimeString(gRuntimeWiFiPassword, sizeof(gRuntimeWiFiPassword), password);
+      copyRuntimeString(gRuntimeBridgeHost, sizeof(gRuntimeBridgeHost), ticket.bridgeHost);
+      copyRuntimeString(gRuntimeBridgePath, sizeof(gRuntimeBridgePath),
+                        ticket.bridgePath[0] != '\0' ? ticket.bridgePath : "/bridge");
+      gRuntimeBridgePort = ticket.bridgePort == 0 ? STACKCHAN_BRIDGE_PORT : ticket.bridgePort;
+      persisted = gBridgeWiFiStore.save(runtimeBridgeWiFiRecord(), nowMs);
+      restartBridgeWiFi(runtimeBridgeWiFiConfig(), nowMs);
+      bridgeUpdated = true;
+    }
+  }
+
+  const BridgeWiFiProvisioningStoreTelemetry& store = gBridgeWiFiStore.telemetry();
+  Serial.print(F("[pairing_ticket] result="));
+  Serial.print(pairingAccepted ? F("accepted") : F("rejected"));
+  Serial.print(F(" pairing_required="));
+  Serial.print(gBridgeEndpointControl.pairingCodeRequired() ? 1 : 0);
+  Serial.print(F(" code="));
+  Serial.print(gBridgeEndpointControl.requiredPairingCode());
+  Serial.print(F(" bridge_url_applied="));
+  Serial.print(bridgeUpdated ? 1 : 0);
+  Serial.print(F(" bridge_ssid_available="));
+  Serial.print(ssidAvailable ? 1 : 0);
+  Serial.print(F(" persisted="));
+  Serial.print(persisted ? 1 : 0);
+  Serial.print(F(" store_has_record="));
+  Serial.print(store.hasRecord ? 1 : 0);
+  Serial.print(F(" host="));
+  Serial.print(ticket.bridgeHost);
+  Serial.print(F(" port="));
+  Serial.print(ticket.bridgePort);
+  Serial.print(F(" path="));
+  Serial.print(ticket.bridgePath);
+  Serial.print(F(" endpoint_id="));
+  Serial.print(ticket.endpointId);
+  Serial.print(F(" fingerprint_set="));
+  Serial.print(ticket.fingerprint[0] != '\0' ? 1 : 0);
   Serial.print(F(" at_ms="));
   Serial.println(nowMs);
 }
@@ -1776,7 +1842,9 @@ void IntentTask(void* pv) {
       if (control.hasBridgeUpload) {
         handleBridgeUplinkBench(control.bridgeUpload, millis());
       }
-      if (control.hasPairingControl) {
+      if (control.hasPairingTicket) {
+        handlePairingTicketControl(control.pairingTicket, millis());
+      } else if (control.hasPairingControl) {
         handlePairingControl(control.pairing, millis());
       }
       if (control.hasWiFiProvisioning) {

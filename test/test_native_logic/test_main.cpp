@@ -1610,11 +1610,51 @@ void test_sensor_adapter_parses_pairing_code_commands() {
   TEST_ASSERT_FALSE(parseBenchControlLine("pairing code short", 4124, &control));
 }
 
+void test_sensor_adapter_parses_pairing_ticket_payload() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "pair ticket stackchan://pair?bridge=ws%3A%2F%2F192.168.1.42%3A8765%2Fbridge&code=7K9PQ2&fingerprint=sha256%3Aabc123&endpoint_id=phone-rob-01",
+      4125,
+      &control));
+  TEST_ASSERT_TRUE(control.hasPairingTicket);
+  TEST_ASSERT_TRUE(control.hasPairingControl);
+  TEST_ASSERT_FALSE(control.hasWiFiProvisioning);
+  TEST_ASSERT_EQUAL_STRING("7k9pq2", control.pairingTicket.code);
+  TEST_ASSERT_EQUAL_STRING("7k9pq2", control.pairing.code);
+  TEST_ASSERT_EQUAL_STRING("192.168.1.42", control.pairingTicket.bridgeHost);
+  TEST_ASSERT_EQUAL_UINT16(8765, control.pairingTicket.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("/bridge", control.pairingTicket.bridgePath);
+  TEST_ASSERT_EQUAL_STRING("phone-rob-01", control.pairingTicket.endpointId);
+  TEST_ASSERT_EQUAL_STRING("sha256:abc123", control.pairingTicket.fingerprint);
+  TEST_ASSERT_EQUAL_STRING("pairing_ticket", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "stackchan://pair?bridge=ws%3A%2F%2F10.0.0.5%3A8765%2Fbridge&code=ABC123&endpoint_id=phone-rob-01",
+      4126,
+      &control));
+  TEST_ASSERT_TRUE(control.hasPairingTicket);
+  TEST_ASSERT_EQUAL_STRING("abc123", control.pairingTicket.code);
+  TEST_ASSERT_EQUAL_STRING("10.0.0.5", control.pairingTicket.bridgeHost);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine(
+      "pair ticket stackchan://pair?bridge=wss%3A%2F%2F10.0.0.5%3A8765%2Fbridge&code=ABC123",
+      4127,
+      &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine(
+      "pair ticket stackchan://pair?bridge=ws%3A%2F%2F10.0.0.5%3A8765%2Fbridge&code=SHORT",
+      4128,
+      &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine(
+      "pair ticket stackchan://pair?bridge=ws%XX%2F%2F10.0.0.5%3A8765%2Fbridge&code=ABC123",
+      4129,
+      &control));
+}
+
 void test_sensor_adapter_parses_wifi_provisioning_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine(
       "wifi set ssid StackLab pass CaseSensitive123 host 192.168.1.42 port 8765 path /bridge",
-      4125,
+      4130,
       &control));
   TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
   TEST_ASSERT_FALSE(control.wifi.clear);
@@ -1627,7 +1667,7 @@ void test_sensor_adapter_parses_wifi_provisioning_commands() {
 
   TEST_ASSERT_TRUE(parseBenchControlLine(
       "wifi set ssid=PhoneHotspot url=ws://10.0.0.5:8765/bridge",
-      4126,
+      4131,
       &control));
   TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
   TEST_ASSERT_FALSE(control.wifi.clear);
@@ -1636,15 +1676,15 @@ void test_sensor_adapter_parses_wifi_provisioning_commands() {
   TEST_ASSERT_EQUAL_UINT16(8765, control.wifi.bridgePort);
   TEST_ASSERT_EQUAL_STRING("/bridge", control.wifi.bridgePath);
 
-  TEST_ASSERT_TRUE(parseBenchControlLine("wifi clear", 4127, &control));
+  TEST_ASSERT_TRUE(parseBenchControlLine("wifi clear", 4132, &control));
   TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
   TEST_ASSERT_TRUE(control.wifi.clear);
 
-  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid OnlyNetwork", 4128, &control));
-  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url nope", 4129, &control));
-  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url wss://10.0.0.5:8765/bridge", 4130, &control));
-  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab host 10.0.0.5 port 8765x", 4131, &control));
-  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url ws://10.0.0.5:8765x/bridge", 4132, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid OnlyNetwork", 4133, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url nope", 4134, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url wss://10.0.0.5:8765/bridge", 4135, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab host 10.0.0.5 port 8765x", 4136, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url ws://10.0.0.5:8765x/bridge", 4137, &control));
 }
 
 void test_sensor_adapter_parses_audio_awareness_commands() {
@@ -5234,6 +5274,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_bridge_conversation_commands);
   RUN_TEST(test_sensor_adapter_parses_bridge_uplink_commands);
   RUN_TEST(test_sensor_adapter_parses_pairing_code_commands);
+  RUN_TEST(test_sensor_adapter_parses_pairing_ticket_payload);
   RUN_TEST(test_sensor_adapter_parses_wifi_provisioning_commands);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
