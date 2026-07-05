@@ -590,8 +590,9 @@ internal fun androidCompanionUiState(
 
 private fun androidModelAssetSurface(status: AndroidModelAssetStatus): ModelAssetUiState {
     val downloadStatus = when {
-        status.downloaded -> "Downloaded and cached on this device."
+        status.downloaded -> "Downloaded and size-verified on this device; SHA target 181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c."
         status.downloadInProgress -> "Download running in Android Download Manager: ${status.downloadId}."
+        status.bytes > 0 -> "Found an incomplete or wrong-size model file (${status.bytes} bytes); expected 2588147712 bytes. Download again."
         else -> "Download required for Mobile Brain. Uses the LiteRT-LM Gemma-4-E2B provider asset."
     }
     val loadStatus = when {

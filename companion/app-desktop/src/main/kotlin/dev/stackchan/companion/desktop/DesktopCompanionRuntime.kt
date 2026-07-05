@@ -70,6 +70,7 @@ data class DesktopCompanionRuntimeSnapshot(
 
 data class DesktopModelAssetStatus(
     val localPath: String,
+    val bytes: Long = 0,
     val downloaded: Boolean,
     val loaded: Boolean,
     val downloadInProgress: Boolean = false,
@@ -251,10 +252,13 @@ class DesktopCompanionRuntime(
 
     fun modelAssetStatus(): DesktopModelAssetStatus {
         val file = gemmaModelFile()
+        val bytes = if (Files.isRegularFile(file)) Files.size(file) else 0L
+        val downloaded = bytes == GEMMA_LITERTLM_BYTES
         return DesktopModelAssetStatus(
             localPath = file.toString(),
-            downloaded = Files.isRegularFile(file) && Files.size(file) > 0,
-            loaded = Files.isRegularFile(gemmaLoadedMarker()) && Files.isRegularFile(file) && Files.size(file) > 0,
+            bytes = bytes,
+            downloaded = downloaded,
+            loaded = Files.isRegularFile(gemmaLoadedMarker()) && downloaded,
             downloadInProgress = modelDownloadInProgress,
         )
     }
@@ -286,7 +290,9 @@ class DesktopCompanionRuntime(
 
     fun loadGemmaModel(): DesktopModelAssetStatus {
         val status = modelAssetStatus()
-        require(status.downloaded) { "Gemma-4-E2B model is not downloaded yet." }
+        require(status.downloaded) {
+            "Gemma-4-E2B model is not ready; expected $GEMMA_LITERTLM_BYTES bytes from $GEMMA_LITERTLM_SHA256."
+        }
         Files.createDirectories(gemmaLoadedMarker().parent)
         Files.writeString(gemmaLoadedMarker(), "loaded\n")
         return modelAssetStatus()
@@ -441,6 +447,8 @@ private fun defaultMdnsAddress(host: String): InetAddress =
         }
 
 private const val GEMMA_MODEL_FILE = "gemma-4-E2B-it.litertlm"
+private const val GEMMA_LITERTLM_BYTES = 2_588_147_712L
+private const val GEMMA_LITERTLM_SHA256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
 private const val GEMMA_LITERTLM_URL =
     "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
 private val BUNDLED_PERSONAS = listOf("spark", "glow")

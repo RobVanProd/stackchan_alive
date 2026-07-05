@@ -114,8 +114,9 @@ private fun DesktopModelAssetStatus.toModelAssetSurface(diagnostics: Diagnostics
     val profile = diagnostics.model?.stringValue("profile")?.takeIf { it.isNotBlank() } ?: "fake"
     val runner = diagnostics.model?.stringValue("runner_status")?.takeIf { it.isNotBlank() } ?: "deterministic_fake"
     val downloadStatus = when {
-        downloaded -> "Downloaded and cached on this computer."
+        downloaded -> "Downloaded and size-verified on this computer; SHA target 181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c."
         downloadInProgress -> "Download running for the LiteRT-LM Gemma-4-E2B provider asset."
+        bytes > 0 -> "Found an incomplete or wrong-size model file ($bytes bytes); expected 2588147712 bytes. Download again."
         else -> "Download required for Mobile Brain parity. Uses the LiteRT-LM Gemma-4-E2B provider asset."
     }
     val loadStatus = when {

@@ -144,6 +144,7 @@ Evidence to capture:
 - [ ] Talk screen enables text input only after Stack-chan is connected.
 - [ ] Push-to-talk is enabled only after Stack-chan is connected and Android speech recognition is available.
 - [ ] Tapping Gemma-4-E2B download starts Android Download Manager for the LiteRT-LM asset, reports the local cache path, and enables Load after the file exists.
+- [ ] Load stays disabled for partial or wrong-size Gemma downloads; the expected LiteRT-LM artifact is `gemma-4-E2B-it.litertlm`, 2588147712 bytes, SHA-256 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`.
 - [ ] Load marks the cached Gemma-4-E2B asset active; Eject clears that active state without deleting the cached model.
 - [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
 - [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.

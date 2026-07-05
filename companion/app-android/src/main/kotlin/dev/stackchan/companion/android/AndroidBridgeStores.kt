@@ -35,6 +35,7 @@ data class SavedRobot(
 
 data class AndroidModelAssetStatus(
     val localPath: String,
+    val bytes: Long = 0,
     val downloaded: Boolean,
     val loaded: Boolean,
     val downloadId: Long?,
@@ -110,10 +111,12 @@ class AndroidBridgeStores(context: Context) {
 
     fun modelAssetStatus(): AndroidModelAssetStatus {
         val file = gemmaModelFile()
-        val downloaded = file.isFile && file.length() > 0
+        val bytes = if (file.isFile) file.length() else 0L
+        val downloaded = bytes == GEMMA_LITERTLM_BYTES
         val downloadId = activeGemmaDownloadId(downloaded)
         return AndroidModelAssetStatus(
             localPath = file.absolutePath,
+            bytes = bytes,
             downloaded = downloaded,
             loaded = prefs.getBoolean(KEY_GEMMA_MODEL_LOADED, false) && downloaded,
             downloadId = downloadId,
@@ -145,7 +148,9 @@ class AndroidBridgeStores(context: Context) {
 
     fun loadGemmaModel(): AndroidModelAssetStatus {
         val status = modelAssetStatus()
-        require(status.downloaded) { "Gemma-4-E2B model is not downloaded yet." }
+        require(status.downloaded) {
+            "Gemma-4-E2B model is not ready; expected $GEMMA_LITERTLM_BYTES bytes from $GEMMA_LITERTLM_SHA256."
+        }
         prefs.edit().putBoolean(KEY_GEMMA_MODEL_LOADED, true).apply()
         return modelAssetStatus()
     }
@@ -205,6 +210,8 @@ class AndroidBridgeStores(context: Context) {
         const val KEY_GEMMA_DOWNLOAD_ID = "gemma4_e2b_download_id"
         const val KEY_GEMMA_MODEL_LOADED = "gemma4_e2b_model_loaded"
         const val GEMMA_MODEL_FILE = "gemma-4-E2B-it.litertlm"
+        const val GEMMA_LITERTLM_BYTES = 2_588_147_712L
+        const val GEMMA_LITERTLM_SHA256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
         const val GEMMA_LITERTLM_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         val BUNDLED_PERSONAS = listOf("spark", "glow")

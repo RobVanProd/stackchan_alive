@@ -200,15 +200,19 @@ class DesktopCompanionRuntimeTest {
 
             val modelFile = config.storageDir.resolve("models").resolve("gemma-4-E2B-it.litertlm")
             Files.createDirectories(modelFile.parent)
-            Files.writeString(modelFile, "fake-litertlm-for-unit-test")
+            java.io.RandomAccessFile(modelFile.toFile(), "rw").use { file ->
+                file.setLength(2_588_147_712L)
+            }
             val loaded = runtime.loadGemmaModel()
             val loadedUi = runtime.toCompanionUiState()
 
             assertTrue(loaded.downloaded)
+            assertEquals(2_588_147_712L, loaded.bytes)
             assertTrue(loaded.loaded)
             assertFalse(loadedUi.modelAsset.downloadEnabled)
             assertFalse(loadedUi.modelAsset.loadEnabled)
             assertTrue(loadedUi.modelAsset.ejectEnabled)
+            assertTrue(loadedUi.modelAsset.downloadStatus.contains("size-verified"))
 
             val ejected = runtime.ejectGemmaModel()
             val ejectedUi = runtime.toCompanionUiState()

@@ -72,8 +72,12 @@ a multi-GB provider-hosted asset, Android must not pretend it is bundled in the 
 needs an explicit download button when the asset is missing, local-path and checksum status,
 load/eject controls, and model settings. The v1 app provides a basic in-app download/cache
 path through Android Download Manager, then allows loading and ejecting the local model
-asset. Real-device download completion, checksum provenance, LiteRT inference loading, and
-benchmark evidence remain required before Mobile Brain Mode is considered fully validated.
+asset. The v1 target artifact is `litert-community/gemma-4-E2B-it-litert-lm` /
+`gemma-4-E2B-it.litertlm`; the app rejects partial or wrong-size downloads before enabling
+Load. Published artifact checks: 2588147712 bytes and SHA-256
+`181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`. Real-device download
+completion, checksum provenance, LiteRT inference loading, and benchmark evidence remain
+required before Mobile Brain Mode is considered fully validated.
 
 The host bridge already accepts the core control messages described below. Firmware now has
 a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and
