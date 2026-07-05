@@ -414,6 +414,7 @@ class MainActivity : ComponentActivity() {
                             trustedEndpoints = trustedEndpoints,
                             savedRobots = savedRobots,
                             bridgeStatus = bridgeStatus,
+                            modelAssetStatus = modelAssetStatus,
                         )
                         diagnosticsExport = DiagnosticsExportUiState(status = "Exported", path = result.path)
                         val shareIntent = Intent(Intent.ACTION_SEND)

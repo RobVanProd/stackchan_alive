@@ -160,7 +160,7 @@ Evidence to capture:
 - [ ] After robot `hello`, changing persona/display/privacy sends the safe local save and a protected `settings_set` frame to Stack-chan; firmware replies with `settings_result`.
 - [ ] Manual brain Claim sends `claim_brain`; firmware replies with `owner_status` naming this phone as active owner; the UI enables Release and disables Claim.
 - [ ] Manual brain Release sends `release_brain`; firmware replies with `owner_status` released/idle; the UI enables Claim again.
-- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot/saved robot/trusted endpoint state including `robot_socket_connected`, and redacts the last text turn to presence-only.
+- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot state plus saved robot/trusted endpoint state including `robot_socket_connected`, Gemma local path, bytes, loaded/downloaded flags, LiteRT success/failure intents, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] A firmware build configured with `STACKCHAN_PAIRING_SHORT_CODE` rejects missing or wrong `endpoint_hello.pairing_code` with `pairing_code_mismatch` and does not persist that endpoint as trusted.

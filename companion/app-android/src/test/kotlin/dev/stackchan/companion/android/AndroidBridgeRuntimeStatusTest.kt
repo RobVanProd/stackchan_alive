@@ -747,6 +747,13 @@ class AndroidBridgeRuntimeStatusTest {
                 textTurnsSubmitted = 2,
                 lastTextTurn = "secret words should not leave the app",
             ),
+            modelAssetStatus = AndroidModelAssetStatus(
+                localPath = "/storage/emulated/0/Android/data/dev.stackchan.companion/files/Download/models/gemma-4-E2B-it.litertlm",
+                bytes = 2_588_147_712L,
+                downloaded = true,
+                loaded = true,
+                downloadId = null,
+            ),
             generatedAt = Instant.parse("2026-07-04T19:00:00Z"),
         )
 
@@ -764,6 +771,23 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(robot["connected"]!!.jsonPrimitive.boolean)
         assertTrue(robot["saved_on_phone"]!!.jsonPrimitive.boolean)
         assertEquals("stackchan-bench-01", robot["device_id"]!!.jsonPrimitive.content)
+
+        val model = export["model"]!!.jsonObject
+        assertEquals("Gemma-4-E2B", model["model_id"]!!.jsonPrimitive.content)
+        assertEquals("LiteRT-LM", model["runtime"]!!.jsonPrimitive.content)
+        assertEquals("gemma-4-E2B-it.litertlm", model["expected_file"]!!.jsonPrimitive.content)
+        assertEquals(2_588_147_712L, model["expected_bytes"]!!.jsonPrimitive.content.toLong())
+        assertEquals(
+            "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+            model["expected_sha256"]!!.jsonPrimitive.content,
+        )
+        assertTrue(model["local_path"]!!.jsonPrimitive.content.contains("gemma-4-E2B-it.litertlm"))
+        assertTrue(model["downloaded"]!!.jsonPrimitive.boolean)
+        assertTrue(model["loaded"]!!.jsonPrimitive.boolean)
+        assertEquals("litert_adapter_selected", model["runner_status"]!!.jsonPrimitive.content)
+        assertEquals("mobile_brain_litert_turn", model["success_intent"]!!.jsonPrimitive.content)
+        assertEquals("mobile_brain_litert_error", model["failure_intent"]!!.jsonPrimitive.content)
+        assertTrue(model["requires_real_device_inference_evidence"]!!.jsonPrimitive.boolean)
 
         assertEquals(1, export["saved_robots"]!!.jsonArray.size)
         assertEquals(1, export["trusted_endpoints"]!!.jsonArray.size)

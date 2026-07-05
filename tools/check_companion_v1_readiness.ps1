@@ -391,7 +391,7 @@ Test-TextEvidence `
   -Id "gemma-e2b-artifact-gate" `
   -Name "Gemma-4-E2B LiteRT-LM artifact size gate" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidBridgeStores.kt", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopCompanionRuntime.kt") `
-  -Patterns @("gemma-4-E2B-it.litertlm", "GEMMA_LITERTLM_BYTES", "2_588_147_712L", "GEMMA_LITERTLM_SHA256", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c")
+  -Patterns @("gemma-4-E2B-it.litertlm", "ANDROID_GEMMA_LITERTLM_BYTES", "2_588_147_712L", "ANDROID_GEMMA_LITERTLM_SHA256", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c")
 
 Test-TextEvidence `
   -Id "brain-turn-engine-boundary" `
@@ -511,7 +511,7 @@ Test-TextEvidence `
   -Id "android-diagnostics-export" `
   -Name "Android diagnostics export implementation" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidDiagnosticsExport.kt") `
-  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "robot_socket_connected", "raw_audio_retention", "last text turn redacted to presence only")
+  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "robot_socket_connected", "raw_audio_retention", "last text turn redacted to presence only", "model_id", "expected_sha256", "runner_status", "mobile_brain_litert_turn", "mobile_brain_litert_error", "requires_real_device_inference_evidence")
 
 Test-TextEvidence `
   -Id "android-play-release-prep" `

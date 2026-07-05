@@ -76,10 +76,12 @@ current v1 companion branch.
   policy URL, data-safety answers, foreground-service declaration evidence, screenshots,
   and closed testing.
 - G8 Android field diagnostics export is partially closed. Android can now export
-  `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, and trust state
-  to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet. The export redacts
-  the last text turn to a presence-only flag. Hardware-run capture and support review are
-  still required before calling G8 complete.
+  `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
+  and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.
+  The export records the LiteRT-LM artifact path, bytes, loaded/downloaded flags, adapter
+  runner status, and success/failure intents needed for real-device Gemma sign-off. The export
+  redacts the last text turn to a presence-only flag. Hardware-run capture and support review
+  are still required before calling G8 complete.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing `bridge/lan_service.py` in the Brain panel, and includes the

@@ -22,6 +22,7 @@ fun exportAndroidDiagnostics(
     trustedEndpoints: List<TrustedEndpoint>,
     savedRobots: List<SavedRobot> = emptyList(),
     bridgeStatus: AndroidBridgeRuntimeStatus,
+    modelAssetStatus: AndroidModelAssetStatus = AndroidBridgeStores(context).modelAssetStatus(),
     generatedAt: Instant = Instant.now(),
 ): AndroidDiagnosticsExportResult {
     val json = buildAndroidDiagnosticsJson(
@@ -29,6 +30,7 @@ fun exportAndroidDiagnostics(
         trustedEndpoints = trustedEndpoints,
         savedRobots = savedRobots,
         bridgeStatus = bridgeStatus,
+        modelAssetStatus = modelAssetStatus,
         generatedAt = generatedAt,
     ).toString()
     val outputDir = File(context.filesDir, "diagnostics").apply { mkdirs() }
@@ -45,6 +47,12 @@ fun buildAndroidDiagnosticsJson(
     trustedEndpoints: List<TrustedEndpoint>,
     savedRobots: List<SavedRobot> = emptyList(),
     bridgeStatus: AndroidBridgeRuntimeStatus,
+    modelAssetStatus: AndroidModelAssetStatus = AndroidModelAssetStatus(
+        localPath = "",
+        downloaded = false,
+        loaded = false,
+        downloadId = null,
+    ),
     generatedAt: Instant,
 ): JsonObject =
     buildJsonObject {
@@ -81,6 +89,24 @@ fun buildAndroidDiagnosticsJson(
             put("firmware_version", bridgeStatus.firmwareVersion)
             put("fingerprint", bridgeStatus.robotFingerprint)
             put("saved_on_phone", savedRobots.any { it.robotId == bridgeStatus.robotId && bridgeStatus.robotId.isNotBlank() })
+        })
+        put("model", buildJsonObject {
+            put("model_id", "Gemma-4-E2B")
+            put("runtime", "LiteRT-LM")
+            put("expected_file", ANDROID_GEMMA_MODEL_FILE)
+            put("expected_bytes", ANDROID_GEMMA_LITERTLM_BYTES)
+            put("expected_sha256", ANDROID_GEMMA_LITERTLM_SHA256)
+            put("source_url", ANDROID_GEMMA_LITERTLM_URL)
+            put("local_path", modelAssetStatus.localPath)
+            put("bytes", modelAssetStatus.bytes)
+            put("downloaded", modelAssetStatus.downloaded)
+            put("loaded", modelAssetStatus.loaded)
+            put("download_in_progress", modelAssetStatus.downloadInProgress)
+            put("download_id_present", modelAssetStatus.downloadId != null)
+            put("runner_status", if (modelAssetStatus.loaded) "litert_adapter_selected" else "deterministic_fake")
+            put("success_intent", "mobile_brain_litert_turn")
+            put("failure_intent", "mobile_brain_litert_error")
+            put("requires_real_device_inference_evidence", modelAssetStatus.loaded)
         })
         put("saved_robots", JsonArray(savedRobots.map { robot ->
             buildJsonObject {

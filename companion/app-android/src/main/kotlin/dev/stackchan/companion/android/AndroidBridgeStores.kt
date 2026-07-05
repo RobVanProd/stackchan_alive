@@ -48,6 +48,12 @@ data class AndroidPersonaLibraryStatus(
     val exportStatus: String,
 )
 
+internal const val ANDROID_GEMMA_MODEL_FILE = "gemma-4-E2B-it.litertlm"
+internal const val ANDROID_GEMMA_LITERTLM_BYTES = 2_588_147_712L
+internal const val ANDROID_GEMMA_LITERTLM_SHA256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+internal const val ANDROID_GEMMA_LITERTLM_URL =
+    "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+
 class AndroidBridgeStores(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -112,7 +118,7 @@ class AndroidBridgeStores(context: Context) {
     fun modelAssetStatus(): AndroidModelAssetStatus {
         val file = gemmaModelFile()
         val bytes = if (file.isFile) file.length() else 0L
-        val downloaded = bytes == GEMMA_LITERTLM_BYTES
+        val downloaded = bytes == ANDROID_GEMMA_LITERTLM_BYTES
         val downloadId = activeGemmaDownloadId(downloaded)
         return AndroidModelAssetStatus(
             localPath = file.absolutePath,
@@ -130,13 +136,13 @@ class AndroidBridgeStores(context: Context) {
         if (file.exists()) {
             file.delete()
         }
-        val request = DownloadManager.Request(Uri.parse(GEMMA_LITERTLM_URL))
+        val request = DownloadManager.Request(Uri.parse(ANDROID_GEMMA_LITERTLM_URL))
             .setTitle("Gemma-4-E2B LiteRT-LM")
             .setDescription("Downloading Stackchan Mobile Brain model")
             .setAllowedOverMetered(false)
             .setAllowedOverRoaming(false)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, "models/$GEMMA_MODEL_FILE")
+            .setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, "models/$ANDROID_GEMMA_MODEL_FILE")
         val manager = appContext.getSystemService(DownloadManager::class.java)
         val id = manager.enqueue(request)
         prefs.edit()
@@ -149,7 +155,7 @@ class AndroidBridgeStores(context: Context) {
     fun loadGemmaModel(): AndroidModelAssetStatus {
         val status = modelAssetStatus()
         require(status.downloaded) {
-            "Gemma-4-E2B model is not ready; expected $GEMMA_LITERTLM_BYTES bytes from $GEMMA_LITERTLM_SHA256."
+            "Gemma-4-E2B model is not ready; expected $ANDROID_GEMMA_LITERTLM_BYTES bytes from $ANDROID_GEMMA_LITERTLM_SHA256."
         }
         prefs.edit().putBoolean(KEY_GEMMA_MODEL_LOADED, true).apply()
         return modelAssetStatus()
@@ -209,16 +215,11 @@ class AndroidBridgeStores(context: Context) {
         const val KEY_SAVED_ROBOTS = "saved_robots"
         const val KEY_GEMMA_DOWNLOAD_ID = "gemma4_e2b_download_id"
         const val KEY_GEMMA_MODEL_LOADED = "gemma4_e2b_model_loaded"
-        const val GEMMA_MODEL_FILE = "gemma-4-E2B-it.litertlm"
-        const val GEMMA_LITERTLM_BYTES = 2_588_147_712L
-        const val GEMMA_LITERTLM_SHA256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
-        const val GEMMA_LITERTLM_URL =
-            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         val BUNDLED_PERSONAS = listOf("spark", "glow")
     }
 
     private fun gemmaModelFile() =
-        java.io.File(appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "models/$GEMMA_MODEL_FILE")
+        java.io.File(appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "models/$ANDROID_GEMMA_MODEL_FILE")
 
     private fun activeGemmaDownloadId(downloaded: Boolean): Long? {
         val storedId = prefs.getLong(KEY_GEMMA_DOWNLOAD_ID, -1L).takeIf { it > 0 } ?: return null
