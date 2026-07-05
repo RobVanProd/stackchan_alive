@@ -19,6 +19,7 @@
 #include "io/BridgeWakeGate.hpp"
 #include "io/BridgeWiFiClientSocket.hpp"
 #include "io/BridgeWiFiProvisioner.hpp"
+#include "io/BridgeWiFiProvisioningStore.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -68,17 +69,20 @@ BridgeEndpointControl gBridgeEndpointControl;
 BridgeEndpointStore gBridgeEndpointStore;
 BridgeWakeGate gBridgeWakeGate;
 BridgeWiFiProvisioner gBridgeWiFi;
+BridgeWiFiProvisioningStore gBridgeWiFiStore;
 BridgeNetworkSession gBridgeNetworkSession;
 BridgeWiFiClientSocket gBridgeSocket;
-char gRuntimeWiFiSsid[33] = {};
-char gRuntimeWiFiPassword[65] = {};
-char gRuntimeBridgeHost[64] = {};
-char gRuntimeBridgePath[64] = "/bridge";
+char gRuntimeWiFiSsid[kBridgeWiFiSsidMax] = {};
+char gRuntimeWiFiPassword[kBridgeWiFiPasswordMax] = {};
+char gRuntimeBridgeHost[kBridgeWiFiHostMax] = {};
+char gRuntimeBridgePath[kBridgeWiFiPathMax] = "/bridge";
 uint16_t gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
 #if defined(ARDUINO_ARCH_ESP32)
 BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
+BridgeWiFiProvisioningPreferencesStore gBridgeWiFiStoreBackend;
 #else
 BridgeEndpointMemoryStore gBridgeEndpointStoreBackend;
+BridgeWiFiProvisioningMemoryStore gBridgeWiFiStoreBackend;
 #endif
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
@@ -747,6 +751,21 @@ void printRuntimeStatus() {
   Serial.print(wifi.connectFailures);
   Serial.print(F(" bridge_wifi_status="));
   Serial.print(wifi.status);
+  const BridgeWiFiProvisioningStoreTelemetry& wifiStore = gBridgeWiFiStore.telemetry();
+  Serial.print(F(" bridge_wifi_store_ready="));
+  Serial.print(wifiStore.ready ? 1 : 0);
+  Serial.print(F(" bridge_wifi_store_has_record="));
+  Serial.print(wifiStore.hasRecord ? 1 : 0);
+  Serial.print(F(" bridge_wifi_store_loads="));
+  Serial.print(wifiStore.loads);
+  Serial.print(F(" bridge_wifi_store_saves="));
+  Serial.print(wifiStore.saves);
+  Serial.print(F(" bridge_wifi_store_clears="));
+  Serial.print(wifiStore.clears);
+  Serial.print(F(" bridge_wifi_store_parse_errors="));
+  Serial.print(wifiStore.parseErrors);
+  Serial.print(F(" bridge_wifi_store_write_errors="));
+  Serial.print(wifiStore.writeErrors);
   const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
   Serial.print(F(" bridge_network_ready="));
   Serial.print(network.ready ? 1 : 0);
@@ -1161,9 +1180,46 @@ void restartBridgeWiFi(const BridgeWiFiProvisioningConfig& config, uint32_t nowM
   gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
 }
 
+BridgeWiFiProvisioningConfig runtimeBridgeWiFiConfig() {
+  BridgeWiFiProvisioningConfig config;
+  config.enabled = true;
+  config.ssid = gRuntimeWiFiSsid;
+  config.password = gRuntimeWiFiPassword;
+  config.bridgeHost = gRuntimeBridgeHost;
+  config.bridgePort = gRuntimeBridgePort;
+  config.bridgePath = gRuntimeBridgePath;
+  return config;
+}
+
+BridgeWiFiProvisioningRecord runtimeBridgeWiFiRecord() {
+  BridgeWiFiProvisioningRecord record;
+  record.enabled = true;
+  copyRuntimeString(record.ssid, sizeof(record.ssid), gRuntimeWiFiSsid);
+  copyRuntimeString(record.password, sizeof(record.password), gRuntimeWiFiPassword);
+  copyRuntimeString(record.bridgeHost, sizeof(record.bridgeHost), gRuntimeBridgeHost);
+  record.bridgePort = gRuntimeBridgePort;
+  copyRuntimeString(record.bridgePath, sizeof(record.bridgePath), gRuntimeBridgePath);
+  return record;
+}
+
+BridgeWiFiProvisioningConfig storedBridgeWiFiConfigOrDefault(uint32_t nowMs) {
+  BridgeWiFiProvisioningRecord record;
+  if (!gBridgeWiFiStore.load(record, nowMs) || !record.enabled) {
+    return BridgeWiFiProvisioningConfig {};
+  }
+  copyRuntimeString(gRuntimeWiFiSsid, sizeof(gRuntimeWiFiSsid), record.ssid);
+  copyRuntimeString(gRuntimeWiFiPassword, sizeof(gRuntimeWiFiPassword), record.password);
+  copyRuntimeString(gRuntimeBridgeHost, sizeof(gRuntimeBridgeHost), record.bridgeHost);
+  copyRuntimeString(gRuntimeBridgePath, sizeof(gRuntimeBridgePath),
+                    record.bridgePath[0] != '\0' ? record.bridgePath : "/bridge");
+  gRuntimeBridgePort = record.bridgePort == 0 ? STACKCHAN_BRIDGE_PORT : record.bridgePort;
+  return runtimeBridgeWiFiConfig();
+}
+
 void handleWiFiProvisioningControl(const BenchWiFiProvisioningControl& wifi, uint32_t nowMs) {
   BridgeWiFiProvisioningConfig config;
   const char* action = "set";
+  bool persisted = false;
   if (wifi.clear) {
     action = "clear";
     gRuntimeWiFiSsid[0] = '\0';
@@ -1171,6 +1227,7 @@ void handleWiFiProvisioningControl(const BenchWiFiProvisioningControl& wifi, uin
     gRuntimeBridgeHost[0] = '\0';
     copyRuntimeString(gRuntimeBridgePath, sizeof(gRuntimeBridgePath), "/bridge");
     gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
+    persisted = gBridgeWiFiStore.clear(nowMs);
     config = BridgeWiFiProvisioningConfig {};
   } else {
     copyRuntimeString(gRuntimeWiFiSsid, sizeof(gRuntimeWiFiSsid), wifi.ssid);
@@ -1180,21 +1237,30 @@ void handleWiFiProvisioningControl(const BenchWiFiProvisioningControl& wifi, uin
                       wifi.bridgePath[0] != '\0' ? wifi.bridgePath : "/bridge");
     gRuntimeBridgePort = wifi.bridgePort == 0 ? STACKCHAN_BRIDGE_PORT : wifi.bridgePort;
 
-    config.enabled = true;
-    config.ssid = gRuntimeWiFiSsid;
-    config.password = gRuntimeWiFiPassword;
-    config.bridgeHost = gRuntimeBridgeHost;
-    config.bridgePort = gRuntimeBridgePort;
-    config.bridgePath = gRuntimeBridgePath;
+    persisted = gBridgeWiFiStore.save(runtimeBridgeWiFiRecord(), nowMs);
+    config = runtimeBridgeWiFiConfig();
   }
 
   restartBridgeWiFi(config, nowMs);
   const BridgeWiFiProvisioningTelemetry& telemetry = gBridgeWiFi.telemetry();
+  const BridgeWiFiProvisioningStoreTelemetry& store = gBridgeWiFiStore.telemetry();
   const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
   Serial.print(F("[wifi] action="));
   Serial.print(action);
   Serial.print(F(" result="));
   Serial.print(telemetry.configured ? F("configured") : F("not_configured"));
+  Serial.print(F(" persisted="));
+  Serial.print(persisted ? 1 : 0);
+  Serial.print(F(" store_ready="));
+  Serial.print(store.ready ? 1 : 0);
+  Serial.print(F(" store_has_record="));
+  Serial.print(store.hasRecord ? 1 : 0);
+  Serial.print(F(" store_saves="));
+  Serial.print(store.saves);
+  Serial.print(F(" store_clears="));
+  Serial.print(store.clears);
+  Serial.print(F(" store_errors="));
+  Serial.print(store.parseErrors + store.writeErrors + store.rejected);
   Serial.print(F(" enabled="));
   Serial.print(config.enabled ? 1 : 0);
   Serial.print(F(" ssid_set="));
@@ -1775,12 +1841,13 @@ void setup() {
   gBridgeEndpointRegistry.begin();
   gBridgeEndpointStore.begin(gBridgeEndpointStoreBackend);
   gBridgeEndpointStore.load(gBridgeEndpointRegistry, bootMs);
+  gBridgeWiFiStore.begin(gBridgeWiFiStoreBackend);
   BridgeEndpointControlConfig endpointControlConfig;
   endpointControlConfig.requiredPairingCode = STACKCHAN_PAIRING_SHORT_CODE;
   gBridgeEndpointControl.begin(gBridgeEndpointRegistry, endpointControlConfig);
   gBridgeEndpointControl.attachStore(&gBridgeEndpointStore);
   gAudioCapture.begin(AudioCaptureConfig {}, &gAudioCaptureSource);
-  gBridgeWiFi.begin(BridgeWiFiProvisioningConfig {}, bootMs);
+  gBridgeWiFi.begin(storedBridgeWiFiConfigOrDefault(bootMs), bootMs);
   gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), bootMs);
   gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
   gBridgeAudioUplink.begin(BridgeAudioUplinkConfig {}, &gBridgeNetworkSession);

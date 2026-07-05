@@ -319,19 +319,25 @@ Test-TextEvidence `
   -Id "firmware-wifi-runtime-command" `
   -Name "Firmware serial Wi-Fi bridge provisioning command" `
   -RelativePaths @("src/io/SensorAdapter.cpp", "src/io/SensorAdapter.hpp") `
-  -Patterns @("BenchWiFiProvisioningControl", "fillWiFiProvisioningControlRaw", "parseBridgeUrl", "wifi set ssid <name> pass <password>", "wifi clear", "hasWiFiProvisioning")
+  -Patterns @("BenchWiFiProvisioningControl", "fillWiFiProvisioningControlRaw", "parseBridgeUrl", "wifi set ssid <name> pass <password>", "wifi clear", "saved to robot flash without echoing password", "hasWiFiProvisioning")
 
 Test-TextEvidence `
   -Id "firmware-wifi-runtime-handler" `
   -Name "Firmware runtime Wi-Fi bridge provisioning handler" `
   -RelativePaths @("src/main.cpp") `
-  -Patterns @("handleWiFiProvisioningControl", "restartBridgeWiFi", "BridgeWiFiProvisioningConfig", "gRuntimeWiFiSsid", "ssid_set", "network_state")
+  -Patterns @("handleWiFiProvisioningControl", "restartBridgeWiFi", "BridgeWiFiProvisioningConfig", "gRuntimeWiFiSsid", "runtimeBridgeWiFiRecord", "gBridgeWiFiStore.save", "gBridgeWiFiStore.clear", "storedBridgeWiFiConfigOrDefault", "persisted", "ssid_set", "network_state")
+
+Test-TextEvidence `
+  -Id "firmware-wifi-persistent-store" `
+  -Name "Firmware persistent Wi-Fi bridge provisioning store" `
+  -RelativePaths @("src/io/BridgeWiFiProvisioningStore.cpp") `
+  -Patterns @("stackchan.bridge-wifi.v1", "BridgeWiFiProvisioningStore", "BridgeWiFiProvisioningMemoryStore", "BridgeWiFiProvisioningPreferencesStore", "Preferences", "password", "bridge_host", "bridge_port", "hasRecord")
 
 Test-TextEvidence `
   -Id "firmware-wifi-runtime-test" `
   -Name "Firmware Wi-Fi provisioning native regression test" `
   -RelativePaths @("test/test_native_logic/test_main.cpp") `
-  -Patterns @("test_sensor_adapter_parses_wifi_provisioning_commands", "CaseSensitive123", "ws://10.0.0.5:8765/bridge", "wifi clear", "8765x")
+  -Patterns @("test_sensor_adapter_parses_wifi_provisioning_commands", "test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status", "test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials", "test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payloads", "CaseSensitive123", "ws://10.0.0.5:8765/bridge", "wifi clear", "8765x")
 
 Test-TextEvidence `
   -Id "android-saved-robot-store" `

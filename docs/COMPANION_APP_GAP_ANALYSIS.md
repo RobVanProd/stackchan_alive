@@ -70,11 +70,12 @@ current v1 companion branch.
   When the phone bridge is running, Android now also shows a `Robot Wi-Fi setup` serial
   command template using the current bridge URL and placeholder network credentials so lab
   setup can proceed without hunting through docs.
-  Firmware now has a native-tested lab serial path for temporary Wi-Fi/bridge provisioning:
+  Firmware now has a native-tested serial path for persistent Wi-Fi/bridge provisioning:
   `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`, equivalent host/port/path
-  tokens, and `wifi clear`. The command preserves case-sensitive credentials, does not print
-  the password, and restarts the bridge client without reflashing. Persistent consumer-grade
-  robot-side credential entry plus hardware proof remain open.
+  tokens, and `wifi clear`. The command preserves case-sensitive credentials in a
+  `stackchan.bridge-wifi.v1` Preferences-backed store, loads the saved bridge target at boot,
+  does not print the password, and restarts the bridge client without reflashing. A polished
+  consumer robot-side menu/BLE provisioning flow plus hardware proof remain open.
 - G7 Play submission remains pending on upload signing, developer verification,
   a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
   Source-side Play prep now includes a policy/data-safety declaration draft for

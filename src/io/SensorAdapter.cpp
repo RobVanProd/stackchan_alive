@@ -1655,7 +1655,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
   Serial.println(F("[control] help: uplink start <seq> [wake|closed]; uplink chunk <seq> [bytes]; uplink end <seq>; uplink abort"));
   Serial.println(F("[control] help: pairing code <ABC123>; pairing clear"));
-  Serial.println(F("[control] help: wifi set ssid <name> pass <password> host <ip> port <8765> path </bridge>; wifi set ssid <name> url <ws://host:port/bridge>; wifi clear"));
+  Serial.println(F("[control] help: wifi set ssid <name> pass <password> host <ip> port <8765> path </bridge>; wifi set ssid <name> url <ws://host:port/bridge>; wifi clear; saved to robot flash without echoing password"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));

@@ -23,6 +23,7 @@
 #include "io/BridgeWakeGate.hpp"
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/BridgeWiFiProvisioner.hpp"
+#include "io/BridgeWiFiProvisioningStore.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
@@ -4460,6 +4461,83 @@ void test_bridge_wifi_provisioner_schedules_retry_after_timeout() {
   TEST_ASSERT_EQUAL_UINT32(2, wifi.telemetry().beginAttempts);
 }
 
+void test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status() {
+  BridgeWiFiProvisioningRecord record;
+  record.enabled = true;
+  std::strncpy(record.ssid, "StackLab", sizeof(record.ssid) - 1);
+  std::strncpy(record.password, "CaseSensitive123", sizeof(record.password) - 1);
+  std::strncpy(record.bridgeHost, "192.168.1.42", sizeof(record.bridgeHost) - 1);
+  record.bridgePort = 8765;
+  std::strncpy(record.bridgePath, "/bridge", sizeof(record.bridgePath) - 1);
+
+  BridgeWiFiProvisioningMemoryStore backend;
+  BridgeWiFiProvisioningStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  TEST_ASSERT_TRUE(store.save(record, 2000));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"schema\":\"stackchan.bridge-wifi.v1\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"ssid\":\"StackLab\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"password\":\"CaseSensitive123\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"bridge_host\":\"192.168.1.42\""));
+  TEST_ASSERT_TRUE(store.telemetry().hasRecord);
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().saves);
+
+  BridgeWiFiProvisioningRecord restored;
+  TEST_ASSERT_TRUE(store.load(restored, 2010));
+  TEST_ASSERT_TRUE(restored.enabled);
+  TEST_ASSERT_EQUAL_STRING("StackLab", restored.ssid);
+  TEST_ASSERT_EQUAL_STRING("CaseSensitive123", restored.password);
+  TEST_ASSERT_EQUAL_STRING("192.168.1.42", restored.bridgeHost);
+  TEST_ASSERT_EQUAL_UINT16(8765, restored.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("/bridge", restored.bridgePath);
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().loads);
+}
+
+void test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials() {
+  BridgeWiFiProvisioningRecord record;
+  record.enabled = true;
+  std::strncpy(record.ssid, "StackLab", sizeof(record.ssid) - 1);
+  std::strncpy(record.password, "CaseSensitive123", sizeof(record.password) - 1);
+  std::strncpy(record.bridgeHost, "192.168.1.42", sizeof(record.bridgeHost) - 1);
+  record.bridgePort = 8765;
+  std::strncpy(record.bridgePath, "/bridge", sizeof(record.bridgePath) - 1);
+
+  BridgeWiFiProvisioningMemoryStore backend;
+  BridgeWiFiProvisioningStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  TEST_ASSERT_TRUE(store.save(record, 2100));
+  TEST_ASSERT_TRUE(std::strlen(backend.value()) > 0);
+  TEST_ASSERT_TRUE(store.clear(2110));
+  TEST_ASSERT_EQUAL_STRING("", backend.value());
+  TEST_ASSERT_FALSE(store.telemetry().hasRecord);
+
+  BridgeWiFiProvisioningRecord empty;
+  TEST_ASSERT_TRUE(store.load(empty, 2120));
+  TEST_ASSERT_FALSE(empty.enabled);
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().clears);
+}
+
+void test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payloads() {
+  BridgeWiFiProvisioningMemoryStore backend;
+  BridgeWiFiProvisioningStore store;
+  TEST_ASSERT_TRUE(store.begin(backend));
+  TEST_ASSERT_TRUE(backend.write("{\"schema\":\"wrong\",\"enabled\":true}"));
+
+  BridgeWiFiProvisioningRecord record;
+  TEST_ASSERT_FALSE(store.load(record, 2200));
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().parseErrors);
+
+  TEST_ASSERT_TRUE(backend.write(
+      "{\"schema\":\"stackchan.bridge-wifi.v1\",\"enabled\":true,\"ssid\":\"StackLab\"}"));
+  TEST_ASSERT_FALSE(store.load(record, 2210));
+  TEST_ASSERT_EQUAL_UINT32(2, store.telemetry().parseErrors);
+
+  BridgeWiFiProvisioningRecord incomplete;
+  incomplete.enabled = true;
+  std::strncpy(incomplete.ssid, "StackLab", sizeof(incomplete.ssid) - 1);
+  TEST_ASSERT_FALSE(store.save(incomplete, 2220));
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().rejected);
+}
+
 BridgeEndpointRecord makeBridgeEndpoint(const char* id,
                                         BridgeEndpointKind kind,
                                         uint8_t priority,
@@ -5238,6 +5316,9 @@ int main() {
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);
   RUN_TEST(test_bridge_wifi_provisioner_schedules_retry_after_timeout);
+  RUN_TEST(test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status);
+  RUN_TEST(test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials);
+  RUN_TEST(test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payloads);
   RUN_TEST(test_bridge_endpoint_registry_upserts_and_bounds_trusted_endpoints);
   RUN_TEST(test_bridge_endpoint_registry_explicit_claim_overrides_current_owner);
   RUN_TEST(test_bridge_endpoint_registry_timeout_promotes_highest_priority_healthy_endpoint);

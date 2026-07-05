@@ -112,9 +112,10 @@ response writeback, and reconnect scheduling, with `BridgeWiFiClientSocket` as t
 `WiFiClient` binding. `BridgeWiFiProvisioner` is boot-wired behind compile-time settings and
 can also be pointed at an Android phone bridge during lab setup with the native-tested serial
 commands `wifi set ssid <name> pass <password> url <ws://host:port/bridge>` and `wifi clear`.
-That runtime path is temporary RAM configuration for arrival-day testing, not persistent
-consumer provisioning. Live transport evidence is still required before the physical robot can
-use this control plane untethered.
+Firmware now saves that runtime Wi-Fi bridge record in the `stackchan.bridge-wifi.v1`
+schema using an ESP32 Preferences backend, loads it at boot, exposes store telemetry, and
+clears it with `wifi clear` without echoing the password in serial status. Live transport
+evidence is still required before the physical robot can use this control plane untethered.
 
 ## Multi-Endpoint Model
 
@@ -204,11 +205,12 @@ can show and forget phone-side saved robot records. The same screen must expose 
 remove path for stored trusted companion endpoints so users can retire an old PC, phone, or
 test node without editing files. Forgetting a saved robot in Android removes the phone-side
 record only; persistent robot-side unpair still requires firmware support.
-The app-side Wi-Fi bootstrap is not a replacement for persistent firmware credential entry:
+The app-side Wi-Fi bootstrap is not a replacement for a polished robot setup menu:
 v1 must state clearly that the robot still needs configured Wi-Fi credentials, its pairing
-menu, or the lab serial command `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
-before it can reach the phone bridge URL. The serial command must never echo the password
-back in logs; it is a bring-up path until a consumer setup menu or BLE provisioning flow lands.
+menu, or the serial command `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
+before it can reach the phone bridge URL. The serial command saves the robot-side record
+persistently and must never echo the password back in logs; it remains a bring-up path until
+a consumer setup menu or BLE provisioning flow lands.
 When the phone bridge is running, Android must generate the same command template with the
 current phone bridge URL and placeholder network values. Diagnostics may include that
 template and a password-redacted flag, but must not persist real Wi-Fi credentials.
