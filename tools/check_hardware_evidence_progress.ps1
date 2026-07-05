@@ -615,6 +615,7 @@ Test-TextPattern "logs/soak_serial.log" "\[system\]\s+heap_free=\d+\s+heap_min=\
 Test-TextPattern "NEXT_STEPS.md" "RUN_PACKAGE_VERIFY\.cmd" "package verify run order"
 Test-TextPattern "NEXT_STEPS.md" "RUN_PROGRESS_CHECK\.cmd" "progress check run order"
 Test-TextPattern "NEXT_STEPS.md" "RUN_SPEAK_ALL_INTENTS\.cmd" "speak-all-intents run order"
+Test-TextPattern "NEXT_STEPS.md" "pair ticket <stackchan://pair\?\.\.\.>" "Android pairing ticket setup guidance"
 Test-TextPattern "NEXT_STEPS.md" "Generated source WAVs alone do not count" "real-device audio warning"
 Test-TextPattern "NEXT_STEPS.md" "RUN_CONSUMER_PROMOTION_CHECK\.cmd" "consumer promotion gate"
 

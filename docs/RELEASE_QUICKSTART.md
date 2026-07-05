@@ -211,6 +211,12 @@ under `android\apk-install\`.
 After the robot connects through the phone, capture the Android dashboard connected state
 showing robot identity, firmware/version signal, last bridge frame, active brain owner,
 and foreground service state.
+For first Wi-Fi setup, enter the Android-generated
+`wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>`
+command on the robot and verify password redaction plus persisted store telemetry. If the
+robot already has Wi-Fi credentials, enter `pair ticket <stackchan://pair?...>` or the raw
+`stackchan://pair?...` Android QR payload instead; that ticket carries only the pairing code
+and bridge target.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 

@@ -683,7 +683,7 @@ foreach ($file in $requiredFiles) {
 }
 
 $nextStepsText = Get-Content -LiteralPath (Join-EvidencePath "NEXT_STEPS.md") -Raw
-foreach ($pattern in @("Stackchan Evidence Next Steps", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_ADD_MEDIA.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Generated source WAVs alone do not count", "Do not run servo calibration unless the body is clear", "production voice-source provenance")) {
+foreach ($pattern in @("Stackchan Evidence Next Steps", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_ADD_MEDIA.cmd", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "pair ticket <stackchan://pair?...>", "Generated source WAVs alone do not count", "Do not run servo calibration unless the body is clear", "production voice-source provenance")) {
   if ($nextStepsText -notmatch [regex]::Escape($pattern)) {
     throw "NEXT_STEPS.md missing expected operator guidance: $pattern"
   }
