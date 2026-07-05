@@ -1,4 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.GradleException
+import java.util.concurrent.TimeUnit
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -26,7 +28,77 @@ dependencies {
     testImplementation(libs.kotlin.test)
 }
 
+val desktopPythonRuntimeRoot = providers.gradleProperty("stackchan.desktop.pythonRuntimeRoot")
+    .orElse(providers.environmentVariable("STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT"))
+
+val validateDesktopPythonRuntimePayload = tasks.register("validateDesktopPythonRuntimePayload") {
+    group = "verification"
+    description = "Validates the optional managed Python runtime payload before desktop packaging."
+
+    inputs.property("runtimeRoot", desktopPythonRuntimeRoot.orNull ?: "")
+    inputs.file(rootProject.layout.projectDirectory.file("../tools/check_desktop_python_runtime_payload.ps1"))
+
+    doLast {
+        val runtimeRoot = desktopPythonRuntimeRoot.orNull?.trim().orEmpty()
+        if (runtimeRoot.isBlank()) {
+            logger.lifecycle(
+                "No managed Python runtime root configured; set -Pstackchan.desktop.pythonRuntimeRoot or " +
+                "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT to package python-runtime/."
+            )
+            return@doLast
+        }
+
+        fun runCommand(command: List<String>): Pair<Int, String> {
+            val process = ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start()
+            val finished = process.waitFor(30, TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                return 124 to "Command timed out: ${command.joinToString(" ")}"
+            }
+            return process.exitValue() to process.inputStream.bufferedReader().readText()
+        }
+
+        val checker = rootProject.layout.projectDirectory
+            .file("../tools/check_desktop_python_runtime_payload.ps1")
+            .asFile
+        val powerShell = listOf("pwsh", "powershell").firstOrNull { command ->
+            runCatching {
+                runCommand(listOf(command, "-NoProfile", "-Command", "\$PSVersionTable.PSVersion.ToString()")).first == 0
+            }.getOrDefault(false)
+        } ?: throw GradleException("Neither pwsh nor powershell was found; cannot validate desktop Python runtime payload.")
+
+        val result = runCommand(
+            listOf(
+                powerShell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                checker.absolutePath,
+                "-RuntimeRoot",
+                runtimeRoot,
+                "-Json",
+            )
+        )
+        if (result.first != 0) {
+            throw GradleException(
+                "Desktop Python runtime payload is not ready for packaging:\n${result.second.trim()}"
+            )
+        }
+        logger.lifecycle("Desktop Python runtime payload validated: $runtimeRoot")
+    }
+}
+
 tasks.processResources {
+    dependsOn(validateDesktopPythonRuntimePayload)
+    inputs.property("desktopPythonRuntimeRoot", desktopPythonRuntimeRoot.orNull ?: "")
+
+    doFirst {
+        destinationDir.resolve("python-runtime").deleteRecursively()
+    }
+
     from(rootProject.layout.projectDirectory.dir("../bridge")) {
         include(
             "character_harness.py",
@@ -53,6 +125,11 @@ tasks.processResources {
         include("stackchan_spark_thinking.wav")
         include("stackchan_spark_safety.wav")
         into("brain/docs/media/voice")
+    }
+    desktopPythonRuntimeRoot.orNull?.trim()?.takeIf { it.isNotBlank() }?.let { runtimeRoot ->
+        from(runtimeRoot) {
+            into("python-runtime")
+        }
     }
 }
 

@@ -34,6 +34,23 @@ Manifest template:
 }
 ```
 
+## Desktop Packaging
+
+Release builds can package the managed runtime by pointing Gradle at a validated runtime
+root:
+
+```powershell
+cd companion
+.\gradlew.bat :app-desktop:packageDistributionForCurrentOS -Pstackchan.desktop.pythonRuntimeRoot=<path>
+```
+
+CI or release scripts can use `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>` instead of the
+Gradle property. When either value is present, `:app-desktop:processResources` first runs
+`validateDesktopPythonRuntimePayload`, which invokes
+`tools/check_desktop_python_runtime_payload.ps1`, then copies the runtime into packaged app
+resources as `python-runtime/`. If the runtime is missing a manifest, executable, or Python
+3.10+ probe, the desktop package build fails before an installer is produced.
+
 ## Validation
 
 Run:

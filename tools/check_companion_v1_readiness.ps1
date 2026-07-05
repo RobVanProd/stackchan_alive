@@ -527,6 +527,12 @@ Test-TextEvidence `
   -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+")
 
 Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-packaging" `
+  -Name "Desktop managed Python runtime payload packaging hook" `
+  -RelativePaths @("companion/app-desktop/build.gradle.kts") `
+  -Patterns @("stackchan.desktop.pythonRuntimeRoot", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "validateDesktopPythonRuntimePayload", "check_desktop_python_runtime_payload.ps1", "into(`"python-runtime`")", "desktopPythonRuntimeRoot")
+
+Test-TextEvidence `
   -Id "desktop-packaged-brain-script" `
   -Name "Desktop package includes PC brain service script" `
   -RelativePaths @("companion/app-desktop/build.gradle.kts") `

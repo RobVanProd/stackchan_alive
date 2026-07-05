@@ -111,8 +111,11 @@ current v1 companion branch.
   folders before falling back to system Python. The app now reports managed runtime payload
   presence in desktop diagnostics and C6 brain-supervisor evidence, and
   `tools/check_desktop_python_runtime_payload.ps1` validates the expected
-  `stackchan-python-runtime.json` plus platform Python executable layout. Adding the actual
-  managed Python binary payload to desktop installers remains open.
+  `stackchan-python-runtime.json` plus platform Python executable layout. Desktop packaging
+  now accepts `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
+  `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT`, validates the payload before resource processing,
+  and copies it into app resources as `python-runtime/`. Supplying and shipping the actual
+  managed Python binary payload for each desktop platform remains open.
 
 ## Next Attack Order
 
