@@ -9,7 +9,7 @@ import kotlin.concurrent.thread
 
 data class DesktopBrainSupervisorConfig(
     val pythonCommand: String = resolveDesktopBrainPythonCommand(),
-    val scriptPath: Path = defaultRepoRoot().resolve("bridge").resolve("lan_service.py"),
+    val scriptPath: Path = defaultDesktopBrainScriptPath(),
     val host: String = System.getProperty("stackchan.brain.host") ?: "0.0.0.0",
     val port: Int = System.getProperty("stackchan.brain.port")?.toIntOrNull() ?: 8766,
     val runnerProfile: String = System.getProperty("stackchan.brain.runner_profile") ?: "gemma4-e2b-gguf",
@@ -192,24 +192,56 @@ internal fun resolveDesktopBrainPythonCommand(): String =
     desktopBrainPythonCandidates().firstOrNull { candidate ->
         inspectDesktopPythonRuntime(
             pythonCommand = candidate,
-            scriptPath = defaultRepoRoot().resolve("bridge").resolve("lan_service.py"),
+            scriptPath = defaultDesktopBrainScriptPath(),
             workingDirectory = null,
         ).available
     } ?: defaultPythonCommand()
 
 internal fun desktopBrainPythonCandidates(): List<String> =
-    listOfNotNull(
-        System.getProperty("stackchan.brain.python"),
-        System.getProperty("stackchan.test.python"),
-        System.getenv("STACKCHAN_BRAIN_PYTHON"),
-        System.getenv("PYTHON"),
-        System.getenv("PYTHON_EXE"),
-        localWindowsPython(),
-        "python",
-        "python3",
-    ).map { it.trim() }
+    (
+        listOfNotNull(
+            System.getProperty("stackchan.brain.python"),
+            System.getProperty("stackchan.test.python"),
+            System.getenv("STACKCHAN_BRAIN_PYTHON"),
+            System.getenv("PYTHON"),
+            System.getenv("PYTHON_EXE"),
+        ) +
+            desktopBrainManagedPythonCandidates() +
+            listOfNotNull(
+                localWindowsPython(),
+                "python",
+                "python3",
+            )
+        ).map { it.trim() }
         .filter { it.isNotBlank() }
         .distinct()
+
+internal fun desktopBrainManagedPythonCandidates(
+    appHome: Path = desktopApplicationHome(),
+    runtimeOverride: String? = System.getProperty("stackchan.brain.python.runtimeDir")
+        ?: System.getenv("STACKCHAN_BRAIN_PYTHON_RUNTIME"),
+): List<String> {
+    val runtimeRoots = listOfNotNull(
+        runtimeOverride?.takeIf { it.isNotBlank() }?.let { Path.of(it) },
+        appHome.resolve("python-runtime"),
+        appHome.resolve("runtime").resolve("python"),
+    )
+    val windows = runtimeRoots.flatMap { root ->
+        listOf(
+            root.resolve("python.exe"),
+            root.resolve("python").resolve("python.exe"),
+        )
+    }
+    val unix = runtimeRoots.flatMap { root ->
+        listOf(
+            root.resolve("bin").resolve("python3"),
+            root.resolve("bin").resolve("python"),
+            root.resolve("python3"),
+            root.resolve("python"),
+        )
+    }
+    return (windows + unix).map { it.toAbsolutePath().normalize().toString() }
+}
 
 internal fun inspectDesktopPythonRuntime(
     pythonCommand: String,
@@ -318,6 +350,86 @@ private fun defaultPythonCommand(): String {
 private fun localWindowsPython(): String? {
     val localAppData = System.getenv("LOCALAPPDATA") ?: return null
     return Path.of(localAppData, "Programs", "Python", "Python312", "python.exe").toString()
+}
+
+internal fun defaultDesktopBrainScriptPath(): Path {
+    System.getProperty("stackchan.brain.script")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return Path.of(it).toAbsolutePath().normalize() }
+
+    packagedDesktopBrainScriptPath()?.let { return it }
+
+    return defaultRepoRoot().resolve("bridge").resolve("lan_service.py")
+}
+
+internal fun packagedDesktopBrainScriptPath(
+    cacheRoot: Path = desktopBrainScriptCacheRoot(),
+    resourcePrefix: String = "brain",
+): Path? {
+    for (relativePath in PACKAGED_BRAIN_RESOURCES) {
+        val resourceName = "$resourcePrefix/$relativePath"
+        val bytes = readPackagedBrainResource(resourceName) ?: return null
+        val target = cacheRoot.resolve(relativePath).toAbsolutePath().normalize()
+        Files.createDirectories(target.parent)
+        val current = runCatching { Files.readAllBytes(target) }.getOrNull()
+        if (current == null || !current.contentEquals(bytes)) {
+            Files.write(target, bytes)
+        }
+    }
+    return cacheRoot.resolve("bridge").resolve("lan_service.py").toAbsolutePath().normalize()
+}
+
+private val PACKAGED_BRAIN_RESOURCES = listOf(
+    "data/voice_source_provenance.yaml",
+    "docs/media/voice/stackchan_spark_greeting.wav",
+    "docs/media/voice/stackchan_spark_safety.wav",
+    "docs/media/voice/stackchan_spark_thinking.wav",
+    "bridge/character_harness.py",
+    "bridge/lan_service.py",
+    "bridge/local_runner.py",
+    "bridge/persona_pack.py",
+    "bridge/reference_bridge.py",
+    "bridge/stt_adapter.py",
+    "bridge/tts_adapter.py",
+    "personas/glow/behavior.yaml",
+    "personas/glow/character.yaml",
+    "personas/glow/earcons.yaml",
+    "personas/glow/expressions.yaml",
+    "personas/glow/pack.yaml",
+    "personas/glow/prompt.md",
+    "personas/glow/voice.yaml",
+    "personas/spark/behavior.yaml",
+    "personas/spark/character.yaml",
+    "personas/spark/earcons.yaml",
+    "personas/spark/expressions.yaml",
+    "personas/spark/pack.yaml",
+    "personas/spark/prompt.md",
+    "personas/spark/voice.yaml",
+)
+
+private fun readPackagedBrainResource(resourceName: String): ByteArray? =
+    Thread.currentThread().contextClassLoader
+        ?.getResourceAsStream(resourceName)
+        ?.use { it.readBytes() }
+        ?: DesktopBrainSupervisor::class.java.classLoader
+            .getResourceAsStream(resourceName)
+            ?.use { it.readBytes() }
+
+private fun desktopBrainScriptCacheRoot(): Path =
+    Path.of(
+        System.getProperty("java.io.tmpdir"),
+        "stackchan-companion",
+        "managed-brain",
+    )
+
+internal fun desktopApplicationHome(): Path {
+    System.getProperty("stackchan.app.home")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return Path.of(it).toAbsolutePath().normalize() }
+    System.getProperty("compose.application.resources.dir")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return Path.of(it).toAbsolutePath().normalize() }
+    return Path.of("").toAbsolutePath().normalize()
 }
 
 internal fun defaultRepoRoot(): Path {

@@ -103,6 +103,44 @@ class DesktopBrainSupervisorTest {
         }
     }
 
+    @Test
+    fun packagedBrainScriptExtractsLanServiceResource() {
+        val cacheRoot = Files.createTempDirectory("stackchan-packaged-brain")
+        val script = packagedDesktopBrainScriptPath(cacheRoot)
+
+        assertNotNull(script)
+        assertTrue(Files.isRegularFile(script))
+        assertTrue(Files.readString(script).contains("--runner-profile"))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("reference_bridge.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("personas").resolve("spark").resolve("pack.yaml")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("data").resolve("voice_source_provenance.yaml")))
+
+        val help = ProcessBuilder(pythonCommand(), script.toString(), "--help")
+            .directory(script.parent.toFile())
+            .redirectErrorStream(true)
+            .start()
+        assertTrue(help.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(0, help.exitValue(), help.inputStream.bufferedReader().readText())
+    }
+
+    @Test
+    fun managedPythonCandidatesIncludeOverrideAndPackagedRuntimeFolders() {
+        val appHome = Files.createTempDirectory("stackchan-desktop-app-home")
+        val runtimeOverride = Files.createTempDirectory("stackchan-python-runtime")
+        val candidates = desktopBrainManagedPythonCandidates(
+            appHome = appHome,
+            runtimeOverride = runtimeOverride.toString(),
+        )
+
+        assertEquals(runtimeOverride.resolve("python.exe").toAbsolutePath().normalize().toString(), candidates.first())
+        assertTrue(
+            appHome.resolve("python-runtime").resolve("bin").resolve("python3")
+                .toAbsolutePath()
+                .normalize()
+                .toString() in candidates,
+        )
+    }
+
     private fun testConfig(script: Path, maxLogLines: Int = 20): DesktopBrainSupervisorConfig =
         DesktopBrainSupervisorConfig(
             pythonCommand = pythonCommand(),

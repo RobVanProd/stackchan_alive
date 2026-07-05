@@ -55,7 +55,7 @@ past C0 with an unfixed spike failure.
 | Existing asset | Role in companion build |
 | --- | --- |
 | `ANDROID_COMPANION_SPEC.md` | The behavioral contract. Every message and gate there maps to a phase gate here. |
-| `bridge/lan_service.py` (stdlib-only WebSocket server) | Canonical PC Brain runtime. Desktop app supervises it; nothing is ported. |
+| `bridge/lan_service.py` (stdlib-only WebSocket server) | Canonical PC Brain runtime. Desktop app supervises it; desktop packages include the required bridge modules under packaged `brain/bridge/` resources. |
 | `bridge/hardware_simulator.py` | Virtual robot / conformance counterparty for the Kotlin endpoint before hardware. |
 | `bridge/reference_bridge.py` deterministic frames | Source of truth for golden JSON fixtures shared by Python, firmware bench, and Kotlin tests. |
 | `docs/BRIDGE_PROTOCOL.md` | Wire format: WebSocket text = JSON control, binary = PCM16 up/downlink, lower_snake_case fields. |

@@ -101,9 +101,13 @@ current v1 companion branch.
   are still required before calling G8 complete.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
-  missing interpreters or missing `bridge/lan_service.py` in the Brain panel, and includes the
-  command/version/script status in diagnostics and C6 rehearsal evidence. Packaging a managed
-  Python runtime with desktop installers remains open.
+  missing interpreters or missing brain script in the Brain panel, and includes the
+  command/version/script status in diagnostics and C6 rehearsal evidence. Desktop packaging now
+  carries the required bridge Python modules as `brain/bridge/` app resources plus the bundled
+  `spark` and `glow` persona packs, voice provenance YAML, and required source WAVs, extracts
+  that repo-shaped subset for the supervisor, and searches `python-runtime` / `runtime/python`
+  folders before falling back to system Python. Adding the actual managed Python binary payload
+  to desktop installers remains open.
 
 ## Next Attack Order
 

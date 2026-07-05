@@ -26,6 +26,36 @@ dependencies {
     testImplementation(libs.kotlin.test)
 }
 
+tasks.processResources {
+    from(rootProject.layout.projectDirectory.dir("../bridge")) {
+        include(
+            "character_harness.py",
+            "lan_service.py",
+            "local_runner.py",
+            "persona_pack.py",
+            "reference_bridge.py",
+            "stt_adapter.py",
+            "tts_adapter.py",
+        )
+        into("brain/bridge")
+    }
+    from(rootProject.layout.projectDirectory.dir("../personas")) {
+        include("spark/**")
+        include("glow/**")
+        into("brain/personas")
+    }
+    from(rootProject.layout.projectDirectory.dir("../data")) {
+        include("voice_source_provenance.yaml")
+        into("brain/data")
+    }
+    from(rootProject.layout.projectDirectory.dir("../docs/media/voice")) {
+        include("stackchan_spark_greeting.wav")
+        include("stackchan_spark_thinking.wav")
+        include("stackchan_spark_safety.wav")
+        into("brain/docs/media/voice")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "dev.stackchan.companion.desktop.MainKt"

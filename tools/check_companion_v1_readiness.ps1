@@ -20,6 +20,7 @@ $pendingGates = @(
   "google-play-store-screenshots",
   "google-play-internal-testing-upload",
   "gemma4-e2b-real-device-download-and-inference-validation",
+  "desktop-managed-python-runtime-binary-payload",
   "c8-tagged-release-distribution",
   "production-voice-source-before-consumer-rollout"
 )
@@ -499,7 +500,19 @@ Test-TextEvidence `
   -Id "desktop-python-runtime-preflight" `
   -Name "Desktop Python brain runtime preflight" `
   -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopBrainSupervisor.kt") `
-  -Patterns @("DesktopPythonRuntimeStatus", "inspectDesktopPythonRuntime", "Python 3.10+", "STACKCHAN_BRAIN_PYTHON", "scriptAvailable", "searchedCommands")
+  -Patterns @("DesktopPythonRuntimeStatus", "inspectDesktopPythonRuntime", "Python 3.10+", "STACKCHAN_BRAIN_PYTHON", "scriptAvailable", "searchedCommands", "desktopBrainManagedPythonCandidates", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "python-runtime", "packagedDesktopBrainScriptPath")
+
+Test-TextEvidence `
+  -Id "desktop-packaged-brain-script" `
+  -Name "Desktop package includes PC brain service script" `
+  -RelativePaths @("companion/app-desktop/build.gradle.kts") `
+  -Patterns @("lan_service.py", "character_harness.py", "reference_bridge.py", "stt_adapter.py", "tts_adapter.py", "into(`"brain/bridge`")", "into(`"brain/personas`")", "voice_source_provenance.yaml", "stackchan_spark_greeting.wav")
+
+Test-TextEvidence `
+  -Id "desktop-packaged-brain-script-test" `
+  -Name "Desktop packaged PC brain service script test" `
+  -RelativePaths @("companion/app-desktop/src/test/kotlin/dev/stackchan/companion/desktop/DesktopBrainSupervisorTest.kt") `
+  -Patterns @("packagedBrainScriptExtractsLanServiceResource", "--runner-profile", "reference_bridge.py", "personas", "voice_source_provenance.yaml", "--help")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-evidence" `
