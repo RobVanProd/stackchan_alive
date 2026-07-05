@@ -102,10 +102,12 @@ responses as masked client text frames, and `BridgeSocketWriter` can drain those
 responses through a socket sink with partial-write buffering. `BridgeNetworkSession` now
 defines the firmware TCP/WebSocket session loop for handshake, incoming frames, endpoint
 response writeback, and reconnect scheduling, with `BridgeWiFiClientSocket` as the ESP32
-`WiFiClient` binding. `BridgeWiFiProvisioner` is now boot-wired behind compile-time settings.
-It remains disabled unless firmware is built with real Wi-Fi credentials and a bridge host,
-and still needs live transport evidence before the physical robot can use this control plane
-untethered.
+`WiFiClient` binding. `BridgeWiFiProvisioner` is boot-wired behind compile-time settings and
+can also be pointed at an Android phone bridge during lab setup with the native-tested serial
+commands `wifi set ssid <name> pass <password> url <ws://host:port/bridge>` and `wifi clear`.
+That runtime path is temporary RAM configuration for arrival-day testing, not persistent
+consumer provisioning. Live transport evidence is still required before the physical robot can
+use this control plane untethered.
 
 ## Multi-Endpoint Model
 
@@ -195,9 +197,11 @@ can show and forget phone-side saved robot records. The same screen must expose 
 remove path for stored trusted companion endpoints so users can retire an old PC, phone, or
 test node without editing files. Forgetting a saved robot in Android removes the phone-side
 record only; persistent robot-side unpair still requires firmware support.
-The app-side Wi-Fi bootstrap is not a replacement for firmware credential entry: v1 must
-state clearly that the robot still needs configured Wi-Fi credentials or its pairing menu
-before it can reach the phone bridge URL.
+The app-side Wi-Fi bootstrap is not a replacement for persistent firmware credential entry:
+v1 must state clearly that the robot still needs configured Wi-Fi credentials, its pairing
+menu, or the lab serial command `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
+before it can reach the phone bridge URL. The serial command must never echo the password
+back in logs; it is a bring-up path until a consumer setup menu or BLE provisioning flow lands.
 
 ## Protocol Extension
 

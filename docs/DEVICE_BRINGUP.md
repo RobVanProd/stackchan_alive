@@ -63,8 +63,19 @@ buffering. `BridgeNetworkSession` adds the tested TCP/WebSocket session loop, an
 `BridgeWiFiClientSocket` binds the socket interface to ESP32 `WiFiClient`.
 `BridgeWiFiProvisioner` is boot-wired but disabled by default unless
 `STACKCHAN_ENABLE_WIFI_BRIDGE=1`, `STACKCHAN_WIFI_SSID`, and `STACKCHAN_BRIDGE_HOST` are
-provided at build time. The remaining hardware gap is provisioning real credentials/bridge
-host and collecting live PC/mobile handoff evidence.
+provided at build time. For arrival-day lab testing, serial bench commands can temporarily
+provision the Wi-Fi and bridge target without reflashing:
+
+```text
+wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
+wifi set ssid <network-name> pass <network-password> host <phone-lan-ip> port 8765 path /bridge
+wifi clear
+```
+
+The command preserves case-sensitive SSID/password tokens, does not print the password in
+accepted-command or result logs, and lives only in RAM. Use `wifi clear` before switching back
+to build-time bridge settings. The remaining hardware gap is persistent consumer credential
+entry/provisioning UX and collecting live PC/mobile handoff evidence.
 
 If the Android phone is the companion bridge host, use the packet helpers before the robot
 session test:
@@ -98,6 +109,17 @@ version under `android/apk-install/`. The UDP and companion probes record same-L
 heartbeat soak under `android/screen-off-soak/`. If the Android service stops, crashes,
 loses foreground status, or fails during screen-off soak, run
 `RUN_ANDROID_LOGCAT_CAPTURE.cmd` immediately and attach `android/logcat/`.
+
+Before the robot session test, start the phone bridge and copy the setup URL from Android's
+**Add your Stack-chan** flow. On the firmware serial console, send:
+
+```text
+wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
+```
+
+Then watch `[wifi]` and `[runtime]` telemetry for `enabled=1`, the expected host/port/path,
+`bridge_state`, and a subsequent robot `hello` in the Android dashboard. The serial result
+must show only `ssid_set=1`; it must not echo the password.
 
 After the robot connects, capture the Android dashboard connected state before moving to the
 robot session test. The screenshot or screen recording must show the robot identity,

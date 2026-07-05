@@ -134,6 +134,7 @@ Evidence to capture:
 - [ ] The setup card starts with a Wi-Fi bootstrap step, reports whether the phone is on Wi-Fi, offers an `Open Wi-Fi settings` action, and then shows a pairing code, phone fingerprint, discovery mode, scannable `stackchan://pair` QR payload, and plain-language instruction for scanning or entering the bridge URL plus pairing code on Stack-chan.
 - [ ] With phone Wi-Fi off, the setup card keeps `Join Wi-Fi` as the current step and does not move the operator straight to pairing.
 - [ ] With phone Wi-Fi on and the bridge running, the setup card marks `Join Wi-Fi` and `Start phone bridge` complete, then makes `Connect Stack-chan` current.
+- [ ] For lab firmware without persistent Wi-Fi setup, send `wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>` on the robot serial console, verify `[wifi]` reports `enabled=1` and `ssid_set=1` without echoing the password, then send `wifi clear` after the session to return to build-time settings.
 - [ ] The disconnected robot row shows a waiting/setup action rather than an unavailable handoff action.
 - [ ] The setup card shows how many saved robots and trusted companion nodes are stored before the operator removes or keeps old devices.
 - [ ] After a robot hello, the robot is saved on the phone and appears as a removable robot row; forgetting it removes the phone-side saved robot record without pretending to perform robot-side unpair.

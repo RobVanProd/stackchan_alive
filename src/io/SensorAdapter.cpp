@@ -91,6 +91,262 @@ bool fillStatus(BenchControl* controlOut) {
   return true;
 }
 
+bool equalsIgnoreCase(const char* left, const char* right) {
+  if (left == nullptr || right == nullptr) {
+    return false;
+  }
+  while (*left != '\0' && *right != '\0') {
+    const char a = static_cast<char>(tolower(static_cast<unsigned char>(*left)));
+    const char b = static_cast<char>(tolower(static_cast<unsigned char>(*right)));
+    if (a != b) {
+      return false;
+    }
+    ++left;
+    ++right;
+  }
+  return *left == '\0' && *right == '\0';
+}
+
+bool startsWithIgnoreCase(const char* value, const char* prefix) {
+  if (value == nullptr || prefix == nullptr) {
+    return false;
+  }
+  while (*prefix != '\0') {
+    if (*value == '\0') {
+      return false;
+    }
+    const char a = static_cast<char>(tolower(static_cast<unsigned char>(*value)));
+    const char b = static_cast<char>(tolower(static_cast<unsigned char>(*prefix)));
+    if (a != b) {
+      return false;
+    }
+    ++value;
+    ++prefix;
+  }
+  return true;
+}
+
+void copyBounded(char* out, size_t outSize, const char* value) {
+  if (out == nullptr || outSize == 0) {
+    return;
+  }
+  out[0] = '\0';
+  if (value == nullptr) {
+    return;
+  }
+  strncpy(out, value, outSize - 1u);
+  out[outSize - 1u] = '\0';
+}
+
+bool parsePortToken(const char* token, uint16_t* portOut) {
+  if (token == nullptr || portOut == nullptr || token[0] == '\0') {
+    return false;
+  }
+
+  char* end = nullptr;
+  const unsigned long parsed = strtoul(token, &end, 10);
+  if (end == token || *end != '\0' || parsed == 0 || parsed > 65535ul) {
+    return false;
+  }
+  *portOut = static_cast<uint16_t>(parsed);
+  return true;
+}
+
+bool splitKeyValue(char* token, char** keyOut, char** valueOut) {
+  if (token == nullptr || keyOut == nullptr || valueOut == nullptr) {
+    return false;
+  }
+  char* separator = strchr(token, '=');
+  if (separator == nullptr) {
+    separator = strchr(token, ':');
+  }
+  if (separator == nullptr || separator == token || separator[1] == '\0') {
+    return false;
+  }
+  *separator = '\0';
+  *keyOut = token;
+  *valueOut = separator + 1;
+  return true;
+}
+
+bool parseBridgeUrl(const char* url, BenchWiFiProvisioningControl* wifi) {
+  if (url == nullptr || wifi == nullptr) {
+    return false;
+  }
+  const char* cursor = nullptr;
+  if (startsWithIgnoreCase(url, "ws://")) {
+    cursor = url + 5;
+  } else {
+    return false;
+  }
+
+  char host[sizeof(wifi->bridgeHost)] = {};
+  size_t hostLen = 0;
+  while (cursor[hostLen] != '\0' && cursor[hostLen] != ':' && cursor[hostLen] != '/' &&
+         hostLen + 1u < sizeof(host)) {
+    host[hostLen] = cursor[hostLen];
+    ++hostLen;
+  }
+  if (cursor[hostLen] != '\0' && cursor[hostLen] != ':' && cursor[hostLen] != '/') {
+    return false;
+  }
+  host[hostLen] = '\0';
+  if (host[0] == '\0') {
+    return false;
+  }
+  copyBounded(wifi->bridgeHost, sizeof(wifi->bridgeHost), host);
+  cursor += hostLen;
+
+  if (*cursor == ':') {
+    ++cursor;
+    char port[8] = {};
+    size_t portLen = 0;
+    while (isdigit(static_cast<unsigned char>(cursor[portLen])) && portLen + 1u < sizeof(port)) {
+      port[portLen] = cursor[portLen];
+      ++portLen;
+    }
+    port[portLen] = '\0';
+    if (!parsePortToken(port, &wifi->bridgePort)) {
+      return false;
+    }
+    cursor += portLen;
+  }
+
+  if (*cursor == '/') {
+    copyBounded(wifi->bridgePath, sizeof(wifi->bridgePath), cursor);
+  } else if (*cursor != '\0') {
+    return false;
+  }
+  return true;
+}
+
+bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) {
+  if (line == nullptr || controlOut == nullptr) {
+    return false;
+  }
+
+  char copy[192] = {};
+  copyBounded(copy, sizeof(copy), line);
+  char* first = strtok(copy, " \t\r\n");
+  if (first == nullptr ||
+      (!equalsIgnoreCase(first, "wifi") && !equalsIgnoreCase(first, "bridgewifi") &&
+       !equalsIgnoreCase(first, "bridge_wifi"))) {
+    return false;
+  }
+
+  BenchControl parsed;
+  parsed.hasWiFiProvisioning = true;
+  parsed.command = "wifi_provision";
+
+  char* tokens[14] = {};
+  uint8_t tokenCount = 0;
+  while (tokenCount < 14) {
+    char* token = strtok(nullptr, " \t\r\n");
+    if (token == nullptr) {
+      break;
+    }
+    tokens[tokenCount++] = token;
+  }
+
+  if (tokenCount == 0) {
+    return false;
+  }
+
+  if (equalsIgnoreCase(tokens[0], "clear") || equalsIgnoreCase(tokens[0], "off") ||
+      equalsIgnoreCase(tokens[0], "disable") || equalsIgnoreCase(tokens[0], "reset")) {
+    parsed.wifi.clear = true;
+    *controlOut = parsed;
+    return true;
+  }
+
+  uint8_t index = 0;
+  if (equalsIgnoreCase(tokens[0], "set") || equalsIgnoreCase(tokens[0], "connect") ||
+      equalsIgnoreCase(tokens[0], "bridge")) {
+    index = 1;
+  }
+
+  bool hasSsid = false;
+  bool hasHost = false;
+  while (index < tokenCount) {
+    char* key = tokens[index];
+    char* value = (index + 1u < tokenCount) ? tokens[index + 1u] : nullptr;
+    char* splitKey = nullptr;
+    char* splitValue = nullptr;
+    bool consumedPair = false;
+    if (splitKeyValue(key, &splitKey, &splitValue)) {
+      key = splitKey;
+      value = splitValue;
+      consumedPair = true;
+    }
+
+    if (equalsIgnoreCase(key, "ssid") || equalsIgnoreCase(key, "network")) {
+      if (value == nullptr || value[0] == '\0') {
+        return false;
+      }
+      copyBounded(parsed.wifi.ssid, sizeof(parsed.wifi.ssid), value);
+      hasSsid = true;
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (equalsIgnoreCase(key, "pass") || equalsIgnoreCase(key, "password") ||
+        equalsIgnoreCase(key, "psk")) {
+      if (value == nullptr) {
+        return false;
+      }
+      copyBounded(parsed.wifi.password, sizeof(parsed.wifi.password), value);
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (equalsIgnoreCase(key, "host") || equalsIgnoreCase(key, "bridge_host")) {
+      if (value == nullptr || value[0] == '\0') {
+        return false;
+      }
+      copyBounded(parsed.wifi.bridgeHost, sizeof(parsed.wifi.bridgeHost), value);
+      hasHost = true;
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (equalsIgnoreCase(key, "url") || equalsIgnoreCase(key, "bridge_url")) {
+      if (value == nullptr || !parseBridgeUrl(value, &parsed.wifi)) {
+        return false;
+      }
+      hasHost = true;
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (equalsIgnoreCase(key, "port")) {
+      if (value == nullptr || !parsePortToken(value, &parsed.wifi.bridgePort)) {
+        return false;
+      }
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (equalsIgnoreCase(key, "path")) {
+      if (value == nullptr || value[0] != '/') {
+        return false;
+      }
+      copyBounded(parsed.wifi.bridgePath, sizeof(parsed.wifi.bridgePath), value);
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (startsWithIgnoreCase(key, "ws://")) {
+      if (!parseBridgeUrl(key, &parsed.wifi)) {
+        return false;
+      }
+      hasHost = true;
+      ++index;
+      continue;
+    }
+    return false;
+  }
+
+  if (!hasSsid || !hasHost) {
+    return false;
+  }
+  *controlOut = parsed;
+  return true;
+}
+
 void normalizeLine(const char* line, char* out, size_t outSize) {
   if (outSize == 0) {
     return;
@@ -1201,6 +1457,10 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
     return false;
   }
 
+  if (fillWiFiProvisioningControlRaw(line, controlOut)) {
+    return true;
+  }
+
   char normalized[192] = {};
   normalizeLine(line, normalized, sizeof(normalized));
 
@@ -1395,6 +1655,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
   Serial.println(F("[control] help: uplink start <seq> [wake|closed]; uplink chunk <seq> [bytes]; uplink end <seq>; uplink abort"));
   Serial.println(F("[control] help: pairing code <ABC123>; pairing clear"));
+  Serial.println(F("[control] help: wifi set ssid <name> pass <password> host <ip> port <8765> path </bridge>; wifi set ssid <name> url <ws://host:port/bridge>; wifi clear"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));

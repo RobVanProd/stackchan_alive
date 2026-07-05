@@ -29,8 +29,12 @@ read handshake response, feed incoming WebSocket bytes, drain queued endpoint re
 schedule reconnects. `BridgeWiFiClientSocket` is the ESP32 `WiFiClient` binding for that
 socket interface. `BridgeWiFiProvisioner` supplies compile-time Wi-Fi/bridge provisioning,
 nonblocking connection retries, boot-time session initialization, and the intent-loop update
-hook that keeps `BridgeClient` access single-threaded. It still needs real configured
-credentials/bridge host on the CoreS3 before collecting live PC/mobile handoff evidence.
+hook that keeps `BridgeClient` access single-threaded. The serial bench path can temporarily
+replace the compile-time target with `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
+or equivalent `host`/`port`/`path` tokens, and `wifi clear` returns to the build-time config.
+That lab path does not persist credentials and does not echo the password in logs. It still
+needs real configured credentials/bridge host on the CoreS3 before collecting live PC/mobile
+handoff evidence.
 `BridgeAudioUplink` is the firmware turn controller for device-to-bridge speech upload: it
 is disabled by default, refuses to start unless the wake gate is open, queues a masked text
 `utterance_start`, queues bounded masked binary PCM chunks, and queues a masked text

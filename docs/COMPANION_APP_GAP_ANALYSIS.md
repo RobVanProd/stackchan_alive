@@ -56,11 +56,14 @@ current v1 companion branch.
   bridge URL, short code, phone fingerprint, and endpoint id shown in the manual flow.
   Robot-side QR scanning/menu entry and hardware proof still remain blocking before public
   distribution.
-- G6 first-run Wi-Fi provisioning is partially closed on the app side. The Android Nodes
-  setup flow now starts with a Wi-Fi bootstrap step, reports whether the phone is currently
-  on Wi-Fi, opens native Wi-Fi settings, and explains that firmware still needs Wi-Fi
-  credentials or its pairing menu before it can reach the phone bridge URL. Robot-side
-  credential entry/provisioning transport and hardware proof remain open.
+- G6 first-run Wi-Fi provisioning is partially closed. The Android Nodes setup flow now
+  starts with a Wi-Fi bootstrap step, reports whether the phone is currently on Wi-Fi,
+  opens native Wi-Fi settings, and explains that the robot must reach the phone bridge URL.
+  Firmware now has a native-tested lab serial path for temporary Wi-Fi/bridge provisioning:
+  `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`, equivalent host/port/path
+  tokens, and `wifi clear`. The command preserves case-sensitive credentials, does not print
+  the password, and restarts the bridge client without reflashing. Persistent consumer-grade
+  robot-side credential entry plus hardware proof remain open.
 - G7 Play submission remains pending on upload signing, developer verification, privacy
   policy URL, data-safety answers, foreground-service declaration evidence, screenshots,
   and closed testing.
@@ -82,4 +85,4 @@ current v1 companion branch.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.
-6. Finish G6 with robot-side Wi-Fi credential entry/provisioning transport and hardware proof.
+6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof.

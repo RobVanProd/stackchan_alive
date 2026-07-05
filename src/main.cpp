@@ -70,6 +70,11 @@ BridgeWakeGate gBridgeWakeGate;
 BridgeWiFiProvisioner gBridgeWiFi;
 BridgeNetworkSession gBridgeNetworkSession;
 BridgeWiFiClientSocket gBridgeSocket;
+char gRuntimeWiFiSsid[33] = {};
+char gRuntimeWiFiPassword[65] = {};
+char gRuntimeBridgeHost[64] = {};
+char gRuntimeBridgePath[64] = "/bridge";
+uint16_t gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
 #if defined(ARDUINO_ARCH_ESP32)
 BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
 #else
@@ -1049,6 +1054,20 @@ void printBenchControl(const BenchControl& control) {
       Serial.print(control.pairing.code);
     }
   }
+  if (control.hasWiFiProvisioning) {
+    Serial.print(F(" wifi_action="));
+    Serial.print(control.wifi.clear ? F("clear") : F("set"));
+    if (!control.wifi.clear) {
+      Serial.print(F(" wifi_ssid_set="));
+      Serial.print(control.wifi.ssid[0] != '\0' ? 1 : 0);
+      Serial.print(F(" wifi_host="));
+      Serial.print(control.wifi.bridgeHost);
+      Serial.print(F(" wifi_port="));
+      Serial.print(control.wifi.bridgePort);
+      Serial.print(F(" wifi_path="));
+      Serial.print(control.wifi.bridgePath);
+    }
+  }
   Serial.print(F(" at_ms="));
   Serial.println(control.hasEvent ? control.event.timestampMs : millis());
 }
@@ -1121,6 +1140,79 @@ void handleBridgeUplinkBench(const BenchBridgeUpload& upload, uint32_t nowMs) {
   }
 
   printBridgeUplinkResult(upload.action, accepted, upload.seq, bytes, nowMs);
+}
+
+void copyRuntimeString(char* out, size_t outSize, const char* value) {
+  if (out == nullptr || outSize == 0) {
+    return;
+  }
+  out[0] = '\0';
+  if (value == nullptr) {
+    return;
+  }
+  strncpy(out, value, outSize - 1u);
+  out[outSize - 1u] = '\0';
+}
+
+void restartBridgeWiFi(const BridgeWiFiProvisioningConfig& config, uint32_t nowMs) {
+  gBridgeNetworkSession.stop(nowMs);
+  gBridgeWiFi.begin(config, nowMs);
+  gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), nowMs);
+  gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
+}
+
+void handleWiFiProvisioningControl(const BenchWiFiProvisioningControl& wifi, uint32_t nowMs) {
+  BridgeWiFiProvisioningConfig config;
+  const char* action = "set";
+  if (wifi.clear) {
+    action = "clear";
+    gRuntimeWiFiSsid[0] = '\0';
+    gRuntimeWiFiPassword[0] = '\0';
+    gRuntimeBridgeHost[0] = '\0';
+    copyRuntimeString(gRuntimeBridgePath, sizeof(gRuntimeBridgePath), "/bridge");
+    gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
+    config = BridgeWiFiProvisioningConfig {};
+  } else {
+    copyRuntimeString(gRuntimeWiFiSsid, sizeof(gRuntimeWiFiSsid), wifi.ssid);
+    copyRuntimeString(gRuntimeWiFiPassword, sizeof(gRuntimeWiFiPassword), wifi.password);
+    copyRuntimeString(gRuntimeBridgeHost, sizeof(gRuntimeBridgeHost), wifi.bridgeHost);
+    copyRuntimeString(gRuntimeBridgePath, sizeof(gRuntimeBridgePath),
+                      wifi.bridgePath[0] != '\0' ? wifi.bridgePath : "/bridge");
+    gRuntimeBridgePort = wifi.bridgePort == 0 ? STACKCHAN_BRIDGE_PORT : wifi.bridgePort;
+
+    config.enabled = true;
+    config.ssid = gRuntimeWiFiSsid;
+    config.password = gRuntimeWiFiPassword;
+    config.bridgeHost = gRuntimeBridgeHost;
+    config.bridgePort = gRuntimeBridgePort;
+    config.bridgePath = gRuntimeBridgePath;
+  }
+
+  restartBridgeWiFi(config, nowMs);
+  const BridgeWiFiProvisioningTelemetry& telemetry = gBridgeWiFi.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  Serial.print(F("[wifi] action="));
+  Serial.print(action);
+  Serial.print(F(" result="));
+  Serial.print(telemetry.configured ? F("configured") : F("not_configured"));
+  Serial.print(F(" enabled="));
+  Serial.print(config.enabled ? 1 : 0);
+  Serial.print(F(" ssid_set="));
+  Serial.print(config.ssid != nullptr && config.ssid[0] != '\0' ? 1 : 0);
+  Serial.print(F(" host="));
+  Serial.print(config.bridgeHost != nullptr ? config.bridgeHost : "");
+  Serial.print(F(" port="));
+  Serial.print(config.bridgePort);
+  Serial.print(F(" path="));
+  Serial.print(config.bridgePath != nullptr ? config.bridgePath : "");
+  Serial.print(F(" attempts="));
+  Serial.print(telemetry.beginAttempts);
+  Serial.print(F(" network_state="));
+  Serial.print(bridgeNetworkStateName(network.state));
+  Serial.print(F(" error=\""));
+  Serial.print(telemetry.lastError);
+  Serial.print(F("\" at_ms="));
+  Serial.println(nowMs);
 }
 
 void handlePairingControl(const BenchPairingControl& pairing, uint32_t nowMs) {
@@ -1620,6 +1712,9 @@ void IntentTask(void* pv) {
       }
       if (control.hasPairingControl) {
         handlePairingControl(control.pairing, millis());
+      }
+      if (control.hasWiFiProvisioning) {
+        handleWiFiProvisioningControl(control.wifi, millis());
       }
       publishSpeechInput(control);
       publishFaceControl(control);

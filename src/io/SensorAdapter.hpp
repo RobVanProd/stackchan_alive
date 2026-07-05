@@ -49,6 +49,15 @@ struct BenchPairingControl {
   char code[7] = {};
 };
 
+struct BenchWiFiProvisioningControl {
+  bool clear = false;
+  char ssid[33] = {};
+  char password[65] = {};
+  char bridgeHost[64] = {};
+  uint16_t bridgePort = 8788;
+  char bridgePath[64] = "/bridge";
+};
+
 struct BenchControl {
   bool wantsHelp = false;
   bool wantsStatus = false;
@@ -63,6 +72,7 @@ struct BenchControl {
   bool hasBridge = false;
   bool hasBridgeUpload = false;
   bool hasPairingControl = false;
+  bool hasWiFiProvisioning = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
@@ -74,6 +84,7 @@ struct BenchControl {
   BenchBridgeControl bridge;
   BenchBridgeUpload bridgeUpload;
   BenchPairingControl pairing;
+  BenchWiFiProvisioningControl wifi;
   SpeechCue speechCue;
   const char* command = "";
 };

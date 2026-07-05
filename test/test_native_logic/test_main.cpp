@@ -1609,6 +1609,43 @@ void test_sensor_adapter_parses_pairing_code_commands() {
   TEST_ASSERT_FALSE(parseBenchControlLine("pairing code short", 4124, &control));
 }
 
+void test_sensor_adapter_parses_wifi_provisioning_commands() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "wifi set ssid StackLab pass CaseSensitive123 host 192.168.1.42 port 8765 path /bridge",
+      4125,
+      &control));
+  TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
+  TEST_ASSERT_FALSE(control.wifi.clear);
+  TEST_ASSERT_EQUAL_STRING("StackLab", control.wifi.ssid);
+  TEST_ASSERT_EQUAL_STRING("CaseSensitive123", control.wifi.password);
+  TEST_ASSERT_EQUAL_STRING("192.168.1.42", control.wifi.bridgeHost);
+  TEST_ASSERT_EQUAL_UINT16(8765, control.wifi.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("/bridge", control.wifi.bridgePath);
+  TEST_ASSERT_EQUAL_STRING("wifi_provision", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "wifi set ssid=PhoneHotspot url=ws://10.0.0.5:8765/bridge",
+      4126,
+      &control));
+  TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
+  TEST_ASSERT_FALSE(control.wifi.clear);
+  TEST_ASSERT_EQUAL_STRING("PhoneHotspot", control.wifi.ssid);
+  TEST_ASSERT_EQUAL_STRING("10.0.0.5", control.wifi.bridgeHost);
+  TEST_ASSERT_EQUAL_UINT16(8765, control.wifi.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("/bridge", control.wifi.bridgePath);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("wifi clear", 4127, &control));
+  TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
+  TEST_ASSERT_TRUE(control.wifi.clear);
+
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid OnlyNetwork", 4128, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url nope", 4129, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url wss://10.0.0.5:8765/bridge", 4130, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab host 10.0.0.5 port 8765x", 4131, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url ws://10.0.0.5:8765x/bridge", 4132, &control));
+}
+
 void test_sensor_adapter_parses_audio_awareness_commands() {
   BenchControl control;
   TEST_ASSERT_TRUE(parseBenchControlLine("sound dir=-45 level=0.70", 4081, &control));
@@ -5119,6 +5156,7 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_bridge_conversation_commands);
   RUN_TEST(test_sensor_adapter_parses_bridge_uplink_commands);
   RUN_TEST(test_sensor_adapter_parses_pairing_code_commands);
+  RUN_TEST(test_sensor_adapter_parses_wifi_provisioning_commands);
   RUN_TEST(test_sensor_adapter_parses_audio_awareness_commands);
   RUN_TEST(test_sensor_adapter_parses_physical_sense_commands);
   RUN_TEST(test_sensor_adapter_parses_reduced_motion_commands);
