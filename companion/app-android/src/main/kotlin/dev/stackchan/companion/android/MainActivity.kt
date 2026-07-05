@@ -595,8 +595,8 @@ private fun androidModelAssetSurface(status: AndroidModelAssetStatus): ModelAsse
         else -> "Download required for Mobile Brain. Uses the LiteRT-LM Gemma-4-E2B provider asset."
     }
     val loadStatus = when {
-        status.loaded -> "Loaded for local Mobile Brain routing."
-        status.downloaded -> "Downloaded; tap Load before using this model."
+        status.loaded -> "Asset staged for Mobile Brain; LiteRT runtime adapter still pending validation."
+        status.downloaded -> "Downloaded; tap Load to stage this verified asset."
         else -> "Not loaded; deterministic fake runner remains active until the model is downloaded."
     }
     return ModelAssetUiState(
@@ -608,7 +608,7 @@ private fun androidModelAssetSurface(status: AndroidModelAssetStatus): ModelAsse
         localPath = status.localPath,
         downloadStatus = downloadStatus,
         loadStatus = loadStatus,
-        settingsSummary = "Settings: Gemma-4-E2B, GPU preferred with CPU fallback, no cloud fallback, local prompts only.",
+        settingsSummary = "Settings target: Gemma-4-E2B, GPU preferred with CPU fallback, no cloud fallback, local prompts only; real inference remains gated on LiteRT runtime validation.",
         downloadEnabled = !status.downloaded && !status.downloadInProgress,
         loadEnabled = status.downloaded && !status.loaded,
         ejectEnabled = status.loaded,

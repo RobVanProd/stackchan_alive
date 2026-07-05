@@ -31,7 +31,7 @@ screen-off robot sessions, which matches the connected-device foreground-service
 - [ ] The dashboard endpoint registry shows this phone's persisted Android endpoint ID, not sample placeholder endpoints.
 - [ ] The dashboard does not show sample telemetry such as `87%`, `42.5 C`, `v3.1.0`, or `Heartbeat: 8ms`.
 - [ ] The Nodes screen shows the guided `Add your Stack-chan` setup flow with the same manual URL.
-- [ ] The Brain screen shows Gemma-4-E2B LiteRT-LM as the Mobile Brain model target, with download, load, eject, and model-settings controls.
+- [ ] The Brain screen shows Gemma-4-E2B LiteRT-LM as the Mobile Brain model target, with download, load, eject, and model-settings controls; Load is labeled as staging the verified asset until LiteRT runtime validation is complete.
 - [ ] The Brain screen shows persona import/export controls, can import and export persona packs, and imported packs must pass `stackchan.persona-pack.v1` validation.
 - [ ] Removing a stored trusted companion endpoint updates the registry without restarting the app.
 - [ ] The foreground notification shows the same reachable manual fallback URL.
@@ -147,7 +147,7 @@ Evidence to capture:
 - [ ] Push-to-talk is enabled only after Stack-chan is connected and Android speech recognition is available.
 - [ ] Tapping Gemma-4-E2B download starts Android Download Manager for the LiteRT-LM asset, reports the local cache path, and enables Load after the file exists.
 - [ ] Load stays disabled for partial or wrong-size Gemma downloads; the expected LiteRT-LM artifact is `gemma-4-E2B-it.litertlm`, 2588147712 bytes, SHA-256 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`.
-- [ ] Load marks the cached Gemma-4-E2B asset active; Eject clears that active state without deleting the cached model.
+- [ ] Load marks the cached Gemma-4-E2B asset staged; Eject clears that staged state without deleting the cached model, and the UI still states that real inference is gated on LiteRT runtime validation.
 - [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
 - [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.

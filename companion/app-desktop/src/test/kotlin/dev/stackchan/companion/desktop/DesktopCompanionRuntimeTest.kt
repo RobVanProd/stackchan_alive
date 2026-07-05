@@ -213,6 +213,8 @@ class DesktopCompanionRuntimeTest {
             assertFalse(loadedUi.modelAsset.loadEnabled)
             assertTrue(loadedUi.modelAsset.ejectEnabled)
             assertTrue(loadedUi.modelAsset.downloadStatus.contains("size-verified"))
+            assertTrue(loadedUi.modelAsset.loadStatus.contains("Asset staged"))
+            assertTrue(loadedUi.modelAsset.settingsSummary.contains("runtime validation"))
 
             val ejected = runtime.ejectGemmaModel()
             val ejectedUi = runtime.toCompanionUiState()

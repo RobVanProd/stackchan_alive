@@ -120,8 +120,8 @@ private fun DesktopModelAssetStatus.toModelAssetSurface(diagnostics: Diagnostics
         else -> "Download required for Mobile Brain parity. Uses the LiteRT-LM Gemma-4-E2B provider asset."
     }
     val loadStatus = when {
-        loaded -> "Loaded for local Mobile Brain routing."
-        downloaded -> "Downloaded; tap Load before using this model."
+        loaded -> "Asset staged for Mobile Brain; LiteRT runtime adapter still pending validation."
+        downloaded -> "Downloaded; tap Load to stage this verified asset."
         else -> "Not loaded; current runner profile remains $profile / $runner."
     }
     return ModelAssetUiState(
@@ -133,7 +133,7 @@ private fun DesktopModelAssetStatus.toModelAssetSurface(diagnostics: Diagnostics
         localPath = localPath,
         downloadStatus = downloadStatus,
         loadStatus = loadStatus,
-        settingsSummary = "Settings: Gemma-4-E2B, GPU preferred with CPU fallback, no cloud fallback, local prompts only.",
+        settingsSummary = "Settings target: Gemma-4-E2B, GPU preferred with CPU fallback, no cloud fallback, local prompts only; real inference remains gated on LiteRT runtime validation.",
         downloadEnabled = !downloaded && !downloadInProgress,
         loadEnabled = downloaded && !loaded,
         ejectEnabled = loaded,
