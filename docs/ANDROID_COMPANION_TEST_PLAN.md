@@ -130,7 +130,9 @@ Evidence to capture:
 
 - [ ] The **Add your Stack-chan** setup card shows the live phone bridge URL and the three setup states: Start phone bridge, Connect Stack-chan, and Confirm robot ready.
 - [ ] The setup card shows one current next step: Start this phone bridge, Pair on Stack-chan, Confirm the robot hello, or Ready to test.
-- [ ] The setup card shows a pairing code, phone fingerprint, discovery mode, and plain-language instruction for entering the bridge URL plus pairing code on Stack-chan.
+- [ ] The setup card starts with a Wi-Fi bootstrap step, reports whether the phone is on Wi-Fi, offers an `Open Wi-Fi settings` action, and then shows a pairing code, phone fingerprint, discovery mode, and plain-language instruction for entering the bridge URL plus pairing code on Stack-chan.
+- [ ] With phone Wi-Fi off, the setup card keeps `Join Wi-Fi` as the current step and does not move the operator straight to pairing.
+- [ ] With phone Wi-Fi on and the bridge running, the setup card marks `Join Wi-Fi` and `Start phone bridge` complete, then makes `Connect Stack-chan` current.
 - [ ] The disconnected robot row shows a waiting/setup action rather than an unavailable handoff action.
 - [ ] The setup card shows how many saved robots and trusted companion nodes are stored before the operator removes or keeps old devices.
 - [ ] After a robot hello, the robot is saved on the phone and appears as a removable robot row; forgetting it removes the phone-side saved robot record without pretending to perform robot-side unpair.

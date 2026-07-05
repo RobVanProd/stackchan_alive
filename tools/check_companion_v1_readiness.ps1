@@ -241,13 +241,13 @@ Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
-  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "pairing code", "phone fingerprint", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
+  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
 
 Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "pairing code", "phone fingerprint", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
@@ -277,7 +277,13 @@ Test-TextEvidence `
   -Id "shared-saved-robot-ui" `
   -Name "Shared Nodes UI exposes saved robot removal" `
   -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
-  -Patterns @("savedRobotCount", "onForgetRobot", "Saved robots", "Forget", "nextActionTitle", "removalGuidance")
+  -Patterns @("savedRobotCount", "onForgetRobot", "Saved robots", "Forget", "nextActionTitle", "removalGuidance", "wifiStatus", "Wi-Fi bootstrap", "onOpenWifiSettings")
+
+Test-TextEvidence `
+  -Id "android-wifi-bootstrap-setup" `
+  -Name "Android Wi-Fi bootstrap setup step" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
+  -Patterns @("isWifiConnected", "ConnectivityManager", "NetworkCapabilities.TRANSPORT_WIFI", "Settings.ACTION_WIFI_SETTINGS", "wifiConnected", "Open Wi-Fi settings", "Join Wi-Fi")
 
 Test-TextEvidence `
   -Id "shared-g3-control-surfaces" `

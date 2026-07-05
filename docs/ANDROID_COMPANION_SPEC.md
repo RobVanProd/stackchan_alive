@@ -169,14 +169,19 @@ fingerprint, and capability set.
 
 The Android v1 app must also make setup understandable without reading this protocol
 document. The phone-first Nodes view must include a guided **Add your Stack-chan** path
-that shows the current phone bridge URL, explains the same-Wi-Fi requirement, tells the
-operator where to enter the bridge URL and pairing code on Stack-chan, shows the phone fingerprint,
-and keeps the user on that screen until the robot status changes to connected.
+that starts with a Wi-Fi bootstrap step, shows whether the phone is currently on Wi-Fi,
+opens native Wi-Fi settings, shows the current phone bridge URL, explains the same-Wi-Fi
+requirement, tells the operator where to enter the bridge URL and pairing code on
+Stack-chan, shows the phone fingerprint, and keeps the user on that screen until the robot
+status changes to connected.
 On a successful robot `hello`, Android saves the robot identity locally so the Nodes screen
 can show and forget phone-side saved robot records. The same screen must expose a clear
 remove path for stored trusted companion endpoints so users can retire an old PC, phone, or
 test node without editing files. Forgetting a saved robot in Android removes the phone-side
 record only; persistent robot-side unpair still requires firmware support.
+The app-side Wi-Fi bootstrap is not a replacement for firmware credential entry: v1 must
+state clearly that the robot still needs configured Wi-Fi credentials or its pairing menu
+before it can reach the phone bridge URL.
 
 ## Protocol Extension
 

@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -104,6 +106,7 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(settingsRepository.snapshot().settings.stringValue("persona", "active", "spark"))
             }
             var pushToTalkStatus by remember { mutableStateOf("Microphone turns use Android speech recognition.") }
+            var wifiConnected by remember { mutableStateOf(isWifiConnected()) }
             val speechController = remember {
                 AndroidSpeechTurnController(applicationContext).also {
                     speechTurnController = it
@@ -214,6 +217,7 @@ class MainActivity : ComponentActivity() {
                     pushToTalkStatus = pushToTalkStatus,
                     modelAssetStatus = modelAssetStatus,
                     personaLibraryStatus = personaLibraryStatus,
+                    wifiConnected = wifiConnected,
                 ),
                 onStartBrain = { startBridgeServiceOnce() },
                 onStopBrain = { stopBridgeService() },
@@ -309,6 +313,10 @@ class MainActivity : ComponentActivity() {
                             })
                         },
                     )
+                },
+                onOpenWifiSettings = {
+                    wifiConnected = isWifiConnected()
+                    startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
                 },
                 onPushToTalk = {
                     if (!bridgeStatus.robotConnected) {
@@ -491,6 +499,7 @@ internal fun androidCompanionUiState(
         importStatus = "Ready to import stackchan.persona-pack.v1 zip files.",
         exportStatus = "Ready to export active persona pack zip.",
     ),
+    wifiConnected: Boolean = true,
 ): CompanionUiState {
     val settingsSurface = androidSettingsSurface(settingsRepository)
     return CompanionUiState(
@@ -525,6 +534,7 @@ internal fun androidCompanionUiState(
             bridgeStatus = bridgeStatus,
             trustedCompanionCount = trustedEndpoints.size,
             savedRobotCount = savedRobots.size,
+            wifiConnected = wifiConnected,
         ),
         conversation = androidConversationUiState(
             bridgeStatus = bridgeStatus,
@@ -688,6 +698,7 @@ private fun androidRobotSetup(
     bridgeStatus: AndroidBridgeRuntimeStatus,
     trustedCompanionCount: Int,
     savedRobotCount: Int,
+    wifiConnected: Boolean,
 ): RobotSetupUiState {
     val serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed"
     val robotDetected = bridgeStatus.robotSocketConnected || bridgeStatus.robotConnected
@@ -740,6 +751,18 @@ private fun androidRobotSetup(
         setupStatus = setupStatus,
         nextActionTitle = nextActionTitle,
         nextActionDetail = nextActionDetail,
+        wifiStatus = if (wifiConnected) {
+            "Phone Wi-Fi is active. Keep Stack-chan on this same LAN before pairing."
+        } else {
+            "Phone Wi-Fi is not active. Connect this phone to the robot's LAN before starting pairing."
+        },
+        wifiInstruction = if (serviceRunning) {
+            "The app advertises this phone by mDNS and UDP, then falls back to the manual bridge URL. Firmware still needs Wi-Fi credentials or its pairing menu before it can reach the phone."
+        } else {
+            "Open Wi-Fi settings first, join the same network Stack-chan will use, then start the bridge."
+        },
+        wifiActionLabel = "Open Wi-Fi settings",
+        wifiActionEnabled = true,
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
         pairingShortCode = pairingShortCode,
@@ -755,6 +778,16 @@ private fun androidRobotSetup(
         savedRobotCount = savedRobotCount,
         steps = listOf(
             RobotSetupStepUiState(
+                label = "Join Wi-Fi",
+                detail = if (wifiConnected) {
+                    "This phone reports an active Wi-Fi network."
+                } else {
+                    "Open Wi-Fi settings and join the same LAN Stack-chan will use."
+                },
+                completed = wifiConnected || robotDetected,
+                current = !wifiConnected && !robotDetected,
+            ),
+            RobotSetupStepUiState(
                 label = "Start phone bridge",
                 detail = if (serviceRunning) {
                     "The bridge is advertising on this phone."
@@ -762,13 +795,13 @@ private fun androidRobotSetup(
                     "Tap Start bridge so Stack-chan has somewhere to connect."
                 },
                 completed = serviceRunning,
-                current = !serviceRunning,
+                current = wifiConnected && !serviceRunning,
             ),
             RobotSetupStepUiState(
                 label = "Connect Stack-chan",
                 detail = "Power on Stack-chan, keep it on this Wi-Fi, and enter the phone bridge URL plus pairing code.",
                 completed = robotDetected,
-                current = serviceRunning && !robotDetected,
+                current = wifiConnected && serviceRunning && !robotDetected,
             ),
             RobotSetupStepUiState(
                 label = "Confirm robot ready",
@@ -784,6 +817,13 @@ private fun androidRobotSetup(
             ),
         ),
     )
+}
+
+private fun Context.isWifiConnected(): Boolean {
+    val connectivityManager = getSystemService(ConnectivityManager::class.java) ?: return false
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
 }
 
 private fun androidTelemetryReadings(bridgeStatus: AndroidBridgeRuntimeStatus): List<TelemetryReading> =

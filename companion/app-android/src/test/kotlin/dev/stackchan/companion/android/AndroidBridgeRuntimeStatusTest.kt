@@ -277,15 +277,43 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals(6, uiState.robotSetup.pairingShortCode.length)
         assertTrue(uiState.robotSetup.pairingFingerprint.startsWith("sha256:"))
         assertTrue(uiState.robotSetup.pairingInstruction.contains("pairing code"))
+        assertTrue(uiState.robotSetup.wifiStatus.contains("Wi-Fi is active"))
+        assertTrue(uiState.robotSetup.wifiInstruction.contains("mDNS"))
         assertTrue(uiState.robotSetup.removalGuidance.contains("After first pairing"))
         assertEquals(0, uiState.robotSetup.trustedCompanionCount)
         assertEquals(0, uiState.robotSetup.savedRobotCount)
-        assertEquals(3, uiState.robotSetup.steps.size)
+        assertEquals(4, uiState.robotSetup.steps.size)
         assertTrue(uiState.robotSetup.steps[0].completed)
         assertFalse(uiState.robotSetup.steps[0].current)
-        assertFalse(uiState.robotSetup.steps[1].completed)
-        assertTrue(uiState.robotSetup.steps[1].current)
+        assertTrue(uiState.robotSetup.steps[1].completed)
+        assertFalse(uiState.robotSetup.steps[1].current)
         assertFalse(uiState.robotSetup.steps[2].completed)
+        assertTrue(uiState.robotSetup.steps[2].current)
+        assertFalse(uiState.robotSetup.steps[3].completed)
+    }
+
+    @Test
+    fun androidUiStateShowsWifiBootstrapBeforePairingWhenWifiIsOff() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Stopped",
+                serviceDetail = "Bridge stopped",
+            ),
+            wifiConnected = false,
+        )
+
+        assertTrue(uiState.robotSetup.wifiStatus.contains("not active"))
+        assertTrue(uiState.robotSetup.wifiInstruction.contains("Open Wi-Fi settings"))
+        assertEquals("Open Wi-Fi settings", uiState.robotSetup.wifiActionLabel)
+        assertTrue(uiState.robotSetup.wifiActionEnabled)
+        assertEquals(4, uiState.robotSetup.steps.size)
+        assertEquals("Join Wi-Fi", uiState.robotSetup.steps[0].label)
+        assertFalse(uiState.robotSetup.steps[0].completed)
+        assertTrue(uiState.robotSetup.steps[0].current)
+        assertFalse(uiState.robotSetup.steps[1].current)
     }
 
     @Test
@@ -334,10 +362,10 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.robotSetup.setupStatus.contains("Waiting for the bridge hello"))
         assertEquals("Stackchan detected", uiState.robotSetup.robotName)
         assertEquals("Bridge socket open; no robot hello yet", uiState.robotSetup.robotFingerprint)
-        assertTrue(uiState.robotSetup.steps[1].completed)
-        assertFalse(uiState.robotSetup.steps[1].current)
-        assertFalse(uiState.robotSetup.steps[2].completed)
-        assertTrue(uiState.robotSetup.steps[2].current)
+        assertTrue(uiState.robotSetup.steps[2].completed)
+        assertFalse(uiState.robotSetup.steps[2].current)
+        assertFalse(uiState.robotSetup.steps[3].completed)
+        assertTrue(uiState.robotSetup.steps[3].current)
         assertEquals("Confirm the robot hello", uiState.robotSetup.nextActionTitle)
         assertTrue(uiState.robotSetup.nextActionDetail.contains("wait for firmware to send hello"))
         assertTrue(uiState.robotSetup.pairingInstruction.contains("Confirm"))

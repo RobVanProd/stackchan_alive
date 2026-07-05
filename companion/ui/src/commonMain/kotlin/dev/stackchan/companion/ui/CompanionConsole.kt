@@ -119,6 +119,10 @@ data class RobotSetupUiState(
     val setupStatus: String = "Start the phone bridge, then connect Stack-chan on the same Wi-Fi.",
     val nextActionTitle: String = "Next step",
     val nextActionDetail: String = "Start the bridge, then enter the phone bridge URL on Stack-chan.",
+    val wifiStatus: String = "Wi-Fi status unknown",
+    val wifiInstruction: String = "Put this companion and Stack-chan on the same LAN before pairing.",
+    val wifiActionLabel: String = "Wi-Fi settings",
+    val wifiActionEnabled: Boolean = true,
     val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
     val otherBridgeUrls: List<String> = emptyList(),
     val pairingShortCode: String = "------",
@@ -133,7 +137,8 @@ data class RobotSetupUiState(
     val trustedCompanionCount: Int = 0,
     val savedRobotCount: Int = 0,
     val steps: List<RobotSetupStepUiState> = listOf(
-        RobotSetupStepUiState("Start bridge", "Keep this app open so Stack-chan can reach the phone.", current = true),
+        RobotSetupStepUiState("Join Wi-Fi", "Connect this companion and Stack-chan to the same LAN.", current = true),
+        RobotSetupStepUiState("Start bridge", "Keep this app open so Stack-chan can reach the phone."),
         RobotSetupStepUiState("Connect robot", "Put Stack-chan on the same Wi-Fi and enter the phone bridge URL."),
         RobotSetupStepUiState("Confirm ready", "Wait for the robot hello before using brain or settings controls."),
     ),
@@ -287,6 +292,7 @@ fun CompanionConsole(
     onPrivacySettings: () -> Unit = {},
     onClaimBrain: () -> Unit = {},
     onReleaseBrain: () -> Unit = {},
+    onOpenWifiSettings: () -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -318,6 +324,7 @@ fun CompanionConsole(
                         onPrivacySettings = onPrivacySettings,
                         onClaimBrain = onClaimBrain,
                         onReleaseBrain = onReleaseBrain,
+                        onOpenWifiSettings = onOpenWifiSettings,
                     )
                 } else {
                     Column(
@@ -351,6 +358,7 @@ fun CompanionConsole(
                                 onPrivacySettings = onPrivacySettings,
                                 onClaimBrain = onClaimBrain,
                                 onReleaseBrain = onReleaseBrain,
+                                onOpenWifiSettings = onOpenWifiSettings,
                             )
                         } else {
                             TabletConsole(
@@ -375,6 +383,7 @@ fun CompanionConsole(
                                 onPrivacySettings = onPrivacySettings,
                                 onClaimBrain = onClaimBrain,
                                 onReleaseBrain = onReleaseBrain,
+                                onOpenWifiSettings = onOpenWifiSettings,
                             )
                         }
                         Footer()
@@ -409,6 +418,7 @@ private fun MobileConsole(
     onPrivacySettings: () -> Unit,
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
+    onOpenWifiSettings: () -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -456,6 +466,7 @@ private fun MobileConsole(
                     modifier = Modifier.fillMaxWidth(),
                     showTabs = false,
                     onRestartBridge = onRestartBrain,
+                    onOpenWifiSettings = onOpenWifiSettings,
                     onForgetEndpoint = onForgetEndpoint,
                     onForgetRobot = onForgetRobot,
                 )
@@ -490,6 +501,7 @@ private fun WideConsole(
     onPrivacySettings: () -> Unit,
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
+    onOpenWifiSettings: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -518,6 +530,7 @@ private fun WideConsole(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
                 onRestartBridge = onRestartBrain,
+                onOpenWifiSettings = onOpenWifiSettings,
                 onForgetEndpoint = onForgetEndpoint,
                 onForgetRobot = onForgetRobot,
             )
@@ -574,6 +587,7 @@ private fun TabletConsole(
     onPrivacySettings: () -> Unit,
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
+    onOpenWifiSettings: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -594,6 +608,7 @@ private fun TabletConsole(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
                 onRestartBridge = onRestartBrain,
+                onOpenWifiSettings = onOpenWifiSettings,
                 onForgetEndpoint = onForgetEndpoint,
                 onForgetRobot = onForgetRobot,
             )
@@ -832,6 +847,7 @@ private fun EndpointRegistry(
     modifier: Modifier,
     showTabs: Boolean = true,
     onRestartBridge: () -> Unit = {},
+    onOpenWifiSettings: () -> Unit = {},
     onForgetEndpoint: (String) -> Unit = {},
     onForgetRobot: (String) -> Unit = {},
 ) {
@@ -856,6 +872,7 @@ private fun EndpointRegistry(
             expanded = showSetup,
             onToggleExpanded = { showSetup = !showSetup },
             onRestartBridge = onRestartBridge,
+            onOpenWifiSettings = onOpenWifiSettings,
         )
         Spacer(Modifier.height(14.dp))
         Text("Trusted companion nodes", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
@@ -968,6 +985,7 @@ private fun RobotSetupCard(
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
     onRestartBridge: () -> Unit,
+    onOpenWifiSettings: () -> Unit,
 ) {
     Surface(
         color = PanelAlt,
@@ -993,6 +1011,11 @@ private fun RobotSetupCard(
             if (expanded) {
                 Text(setup.nextActionTitle, color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Text(setup.nextActionDetail, color = Ink, fontSize = 12.sp, lineHeight = 17.sp)
+                HorizontalDivider(color = Line)
+                SectionTitle("Wi-Fi bootstrap", Cyan)
+                Text(setup.wifiStatus, color = Ink, fontSize = 12.sp, lineHeight = 17.sp)
+                Text(setup.wifiInstruction, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                SmallCommand(setup.wifiActionLabel, enabled = setup.wifiActionEnabled, onClick = onOpenWifiSettings)
                 HorizontalDivider(color = Line)
                 Readout("Robot", setup.robotName, if (setup.robotConnected) Mint else Amber)
                 Readout("Robot fingerprint", setup.robotFingerprint, if (setup.robotConnected) Cyan else Muted)

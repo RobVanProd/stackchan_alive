@@ -43,8 +43,11 @@ current v1 companion branch.
   mode, a current next step, and saved-robot add/remove guidance after a robot `hello`.
   Full QR/short-code robot-side trust establishment and hardware proof still remain
   blocking before public distribution.
-- G6 first-run Wi-Fi provisioning is still open. Current setup assumes the robot can
-  already reach the phone or desktop bridge.
+- G6 first-run Wi-Fi provisioning is partially closed on the app side. The Android Nodes
+  setup flow now starts with a Wi-Fi bootstrap step, reports whether the phone is currently
+  on Wi-Fi, opens native Wi-Fi settings, and explains that firmware still needs Wi-Fi
+  credentials or its pairing menu before it can reach the phone bridge URL. Robot-side
+  credential entry/provisioning transport and hardware proof remain open.
 - G7 Play submission remains pending on upload signing, developer verification, privacy
   policy URL, data-safety answers, foreground-service declaration evidence, screenshots,
   and closed testing.
@@ -66,4 +69,4 @@ current v1 companion branch.
 3. Finish G5 with QR/short-code robot-side trust establishment and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.
-6. Coordinate G6 runtime Wi-Fi provisioning with firmware.
+6. Finish G6 with robot-side Wi-Fi credential entry/provisioning transport and hardware proof.
