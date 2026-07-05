@@ -624,14 +624,15 @@ internal fun androidCompanionUiState(
 
 private fun androidModelAssetSurface(status: AndroidModelAssetStatus): ModelAssetUiState {
     val downloadStatus = when {
-        status.downloaded -> "Downloaded and size-verified on this device; SHA target 181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c."
+        status.checksumVerified -> "Downloaded and SHA-256 verified on this device."
+        status.downloaded -> "Downloaded with the expected size; Load verifies SHA-256 target 181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c before staging."
         status.downloadInProgress -> "Download running in Android Download Manager: ${status.downloadId}."
         status.bytes > 0 -> "Found an incomplete or wrong-size model file (${status.bytes} bytes); expected 2588147712 bytes. Download again."
         else -> "Download required for Mobile Brain. Uses the LiteRT-LM Gemma-4-E2B provider asset."
     }
     val loadStatus = when {
-        status.loaded -> "Asset staged for Mobile Brain; LiteRT runtime adapter still pending validation."
-        status.downloaded -> "Downloaded; tap Load to stage this verified asset."
+        status.loaded -> "SHA-256 verified asset staged for Mobile Brain; LiteRT runtime adapter still pending validation."
+        status.downloaded -> "Downloaded; tap Load to verify SHA-256 and stage this asset."
         else -> "Not loaded; deterministic fake runner remains active until the model is downloaded."
     }
     return ModelAssetUiState(

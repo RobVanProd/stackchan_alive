@@ -27,6 +27,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -39,6 +40,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.Json
 
 class DesktopCompanionRuntimeTest {
+    @Test
+    fun gemmaChecksumUsesSha256() {
+        val file = Files.createTempFile("stackchan-desktop-gemma-checksum", ".bin")
+        Files.writeString(file, "stackchan")
+
+        assertEquals(
+            "4eee5709fc6b59a2545c6ef4b47b63a67b5f4a5c5c6015e9b574fda3e368330e",
+            gemmaModelChecksum(file),
+        )
+    }
+
     @Test
     fun runtimeStartsEndpointServerAndPersistsSettings() {
         val storageDir = Files.createTempDirectory("stackchan-desktop-runtime")
@@ -203,24 +215,30 @@ class DesktopCompanionRuntimeTest {
             java.io.RandomAccessFile(modelFile.toFile(), "rw").use { file ->
                 file.setLength(2_588_147_712L)
             }
-            val loaded = runtime.loadGemmaModel()
-            val loadedUi = runtime.toCompanionUiState()
+            val mismatch = assertFailsWith<IllegalArgumentException> {
+                runtime.loadGemmaModel()
+            }
+            val downloaded = runtime.modelAssetStatus()
+            val downloadedUi = runtime.toCompanionUiState()
 
-            assertTrue(loaded.downloaded)
-            assertEquals(2_588_147_712L, loaded.bytes)
-            assertTrue(loaded.loaded)
-            assertFalse(loadedUi.modelAsset.downloadEnabled)
-            assertFalse(loadedUi.modelAsset.loadEnabled)
-            assertTrue(loadedUi.modelAsset.ejectEnabled)
-            assertTrue(loadedUi.modelAsset.downloadStatus.contains("size-verified"))
-            assertTrue(loadedUi.modelAsset.loadStatus.contains("Asset staged"))
-            assertTrue(loadedUi.modelAsset.settingsSummary.contains("runtime validation"))
+            assertTrue(mismatch.message!!.contains("checksum mismatch"))
+            assertTrue(downloaded.downloaded)
+            assertEquals(2_588_147_712L, downloaded.bytes)
+            assertFalse(downloaded.loaded)
+            assertFalse(downloaded.checksumVerified)
+            assertFalse(downloadedUi.modelAsset.downloadEnabled)
+            assertTrue(downloadedUi.modelAsset.loadEnabled)
+            assertFalse(downloadedUi.modelAsset.ejectEnabled)
+            assertTrue(downloadedUi.modelAsset.downloadStatus.contains("Load verifies SHA-256"))
+            assertTrue(downloadedUi.modelAsset.loadStatus.contains("verify SHA-256"))
+            assertTrue(downloadedUi.modelAsset.settingsSummary.contains("runtime validation"))
 
             val ejected = runtime.ejectGemmaModel()
             val ejectedUi = runtime.toCompanionUiState()
 
             assertTrue(ejected.downloaded)
             assertFalse(ejected.loaded)
+            assertFalse(ejected.checksumVerified)
             assertTrue(ejectedUi.modelAsset.loadEnabled)
             assertFalse(ejectedUi.modelAsset.ejectEnabled)
         }

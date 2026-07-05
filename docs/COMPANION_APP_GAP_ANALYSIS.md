@@ -32,6 +32,8 @@ current v1 companion branch.
   described as staging or unstaging the verified asset, not as proof that real inference is
   active. The app now targets the LiteRT Community
   `gemma-4-E2B-it.litertlm` artifact and rejects partial/wrong-size files before Load.
+  Load now verifies the pinned SHA-256 before marking the local asset staged, and Android
+  diagnostics include the resulting `checksum_verified` state.
   The remaining G2 gap is real-device download proof, successful LiteRT runtime inference,
   benchmark evidence, and robot audio/TTS validation.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially

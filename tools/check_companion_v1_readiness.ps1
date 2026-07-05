@@ -398,25 +398,25 @@ Test-TextEvidence `
   -Id "android-model-persona-state" `
   -Name "Android model asset and persona library state" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidBridgeStores.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
-  -Patterns @("androidModelAssetSurface", "startGemmaModelDownload", "loadGemmaModel", "ejectGemmaModel", "Gemma-4-E2B", "LiteRT-LM", "2.58 GB", "Asset staged for Mobile Brain", "runtime validation", "androidPersonaLibrarySurface", "importPersonaZip", "exportPersonaZip", "stackchan.persona-pack.v1")
+  -Patterns @("androidModelAssetSurface", "startGemmaModelDownload", "loadGemmaModel", "ejectGemmaModel", "checksumVerified", "Gemma-4-E2B", "LiteRT-LM", "2.58 GB", "SHA-256 verified asset staged for Mobile Brain", "runtime validation", "androidPersonaLibrarySurface", "importPersonaZip", "exportPersonaZip", "stackchan.persona-pack.v1")
 
 Test-TextEvidence `
   -Id "desktop-model-persona-state" `
   -Name "Desktop model asset and persona library state" `
   -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopCompanionRuntime.kt") `
-  -Patterns @("downloadGemmaModel", "loadGemmaModel", "ejectGemmaModel", "Gemma-4-E2B", "LiteRT-LM", "importPersonaZip", "exportPersonaZip", "stackchan.persona-pack.v1")
+  -Patterns @("downloadGemmaModel", "loadGemmaModel", "ejectGemmaModel", "gemmaModelChecksum", "checksumVerified", "Gemma-4-E2B", "LiteRT-LM", "importPersonaZip", "exportPersonaZip", "stackchan.persona-pack.v1")
 
 Test-TextEvidence `
   -Id "desktop-model-runtime-honesty" `
   -Name "Desktop model asset runtime honesty" `
   -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopRuntimeUiState.kt") `
-  -Patterns @("Asset staged for Mobile Brain", "runtime validation", "real inference remains gated")
+  -Patterns @("SHA-256 verified asset staged for Mobile Brain", "runtime validation", "real inference remains gated")
 
 Test-TextEvidence `
   -Id "gemma-e2b-artifact-gate" `
-  -Name "Gemma-4-E2B LiteRT-LM artifact size gate" `
+  -Name "Gemma-4-E2B LiteRT-LM artifact size and checksum gate" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidBridgeStores.kt", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopCompanionRuntime.kt") `
-  -Patterns @("gemma-4-E2B-it.litertlm", "ANDROID_GEMMA_LITERTLM_BYTES", "2_588_147_712L", "ANDROID_GEMMA_LITERTLM_SHA256", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c")
+  -Patterns @("gemma-4-E2B-it.litertlm", "ANDROID_GEMMA_LITERTLM_BYTES", "2_588_147_712L", "ANDROID_GEMMA_LITERTLM_SHA256", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "MessageDigest.getInstance(`"SHA-256`")", "checksum mismatch")
 
 Test-TextEvidence `
   -Id "brain-turn-engine-boundary" `

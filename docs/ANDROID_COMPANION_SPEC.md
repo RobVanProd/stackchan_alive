@@ -95,10 +95,11 @@ cannot initialize or generate on device. The default no-model engine remains det
 The v1 target artifact is
 `litert-community/gemma-4-E2B-it-litert-lm` /
 `gemma-4-E2B-it.litertlm`; the app rejects partial or wrong-size downloads before enabling
-Load. Published artifact checks: 2588147712 bytes and SHA-256
+Load, and Load verifies the pinned SHA-256 before the asset is staged. Published artifact
+checks: 2588147712 bytes and SHA-256
 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`. Real-device download
-completion, checksum provenance, LiteRT inference loading, and benchmark evidence remain
-required before Mobile Brain Mode is considered fully validated.
+completion, LiteRT inference loading, and benchmark evidence remain required before Mobile
+Brain Mode is considered fully validated.
 
 The host bridge already accepts the core control messages described below. Firmware now has
 a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and

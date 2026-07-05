@@ -10,6 +10,7 @@ import dev.stackchan.companion.core.companionJson
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipEntry
@@ -40,6 +41,7 @@ data class AndroidModelAssetStatus(
     val loaded: Boolean,
     val downloadId: Long?,
     val downloadInProgress: Boolean = downloadId != null,
+    val checksumVerified: Boolean = false,
 )
 
 data class AndroidPersonaLibraryStatus(
@@ -119,12 +121,15 @@ class AndroidBridgeStores(context: Context) {
         val file = gemmaModelFile()
         val bytes = if (file.isFile) file.length() else 0L
         val downloaded = bytes == ANDROID_GEMMA_LITERTLM_BYTES
+        val checksumVerified = downloaded && prefs.getBoolean(KEY_GEMMA_MODEL_LOADED, false) &&
+            androidGemmaModelChecksum(file) == ANDROID_GEMMA_LITERTLM_SHA256
         val downloadId = activeGemmaDownloadId(downloaded)
         return AndroidModelAssetStatus(
             localPath = file.absolutePath,
             bytes = bytes,
             downloaded = downloaded,
-            loaded = prefs.getBoolean(KEY_GEMMA_MODEL_LOADED, false) && downloaded,
+            loaded = checksumVerified,
+            checksumVerified = checksumVerified,
             downloadId = downloadId,
             downloadInProgress = downloadId != null,
         )
@@ -156,6 +161,9 @@ class AndroidBridgeStores(context: Context) {
         val status = modelAssetStatus()
         require(status.downloaded) {
             "Gemma-4-E2B model is not ready; expected $ANDROID_GEMMA_LITERTLM_BYTES bytes from $ANDROID_GEMMA_LITERTLM_SHA256."
+        }
+        require(androidGemmaModelChecksum(gemmaModelFile()) == ANDROID_GEMMA_LITERTLM_SHA256) {
+            "Gemma-4-E2B checksum mismatch; expected $ANDROID_GEMMA_LITERTLM_SHA256. Delete the model and download it again."
         }
         prefs.edit().putBoolean(KEY_GEMMA_MODEL_LOADED, true).apply()
         return modelAssetStatus()
@@ -285,6 +293,21 @@ private fun String.sanitizedPersonaId(): String =
     lowercase(Locale.US)
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' }
         .take(32)
+
+internal fun androidGemmaModelChecksum(file: java.io.File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) {
+                break
+            }
+            digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+}
 
 private fun List<SavedRobot>.normalized(): List<SavedRobot> =
     filter { it.robotId.isNotBlank() }

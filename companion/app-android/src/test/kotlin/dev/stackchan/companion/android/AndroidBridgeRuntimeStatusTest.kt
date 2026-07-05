@@ -7,6 +7,7 @@ import dev.stackchan.companion.core.SettingsRepository
 import dev.stackchan.companion.core.TrustedEndpoint
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import dev.stackchan.companion.ui.ConversationMessage
+import java.nio.file.Files
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,6 +20,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 class AndroidBridgeRuntimeStatusTest {
+    @Test
+    fun androidGemmaChecksumUsesSha256() {
+        val file = Files.createTempFile("stackchan-android-gemma-checksum", ".bin").toFile()
+        file.writeText("stackchan")
+
+        assertEquals(
+            "4eee5709fc6b59a2545c6ef4b47b63a67b5f4a5c5c6015e9b574fda3e368330e",
+            androidGemmaModelChecksum(file),
+        )
+    }
+
     @Test
     fun connectedRobotStatusFeedsOperatorLabels() {
         val status = AndroidBridgeRuntimeStatus(
@@ -676,6 +688,7 @@ class AndroidBridgeRuntimeStatusTest {
                 downloaded = true,
                 loaded = true,
                 downloadId = 42,
+                checksumVerified = true,
             ),
             personaLibraryStatus = AndroidPersonaLibraryStatus(
                 installedPersonas = listOf("glow", "nova", "spark"),
@@ -689,11 +702,39 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.modelAsset.ejectEnabled)
         assertTrue(uiState.modelAsset.settingsEnabled)
         assertTrue(uiState.modelAsset.localPath.contains("gemma-4-E2B-it.litertlm"))
-        assertTrue(uiState.modelAsset.loadStatus.contains("Asset staged"))
+        assertTrue(uiState.modelAsset.downloadStatus.contains("SHA-256 verified"))
+        assertTrue(uiState.modelAsset.loadStatus.contains("SHA-256 verified asset staged"))
         assertTrue(uiState.modelAsset.settingsSummary.contains("runtime validation"))
         assertTrue(uiState.personaLibrary.installedPersonas.contains("nova"))
         assertTrue(uiState.personaLibrary.importEnabled)
         assertTrue(uiState.personaLibrary.exportEnabled)
+    }
+
+    @Test
+    fun androidUiStateRequiresLoadForGemmaChecksumVerification() {
+        val uiState = androidCompanionUiState(
+            endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01"),
+            trustedEndpoints = emptyList(),
+            bridgeStatus = AndroidBridgeRuntimeStatus(
+                manualBridgeUrls = listOf("ws://192.168.1.42:8765/bridge"),
+                serviceStatus = "Foreground",
+                serviceDetail = "Bridge ready at ws://192.168.1.42:8765/bridge",
+            ),
+            modelAssetStatus = AndroidModelAssetStatus(
+                localPath = "/storage/emulated/0/Android/data/dev.stackchan.companion/files/Download/models/gemma-4-E2B-it.litertlm",
+                bytes = 2_588_147_712L,
+                downloaded = true,
+                loaded = false,
+                downloadId = null,
+                checksumVerified = false,
+            ),
+        )
+
+        assertFalse(uiState.modelAsset.downloadEnabled)
+        assertTrue(uiState.modelAsset.loadEnabled)
+        assertFalse(uiState.modelAsset.ejectEnabled)
+        assertTrue(uiState.modelAsset.downloadStatus.contains("Load verifies SHA-256"))
+        assertTrue(uiState.modelAsset.loadStatus.contains("verify SHA-256"))
     }
 
     @Test
@@ -817,6 +858,7 @@ class AndroidBridgeRuntimeStatusTest {
                 downloaded = true,
                 loaded = true,
                 downloadId = null,
+                checksumVerified = true,
             ),
             generatedAt = Instant.parse("2026-07-04T19:00:00Z"),
         )
@@ -859,6 +901,7 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(model["local_path"]!!.jsonPrimitive.content.contains("gemma-4-E2B-it.litertlm"))
         assertTrue(model["downloaded"]!!.jsonPrimitive.boolean)
         assertTrue(model["loaded"]!!.jsonPrimitive.boolean)
+        assertTrue(model["checksum_verified"]!!.jsonPrimitive.boolean)
         assertEquals("litert_adapter_selected", model["runner_status"]!!.jsonPrimitive.content)
         assertEquals("mobile_brain_litert_turn", model["success_intent"]!!.jsonPrimitive.content)
         assertEquals("mobile_brain_litert_error", model["failure_intent"]!!.jsonPrimitive.content)

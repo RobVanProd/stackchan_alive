@@ -29,6 +29,7 @@ import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -75,6 +76,7 @@ data class DesktopModelAssetStatus(
     val downloaded: Boolean,
     val loaded: Boolean,
     val downloadInProgress: Boolean = false,
+    val checksumVerified: Boolean = false,
 )
 
 data class DesktopPersonaLibraryStatus(
@@ -258,11 +260,14 @@ class DesktopCompanionRuntime(
         val file = gemmaModelFile()
         val bytes = if (Files.isRegularFile(file)) Files.size(file) else 0L
         val downloaded = bytes == GEMMA_LITERTLM_BYTES
+        val checksumVerified = downloaded && Files.isRegularFile(gemmaLoadedMarker()) &&
+            gemmaModelChecksum(file) == GEMMA_LITERTLM_SHA256
         return DesktopModelAssetStatus(
             localPath = file.toString(),
             bytes = bytes,
             downloaded = downloaded,
-            loaded = Files.isRegularFile(gemmaLoadedMarker()) && downloaded,
+            loaded = checksumVerified,
+            checksumVerified = checksumVerified,
             downloadInProgress = modelDownloadInProgress,
         )
     }
@@ -296,6 +301,9 @@ class DesktopCompanionRuntime(
         val status = modelAssetStatus()
         require(status.downloaded) {
             "Gemma-4-E2B model is not ready; expected $GEMMA_LITERTLM_BYTES bytes from $GEMMA_LITERTLM_SHA256."
+        }
+        require(gemmaModelChecksum(gemmaModelFile()) == GEMMA_LITERTLM_SHA256) {
+            "Gemma-4-E2B checksum mismatch; expected $GEMMA_LITERTLM_SHA256. Delete the model and download it again."
         }
         Files.createDirectories(gemmaLoadedMarker().parent)
         Files.writeString(gemmaLoadedMarker(), "loaded\n")
@@ -485,6 +493,21 @@ private fun String.sanitizedPersonaId(): String =
     lowercase(Locale.US)
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' }
         .take(32)
+
+internal fun gemmaModelChecksum(path: Path): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    Files.newInputStream(path).use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) {
+                break
+            }
+            digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+}
 
 private fun JsonObject.stringValue(domain: String, key: String, fallback: String): String =
     this[domain]

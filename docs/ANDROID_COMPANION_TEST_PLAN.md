@@ -145,9 +145,10 @@ Evidence to capture:
 - [ ] The audio panel is labeled as audio status plus a signal preview unless real robot audio metering evidence is attached.
 - [ ] Talk screen enables text input only after Stack-chan is connected.
 - [ ] Push-to-talk is enabled only after Stack-chan is connected and Android speech recognition is available.
-- [ ] Tapping Gemma-4-E2B download starts Android Download Manager for the LiteRT-LM asset, reports the local cache path, and enables Load after the file exists.
+- [ ] Tapping Gemma-4-E2B download starts Android Download Manager for the LiteRT-LM asset, reports the local cache path, and enables Load after the file exists with the expected size.
 - [ ] Load stays disabled for partial or wrong-size Gemma downloads; the expected LiteRT-LM artifact is `gemma-4-E2B-it.litertlm`, 2588147712 bytes, SHA-256 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`.
-- [ ] Load marks the cached Gemma-4-E2B asset staged; Eject clears that staged state without deleting the cached model, and the UI still states that real inference is gated on LiteRT runtime validation.
+- [ ] Load verifies the cached Gemma-4-E2B SHA-256 before marking the asset staged; a checksum mismatch keeps the model unstaged and requires deleting/downloading again.
+- [ ] Eject clears the staged state without deleting the cached model, and the UI still states that real inference is gated on LiteRT runtime validation.
 - [ ] With Gemma staged, a text turn routes through the Android LiteRT brain engine; a successful run returns `mobile_brain_litert_turn`, while initialization/generation failure returns `mobile_brain_litert_error` and must be captured with logs before v1 sign-off.
 - [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
 - [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.
@@ -160,7 +161,7 @@ Evidence to capture:
 - [ ] After robot `hello`, changing persona/display/privacy sends the safe local save and a protected `settings_set` frame to Stack-chan; firmware replies with `settings_result`.
 - [ ] Manual brain Claim sends `claim_brain`; firmware replies with `owner_status` naming this phone as active owner; the UI enables Release and disables Claim.
 - [ ] Manual brain Release sends `release_brain`; firmware replies with `owner_status` released/idle; the UI enables Claim again.
-- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot state plus saved robot/trusted endpoint state including `robot_socket_connected`, the Wi-Fi provisioning command template with password redaction, Gemma local path, bytes, loaded/downloaded flags, LiteRT success/failure intents, and redacts the last text turn to presence-only.
+- [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot state plus saved robot/trusted endpoint state including `robot_socket_connected`, the Wi-Fi provisioning command template with password redaction, Gemma local path, bytes, loaded/downloaded/checksum flags, LiteRT success/failure intents, and redacts the last text turn to presence-only.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] A firmware build configured with `STACKCHAN_PAIRING_SHORT_CODE` rejects missing or wrong `endpoint_hello.pairing_code` with `pairing_code_mismatch` and does not persist that endpoint as trusted.

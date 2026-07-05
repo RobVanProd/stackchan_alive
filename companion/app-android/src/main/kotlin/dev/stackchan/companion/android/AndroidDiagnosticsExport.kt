@@ -114,6 +114,7 @@ fun buildAndroidDiagnosticsJson(
             put("bytes", modelAssetStatus.bytes)
             put("downloaded", modelAssetStatus.downloaded)
             put("loaded", modelAssetStatus.loaded)
+            put("checksum_verified", modelAssetStatus.checksumVerified)
             put("download_in_progress", modelAssetStatus.downloadInProgress)
             put("download_id_present", modelAssetStatus.downloadId != null)
             put("runner_status", if (modelAssetStatus.loaded) "litert_adapter_selected" else "deterministic_fake")
