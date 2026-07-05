@@ -287,6 +287,12 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.robotSetup.pairingInstruction.contains("pairing code"))
         assertTrue(uiState.robotSetup.wifiStatus.contains("Wi-Fi is active"))
         assertTrue(uiState.robotSetup.wifiInstruction.contains("mDNS"))
+        assertTrue(uiState.robotSetup.wifiProvisioningSummary.contains("robot serial console"))
+        assertEquals(
+            "wifi set ssid <network-name> pass <network-password> url ws://192.168.1.42:8765/bridge",
+            uiState.robotSetup.wifiProvisioningCommand,
+        )
+        assertEquals("wifi clear", uiState.robotSetup.wifiClearCommand)
         assertTrue(uiState.robotSetup.removalGuidance.contains("After first pairing"))
         assertEquals(0, uiState.robotSetup.trustedCompanionCount)
         assertEquals(0, uiState.robotSetup.savedRobotCount)
@@ -317,6 +323,7 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.robotSetup.wifiInstruction.contains("Open Wi-Fi settings"))
         assertEquals("Open Wi-Fi settings", uiState.robotSetup.wifiActionLabel)
         assertTrue(uiState.robotSetup.wifiActionEnabled)
+        assertEquals("", uiState.robotSetup.wifiProvisioningCommand)
         assertEquals("", uiState.robotSetup.pairingQrPayload)
         assertEquals(4, uiState.robotSetup.steps.size)
         assertEquals("Join Wi-Fi", uiState.robotSetup.steps[0].label)
@@ -710,7 +717,10 @@ class AndroidBridgeRuntimeStatusTest {
 
     @Test
     fun androidDiagnosticsExportRedactsTextTurnAndIncludesBridgeState() {
-        val endpointHello = defaultAndroidEndpointHello(endpointId = "phone-rob-01")
+        val endpointHello = defaultAndroidEndpointHello(
+            endpointId = "phone-rob-01",
+            pairingCode = "ABC123",
+        )
         val trusted = TrustedEndpoint(
             endpointId = "studio-mac-01",
             endpointName = "Studio Mac",
@@ -765,6 +775,17 @@ class AndroidBridgeRuntimeStatusTest {
         assertEquals(2, bridge["text_turns_submitted"]!!.jsonPrimitive.content.toInt())
         assertTrue(bridge["last_text_turn_present"]!!.jsonPrimitive.boolean)
         assertTrue(bridge["robot_socket_connected"]!!.jsonPrimitive.boolean)
+
+        val pairing = export["pairing"]!!.jsonObject
+        assertTrue(pairing["pairing_code_present"]!!.jsonPrimitive.boolean)
+        assertEquals("stackchan://pair", pairing["pairing_qr_scheme"]!!.jsonPrimitive.content)
+        assertEquals(
+            "wifi set ssid <network-name> pass <network-password> url ws://192.168.1.42:8765/bridge",
+            pairing["wifi_provisioning_command_template"]!!.jsonPrimitive.content,
+        )
+        assertEquals("wifi clear", pairing["wifi_clear_command"]!!.jsonPrimitive.content)
+        assertTrue(pairing["password_redacted"]!!.jsonPrimitive.boolean)
+        assertFalse(export.toString().contains("network-password-secret"))
 
         val robot = export["robot"]!!.jsonObject
         assertTrue(robot["socket_connected"]!!.jsonPrimitive.boolean)

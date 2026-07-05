@@ -126,6 +126,9 @@ data class RobotSetupUiState(
     val wifiInstruction: String = "Put this companion and Stack-chan on the same LAN before pairing.",
     val wifiActionLabel: String = "Wi-Fi settings",
     val wifiActionEnabled: Boolean = true,
+    val wifiProvisioningSummary: String = "Start the bridge before provisioning Stack-chan Wi-Fi.",
+    val wifiProvisioningCommand: String = "",
+    val wifiClearCommand: String = "wifi clear",
     val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
     val otherBridgeUrls: List<String> = emptyList(),
     val pairingShortCode: String = "------",
@@ -1020,6 +1023,32 @@ private fun RobotSetupCard(
                 Text(setup.wifiStatus, color = Ink, fontSize = 12.sp, lineHeight = 17.sp)
                 Text(setup.wifiInstruction, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                 SmallCommand(setup.wifiActionLabel, enabled = setup.wifiActionEnabled, onClick = onOpenWifiSettings)
+                if (setup.wifiProvisioningCommand.isNotBlank()) {
+                    Surface(
+                        color = Console,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Robot Wi-Fi setup", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(setup.wifiProvisioningSummary, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                            Text(
+                                setup.wifiProvisioningCommand,
+                                color = Ink,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                lineHeight = 14.sp,
+                            )
+                            Text(
+                                "After testing: ${setup.wifiClearCommand}",
+                                color = Muted,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
                 HorizontalDivider(color = Line)
                 Readout("Robot", setup.robotName, if (setup.robotConnected) Mint else Amber)
                 Readout("Robot fingerprint", setup.robotFingerprint, if (setup.robotConnected) Cyan else Muted)

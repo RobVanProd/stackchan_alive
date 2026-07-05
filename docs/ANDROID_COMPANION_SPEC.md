@@ -209,6 +209,9 @@ v1 must state clearly that the robot still needs configured Wi-Fi credentials, i
 menu, or the lab serial command `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
 before it can reach the phone bridge URL. The serial command must never echo the password
 back in logs; it is a bring-up path until a consumer setup menu or BLE provisioning flow lands.
+When the phone bridge is running, Android must generate the same command template with the
+current phone bridge URL and placeholder network values. Diagnostics may include that
+template and a password-redacted flag, but must not persist real Wi-Fi credentials.
 
 ## Protocol Extension
 

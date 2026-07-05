@@ -80,6 +80,19 @@ fun buildAndroidDiagnosticsJson(
             put("text_turns_submitted", bridgeStatus.textTurnsSubmitted)
             put("last_text_turn_present", bridgeStatus.lastTextTurn.isNotBlank())
         })
+        put("pairing", buildJsonObject {
+            put("pairing_code_present", endpointHello.pairingCode?.isNotBlank() == true)
+            put("pairing_qr_scheme", "stackchan://pair")
+            put(
+                "wifi_provisioning_command_template",
+                androidWifiProvisioningCommand(
+                    primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
+                    serviceRunning = bridgeStatus.serviceStatus != "Stopped" && bridgeStatus.serviceStatus != "Failed",
+                ),
+            )
+            put("wifi_clear_command", "wifi clear")
+            put("password_redacted", true)
+        })
         put("robot", buildJsonObject {
             put("socket_connected", bridgeStatus.robotSocketConnected)
             put("connected", bridgeStatus.robotConnected)

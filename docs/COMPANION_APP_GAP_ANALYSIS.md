@@ -67,6 +67,9 @@ current v1 companion branch.
 - G6 first-run Wi-Fi provisioning is partially closed. The Android Nodes setup flow now
   starts with a Wi-Fi bootstrap step, reports whether the phone is currently on Wi-Fi,
   opens native Wi-Fi settings, and explains that the robot must reach the phone bridge URL.
+  When the phone bridge is running, Android now also shows a `Robot Wi-Fi setup` serial
+  command template using the current bridge URL and placeholder network credentials so lab
+  setup can proceed without hunting through docs.
   Firmware now has a native-tested lab serial path for temporary Wi-Fi/bridge provisioning:
   `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`, equivalent host/port/path
   tokens, and `wifi clear`. The command preserves case-sensitive credentials, does not print
@@ -79,7 +82,8 @@ current v1 companion branch.
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.
   The export records the LiteRT-LM artifact path, bytes, loaded/downloaded flags, adapter
-  runner status, and success/failure intents needed for real-device Gemma sign-off. The export
+  runner status, success/failure intents needed for real-device Gemma sign-off, and the
+  Wi-Fi provisioning command template with an explicit password-redacted flag. The export
   redacts the last text turn to a presence-only flag. Hardware-run capture and support review
   are still required before calling G8 complete.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes

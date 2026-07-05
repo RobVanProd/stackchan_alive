@@ -784,7 +784,7 @@ private fun androidRobotSetup(
         bridgeStatus.robotSocketConnected ->
             "Compare the code and fingerprint shown here with Stack-chan, then wait for firmware to send hello."
         serviceRunning ->
-            "On Stack-chan, open companion pairing, choose this phone, and enter ${bridgeStatus.primaryBridgeUrl} plus code $pairingShortCode."
+            "On Stack-chan, open companion pairing, choose this phone, and enter ${bridgeStatus.primaryBridgeUrl} plus code $pairingShortCode. If firmware is still in lab setup, use the Wi-Fi command below."
         else ->
             "Tap Start bridge so the phone advertises mDNS, UDP beacon, and this manual bridge URL."
     }
@@ -814,6 +814,9 @@ private fun androidRobotSetup(
         },
         wifiActionLabel = "Open Wi-Fi settings",
         wifiActionEnabled = true,
+        wifiProvisioningSummary = androidWifiProvisioningSummary(serviceRunning),
+        wifiProvisioningCommand = androidWifiProvisioningCommand(bridgeStatus.primaryBridgeUrl, serviceRunning),
+        wifiClearCommand = "wifi clear",
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
         pairingShortCode = pairingShortCode,
@@ -870,6 +873,20 @@ private fun androidRobotSetup(
         ),
     )
 }
+
+internal fun androidWifiProvisioningCommand(primaryBridgeUrl: String, serviceRunning: Boolean): String =
+    if (serviceRunning && primaryBridgeUrl.isNotBlank()) {
+        "wifi set ssid <network-name> pass <network-password> url $primaryBridgeUrl"
+    } else {
+        ""
+    }
+
+private fun androidWifiProvisioningSummary(serviceRunning: Boolean): String =
+    if (serviceRunning) {
+        "For lab firmware without a consumer Wi-Fi menu, enter this on the robot serial console. Replace the placeholders locally; the app never records the password."
+    } else {
+        "Start the phone bridge before generating the robot Wi-Fi provisioning command."
+    }
 
 internal fun androidPairingQrPayload(
     bridgeUrl: String,
