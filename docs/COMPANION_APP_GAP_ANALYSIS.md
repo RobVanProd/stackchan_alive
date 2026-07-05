@@ -108,8 +108,11 @@ current v1 companion branch.
   carries the required bridge Python modules as `brain/bridge/` app resources plus the bundled
   `spark` and `glow` persona packs, voice provenance YAML, and required source WAVs, extracts
   that repo-shaped subset for the supervisor, and searches `python-runtime` / `runtime/python`
-  folders before falling back to system Python. Adding the actual managed Python binary payload
-  to desktop installers remains open.
+  folders before falling back to system Python. The app now reports managed runtime payload
+  presence in desktop diagnostics and C6 brain-supervisor evidence, and
+  `tools/check_desktop_python_runtime_payload.ps1` validates the expected
+  `stackchan-python-runtime.json` plus platform Python executable layout. Adding the actual
+  managed Python binary payload to desktop installers remains open.
 
 ## Next Attack Order
 

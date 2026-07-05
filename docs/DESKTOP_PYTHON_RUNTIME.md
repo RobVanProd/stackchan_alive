@@ -1,0 +1,50 @@
+# Desktop Managed Python Runtime
+
+The desktop companion can run PC Brain Mode with either a configured/system Python
+interpreter or a managed runtime shipped beside the app. V1 release installers should ship
+the managed runtime so PC Brain Mode does not depend on the user's PATH.
+
+## Payload Layout
+
+Place the runtime in one of these app-relative folders:
+
+- `python-runtime/`
+- `runtime/python/`
+
+`STACKCHAN_BRAIN_PYTHON_RUNTIME` may point to the same layout during lab validation.
+
+Each runtime folder must contain:
+
+- `stackchan-python-runtime.json`
+- A platform Python executable:
+  - Windows: `python.exe` or `python/python.exe`
+  - Linux/macOS: `bin/python3`, `bin/python`, `python3`, or `python`
+
+Manifest template:
+
+```json
+{
+  "schema": "stackchan.desktop-python-runtime.v1",
+  "pythonVersion": "3.12.x",
+  "platform": "windows|linux|macos",
+  "source": "managed-runtime-build-name-or-url",
+  "sha256": "<runtime-archive-or-folder-hash>",
+  "license": "Python Software Foundation License Version 2 or approved equivalent",
+  "builtAt": "YYYY-MM-DDTHH:MM:SSZ"
+}
+```
+
+## Validation
+
+Run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check_desktop_python_runtime_payload.ps1 -RuntimeRoot <path> -Json
+```
+
+The checker verifies that the manifest is present, declares
+`stackchan.desktop-python-runtime.v1`, exposes the expected provenance fields, and that the
+platform Python executable runs `--version` with Python 3.10 or newer.
+
+The desktop app exports this state under `brain_service.python_runtime.managed_runtime` in
+diagnostics and C6 brain-supervisor evidence.

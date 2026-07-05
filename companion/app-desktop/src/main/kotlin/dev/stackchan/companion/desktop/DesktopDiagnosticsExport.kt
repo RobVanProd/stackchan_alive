@@ -92,4 +92,14 @@ private fun DesktopPythonRuntimeStatus.toJson(): JsonObject =
         workingDirectory?.let { put("working_directory", it.toString()) }
         put("detail", detail)
         put("searched_commands", JsonArray(searchedCommands.map { JsonPrimitive(it) }))
+        put("managed_runtime", managedRuntime.toJson())
+    }
+
+private fun DesktopManagedPythonRuntimeStatus.toJson(): JsonObject =
+    buildJsonObject {
+        put("present", present)
+        root?.let { put("root", it.toString()) }
+        manifestPath?.let { put("manifest_path", it.toString()) }
+        pythonPath?.let { put("python_path", it.toString()) }
+        put("detail", detail)
     }

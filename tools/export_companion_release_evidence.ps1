@@ -5,9 +5,11 @@ param(
   [string]$PackageRoot = "",
   [string]$AndroidArtifactRoot = "",
   [string]$DesktopArtifactRoot = "",
+  [string]$DesktopPythonRuntimeRoot = "",
   [string]$ApkSignerPath = "",
   [string]$OutDir = "",
   [switch]$RequireArtifacts,
+  [switch]$RequireDesktopPythonRuntime,
   [switch]$Json
 )
 
@@ -63,6 +65,16 @@ function Get-CommandPath {
   $command = Get-Command $Name -ErrorAction SilentlyContinue
   if ($command) {
     return [string]$command.Source
+  }
+  return ""
+}
+
+function Find-PowerShellRunner {
+  foreach ($commandName in @("pwsh", "powershell")) {
+    $path = Get-CommandPath $commandName
+    if (-not [string]::IsNullOrWhiteSpace($path)) {
+      return $path
+    }
   }
   return ""
 }
@@ -508,6 +520,66 @@ function Test-AndroidReleaseBundleSignature {
   }
 }
 
+function Get-DesktopPythonRuntimeEvidence {
+  $checkerPath = Join-Path $Root "tools/check_desktop_python_runtime_payload.ps1"
+  if (-not (Test-Path -LiteralPath $checkerPath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      runtimeRoot = ""
+      checks = @()
+      detail = "Desktop Python runtime payload checker is missing."
+    }
+  }
+
+  $powerShellRunner = Find-PowerShellRunner
+  if ([string]::IsNullOrWhiteSpace($powerShellRunner)) {
+    return [ordered]@{
+      status = "failed"
+      runtimeRoot = $DesktopPythonRuntimeRoot
+      checks = @()
+      detail = "Neither pwsh nor powershell was found for the desktop Python runtime checker."
+    }
+  }
+
+  $runtimeRootArg = $DesktopPythonRuntimeRoot
+  if ([string]::IsNullOrWhiteSpace($runtimeRootArg)) {
+    $runtimeRootArg = $env:STACKCHAN_BRAIN_PYTHON_RUNTIME
+  }
+
+  $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $checkerPath, "-Json")
+  if (-not [string]::IsNullOrWhiteSpace($runtimeRootArg)) {
+    $arguments += @("-RuntimeRoot", $runtimeRootArg)
+  }
+
+  $output = @()
+  try {
+    $output = @(& $powerShellRunner @arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $output = @($_.Exception.Message)
+    $exitCode = 1
+  }
+
+  $text = (($output | Out-String).Trim())
+  try {
+    $parsed = $text | ConvertFrom-Json
+  } catch {
+    return [ordered]@{
+      status = "failed"
+      runtimeRoot = $runtimeRootArg
+      checks = @()
+      detail = "Desktop Python runtime checker did not return JSON: $text"
+    }
+  }
+
+  return [ordered]@{
+    status = [string]$parsed.status
+    runtimeRoot = [string]$parsed.runtimeRoot
+    checks = @($parsed.checks)
+    detail = if ($exitCode -eq 0) { "Desktop Python runtime payload checker completed." } else { "Desktop Python runtime payload checker reported a failure." }
+  }
+}
+
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
   $pending += "companion-cross-platform-plan"
@@ -553,6 +625,10 @@ $androidBundleSigning = Test-AndroidReleaseBundleSignature $androidArtifacts
 if ($androidBundleSigning.status -ne "verified") {
   $pending += "android-release-aab-signature"
 }
+$desktopPythonRuntime = Get-DesktopPythonRuntimeEvidence
+if ($desktopPythonRuntime.status -ne "ready" -and ($RequireDesktopPythonRuntime -or -not [string]::IsNullOrWhiteSpace($desktopPythonRuntime.runtimeRoot))) {
+  $pending += "desktop-managed-python-runtime-payload"
+}
 
 $status = if ($RequireArtifacts -and $pending.Count -gt 0) { "blocked-missing-artifacts" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
@@ -572,6 +648,7 @@ $report = [ordered]@{
   artifacts = @($androidArtifacts, $desktopArtifacts)
   androidSigning = $androidSigning
   androidBundleSigning = $androidBundleSigning
+  desktopPythonRuntime = $desktopPythonRuntime
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
 }
@@ -624,6 +701,14 @@ $lines += "- Signer: $($androidBundleSigning.signer)"
 $lines += "- Signing profile: $($androidBundleSigning.signingProfile)"
 $lines += "- Verifier: $($androidBundleSigning.verifier)"
 $lines += "- Detail: $($androidBundleSigning.detail)"
+$lines += ""
+$lines += "## Desktop Managed Python Runtime"
+$lines += "- Status: $($desktopPythonRuntime.status)"
+$lines += "- Runtime root: $($desktopPythonRuntime.runtimeRoot)"
+$lines += "- Detail: $($desktopPythonRuntime.detail)"
+foreach ($check in @($desktopPythonRuntime.checks)) {
+  $lines += "- [$($check.status)] $($check.id): $($check.detail)"
+}
 $lines += ""
 $lines += "## Pending"
 if ($pending.Count -eq 0) {

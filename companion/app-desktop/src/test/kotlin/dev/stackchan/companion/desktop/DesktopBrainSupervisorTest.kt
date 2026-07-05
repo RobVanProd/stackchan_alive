@@ -132,13 +132,70 @@ class DesktopBrainSupervisorTest {
             runtimeOverride = runtimeOverride.toString(),
         )
 
-        assertEquals(runtimeOverride.resolve("python.exe").toAbsolutePath().normalize().toString(), candidates.first())
+        assertEquals(
+            desktopBrainManagedPythonBinaryCandidates(runtimeOverride).first().toString(),
+            candidates.first(),
+        )
         assertTrue(
             appHome.resolve("python-runtime").resolve("bin").resolve("python3")
                 .toAbsolutePath()
                 .normalize()
                 .toString() in candidates,
         )
+    }
+
+    @Test
+    fun managedPythonRuntimeStatusReportsMissingPayload() {
+        val appHome = Files.createTempDirectory("stackchan-desktop-app-home")
+        val status = inspectDesktopManagedPythonRuntime(
+            appHome = appHome,
+            runtimeOverride = "",
+        )
+
+        assertEquals(false, status.present)
+        assertEquals(null, status.root)
+        assertTrue(status.detail.contains("No managed Python runtime payload"))
+    }
+
+    @Test
+    fun managedPythonRuntimeStatusRequiresManifestAndPythonBinary() {
+        val runtimeRoot = Files.createTempDirectory("stackchan-python-runtime")
+        val manifestOnly = inspectDesktopManagedPythonRuntime(
+            appHome = Files.createTempDirectory("stackchan-desktop-app-home"),
+            runtimeOverride = runtimeRoot.toString(),
+        )
+        assertEquals(false, manifestOnly.present)
+
+        Files.writeString(
+            runtimeRoot.resolve("stackchan-python-runtime.json"),
+            """
+            {
+              "schema": "stackchan.desktop-python-runtime.v1",
+              "pythonVersion": "3.12.x",
+              "source": "test-fixture"
+            }
+            """.trimIndent(),
+        )
+        val missingBinary = inspectDesktopManagedPythonRuntime(
+            appHome = Files.createTempDirectory("stackchan-desktop-app-home"),
+            runtimeOverride = runtimeRoot.toString(),
+        )
+        assertEquals(false, missingBinary.present)
+        assertTrue(missingBinary.detail.contains("no platform Python executable"))
+
+        val pythonPath = desktopBrainManagedPythonBinaryCandidates(runtimeRoot).first()
+        Files.createDirectories(pythonPath.parent)
+        Files.writeString(pythonPath, "# test python launcher placeholder\n")
+        val present = inspectDesktopManagedPythonRuntime(
+            appHome = Files.createTempDirectory("stackchan-desktop-app-home"),
+            runtimeOverride = runtimeRoot.toString(),
+        )
+
+        assertEquals(true, present.present)
+        assertEquals(runtimeRoot.toAbsolutePath().normalize(), present.root)
+        assertEquals(runtimeRoot.resolve("stackchan-python-runtime.json"), present.manifestPath)
+        assertEquals(pythonPath, present.pythonPath)
+        assertTrue(present.detail.contains("Managed Python runtime payload present"))
     }
 
     private fun testConfig(script: Path, maxLogLines: Int = 20): DesktopBrainSupervisorConfig =

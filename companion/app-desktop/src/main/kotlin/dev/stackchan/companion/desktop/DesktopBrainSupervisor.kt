@@ -26,6 +26,15 @@ data class DesktopPythonRuntimeStatus(
     val workingDirectory: Path?,
     val detail: String,
     val searchedCommands: List<String>,
+    val managedRuntime: DesktopManagedPythonRuntimeStatus = inspectDesktopManagedPythonRuntime(),
+)
+
+data class DesktopManagedPythonRuntimeStatus(
+    val present: Boolean,
+    val root: Path?,
+    val manifestPath: Path?,
+    val pythonPath: Path?,
+    val detail: String,
 )
 
 data class DesktopBrainSupervisorSnapshot(
@@ -220,28 +229,82 @@ internal fun desktopBrainManagedPythonCandidates(
     appHome: Path = desktopApplicationHome(),
     runtimeOverride: String? = System.getProperty("stackchan.brain.python.runtimeDir")
         ?: System.getenv("STACKCHAN_BRAIN_PYTHON_RUNTIME"),
-): List<String> {
-    val runtimeRoots = listOfNotNull(
+): List<String> =
+    desktopBrainManagedPythonRuntimeRoots(appHome, runtimeOverride)
+        .flatMap(::desktopBrainManagedPythonBinaryCandidates)
+        .map { it.toAbsolutePath().normalize().toString() }
+
+internal fun desktopBrainManagedPythonRuntimeRoots(
+    appHome: Path = desktopApplicationHome(),
+    runtimeOverride: String? = System.getProperty("stackchan.brain.python.runtimeDir")
+        ?: System.getenv("STACKCHAN_BRAIN_PYTHON_RUNTIME"),
+): List<Path> =
+    listOfNotNull(
         runtimeOverride?.takeIf { it.isNotBlank() }?.let { Path.of(it) },
         appHome.resolve("python-runtime"),
         appHome.resolve("runtime").resolve("python"),
     )
-    val windows = runtimeRoots.flatMap { root ->
-        listOf(
-            root.resolve("python.exe"),
-            root.resolve("python").resolve("python.exe"),
-        )
-    }
-    val unix = runtimeRoots.flatMap { root ->
-        listOf(
-            root.resolve("bin").resolve("python3"),
-            root.resolve("bin").resolve("python"),
-            root.resolve("python3"),
-            root.resolve("python"),
-        )
-    }
-    return (windows + unix).map { it.toAbsolutePath().normalize().toString() }
+
+internal fun desktopBrainManagedPythonBinaryCandidates(root: Path): List<Path> {
+    val normalizedRoot = root.toAbsolutePath().normalize()
+    val osName = System.getProperty("os.name").lowercase()
+    val windows = listOf(
+        normalizedRoot.resolve("python.exe"),
+        normalizedRoot.resolve("python").resolve("python.exe"),
+    )
+    val unix = listOf(
+        normalizedRoot.resolve("bin").resolve("python3"),
+        normalizedRoot.resolve("bin").resolve("python"),
+        normalizedRoot.resolve("python3"),
+        normalizedRoot.resolve("python"),
+    )
+    return if ("win" in osName) windows + unix else unix + windows
 }
+
+internal fun inspectDesktopManagedPythonRuntime(
+    appHome: Path = desktopApplicationHome(),
+    runtimeOverride: String? = System.getProperty("stackchan.brain.python.runtimeDir")
+        ?: System.getenv("STACKCHAN_BRAIN_PYTHON_RUNTIME"),
+): DesktopManagedPythonRuntimeStatus {
+    val roots = desktopBrainManagedPythonRuntimeRoots(appHome, runtimeOverride)
+    val root = roots.firstOrNull { candidate ->
+        Files.isRegularFile(candidate.resolve(DESKTOP_MANAGED_PYTHON_MANIFEST)) ||
+            desktopBrainManagedPythonBinaryCandidates(candidate).any(Files::isRegularFile)
+    }?.toAbsolutePath()?.normalize()
+
+    if (root == null) {
+        return DesktopManagedPythonRuntimeStatus(
+            present = false,
+            root = null,
+            manifestPath = null,
+            pythonPath = null,
+            detail = "No managed Python runtime payload found; PC Brain Mode will use configured/system Python.",
+        )
+    }
+
+    val manifestPath = root.resolve(DESKTOP_MANAGED_PYTHON_MANIFEST)
+    val pythonPath = desktopBrainManagedPythonBinaryCandidates(root).firstOrNull(Files::isRegularFile)
+    val manifestPresent = Files.isRegularFile(manifestPath)
+    val present = manifestPresent && pythonPath != null
+    val detail = when {
+        present ->
+            "Managed Python runtime payload present at $root."
+        !manifestPresent ->
+            "Managed Python runtime binary found at $root, but $DESKTOP_MANAGED_PYTHON_MANIFEST is missing."
+        else ->
+            "Managed Python runtime manifest found at $manifestPath, but no platform Python executable is present."
+    }
+
+    return DesktopManagedPythonRuntimeStatus(
+        present = present,
+        root = root,
+        manifestPath = manifestPath,
+        pythonPath = pythonPath?.toAbsolutePath()?.normalize(),
+        detail = detail,
+    )
+}
+
+private const val DESKTOP_MANAGED_PYTHON_MANIFEST = "stackchan-python-runtime.json"
 
 internal fun inspectDesktopPythonRuntime(
     pythonCommand: String,

@@ -267,6 +267,16 @@ internal fun DesktopPythonRuntimeStatus.toBrainSupervisorEvidenceJson() =
         workingDirectory?.let { put("working_directory", it.toString()) }
         put("detail", detail)
         put("searched_commands", JsonArray(searchedCommands.map { JsonPrimitive(it) }))
+        put("managed_runtime", managedRuntime.toBrainSupervisorEvidenceJson())
+    }
+
+internal fun DesktopManagedPythonRuntimeStatus.toBrainSupervisorEvidenceJson() =
+    buildJsonObject {
+        put("present", present)
+        root?.let { put("root", it.toString()) }
+        manifestPath?.let { put("manifest_path", it.toString()) }
+        pythonPath?.let { put("python_path", it.toString()) }
+        put("detail", detail)
     }
 
 internal fun driveBrainSupervisorTextTurn(port: Int, deviceId: String, seq: Int): BrainTurnEvidence {

@@ -503,6 +503,30 @@ Test-TextEvidence `
   -Patterns @("DesktopPythonRuntimeStatus", "inspectDesktopPythonRuntime", "Python 3.10+", "STACKCHAN_BRAIN_PYTHON", "scriptAvailable", "searchedCommands", "desktopBrainManagedPythonCandidates", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "python-runtime", "packagedDesktopBrainScriptPath")
 
 Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-status" `
+  -Name "Desktop managed Python runtime payload status" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopBrainSupervisor.kt") `
+  -Patterns @("DesktopManagedPythonRuntimeStatus", "inspectDesktopManagedPythonRuntime", "stackchan-python-runtime.json", "No managed Python runtime payload found", "Managed Python runtime payload present")
+
+Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-evidence" `
+  -Name "Desktop managed Python runtime payload diagnostics evidence" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/DesktopDiagnosticsExport.kt", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/BrainSupervisorRehearsal.kt") `
+  -Patterns @("managed_runtime", "present", "manifest_path", "python_path")
+
+Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-contract" `
+  -Name "Desktop managed Python runtime payload contract" `
+  -RelativePaths @("docs/DESKTOP_PYTHON_RUNTIME.md", "tools/check_desktop_python_runtime_payload.ps1") `
+  -Patterns @("Desktop Managed Python Runtime", "stackchan.desktop-python-runtime.v1", "python-runtime", "runtime/python", "stackchan-python-runtime.json", "Python 3.10 or newer", "check_desktop_python_runtime_payload.ps1")
+
+Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-checker" `
+  -Name "Desktop managed Python runtime payload checker" `
+  -RelativePaths @("tools/check_desktop_python_runtime_payload.ps1") `
+  -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+")
+
+Test-TextEvidence `
   -Id "desktop-packaged-brain-script" `
   -Name "Desktop package includes PC brain service script" `
   -RelativePaths @("companion/app-desktop/build.gradle.kts") `
@@ -590,7 +614,7 @@ Test-TextEvidence `
   -Id "companion-release-signing-evidence" `
   -Name "Companion release APK signing evidence" `
   -RelativePaths @("tools/export_companion_release_evidence.ps1") `
-  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2", "androidBundleSigning", "android-release-aab-signature", "jarsigner")
+  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2", "androidBundleSigning", "android-release-aab-signature", "jarsigner", "DesktopPythonRuntimeRoot", "check_desktop_python_runtime_payload.ps1", "desktopPythonRuntime", "desktop-managed-python-runtime-payload")
 
 Test-TextEvidence `
   -Id "android-toolchain-check" `
