@@ -61,10 +61,15 @@ conversation frames and can encode the queued endpoint response as a masked clie
 frame. `BridgeSocketWriter` can drain those frames through a socket sink with partial-write
 buffering. `BridgeNetworkSession` adds the tested TCP/WebSocket session loop, and
 `BridgeWiFiClientSocket` binds the socket interface to ESP32 `WiFiClient`.
-`BridgeWiFiProvisioner` is boot-wired but disabled by default unless
-`STACKCHAN_ENABLE_WIFI_BRIDGE=1`, `STACKCHAN_WIFI_SSID`, and `STACKCHAN_BRIDGE_HOST` are
-provided at build time. For arrival-day lab testing, serial bench commands can temporarily
-provision the Wi-Fi and bridge target without reflashing:
+`BridgeWiFiProvisioner` is boot-wired but disabled by default. For arrival-day lab testing,
+flash the source build target that enables the Wi-Fi bridge code without compiling secrets
+into the firmware:
+
+```powershell
+.\tools\flash_device.cmd -Environment stackchan_wifi -Port COM3 -Monitor
+```
+
+Then provision the Wi-Fi and bridge target over the serial bench path:
 
 ```text
 wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
@@ -73,9 +78,10 @@ wifi clear
 ```
 
 The command preserves case-sensitive SSID/password tokens, does not print the password in
-accepted-command or result logs, and lives only in RAM. Use `wifi clear` before switching back
-to build-time bridge settings. The remaining hardware gap is persistent consumer credential
-entry/provisioning UX and collecting live PC/mobile handoff evidence.
+accepted-command or result logs, and persists the runtime bridge target in robot flash until
+`wifi clear` is received. Do not use `STACKCHAN_WIFI_SSID` or `STACKCHAN_WIFI_PASSWORD` build
+flags for v1 release or lab evidence. The remaining hardware gap is polished consumer
+credential entry/provisioning UX and collecting live PC/mobile handoff evidence.
 
 If the Android phone is the companion bridge host, use the packet helpers before the robot
 session test:
@@ -284,7 +290,7 @@ The servo-calibration firmware keeps `STACKCHAN_ENABLE_SPEAKER=0` so calibration
 .\tools\flash_release_firmware.cmd -PackageZip output\release\stackchan_alive_<version>.zip -Firmware servo_calibration -ConfirmServoRisk -Monitor -Port COM3
 ```
 
-For development builds from source, use `tools/flash_device.cmd`; for release evidence, use `tools/flash_release_firmware.cmd` so the tested device matches the verified package.
+For development builds from source, use `tools/flash_device.cmd`; for release evidence, use `tools/flash_release_firmware.cmd` so the tested device matches the verified package. Use `tools\flash_device.cmd -Environment stackchan_wifi` only for source-side lab bring-up where the robot must host the Wi-Fi bridge runtime code before release-package evidence exists; credentials still enter through serial provisioning, not build flags.
 
 The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.
 

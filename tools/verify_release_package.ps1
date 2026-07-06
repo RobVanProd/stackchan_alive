@@ -1284,9 +1284,16 @@ foreach ($pattern in @("test_sensor_adapter_parses_bridge_uplink_commands", "Ben
 }
 
 $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platformio.ini") -Raw
-foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeAudioUplink.cpp>", "+<io/BridgeWakeGate.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
+foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "[env:stackchan_wifi]", "STACKCHAN_ENABLE_WIFI_BRIDGE=1", "Do not bake Wi-Fi credentials into release or lab builds.", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeAudioUplink.cpp>", "+<io/BridgeWakeGate.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
+  }
+}
+
+$flashDeviceText = Get-Content -LiteralPath (Join-PackagePath "tools/flash_device.ps1") -Raw
+foreach ($pattern in @("stackchan_wifi", "stackchan_servo_calibration", "ConfirmServoRisk", "--target", "upload")) {
+  if ($flashDeviceText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/flash_device.ps1 missing flash target support: $pattern"
   }
 }
 

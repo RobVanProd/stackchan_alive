@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("stackchan", "stackchan_servo_calibration")]
+  [ValidateSet("stackchan", "stackchan_wifi", "stackchan_servo_calibration")]
   [string]$Environment = "stackchan",
   [string]$Port = "",
   [switch]$Monitor,

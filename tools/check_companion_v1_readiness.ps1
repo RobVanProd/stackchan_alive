@@ -359,6 +359,24 @@ Test-TextEvidence `
   -Patterns @("test_sensor_adapter_parses_wifi_provisioning_commands", "test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status", "test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials", "test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payloads", "CaseSensitive123", "ws://10.0.0.5:8765/bridge", "wifi clear", "8765x")
 
 Test-TextEvidence `
+  -Id "firmware-wifi-runtime-flash-target" `
+  -Name "Firmware Wi-Fi runtime flash target" `
+  -RelativePaths @("platformio.ini") `
+  -Patterns @("[env:stackchan_wifi]", "extends = env:stackchan", "STACKCHAN_ENABLE_WIFI_BRIDGE=1", "Do not bake Wi-Fi credentials into release or lab builds.", "wifi set ssid <name> pass <password> url <ws://host:port/bridge>")
+
+Test-TextEvidence `
+  -Id "firmware-wifi-flash-helper" `
+  -Name "Firmware Wi-Fi flash helper exposes runtime target" `
+  -RelativePaths @("tools/flash_device.ps1") `
+  -Patterns @("stackchan_wifi", "platformio", "--target", "upload")
+
+Test-TextEvidence `
+  -Id "firmware-wifi-runtime-bringup-doc" `
+  -Name "Firmware Wi-Fi runtime bring-up guidance" `
+  -RelativePaths @("docs/DEVICE_BRINGUP.md") `
+  -Patterns @("flash_device.cmd -Environment stackchan_wifi", "compiling secrets", "wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>", "persists the runtime bridge target in robot flash until", "STACKCHAN_WIFI_SSID", "STACKCHAN_WIFI_PASSWORD", "build flags")
+
+Test-TextEvidence `
   -Id "android-saved-robot-store" `
   -Name "Android saved robot add/remove store" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidBridgeStores.kt") `
