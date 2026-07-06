@@ -100,6 +100,20 @@ function Get-ReviewSourceCommit {
   return ""
 }
 
+function Convert-ToDoubleOrNull {
+  param([object]$Value)
+
+  if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) {
+    return $null
+  }
+
+  try {
+    return [double]$Value
+  } catch {
+    return $null
+  }
+}
+
 function Read-JsonOrNull {
   param([string]$Path)
 
@@ -148,6 +162,51 @@ function Test-ReportStatus {
   }
 
   Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report is $ExpectedStatus."
+}
+
+function Test-GemmaBenchmarkEvidence {
+  param([object]$Reports)
+
+  $relativePath = [string](Get-Field $Reports "gemmaCheckReport")
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check "gemma-benchmark-profile" "Android Gemma benchmark profile evidence" "pending" "" "Record reports.gemmaCheckReport in ANDROID_V1_EVIDENCE_BUNDLE.json."
+    Add-Check "gemma-benchmark-speed" "Android Gemma benchmark speed evidence" "pending" "" "Record reports.gemmaCheckReport in ANDROID_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check "gemma-benchmark-profile" "Android Gemma benchmark profile evidence" "pending" (Convert-ToRelativePath $path) "Missing Gemma evidence report."
+    Add-Check "gemma-benchmark-speed" "Android Gemma benchmark speed evidence" "pending" (Convert-ToRelativePath $path) "Missing Gemma evidence report."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check "gemma-benchmark-profile" "Android Gemma benchmark profile evidence" "fail" (Convert-ToRelativePath $path) "Gemma report JSON does not parse: $($_.Exception.Message)"
+    Add-Check "gemma-benchmark-speed" "Android Gemma benchmark speed evidence" "fail" (Convert-ToRelativePath $path) "Gemma report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $profile = [string](Get-Field $report "benchmarkProfile")
+  $recommendedProfile = [string](Get-Field $report "benchmarkRecommendedProfile")
+  $medianMs = Convert-ToDoubleOrNull (Get-Field $report "benchmarkMedianMs")
+  $medianTokensPerSec = Convert-ToDoubleOrNull (Get-Field $report "benchmarkMedianTokensPerSec")
+  $script:gemmaBenchmarkProfile = $profile
+  $script:gemmaBenchmarkMedianMs = $medianMs
+  $script:gemmaBenchmarkMedianTokensPerSec = $medianTokensPerSec
+
+  if ($profile -eq "gemma4-e2b-litert-lm" -and $recommendedProfile -eq "gemma4-e2b-litert-lm") {
+    Add-Check "gemma-benchmark-profile" "Android Gemma benchmark profile evidence" "pass" (Convert-ToRelativePath $path) "Gemma evidence report carries the required LiteRT-LM benchmark profile."
+  } else {
+    Add-Check "gemma-benchmark-profile" "Android Gemma benchmark profile evidence" "fail" (Convert-ToRelativePath $path) "Expected benchmarkProfile and benchmarkRecommendedProfile to be gemma4-e2b-litert-lm."
+  }
+
+  if ($null -ne $medianMs -and $medianMs -le 2500.0 -and $null -ne $medianTokensPerSec -and $medianTokensPerSec -ge 5.0) {
+    Add-Check "gemma-benchmark-speed" "Android Gemma benchmark speed evidence" "pass" (Convert-ToRelativePath $path) "Gemma benchmark speed fields meet the Android v1 threshold."
+  } else {
+    Add-Check "gemma-benchmark-speed" "Android Gemma benchmark speed evidence" "fail" (Convert-ToRelativePath $path) "Expected benchmarkMedianMs <= 2500 and benchmarkMedianTokensPerSec >= 5."
+  }
 }
 
 function Test-ReportFieldEquals {
@@ -320,6 +379,9 @@ if ($WriteTemplate) {
 $bundle = $null
 $apk = $null
 $playStore = $null
+$gemmaBenchmarkProfile = ""
+$gemmaBenchmarkMedianMs = $null
+$gemmaBenchmarkMedianTokensPerSec = $null
 
 $bundlePath = Join-Path $EvidenceRoot "ANDROID_V1_EVIDENCE_BUNDLE.json"
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
@@ -390,6 +452,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "pairing-ready" "Android pairing evidence report" $reports "pairingCheckReport" "stackchan.android-pairing-evidence.v1" "android-pairing-ready"
     Test-ReportStatus "wifi-ready" "Android Wi-Fi evidence report" $reports "wifiCheckReport" "stackchan.android-wifi-evidence.v1" "android-wifi-ready"
     Test-ReportStatus "gemma-ready" "Android Gemma evidence report" $reports "gemmaCheckReport" "stackchan.android-gemma-evidence.v1" "android-gemma-real-device-ready"
+    Test-GemmaBenchmarkEvidence $reports
     Test-ReportStatus "screen-off-soak-ready" "Android screen-off soak evidence report" $reports "screenOffSoakCheckReport" "stackchan.android-screen-off-soak-evidence.v1" "android-screen-off-soak-ready"
     Test-ReportStatus "play-store-ready" "Android Play Store evidence report" $reports "playStoreCheckReport" "stackchan.android-play-store-evidence-check.v1" "play-internal-testing-ready"
     Test-ReportFieldEquals "companion-readiness-source-commit-match" "Companion source readiness source commit matches bundle" $reports "companionReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
@@ -478,6 +541,9 @@ $report = [ordered]@{
   versionName = if ($null -ne $apk) { [string]$apk.versionName } else { "" }
   versionCode = if ($null -ne $apk) { [string]$apk.versionCode } else { "" }
   releaseAabSha256 = if ($null -ne $playStore) { [string]$playStore.releaseAabSha256 } else { "" }
+  gemmaBenchmarkProfile = $gemmaBenchmarkProfile
+  gemmaBenchmarkMedianMs = $gemmaBenchmarkMedianMs
+  gemmaBenchmarkMedianTokensPerSec = $gemmaBenchmarkMedianTokensPerSec
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count
