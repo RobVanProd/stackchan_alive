@@ -79,7 +79,8 @@ function Write-StatusReport {
     [string]$Status,
     [string]$SourceCommit = "",
     [string]$VersionName = "",
-    [string]$VersionCode = ""
+    [string]$VersionCode = "",
+    [string]$ReleaseAabSha256 = ""
   )
 
   $report = [ordered]@{
@@ -99,6 +100,9 @@ function Write-StatusReport {
   if (-not [string]::IsNullOrWhiteSpace($VersionCode)) {
     $report.versionCode = $VersionCode
   }
+  if (-not [string]::IsNullOrWhiteSpace($ReleaseAabSha256)) {
+    $report.releaseAabSha256 = $ReleaseAabSha256
+  }
   Write-JsonFile -Path $Path -Value $report
 }
 
@@ -117,6 +121,7 @@ try {
 
   $readyRoot = New-TempEvidenceRoot
   $sourceCommit = "b" * 40
+  $releaseAabSha = "c" * 64
   $reports = [ordered]@{
     apkInstallReport = "reports/android_apk_install.json"
     companionReadinessReport = "reports/companion_v1_readiness.json"
@@ -158,7 +163,7 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit -VersionName "1.0.0" -VersionCode "1"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit -VersionName "1.0.0" -VersionCode "1" -ReleaseAabSha256 $releaseAabSha
   @"
 # Android V1 Review
 
@@ -185,6 +190,9 @@ try {
   }
   if ($readyResult.report.sourceCommit -ne $sourceCommit) {
     throw "Expected Android v1 bundle check report sourceCommit to match fixture commit."
+  }
+  if ($readyResult.report.apkSha256 -ne ("a" * 64) -or $readyResult.report.versionName -ne "1.0.0" -or [string]$readyResult.report.versionCode -ne "1" -or $readyResult.report.releaseAabSha256 -ne $releaseAabSha) {
+    throw "Expected Android v1 bundle check report to emit APK hash, version identity, and release AAB hash."
   }
   foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "play-store-version-name-match", "play-store-version-code-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"

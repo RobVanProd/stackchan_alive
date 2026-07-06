@@ -103,6 +103,9 @@ Android v1 bundle rejects Play evidence if that commit does not match the instal
 hardware evidence checker outputs, and `ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
 It also rejects Play evidence whose uploaded `versionName` or `versionCode` does not
 match the target-phone APK install report.
+The final Companion v1 bundle also rejects Android evidence whose emitted `versionName`
+does not match the final release version, or whose Play `releaseAabSha256` is missing
+from the companion release evidence artifact list.
 The Play evidence checker also rejects packets that are not explicitly marked
 `internal-testing-ready`, do not name the uploaded Play Console release/tester group, or
 do not include a UTC upload timestamp.

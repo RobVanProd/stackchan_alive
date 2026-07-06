@@ -216,6 +216,117 @@ function Test-ReportFieldEquals {
   }
 }
 
+function Convert-ToAndroidVersionName {
+  param([string]$ReleaseVersion)
+
+  $value = ([string]$ReleaseVersion).Trim()
+  if ($value -match "^[vV](?=\d)") {
+    return $value.Substring(1)
+  }
+  return $value
+}
+
+function Test-AndroidVersionNameMatchesRelease {
+  param(
+    [object]$Reports,
+    [string]$ReleaseVersion
+  )
+
+  $expectedVersionName = Convert-ToAndroidVersionName $ReleaseVersion
+  $relativePath = [string](Get-Field $Reports "androidV1BundleReport")
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($expectedVersionName) -or $expectedVersionName -match "<|TBD|pending") {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record releaseVersion before checking Android app identity."
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "pending" "" "Record reports.androidV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "pending" (Convert-ToRelativePath $path) "Missing Android v1 bundle report."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $actualVersionName = [string](Get-Field $report "versionName")
+  if ([string]::IsNullOrWhiteSpace($actualVersionName)) {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "fail" (Convert-ToRelativePath $path) "Android v1 bundle report is missing versionName."
+  } elseif ($actualVersionName -eq $expectedVersionName) {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "pass" (Convert-ToRelativePath $path) "Android versionName matches releaseVersion."
+  } else {
+    Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "fail" (Convert-ToRelativePath $path) "Expected Android versionName=$expectedVersionName from releaseVersion $ReleaseVersion, got $actualVersionName."
+  }
+}
+
+function Test-AndroidReleaseAabHashMatchesReleaseEvidence {
+  param([object]$Reports)
+
+  $androidRelativePath = [string](Get-Field $Reports "androidV1BundleReport")
+  $androidPath = Resolve-EvidencePath $androidRelativePath
+  if ([string]::IsNullOrWhiteSpace($androidRelativePath)) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "pending" "" "Record reports.androidV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $androidPath -PathType Leaf)) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "pending" (Convert-ToRelativePath $androidPath) "Missing Android v1 bundle report."
+    return
+  }
+
+  $releaseRelativePath = [string](Get-Field $Reports "companionReleaseEvidenceReport")
+  $releasePath = Resolve-EvidencePath $releaseRelativePath
+  if ([string]::IsNullOrWhiteSpace($releaseRelativePath)) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "pending" "" "Record reports.companionReleaseEvidenceReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $releasePath -PathType Leaf)) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "pending" (Convert-ToRelativePath $releasePath) "Missing Companion release evidence report."
+    return
+  }
+
+  try {
+    $androidReport = Read-JsonOrNull $androidPath
+    $releaseReport = Read-JsonOrNull $releasePath
+  } catch {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "fail" "reports" "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $expectedHash = ([string](Get-Field $androidReport "releaseAabSha256")).ToLowerInvariant()
+  if (-not (Test-Hash $expectedHash)) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "fail" (Convert-ToRelativePath $androidPath) "Android v1 bundle report is missing a valid releaseAabSha256."
+    return
+  }
+
+  $releaseAabHashes = @()
+  foreach ($group in @($releaseReport.artifacts)) {
+    foreach ($entry in @($group.entries)) {
+      $entryPath = [string](Get-Field $entry "path")
+      $entryName = [string](Get-Field $entry "name")
+      if ($entryPath.EndsWith(".aab", [System.StringComparison]::OrdinalIgnoreCase) -or $entryName.EndsWith(".aab", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $entrySha = ([string](Get-Field $entry "sha256")).ToLowerInvariant()
+        if (Test-Hash $entrySha) {
+          $releaseAabHashes += $entrySha
+        }
+      }
+    }
+  }
+
+  if ($releaseAabHashes.Count -eq 0) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "fail" (Convert-ToRelativePath $releasePath) "Companion release evidence does not list a release AAB artifact hash."
+  } elseif ($releaseAabHashes -contains $expectedHash) {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "pass" (Convert-ToRelativePath $releasePath) "Android Play releaseAabSha256 matches the release evidence artifact hash."
+  } else {
+    Add-Check "android-v1-release-aab-hash-match" "Android v1 release AAB hash matches release evidence" "fail" (Convert-ToRelativePath $releasePath) "Expected release evidence to include AAB SHA-256 $expectedHash."
+  }
+}
+
 function Convert-ToComparablePath {
   param([string]$Path)
 
@@ -328,6 +439,7 @@ Required ready statuses:
 - ``stackchan.android-v1-evidence-bundle-check.v1``: ``android-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
+- Android ``versionName`` must match the release version, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
 - Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
 
 Run:
@@ -456,6 +568,8 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "github-actions-version-match" "GitHub Actions version matches bundle" $reports "githubActionsStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "rollout-status-version-match" "Rollout status version matches bundle" $reports "rolloutStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-AndroidVersionNameMatchesRelease $reports $releaseVersion
+    Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
     Test-RolloutHardwareEvidence $reports ([string]$bundle.hardwareEvidenceRoot) ([string]$bundle.sourceCommit)
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
@@ -505,6 +619,8 @@ $report = [ordered]@{
   status = $status
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
+  sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
+  releaseVersion = if ($null -ne $bundle) { [string]$bundle.releaseVersion } else { "" }
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count

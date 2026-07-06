@@ -285,6 +285,10 @@ if ($WriteTemplate) {
   Write-AndroidV1EvidenceTemplate
 }
 
+$bundle = $null
+$apk = $null
+$playStore = $null
+
 $bundlePath = Join-Path $EvidenceRoot "ANDROID_V1_EVIDENCE_BUNDLE.json"
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
   Add-Check "bundle-json" "Android v1 evidence bundle JSON" "pending" (Convert-ToRelativePath $bundlePath) "Run with -WriteTemplate, then fill the bundle after target-phone validation."
@@ -323,7 +327,6 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     }
 
     $reports = Get-Field $bundle "reports"
-    $apk = $null
     $apkPath = Resolve-EvidencePath ([string](Get-Field $reports "apkInstallReport"))
     if ([string]::IsNullOrWhiteSpace([string](Get-Field $reports "apkInstallReport"))) {
       Add-Check "apk-install" "Target phone APK install report" "pending" "" "Record reports.apkInstallReport."
@@ -365,6 +368,14 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "gemma-source-commit-match" "Android Gemma source commit matches bundle" $reports "gemmaCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "screen-off-soak-source-commit-match" "Android screen-off soak source commit matches bundle" $reports "screenOffSoakCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "play-store-source-commit-match" "Play Store evidence source commit matches bundle" $reports "playStoreCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    $playStorePath = Resolve-EvidencePath ([string](Get-Field $reports "playStoreCheckReport"))
+    if (-not [string]::IsNullOrWhiteSpace($playStorePath) -and (Test-Path -LiteralPath $playStorePath -PathType Leaf)) {
+      try {
+        $playStore = Read-JsonOrNull $playStorePath
+      } catch {
+        $playStore = $null
+      }
+    }
     if ($null -ne $apk) {
       Test-ReportFieldEquals "play-store-version-name-match" "Play Store evidence versionName matches target-phone APK install" $reports "playStoreCheckReport" "versionName" ([string]$apk.versionName) "APK install versionName"
       Test-ReportFieldEquals "play-store-version-code-match" "Play Store evidence versionCode matches target-phone APK install" $reports "playStoreCheckReport" "versionCode" ([string]$apk.versionCode) "APK install versionCode"
@@ -417,6 +428,10 @@ $report = [ordered]@{
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
   sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
+  apkSha256 = if ($null -ne $apk) { [string]$apk.apkSha256 } else { "" }
+  versionName = if ($null -ne $apk) { [string]$apk.versionName } else { "" }
+  versionCode = if ($null -ne $apk) { [string]$apk.versionCode } else { "" }
+  releaseAabSha256 = if ($null -ne $playStore) { [string]$playStore.releaseAabSha256 } else { "" }
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count

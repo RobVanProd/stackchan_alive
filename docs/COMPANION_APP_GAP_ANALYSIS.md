@@ -153,7 +153,9 @@ current v1 companion branch.
   evidence report generated for a different source commit than the Android v1 bundle. It
   also rejects Play Store evidence whose uploaded version identity differs from the
   target-phone APK install report. The Android v1 aggregate checker emits that same
-  `sourceCommit` so the final Companion v1 gate can reject stale Android bundle evidence.
+  `sourceCommit`, plus the target-phone `apkSha256`, `versionName`, `versionCode`, and
+  Play `releaseAabSha256`, so the final Companion v1 gate can reject stale Android bundle
+  evidence.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle
@@ -161,9 +163,11 @@ current v1 companion branch.
   release ZIP with a matching SHA-256, verified hardware evidence status, and a human
   `COMPANION_V1_REVIEW.md` before reporting `companion-v1-evidence-ready`. The gate also
   rejects mismatched commit or version evidence across source readiness, release, CI,
-  rollout, Android v1, desktop v1, and production voice-source reports, and verifies that
-  the rollout report's strict hardware evidence root and hardware metadata commit match the
-  final bundle.
+  rollout, Android v1, desktop v1, and production voice-source reports. It also rejects an
+  Android app `versionName` that does not match the final release version, rejects an Android
+  Play `releaseAabSha256` that is not present in companion release evidence, and verifies
+  that the rollout report's strict hardware evidence root and hardware metadata commit match
+  the final bundle.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
