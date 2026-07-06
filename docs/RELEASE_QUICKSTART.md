@@ -371,7 +371,8 @@ production voice-source readiness are captured:
 ```
 
 The checker must report `desktop-v1-evidence-ready` before treating desktop installers as
-v1 release-ready.
+v1 release-ready. The `DESKTOP_V1_REVIEW.md` source commit must match
+`DESKTOP_V1_EVIDENCE_BUNDLE.json.sourceCommit`.
 
 After Android v1, desktop v1, hardware, Play, production voice-source, release package,
 GitHub Actions, and rollout evidence are all ready for the same commit, assemble the final

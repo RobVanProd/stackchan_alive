@@ -103,6 +103,16 @@ function Test-Commit {
   return $Value -match "^[a-fA-F0-9]{40}$"
 }
 
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Test-ReportStatus {
   param(
     [string]$Id,
@@ -277,6 +287,7 @@ Complete after desktop package, runtime payload, and physical PC Brain evidence 
 
 - Reviewer:
 - Review date:
+- Source commit:
 - Overall desktop v1 decision: pending
 - Desktop package artifact decision: pending
 - Managed Python runtime decision: pending
@@ -359,6 +370,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       $requiredReviewPatterns = @(
         "Reviewer:",
         "Review date:",
+        "Source commit:",
         "Overall desktop v1 decision: pass",
         "Desktop package artifact decision: pass",
         "Managed Python runtime decision: pass",
@@ -369,10 +381,14 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
         "Production voice-source decision: pass"
       )
       $missing = @($requiredReviewPatterns | Where-Object { $review -notmatch [regex]::Escape($_) })
-      if ($missing.Count -eq 0) {
+      $reviewSourceCommit = Get-ReviewSourceCommit $review
+      if ($missing.Count -eq 0 -and (Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -eq [string]$bundle.sourceCommit) {
         Add-Check "desktop-v1-review" "Desktop v1 human review" "pass" (Convert-ToRelativePath $reviewPath) "All desktop v1 decisions are pass."
+      } elseif ((Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -ne [string]$bundle.sourceCommit) {
+        Add-Check "desktop-v1-review" "Desktop v1 human review" "fail" (Convert-ToRelativePath $reviewPath) "Review Source commit $reviewSourceCommit does not match bundle sourceCommit $($bundle.sourceCommit)."
       } else {
-        Add-Check "desktop-v1-review" "Desktop v1 human review" "pending" (Convert-ToRelativePath $reviewPath) ("Missing review markers: " + ($missing -join ", "))
+        $missingDetail = if ($missing.Count -eq 0) { "Source commit must be a full 40-character SHA matching bundle sourceCommit." } else { "Missing review markers: " + ($missing -join ", ") }
+        Add-Check "desktop-v1-review" "Desktop v1 human review" "pending" (Convert-ToRelativePath $reviewPath) $missingDetail
       }
     }
   }

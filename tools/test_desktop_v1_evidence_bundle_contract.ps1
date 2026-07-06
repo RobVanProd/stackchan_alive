@@ -121,6 +121,7 @@ try {
   Write-Host "[ok] placeholder Desktop v1 evidence bundle is pending"
 
   $readyRoot = New-TempEvidenceRoot
+  $sourceCommit = "c" * 40
   $reports = [ordered]@{
     companionReadinessReport = "reports/companion_v1_readiness.json"
     c6BrainSupervisorSmokeReport = "reports/BRAIN_SUPERVISOR_SMOKE.json"
@@ -135,7 +136,7 @@ try {
   Write-JsonFile -Path (Join-Path $readyRoot "DESKTOP_V1_EVIDENCE_BUNDLE.json") -Value ([ordered]@{
       schema = "stackchan.desktop-v1-evidence-bundle.v1"
       status = "ready"
-      sourceCommit = ("c" * 40)
+      sourceCommit = $sourceCommit
       releaseBuild = "desktop Windows MSI / macOS DMG / Linux DEB"
       hardwareEvidenceStatus = "verified"
       hardwareEvidenceRoot = "output/hardware-evidence/contract"
@@ -163,6 +164,7 @@ try {
 
 - Reviewer: Contract Test
 - Review date: 2026-07-06
+- Source commit: $sourceCommit
 - Overall desktop v1 decision: pass
 - Desktop package artifact decision: pass
 - Managed Python runtime decision: pass
@@ -185,6 +187,30 @@ try {
   }
   Write-Host "[ok] complete Desktop v1 evidence bundle is accepted"
 
+  $mismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $mismatchRoot -Recurse -Force
+  @"
+# Desktop V1 Review
+
+- Reviewer: Contract Test
+- Review date: 2026-07-06
+- Source commit: $("d" * 40)
+- Overall desktop v1 decision: pass
+- Desktop package artifact decision: pass
+- Managed Python runtime decision: pass
+- C6 GUI/supervisor evidence decision: pass
+- PC Brain deploy audio decision: pass
+- PC Brain quiet-soak decision: pass
+- Physical robot evidence decision: pass
+- Production voice-source decision: pass
+"@ | Set-Content -Path (Join-Path $mismatchRoot "DESKTOP_V1_REVIEW.md") -Encoding UTF8
+  $mismatchResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $mismatchRoot
+  if ([int]$mismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Desktop v1 review source commit to fail."
+  }
+  Assert-CheckStatus -Report $mismatchResult.report -Id "desktop-v1-review" -Status "fail"
+  Write-Host "[ok] mismatched Desktop v1 review source commit is rejected"
+
   Write-Host "Desktop v1 evidence bundle contract tests passed."
 } finally {
   foreach ($root in $createdRoots) {
@@ -197,3 +223,5 @@ try {
     }
   }
 }
+
+exit 0

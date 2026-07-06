@@ -176,7 +176,9 @@ current v1 companion branch.
   aggregates the desktop package hashes, C6 supervisor/GUI evidence, Windows/macOS/Linux
   managed runtime payload checks, PC Brain deploy audio evidence, quiet-soak evidence,
   production voice-source readiness, and a human `DESKTOP_V1_REVIEW.md` before reporting
-  `desktop-v1-evidence-ready`. Supplying and shipping the actual managed Python binary
+  `desktop-v1-evidence-ready`. The review packet must record the same full source commit
+  as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human sign-off from a different build
+  cannot close the aggregate gate. Supplying and shipping the actual managed Python binary
   payload for each desktop platform remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock

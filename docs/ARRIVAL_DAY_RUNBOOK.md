@@ -237,7 +237,8 @@ human review are collected, assemble the aggregate desktop v1 packet:
 ```
 
 It must report `desktop-v1-evidence-ready` before desktop PC Brain installers are treated
-as v1 release-ready.
+as v1 release-ready. Record the same full source commit in `DESKTOP_V1_REVIEW.md` and
+`DESKTOP_V1_EVIDENCE_BUNDLE.json`; the aggregate desktop gate fails if those commits differ.
 
 After both platform bundles pass and the release package, GitHub Actions, rollout status,
 hardware evidence, Play internal testing, and production voice-source gates all refer to the
