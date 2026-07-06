@@ -853,12 +853,15 @@ def serve(config: LanBridgeConfig) -> None:
     control_state = BridgeControlState()
     with socket.create_server((config.host, config.port), reuse_port=False) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        print(f"[bridge-lan] listening ws://{config.host}:{config.port} protocol={PROTOCOL}")
+        print(f"[bridge-lan] listening ws://{config.host}:{config.port} protocol={PROTOCOL}", flush=True)
         while True:
             conn, address = server.accept()
-            print(f"[bridge-lan] client={address[0]}:{address[1]}")
+            print(f"[bridge-lan] client={address[0]}:{address[1]}", flush=True)
             with conn:
-                memory = handle_connection(conn, config, memory, control_state)
+                try:
+                    memory = handle_connection(conn, config, memory, control_state)
+                except WebSocketProtocolError as exc:
+                    print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"{exc}\"", flush=True)
             if config.once:
                 break
 

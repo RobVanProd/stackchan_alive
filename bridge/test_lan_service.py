@@ -1,8 +1,10 @@
 import json
 import os
 import base64
+import socket
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +18,7 @@ from lan_service import (
     encode_ws_frame,
     encode_ws_text,
     prompt_case_for_text,
+    serve,
     websocket_accept_value,
 )
 from reference_bridge import PROTOCOL, load_bridge_memory
@@ -59,6 +62,39 @@ class LanServiceTests(unittest.TestCase):
 
     def test_server_binary_frame_encoding_is_unmasked(self):
         self.assertEqual(b"\x82\x03abc", encode_ws_frame(b"abc", opcode=0x2))
+
+    def test_server_survives_client_disconnect_without_close_frame(self):
+        with socket.create_server(("127.0.0.1", 0)) as probe:
+            port = int(probe.getsockname()[1])
+
+        errors = []
+
+        def run_server():
+            try:
+                serve(LanBridgeConfig(host="127.0.0.1", port=port, once=True))
+            except Exception as exc:  # pragma: no cover - surfaced by assertion
+                errors.append(exc)
+
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+
+        request = (
+            "GET /bridge HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        ).encode("ascii")
+        with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+            client.sendall(request)
+            self.assertIn(b"101 Switching Protocols", client.recv(4096))
+
+        thread.join(timeout=5.0)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual([], errors)
 
     def test_prompt_case_can_follow_utterance_text(self):
         self.assertEqual("picked_up", prompt_case_for_text("I picked you up", "", "greeting"))
