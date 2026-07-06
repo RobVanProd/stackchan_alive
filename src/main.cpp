@@ -142,7 +142,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
         return false;
       }
     }
-    M5.Speaker.setVolume(224);
+    M5.Speaker.setVolume(150);
     M5.Speaker.setChannelVolume(kChannel, 255);
     ready_ = true;
     return true;
@@ -277,7 +277,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       return false;
     }
     M5.Speaker.stop(kChannel);
-    M5.Speaker.setVolume(224);
+    M5.Speaker.setVolume(150);
     M5.Speaker.setChannelVolume(kChannel, 255);
     const bool ok = M5.Speaker.tone(static_cast<float>(frequency), durationMs, kChannel, true);
     if (ok) {

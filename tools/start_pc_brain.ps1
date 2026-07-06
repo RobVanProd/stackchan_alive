@@ -7,7 +7,7 @@ param(
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
   [int]$SelectedVoiceMaxAudioBytes = 65536,
   [int]$SelectedVoiceStartBytes = 0,
-  [double]$SelectedVoiceGain = 1.0,
+  [double]$SelectedVoiceGain = 0.30,
   [int]$DownlinkAudioChunkBytes = 4096,
   [int]$DownlinkBinaryFrameDelayMs = 70,
   [int]$DownlinkTextFrameDelayMs = 40,
