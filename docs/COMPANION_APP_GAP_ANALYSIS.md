@@ -38,10 +38,11 @@ current v1 companion branch.
   Load now verifies the pinned SHA-256 before marking the local asset staged, and Android
   diagnostics include the resulting `checksum_verified` state. The source tree now includes
   `tools/check_android_gemma_evidence.ps1` to gate the final phone evidence on the
-  diagnostics export, real `mobile_brain_litert_turn` logcat, eject/reload review, and
-  robot audio/TTS review.
+  diagnostics export, real `mobile_brain_litert_turn` logcat, non-dry-run
+  `gemma4-e2b-litert-lm` benchmark candidate evidence, eject/reload review, and robot
+  audio/TTS review.
   The remaining G2 gap is real-device download proof, successful LiteRT runtime inference,
-  benchmark evidence, and robot audio/TTS validation.
+  captured benchmark evidence, and robot audio/TTS validation.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially
   closed. Android and desktop now expose user-facing settings, diagnostics, persona, and
   handoff status panels from the settings repository, diagnostics snapshot, and live bridge
@@ -234,7 +235,7 @@ current v1 companion branch.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -RequireReady -Json`.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -RequireReady -Json`.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
-5. Validate Gemma-4-E2B model download/load/eject and real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
+5. Validate Gemma-4-E2B model download/load/eject, run the non-dry-run `gemma4-e2b-litert-lm` benchmark, and capture a real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -RequireReady -Json`.
 7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -RequireReady -Json` before release promotion.
 7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.

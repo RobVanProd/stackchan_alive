@@ -101,7 +101,8 @@ checks: 2588147712 bytes and SHA-256
 completion, LiteRT inference loading, eject/reload behavior, robot audio/TTS evidence, and
 benchmark evidence remain required before Mobile Brain Mode is considered fully validated.
 The v1 evidence packet must pass `tools/check_android_gemma_evidence.ps1`, including
-`mobile_brain_litert_turn` logcat and no `mobile_brain_litert_error`.
+`mobile_brain_litert_turn` logcat with no `mobile_brain_litert_error` and a non-dry-run
+`stackchan.model-benchmark.v1` report whose `gemma4-e2b-litert-lm` candidate gate passes.
 
 The host bridge already accepts the core control messages described below. Firmware now has
 a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and

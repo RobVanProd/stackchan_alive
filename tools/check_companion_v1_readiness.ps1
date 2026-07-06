@@ -746,7 +746,13 @@ Test-TextEvidence `
   -Id "android-gemma-evidence-check" `
   -Name "Android Gemma real-device evidence check" `
   -RelativePaths @("tools/check_android_gemma_evidence.ps1", "provenance/tools/check_android_gemma_evidence.ps1") `
-  -Patterns @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "sourceCommit", "Get-ReviewSourceCommit", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready", "RequireReady")
+  -Patterns @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "BenchmarkPath", "stackchan.model-benchmark.v1", "gemma4-e2b-litert-lm", "benchmark-candidate-gate", "benchmark-profile-ready", "benchmark-speed", "Benchmark decision: pass", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "sourceCommit", "Get-ReviewSourceCommit", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-gemma-evidence-contract" `
+  -Name "Android Gemma evidence contract test" `
+  -RelativePaths @("tools/test_android_gemma_evidence_contract.ps1", "provenance/tools/test_android_gemma_evidence_contract.ps1") `
+  -Patterns @("complete Android Gemma benchmark evidence is accepted", "missing Android Gemma benchmark evidence is rejected", "dry-run Android Gemma benchmark evidence is rejected", "slow Android Gemma benchmark evidence is rejected", "Android Gemma evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-play-release-prep" `
