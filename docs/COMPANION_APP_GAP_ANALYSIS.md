@@ -133,6 +133,11 @@ current v1 companion branch.
   validated LiteRT run. Hardware-run capture, connected robot/session proof, Gemma loaded
   state, `android-gemma-real-device-ready`, and `Support decision: pass` review are still
   required before calling G8 complete.
+- The Android screen-off bridge soak path is now source-gated. The existing soak helper
+  samples the Android bridge during the strict 10-minute screen-off window, and
+  `tools/check_android_screen_off_soak_evidence.ps1` validates the soak JSON, markdown
+  summary, passing Android endpoint samples, zero failures, stable endpoint identity, and a
+  human review packet before reporting `android-screen-off-soak-ready`.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -163,3 +168,4 @@ current v1 companion branch.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject and real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -RequireReady -Json`.
+7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -RequireReady -Json` before release promotion.

@@ -681,6 +681,18 @@ Test-TextEvidence `
   -Patterns @("stackchan.android-companion-soak.v1", "DEFAULT_DURATION_SECONDS = 600.0", "DEFAULT_INTERVAL_SECONDS = 30.0", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "--duration-seconds", "--interval-seconds", "--max-failures")
 
 Test-TextEvidence `
+  -Id "android-screen-off-soak-evidence-check" `
+  -Name "Android screen-off soak evidence check" `
+  -RelativePaths @("tools/check_android_screen_off_soak_evidence.ps1") `
+  -Patterns @("stackchan.android-screen-off-soak-evidence.v1", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "stackchan.android-companion-soak.v1", "requested_duration_seconds", "success_rate", "endpoint_kind", "android-screen-off-soak-ready", "pending-android-screen-off-soak-evidence", "Screen-off decision: pass", "Heartbeat continuity decision: pass", "Wake-lock release decision: pass", "Foreground-service decision: pass", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-screen-off-soak-evidence-docs" `
+  -Name "Android screen-off soak evidence docs" `
+  -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
+  -Patterns @("check_android_screen_off_soak_evidence.cmd", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android-screen-off-soak-ready", "Strict soak evidence gate")
+
+Test-TextEvidence `
   -Id "voice-source-readiness-check" `
   -Name "Production voice-source readiness check" `
   -RelativePaths @("tools/check_voice_source_readiness.ps1") `

@@ -194,6 +194,15 @@ packet. Leave `-DurationSeconds 600 -IntervalSeconds 30 -MaxFailures 0` at the s
 defaults for v1 release evidence unless the test owner explicitly approves a diagnostic
 rerun.
 
+After the soak completes, run the strict soak evidence gate:
+
+```powershell
+.\tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-screen-off-soak-ready` before the screen-off bridge soak gate is
+closed. Use `-WriteTemplate` first to create the review packet.
+
 ## Handoff And Failure Cases
 
 - [ ] If desktop and Android endpoints are both trusted, only one endpoint is active brain owner.
@@ -229,6 +238,7 @@ Attach these to the arrival-day packet:
 - `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
 - `android/screen-off-soak/ANDROID_COMPANION_SOAK.md` and `android_companion_soak.json`, or the repo `output/android-companion-soak/latest/` equivalents
+- `ANDROID_SCREEN_OFF_SOAK_REVIEW.md` plus the JSON output from `tools/check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json`
 - `ANDROID_DIAGNOSTICS_EXPORT.json` shared from the app after the robot session, with transcript/text-turn content redacted unless the tester explicitly opts in
 - `ANDROID_DIAGNOSTICS_REVIEW.md` plus the JSON output from `tools/check_android_diagnostics_export_evidence.cmd -ExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -ReviewPath <ANDROID_DIAGNOSTICS_REVIEW.md> -RequireReady -Json`
 - `ANDROID_GEMMA_REVIEW.md`, `android_gemma_logcat.txt`, and the JSON output from `tools/check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json`

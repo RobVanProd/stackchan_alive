@@ -258,6 +258,16 @@ The Android helpers write packet-local probe evidence under `android\udp-beacon-
 and screen-off soak evidence under `android\screen-off-soak\`.
 `RUN_ANDROID_APK_INSTALL.cmd` writes install evidence, including the APK source commit,
 under `android\apk-install\`.
+
+After the screen-off soak finishes, run the source checkout checker against the packet or
+repo output:
+
+```powershell
+.\tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-screen-off-soak-ready` before the Android bridge soak gate is
+closed.
 After the robot connects through the phone, capture the Android dashboard connected state
 showing robot identity, firmware/version signal, last bridge frame, active brain owner,
 and foreground service state.

@@ -143,6 +143,7 @@ After the robot connects through the phone and the connected dashboard screensho
 captured, run `RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge` with
 the phone screen off. It saves the strict 10-minute heartbeat soak report under
 `android/screen-off-soak/`.
+Then run `tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json` from the source checkout or release tools directory. It must report `android-screen-off-soak-ready` before the Android screen-off bridge soak gate is closed.
 If mDNS discovery is unreliable, run `tools/run_android_udp_beacon_probe.cmd` from another
 machine on the same LAN, or `RUN_ANDROID_UDP_BEACON_PROBE.cmd` from the evidence packet,
 to capture the Android UDP discovery beacon under `android/udp-beacon-probe/`.

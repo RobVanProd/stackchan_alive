@@ -481,6 +481,12 @@ The Android companion path is ready to integrate with firmware when:
   `owner_status`, and Release sends `release_brain` and receives `owner_status`. The v1
   evidence packet must pass `tools/check_android_controls_evidence.ps1` and report
   `android-controls-ready`.
+- Screen-off bridge soak evidence proves the Android bridge remains reachable for the
+  strict 10-minute window with the phone screen off, zero failed probe samples, a stable
+  Android endpoint id, foreground-service review, wake-lock-release review after disconnect,
+  and same-identity review after reopening the app. The v1 evidence packet must pass
+  `tools/check_android_screen_off_soak_evidence.ps1` and report
+  `android-screen-off-soak-ready`.
 - Safety-locked settings cannot be changed from the app.
 - Offline fallback still works with no active brain owner.
 - Mobile model mode passes the same Character Lock red-team and benchmark gates as the PC
