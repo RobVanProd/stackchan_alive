@@ -151,11 +151,11 @@ current v1 companion branch.
   Android hardware evidence checkers now require a full reviewed source commit and the aggregate
   gate rejects any source readiness, hardware, target-phone APK install, or Play Store
   evidence report generated for a different source commit than the Android v1 bundle. It
-  also rejects Play Store evidence whose uploaded version identity differs from the
-  target-phone APK install report. The Android v1 aggregate checker emits that same
-  `sourceCommit`, plus the target-phone `apkSha256`, `versionName`, `versionCode`, and
-  Play `releaseAabSha256`, so the final Companion v1 gate can reject stale Android bundle
-  evidence.
+  also rejects Play Store evidence whose uploaded package or version identity differs from
+  the target-phone APK install report. The Android v1 aggregate checker emits that same
+  `sourceCommit`, plus the target-phone `applicationId`, `apkSha256`, `versionName`,
+  `versionCode`, and Play `releaseAabSha256`, so the final Companion v1 gate can reject
+  stale Android bundle evidence.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle
@@ -165,7 +165,8 @@ current v1 companion branch.
   rejects mismatched commit or version evidence across source readiness, release, CI,
   rollout, Android v1, desktop v1, and production voice-source reports. It also rejects an
   Android app `versionName` that does not match the final release version, rejects an Android
-  `versionCode` that does not match the source Gradle release configuration, rejects an Android
+  `applicationId` or `versionCode` that does not match the source Gradle release configuration,
+  rejects an Android
   target-phone `apkSha256` that is not present as a release APK in companion release evidence,
   rejects an Android Play `releaseAabSha256` that is not present in companion release evidence,
   rejects desktop MSI/DMG/DEB hashes that are not present in companion release evidence,

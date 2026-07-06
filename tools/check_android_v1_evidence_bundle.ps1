@@ -193,6 +193,36 @@ function Test-ReportFieldEquals {
   }
 }
 
+function Get-AndroidSourceApplicationId {
+  $gradlePath = Join-Path $Root "companion/app-android/build.gradle.kts"
+  if (-not (Test-Path -LiteralPath $gradlePath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      value = ""
+      evidence = Convert-ToRelativePath $gradlePath
+      detail = "Missing Android Gradle build file."
+    }
+  }
+
+  $text = Get-Content -LiteralPath $gradlePath -Raw
+  $matches = [regex]::Matches($text, '(?m)^\s*applicationId\s*=\s*"([^"]+)"\s*$')
+  if ($matches.Count -ne 1) {
+    return [ordered]@{
+      status = "fail"
+      value = ""
+      evidence = Convert-ToRelativePath $gradlePath
+      detail = "Expected exactly one literal Android applicationId declaration."
+    }
+  }
+
+  return [ordered]@{
+    status = "pass"
+    value = $matches[0].Groups[1].Value
+    evidence = Convert-ToRelativePath $gradlePath
+    detail = "Android source applicationId parsed."
+  }
+}
+
 function Write-AndroidV1EvidenceTemplate {
   New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "reports") | Out-Null
@@ -250,6 +280,8 @@ Required ready statuses:
 - ``stackchan.android-play-store-evidence-check.v1``: ``play-internal-testing-ready``
 - Every Android hardware evidence report and the Play Store evidence-check JSON must match
   this bundle's ``sourceCommit``.
+- The target-phone APK install ``packageName`` and Play Store evidence-check
+  ``applicationId`` must match the source Gradle ``applicationId``.
 - The Play Store evidence-check ``versionName`` and ``versionCode`` must match the
   target-phone APK install report, so internal-testing evidence cannot come from a
   different uploaded app version.
@@ -341,6 +373,8 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
           Add-Check "apk-install" "Target phone APK install report" "pending" (Convert-ToRelativePath $apkPath) "Expected installed, got $($apk.status)."
         } elseif (-not (Test-Hash ([string]$apk.apkSha256)) -or -not (Test-Commit ([string]$apk.sourceCommit))) {
           Add-Check "apk-install" "Target phone APK install report" "fail" (Convert-ToRelativePath $apkPath) "APK install report must include valid apkSha256 and sourceCommit."
+        } elseif ([string]::IsNullOrWhiteSpace([string]$apk.packageName)) {
+          Add-Check "apk-install" "Target phone APK install report" "fail" (Convert-ToRelativePath $apkPath) "APK install report must include installed packageName."
         } else {
           Add-Check "apk-install" "Target phone APK install report" "pass" (Convert-ToRelativePath $apkPath) "Target phone install is recorded."
         }
@@ -368,6 +402,17 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "gemma-source-commit-match" "Android Gemma source commit matches bundle" $reports "gemmaCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "screen-off-soak-source-commit-match" "Android screen-off soak source commit matches bundle" $reports "screenOffSoakCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "play-store-source-commit-match" "Play Store evidence source commit matches bundle" $reports "playStoreCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    $sourceApplicationId = Get-AndroidSourceApplicationId
+    if ($sourceApplicationId.status -ne "pass") {
+      Add-Check "apk-install-application-id-match" "APK install packageName matches source applicationId" $sourceApplicationId.status $sourceApplicationId.evidence $sourceApplicationId.detail
+      Add-Check "play-store-application-id-match" "Play Store applicationId matches target-phone APK install" $sourceApplicationId.status $sourceApplicationId.evidence $sourceApplicationId.detail
+    } elseif ($null -ne $apk) {
+      Test-ReportFieldEquals "apk-install-application-id-match" "APK install packageName matches source applicationId" $reports "apkInstallReport" "packageName" ([string]$sourceApplicationId.value) "source applicationId"
+      Test-ReportFieldEquals "play-store-application-id-match" "Play Store applicationId matches target-phone APK install" $reports "playStoreCheckReport" "applicationId" ([string]$apk.packageName) "APK install packageName"
+    } else {
+      Add-Check "apk-install-application-id-match" "APK install packageName matches source applicationId" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record a valid target-phone APK install report before checking applicationId consistency."
+      Add-Check "play-store-application-id-match" "Play Store applicationId matches target-phone APK install" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record a valid target-phone APK install report before checking Play applicationId consistency."
+    }
     $playStorePath = Resolve-EvidencePath ([string](Get-Field $reports "playStoreCheckReport"))
     if (-not [string]::IsNullOrWhiteSpace($playStorePath) -and (Test-Path -LiteralPath $playStorePath -PathType Leaf)) {
       try {
@@ -428,6 +473,7 @@ $report = [ordered]@{
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
   sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
+  applicationId = if ($null -ne $apk) { [string]$apk.packageName } else { "" }
   apkSha256 = if ($null -ne $apk) { [string]$apk.apkSha256 } else { "" }
   versionName = if ($null -ne $apk) { [string]$apk.versionName } else { "" }
   versionCode = if ($null -ne $apk) { [string]$apk.versionCode } else { "" }

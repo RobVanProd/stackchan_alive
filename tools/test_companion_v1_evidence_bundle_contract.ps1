@@ -227,6 +227,7 @@ try {
       schema = "stackchan.android-v1-evidence-bundle-check.v1"
       status = "android-v1-evidence-ready"
       sourceCommit = $sourceCommit
+      applicationId = "dev.stackchan.companion"
       apkSha256 = $releaseApkSha
       versionName = "1.0.0"
       versionCode = "1"
@@ -285,7 +286,7 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
     throw "Expected Companion v1 bundle check report to emit sourceCommit and releaseVersion."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -374,6 +375,19 @@ try {
   }
   Assert-CheckStatus -Report $androidMismatchResult.report -Id "android-v1-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 Android bundle commit is rejected"
+
+  $androidApplicationIdMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidApplicationIdMismatchRoot -Recurse -Force
+  $androidApplicationIdMismatchReportPath = Join-Path $androidApplicationIdMismatchRoot $reports.androidV1BundleReport
+  $androidApplicationIdMismatchReport = Get-Content -LiteralPath $androidApplicationIdMismatchReportPath -Raw | ConvertFrom-Json
+  $androidApplicationIdMismatchReport.applicationId = "dev.stackchan.wrong"
+  Write-JsonFile -Path $androidApplicationIdMismatchReportPath -Value $androidApplicationIdMismatchReport
+  $androidApplicationIdMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $androidApplicationIdMismatchRoot
+  if ([int]$androidApplicationIdMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 Android applicationId to fail."
+  }
+  Assert-CheckStatus -Report $androidApplicationIdMismatchResult.report -Id "android-v1-application-id-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 Android applicationId is rejected"
 
   $androidVersionMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidVersionMismatchRoot -Recurse -Force
