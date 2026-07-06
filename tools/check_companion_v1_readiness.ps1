@@ -611,6 +611,12 @@ Test-TextEvidence `
   -Patterns @("stackchan.android-companion-soak.v1", "DEFAULT_DURATION_SECONDS = 600.0", "DEFAULT_INTERVAL_SECONDS = 30.0", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "--duration-seconds", "--interval-seconds", "--max-failures")
 
 Test-TextEvidence `
+  -Id "voice-source-readiness-check" `
+  -Name "Production voice-source readiness check" `
+  -RelativePaths @("tools/check_voice_source_readiness.ps1") `
+  -Patterns @("stackchan.voice-source-readiness.v1", "pending-production-voice-source", "production-voice-source-ready", "licensed_or_owned_production_voice_source", "rvc-candidate-rights-review", "RequireProductionReady")
+
+Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `

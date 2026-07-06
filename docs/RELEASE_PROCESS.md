@@ -74,6 +74,14 @@ To verify the checked-in RVC MP3-only review bundle without regenerating the ful
 
 Published prereleases also upload quick MP3 audition files as standalone GitHub release assets, so reviewers can play them without downloading the full ZIP. This includes the Stackchan Spark MP3s plus browser-friendly RVC review copies for the current lead, thinking, and safety lines. The same RVC review copies are also kept in `media/voice/rvc/` for local repository playback.
 
+To audit the active production voice-source gate without generating package artifacts:
+
+```powershell
+.\tools\check_voice_source_readiness.cmd -Json
+```
+
+This should report `pending-production-voice-source` for prerelease work until a licensed or owned production voice source, consent/license evidence, completed provenance template, and target-speaker evidence are recorded. Use `-RequireProductionReady` only for consumer-promotion checks that must fail while the voice source is still pending.
+
 To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
 
 ```powershell

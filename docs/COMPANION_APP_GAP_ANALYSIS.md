@@ -119,6 +119,12 @@ current v1 companion branch.
   `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT`, validates the payload before resource processing,
   and copies it into app resources as `python-runtime/`. Supplying and shipping the actual
   managed Python binary payload for each desktop platform remains open.
+- Production voice-source promotion remains blocked, and now has a direct source-side
+  checker: `tools/check_voice_source_readiness.ps1` reports
+  `pending-production-voice-source` until a licensed or owned production source, rights or
+  consent evidence, completed provenance template, RVC rights review, and real target-speaker
+  evidence are recorded. This keeps prototype/RVC review samples from being mistaken for a
+  consumer-ready voice source.
 
 ## Next Attack Order
 
