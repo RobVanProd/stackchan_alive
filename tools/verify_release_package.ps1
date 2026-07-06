@@ -1188,14 +1188,14 @@ foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-interna
 }
 
 $androidV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "ANDROID_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "Get-ReviewSourceCommit", "Source commit:", "ANDROID_V1_REVIEW.md", "RequireReady")) {
   if ($androidV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_v1_evidence_bundle.ps1 missing Android v1 evidence bundle logic: $pattern"
   }
 }
 
 $androidV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "mismatched Android v1 speech source commit is rejected", "mismatched Android v1 Play Store source commit is rejected", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "Android v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "mismatched Android v1 speech source commit is rejected", "mismatched Android v1 Play Store source commit is rejected", "mismatched Android v1 review source commit is rejected", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "Android v1 evidence bundle contract tests passed")) {
   if ($androidV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_v1_evidence_bundle_contract.ps1 missing Android v1 evidence bundle contract coverage: $pattern"
   }

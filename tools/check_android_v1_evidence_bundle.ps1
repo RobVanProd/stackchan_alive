@@ -90,6 +90,16 @@ function Test-Commit {
   return $Value -match "^[a-fA-F0-9]{40}$"
 }
 
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Read-JsonOrNull {
   param([string]$Path)
 
@@ -255,6 +265,7 @@ Complete after the target-phone and physical-robot evidence is assembled.
 
 - Reviewer:
 - Review date:
+- Source commit:
 - Overall Android v1 decision: pending
 - Target phone install decision: pending
 - Physical robot pairing decision: pending
@@ -358,6 +369,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       $requiredReviewPatterns = @(
         "Reviewer:",
         "Review date:",
+        "Source commit:",
         "Overall Android v1 decision: pass",
         "Target phone install decision: pass",
         "Physical robot pairing decision: pass",
@@ -369,10 +381,14 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
         "Play internal testing decision: pass"
       )
       $missing = @($requiredReviewPatterns | Where-Object { $review -notmatch [regex]::Escape($_) })
-      if ($missing.Count -eq 0) {
+      $reviewSourceCommit = Get-ReviewSourceCommit $review
+      if ($missing.Count -eq 0 -and (Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -eq [string]$bundle.sourceCommit) {
         Add-Check "android-v1-review" "Android v1 human review" "pass" (Convert-ToRelativePath $reviewPath) "All Android v1 decisions are pass."
+      } elseif ((Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -ne [string]$bundle.sourceCommit) {
+        Add-Check "android-v1-review" "Android v1 human review" "fail" (Convert-ToRelativePath $reviewPath) "Review Source commit $reviewSourceCommit does not match bundle sourceCommit $($bundle.sourceCommit)."
       } else {
-        Add-Check "android-v1-review" "Android v1 human review" "pending" (Convert-ToRelativePath $reviewPath) ("Missing review markers: " + ($missing -join ", "))
+        $missingDetail = if ($missing.Count -eq 0) { "Source commit must be a full 40-character SHA matching bundle sourceCommit." } else { "Missing review markers: " + ($missing -join ", ") }
+        Add-Check "android-v1-review" "Android v1 human review" "pending" (Convert-ToRelativePath $reviewPath) $missingDetail
       }
     }
   }

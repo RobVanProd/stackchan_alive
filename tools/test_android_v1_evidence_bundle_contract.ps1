@@ -156,6 +156,7 @@ try {
 
 - Reviewer: Contract Test
 - Review date: 2026-07-06
+- Source commit: $sourceCommit
 - Overall Android v1 decision: pass
 - Target phone install decision: pass
 - Physical robot pairing decision: pass
@@ -198,6 +199,31 @@ try {
   }
   Assert-CheckStatus -Report $mismatchResult.report -Id "play-store-source-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Android v1 Play Store source commit is rejected"
+
+  $reviewMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $reviewMismatchRoot -Recurse -Force
+  @"
+# Android V1 Review
+
+- Reviewer: Contract Test
+- Review date: 2026-07-06
+- Source commit: $("e" * 40)
+- Overall Android v1 decision: pass
+- Target phone install decision: pass
+- Physical robot pairing decision: pass
+- Push-to-talk/STT decision: pass
+- Settings and handoff decision: pass
+- Wi-Fi provisioning decision: pass
+- Mobile Gemma decision: pass
+- Screen-off bridge soak decision: pass
+- Play internal testing decision: pass
+"@ | Set-Content -Path (Join-Path $reviewMismatchRoot "ANDROID_V1_REVIEW.md") -Encoding UTF8
+  $reviewMismatchResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $reviewMismatchRoot
+  if ([int]$reviewMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Android v1 review source commit to fail."
+  }
+  Assert-CheckStatus -Report $reviewMismatchResult.report -Id "android-v1-review" -Status "fail"
+  Write-Host "[ok] mismatched Android v1 review source commit is rejected"
 
   Write-Host "Android v1 evidence bundle contract tests passed."
 } finally {
