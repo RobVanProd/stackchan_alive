@@ -1181,14 +1181,14 @@ foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high
 }
 
 $androidPlayStoreEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_store_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "playConsoleReleaseName", "testerGroup", "uploadedAtUtc", "play-console-release", "tester-group", "uploaded-at-utc", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
+foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "internal-testing-ready", "releaseAabSha256", "releaseAabSha256 =", "versionName =", "versionCode =", "playSigningEnabled", "playConsoleReleaseName", "testerGroup", "uploadedAtUtc", "play-console-release", "tester-group", "uploaded-at-utc", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
   if ($androidPlayStoreEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_store_evidence.ps1 missing Android Play Store evidence logic: $pattern"
   }
 }
 
 $androidV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "sourceCommit", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "Get-ReviewSourceCommit", "Source commit:", "ANDROID_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "sourceCommit", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "play-store-version-name-match", "play-store-version-code-match", "Get-ReviewSourceCommit", "Source commit:", "ANDROID_V1_REVIEW.md", "RequireReady")) {
   if ($androidV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_v1_evidence_bundle.ps1 missing Android v1 evidence bundle logic: $pattern"
   }

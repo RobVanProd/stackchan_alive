@@ -77,7 +77,9 @@ function Write-StatusReport {
     [string]$Path,
     [string]$Schema,
     [string]$Status,
-    [string]$SourceCommit = ""
+    [string]$SourceCommit = "",
+    [string]$VersionName = "",
+    [string]$VersionCode = ""
   )
 
   $report = [ordered]@{
@@ -90,6 +92,12 @@ function Write-StatusReport {
   }
   if (-not [string]::IsNullOrWhiteSpace($SourceCommit)) {
     $report.sourceCommit = $SourceCommit
+  }
+  if (-not [string]::IsNullOrWhiteSpace($VersionName)) {
+    $report.versionName = $VersionName
+  }
+  if (-not [string]::IsNullOrWhiteSpace($VersionCode)) {
+    $report.versionCode = $VersionCode
   }
   Write-JsonFile -Path $Path -Value $report
 }
@@ -150,7 +158,7 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit -VersionName "1.0.0" -VersionCode "1"
   @"
 # Android V1 Review
 
@@ -178,7 +186,7 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit) {
     throw "Expected Android v1 bundle check report sourceCommit to match fixture commit."
   }
-  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
+  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "play-store-version-name-match", "play-store-version-code-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android v1 evidence bundle is accepted"
@@ -212,6 +220,17 @@ try {
   }
   Assert-CheckStatus -Report $mismatchResult.report -Id "play-store-source-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Android v1 Play Store source commit is rejected"
+
+  $playVersionMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $playVersionMismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $playVersionMismatchRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit -VersionName "9.9.9" -VersionCode "99"
+  $playVersionMismatchResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $playVersionMismatchRoot
+  if ([int]$playVersionMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Android v1 Play Store version identity to fail."
+  }
+  Assert-CheckStatus -Report $playVersionMismatchResult.report -Id "play-store-version-name-match" -Status "fail"
+  Assert-CheckStatus -Report $playVersionMismatchResult.report -Id "play-store-version-code-match" -Status "fail"
+  Write-Host "[ok] mismatched Android v1 Play Store version identity is rejected"
 
   $reviewMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $reviewMismatchRoot -Recurse -Force

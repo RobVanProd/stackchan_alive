@@ -250,6 +250,9 @@ Required ready statuses:
 - ``stackchan.android-play-store-evidence-check.v1``: ``play-internal-testing-ready``
 - Every Android hardware evidence report and the Play Store evidence-check JSON must match
   this bundle's ``sourceCommit``.
+- The Play Store evidence-check ``versionName`` and ``versionCode`` must match the
+  target-phone APK install report, so internal-testing evidence cannot come from a
+  different uploaded app version.
 
 Run:
 
@@ -320,6 +323,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     }
 
     $reports = Get-Field $bundle "reports"
+    $apk = $null
     $apkPath = Resolve-EvidencePath ([string](Get-Field $reports "apkInstallReport"))
     if ([string]::IsNullOrWhiteSpace([string](Get-Field $reports "apkInstallReport"))) {
       Add-Check "apk-install" "Target phone APK install report" "pending" "" "Record reports.apkInstallReport."
@@ -361,6 +365,13 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "gemma-source-commit-match" "Android Gemma source commit matches bundle" $reports "gemmaCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "screen-off-soak-source-commit-match" "Android screen-off soak source commit matches bundle" $reports "screenOffSoakCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "play-store-source-commit-match" "Play Store evidence source commit matches bundle" $reports "playStoreCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    if ($null -ne $apk) {
+      Test-ReportFieldEquals "play-store-version-name-match" "Play Store evidence versionName matches target-phone APK install" $reports "playStoreCheckReport" "versionName" ([string]$apk.versionName) "APK install versionName"
+      Test-ReportFieldEquals "play-store-version-code-match" "Play Store evidence versionCode matches target-phone APK install" $reports "playStoreCheckReport" "versionCode" ([string]$apk.versionCode) "APK install versionCode"
+    } else {
+      Add-Check "play-store-version-name-match" "Play Store evidence versionName matches target-phone APK install" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record a valid target-phone APK install report before checking Play versionName consistency."
+      Add-Check "play-store-version-code-match" "Play Store evidence versionCode matches target-phone APK install" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record a valid target-phone APK install report before checking Play versionCode consistency."
+    }
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
     if ([string]::IsNullOrWhiteSpace([string]$bundle.reviewPath) -or -not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {

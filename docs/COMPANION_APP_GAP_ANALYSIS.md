@@ -120,9 +120,11 @@ current v1 companion branch.
   persona/diagnostics support, and the Play evidence checker requires those screenshot IDs
   before marking internal-testing evidence ready. The checker also requires the packet to
   be explicitly marked `internal-testing-ready` with the Play Console release name, tester
-  group, and UTC upload timestamp for the exact uploaded build. Those answers, hosted
-  privacy URL, release identity fields, and screenshots still must be reviewed against the
-  exact uploaded build before submission.
+  group, and UTC upload timestamp for the exact uploaded build. The Android v1 aggregate
+  gate now rejects Play evidence whose uploaded `versionName` or `versionCode` does not
+  match the target-phone APK install report. Those answers, hosted privacy URL, release
+  identity fields, and screenshots still must be reviewed against the exact uploaded build
+  before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.
@@ -148,9 +150,10 @@ current v1 companion branch.
   a human `ANDROID_V1_REVIEW.md` before reporting `android-v1-evidence-ready`. The individual
   Android hardware evidence checkers now require a full reviewed source commit and the aggregate
   gate rejects any source readiness, hardware, target-phone APK install, or Play Store
-  evidence report generated for a different source commit than the Android v1 bundle. The
-  Android v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
-  can reject stale Android bundle evidence.
+  evidence report generated for a different source commit than the Android v1 bundle. It
+  also rejects Play Store evidence whose uploaded version identity differs from the
+  target-phone APK install report. The Android v1 aggregate checker emits that same
+  `sourceCommit` so the final Companion v1 gate can reject stale Android bundle evidence.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle

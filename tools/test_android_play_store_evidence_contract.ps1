@@ -187,6 +187,9 @@ pairing evidence tied to the final internal testing build.
   if ($completeResult.report.status -ne "play-internal-testing-ready") {
     throw "Expected complete packet status play-internal-testing-ready, got $($completeResult.report.status)."
   }
+  if ($completeResult.report.versionName -ne "1.0.0" -or [string]$completeResult.report.versionCode -ne "1" -or $completeResult.report.releaseAabSha256 -ne ("a" * 64)) {
+    throw "Expected complete Play Store evidence check report to emit versionName, versionCode, and releaseAabSha256."
+  }
   foreach ($id in @("schema", "evidence-status", "app-version", "source-commit", "release-aab-sha", "play-signing", "privacy-policy-url", "upload-status", "internal-install", "play-console-release", "tester-group", "uploaded-at-utc", "screenshots", "data-safety", "policy-review")) {
     Assert-CheckStatus -Report $completeResult.report -Id $id -Status "pass"
   }

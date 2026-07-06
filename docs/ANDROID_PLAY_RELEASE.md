@@ -101,6 +101,8 @@ tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-st
 The generated Play evidence-check JSON includes the reviewed `sourceCommit`. The final
 Android v1 bundle rejects Play evidence if that commit does not match the installed APK,
 hardware evidence checker outputs, and `ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
+It also rejects Play evidence whose uploaded `versionName` or `versionCode` does not
+match the target-phone APK install report.
 The Play evidence checker also rejects packets that are not explicitly marked
 `internal-testing-ready`, do not name the uploaded Play Console release/tester group, or
 do not include a UTC upload timestamp.
