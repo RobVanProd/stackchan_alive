@@ -151,6 +151,8 @@ try {
 
 - Reviewer: Contract Test
 - Review date: 2026-07-06
+- Source commit: $sourceCommit
+- Release version: $releaseVersion
 - Overall companion v1 decision: pass
 - Source/readiness decision: pass
 - Release package decision: pass
@@ -183,6 +185,58 @@ try {
   }
   Assert-CheckStatus -Report $mismatchResult.report -Id "github-actions-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 report commit is rejected"
+
+  $reviewCommitMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $reviewCommitMismatchRoot -Recurse -Force
+  @"
+# Companion V1 Review
+
+- Reviewer: Contract Test
+- Review date: 2026-07-06
+- Source commit: $("e" * 40)
+- Release version: $releaseVersion
+- Overall companion v1 decision: pass
+- Source/readiness decision: pass
+- Release package decision: pass
+- GitHub Actions decision: pass
+- Android v1 decision: pass
+- Desktop v1 decision: pass
+- Physical robot evidence decision: pass
+- Production voice-source decision: pass
+- Play distribution decision: pass
+"@ | Set-Content -Path (Join-Path $reviewCommitMismatchRoot "COMPANION_V1_REVIEW.md") -Encoding UTF8
+  $reviewCommitMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $reviewCommitMismatchRoot
+  if ([int]$reviewCommitMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 review source commit to fail."
+  }
+  Assert-CheckStatus -Report $reviewCommitMismatchResult.report -Id "companion-v1-review" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 review source commit is rejected"
+
+  $reviewVersionMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $reviewVersionMismatchRoot -Recurse -Force
+  @"
+# Companion V1 Review
+
+- Reviewer: Contract Test
+- Review date: 2026-07-06
+- Source commit: $sourceCommit
+- Release version: v9.9.9
+- Overall companion v1 decision: pass
+- Source/readiness decision: pass
+- Release package decision: pass
+- GitHub Actions decision: pass
+- Android v1 decision: pass
+- Desktop v1 decision: pass
+- Physical robot evidence decision: pass
+- Production voice-source decision: pass
+- Play distribution decision: pass
+"@ | Set-Content -Path (Join-Path $reviewVersionMismatchRoot "COMPANION_V1_REVIEW.md") -Encoding UTF8
+  $reviewVersionMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $reviewVersionMismatchRoot
+  if ([int]$reviewVersionMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 review release version to fail."
+  }
+  Assert-CheckStatus -Report $reviewVersionMismatchResult.report -Id "companion-v1-review" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 review release version is rejected"
 
   Write-Host "Companion v1 evidence bundle contract tests passed."
 } finally {

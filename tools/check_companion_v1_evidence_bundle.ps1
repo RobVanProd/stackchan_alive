@@ -103,6 +103,26 @@ function Test-Commit {
   return $Value -match "^[a-fA-F0-9]{40}$"
 }
 
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
+function Get-ReviewReleaseVersion {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Release version:\s*(\S+)\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Test-ReportStatus {
   param(
     [string]$Id,
@@ -251,6 +271,8 @@ evidence are assembled for the same source commit and release package.
 
 - Reviewer:
 - Review date:
+- Source commit:
+- Release version:
 - Overall companion v1 decision: pending
 - Source/readiness decision: pending
 - Release package decision: pending
@@ -355,6 +377,8 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       $requiredReviewPatterns = @(
         "Reviewer:",
         "Review date:",
+        "Source commit:",
+        "Release version:",
         "Overall companion v1 decision: pass",
         "Source/readiness decision: pass",
         "Release package decision: pass",
@@ -366,10 +390,17 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
         "Play distribution decision: pass"
       )
       $missing = @($requiredReviewPatterns | Where-Object { $review -notmatch [regex]::Escape($_) })
-      if ($missing.Count -eq 0) {
+      $reviewSourceCommit = Get-ReviewSourceCommit $review
+      $reviewReleaseVersion = Get-ReviewReleaseVersion $review
+      if ($missing.Count -eq 0 -and (Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -eq [string]$bundle.sourceCommit -and $reviewReleaseVersion -eq $releaseVersion) {
         Add-Check "companion-v1-review" "Companion v1 human review" "pass" (Convert-ToRelativePath $reviewPath) "All companion v1 decisions are pass."
+      } elseif ((Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -ne [string]$bundle.sourceCommit) {
+        Add-Check "companion-v1-review" "Companion v1 human review" "fail" (Convert-ToRelativePath $reviewPath) "Review Source commit $reviewSourceCommit does not match bundle sourceCommit $($bundle.sourceCommit)."
+      } elseif (-not [string]::IsNullOrWhiteSpace($reviewReleaseVersion) -and $reviewReleaseVersion -ne $releaseVersion) {
+        Add-Check "companion-v1-review" "Companion v1 human review" "fail" (Convert-ToRelativePath $reviewPath) "Review Release version $reviewReleaseVersion does not match bundle releaseVersion $releaseVersion."
       } else {
-        Add-Check "companion-v1-review" "Companion v1 human review" "pending" (Convert-ToRelativePath $reviewPath) ("Missing review markers: " + ($missing -join ", "))
+        $missingDetail = if ($missing.Count -eq 0) { "Source commit must be a full 40-character SHA matching bundle sourceCommit and Release version must match bundle releaseVersion." } else { "Missing review markers: " + ($missing -join ", ") }
+        Add-Check "companion-v1-review" "Companion v1 human review" "pending" (Convert-ToRelativePath $reviewPath) $missingDetail
       }
     }
   }

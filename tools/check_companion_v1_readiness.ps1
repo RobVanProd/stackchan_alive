@@ -576,13 +576,13 @@ Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `
   -Name "Companion v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_companion_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "COMPANION_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-contract" `
   -Name "Companion v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_companion_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "mismatched Companion v1 report commit is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-payload-prep-tool" `
