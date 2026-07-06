@@ -245,6 +245,8 @@ same release candidate, assemble the final Companion v1 packet:
 ```
 
 It must report `companion-v1-evidence-ready` before v1 is called fully vetted.
+If any release, CI, or rollout report was generated for a different commit or version, the
+aggregate gate fails and the affected report must be regenerated for the final candidate.
 
 Import the display photo or video into the packet:
 

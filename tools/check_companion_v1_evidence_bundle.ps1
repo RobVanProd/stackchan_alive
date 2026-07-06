@@ -144,6 +144,49 @@ function Test-ReportStatus {
   Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report is $ExpectedStatus."
 }
 
+function Test-ReportFieldEquals {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [object]$Reports,
+    [string]$Field,
+    [string]$ReportProperty,
+    [string]$ExpectedValue,
+    [string]$ExpectedLabel
+  )
+
+  $relativePath = [string](Get-Field $Reports $Field)
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($ExpectedValue) -or $ExpectedValue -match "<|TBD|pending") {
+    Add-Check $Id $Name "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record $ExpectedLabel before checking report consistency."
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check $Id $Name "pending" "" "Record reports.$Field in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check $Id $Name "pending" (Convert-ToRelativePath $path) "Missing report file."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $actual = [string](Get-Field $report $ReportProperty)
+  if ([string]::IsNullOrWhiteSpace($actual)) {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report is missing $ReportProperty."
+  } elseif ($actual -eq $ExpectedValue) {
+    Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report $ReportProperty matches $ExpectedLabel."
+  } else {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Expected $ReportProperty=$ExpectedValue, got $actual."
+  }
+}
+
 function Write-CompanionV1EvidenceTemplate {
   New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "reports") | Out-Null
@@ -249,6 +292,13 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       Add-Check "source-commit" "Source commit" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record a full 40-character source commit."
     }
 
+    $releaseVersion = [string]$bundle.releaseVersion
+    if ([string]::IsNullOrWhiteSpace($releaseVersion) -or $releaseVersion -match "<|TBD|pending") {
+      Add-Check "release-version" "Release version" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record the final release version or tag."
+    } else {
+      Add-Check "release-version" "Release version" "pass" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Release version is recorded."
+    }
+
     $releasePackage = Get-Field $bundle "releasePackage"
     $releasePackagePath = [string](Get-Field $releasePackage "path")
     $releasePackageSha = [string](Get-Field $releasePackage "sha256")
@@ -290,6 +340,12 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "android-v1-bundle" "Android v1 evidence bundle report" $reports "androidV1BundleReport" "stackchan.android-v1-evidence-bundle-check.v1" "android-v1-evidence-ready"
     Test-ReportStatus "desktop-v1-bundle" "Desktop v1 evidence bundle report" $reports "desktopV1BundleReport" "stackchan.desktop-v1-evidence-bundle-check.v1" "desktop-v1-evidence-ready"
     Test-ReportStatus "voice-source-ready" "Production voice-source readiness report" $reports "voiceSourceReadinessReport" "stackchan.voice-source-readiness.v1" "production-voice-source-ready"
+    Test-ReportFieldEquals "release-evidence-commit-match" "Companion release evidence commit matches bundle" $reports "companionReleaseEvidenceReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "github-actions-commit-match" "GitHub Actions commit matches bundle" $reports "githubActionsStatusReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "rollout-status-commit-match" "Rollout status commit matches bundle" $reports "rolloutStatusReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "release-evidence-version-match" "Companion release evidence version matches bundle" $reports "companionReleaseEvidenceReport" "version" $releaseVersion "releaseVersion"
+    Test-ReportFieldEquals "github-actions-version-match" "GitHub Actions version matches bundle" $reports "githubActionsStatusReport" "version" $releaseVersion "releaseVersion"
+    Test-ReportFieldEquals "rollout-status-version-match" "Rollout status version matches bundle" $reports "rolloutStatusReport" "version" $releaseVersion "releaseVersion"
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
     if ([string]::IsNullOrWhiteSpace([string]$bundle.reviewPath) -or -not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {
