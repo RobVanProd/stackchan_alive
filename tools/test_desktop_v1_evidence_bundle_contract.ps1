@@ -190,6 +190,9 @@ try {
   if ($readyResult.report.status -ne "desktop-v1-evidence-ready") {
     throw "Expected desktop-v1-evidence-ready, got $($readyResult.report.status)."
   }
+  if ($readyResult.report.sourceCommit -ne $sourceCommit) {
+    throw "Expected Desktop v1 bundle check report sourceCommit to match fixture commit."
+  }
   foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }

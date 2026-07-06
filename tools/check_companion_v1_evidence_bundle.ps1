@@ -251,8 +251,8 @@ Required ready statuses:
 - ``stackchan.companion-release-evidence.v1``: ``complete``
 - ``stackchan.github-actions-status.v1``: ``success``
 - ``stackchan.rollout-status.v1``: ``consumer-promotion-ready``
-- ``stackchan.android-v1-evidence-bundle-check.v1``: ``android-v1-evidence-ready``
-- ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready``
+- ``stackchan.android-v1-evidence-bundle-check.v1``: ``android-v1-evidence-ready`` with matching ``sourceCommit``
+- ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
 - Final release ZIP hash, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
 
@@ -365,6 +365,8 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "release-evidence-commit-match" "Companion release evidence commit matches bundle" $reports "companionReleaseEvidenceReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "github-actions-commit-match" "GitHub Actions commit matches bundle" $reports "githubActionsStatusReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "rollout-status-commit-match" "Rollout status commit matches bundle" $reports "rolloutStatusReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "android-v1-commit-match" "Android v1 bundle report matches bundle commit" $reports "androidV1BundleReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "desktop-v1-commit-match" "Desktop v1 bundle report matches bundle commit" $reports "desktopV1BundleReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "release-evidence-version-match" "Companion release evidence version matches bundle" $reports "companionReleaseEvidenceReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "github-actions-version-match" "GitHub Actions version matches bundle" $reports "githubActionsStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "rollout-status-version-match" "Rollout status version matches bundle" $reports "rolloutStatusReport" "version" $releaseVersion "releaseVersion"

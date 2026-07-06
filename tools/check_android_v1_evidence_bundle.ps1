@@ -404,6 +404,7 @@ $report = [ordered]@{
   status = $status
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
+  sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count

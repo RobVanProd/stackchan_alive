@@ -387,7 +387,8 @@ Companion v1 aggregate packet:
 The checker must report `companion-v1-evidence-ready` before calling the companion v1
 release fully vetted. It also verifies that release evidence, GitHub Actions status, and
 rollout status all match the bundle source commit and release version, and that production
-voice-source readiness was generated for the same source commit.
+voice-source readiness plus the Android/Desktop v1 bundle checks were generated for the same
+source commit.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 

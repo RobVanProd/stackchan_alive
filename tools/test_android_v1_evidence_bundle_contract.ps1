@@ -175,6 +175,9 @@ try {
   if ($readyResult.report.status -ne "android-v1-evidence-ready") {
     throw "Expected android-v1-evidence-ready, got $($readyResult.report.status)."
   }
+  if ($readyResult.report.sourceCommit -ne $sourceCommit) {
+    throw "Expected Android v1 bundle check report sourceCommit to match fixture commit."
+  }
   foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }

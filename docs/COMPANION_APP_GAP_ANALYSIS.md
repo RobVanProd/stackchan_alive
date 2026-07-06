@@ -145,14 +145,17 @@ current v1 companion branch.
   a human `ANDROID_V1_REVIEW.md` before reporting `android-v1-evidence-ready`. The individual
   Android hardware evidence checkers now require a full reviewed source commit and the aggregate
   gate rejects any hardware, target-phone APK install, or Play Store evidence report generated
-  for a different source commit than the Android v1 bundle.
+  for a different source commit than the Android v1 bundle. The Android v1 aggregate checker
+  emits that same `sourceCommit` so the final Companion v1 gate can reject stale Android
+  bundle evidence.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle
   readiness, desktop v1 bundle readiness, production voice-source readiness, release ZIP
   hash, verified hardware evidence status, and a human `COMPANION_V1_REVIEW.md` before
   reporting `companion-v1-evidence-ready`. The gate also rejects mismatched commit or
-  version evidence across release, CI, rollout, and production voice-source reports.
+  version evidence across release, CI, rollout, Android v1, desktop v1, and production
+  voice-source reports.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -180,8 +183,9 @@ current v1 companion branch.
   as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human sign-off from a different build
   cannot close the aggregate gate. The production voice-source readiness report must also
   record that same source commit, so stale voice approval evidence cannot close the desktop
-  bundle. Supplying and shipping the actual managed Python binary payload for each desktop
-  platform remains open.
+  bundle. The Desktop v1 aggregate checker emits that same `sourceCommit` so the final
+  Companion v1 gate can reject stale desktop bundle evidence. Supplying and shipping the
+  actual managed Python binary payload for each desktop platform remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision

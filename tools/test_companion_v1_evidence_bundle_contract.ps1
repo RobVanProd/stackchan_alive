@@ -143,8 +143,24 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion
   Write-StatusReport -Path (Join-Path $readyRoot $reports.githubActionsStatusReport) -Schema "stackchan.github-actions-status.v1" -Status "success" -Commit $sourceCommit -Version $releaseVersion
   Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Schema "stackchan.android-v1-evidence-bundle-check.v1" -Status "android-v1-evidence-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.desktopV1BundleReport) -Schema "stackchan.desktop-v1-evidence-bundle-check.v1" -Status "desktop-v1-evidence-ready"
+  Write-JsonFile -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Value ([ordered]@{
+      schema = "stackchan.android-v1-evidence-bundle-check.v1"
+      status = "android-v1-evidence-ready"
+      sourceCommit = $sourceCommit
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
+  Write-JsonFile -Path (Join-Path $readyRoot $reports.desktopV1BundleReport) -Value ([ordered]@{
+      schema = "stackchan.desktop-v1-evidence-bundle-check.v1"
+      status = "desktop-v1-evidence-ready"
+      sourceCommit = $sourceCommit
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
   Write-JsonFile -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
       schema = "stackchan.voice-source-readiness.v1"
       status = "production-voice-source-ready"
@@ -179,7 +195,7 @@ try {
   if ($readyResult.report.status -ne "companion-v1-evidence-ready") {
     throw "Expected companion-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -193,6 +209,42 @@ try {
   }
   Assert-CheckStatus -Report $mismatchResult.report -Id "github-actions-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 report commit is rejected"
+
+  $androidMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidMismatchRoot -Recurse -Force
+  Write-JsonFile -Path (Join-Path $androidMismatchRoot $reports.androidV1BundleReport) -Value ([ordered]@{
+      schema = "stackchan.android-v1-evidence-bundle-check.v1"
+      status = "android-v1-evidence-ready"
+      sourceCommit = ("e" * 40)
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
+  $androidMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $androidMismatchRoot
+  if ([int]$androidMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 Android bundle commit to fail."
+  }
+  Assert-CheckStatus -Report $androidMismatchResult.report -Id "android-v1-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 Android bundle commit is rejected"
+
+  $desktopMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $desktopMismatchRoot -Recurse -Force
+  Write-JsonFile -Path (Join-Path $desktopMismatchRoot $reports.desktopV1BundleReport) -Value ([ordered]@{
+      schema = "stackchan.desktop-v1-evidence-bundle-check.v1"
+      status = "desktop-v1-evidence-ready"
+      sourceCommit = ("e" * 40)
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
+  $desktopMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $desktopMismatchRoot
+  if ([int]$desktopMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 Desktop bundle commit to fail."
+  }
+  Assert-CheckStatus -Report $desktopMismatchResult.report -Id "desktop-v1-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 Desktop bundle commit is rejected"
 
   $voiceMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $voiceMismatchRoot -Recurse -Force
