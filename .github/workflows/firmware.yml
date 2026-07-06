@@ -152,6 +152,10 @@ jobs:
         shell: pwsh
         run: ./tools/check_android_play_release_readiness.ps1 -Json
 
+      - name: Run Android Play Store evidence contract
+        shell: pwsh
+        run: ./tools/test_android_play_store_evidence_contract.ps1
+
       - name: Upload companion C0 spike report
         uses: actions/upload-artifact@v7
         with:

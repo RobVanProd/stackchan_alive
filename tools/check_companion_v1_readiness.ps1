@@ -729,6 +729,12 @@ Test-TextEvidence `
   -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextEvidence `
+  -Id "android-play-store-evidence-contract" `
+  -Name "Android Play Store evidence contract test" `
+  -RelativePaths @("tools/test_android_play_store_evidence_contract.ps1", "provenance/tools/test_android_play_store_evidence_contract.ps1") `
+  -Patterns @("placeholder Play Store template is rejected", "complete Play Store internal testing packet is accepted", "pending-play-store-evidence", "play-internal-testing-ready", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
+
+Test-TextEvidence `
   -Id "android-screen-off-soak-helper" `
   -Name "Android screen-off soak helper" `
   -RelativePaths @("bridge/android_companion_soak.py", "tools/run_android_companion_soak.ps1") `

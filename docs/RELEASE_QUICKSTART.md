@@ -106,6 +106,17 @@ Check the mobile LiteRT-LM runner contract:
 This writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the wrapper
 contract without claiming real model speed.
 
+Check the Play Store evidence verifier contract before relying on it for the internal
+testing upload:
+
+```powershell
+.\tools\test_android_play_store_evidence_contract.cmd
+```
+
+This proves the placeholder Play evidence template is rejected and a complete internal
+testing packet with hosted privacy URL, Play signing, install status, and all four required
+screenshots reports `play-internal-testing-ready`.
+
 After the Android phone has captured a push-to-talk turn against a connected robot, run the
 speech evidence gate:
 
