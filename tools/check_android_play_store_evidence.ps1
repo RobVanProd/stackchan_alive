@@ -66,6 +66,26 @@ function Test-HttpsUrl {
   return $Value -match "^https://[^<>\s]+$"
 }
 
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^\s*-?\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
+function Get-ReviewAppVersion {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^\s*-?\s*App version:\s*(\S+)\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Test-ImagePath {
   param([string]$Path)
 
@@ -208,6 +228,9 @@ uploaded build.
 - Retention/deletion notes: Forget/Remove clear phone-side robot and trusted endpoint records; uninstall removes app-private stores; robot-side unpair remains firmware-managed.
 - Reviewer:
 - Review date:
+- Source commit:
+- App version:
+- Decision: pending
 "@ | Set-Content -Path (Join-Path $EvidenceRoot "DATA_SAFETY_REVIEW.md") -Encoding UTF8
 
   @"
@@ -225,6 +248,9 @@ uploaded build.
 - Target audience: Not directed to children; requires paired Stack-chan hardware for connected flows.
 - Reviewer:
 - Review date:
+- Source commit:
+- App version:
+- Decision: pending
 "@ | Set-Content -Path (Join-Path $EvidenceRoot "POLICY_REVIEW.md") -Encoding UTF8
 
   @"
@@ -358,10 +384,31 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
     @{ id = "policy-review"; name = "Policy review"; path = [string]$evidence.policyReviewPath }
   )) {
     $reviewPath = if ([System.IO.Path]::IsPathRooted($review.path)) { $review.path } else { Join-Path $EvidenceRoot $review.path }
-    if ((Test-Path -LiteralPath $reviewPath -PathType Leaf) -and (Get-Item -LiteralPath $reviewPath).Length -gt 256) {
-      Add-Check $review.id $review.name "pass" (Convert-ToRelativePath $reviewPath) "Review file is present."
+    if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {
+      Add-Check $review.id $review.name "fail" (Convert-ToRelativePath $reviewPath) "Review file is missing."
+      continue
+    }
+
+    $reviewText = Get-Content -LiteralPath $reviewPath -Raw
+    $reviewIssues = @()
+    foreach ($pattern in @("Reviewer:", "Review date:", "Source commit:", "App version:", "Decision: pass")) {
+      if ($reviewText -notmatch [regex]::Escape($pattern)) {
+        $reviewIssues += "Missing $pattern"
+      }
+    }
+    $reviewSourceCommit = Get-ReviewSourceCommit $reviewText
+    $reviewAppVersion = Get-ReviewAppVersion $reviewText
+    if ($reviewSourceCommit -ne [string]$evidence.sourceCommit) {
+      $reviewIssues += "Review Source commit does not match PLAY_STORE_EVIDENCE.json sourceCommit."
+    }
+    if ($reviewAppVersion -ne [string]$evidence.versionName) {
+      $reviewIssues += "Review App version does not match PLAY_STORE_EVIDENCE.json versionName."
+    }
+
+    if ($reviewIssues.Count -eq 0) {
+      Add-Check $review.id $review.name "pass" (Convert-ToRelativePath $reviewPath) "Review decision is pass for this source commit and app version."
     } else {
-      Add-Check $review.id $review.name "fail" (Convert-ToRelativePath $reviewPath) "Review file is missing or still empty."
+      Add-Check $review.id $review.name "fail" (Convert-ToRelativePath $reviewPath) ($reviewIssues -join "; ")
     }
   }
 }

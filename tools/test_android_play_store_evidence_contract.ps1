@@ -157,6 +157,8 @@ try {
 
 Reviewer: Contract Test
 Review date: 2026-07-06
+Source commit: $("b" * 40)
+App version: 1.0.0
 Decision: pass
 
 The uploaded internal testing build uses local-only robot networking, does not store raw
@@ -167,6 +169,8 @@ microphone audio, redacts diagnostics exports, and keeps saved robot data on dev
 
 Reviewer: Contract Test
 Review date: 2026-07-06
+Source commit: $("b" * 40)
+App version: 1.0.0
 Decision: pass
 
 Foreground service, notification, local-network discovery, battery optimization, and
@@ -221,6 +225,57 @@ pairing evidence tied to the final internal testing build.
   }
   Assert-CheckStatus -Report $screenshotVersionMismatchResult.report -Id "screenshots" -Status "fail"
   Write-Host "[ok] mismatched Play screenshot app version is rejected"
+
+  $reviewCommitMismatchRoot = New-TempEvidenceRoot
+  New-Item -ItemType Directory -Force -Path (Join-Path $reviewCommitMismatchRoot "screenshots") | Out-Null
+  foreach ($name in @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")) {
+    Write-TestImage -Path (Join-Path $reviewCommitMismatchRoot "screenshots/$name.png")
+  }
+  Write-JsonFile -Path (Join-Path $reviewCommitMismatchRoot "PLAY_STORE_EVIDENCE.json") -Value (New-CompletePlayEvidence)
+  @"
+# Data Safety Review
+
+Reviewer: Contract Test
+Review date: 2026-07-06
+Source commit: $("c" * 40)
+App version: 1.0.0
+Decision: pass
+
+This deliberately mismatches the source commit to prove the review cannot be reused
+from a different uploaded build.
+"@ | Set-Content -Path (Join-Path $reviewCommitMismatchRoot "DATA_SAFETY_REVIEW.md") -Encoding UTF8
+  Copy-Item -Path (Join-Path $completeRoot "POLICY_REVIEW.md") -Destination (Join-Path $reviewCommitMismatchRoot "POLICY_REVIEW.md")
+  $reviewCommitMismatchResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $reviewCommitMismatchRoot
+  if ([int]$reviewCommitMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Play data-safety review source commit to fail."
+  }
+  Assert-CheckStatus -Report $reviewCommitMismatchResult.report -Id "data-safety" -Status "fail"
+  Write-Host "[ok] mismatched Play data-safety review source commit is rejected"
+
+  $reviewDecisionMissingRoot = New-TempEvidenceRoot
+  New-Item -ItemType Directory -Force -Path (Join-Path $reviewDecisionMissingRoot "screenshots") | Out-Null
+  foreach ($name in @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")) {
+    Write-TestImage -Path (Join-Path $reviewDecisionMissingRoot "screenshots/$name.png")
+  }
+  Write-JsonFile -Path (Join-Path $reviewDecisionMissingRoot "PLAY_STORE_EVIDENCE.json") -Value (New-CompletePlayEvidence)
+  Copy-Item -Path (Join-Path $completeRoot "DATA_SAFETY_REVIEW.md") -Destination (Join-Path $reviewDecisionMissingRoot "DATA_SAFETY_REVIEW.md")
+  @"
+# Policy Review
+
+Reviewer: Contract Test
+Review date: 2026-07-06
+Source commit: $("b" * 40)
+App version: 1.0.0
+Decision: pending
+
+This deliberately withholds policy approval for the uploaded build.
+"@ | Set-Content -Path (Join-Path $reviewDecisionMissingRoot "POLICY_REVIEW.md") -Encoding UTF8
+  $reviewDecisionMissingResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $reviewDecisionMissingRoot
+  if ([int]$reviewDecisionMissingResult.exitCode -eq 0) {
+    throw "Expected non-pass Play policy review decision to fail."
+  }
+  Assert-CheckStatus -Report $reviewDecisionMissingResult.report -Id "policy-review" -Status "fail"
+  Write-Host "[ok] non-pass Play policy review decision is rejected"
 
   Write-Host "Android Play Store evidence contract tests passed."
 } finally {

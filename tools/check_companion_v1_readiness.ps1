@@ -756,13 +756,13 @@ Test-TextEvidence `
   -Id "android-play-store-evidence-check" `
   -Name "Android Play Store post-upload evidence check" `
   -RelativePaths @("tools/check_android_play_store_evidence.ps1", "provenance/tools/check_android_play_store_evidence.ps1") `
-  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
+  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextEvidence `
   -Id "android-play-store-evidence-contract" `
   -Name "Android Play Store evidence contract test" `
   -RelativePaths @("tools/test_android_play_store_evidence_contract.ps1", "provenance/tools/test_android_play_store_evidence_contract.ps1") `
-  -Patterns @("placeholder Play Store template is rejected", "complete Play Store internal testing packet is accepted", "mismatched Play screenshot source commit is rejected", "mismatched Play screenshot app version is rejected", "pending-play-store-evidence", "play-internal-testing-ready", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
+  -Patterns @("placeholder Play Store template is rejected", "complete Play Store internal testing packet is accepted", "mismatched Play screenshot source commit is rejected", "mismatched Play screenshot app version is rejected", "mismatched Play data-safety review source commit is rejected", "non-pass Play policy review decision is rejected", "pending-play-store-evidence", "play-internal-testing-ready", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
 
 Test-TextEvidence `
   -Id "android-v1-evidence-bundle-check" `
