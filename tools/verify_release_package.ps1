@@ -309,6 +309,8 @@ $requiredFiles = @(
   "tools/check_android_play_release_readiness.ps1",
   "tools/check_android_play_store_evidence.cmd",
   "tools/check_android_play_store_evidence.ps1",
+  "tools/check_android_v1_evidence_bundle.cmd",
+  "tools/check_android_v1_evidence_bundle.ps1",
   "tools/check_android_diagnostics_export_evidence.cmd",
   "tools/check_android_diagnostics_export_evidence.ps1",
   "tools/check_android_speech_evidence.cmd",
@@ -383,6 +385,10 @@ $requiredFiles = @(
   "tools/test_strict_android_dashboard_evidence_contract.ps1",
   "tools/test_strict_android_probe_evidence_contract.cmd",
   "tools/test_strict_android_probe_evidence_contract.ps1",
+  "tools/test_android_play_store_evidence_contract.cmd",
+  "tools/test_android_play_store_evidence_contract.ps1",
+  "tools/test_android_v1_evidence_bundle_contract.cmd",
+  "tools/test_android_v1_evidence_bundle_contract.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -1167,6 +1173,20 @@ foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-interna
   }
 }
 
+$androidV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_v1_evidence_bundle.ps1") -Raw
+foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "ANDROID_V1_REVIEW.md", "RequireReady")) {
+  if ($androidV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_v1_evidence_bundle.ps1 missing Android v1 evidence bundle logic: $pattern"
+  }
+}
+
+$androidV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_v1_evidence_bundle_contract.ps1") -Raw
+foreach ($pattern in @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "Android v1 evidence bundle contract tests passed")) {
+  if ($androidV1BundleContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_v1_evidence_bundle_contract.ps1 missing Android v1 evidence bundle contract coverage: $pattern"
+  }
+}
+
 $androidDiagnosticsEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_diagnostics_export_evidence.ps1") -Raw
 foreach ($pattern in @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "Support decision: pass", "pending-android-diagnostics-export-evidence")) {
   if ($androidDiagnosticsEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
@@ -1210,7 +1230,7 @@ foreach ($pattern in @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REV
 }
 
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-speech-evidence-check", "android-controls-evidence-check", "android-pairing-evidence-check", "android-wifi-evidence-check", "android-gemma-evidence-check", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-v1-evidence-bundle-check", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-speech-evidence-check", "android-controls-evidence-check", "android-pairing-evidence-check", "android-wifi-evidence-check", "android-gemma-evidence-check", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }

@@ -735,6 +735,18 @@ Test-TextEvidence `
   -Patterns @("placeholder Play Store template is rejected", "complete Play Store internal testing packet is accepted", "pending-play-store-evidence", "play-internal-testing-ready", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
 
 Test-TextEvidence `
+  -Id "android-v1-evidence-bundle-check" `
+  -Name "Android v1 aggregate evidence bundle check" `
+  -RelativePaths @("tools/check_android_v1_evidence_bundle.ps1", "provenance/tools/check_android_v1_evidence_bundle.ps1") `
+  -Patterns @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "ANDROID_V1_REVIEW.md", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-v1-evidence-bundle-contract" `
+  -Name "Android v1 aggregate evidence bundle contract test" `
+  -RelativePaths @("tools/test_android_v1_evidence_bundle_contract.ps1", "provenance/tools/test_android_v1_evidence_bundle_contract.ps1") `
+  -Patterns @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1")
+
+Test-TextEvidence `
   -Id "android-screen-off-soak-helper" `
   -Name "Android screen-off soak helper" `
   -RelativePaths @("bridge/android_companion_soak.py", "tools/run_android_companion_soak.ps1") `

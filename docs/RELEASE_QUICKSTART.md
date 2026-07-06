@@ -117,6 +117,23 @@ This proves the placeholder Play evidence template is rejected and a complete in
 testing packet with hosted privacy URL, Play signing, install status, and all four required
 screenshots reports `play-internal-testing-ready`.
 
+After the individual Android phone and robot gates are collected, create the aggregate
+Android v1 evidence bundle:
+
+```powershell
+.\tools\check_android_v1_evidence_bundle.cmd -EvidenceRoot output\android-v1-evidence\latest -WriteTemplate
+```
+
+Copy the individual checker JSON outputs into `reports\`, fill
+`ANDROID_V1_EVIDENCE_BUNDLE.json` and `ANDROID_V1_REVIEW.md`, then run:
+
+```powershell
+.\tools\check_android_v1_evidence_bundle.cmd -EvidenceRoot output\android-v1-evidence\latest -RequireReady -Json
+```
+
+It must report `android-v1-evidence-ready` before treating the Android companion as
+release-ready.
+
 After the Android phone has captured a push-to-talk turn against a connected robot, run the
 speech evidence gate:
 
