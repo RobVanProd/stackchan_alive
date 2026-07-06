@@ -327,6 +327,87 @@ function Test-AndroidReleaseAabHashMatchesReleaseEvidence {
   }
 }
 
+function Test-DesktopArtifactHashesMatchReleaseEvidence {
+  param([object]$Reports)
+
+  $desktopRelativePath = [string](Get-Field $Reports "desktopV1BundleReport")
+  $desktopPath = Resolve-EvidencePath $desktopRelativePath
+  if ([string]::IsNullOrWhiteSpace($desktopRelativePath)) {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pending" "" "Record reports.desktopV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $desktopPath -PathType Leaf)) {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pending" (Convert-ToRelativePath $desktopPath) "Missing Desktop v1 bundle report."
+    return
+  }
+
+  $releaseRelativePath = [string](Get-Field $Reports "companionReleaseEvidenceReport")
+  $releasePath = Resolve-EvidencePath $releaseRelativePath
+  if ([string]::IsNullOrWhiteSpace($releaseRelativePath)) {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pending" "" "Record reports.companionReleaseEvidenceReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $releasePath -PathType Leaf)) {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pending" (Convert-ToRelativePath $releasePath) "Missing Companion release evidence report."
+    return
+  }
+
+  try {
+    $desktopReport = Read-JsonOrNull $desktopPath
+    $releaseReport = Read-JsonOrNull $releasePath
+  } catch {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "fail" "reports" "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $required = @(
+    [ordered]@{ property = "windowsMsiSha256"; extension = ".msi"; label = "Windows MSI" },
+    [ordered]@{ property = "macosDmgSha256"; extension = ".dmg"; label = "macOS DMG" },
+    [ordered]@{ property = "linuxDebSha256"; extension = ".deb"; label = "Linux DEB" }
+  )
+  $releaseHashesByExtension = @{}
+  foreach ($group in @($releaseReport.artifacts)) {
+    foreach ($entry in @($group.entries)) {
+      $entryPath = [string](Get-Field $entry "path")
+      $entryName = [string](Get-Field $entry "name")
+      $entrySha = ([string](Get-Field $entry "sha256")).ToLowerInvariant()
+      if (-not (Test-Hash $entrySha)) {
+        continue
+      }
+      foreach ($item in $required) {
+        if ($entryPath.EndsWith($item.extension, [System.StringComparison]::OrdinalIgnoreCase) -or $entryName.EndsWith($item.extension, [System.StringComparison]::OrdinalIgnoreCase)) {
+          if (-not $releaseHashesByExtension.ContainsKey($item.extension)) {
+            $releaseHashesByExtension[$item.extension] = @()
+          }
+          $releaseHashesByExtension[$item.extension] += $entrySha
+        }
+      }
+    }
+  }
+
+  $issues = @()
+  foreach ($item in $required) {
+    $expectedHash = ([string](Get-Field $desktopReport $item.property)).ToLowerInvariant()
+    if (-not (Test-Hash $expectedHash)) {
+      $issues += "Desktop v1 bundle report is missing a valid $($item.property)."
+      continue
+    }
+    if (-not $releaseHashesByExtension.ContainsKey($item.extension) -or @($releaseHashesByExtension[$item.extension]).Count -eq 0) {
+      $issues += "Companion release evidence does not list a $($item.label) artifact hash."
+      continue
+    }
+    if (@($releaseHashesByExtension[$item.extension]) -notcontains $expectedHash) {
+      $issues += "Release evidence does not include $($item.label) SHA-256 $expectedHash."
+    }
+  }
+
+  if ($issues.Count -eq 0) {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pass" (Convert-ToRelativePath $releasePath) "Desktop package hashes match release evidence artifacts."
+  } else {
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "fail" (Convert-ToRelativePath $releasePath) ($issues -join " ")
+  }
+}
+
 function Convert-ToComparablePath {
   param([string]$Path)
 
@@ -440,6 +521,7 @@ Required ready statuses:
 - ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
 - Android ``versionName`` must match the release version, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
+- Desktop MSI, DMG, and DEB hashes must match release evidence package artifact hashes.
 - Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
 
 Run:
@@ -570,6 +652,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-AndroidVersionNameMatchesRelease $reports $releaseVersion
     Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
+    Test-DesktopArtifactHashesMatchReleaseEvidence $reports
     Test-RolloutHardwareEvidence $reports ([string]$bundle.hardwareEvidenceRoot) ([string]$bundle.sourceCommit)
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)

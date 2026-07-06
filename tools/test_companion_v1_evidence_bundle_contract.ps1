@@ -81,7 +81,10 @@ function Write-StatusReport {
     [string]$SourceCommit = "",
     [string]$Version = "",
     [string]$EvidenceRoot = "",
-    [string]$ReleaseAabSha256 = ""
+    [string]$ReleaseAabSha256 = "",
+    [string]$WindowsMsiSha256 = "",
+    [string]$MacosDmgSha256 = "",
+    [string]$LinuxDebSha256 = ""
   )
 
   $report = [ordered]@{
@@ -109,9 +112,9 @@ function Write-StatusReport {
       }
     }
   }
+  $artifactGroups = @()
   if (-not [string]::IsNullOrWhiteSpace($ReleaseAabSha256)) {
-    $report.artifacts = @(
-      [ordered]@{
+    $artifactGroups += [ordered]@{
         kind = "android-apk"
         root = "companion/app-android/build/outputs"
         entries = @(
@@ -123,7 +126,20 @@ function Write-StatusReport {
           }
         )
       }
-    )
+  }
+  if (-not [string]::IsNullOrWhiteSpace($WindowsMsiSha256) -or -not [string]::IsNullOrWhiteSpace($MacosDmgSha256) -or -not [string]::IsNullOrWhiteSpace($LinuxDebSha256)) {
+    $artifactGroups += [ordered]@{
+      kind = "desktop-package"
+      root = "output/companion/desktop"
+      entries = @(
+        [ordered]@{ name = "stackchan-companion.msi"; path = "output/companion/desktop/stackchan-companion.msi"; bytes = 123456; sha256 = $WindowsMsiSha256 },
+        [ordered]@{ name = "stackchan-companion.dmg"; path = "output/companion/desktop/stackchan-companion.dmg"; bytes = 123456; sha256 = $MacosDmgSha256 },
+        [ordered]@{ name = "stackchan-companion.deb"; path = "output/companion/desktop/stackchan-companion.deb"; bytes = 123456; sha256 = $LinuxDebSha256 }
+      )
+    }
+  }
+  if ($artifactGroups.Count -gt 0) {
+    $report.artifacts = @($artifactGroups)
   }
   Write-JsonFile -Path $Path -Value $report
 }
@@ -145,6 +161,9 @@ try {
   $sourceCommit = "d" * 40
   $releaseVersion = "v1.0.0"
   $releaseAabSha = "a" * 64
+  $windowsMsiSha = "b" * 64
+  $macosDmgSha = "c" * 64
+  $linuxDebSha = "d" * 64
   $releaseZipPath = Join-Path $readyRoot "artifacts/stackchan_alive_v1.0.0.zip"
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $releaseZipPath) | Out-Null
   Set-Content -Path $releaseZipPath -Value "contract release zip" -Encoding UTF8
@@ -177,7 +196,7 @@ try {
       reviewPath = "COMPANION_V1_REVIEW.md"
     })
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion -ReleaseAabSha256 $releaseAabSha
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion -ReleaseAabSha256 $releaseAabSha -WindowsMsiSha256 $windowsMsiSha -MacosDmgSha256 $macosDmgSha -LinuxDebSha256 $linuxDebSha
   Write-StatusReport -Path (Join-Path $readyRoot $reports.githubActionsStatusReport) -Schema "stackchan.github-actions-status.v1" -Status "success" -Commit $sourceCommit -Version $releaseVersion
   Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot
   Write-JsonFile -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Value ([ordered]@{
@@ -196,6 +215,9 @@ try {
       schema = "stackchan.desktop-v1-evidence-bundle-check.v1"
       status = "desktop-v1-evidence-ready"
       sourceCommit = $sourceCommit
+      windowsMsiSha256 = $windowsMsiSha
+      macosDmgSha256 = $macosDmgSha
+      linuxDebSha256 = $linuxDebSha
       passed = 1
       failed = 0
       pending = 0
@@ -238,7 +260,7 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
     throw "Expected Companion v1 bundle check report to emit sourceCommit and releaseVersion."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-release-aab-hash-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -339,6 +361,19 @@ try {
   }
   Assert-CheckStatus -Report $androidAabHashMismatchResult.report -Id "android-v1-release-aab-hash-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 Android release AAB hash is rejected"
+
+  $desktopHashMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $desktopHashMismatchRoot -Recurse -Force
+  $desktopHashMismatchReportPath = Join-Path $desktopHashMismatchRoot $reports.desktopV1BundleReport
+  $desktopHashMismatchReport = Get-Content -LiteralPath $desktopHashMismatchReportPath -Raw | ConvertFrom-Json
+  $desktopHashMismatchReport.windowsMsiSha256 = "e" * 64
+  Write-JsonFile -Path $desktopHashMismatchReportPath -Value $desktopHashMismatchReport
+  $desktopHashMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $desktopHashMismatchRoot
+  if ([int]$desktopHashMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 Desktop package hash to fail."
+  }
+  Assert-CheckStatus -Report $desktopHashMismatchResult.report -Id "desktop-v1-artifact-hashes-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 Desktop package hash is rejected"
 
   $desktopMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $desktopMismatchRoot -Recurse -Force

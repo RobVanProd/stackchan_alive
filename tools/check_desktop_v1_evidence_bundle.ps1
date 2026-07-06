@@ -346,6 +346,9 @@ if ($WriteTemplate) {
   Write-DesktopV1EvidenceTemplate
 }
 
+$bundle = $null
+$artifacts = $null
+
 $bundlePath = Join-Path $EvidenceRoot "DESKTOP_V1_EVIDENCE_BUNDLE.json"
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
   Add-Check "bundle-json" "Desktop v1 evidence bundle JSON" "pending" (Convert-ToRelativePath $bundlePath) "Run with -WriteTemplate, then fill the bundle after desktop and PC Brain validation."
@@ -452,6 +455,9 @@ $report = [ordered]@{
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
   sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
+  windowsMsiSha256 = if ($null -ne $artifacts) { [string](Get-Field (Get-Field $artifacts "windowsMsi") "sha256") } else { "" }
+  macosDmgSha256 = if ($null -ne $artifacts) { [string](Get-Field (Get-Field $artifacts "macosDmg") "sha256") } else { "" }
+  linuxDebSha256 = if ($null -ne $artifacts) { [string](Get-Field (Get-Field $artifacts "linuxDeb") "sha256") } else { "" }
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count

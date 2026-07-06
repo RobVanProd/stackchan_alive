@@ -198,6 +198,9 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit) {
     throw "Expected Desktop v1 bundle check report sourceCommit to match fixture commit."
   }
+  if ($readyResult.report.windowsMsiSha256 -ne ("a" * 64) -or $readyResult.report.macosDmgSha256 -ne ("b" * 64) -or $readyResult.report.linuxDebSha256 -ne ("c" * 64)) {
+    throw "Expected Desktop v1 bundle check report to emit desktop package artifact hashes."
+  }
   foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
