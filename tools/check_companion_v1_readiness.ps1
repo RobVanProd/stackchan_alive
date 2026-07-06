@@ -53,6 +53,20 @@ function Join-RootPath {
   return Join-Path $Root $RelativePath
 }
 
+function Get-GitText {
+  param([string[]]$Arguments)
+
+  try {
+    $output = & git @Arguments 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      return (($output | Out-String).Trim())
+    }
+  } catch {
+    return ""
+  }
+  return ""
+}
+
 function Find-FirstExistingPath {
   param(
     [string[]]$RelativePaths,
@@ -576,7 +590,7 @@ Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `
   -Name "Companion v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_companion_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "android-v1-commit-match", "desktop-v1-commit-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "android-v1-commit-match", "desktop-v1-commit-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Get-Sha256Text", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-contract" `
@@ -850,6 +864,7 @@ $status = if ($failedChecks.Count -gt 0) { "not-ready" } else { "source-ready-pe
 $report = [ordered]@{
   schema = "stackchan.companion-v1-readiness.v1"
   status = $status
+  sourceCommit = Get-GitText @("rev-parse", "HEAD")
   root = [string]$Root
   passed = $passedChecks.Count
   failed = $failedChecks.Count

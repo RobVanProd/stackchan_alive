@@ -388,8 +388,10 @@ Companion v1 aggregate packet:
 ```
 
 The checker must report `companion-v1-evidence-ready` before calling the companion v1
-release fully vetted. It also verifies that release evidence, GitHub Actions status, and
-rollout status all match the bundle source commit and release version, and that production
+release fully vetted. Attach the final release ZIP inside the evidence packet; the checker
+computes its SHA-256 and rejects a bundle hash that does not match the attached artifact. It
+also verifies that source readiness, release evidence, GitHub Actions status, and rollout
+status all match the bundle source commit and release version, and that production
 voice-source readiness plus the Android/Desktop v1 bundle checks were generated for the same
 source commit.
 

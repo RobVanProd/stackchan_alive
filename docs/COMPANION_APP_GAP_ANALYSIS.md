@@ -151,11 +151,11 @@ current v1 companion branch.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle
-  readiness, desktop v1 bundle readiness, production voice-source readiness, release ZIP
-  hash, verified hardware evidence status, and a human `COMPANION_V1_REVIEW.md` before
-  reporting `companion-v1-evidence-ready`. The gate also rejects mismatched commit or
-  version evidence across release, CI, rollout, Android v1, desktop v1, and production
-  voice-source reports.
+  readiness, desktop v1 bundle readiness, production voice-source readiness, an attached
+  release ZIP with a matching SHA-256, verified hardware evidence status, and a human
+  `COMPANION_V1_REVIEW.md` before reporting `companion-v1-evidence-ready`. The gate also
+  rejects mismatched commit or version evidence across source readiness, release, CI,
+  rollout, Android v1, desktop v1, and production voice-source reports.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the

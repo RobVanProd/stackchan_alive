@@ -98,6 +98,15 @@ function Test-Hash {
   return $Value -match "^[a-fA-F0-9]{64}$"
 }
 
+function Get-Sha256Text {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return ""
+  }
+  return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
 function Test-Commit {
   param([string]$Value)
   return $Value -match "^[a-fA-F0-9]{40}$"
@@ -254,7 +263,7 @@ Required ready statuses:
 - ``stackchan.android-v1-evidence-bundle-check.v1``: ``android-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
-- Final release ZIP hash, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
+- Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
 
 Run:
 
@@ -330,10 +339,20 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       Add-Check "release-package" "Release package hash" "fail" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Expected a release ZIP path, got $releasePackagePath."
     } elseif ([string]::IsNullOrWhiteSpace($releasePackageSha) -or $releasePackageSha -match "<|TBD|pending") {
       Add-Check "release-package" "Release package hash" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record the final release ZIP SHA-256."
-    } elseif (Test-Hash $releasePackageSha) {
-      Add-Check "release-package" "Release package hash" "pass" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Release package ZIP hash is recorded."
-    } else {
+    } elseif (-not (Test-Hash $releasePackageSha)) {
       Add-Check "release-package" "Release package hash" "fail" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record a valid 64-character SHA-256 for the release ZIP."
+    } else {
+      $resolvedReleasePackagePath = Resolve-EvidencePath $releasePackagePath
+      if (-not (Test-Path -LiteralPath $resolvedReleasePackagePath -PathType Leaf)) {
+        Add-Check "release-package" "Release package hash" "pending" (Convert-ToRelativePath $resolvedReleasePackagePath) "Attach the final release ZIP under the evidence bundle so its SHA-256 can be verified."
+      } else {
+        $actualReleasePackageSha = Get-Sha256Text $resolvedReleasePackagePath
+        if ($actualReleasePackageSha -eq $releasePackageSha.ToLowerInvariant()) {
+          Add-Check "release-package" "Release package hash" "pass" (Convert-ToRelativePath $resolvedReleasePackagePath) "Release package ZIP SHA-256 matches the attached artifact."
+        } else {
+          Add-Check "release-package" "Release package hash" "fail" (Convert-ToRelativePath $resolvedReleasePackagePath) "Expected SHA-256 $releasePackageSha, got $actualReleasePackageSha."
+        }
+      }
     }
 
     if ([string]$bundle.hardwareEvidenceStatus -in @("verified", "pass", "passed") -and [string]$bundle.hardwareEvidenceRoot -notmatch "<|pending|TBD") {
@@ -362,6 +381,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "android-v1-bundle" "Android v1 evidence bundle report" $reports "androidV1BundleReport" "stackchan.android-v1-evidence-bundle-check.v1" "android-v1-evidence-ready"
     Test-ReportStatus "desktop-v1-bundle" "Desktop v1 evidence bundle report" $reports "desktopV1BundleReport" "stackchan.desktop-v1-evidence-bundle-check.v1" "desktop-v1-evidence-ready"
     Test-ReportStatus "voice-source-ready" "Production voice-source readiness report" $reports "voiceSourceReadinessReport" "stackchan.voice-source-readiness.v1" "production-voice-source-ready"
+    Test-ReportFieldEquals "companion-readiness-commit-match" "Companion source readiness report matches bundle commit" $reports "companionReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "release-evidence-commit-match" "Companion release evidence commit matches bundle" $reports "companionReleaseEvidenceReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "github-actions-commit-match" "GitHub Actions commit matches bundle" $reports "githubActionsStatusReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "rollout-status-commit-match" "Rollout status commit matches bundle" $reports "rolloutStatusReport" "commit" ([string]$bundle.sourceCommit) "sourceCommit"
