@@ -246,7 +246,7 @@ Test-TextPatterns `
   -Id "play-store-evidence-checker" `
   -Name "Play Store evidence checker" `
   -RelativePath "tools/check_android_play_store_evidence.ps1" `
-  -Patterns @("stackchan.android-play-store-evidence.v1", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
+  -Patterns @("stackchan.android-play-store-evidence.v1", "applicationId", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextPatterns `
   -Id "play-release-doc" `

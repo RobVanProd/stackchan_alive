@@ -1174,7 +1174,7 @@ foreach ($pattern in @("stackchan.android-toolchain-check.v1", "JAVA_HOME", "jav
 }
 
 $androidPlayReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_release_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "play-listing-full-description", "Gemma-4-E2B", "raw microphone audio is not stored")) {
+foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-listing-full-description", "Gemma-4-E2B", "raw microphone audio is not stored")) {
   if ($androidPlayReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_release_readiness.ps1 missing Android Play release readiness logic: $pattern"
   }

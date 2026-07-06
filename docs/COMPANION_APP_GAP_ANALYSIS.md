@@ -121,10 +121,10 @@ current v1 companion branch.
   before marking internal-testing evidence ready. The checker also requires the packet to
   be explicitly marked `internal-testing-ready` with the Play Console release name, tester
   group, and UTC upload timestamp for the exact uploaded build. The Android v1 aggregate
-  gate now rejects Play evidence whose uploaded `versionName` or `versionCode` does not
-  match the target-phone APK install report. Those answers, hosted privacy URL, release
-  identity fields, and screenshots still must be reviewed against the exact uploaded build
-  before submission.
+  gate now rejects Play evidence whose uploaded `applicationId`, `versionName`, or
+  `versionCode` does not match the target-phone APK install report. Those answers, hosted
+  privacy URL, release identity fields, and screenshots still must be reviewed against the
+  exact uploaded build before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.
@@ -166,8 +166,8 @@ current v1 companion branch.
   rollout, Android v1, desktop v1, and production voice-source reports. It also rejects an
   Android app `versionName` that does not match the final release version, rejects an Android
   `applicationId` or `versionCode` that does not match the source Gradle release configuration,
-  rejects an Android
-  target-phone `apkSha256` that is not present as a release APK in companion release evidence,
+  rejects an Android target-phone `apkSha256` that is not present as a release APK in
+  companion release evidence,
   rejects an Android Play `releaseAabSha256` that is not present in companion release evidence,
   rejects desktop MSI/DMG/DEB hashes that are not present in companion release evidence,
   rejects release evidence that lacks hashed package core files from the extracted release

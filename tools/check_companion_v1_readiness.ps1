@@ -764,7 +764,7 @@ Test-TextEvidence `
   -Id "android-play-readiness-check" `
   -Name "Android Play source readiness check" `
   -RelativePaths @("tools/check_android_play_release_readiness.ps1", "provenance/tools/check_android_play_release_readiness.ps1") `
-  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "play-policy-declarations", "play-privacy-policy-page")
+  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-policy-declarations", "play-privacy-policy-page")
 
 Test-TextEvidence `
   -Id "android-play-store-evidence-check" `
