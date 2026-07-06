@@ -99,6 +99,21 @@ function Convert-ToIntOrNull {
   }
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-ExactFieldCheck {
   param(
     [string]$Id,
@@ -183,6 +198,7 @@ if ($WriteTemplate) {
 $jsonEvidence = Convert-ToRelativePath $SoakJsonPath
 $markdownEvidence = Convert-ToRelativePath $SoakMarkdownPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $SoakJsonPath -PathType Leaf)) {
   Add-Check "soak-json" "Android screen-off soak JSON" "pending" $jsonEvidence "Run tools/run_android_companion_soak.cmd while the Android phone is the active bridge host."
@@ -278,18 +294,20 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "soak-review" "Android screen-off soak human review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the screen-off soak review after the real-device run."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $supportOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
   $screenOffOk = $reviewText -match "(?im)^-\s*Screen-off decision:\s*pass\s*$"
   $heartbeatOk = $reviewText -match "(?im)^-\s*Heartbeat continuity decision:\s*pass\s*$"
   $wakeLockOk = $reviewText -match "(?im)^-\s*Wake-lock release decision:\s*pass\s*$"
   $foregroundOk = $reviewText -match "(?im)^-\s*Foreground-service decision:\s*pass\s*$"
   $reopenOk = $reviewText -match "(?im)^-\s*Reopen identity decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $supportOk -and $screenOffOk -and $heartbeatOk -and $wakeLockOk -and $foregroundOk -and $reopenOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $supportOk -and $screenOffOk -and $heartbeatOk -and $wakeLockOk -and $foregroundOk -and $reopenOk) {
     Add-Check "soak-review" "Android screen-off soak human review packet" "pass" $reviewEvidence "Reviewer, date, support, screen-off, heartbeat, wake-lock, foreground-service, and reopen identity decisions are pass."
   } else {
-    Add-Check "soak-review" "Android screen-off soak human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Support decision: pass, Screen-off decision: pass, Heartbeat continuity decision: pass, Wake-lock release decision: pass, Foreground-service decision: pass, and Reopen identity decision: pass."
+    Add-Check "soak-review" "Android screen-off soak human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Screen-off decision: pass, Heartbeat continuity decision: pass, Wake-lock release decision: pass, Foreground-service decision: pass, and Reopen identity decision: pass."
   }
 }
 
@@ -301,6 +319,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-screen-off-soak-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   soakJsonPath = Convert-ToRelativePath $SoakJsonPath
   soakMarkdownPath = Convert-ToRelativePath $SoakMarkdownPath

@@ -696,37 +696,37 @@ Test-TextEvidence `
   -Id "android-diagnostics-export-evidence-check" `
   -Name "Android diagnostics export evidence check" `
   -RelativePaths @("tools/check_android_diagnostics_export_evidence.ps1", "provenance/tools/check_android_diagnostics_export_evidence.ps1") `
-  -Patterns @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "pending-android-diagnostics-export-evidence", "Support decision: pass", "RequireReady")
+  -Patterns @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "sourceCommit", "Get-ReviewSourceCommit", "pending-android-diagnostics-export-evidence", "Support decision: pass", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-speech-evidence-check" `
   -Name "Android speech push-to-talk evidence check" `
   -RelativePaths @("tools/check_android_speech_evidence.ps1", "provenance/tools/check_android_speech_evidence.ps1") `
-  -Patterns @("stackchan.android-speech-evidence.v1", "ANDROID_SPEECH_REVIEW.md", "android_speech_logcat.txt", "robot_speech_serial.log", "stackchan_speech_evidence", "event=final_transcript", "event=submit_result", "accepted=1", "seq_present=1", "message_type=app_text_turn", "transcript_redacted=1", "raw_audio_retention=none", "response_start", "audio_stream_start", "audio_stream_end", "response_end", "Speech recognizer decision: pass", "Transcript submission decision: pass", "Robot response-frame decision: pass", "pending-android-speech-evidence", "android-speech-ready", "RequireReady")
+  -Patterns @("stackchan.android-speech-evidence.v1", "ANDROID_SPEECH_REVIEW.md", "android_speech_logcat.txt", "robot_speech_serial.log", "stackchan_speech_evidence", "event=final_transcript", "event=submit_result", "accepted=1", "seq_present=1", "message_type=app_text_turn", "transcript_redacted=1", "raw_audio_retention=none", "response_start", "audio_stream_start", "audio_stream_end", "response_end", "sourceCommit", "Get-ReviewSourceCommit", "Speech recognizer decision: pass", "Transcript submission decision: pass", "Robot response-frame decision: pass", "pending-android-speech-evidence", "android-speech-ready", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-controls-evidence-check" `
   -Name "Android protected controls evidence check" `
   -RelativePaths @("tools/check_android_controls_evidence.ps1", "provenance/tools/check_android_controls_evidence.ps1") `
-  -Patterns @("stackchan.android-controls-evidence.v1", "ANDROID_CONTROLS_REVIEW.md", "robot_controls_serial.log", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "robot_hello_required", "Settings write decision: pass", "Claim brain decision: pass", "Release brain decision: pass", "Robot hello gate decision: pass", "pending-android-controls-evidence", "android-controls-ready", "RequireReady")
+  -Patterns @("stackchan.android-controls-evidence.v1", "ANDROID_CONTROLS_REVIEW.md", "robot_controls_serial.log", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "robot_hello_required", "sourceCommit", "Get-ReviewSourceCommit", "Settings write decision: pass", "Claim brain decision: pass", "Release brain decision: pass", "Robot hello gate decision: pass", "pending-android-controls-evidence", "android-controls-ready", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-pairing-evidence-check" `
   -Name "Android QR short-code pairing evidence check" `
   -RelativePaths @("tools/check_android_pairing_evidence.ps1", "provenance/tools/check_android_pairing_evidence.ps1") `
-  -Patterns @("stackchan.android-pairing-evidence.v1", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "pairing_code_present", "stackchan://pair", "pairing_code_mismatch", "bridge_url_applied", "endpoint_hello_result", "trusted_endpoints_result", "Setup media decision: pass", "Wrong-code rejection decision: pass", "QR ticket/manual code decision: pass", "Trusted endpoint decision: pass", "Password privacy decision: pass", "pending-android-pairing-evidence", "android-pairing-ready", "RequireReady")
+  -Patterns @("stackchan.android-pairing-evidence.v1", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "pairing_code_present", "stackchan://pair", "pairing_code_mismatch", "bridge_url_applied", "endpoint_hello_result", "trusted_endpoints_result", "sourceCommit", "Get-ReviewSourceCommit", "Setup media decision: pass", "Wrong-code rejection decision: pass", "QR ticket/manual code decision: pass", "Trusted endpoint decision: pass", "Password privacy decision: pass", "pending-android-pairing-evidence", "android-pairing-ready", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-wifi-evidence-check" `
   -Name "Android Wi-Fi provisioning evidence check" `
   -RelativePaths @("tools/check_android_wifi_evidence.ps1", "provenance/tools/check_android_wifi_evidence.ps1") `
-  -Patterns @("stackchan.android-wifi-evidence.v1", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "wifi_provisioning_command_template", "password_redacted", "[wifi]", "persisted=1", "store_has_record=1", "enabled=1", "ssid_set=1", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "wifi clear", "store_has_record=0", "Power-cycle reload decision: pass", "Clear command decision: pass", "pending-android-wifi-evidence", "android-wifi-ready", "RequireReady")
+  -Patterns @("stackchan.android-wifi-evidence.v1", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "wifi_provisioning_command_template", "password_redacted", "[wifi]", "persisted=1", "store_has_record=1", "enabled=1", "ssid_set=1", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "wifi clear", "store_has_record=0", "sourceCommit", "Get-ReviewSourceCommit", "Power-cycle reload decision: pass", "Clear command decision: pass", "pending-android-wifi-evidence", "android-wifi-ready", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-gemma-evidence-check" `
   -Name "Android Gemma real-device evidence check" `
   -RelativePaths @("tools/check_android_gemma_evidence.ps1", "provenance/tools/check_android_gemma_evidence.ps1") `
-  -Patterns @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready", "RequireReady")
+  -Patterns @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "sourceCommit", "Get-ReviewSourceCommit", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-play-release-prep" `
@@ -768,13 +768,13 @@ Test-TextEvidence `
   -Id "android-v1-evidence-bundle-check" `
   -Name "Android v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_android_v1_evidence_bundle.ps1", "provenance/tools/check_android_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "apk-install-source-commit-match", "play-store-source-commit-match", "ANDROID_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "ANDROID_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-v1-evidence-bundle-contract" `
   -Name "Android v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_android_v1_evidence_bundle_contract.ps1", "provenance/tools/test_android_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "mismatched Android v1 Play Store source commit is rejected", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1")
+  -Patterns @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "mismatched Android v1 speech source commit is rejected", "mismatched Android v1 Play Store source commit is rejected", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1")
 
 Test-TextEvidence `
   -Id "android-screen-off-soak-helper" `
@@ -786,7 +786,7 @@ Test-TextEvidence `
   -Id "android-screen-off-soak-evidence-check" `
   -Name "Android screen-off soak evidence check" `
   -RelativePaths @("tools/check_android_screen_off_soak_evidence.ps1") `
-  -Patterns @("stackchan.android-screen-off-soak-evidence.v1", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "stackchan.android-companion-soak.v1", "requested_duration_seconds", "success_rate", "endpoint_kind", "android-screen-off-soak-ready", "pending-android-screen-off-soak-evidence", "Screen-off decision: pass", "Heartbeat continuity decision: pass", "Wake-lock release decision: pass", "Foreground-service decision: pass", "RequireReady")
+  -Patterns @("stackchan.android-screen-off-soak-evidence.v1", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "stackchan.android-companion-soak.v1", "requested_duration_seconds", "success_rate", "endpoint_kind", "sourceCommit", "Get-ReviewSourceCommit", "android-screen-off-soak-ready", "pending-android-screen-off-soak-evidence", "Screen-off decision: pass", "Heartbeat continuity decision: pass", "Wake-lock release decision: pass", "Foreground-service decision: pass", "RequireReady")
 
 Test-TextEvidence `
   -Id "android-screen-off-soak-evidence-docs" `

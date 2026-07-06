@@ -114,6 +114,21 @@ function Convert-ToInt64OrNull {
   }
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-ExactFieldCheck {
   param(
     [string]$Id,
@@ -200,6 +215,7 @@ if ($WriteTemplate) {
 $exportEvidence = Convert-ToRelativePath $DiagnosticsExportPath
 $logcatEvidence = Convert-ToRelativePath $LogcatPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after downloading, loading, ejecting, reloading, and using Gemma on a real phone."
@@ -267,16 +283,18 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "gemma-review" "Android Gemma human review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the review after the real-device Gemma run."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $supportOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
   $turnOk = $reviewText -match "(?im)^-\s*LiteRT turn decision:\s*pass\s*$"
   $ejectOk = $reviewText -match "(?im)^-\s*Eject/reload decision:\s*pass\s*$"
   $audioOk = $reviewText -match "(?im)^-\s*Robot audio/TTS decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $supportOk -and $turnOk -and $ejectOk -and $audioOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $supportOk -and $turnOk -and $ejectOk -and $audioOk) {
     Add-Check "gemma-review" "Android Gemma human review packet" "pass" $reviewEvidence "Reviewer, date, support decision, LiteRT turn, eject/reload, and robot audio/TTS decisions are pass."
   } else {
-    Add-Check "gemma-review" "Android Gemma human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Support decision: pass, LiteRT turn decision: pass, Eject/reload decision: pass, and Robot audio/TTS decision: pass."
+    Add-Check "gemma-review" "Android Gemma human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, LiteRT turn decision: pass, Eject/reload decision: pass, and Robot audio/TTS decision: pass."
   }
 }
 
@@ -288,6 +306,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-gemma-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   logcatPath = Convert-ToRelativePath $LogcatPath

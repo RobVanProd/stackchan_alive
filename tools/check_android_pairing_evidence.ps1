@@ -98,6 +98,21 @@ function Test-StringPresent {
   return -not [string]::IsNullOrWhiteSpace([string]$Value)
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-ExactFieldCheck {
   param(
     [string]$Id,
@@ -190,6 +205,7 @@ $exportEvidence = Convert-ToRelativePath $DiagnosticsExportPath
 $robotEvidence = Convert-ToRelativePath $RobotLogPath
 $mediaEvidence = Convert-ToRelativePath $PairingMediaPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after pairing a physical robot from Android."
@@ -283,18 +299,20 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "pairing-review" "Android pairing human review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the pairing review after the real-device run."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $supportOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
   $mediaOk = $reviewText -match "(?im)^-\s*Setup media decision:\s*pass\s*$"
   $wrongCodeOk = $reviewText -match "(?im)^-\s*Wrong-code rejection decision:\s*pass\s*$"
   $ticketOk = $reviewText -match "(?im)^-\s*QR ticket/manual code decision:\s*pass\s*$"
   $trustedOk = $reviewText -match "(?im)^-\s*Trusted endpoint decision:\s*pass\s*$"
   $privacyOk = $reviewText -match "(?im)^-\s*Password privacy decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $supportOk -and $mediaOk -and $wrongCodeOk -and $ticketOk -and $trustedOk -and $privacyOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $supportOk -and $mediaOk -and $wrongCodeOk -and $ticketOk -and $trustedOk -and $privacyOk) {
     Add-Check "pairing-review" "Android pairing human review packet" "pass" $reviewEvidence "Reviewer, date, support, setup media, wrong-code, QR/manual, trusted endpoint, and privacy decisions are pass."
   } else {
-    Add-Check "pairing-review" "Android pairing human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Support decision: pass, Setup media decision: pass, Wrong-code rejection decision: pass, QR ticket/manual code decision: pass, Trusted endpoint decision: pass, and Password privacy decision: pass."
+    Add-Check "pairing-review" "Android pairing human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Setup media decision: pass, Wrong-code rejection decision: pass, QR ticket/manual code decision: pass, Trusted endpoint decision: pass, and Password privacy decision: pass."
   }
 }
 
@@ -306,6 +324,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-pairing-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   robotLogPath = Convert-ToRelativePath $RobotLogPath

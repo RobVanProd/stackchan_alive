@@ -102,6 +102,21 @@ function Convert-ToIntOrZero {
   }
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-ExactFieldCheck {
   param(
     [string]$Id,
@@ -187,6 +202,7 @@ $exportEvidence = Convert-ToRelativePath $DiagnosticsExportPath
 $logcatEvidence = Convert-ToRelativePath $LogcatPath
 $robotEvidence = Convert-ToRelativePath $RobotLogPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after a push-to-talk turn on a connected robot."
@@ -258,17 +274,19 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "speech-review" "Android speech human review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the speech review after the real-device run."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $supportOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
   $recognizerOk = $reviewText -match "(?im)^-\s*Speech recognizer decision:\s*pass\s*$"
   $submissionOk = $reviewText -match "(?im)^-\s*Transcript submission decision:\s*pass\s*$"
   $responseOk = $reviewText -match "(?im)^-\s*Robot response-frame decision:\s*pass\s*$"
   $privacyOk = $reviewText -match "(?im)^-\s*Privacy decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $supportOk -and $recognizerOk -and $submissionOk -and $responseOk -and $privacyOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $supportOk -and $recognizerOk -and $submissionOk -and $responseOk -and $privacyOk) {
     Add-Check "speech-review" "Android speech human review packet" "pass" $reviewEvidence "Reviewer, date, support, recognizer, submission, robot response, and privacy decisions are pass."
   } else {
-    Add-Check "speech-review" "Android speech human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Support decision: pass, Speech recognizer decision: pass, Transcript submission decision: pass, Robot response-frame decision: pass, and Privacy decision: pass."
+    Add-Check "speech-review" "Android speech human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Speech recognizer decision: pass, Transcript submission decision: pass, Robot response-frame decision: pass, and Privacy decision: pass."
   }
 }
 
@@ -280,6 +298,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-speech-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   logcatPath = Convert-ToRelativePath $LogcatPath

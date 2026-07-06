@@ -97,6 +97,21 @@ function Test-StringPresent {
   return -not [string]::IsNullOrWhiteSpace([string]$Value)
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-ExactFieldCheck {
   param(
     [string]$Id,
@@ -180,6 +195,7 @@ if ($WriteTemplate) {
 $exportEvidence = Convert-ToRelativePath $DiagnosticsExportPath
 $robotEvidence = Convert-ToRelativePath $RobotLogPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after the Android setup card shows the robot Wi-Fi command template."
@@ -266,18 +282,20 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "wifi-review" "Android Wi-Fi provisioning human review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the Wi-Fi review after the real-device run."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $supportOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
   $commandOk = $reviewText -match "(?im)^-\s*Wi-Fi command decision:\s*pass\s*$"
   $persistenceOk = $reviewText -match "(?im)^-\s*Persistence decision:\s*pass\s*$"
   $reloadOk = $reviewText -match "(?im)^-\s*Power-cycle reload decision:\s*pass\s*$"
   $clearOk = $reviewText -match "(?im)^-\s*Clear command decision:\s*pass\s*$"
   $privacyOk = $reviewText -match "(?im)^-\s*Password privacy decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $supportOk -and $commandOk -and $persistenceOk -and $reloadOk -and $clearOk -and $privacyOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $supportOk -and $commandOk -and $persistenceOk -and $reloadOk -and $clearOk -and $privacyOk) {
     Add-Check "wifi-review" "Android Wi-Fi provisioning human review packet" "pass" $reviewEvidence "Reviewer, date, support, command, persistence, reload, clear, and privacy decisions are pass."
   } else {
-    Add-Check "wifi-review" "Android Wi-Fi provisioning human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Support decision: pass, Wi-Fi command decision: pass, Persistence decision: pass, Power-cycle reload decision: pass, Clear command decision: pass, and Password privacy decision: pass."
+    Add-Check "wifi-review" "Android Wi-Fi provisioning human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Wi-Fi command decision: pass, Persistence decision: pass, Power-cycle reload decision: pass, Clear command decision: pass, and Password privacy decision: pass."
   }
 }
 
@@ -289,6 +307,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-wifi-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   robotLogPath = Convert-ToRelativePath $RobotLogPath

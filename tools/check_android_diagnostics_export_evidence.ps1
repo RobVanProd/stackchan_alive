@@ -113,6 +113,21 @@ function Convert-ToInt64OrNull {
   }
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-RequiredFieldCheck {
   param(
     [string]$Id,
@@ -194,6 +209,7 @@ if ($WriteTemplate) {
 
 $exportEvidence = Convert-ToRelativePath $ExportPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $ExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json from the Android app after a physical robot session."
@@ -288,13 +304,15 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "support-review" "Support review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the support review after hardware capture."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $decisionOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $decisionOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $decisionOk) {
     Add-Check "support-review" "Support review packet" "pass" $reviewEvidence "Reviewer, review date, and Support decision: pass are recorded."
   } else {
-    Add-Check "support-review" "Support review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), and Support decision: pass after inspecting the export."
+    Add-Check "support-review" "Support review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, and Support decision: pass after inspecting the export."
   }
 }
 
@@ -306,6 +324,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-diagnostics-export-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   exportPath = Convert-ToRelativePath $ExportPath
   reviewPath = Convert-ToRelativePath $ReviewPath

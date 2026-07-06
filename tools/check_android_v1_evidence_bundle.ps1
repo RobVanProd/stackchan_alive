@@ -238,6 +238,8 @@ Required ready statuses:
 - ``stackchan.android-gemma-evidence.v1``: ``android-gemma-real-device-ready``
 - ``stackchan.android-screen-off-soak-evidence.v1``: ``android-screen-off-soak-ready``
 - ``stackchan.android-play-store-evidence-check.v1``: ``play-internal-testing-ready``
+- Every Android hardware evidence report and the Play Store evidence-check JSON must match
+  this bundle's ``sourceCommit``.
 
 Run:
 
@@ -339,6 +341,13 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "screen-off-soak-ready" "Android screen-off soak evidence report" $reports "screenOffSoakCheckReport" "stackchan.android-screen-off-soak-evidence.v1" "android-screen-off-soak-ready"
     Test-ReportStatus "play-store-ready" "Android Play Store evidence report" $reports "playStoreCheckReport" "stackchan.android-play-store-evidence-check.v1" "play-internal-testing-ready"
     Test-ReportFieldEquals "apk-install-source-commit-match" "APK install source commit matches bundle" $reports "apkInstallReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "diagnostics-source-commit-match" "Android diagnostics source commit matches bundle" $reports "diagnosticsCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "speech-source-commit-match" "Android speech source commit matches bundle" $reports "speechCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "controls-source-commit-match" "Android controls source commit matches bundle" $reports "controlsCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "pairing-source-commit-match" "Android pairing source commit matches bundle" $reports "pairingCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "wifi-source-commit-match" "Android Wi-Fi source commit matches bundle" $reports "wifiCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "gemma-source-commit-match" "Android Gemma source commit matches bundle" $reports "gemmaCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "screen-off-soak-source-commit-match" "Android screen-off soak source commit matches bundle" $reports "screenOffSoakCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "play-store-source-commit-match" "Play Store evidence source commit matches bundle" $reports "playStoreCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)

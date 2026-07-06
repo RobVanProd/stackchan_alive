@@ -150,9 +150,10 @@ to capture the Android UDP discovery beacon under `android/udp-beacon-probe/`.
 If the Android service stops, crashes, loses foreground status, or fails during screen-off
 soak, connect adb and run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` from the evidence packet
 immediately. It saves the filtered service excerpt under `android/logcat/` for review.
-When assembling the final Android v1 evidence bundle, keep the APK install report and Play
-Store evidence-check JSON from the same source commit recorded in `ANDROID_V1_EVIDENCE_BUNDLE.json`.
-The aggregate gate fails if those commits do not match.
+When assembling the final Android v1 evidence bundle, keep the Android hardware evidence
+checker reports, APK install report, and Play Store evidence-check JSON from the same source
+commit recorded in `ANDROID_V1_EVIDENCE_BUNDLE.json`. The aggregate gate fails if those
+commits do not match.
 
 Before treating desktop PC Brain installers as self-contained, prepare and validate the
 managed Python runtime payload on each desktop platform:

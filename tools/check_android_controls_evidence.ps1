@@ -97,6 +97,21 @@ function Test-StringPresent {
   return -not [string]::IsNullOrWhiteSpace([string]$Value)
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Add-ExactFieldCheck {
   param(
     [string]$Id,
@@ -180,6 +195,7 @@ if ($WriteTemplate) {
 $exportEvidence = Convert-ToRelativePath $DiagnosticsExportPath
 $robotEvidence = Convert-ToRelativePath $RobotLogPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
+$sourceCommit = ""
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after settings and handoff controls are exercised on a connected robot."
@@ -253,18 +269,20 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   Add-Check "controls-review" "Android controls human review packet" "pending" $reviewEvidence "Run with -WriteTemplate and complete the controls review after the real-device run."
 } else {
   $reviewText = Get-Content -LiteralPath $ReviewPath -Raw
+  $sourceCommit = Get-ReviewSourceCommit $reviewText
   $reviewerOk = $reviewText -match "(?im)^-\s*Reviewer:\s*\S+"
   $dateOk = $reviewText -match "(?im)^-\s*Review date:\s*\d{4}-\d{2}-\d{2}\s*$"
+  $sourceCommitOk = Test-Commit $sourceCommit
   $supportOk = $reviewText -match "(?im)^-\s*Support decision:\s*pass\s*$"
   $settingsOk = $reviewText -match "(?im)^-\s*Settings write decision:\s*pass\s*$"
   $claimOk = $reviewText -match "(?im)^-\s*Claim brain decision:\s*pass\s*$"
   $releaseOk = $reviewText -match "(?im)^-\s*Release brain decision:\s*pass\s*$"
   $helloGateOk = $reviewText -match "(?im)^-\s*Robot hello gate decision:\s*pass\s*$"
   $privacyOk = $reviewText -match "(?im)^-\s*Privacy decision:\s*pass\s*$"
-  if ($reviewerOk -and $dateOk -and $supportOk -and $settingsOk -and $claimOk -and $releaseOk -and $helloGateOk -and $privacyOk) {
+  if ($reviewerOk -and $dateOk -and $sourceCommitOk -and $supportOk -and $settingsOk -and $claimOk -and $releaseOk -and $helloGateOk -and $privacyOk) {
     Add-Check "controls-review" "Android controls human review packet" "pass" $reviewEvidence "Reviewer, date, support, settings, claim, release, hello gate, and privacy decisions are pass."
   } else {
-    Add-Check "controls-review" "Android controls human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Support decision: pass, Settings write decision: pass, Claim brain decision: pass, Release brain decision: pass, Robot hello gate decision: pass, and Privacy decision: pass."
+    Add-Check "controls-review" "Android controls human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Settings write decision: pass, Claim brain decision: pass, Release brain decision: pass, Robot hello gate decision: pass, and Privacy decision: pass."
   }
 }
 
@@ -276,6 +294,7 @@ $status = if ($failCount -gt 0) { "not-ready" } elseif ($pendingCount -gt 0) { "
 $report = [ordered]@{
   schema = "stackchan.android-controls-evidence.v1"
   status = $status
+  sourceCommit = $sourceCommit
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   robotLogPath = Convert-ToRelativePath $RobotLogPath

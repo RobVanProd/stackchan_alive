@@ -132,8 +132,9 @@ Copy the individual checker JSON outputs into `reports\`, fill
 ```
 
 It must report `android-v1-evidence-ready` before treating the Android companion as
-release-ready. The aggregate checker also verifies that the target-phone APK install report
-and Play Store evidence-check JSON match the `ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
+release-ready. The aggregate checker also verifies that the Android hardware evidence checker
+reports, target-phone APK install report, and Play Store evidence-check JSON match the
+`ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
 
 After the Android phone has captured a push-to-talk turn against a connected robot, run the
 speech evidence gate:

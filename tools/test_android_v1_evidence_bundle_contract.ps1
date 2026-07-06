@@ -143,13 +143,13 @@ try {
       versionCode = "1"
     })
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.diagnosticsCheckReport) -Schema "stackchan.android-diagnostics-export-evidence.v1" -Status "android-diagnostics-export-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.controlsCheckReport) -Schema "stackchan.android-controls-evidence.v1" -Status "android-controls-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.pairingCheckReport) -Schema "stackchan.android-pairing-evidence.v1" -Status "android-pairing-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.diagnosticsCheckReport) -Schema "stackchan.android-diagnostics-export-evidence.v1" -Status "android-diagnostics-export-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.controlsCheckReport) -Schema "stackchan.android-controls-evidence.v1" -Status "android-controls-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.pairingCheckReport) -Schema "stackchan.android-pairing-evidence.v1" -Status "android-pairing-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit
   @"
 # Android V1 Review
@@ -174,10 +174,20 @@ try {
   if ($readyResult.report.status -ne "android-v1-evidence-ready") {
     throw "Expected android-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "apk-install-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
+  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android v1 evidence bundle is accepted"
+
+  $speechMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $speechMismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $speechMismatchRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready" -SourceCommit ("e" * 40)
+  $speechMismatchResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $speechMismatchRoot
+  if ([int]$speechMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched speech source commit to fail."
+  }
+  Assert-CheckStatus -Report $speechMismatchResult.report -Id "speech-source-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Android v1 speech source commit is rejected"
 
   $mismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $mismatchRoot -Recurse -Force
