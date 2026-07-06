@@ -74,12 +74,7 @@ function Test-NonPlaceholder {
 function Test-UtcTimestamp {
   param([string]$Value)
 
-  if ($Value -notmatch "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$") {
-    return $false
-  }
-
-  $parsed = [DateTimeOffset]::MinValue
-  return [DateTimeOffset]::TryParse($Value, [ref]$parsed)
+  return $Value -match "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 }
 
 function Get-ReviewSourceCommit {
