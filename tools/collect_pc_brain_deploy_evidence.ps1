@@ -3,6 +3,7 @@ param(
   [int]$DebugPort = 8789,
   [string]$LogDir = "output\pc-brain\latest",
   [string]$OutDir = "",
+  [string]$SourceCommit = "",
   [switch]$RunTests
 )
 
@@ -30,6 +31,22 @@ function Get-IntValue($Object, [string]$Name, [int]$DefaultValue) {
   return [int]$Property.Value
 }
 
+function Resolve-SourceCommit {
+  param([string]$Value)
+
+  if (-not [string]::IsNullOrWhiteSpace($Value)) {
+    return $Value
+  }
+  try {
+    $commit = (& git rev-parse HEAD 2>$null | Select-Object -First 1).Trim()
+    if ($commit -match "^[a-fA-F0-9]{40}$") {
+      return $commit
+    }
+  } catch {
+  }
+  return ""
+}
+
 function Invoke-CapturedNative([string]$CommandLine, [string]$LogPath) {
   $ResolvedLogPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
   & cmd.exe /d /c "$CommandLine > `"$ResolvedLogPath`" 2>&1"
@@ -46,6 +63,7 @@ $ResolvedOutDir = Resolve-Path $OutDir
 $summary = [ordered]@{
   schema = "stackchan.pc-brain-deploy-evidence.v1"
   generated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  sourceCommit = Resolve-SourceCommit $SourceCommit
   device_host = $DeviceHost
   debug_port = $DebugPort
   log_dir = $LogDir
@@ -182,6 +200,7 @@ $lines = @(
   "",
   "- Status: ``$($summary.status)``",
   "- Generated: ``$($summary.generated_at)``",
+  "- Source commit: ``$($summary.sourceCommit)``",
   "- Device debug: ``http://$DeviceHost`:$DebugPort/``",
   "- PC brain PID: ``$(if ($summary.pc_brain_process) { $summary.pc_brain_process.pid } else { 'missing' })``",
   "- Copied logs: ``$($summary.copied_logs -join ', ')``"

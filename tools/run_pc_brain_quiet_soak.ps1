@@ -3,6 +3,7 @@ param(
   [int]$DebugPort = 8789,
   [int]$DurationSeconds = 600,
   [int]$IntervalSeconds = 30,
+  [string]$SourceCommit = "",
   [string]$OutDir = ""
 )
 
@@ -35,6 +36,22 @@ function Get-IntValue {
   return [int]$property.Value
 }
 
+function Resolve-SourceCommit {
+  param([string]$Value)
+
+  if (-not [string]::IsNullOrWhiteSpace($Value)) {
+    return $Value
+  }
+  try {
+    $commit = (& git rev-parse HEAD 2>$null | Select-Object -First 1).Trim()
+    if ($commit -match "^[a-fA-F0-9]{40}$") {
+      return $commit
+    }
+  } catch {
+  }
+  return ""
+}
+
 if ($DurationSeconds -lt 1) { throw "DurationSeconds must be positive." }
 if ($IntervalSeconds -lt 1) { throw "IntervalSeconds must be positive." }
 
@@ -47,6 +64,7 @@ $ResolvedOutDir = (Resolve-Path $OutDir).Path
 $summary = [ordered]@{
   schema = "stackchan.pc-brain-quiet-soak.v1"
   generated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  sourceCommit = Resolve-SourceCommit $SourceCommit
   device_host = $DeviceHost
   debug_port = $DebugPort
   requested_duration_seconds = $DurationSeconds
@@ -147,6 +165,7 @@ $lines = @(
   "# Stackchan PC Brain Quiet Soak",
   "",
   "- Status: ``$($summary.status)``",
+  "- Source commit: ``$($summary.sourceCommit)``",
   "- Requested duration seconds: ``$($summary.requested_duration_seconds)``",
   "- Duration seconds: ``$($summary.duration_seconds)``",
   "- Interval seconds: ``$($summary.interval_seconds)``",

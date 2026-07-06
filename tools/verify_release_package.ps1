@@ -1702,28 +1702,28 @@ foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKC
 }
 
 $collectPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/collect_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "bridge_downlink_playback_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "bridge_downlink_playback_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
   if ($collectPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/collect_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence support: $pattern"
   }
 }
 
 $checkPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/check_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")) {
   if ($checkPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence check support: $pattern"
   }
 }
 
 $runPcBrainQuietSoakText = Get-Content -LiteralPath (Join-PackagePath "tools/run_pc_brain_quiet_soak.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-quiet-soak.v1", "requested_duration_seconds", "interval_seconds", "debug-endpoint-ok", "unexpected_audio_stream_during_quiet_soak", "PC_BRAIN_QUIET_SOAK.json", "PC_BRAIN_QUIET_SOAK.md")) {
+foreach ($pattern in @("stackchan.pc-brain-quiet-soak.v1", "sourceCommit", "SourceCommit", "Source commit:", "requested_duration_seconds", "interval_seconds", "debug-endpoint-ok", "unexpected_audio_stream_during_quiet_soak", "PC_BRAIN_QUIET_SOAK.json", "PC_BRAIN_QUIET_SOAK.md")) {
   if ($runPcBrainQuietSoakText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_pc_brain_quiet_soak.ps1 missing PC brain quiet soak support: $pattern"
   }
 }
 
 $checkPcBrainQuietSoakText = Get-Content -LiteralPath (Join-PackagePath "tools/check_pc_brain_quiet_soak_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-quiet-soak-evidence-check.v1", "stackchan.pc-brain-quiet-soak.v1", "pc-brain-quiet-soak-ready", "MinDurationSeconds", "no-unexpected-audio-streams", "bridge-message-monotonic", "stable-local-ip", "RequireReady")) {
+foreach ($pattern in @("stackchan.pc-brain-quiet-soak-evidence-check.v1", "stackchan.pc-brain-quiet-soak.v1", "pc-brain-quiet-soak-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "MinDurationSeconds", "no-unexpected-audio-streams", "bridge-message-monotonic", "stable-local-ip", "RequireReady")) {
   if ($checkPcBrainQuietSoakText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_pc_brain_quiet_soak_evidence.ps1 missing PC brain quiet soak evidence check support: $pattern"
   }
@@ -1772,14 +1772,14 @@ foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is r
 }
 
 $desktopV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
   if ($desktopV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_v1_evidence_bundle.ps1 missing desktop v1 evidence bundle logic: $pattern"
   }
 }
 
 $desktopV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
   if ($desktopV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_v1_evidence_bundle_contract.ps1 missing desktop v1 evidence bundle contract coverage: $pattern"
   }

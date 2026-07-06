@@ -339,12 +339,13 @@ runtime `wifi set ... url "ws://<pc-lan-ip>:8765/bridge"` command, then collect 
 evidence:
 
 ```powershell
-.\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -RunTests
+.\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -SourceCommit <git-commit> -RunTests
 .\tools\check_pc_brain_deploy_evidence.cmd -EvidenceJsonPath output\pc-brain\<deploy-dir>\PC_BRAIN_DEPLOY_EVIDENCE.json -EvidenceMarkdownPath output\pc-brain\<deploy-dir>\PC_BRAIN_DEPLOY_EVIDENCE.md -RequireTests -RequireReady -Json
 ```
 
 This writes `PC_BRAIN_DEPLOY_EVIDENCE.json/md` plus copied PC logs and robot debug JSON. It
-is lab proof for the current machine only when the checker reports `pc-brain-deploy-ready`.
+is lab proof for the current machine only when the checker reports `pc-brain-deploy-ready`
+and emits the same `sourceCommit` as the desktop v1 evidence bundle.
 Connectivity-only packets are not enough; the evidence must show at least one completed
 audio downlink and speaker playback path with zero bridge/playback errors. Managed desktop
 Python runtime payload evidence is still required before desktop distribution is considered
@@ -354,12 +355,13 @@ After a passing deploy packet, leave the PC brain and robot connected and run th
 gate:
 
 ```powershell
-.\tools\run_pc_brain_quiet_soak.cmd -DeviceHost <robot-lan-ip> -DurationSeconds 600 -IntervalSeconds 30
+.\tools\run_pc_brain_quiet_soak.cmd -DeviceHost <robot-lan-ip> -DurationSeconds 600 -IntervalSeconds 30 -SourceCommit <git-commit>
 .\tools\check_pc_brain_quiet_soak_evidence.cmd -SoakJsonPath output\pc-brain\<soak-dir>\PC_BRAIN_QUIET_SOAK.json -SoakMarkdownPath output\pc-brain\<soak-dir>\PC_BRAIN_QUIET_SOAK.md -RequireReady -Json
 ```
 
 It must report `pc-brain-quiet-soak-ready`, proving the bridge stays connected/ready for
-the full quiet window without parse/timeouts/playback errors or unexpected audio streams.
+the full quiet window without parse/timeouts/playback errors or unexpected audio streams,
+and it must emit the same `sourceCommit` as the deploy packet and desktop v1 evidence bundle.
 
 Assemble the final desktop/PC Brain aggregate packet after the three platform runtime
 payload reports, package hashes, C6 evidence, deploy evidence, quiet-soak evidence, and
@@ -372,8 +374,9 @@ production voice-source readiness are captured:
 
 The checker must report `desktop-v1-evidence-ready` before treating desktop installers as
 v1 release-ready. The `DESKTOP_V1_REVIEW.md` source commit must match
-`DESKTOP_V1_EVIDENCE_BUNDLE.json.sourceCommit`, and the production voice-source readiness
-report must carry that same `sourceCommit`.
+`DESKTOP_V1_EVIDENCE_BUNDLE.json.sourceCommit`; the PC Brain deploy report, PC Brain
+quiet-soak report, and production voice-source readiness report must all carry that same
+`sourceCommit`.
 
 After Android v1, desktop v1, hardware, Play, production voice-source, release package,
 GitHub Actions, and rollout evidence are all ready for the same commit, assemble the final

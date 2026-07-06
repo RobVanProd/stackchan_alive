@@ -564,13 +564,13 @@ Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_desktop_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-contract" `
   -Name "Desktop v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_desktop_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `
@@ -630,25 +630,25 @@ Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-helper" `
   -Name "PC Brain deploy evidence collector" `
   -RelativePaths @("tools/collect_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
+  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "sourceCommit", "SourceCommit", "Source commit:", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
 
 Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-check" `
   -Name "PC Brain deploy evidence checker" `
   -RelativePaths @("tools/check_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")
+  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")
 
 Test-TextEvidence `
   -Id "pc-brain-quiet-soak-runner" `
   -Name "PC Brain quiet soak runner" `
   -RelativePaths @("tools/run_pc_brain_quiet_soak.ps1") `
-  -Patterns @("stackchan.pc-brain-quiet-soak.v1", "requested_duration_seconds", "interval_seconds", "debug-endpoint-ok", "unexpected_audio_stream_during_quiet_soak", "PC_BRAIN_QUIET_SOAK.json", "PC_BRAIN_QUIET_SOAK.md")
+  -Patterns @("stackchan.pc-brain-quiet-soak.v1", "sourceCommit", "SourceCommit", "Source commit:", "requested_duration_seconds", "interval_seconds", "debug-endpoint-ok", "unexpected_audio_stream_during_quiet_soak", "PC_BRAIN_QUIET_SOAK.json", "PC_BRAIN_QUIET_SOAK.md")
 
 Test-TextEvidence `
   -Id "pc-brain-quiet-soak-evidence-check" `
   -Name "PC Brain quiet soak evidence checker" `
   -RelativePaths @("tools/check_pc_brain_quiet_soak_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-quiet-soak-evidence-check.v1", "stackchan.pc-brain-quiet-soak.v1", "pc-brain-quiet-soak-ready", "no-unexpected-audio-streams", "bridge-message-monotonic", "MinDurationSeconds", "RequireReady")
+  -Patterns @("stackchan.pc-brain-quiet-soak-evidence-check.v1", "stackchan.pc-brain-quiet-soak.v1", "pc-brain-quiet-soak-ready", "sourceCommit", "Get-ReviewSourceCommit", "source-commit", "human-review-source-commit-match", "no-unexpected-audio-streams", "bridge-message-monotonic", "MinDurationSeconds", "RequireReady")
 
 Test-TextEvidence `
   -Id "pc-brain-runner-and-selected-voice" `

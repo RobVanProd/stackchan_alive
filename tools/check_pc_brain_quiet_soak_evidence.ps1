@@ -31,6 +31,21 @@ function Get-IntValue {
   return [int]$property.Value
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 if ([string]::IsNullOrWhiteSpace($SoakJsonPath)) {
   $candidates = Get-ChildItem -Path "output\pc-brain" -Recurse -Filter "PC_BRAIN_QUIET_SOAK.json" -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending
@@ -41,6 +56,7 @@ if ([string]::IsNullOrWhiteSpace($SoakJsonPath)) {
 
 $checks = @()
 $soak = $null
+$sourceCommit = ""
 
 if ([string]::IsNullOrWhiteSpace($SoakJsonPath)) {
   Add-Check "soak-json" "pending" "Pass -SoakJsonPath or place PC_BRAIN_QUIET_SOAK.json under output\pc-brain."
@@ -58,6 +74,8 @@ if ([string]::IsNullOrWhiteSpace($SoakJsonPath)) {
 if ($soak) {
   Add-Check "schema" ($(if ($soak.schema -eq "stackchan.pc-brain-quiet-soak.v1") { "pass" } else { "fail" })) "schema=$($soak.schema)"
   Add-Check "soak-status" ($(if ($soak.status -eq "pass") { "pass" } else { "fail" })) "status=$($soak.status)"
+  $sourceCommit = [string]$soak.sourceCommit
+  Add-Check "source-commit" ($(if (Test-Commit $sourceCommit) { "pass" } else { "fail" })) "sourceCommit=$sourceCommit"
   $issues = @($soak.issues)
   Add-Check "soak-issues" ($(if ($issues.Count -eq 0) { "pass" } else { "fail" })) "issues=$($issues -join ', ')"
 
@@ -112,6 +130,7 @@ if (-not [string]::IsNullOrWhiteSpace($SoakMarkdownPath)) {
     foreach ($pattern in @("Stackchan PC Brain Quiet Soak", "Status: ``pass``", "Polls")) {
       Add-Check "soak-markdown-$pattern" ($(if ($markdown -match [regex]::Escape($pattern)) { "pass" } else { "fail" })) "markdown includes $pattern"
     }
+    Add-Check "soak-markdown-source-commit" ($(if ($markdown -match "Source commit:\s*``[a-fA-F0-9]{40}``") { "pass" } else { "fail" })) "markdown includes source commit"
   }
 }
 
@@ -121,6 +140,7 @@ if (-not [string]::IsNullOrWhiteSpace($ReviewPath)) {
   } else {
     $review = Get-Content -LiteralPath $ReviewPath -Raw
     foreach ($pattern in @(
+      "Source commit:",
       "Support decision: pass",
       "Quiet soak decision: pass",
       "Robot connection decision: pass",
@@ -128,6 +148,8 @@ if (-not [string]::IsNullOrWhiteSpace($ReviewPath)) {
     )) {
       Add-Check "human-review-$pattern" ($(if ($review -match [regex]::Escape($pattern)) { "pass" } else { "fail" })) "review includes $pattern"
     }
+    $reviewSourceCommit = Get-ReviewSourceCommit $review
+    Add-Check "human-review-source-commit-match" ($(if ((Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -eq $sourceCommit) { "pass" } else { "fail" })) "review sourceCommit=$reviewSourceCommit evidence sourceCommit=$sourceCommit"
   }
 }
 
@@ -144,6 +166,7 @@ $status = if ($failed.Count -gt 0) {
 $result = [ordered]@{
   schema = "stackchan.pc-brain-quiet-soak-evidence-check.v1"
   status = $status
+  sourceCommit = $sourceCommit
   soakJsonPath = $SoakJsonPath
   soakMarkdownPath = $SoakMarkdownPath
   reviewPath = $ReviewPath

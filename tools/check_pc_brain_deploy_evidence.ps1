@@ -44,6 +44,21 @@ function Test-ZeroCounter {
   Add-Check $Name ($(if ($value -eq 0) { "pass" } else { "fail" })) "$Name=$value"
 }
 
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-ReviewSourceCommit {
+  param([string]$Text)
+
+  $match = [regex]::Match($Text, "(?im)^-\s*Source commit:\s*([a-fA-F0-9]{40})\s*$")
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 if ([string]::IsNullOrWhiteSpace($EvidenceJsonPath)) {
   $candidates = Get-ChildItem -Path "output\pc-brain" -Recurse -Filter "PC_BRAIN_DEPLOY_EVIDENCE.json" -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending
@@ -55,6 +70,7 @@ if ([string]::IsNullOrWhiteSpace($EvidenceJsonPath)) {
 $checks = @()
 $evidence = $null
 $debug = $null
+$sourceCommit = ""
 
 if ([string]::IsNullOrWhiteSpace($EvidenceJsonPath)) {
   Add-Check "evidence-json" "pending" "Pass -EvidenceJsonPath or place PC_BRAIN_DEPLOY_EVIDENCE.json under output\pc-brain."
@@ -72,6 +88,8 @@ if ([string]::IsNullOrWhiteSpace($EvidenceJsonPath)) {
 if ($evidence) {
   Add-Check "schema" ($(if ($evidence.schema -eq "stackchan.pc-brain-deploy-evidence.v1") { "pass" } else { "fail" })) "schema=$($evidence.schema)"
   Add-Check "collector-status" ($(if ($evidence.status -eq "pass") { "pass" } else { "fail" })) "status=$($evidence.status)"
+  $sourceCommit = [string]$evidence.sourceCommit
+  Add-Check "source-commit" ($(if (Test-Commit $sourceCommit) { "pass" } else { "fail" })) "sourceCommit=$sourceCommit"
 
   $issues = @($evidence.issues)
   Add-Check "collector-issues" ($(if ($issues.Count -eq 0) { "pass" } else { "fail" })) "issues=$($issues -join ', ')"
@@ -160,6 +178,7 @@ if (-not [string]::IsNullOrWhiteSpace($EvidenceMarkdownPath)) {
     foreach ($pattern in @("Stackchan PC Brain Deploy Evidence", "Status: ``pass``", "Audio streams:", "Playback:")) {
       Add-Check "evidence-markdown-$pattern" ($(if ($markdown -match [regex]::Escape($pattern)) { "pass" } else { "fail" })) "markdown includes $pattern"
     }
+    Add-Check "evidence-markdown-source-commit" ($(if ($markdown -match "Source commit:\s*``[a-fA-F0-9]{40}``") { "pass" } else { "fail" })) "markdown includes source commit"
   }
 }
 
@@ -169,6 +188,7 @@ if (-not [string]::IsNullOrWhiteSpace($ReviewPath)) {
   } else {
     $review = Get-Content -LiteralPath $ReviewPath -Raw
     foreach ($pattern in @(
+      "Source commit:",
       "Support decision: pass",
       "Robot connection decision: pass",
       "Audio downlink decision: pass",
@@ -177,6 +197,8 @@ if (-not [string]::IsNullOrWhiteSpace($ReviewPath)) {
     )) {
       Add-Check "human-review-$pattern" ($(if ($review -match [regex]::Escape($pattern)) { "pass" } else { "fail" })) "review includes $pattern"
     }
+    $reviewSourceCommit = Get-ReviewSourceCommit $review
+    Add-Check "human-review-source-commit-match" ($(if ((Test-Commit $reviewSourceCommit) -and $reviewSourceCommit -eq $sourceCommit) { "pass" } else { "fail" })) "review sourceCommit=$reviewSourceCommit evidence sourceCommit=$sourceCommit"
   }
 }
 
@@ -193,6 +215,7 @@ $status = if ($failed.Count -gt 0) {
 $result = [ordered]@{
   schema = "stackchan.pc-brain-deploy-evidence-check.v1"
   status = $status
+  sourceCommit = $sourceCommit
   evidenceJsonPath = $EvidenceJsonPath
   evidenceMarkdownPath = $EvidenceMarkdownPath
   reviewPath = $ReviewPath

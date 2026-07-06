@@ -310,8 +310,8 @@ Required ready statuses:
 - ``stackchan.companion.c6-brain-supervisor-smoke.v1``: ``overall_ok=true``
 - ``stackchan.companion.c6-gui-rehearsal.v1``: ``overall_ok=true``
 - ``stackchan.desktop-python-runtime-payload.v1``: ``ready`` for Windows, macOS, and Linux
-- ``stackchan.pc-brain-deploy-evidence-check.v1``: ``pc-brain-deploy-ready``
-- ``stackchan.pc-brain-quiet-soak-evidence-check.v1``: ``pc-brain-quiet-soak-ready``
+- ``stackchan.pc-brain-deploy-evidence-check.v1``: ``pc-brain-deploy-ready`` with matching ``sourceCommit``
+- ``stackchan.pc-brain-quiet-soak-evidence-check.v1``: ``pc-brain-quiet-soak-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
 - Final desktop package hashes for ``.msi``, ``.dmg``, and ``.deb`` artifacts
 - Verified physical robot evidence root and desktop PC Brain human review
@@ -404,6 +404,8 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "pc-brain-deploy" "PC Brain deploy audio evidence report" $reports "pcBrainDeployCheckReport" "stackchan.pc-brain-deploy-evidence-check.v1" "pc-brain-deploy-ready"
     Test-ReportStatus "pc-brain-quiet-soak" "PC Brain quiet-soak evidence report" $reports "pcBrainQuietSoakCheckReport" "stackchan.pc-brain-quiet-soak-evidence-check.v1" "pc-brain-quiet-soak-ready"
     Test-ReportStatus "voice-source-ready" "Production voice-source readiness report" $reports "voiceSourceReadinessReport" "stackchan.voice-source-readiness.v1" "production-voice-source-ready"
+    Test-ReportFieldEquals "pc-brain-deploy-commit-match" "PC Brain deploy evidence matches bundle commit" $reports "pcBrainDeployCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "pc-brain-quiet-soak-commit-match" "PC Brain quiet-soak evidence matches bundle commit" $reports "pcBrainQuietSoakCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)

@@ -195,9 +195,11 @@ current v1 companion branch.
   connectivity-only robot session cannot accidentally close the lab deploy gate. The new
   `tools\run_pc_brain_quiet_soak.ps1` and `tools\check_pc_brain_quiet_soak_evidence.ps1`
   gate the post-deploy quiet window on a connected/ready bridge, stable robot debug samples,
-  no parse/timeouts/playback errors, and no unexpected audio streams. This is lab evidence
-  for the current developer machine, not a substitute for the managed desktop Python runtime
-  payload.
+  no parse/timeouts/playback errors, and no unexpected audio streams. The deploy and quiet-soak
+  collectors now record the reviewed source commit, their checkers emit that `sourceCommit`,
+  and the Desktop v1 aggregate gate rejects PC Brain lab evidence from a different commit.
+  This is lab evidence for the current developer machine, not a substitute for the managed
+  desktop Python runtime payload.
 - Production voice-source promotion remains blocked, and now has a direct source-side
   checker: `tools/check_voice_source_readiness.ps1` reports
   `pending-production-voice-source` until a licensed or owned production source, rights or
@@ -217,7 +219,7 @@ current v1 companion branch.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -RequireReady -Json`.
 7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -RequireReady -Json` before release promotion.
 7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.
-8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
+8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd -SourceCommit <git-commit>`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600 -SourceCommit <git-commit>` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
 9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.
-9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs.
+9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs. The PC Brain deploy and quiet-soak reports must carry the same `sourceCommit` as the desktop bundle.
 10. Assemble the final Companion v1 evidence bundle and run `tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json`; attach `COMPANION_V1_EVIDENCE_BUNDLE.json/md`, `COMPANION_V1_REVIEW.md`, and the `reports/` JSON outputs before calling v1 release-ready.
