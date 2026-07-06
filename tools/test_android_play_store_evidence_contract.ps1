@@ -188,6 +188,40 @@ pairing evidence tied to the final internal testing build.
   }
   Write-Host "[ok] complete Play Store internal testing packet is accepted"
 
+  $screenshotCommitMismatchRoot = New-TempEvidenceRoot
+  New-Item -ItemType Directory -Force -Path (Join-Path $screenshotCommitMismatchRoot "screenshots") | Out-Null
+  foreach ($name in @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")) {
+    Write-TestImage -Path (Join-Path $screenshotCommitMismatchRoot "screenshots/$name.png")
+  }
+  $screenshotCommitMismatchEvidence = New-CompletePlayEvidence
+  $screenshotCommitMismatchEvidence.screenshots[0].sourceCommit = "c" * 40
+  Write-JsonFile -Path (Join-Path $screenshotCommitMismatchRoot "PLAY_STORE_EVIDENCE.json") -Value $screenshotCommitMismatchEvidence
+  Copy-Item -Path (Join-Path $completeRoot "DATA_SAFETY_REVIEW.md") -Destination (Join-Path $screenshotCommitMismatchRoot "DATA_SAFETY_REVIEW.md")
+  Copy-Item -Path (Join-Path $completeRoot "POLICY_REVIEW.md") -Destination (Join-Path $screenshotCommitMismatchRoot "POLICY_REVIEW.md")
+  $screenshotCommitMismatchResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $screenshotCommitMismatchRoot
+  if ([int]$screenshotCommitMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Play screenshot source commit to fail."
+  }
+  Assert-CheckStatus -Report $screenshotCommitMismatchResult.report -Id "screenshots" -Status "fail"
+  Write-Host "[ok] mismatched Play screenshot source commit is rejected"
+
+  $screenshotVersionMismatchRoot = New-TempEvidenceRoot
+  New-Item -ItemType Directory -Force -Path (Join-Path $screenshotVersionMismatchRoot "screenshots") | Out-Null
+  foreach ($name in @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")) {
+    Write-TestImage -Path (Join-Path $screenshotVersionMismatchRoot "screenshots/$name.png")
+  }
+  $screenshotVersionMismatchEvidence = New-CompletePlayEvidence
+  $screenshotVersionMismatchEvidence.screenshots[0].appVersion = "9.9.9"
+  Write-JsonFile -Path (Join-Path $screenshotVersionMismatchRoot "PLAY_STORE_EVIDENCE.json") -Value $screenshotVersionMismatchEvidence
+  Copy-Item -Path (Join-Path $completeRoot "DATA_SAFETY_REVIEW.md") -Destination (Join-Path $screenshotVersionMismatchRoot "DATA_SAFETY_REVIEW.md")
+  Copy-Item -Path (Join-Path $completeRoot "POLICY_REVIEW.md") -Destination (Join-Path $screenshotVersionMismatchRoot "POLICY_REVIEW.md")
+  $screenshotVersionMismatchResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $screenshotVersionMismatchRoot
+  if ([int]$screenshotVersionMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Play screenshot app version to fail."
+  }
+  Assert-CheckStatus -Report $screenshotVersionMismatchResult.report -Id "screenshots" -Status "fail"
+  Write-Host "[ok] mismatched Play screenshot app version is rejected"
+
   Write-Host "Android Play Store evidence contract tests passed."
 } finally {
   foreach ($root in $createdRoots) {

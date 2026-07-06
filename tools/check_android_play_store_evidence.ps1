@@ -325,15 +325,22 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
   $missingScreenshotIds = @($requiredScreenshotIds | Where-Object { $_ -notin $screenshotIds })
   $screenshotIssues = @()
   foreach ($screenshot in $screenshots) {
+    $screenshotId = Get-ScreenshotId $screenshot
     $issue = Test-ImagePath ([string]$screenshot.path)
     if (-not [string]::IsNullOrWhiteSpace($issue)) {
       $screenshotIssues += $issue
     }
     if ([string]::IsNullOrWhiteSpace([string]$screenshot.device)) {
-      $screenshotIssues += "Screenshot device is blank for $(Get-ScreenshotId $screenshot)."
+      $screenshotIssues += "Screenshot device is blank for $screenshotId."
     }
     if ([string]::IsNullOrWhiteSpace([string]$screenshot.notes)) {
-      $screenshotIssues += "Screenshot notes are blank for $(Get-ScreenshotId $screenshot)."
+      $screenshotIssues += "Screenshot notes are blank for $screenshotId."
+    }
+    if ([string]$screenshot.sourceCommit -ne [string]$evidence.sourceCommit) {
+      $screenshotIssues += "Screenshot sourceCommit for $screenshotId does not match PLAY_STORE_EVIDENCE.json sourceCommit."
+    }
+    if ([string]$screenshot.appVersion -ne [string]$evidence.versionName) {
+      $screenshotIssues += "Screenshot appVersion for $screenshotId does not match PLAY_STORE_EVIDENCE.json versionName."
     }
   }
   if ($missingScreenshotIds.Count -gt 0) {

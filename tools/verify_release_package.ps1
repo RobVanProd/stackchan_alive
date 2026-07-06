@@ -1181,7 +1181,7 @@ foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high
 }
 
 $androidPlayStoreEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_store_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
+foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
   if ($androidPlayStoreEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_store_evidence.ps1 missing Android Play Store evidence logic: $pattern"
   }
