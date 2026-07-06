@@ -77,6 +77,19 @@ function Test-UtcTimestamp {
   return $Value -match "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 }
 
+function Get-RawJsonStringField {
+  param(
+    [string]$Json,
+    [string]$Name
+  )
+
+  $match = [regex]::Match($Json, '"' + [regex]::Escape($Name) + '"\s*:\s*"([^"]*)"')
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Get-ReviewSourceCommit {
   param([string]$Text)
 
@@ -289,7 +302,8 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
   Add-Check "evidence-json" "Play evidence JSON" "fail" (Convert-ToRelativePath $evidenceJsonPath) "Run with -WriteTemplate, then fill the evidence after Play Console upload."
 } else {
   Add-Check "evidence-json" "Play evidence JSON" "pass" (Convert-ToRelativePath $evidenceJsonPath) "Evidence JSON exists."
-  $evidence = Get-Content -LiteralPath $evidenceJsonPath -Raw | ConvertFrom-Json
+  $evidenceJsonText = Get-Content -LiteralPath $evidenceJsonPath -Raw
+  $evidence = $evidenceJsonText | ConvertFrom-Json
 
   if ($evidence.schema -eq "stackchan.android-play-store-evidence.v1") {
     Add-Check "schema" "Evidence schema" "pass" "PLAY_STORE_EVIDENCE.json" "Schema matches."
@@ -375,7 +389,7 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
     Add-Check "tester-group" "Internal tester group" "fail" "PLAY_STORE_EVIDENCE.json" "Record the Play internal testing tester group."
   }
 
-  if (Test-UtcTimestamp ([string]$evidence.uploadedAtUtc)) {
+  if (Test-UtcTimestamp (Get-RawJsonStringField $evidenceJsonText "uploadedAtUtc")) {
     Add-Check "uploaded-at-utc" "Play upload timestamp" "pass" "PLAY_STORE_EVIDENCE.json" "Play upload timestamp is an ISO-8601 UTC instant."
   } else {
     Add-Check "uploaded-at-utc" "Play upload timestamp" "fail" "PLAY_STORE_EVIDENCE.json" "Record uploadedAtUtc as yyyy-MM-ddTHH:mm:ssZ after Play Console upload."
