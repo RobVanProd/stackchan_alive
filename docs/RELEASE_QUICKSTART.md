@@ -136,6 +136,16 @@ the pairing evidence gate:
 It must report `android-pairing-ready` before Android QR/short-code pairing is considered
 validated for v1.
 
+After the Android setup flow has provisioned the robot Wi-Fi bridge target and the robot has
+been power-cycled and cleared once, run the Wi-Fi evidence gate:
+
+```powershell
+.\tools\check_android_wifi_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_wifi_serial.log> -ReviewPath <ANDROID_WIFI_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-wifi-ready` before Android-assisted Wi-Fi provisioning is considered
+validated for v1.
+
 After the Android phone has downloaded, checksum-verified, loaded, ejected, reloaded, and
 used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:
 

@@ -463,6 +463,11 @@ The Android companion path is ready to integrate with firmware when:
   `endpoint_hello_result`, and `trusted_endpoints_result` on the physical robot. The v1
   evidence packet must pass `tools/check_android_pairing_evidence.ps1` and report
   `android-pairing-ready`.
+- Wi-Fi provisioning evidence proves the Android command template uses placeholder
+  credentials, the robot reports `[wifi] persisted=1`, `store_has_record=1`, `ssid_set=1`,
+  reloads the saved bridge target after power cycle, clears it with `wifi clear`, and never
+  prints the Wi-Fi password. The v1 evidence packet must pass
+  `tools/check_android_wifi_evidence.ps1` and report `android-wifi-ready`.
 - A connected robot receives a Talk text turn as `thinking`, `response_start`,
   `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - Android push-to-talk requests microphone permission only from the Talk action, reports

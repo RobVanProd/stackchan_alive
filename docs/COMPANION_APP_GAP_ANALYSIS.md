@@ -101,9 +101,13 @@ current v1 companion branch.
   now accepts quoted SSID/password/URL values for normal network names with spaces, and the
   Windows lab helper `tools\provision_stackchan_wifi.cmd` emits the quoted serial command,
   prompts for the password when omitted, and redacts it from captured logs. A polished
-  consumer robot-side menu/BLE provisioning flow plus hardware proof remain open; the
-  `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields, not
-  Wi-Fi credentials.
+  consumer robot-side menu/BLE provisioning flow plus hardware proof remain open. The source
+  tree now includes `tools/check_android_wifi_evidence.ps1` to gate final Wi-Fi provisioning
+  evidence on the Android diagnostics command template, robot-side `[wifi] persisted=1`,
+  `store_has_record=1`, `ssid_set=1`, power-cycle `bridge_wifi_store_loads`,
+  `bridge_wifi_store_has_record=1`, `wifi clear`, `store_has_record=0`, and password
+  redaction review. The `stackchan://pair` ticket intentionally carries only the bridge URL
+  and pairing fields, not Wi-Fi credentials.
 - G7 Play submission remains pending on upload signing, developer verification,
   a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
   Source-side Play prep now includes a policy/data-safety declaration draft for
@@ -158,4 +162,4 @@ current v1 companion branch.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -RequireReady -Json`.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject and real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
-6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof.
+6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -RequireReady -Json`.

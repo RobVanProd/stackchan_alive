@@ -108,6 +108,11 @@ The firmware should log `[wifi] persisted=1`, `store_has_record=1`, `enabled=1`,
 after the robot `hello`. The log must not echo the password. Power-cycle once and confirm
 the stored bridge record reloads before treating Wi-Fi setup as ready. Send `wifi clear`
 before returning the robot to build-time bridge settings.
+After Wi-Fi provisioning is exercised, capture robot serial output showing `[wifi]`,
+`persisted=1`, `store_has_record=1`, `enabled=1`, `ssid_set=1`,
+`bridge_wifi_store_loads`, `bridge_wifi_store_has_record=1`, `wifi clear`, and
+`store_has_record=0`, then run
+`tools\check_android_wifi_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_wifi_serial.log> -ReviewPath <ANDROID_WIFI_REVIEW.md> -RequireReady -Json` and attach the JSON plus `ANDROID_WIFI_REVIEW.md`.
 If the robot already has Wi-Fi credentials, enter the Android QR payload as
 `pair ticket <stackchan://pair?...>` or the raw `stackchan://pair?...` payload instead.
 That ticket carries the pairing code and bridge target only; it must not contain or print a
