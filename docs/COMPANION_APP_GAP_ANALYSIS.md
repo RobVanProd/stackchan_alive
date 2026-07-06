@@ -33,7 +33,10 @@ current v1 companion branch.
   active. The app now targets the LiteRT Community
   `gemma-4-E2B-it.litertlm` artifact and rejects partial/wrong-size files before Load.
   Load now verifies the pinned SHA-256 before marking the local asset staged, and Android
-  diagnostics include the resulting `checksum_verified` state.
+  diagnostics include the resulting `checksum_verified` state. The source tree now includes
+  `tools/check_android_gemma_evidence.ps1` to gate the final phone evidence on the
+  diagnostics export, real `mobile_brain_litert_turn` logcat, eject/reload review, and
+  robot audio/TTS review.
   The remaining G2 gap is real-device download proof, successful LiteRT runtime inference,
   benchmark evidence, and robot audio/TTS validation.
 - G3 settings, diagnostics, persona selection, and manual brain handoff UI are partially
@@ -109,8 +112,11 @@ current v1 companion branch.
   Wi-Fi provisioning command template with an explicit password-redacted flag. The export
   redacts the last text turn to a presence-only flag. The source tree now includes
   `tools/check_android_diagnostics_export_evidence.ps1` to validate the shared export and
-  support-review packet. Hardware-run capture, connected robot/session proof, Gemma loaded
-  state, and `Support decision: pass` review are still required before calling G8 complete.
+  support-review packet. Gemma-specific runtime evidence is separated into
+  `tools/check_android_gemma_evidence.ps1` so a staged model cannot be mistaken for a
+  validated LiteRT run. Hardware-run capture, connected robot/session proof, Gemma loaded
+  state, `android-gemma-real-device-ready`, and `Support decision: pass` review are still
+  required before calling G8 complete.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -139,5 +145,5 @@ current v1 companion branch.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
-5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.
+5. Validate Gemma-4-E2B model download/load/eject and real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof.

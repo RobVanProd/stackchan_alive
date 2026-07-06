@@ -150,6 +150,7 @@ Evidence to capture:
 - [ ] Load verifies the cached Gemma-4-E2B SHA-256 before marking the asset staged; a checksum mismatch keeps the model unstaged and requires deleting/downloading again.
 - [ ] Eject clears the staged state without deleting the cached model, and the UI still states that real inference is gated on LiteRT runtime validation.
 - [ ] With Gemma staged, a text turn routes through the Android LiteRT brain engine; a successful run returns `mobile_brain_litert_turn`, while initialization/generation failure returns `mobile_brain_litert_error` and must be captured with logs before v1 sign-off.
+- [ ] Run `tools\check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json`; it must report `android-gemma-real-device-ready` before Mobile Brain Mode is treated as v1-ready. Use `-WriteTemplate` first to create the Gemma review template.
 - [ ] Persona import accepts a valid `stackchan.persona-pack.v1` zip and rejects a zip without a valid `pack.yaml`.
 - [ ] Persona export writes the active persona as a zip without logs, transcripts, or private memory.
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
@@ -226,5 +227,6 @@ Attach these to the arrival-day packet:
 - `android/screen-off-soak/ANDROID_COMPANION_SOAK.md` and `android_companion_soak.json`, or the repo `output/android-companion-soak/latest/` equivalents
 - `ANDROID_DIAGNOSTICS_EXPORT.json` shared from the app after the robot session, with transcript/text-turn content redacted unless the tester explicitly opts in
 - `ANDROID_DIAGNOSTICS_REVIEW.md` plus the JSON output from `tools/check_android_diagnostics_export_evidence.cmd -ExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -ReviewPath <ANDROID_DIAGNOSTICS_REVIEW.md> -RequireReady -Json`
+- `ANDROID_GEMMA_REVIEW.md`, `android_gemma_logcat.txt`, and the JSON output from `tools/check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json`
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

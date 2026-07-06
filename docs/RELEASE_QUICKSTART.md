@@ -106,6 +106,16 @@ Check the mobile LiteRT-LM runner contract:
 This writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the wrapper
 contract without claiming real model speed.
 
+After the Android phone has downloaded, checksum-verified, loaded, ejected, reloaded, and
+used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:
+
+```powershell
+.\tools\check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-gemma-real-device-ready` before Mobile Brain Mode is considered
+validated for v1.
+
 ## Remote Review Link
 
 From an extracted release package:

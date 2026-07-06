@@ -98,8 +98,10 @@ The v1 target artifact is
 Load, and Load verifies the pinned SHA-256 before the asset is staged. Published artifact
 checks: 2588147712 bytes and SHA-256
 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`. Real-device download
-completion, LiteRT inference loading, and benchmark evidence remain required before Mobile
-Brain Mode is considered fully validated.
+completion, LiteRT inference loading, eject/reload behavior, robot audio/TTS evidence, and
+benchmark evidence remain required before Mobile Brain Mode is considered fully validated.
+The v1 evidence packet must pass `tools/check_android_gemma_evidence.ps1`, including
+`mobile_brain_litert_turn` logcat and no `mobile_brain_litert_error`.
 
 The host bridge already accepts the core control messages described below. Firmware now has
 a native-tested WebSocket handshake/frame adapter, trusted-endpoint owner registry, and
