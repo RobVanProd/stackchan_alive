@@ -868,11 +868,21 @@ class AndroidBridgeRuntimeStatusTest {
                 downloadId = null,
                 checksumVerified = true,
             ),
+            appIdentity = AndroidAppIdentity(
+                packageName = "dev.stackchan.companion",
+                versionName = "1.0.0",
+                versionCode = 1,
+            ),
             generatedAt = Instant.parse("2026-07-04T19:00:00Z"),
         )
 
         assertEquals("stackchan.android.diagnostics-export.v1", export["schema"]!!.jsonPrimitive.content)
         assertEquals("2026-07-04T19:00:00Z", export["generated_at"]!!.jsonPrimitive.content)
+
+        val app = export["app"]!!.jsonObject
+        assertEquals("dev.stackchan.companion", app["package_name"]!!.jsonPrimitive.content)
+        assertEquals("1.0.0", app["version_name"]!!.jsonPrimitive.content)
+        assertEquals(1, app["version_code"]!!.jsonPrimitive.content.toInt())
 
         val bridge = export["bridge"]!!.jsonObject
         assertEquals("app_text_turn", bridge["last_message_type"]!!.jsonPrimitive.content)

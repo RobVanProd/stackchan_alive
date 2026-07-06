@@ -704,13 +704,19 @@ Test-TextEvidence `
   -Id "android-diagnostics-export" `
   -Name "Android diagnostics export implementation" `
   -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidDiagnosticsExport.kt") `
-  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "robot_socket_connected", "raw_audio_retention", "last text turn redacted to presence only", "wifi_provisioning_command_template", "password_redacted", "model_id", "expected_sha256", "runner_status", "mobile_brain_litert_turn", "mobile_brain_litert_error", "requires_real_device_inference_evidence")
+  -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "AndroidAppIdentity", "package_name", "version_name", "version_code", "last_text_turn_present", "robot_socket_connected", "raw_audio_retention", "last text turn redacted to presence only", "wifi_provisioning_command_template", "password_redacted", "model_id", "expected_sha256", "runner_status", "mobile_brain_litert_turn", "mobile_brain_litert_error", "requires_real_device_inference_evidence")
 
 Test-TextEvidence `
   -Id "android-diagnostics-export-evidence-check" `
   -Name "Android diagnostics export evidence check" `
   -RelativePaths @("tools/check_android_diagnostics_export_evidence.ps1", "provenance/tools/check_android_diagnostics_export_evidence.ps1") `
-  -Patterns @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "sourceCommit", "Get-ReviewSourceCommit", "pending-android-diagnostics-export-evidence", "Support decision: pass", "RequireReady")
+  -Patterns @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "package_name", "version_code", "app-package-name", "app-version-code", "Get-AndroidSourceIdentity", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "sourceCommit", "applicationId", "versionName", "versionCode", "Get-ReviewSourceCommit", "pending-android-diagnostics-export-evidence", "Support decision: pass", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-diagnostics-export-evidence-contract" `
+  -Name "Android diagnostics export evidence contract test" `
+  -RelativePaths @("tools/test_android_diagnostics_export_evidence_contract.ps1", "provenance/tools/test_android_diagnostics_export_evidence_contract.ps1") `
+  -Patterns @("complete Android diagnostics export evidence is accepted", "mismatched Android diagnostics package name is rejected", "mismatched Android diagnostics versionCode is rejected", "applicationId, versionName, and versionCode", "Android diagnostics export evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-speech-evidence-check" `

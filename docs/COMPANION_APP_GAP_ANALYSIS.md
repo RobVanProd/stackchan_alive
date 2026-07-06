@@ -128,11 +128,12 @@ current v1 companion branch.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.
-  The export records the LiteRT-LM artifact path, bytes, loaded/downloaded flags, adapter
-  runner status, success/failure intents needed for real-device Gemma sign-off, and the
-  Wi-Fi provisioning command template with an explicit password-redacted flag. The export
-  redacts the last text turn to a presence-only flag. The source tree now includes
-  `tools/check_android_diagnostics_export_evidence.ps1` to validate the shared export and
+  The export records installed package/version identity, the LiteRT-LM artifact path, bytes,
+  loaded/downloaded flags, adapter runner status, success/failure intents needed for
+  real-device Gemma sign-off, and the Wi-Fi provisioning command template with an explicit
+  password-redacted flag. The export redacts the last text turn to a presence-only flag. The
+  source tree now includes `tools/check_android_diagnostics_export_evidence.ps1` to validate
+  the shared export, reject app identity drift against Gradle release config, and require the
   support-review packet. Gemma-specific runtime evidence is separated into
   `tools/check_android_gemma_evidence.ps1` so a staged model cannot be mistaken for a
   validated LiteRT run. Hardware-run capture, connected robot/session proof, Gemma loaded

@@ -1,6 +1,7 @@
 package dev.stackchan.companion.android
 
 import android.content.Context
+import android.os.Build
 import dev.stackchan.companion.core.EndpointHello
 import dev.stackchan.companion.core.TrustedEndpoint
 import java.io.File
@@ -14,6 +15,12 @@ import kotlinx.serialization.json.put
 data class AndroidDiagnosticsExportResult(
     val path: String,
     val json: String,
+)
+
+data class AndroidAppIdentity(
+    val packageName: String,
+    val versionName: String,
+    val versionCode: Long,
 )
 
 fun exportAndroidDiagnostics(
@@ -31,6 +38,7 @@ fun exportAndroidDiagnostics(
         savedRobots = savedRobots,
         bridgeStatus = bridgeStatus,
         modelAssetStatus = modelAssetStatus,
+        appIdentity = androidAppIdentity(context, endpointHello.appVersion),
         generatedAt = generatedAt,
     ).toString()
     val outputDir = File(context.filesDir, "diagnostics").apply { mkdirs() }
@@ -40,6 +48,30 @@ fun exportAndroidDiagnostics(
         path = outputFile.absolutePath,
         json = json,
     )
+}
+
+private fun androidAppIdentity(context: Context, fallbackVersionName: String): AndroidAppIdentity {
+    val packageName = context.packageName.ifBlank { "dev.stackchan.companion" }
+    return try {
+        val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        AndroidAppIdentity(
+            packageName = packageName,
+            versionName = packageInfo.versionName ?: fallbackVersionName,
+            versionCode = versionCode,
+        )
+    } catch (_: Exception) {
+        AndroidAppIdentity(
+            packageName = packageName,
+            versionName = fallbackVersionName,
+            versionCode = 0,
+        )
+    }
 }
 
 fun buildAndroidDiagnosticsJson(
@@ -53,11 +85,21 @@ fun buildAndroidDiagnosticsJson(
         loaded = false,
         downloadId = null,
     ),
+    appIdentity: AndroidAppIdentity = AndroidAppIdentity(
+        packageName = "dev.stackchan.companion",
+        versionName = endpointHello.appVersion,
+        versionCode = 1,
+    ),
     generatedAt: Instant,
 ): JsonObject =
     buildJsonObject {
         put("schema", "stackchan.android.diagnostics-export.v1")
         put("generated_at", generatedAt.toString())
+        put("app", buildJsonObject {
+            put("package_name", appIdentity.packageName)
+            put("version_name", appIdentity.versionName)
+            put("version_code", appIdentity.versionCode)
+        })
         put("endpoint", buildJsonObject {
             put("endpoint_id", endpointHello.endpointId)
             put("endpoint_name", endpointHello.endpointName)

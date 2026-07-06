@@ -167,6 +167,44 @@ function Add-ExactFieldCheck {
   }
 }
 
+function Get-AndroidSourceIdentity {
+  $gradlePath = Join-Path $Root "companion/app-android/build.gradle.kts"
+  if (-not (Test-Path -LiteralPath $gradlePath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      evidence = Convert-ToRelativePath $gradlePath
+      detail = "Missing Android Gradle build file."
+      applicationId = ""
+      versionName = ""
+      versionCode = ""
+    }
+  }
+
+  $text = Get-Content -LiteralPath $gradlePath -Raw
+  $applicationIdMatches = [regex]::Matches($text, '(?m)^\s*applicationId\s*=\s*"([^"]+)"\s*$')
+  $versionNameMatches = [regex]::Matches($text, '(?m)^\s*versionName\s*=\s*"([^"]+)"\s*$')
+  $versionCodeMatches = [regex]::Matches($text, '(?m)^\s*versionCode\s*=\s*(\d+)\s*$')
+  if ($applicationIdMatches.Count -ne 1 -or $versionNameMatches.Count -ne 1 -or $versionCodeMatches.Count -ne 1) {
+    return [ordered]@{
+      status = "fail"
+      evidence = Convert-ToRelativePath $gradlePath
+      detail = "Expected exactly one literal applicationId, versionName, and versionCode declaration."
+      applicationId = ""
+      versionName = ""
+      versionCode = ""
+    }
+  }
+
+  return [ordered]@{
+    status = "pass"
+    evidence = Convert-ToRelativePath $gradlePath
+    detail = "Android source app identity parsed."
+    applicationId = $applicationIdMatches[0].Groups[1].Value
+    versionName = $versionNameMatches[0].Groups[1].Value
+    versionCode = $versionCodeMatches[0].Groups[1].Value
+  }
+}
+
 function Write-DiagnosticsReviewTemplate {
   $reviewDirectory = Split-Path -Parent $ReviewPath
   if (-not [string]::IsNullOrWhiteSpace($reviewDirectory)) {
@@ -210,6 +248,9 @@ if ($WriteTemplate) {
 $exportEvidence = Convert-ToRelativePath $ExportPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
 $sourceCommit = ""
+$diagnosticsApplicationId = ""
+$diagnosticsVersionName = ""
+$diagnosticsVersionCode = ""
 
 if (-not (Test-Path -LiteralPath $ExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json from the Android app after a physical robot session."
@@ -225,7 +266,7 @@ if (-not (Test-Path -LiteralPath $ExportPath -PathType Leaf)) {
 
   if ($null -ne $diagnostics) {
     Add-ExactFieldCheck "schema" "Diagnostics export schema" (Get-Field $diagnostics "schema") "stackchan.android.diagnostics-export.v1" $exportEvidence
-    foreach ($section in @("endpoint", "bridge", "pairing", "robot", "model", "saved_robots", "trusted_endpoints", "privacy")) {
+    foreach ($section in @("app", "endpoint", "bridge", "pairing", "robot", "model", "saved_robots", "trusted_endpoints", "privacy")) {
       if (Test-HasField $diagnostics $section) {
         Add-Check "section-$section" "Diagnostics section '$section'" "pass" $exportEvidence "Section is present."
       } else {
@@ -233,12 +274,26 @@ if (-not (Test-Path -LiteralPath $ExportPath -PathType Leaf)) {
       }
     }
 
+    $app = Get-Field $diagnostics "app"
     $endpoint = Get-Field $diagnostics "endpoint"
     $bridge = Get-Field $diagnostics "bridge"
     $pairing = Get-Field $diagnostics "pairing"
     $robot = Get-Field $diagnostics "robot"
     $model = Get-Field $diagnostics "model"
     $privacy = Get-Field $diagnostics "privacy"
+
+    $diagnosticsApplicationId = [string](Get-Field $app "package_name")
+    $diagnosticsVersionName = [string](Get-Field $app "version_name")
+    $diagnosticsVersionCode = [string](Get-Field $app "version_code")
+    Add-RequiredFieldCheck "app-fields" "Installed Android app identity fields" $app @("package_name", "version_name", "version_code") $exportEvidence
+    $sourceIdentity = Get-AndroidSourceIdentity
+    if ($sourceIdentity.status -ne "pass") {
+      Add-Check "app-identity-source" "Android source app identity" $sourceIdentity.status $sourceIdentity.evidence $sourceIdentity.detail
+    } else {
+      Add-ExactFieldCheck "app-package-name" "Diagnostics package name matches source" (Get-Field $app "package_name") $sourceIdentity.applicationId $exportEvidence
+      Add-ExactFieldCheck "app-version-name" "Diagnostics versionName matches source" (Get-Field $app "version_name") $sourceIdentity.versionName $exportEvidence
+      Add-ExactFieldCheck "app-version-code" "Diagnostics versionCode matches source" (Convert-ToInt64OrNull (Get-Field $app "version_code")) ([int64]($sourceIdentity.versionCode)) $exportEvidence
+    }
 
     Add-RequiredFieldCheck "endpoint-fields" "Android endpoint identity fields" $endpoint @("endpoint_id", "endpoint_name", "endpoint_kind", "app_version", "priority", "supports_binary_audio", "capabilities") $exportEvidence
     Add-ExactFieldCheck "endpoint-kind" "Android endpoint kind" (Get-Field $endpoint "endpoint_kind") "android" $exportEvidence
@@ -325,6 +380,9 @@ $report = [ordered]@{
   schema = "stackchan.android-diagnostics-export-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  applicationId = $diagnosticsApplicationId
+  versionName = $diagnosticsVersionName
+  versionCode = $diagnosticsVersionCode
   root = [string]$Root
   exportPath = Convert-ToRelativePath $ExportPath
   reviewPath = Convert-ToRelativePath $ReviewPath
