@@ -1772,28 +1772,28 @@ foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is r
 }
 
 $desktopV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
   if ($desktopV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_v1_evidence_bundle.ps1 missing desktop v1 evidence bundle logic: $pattern"
   }
 }
 
 $desktopV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
   if ($desktopV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_v1_evidence_bundle_contract.ps1 missing desktop v1 evidence bundle contract coverage: $pattern"
   }
 }
 
 $companionV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")) {
   if ($companionV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_evidence_bundle.ps1 missing companion v1 evidence bundle logic: $pattern"
   }
 }
 
 $companionV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_companion_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 voice-source commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")) {
   if ($companionV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_companion_v1_evidence_bundle_contract.ps1 missing companion v1 evidence bundle contract coverage: $pattern"
   }

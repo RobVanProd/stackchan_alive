@@ -564,25 +564,25 @@ Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_desktop_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-contract" `
   -Name "Desktop v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_desktop_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `
   -Name "Companion v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_companion_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-contract" `
   -Name "Companion v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_companion_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 voice-source commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-payload-prep-tool" `
@@ -798,7 +798,7 @@ Test-TextEvidence `
   -Id "voice-source-readiness-check" `
   -Name "Production voice-source readiness check" `
   -RelativePaths @("tools/check_voice_source_readiness.ps1") `
-  -Patterns @("stackchan.voice-source-readiness.v1", "pending-production-voice-source", "production-voice-source-ready", "licensed_or_owned_production_voice_source", "rvc-candidate-rights-review", "RequireProductionReady")
+  -Patterns @("stackchan.voice-source-readiness.v1", "pending-production-voice-source", "production-voice-source-ready", "licensed_or_owned_production_voice_source", "rvc-candidate-rights-review", "voice-source-source-commit", "sourceCommit", "SourceCommit", "RequireProductionReady")
 
 Test-TextEvidence `
   -Id "ci-companion-tests" `

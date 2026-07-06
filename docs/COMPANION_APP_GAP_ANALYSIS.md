@@ -152,7 +152,7 @@ current v1 companion branch.
   readiness, desktop v1 bundle readiness, production voice-source readiness, release ZIP
   hash, verified hardware evidence status, and a human `COMPANION_V1_REVIEW.md` before
   reporting `companion-v1-evidence-ready`. The gate also rejects mismatched commit or
-  version evidence across release, CI, and rollout reports.
+  version evidence across release, CI, rollout, and production voice-source reports.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -178,8 +178,10 @@ current v1 companion branch.
   production voice-source readiness, and a human `DESKTOP_V1_REVIEW.md` before reporting
   `desktop-v1-evidence-ready`. The review packet must record the same full source commit
   as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human sign-off from a different build
-  cannot close the aggregate gate. Supplying and shipping the actual managed Python binary
-  payload for each desktop platform remains open.
+  cannot close the aggregate gate. The production voice-source readiness report must also
+  record that same source commit, so stale voice approval evidence cannot close the desktop
+  bundle. Supplying and shipping the actual managed Python binary payload for each desktop
+  platform remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision
@@ -196,7 +198,9 @@ current v1 companion branch.
   checker: `tools/check_voice_source_readiness.ps1` reports
   `pending-production-voice-source` until a licensed or owned production source, rights or
   consent evidence, completed provenance template, RVC rights review, and real target-speaker
-  evidence are recorded. This keeps prototype/RVC review samples from being mistaken for a
+  evidence are recorded. The checker emits the reviewed `sourceCommit`, and the desktop and
+  top-level v1 bundle gates reject production voice-source reports from any other commit.
+  This keeps prototype/RVC review samples or stale approvals from being mistaken for a
   consumer-ready voice source.
 
 ## Next Attack Order

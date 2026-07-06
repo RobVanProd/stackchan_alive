@@ -158,7 +158,15 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.linuxRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.pcBrainDeployCheckReport) -Schema "stackchan.pc-brain-deploy-evidence-check.v1" -Status "pc-brain-deploy-ready"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.pcBrainQuietSoakCheckReport) -Schema "stackchan.pc-brain-quiet-soak-evidence-check.v1" -Status "pc-brain-quiet-soak-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Schema "stackchan.voice-source-readiness.v1" -Status "production-voice-source-ready"
+  Write-JsonFile -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
+      schema = "stackchan.voice-source-readiness.v1"
+      status = "production-voice-source-ready"
+      sourceCommit = $sourceCommit
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
   @"
 # Desktop V1 Review
 
@@ -182,7 +190,7 @@ try {
   if ($readyResult.report.status -ne "desktop-v1-evidence-ready") {
     throw "Expected desktop-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "voice-source-ready", "desktop-v1-review")) {
+  foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Desktop v1 evidence bundle is accepted"
@@ -210,6 +218,24 @@ try {
   }
   Assert-CheckStatus -Report $mismatchResult.report -Id "desktop-v1-review" -Status "fail"
   Write-Host "[ok] mismatched Desktop v1 review source commit is rejected"
+
+  $voiceMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $voiceMismatchRoot -Recurse -Force
+  Write-JsonFile -Path (Join-Path $voiceMismatchRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
+      schema = "stackchan.voice-source-readiness.v1"
+      status = "production-voice-source-ready"
+      sourceCommit = ("d" * 40)
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
+  $voiceMismatchResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $voiceMismatchRoot
+  if ([int]$voiceMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Desktop v1 voice-source commit to fail."
+  }
+  Assert-CheckStatus -Report $voiceMismatchResult.report -Id "voice-source-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Desktop v1 voice-source commit is rejected"
 
   Write-Host "Desktop v1 evidence bundle contract tests passed."
 } finally {

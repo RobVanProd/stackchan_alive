@@ -2,6 +2,7 @@ param(
   [string]$Root = "",
   [string]$VoiceSourceProvenancePath = "",
   [string]$TemplatePath = "",
+  [string]$SourceCommit = "",
   [switch]$RequireProductionReady,
   [switch]$Json
 )
@@ -80,6 +81,32 @@ function Test-ReadyText {
     return $false
   }
   return ($Value -notmatch "(?i)\b(TBD|pending|required-before|required before|required-before-use|not approved|blocked)\b")
+}
+
+function Test-Commit {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{40}$"
+}
+
+function Get-CurrentSourceCommit {
+  try {
+    $commit = (& git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1)
+    if (Test-Commit $commit) {
+      return $commit
+    }
+  } catch {
+  }
+  return ""
+}
+
+if ([string]::IsNullOrWhiteSpace($SourceCommit)) {
+  $SourceCommit = Get-CurrentSourceCommit
+}
+
+if (Test-Commit $SourceCommit) {
+  Add-Check "voice-source-source-commit" "pass" "Full source commit recorded for the voice-source readiness report." ""
+} else {
+  Add-Check "voice-source-source-commit" "pending" "Run from a git checkout or pass -SourceCommit <40-character SHA> before using this report as final v1 evidence." ""
 }
 
 if (-not (Test-Path -LiteralPath $VoiceSourceProvenancePath -PathType Leaf)) {
@@ -218,6 +245,7 @@ $report = [ordered]@{
   schema = "stackchan.voice-source-readiness.v1"
   status = $status
   root = [string]$Root
+  sourceCommit = $SourceCommit
   voiceSourceProvenancePath = $VoiceSourceProvenancePath
   templatePath = $TemplatePath
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count

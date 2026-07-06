@@ -145,7 +145,15 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion
   Write-StatusReport -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Schema "stackchan.android-v1-evidence-bundle-check.v1" -Status "android-v1-evidence-ready"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.desktopV1BundleReport) -Schema "stackchan.desktop-v1-evidence-bundle-check.v1" -Status "desktop-v1-evidence-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Schema "stackchan.voice-source-readiness.v1" -Status "production-voice-source-ready"
+  Write-JsonFile -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
+      schema = "stackchan.voice-source-readiness.v1"
+      status = "production-voice-source-ready"
+      sourceCommit = $sourceCommit
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
   @"
 # Companion V1 Review
 
@@ -171,7 +179,7 @@ try {
   if ($readyResult.report.status -ne "companion-v1-evidence-ready") {
     throw "Expected companion-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -185,6 +193,24 @@ try {
   }
   Assert-CheckStatus -Report $mismatchResult.report -Id "github-actions-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 report commit is rejected"
+
+  $voiceMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $voiceMismatchRoot -Recurse -Force
+  Write-JsonFile -Path (Join-Path $voiceMismatchRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
+      schema = "stackchan.voice-source-readiness.v1"
+      status = "production-voice-source-ready"
+      sourceCommit = ("e" * 40)
+      passed = 1
+      failed = 0
+      pending = 0
+      checks = @()
+    })
+  $voiceMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $voiceMismatchRoot
+  if ([int]$voiceMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 voice-source commit to fail."
+  }
+  Assert-CheckStatus -Report $voiceMismatchResult.report -Id "voice-source-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 voice-source commit is rejected"
 
   $reviewCommitMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $reviewCommitMismatchRoot -Recurse -Force

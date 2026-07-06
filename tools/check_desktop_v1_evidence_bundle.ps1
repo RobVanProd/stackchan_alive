@@ -154,6 +154,49 @@ function Test-ReportStatus {
   Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report is $ExpectedStatus."
 }
 
+function Test-ReportFieldEquals {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [object]$Reports,
+    [string]$Field,
+    [string]$ReportProperty,
+    [string]$ExpectedValue,
+    [string]$ExpectedLabel
+  )
+
+  $relativePath = [string](Get-Field $Reports $Field)
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($ExpectedValue) -or $ExpectedValue -match "<|TBD|pending") {
+    Add-Check $Id $Name "pending" "DESKTOP_V1_EVIDENCE_BUNDLE.json" "Record $ExpectedLabel before checking report consistency."
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check $Id $Name "pending" "" "Record reports.$Field in DESKTOP_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check $Id $Name "pending" (Convert-ToRelativePath $path) "Missing report file."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $actual = [string](Get-Field $report $ReportProperty)
+  if ([string]::IsNullOrWhiteSpace($actual)) {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report is missing $ReportProperty."
+  } elseif ($actual -eq $ExpectedValue) {
+    Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report $ReportProperty matches $ExpectedLabel."
+  } else {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Expected $ReportProperty=$ExpectedValue, got $actual."
+  }
+}
+
 function Test-C6Report {
   param(
     [string]$Id,
@@ -269,7 +312,7 @@ Required ready statuses:
 - ``stackchan.desktop-python-runtime-payload.v1``: ``ready`` for Windows, macOS, and Linux
 - ``stackchan.pc-brain-deploy-evidence-check.v1``: ``pc-brain-deploy-ready``
 - ``stackchan.pc-brain-quiet-soak-evidence-check.v1``: ``pc-brain-quiet-soak-ready``
-- ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready``
+- ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
 - Final desktop package hashes for ``.msi``, ``.dmg``, and ``.deb`` artifacts
 - Verified physical robot evidence root and desktop PC Brain human review
 
@@ -361,6 +404,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "pc-brain-deploy" "PC Brain deploy audio evidence report" $reports "pcBrainDeployCheckReport" "stackchan.pc-brain-deploy-evidence-check.v1" "pc-brain-deploy-ready"
     Test-ReportStatus "pc-brain-quiet-soak" "PC Brain quiet-soak evidence report" $reports "pcBrainQuietSoakCheckReport" "stackchan.pc-brain-quiet-soak-evidence-check.v1" "pc-brain-quiet-soak-ready"
     Test-ReportStatus "voice-source-ready" "Production voice-source readiness report" $reports "voiceSourceReadinessReport" "stackchan.voice-source-readiness.v1" "production-voice-source-ready"
+    Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
     if ([string]::IsNullOrWhiteSpace([string]$bundle.reviewPath) -or -not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {
