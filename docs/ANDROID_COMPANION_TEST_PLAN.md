@@ -162,6 +162,7 @@ Evidence to capture:
 - [ ] Manual brain Claim sends `claim_brain`; firmware replies with `owner_status` naming this phone as active owner; the UI enables Release and disables Claim.
 - [ ] Manual brain Release sends `release_brain`; firmware replies with `owner_status` released/idle; the UI enables Claim again.
 - [ ] Export diagnostics writes `ANDROID_DIAGNOSTICS_EXPORT.json`, opens the Android share sheet, reports schema `stackchan.android.diagnostics-export.v1`, includes live bridge/robot state plus saved robot/trusted endpoint state including `robot_socket_connected`, the Wi-Fi provisioning command template with password redaction, Gemma local path, bytes, loaded/downloaded/checksum flags, LiteRT success/failure intents, and redacts the last text turn to presence-only.
+- [ ] Run `tools\check_android_diagnostics_export_evidence.cmd -ExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -ReviewPath <ANDROID_DIAGNOSTICS_REVIEW.md> -Json`; it must report `android-diagnostics-export-ready` before G8 is closed. Use `-WriteTemplate` first to create the support review template.
 - [ ] Android notification switches from waiting for robot session, to waiting for robot hello, to session active.
 - [ ] Robot receives `endpoint_hello`.
 - [ ] A firmware build configured with `STACKCHAN_PAIRING_SHORT_CODE` rejects missing or wrong `endpoint_hello.pairing_code` with `pairing_code_mismatch` and does not persist that endpoint as trusted.
@@ -224,5 +225,6 @@ Attach these to the arrival-day packet:
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
 - `android/screen-off-soak/ANDROID_COMPANION_SOAK.md` and `android_companion_soak.json`, or the repo `output/android-companion-soak/latest/` equivalents
 - `ANDROID_DIAGNOSTICS_EXPORT.json` shared from the app after the robot session, with transcript/text-turn content redacted unless the tester explicitly opts in
+- `ANDROID_DIAGNOSTICS_REVIEW.md` plus the JSON output from `tools/check_android_diagnostics_export_evidence.cmd -ExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -ReviewPath <ANDROID_DIAGNOSTICS_REVIEW.md> -RequireReady -Json`
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

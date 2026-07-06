@@ -296,6 +296,8 @@ $requiredFiles = @(
   "tools/check_android_play_release_readiness.ps1",
   "tools/check_android_play_store_evidence.cmd",
   "tools/check_android_play_store_evidence.ps1",
+  "tools/check_android_diagnostics_export_evidence.cmd",
+  "tools/check_android_diagnostics_export_evidence.ps1",
   "tools/check_companion_v1_readiness.cmd",
   "tools/check_companion_v1_readiness.ps1",
   "tools/export_companion_release_evidence.cmd",
@@ -1120,8 +1122,15 @@ foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-interna
   }
 }
 
+$androidDiagnosticsEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_diagnostics_export_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "Support decision: pass", "pending-android-diagnostics-export-evidence")) {
+  if ($androidDiagnosticsEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_diagnostics_export_evidence.ps1 missing Android diagnostics export evidence logic: $pattern"
+  }
+}
+
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-play-release-prep", "android-play-store-evidence-check", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "physical-robot-hardware-validation", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }

@@ -581,6 +581,12 @@ Test-TextEvidence `
   -Patterns @("stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "last_text_turn_present", "robot_socket_connected", "raw_audio_retention", "last text turn redacted to presence only", "wifi_provisioning_command_template", "password_redacted", "model_id", "expected_sha256", "runner_status", "mobile_brain_litert_turn", "mobile_brain_litert_error", "requires_real_device_inference_evidence")
 
 Test-TextEvidence `
+  -Id "android-diagnostics-export-evidence-check" `
+  -Name "Android diagnostics export evidence check" `
+  -RelativePaths @("tools/check_android_diagnostics_export_evidence.ps1", "provenance/tools/check_android_diagnostics_export_evidence.ps1") `
+  -Patterns @("stackchan.android-diagnostics-export-evidence.v1", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json", "ANDROID_DIAGNOSTICS_REVIEW.md", "password_redacted", "last_text_turn_present", "requires_real_device_inference_evidence", "pending-android-diagnostics-export-evidence", "Support decision: pass", "RequireReady")
+
+Test-TextEvidence `
   -Id "android-play-release-prep" `
   -Name "Android Play release preparation" `
   -RelativePaths @("docs/ANDROID_PLAY_RELEASE.md", "provenance/docs/ANDROID_PLAY_RELEASE.md") `

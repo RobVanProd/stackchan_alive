@@ -104,8 +104,10 @@ current v1 companion branch.
   The export records the LiteRT-LM artifact path, bytes, loaded/downloaded flags, adapter
   runner status, success/failure intents needed for real-device Gemma sign-off, and the
   Wi-Fi provisioning command template with an explicit password-redacted flag. The export
-  redacts the last text turn to a presence-only flag. Hardware-run capture and support review
-  are still required before calling G8 complete.
+  redacts the last text turn to a presence-only flag. The source tree now includes
+  `tools/check_android_diagnostics_export_evidence.ps1` to validate the shared export and
+  support-review packet. Hardware-run capture, connected robot/session proof, Gemma loaded
+  state, and `Support decision: pass` review are still required before calling G8 complete.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -133,6 +135,6 @@ current v1 companion branch.
 1. Finish G1 with hardware push-to-talk/STT validation and transcript evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence.
-4. Exercise G8 Android diagnostics export on hardware and attach support-reviewed evidence.
+4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject plus persona import/export on target devices.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof.
