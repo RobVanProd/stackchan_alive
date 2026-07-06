@@ -79,7 +79,8 @@ function Write-StatusReport {
     [string]$Status,
     [string]$Commit = "",
     [string]$SourceCommit = "",
-    [string]$Version = ""
+    [string]$Version = "",
+    [string]$EvidenceRoot = ""
   )
 
   $report = [ordered]@{
@@ -98,6 +99,14 @@ function Write-StatusReport {
   }
   if (-not [string]::IsNullOrWhiteSpace($Version)) {
     $report.version = $Version
+  }
+  if (-not [string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+    $report.evidenceRoot = $EvidenceRoot
+    $report.evidence = [ordered]@{
+      metadata = [ordered]@{
+        commit = $Commit
+      }
+    }
   }
   Write-JsonFile -Path $Path -Value $report
 }
@@ -122,6 +131,8 @@ try {
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $releaseZipPath) | Out-Null
   Set-Content -Path $releaseZipPath -Value "contract release zip" -Encoding UTF8
   $releaseZipSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseZipPath).Hash.ToLowerInvariant()
+  $hardwareEvidenceRoot = Join-Path $readyRoot "hardware-evidence/contract"
+  New-Item -ItemType Directory -Force -Path $hardwareEvidenceRoot | Out-Null
   $reports = [ordered]@{
     companionReadinessReport = "reports/companion_v1_readiness.json"
     companionReleaseEvidenceReport = "reports/COMPANION_RELEASE_EVIDENCE.json"
@@ -141,7 +152,7 @@ try {
         sha256 = $releaseZipSha
       }
       hardwareEvidenceStatus = "verified"
-      hardwareEvidenceRoot = "output/hardware-evidence/contract"
+      hardwareEvidenceRoot = $hardwareEvidenceRoot
       androidV1Status = "ready"
       desktopV1Status = "ready"
       reports = $reports
@@ -150,7 +161,7 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion
   Write-StatusReport -Path (Join-Path $readyRoot $reports.githubActionsStatusReport) -Schema "stackchan.github-actions-status.v1" -Status "success" -Commit $sourceCommit -Version $releaseVersion
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot
   Write-JsonFile -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Value ([ordered]@{
       schema = "stackchan.android-v1-evidence-bundle-check.v1"
       status = "android-v1-evidence-ready"
@@ -203,7 +214,7 @@ try {
   if ($readyResult.report.status -ne "companion-v1-evidence-ready") {
     throw "Expected companion-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -230,6 +241,26 @@ try {
   }
   Assert-CheckStatus -Report $readinessMismatchResult.report -Id "companion-readiness-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 source-readiness commit is rejected"
+
+  $hardwareRootMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $hardwareRootMismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $hardwareRootMismatchRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot (Join-Path $hardwareRootMismatchRoot "hardware-evidence/other")
+  $hardwareRootMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $hardwareRootMismatchRoot
+  if ([int]$hardwareRootMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 hardware evidence root to fail."
+  }
+  Assert-CheckStatus -Report $hardwareRootMismatchResult.report -Id "rollout-hardware-root-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 hardware evidence root is rejected"
+
+  $hardwareCommitMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $hardwareCommitMismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $hardwareCommitMismatchRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit ("e" * 40) -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot
+  $hardwareCommitMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $hardwareCommitMismatchRoot
+  if ([int]$hardwareCommitMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 hardware evidence commit to fail."
+  }
+  Assert-CheckStatus -Report $hardwareCommitMismatchResult.report -Id "rollout-hardware-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 hardware evidence commit is rejected"
 
   $mismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $mismatchRoot -Recurse -Force

@@ -216,6 +216,71 @@ function Test-ReportFieldEquals {
   }
 }
 
+function Convert-ToComparablePath {
+  param([string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path) -or $Path -match "<|TBD|pending") {
+    return ""
+  }
+  $candidate = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $Root $Path }
+  return ([System.IO.Path]::GetFullPath($candidate).TrimEnd("\", "/") -replace "\\", "/").ToLowerInvariant()
+}
+
+function Test-RolloutHardwareEvidence {
+  param(
+    [object]$Reports,
+    [string]$ExpectedHardwareRoot,
+    [string]$ExpectedCommit
+  )
+
+  $relativePath = [string](Get-Field $Reports "rolloutStatusReport")
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "pending" "" "Record reports.rolloutStatusReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pending" "" "Record reports.rolloutStatusReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "pending" (Convert-ToRelativePath $path) "Missing rollout status report."
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pending" (Convert-ToRelativePath $path) "Missing rollout status report."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $actualHardwareRoot = [string](Get-Field $report "evidenceRoot")
+  $expectedComparable = Convert-ToComparablePath $ExpectedHardwareRoot
+  $actualComparable = Convert-ToComparablePath $actualHardwareRoot
+  if ([string]::IsNullOrWhiteSpace($expectedComparable)) {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record hardwareEvidenceRoot before checking rollout evidence consistency."
+  } elseif ([string]::IsNullOrWhiteSpace($actualComparable)) {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "fail" (Convert-ToRelativePath $path) "Rollout status report is missing evidenceRoot."
+  } elseif ($actualComparable -eq $expectedComparable) {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "pass" (Convert-ToRelativePath $path) "Rollout status evidenceRoot matches hardwareEvidenceRoot."
+  } else {
+    Add-Check "rollout-hardware-root-match" "Rollout hardware evidence root matches bundle" "fail" (Convert-ToRelativePath $path) "Expected hardwareEvidenceRoot=$ExpectedHardwareRoot, got $actualHardwareRoot."
+  }
+
+  $evidence = Get-Field $report "evidence"
+  $metadata = Get-Field $evidence "metadata"
+  $actualEvidenceCommit = [string](Get-Field $metadata "commit")
+  if ([string]::IsNullOrWhiteSpace($ExpectedCommit) -or $ExpectedCommit -match "<|TBD|pending") {
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record sourceCommit before checking rollout hardware evidence consistency."
+  } elseif ([string]::IsNullOrWhiteSpace($actualEvidenceCommit)) {
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "fail" (Convert-ToRelativePath $path) "Rollout status report is missing evidence.metadata.commit."
+  } elseif ($actualEvidenceCommit -eq $ExpectedCommit) {
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pass" (Convert-ToRelativePath $path) "Rollout hardware evidence commit matches sourceCommit."
+  } else {
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "fail" (Convert-ToRelativePath $path) "Expected evidence.metadata.commit=$ExpectedCommit, got $actualEvidenceCommit."
+  }
+}
+
 function Write-CompanionV1EvidenceTemplate {
   New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "reports") | Out-Null
@@ -391,6 +456,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "github-actions-version-match" "GitHub Actions version matches bundle" $reports "githubActionsStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "rollout-status-version-match" "Rollout status version matches bundle" $reports "rolloutStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-RolloutHardwareEvidence $reports ([string]$bundle.hardwareEvidenceRoot) ([string]$bundle.sourceCommit)
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
     if ([string]::IsNullOrWhiteSpace([string]$bundle.reviewPath) -or -not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {

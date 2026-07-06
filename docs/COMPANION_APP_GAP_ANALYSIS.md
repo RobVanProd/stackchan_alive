@@ -155,7 +155,9 @@ current v1 companion branch.
   release ZIP with a matching SHA-256, verified hardware evidence status, and a human
   `COMPANION_V1_REVIEW.md` before reporting `companion-v1-evidence-ready`. The gate also
   rejects mismatched commit or version evidence across source readiness, release, CI,
-  rollout, Android v1, desktop v1, and production voice-source reports.
+  rollout, Android v1, desktop v1, and production voice-source reports, and verifies that
+  the rollout report's strict hardware evidence root and hardware metadata commit match the
+  final bundle.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
