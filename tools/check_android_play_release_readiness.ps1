@@ -275,6 +275,30 @@ foreach ($relativePath in @(
   Test-FilePresent ("metadata-" + ($relativePath -replace "[^A-Za-z0-9]+", "-").Trim("-")) "Play listing metadata" $relativePath
 }
 
+Test-TextPatterns `
+  -Id "play-listing-title" `
+  -Name "Play listing title" `
+  -RelativePath "fastlane/metadata/android/en-US/title.txt" `
+  -Patterns @("Stackchan Companion")
+
+Test-TextPatterns `
+  -Id "play-listing-short-description" `
+  -Name "Play listing short description" `
+  -RelativePath "fastlane/metadata/android/en-US/short_description.txt" `
+  -Patterns @("Local companion bridge", "Stack-chan")
+
+Test-TextPatterns `
+  -Id "play-listing-full-description" `
+  -Name "Play listing full description" `
+  -RelativePath "fastlane/metadata/android/en-US/full_description.txt" `
+  -Patterns @("pairing", "phone-side companion bridge", "saved Stack-chan nodes", "Live dashboard", "square Stack-chan face preview", "Push-to-talk", "Gemma-4-E2B", "download", "load", "eject", "Persona import/export", "diagnostics export", "trusted companion-node", "local-first", "raw microphone audio is not stored", "internal testing", "physical robot validation", "screen-off bridge soak evidence")
+
+Test-TextPatterns `
+  -Id "play-listing-changelog" `
+  -Name "Play listing changelog" `
+  -RelativePath "fastlane/metadata/android/en-US/changelogs/1.txt" `
+  -Patterns @("Guided Stack-chan pairing", "saved-node add/remove", "square Stack-chan face preview", "Gemma-4-E2B", "Persona import/export", "diagnostics export", "protected robot controls")
+
 $failedChecks = @($checks | Where-Object { $_.status -eq "fail" })
 $pendingChecks = @($checks | Where-Object { $_.status -eq "pending" })
 $status = if ($failedChecks.Count -gt 0) {

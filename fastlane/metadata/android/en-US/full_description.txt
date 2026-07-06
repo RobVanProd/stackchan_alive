@@ -1,5 +1,15 @@
 Stackchan Companion is the local mobile control surface for a Stack-chan robot.
 
-The app hosts the companion bridge, shows robot connection status, exposes paired companion nodes, and provides a phone-first dashboard for arrival-day testing and operation.
+The app walks a first-time user through pairing, runs the phone-side companion bridge, shows the live robot connection state, and keeps saved Stack-chan nodes easy to add or remove. It is designed for local-network operation with paired Stack-chan hardware, not a cloud account.
 
-This v1 release is intended for paired Stack-chan hardware and local-network testing. Final Play promotion requires physical robot validation, connected-session evidence, and screen-off bridge soak evidence.
+V1 surfaces the core controls people need after setup:
+
+- Live dashboard with the square Stack-chan face preview and honest connection/telemetry state
+- Push-to-talk and text turns through the active robot bridge
+- Brain and model controls for Gemma-4-E2B download, checksum verification, load, eject, and settings
+- Persona import/export, persona selection, diagnostics export, and trusted companion-node review
+- Local settings and manual brain handoff controls guarded by the robot hello/pairing flow
+
+Privacy is local-first. The app does not create accounts, sell ads, or upload diagnostics automatically. Microphone access is only used when the user starts Push-to-talk, raw microphone audio is not stored by the app, and diagnostics exports are user-initiated with transcript text redacted.
+
+This v1 listing is prepared for internal testing with paired Stack-chan hardware. Public Play promotion still requires final physical robot validation, connected-session evidence, Play screenshots from the signed build, and screen-off bridge soak evidence.

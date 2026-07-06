@@ -1,7 +1,9 @@
 Initial v1 companion release for Stack-chan hardware testing.
 
 - Android companion bridge service
-- Phone-first dashboard
-- Paired endpoint registry
-- Local discovery and manual bridge URL support
+- Guided Stack-chan pairing and saved-node add/remove flow
+- Phone-first dashboard with square Stack-chan face preview
+- Gemma-4-E2B model download/load/eject controls
+- Persona import/export and diagnostics export
+- Local discovery, manual bridge URL support, and protected robot controls
 - Stack-chan face preview and telemetry surfaces
