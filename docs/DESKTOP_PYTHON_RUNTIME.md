@@ -119,3 +119,9 @@ proof, production voice-source readiness, and `DESKTOP_V1_REVIEW.md`:
 
 The aggregate checker reports `desktop-v1-evidence-ready` only when those release evidence
 items all describe the same desktop v1 candidate.
+
+The desktop bundle is then consumed by the final companion aggregate gate:
+
+```powershell
+.\tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json
+```

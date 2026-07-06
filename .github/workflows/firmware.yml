@@ -31,6 +31,8 @@ jobs:
               - 'docs/COMPANION_CROSS_PLATFORM_PLAN.md'
               - 'tools/check_android_toolchain.*'
               - 'tools/check_companion_v1_readiness.*'
+              - 'tools/check_companion_v1_evidence_bundle.*'
+              - 'tools/test_companion_v1_evidence_bundle_contract.*'
               - 'tools/check_desktop_v1_evidence_bundle.*'
               - 'tools/test_desktop_v1_evidence_bundle_contract.*'
               - 'tools/export_companion_release_evidence.*'
@@ -169,6 +171,10 @@ jobs:
       - name: Run Desktop v1 evidence bundle contract
         shell: pwsh
         run: ./tools/test_desktop_v1_evidence_bundle_contract.ps1
+
+      - name: Run Companion v1 evidence bundle contract
+        shell: pwsh
+        run: ./tools/test_companion_v1_evidence_bundle_contract.ps1
 
       - name: Upload companion C0 spike report
         uses: actions/upload-artifact@v7

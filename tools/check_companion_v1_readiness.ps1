@@ -573,6 +573,18 @@ Test-TextEvidence `
   -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
+  -Id "companion-v1-evidence-bundle-check" `
+  -Name "Companion v1 aggregate evidence bundle check" `
+  -RelativePaths @("tools/check_companion_v1_evidence_bundle.ps1") `
+  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "COMPANION_V1_REVIEW.md", "RequireReady")
+
+Test-TextEvidence `
+  -Id "companion-v1-evidence-bundle-contract" `
+  -Name "Companion v1 aggregate evidence bundle contract test" `
+  -RelativePaths @("tools/test_companion_v1_evidence_bundle_contract.ps1") `
+  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
+
+Test-TextEvidence `
   -Id "desktop-python-runtime-payload-prep-tool" `
   -Name "Desktop managed Python runtime payload preparation tool" `
   -RelativePaths @("tools/prepare_desktop_python_runtime.ps1", "docs/DESKTOP_PYTHON_RUNTIME.md") `

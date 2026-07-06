@@ -306,6 +306,10 @@ $requiredFiles = @(
   "tools/check_desktop_v1_evidence_bundle.ps1",
   "tools/test_desktop_v1_evidence_bundle_contract.cmd",
   "tools/test_desktop_v1_evidence_bundle_contract.ps1",
+  "tools/check_companion_v1_evidence_bundle.cmd",
+  "tools/check_companion_v1_evidence_bundle.ps1",
+  "tools/test_companion_v1_evidence_bundle_contract.cmd",
+  "tools/test_companion_v1_evidence_bundle_contract.ps1",
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
@@ -397,6 +401,8 @@ $requiredFiles = @(
   "tools/test_android_v1_evidence_bundle_contract.ps1",
   "tools/test_desktop_v1_evidence_bundle_contract.cmd",
   "tools/test_desktop_v1_evidence_bundle_contract.ps1",
+  "tools/test_companion_v1_evidence_bundle_contract.cmd",
+  "tools/test_companion_v1_evidence_bundle_contract.ps1",
   "tools/prepare_device_arrival.cmd",
   "tools/prepare_device_arrival.ps1",
   "tools/run_device_preflight.cmd",
@@ -1776,6 +1782,20 @@ $desktopV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools
 foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
   if ($desktopV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_v1_evidence_bundle_contract.ps1 missing desktop v1 evidence bundle contract coverage: $pattern"
+  }
+}
+
+$companionV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_evidence_bundle.ps1") -Raw
+foreach ($pattern in @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "COMPANION_V1_REVIEW.md", "RequireReady")) {
+  if ($companionV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_companion_v1_evidence_bundle.ps1 missing companion v1 evidence bundle logic: $pattern"
+  }
+}
+
+$companionV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_companion_v1_evidence_bundle_contract.ps1") -Raw
+foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")) {
+  if ($companionV1BundleContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_companion_v1_evidence_bundle_contract.ps1 missing companion v1 evidence bundle contract coverage: $pattern"
   }
 }
 

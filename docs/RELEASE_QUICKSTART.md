@@ -371,6 +371,18 @@ production voice-source readiness are captured:
 The checker must report `desktop-v1-evidence-ready` before treating desktop installers as
 v1 release-ready.
 
+After Android v1, desktop v1, hardware, Play, production voice-source, release package,
+GitHub Actions, and rollout evidence are all ready for the same commit, assemble the final
+Companion v1 aggregate packet:
+
+```powershell
+.\tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -WriteTemplate
+.\tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json
+```
+
+The checker must report `companion-v1-evidence-ready` before calling the companion v1
+release fully vetted.
+
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:

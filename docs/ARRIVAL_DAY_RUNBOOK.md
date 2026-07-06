@@ -235,6 +235,17 @@ human review are collected, assemble the aggregate desktop v1 packet:
 It must report `desktop-v1-evidence-ready` before desktop PC Brain installers are treated
 as v1 release-ready.
 
+After both platform bundles pass and the release package, GitHub Actions, rollout status,
+hardware evidence, Play internal testing, and production voice-source gates all refer to the
+same release candidate, assemble the final Companion v1 packet:
+
+```powershell
+.\tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -WriteTemplate
+.\tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json
+```
+
+It must report `companion-v1-evidence-ready` before v1 is called fully vetted.
+
 Import the display photo or video into the packet:
 
 ```powershell

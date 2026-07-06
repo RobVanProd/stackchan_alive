@@ -143,6 +143,12 @@ current v1 companion branch.
   companion source readiness report, diagnostics, speech, controls, pairing, Wi-Fi, Gemma,
   screen-off soak, Play Store evidence-check JSON, connected-dashboard/hardware status, and
   a human `ANDROID_V1_REVIEW.md` before reporting `android-v1-evidence-ready`.
+- Companion final-release evidence now has a top-level aggregate source-side bundle gate:
+  `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
+  companion release evidence, GitHub Actions status, rollout status, Android v1 bundle
+  readiness, desktop v1 bundle readiness, production voice-source readiness, release ZIP
+  hash, verified hardware evidence status, and a human `COMPANION_V1_REVIEW.md` before
+  reporting `companion-v1-evidence-ready`.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -200,3 +206,4 @@ current v1 companion branch.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
 9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.
 9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs.
+10. Assemble the final Companion v1 evidence bundle and run `tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json`; attach `COMPANION_V1_EVIDENCE_BUNDLE.json/md`, `COMPANION_V1_REVIEW.md`, and the `reports/` JSON outputs before calling v1 release-ready.
