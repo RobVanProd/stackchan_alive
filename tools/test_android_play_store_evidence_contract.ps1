@@ -234,3 +234,5 @@ pairing evidence tied to the final internal testing build.
     }
   }
 }
+
+exit 0
