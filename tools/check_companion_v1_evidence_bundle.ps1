@@ -226,6 +226,36 @@ function Convert-ToAndroidVersionName {
   return $value
 }
 
+function Get-AndroidSourceVersionCode {
+  $gradlePath = Join-Path $Root "companion/app-android/build.gradle.kts"
+  if (-not (Test-Path -LiteralPath $gradlePath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      value = ""
+      evidence = Convert-ToRelativePath $gradlePath
+      detail = "Missing Android Gradle build file."
+    }
+  }
+
+  $text = Get-Content -LiteralPath $gradlePath -Raw
+  $matches = [regex]::Matches($text, "(?m)^\s*versionCode\s*=\s*([1-9]\d*)\s*$")
+  if ($matches.Count -ne 1) {
+    return [ordered]@{
+      status = "fail"
+      value = ""
+      evidence = Convert-ToRelativePath $gradlePath
+      detail = "Expected exactly one literal Android versionCode declaration."
+    }
+  }
+
+  return [ordered]@{
+    status = "pass"
+    value = $matches[0].Groups[1].Value
+    evidence = Convert-ToRelativePath $gradlePath
+    detail = "Android source versionCode parsed."
+  }
+}
+
 function Test-AndroidVersionNameMatchesRelease {
   param(
     [object]$Reports,
@@ -262,6 +292,46 @@ function Test-AndroidVersionNameMatchesRelease {
     Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "pass" (Convert-ToRelativePath $path) "Android versionName matches releaseVersion."
   } else {
     Add-Check "android-v1-version-name-match" "Android v1 app version matches release version" "fail" (Convert-ToRelativePath $path) "Expected Android versionName=$expectedVersionName from releaseVersion $ReleaseVersion, got $actualVersionName."
+  }
+}
+
+function Test-AndroidVersionCodeMatchesSource {
+  param([object]$Reports)
+
+  $relativePath = [string](Get-Field $Reports "androidV1BundleReport")
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" "pending" "" "Record reports.androidV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" "pending" (Convert-ToRelativePath $path) "Missing Android v1 bundle report."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $actualVersionCode = [string](Get-Field $report "versionCode")
+  if ($actualVersionCode -notmatch "^[1-9]\d*$") {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" "fail" (Convert-ToRelativePath $path) "Android v1 bundle report is missing a positive numeric versionCode."
+    return
+  }
+
+  $sourceVersionCode = Get-AndroidSourceVersionCode
+  if ($sourceVersionCode.status -ne "pass") {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" $sourceVersionCode.status $sourceVersionCode.evidence $sourceVersionCode.detail
+    return
+  }
+
+  if ($actualVersionCode -eq $sourceVersionCode.value) {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" "pass" $sourceVersionCode.evidence "Android versionCode matches the source Gradle release configuration."
+  } else {
+    Add-Check "android-v1-version-code-match" "Android v1 app versionCode matches source" "fail" (Convert-ToRelativePath $path) "Expected Android versionCode=$($sourceVersionCode.value) from companion/app-android/build.gradle.kts, got $actualVersionCode."
   }
 }
 
@@ -653,7 +723,8 @@ Required ready statuses:
 - ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
 - Android ``versionName`` must match the release version, Android ``apkSha256`` must match
-  a release APK artifact hash, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
+  a release APK artifact hash, Android ``versionCode`` must match the source Gradle release
+  configuration, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
 - Desktop MSI, DMG, and DEB hashes must match release evidence package artifact hashes.
 - Release evidence ``packageEvidence`` must include hashed package core files from the extracted release package.
 - Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
@@ -785,6 +856,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "rollout-status-version-match" "Rollout status version matches bundle" $reports "rolloutStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-AndroidVersionNameMatchesRelease $reports $releaseVersion
+    Test-AndroidVersionCodeMatchesSource $reports
     Test-AndroidReleaseApkHashMatchesReleaseEvidence $reports
     Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
     Test-DesktopArtifactHashesMatchReleaseEvidence $reports

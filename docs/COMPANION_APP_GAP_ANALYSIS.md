@@ -165,6 +165,7 @@ current v1 companion branch.
   rejects mismatched commit or version evidence across source readiness, release, CI,
   rollout, Android v1, desktop v1, and production voice-source reports. It also rejects an
   Android app `versionName` that does not match the final release version, rejects an Android
+  `versionCode` that does not match the source Gradle release configuration, rejects an Android
   target-phone `apkSha256` that is not present as a release APK in companion release evidence,
   rejects an Android Play `releaseAabSha256` that is not present in companion release evidence,
   rejects desktop MSI/DMG/DEB hashes that are not present in companion release evidence,
