@@ -213,6 +213,16 @@ The collector writes `PC_BRAIN_DEPLOY_EVIDENCE.json/md`, copies PC brain logs, a
 This proves the lab PC brain path on the current machine; it does not close the managed
 desktop Python runtime payload gate.
 
+If the deploy packet passes, leave the PC brain bridge online and run the quiet soak:
+
+```powershell
+.\tools\run_pc_brain_quiet_soak.cmd -DeviceHost <robot-lan-ip> -DurationSeconds 600 -IntervalSeconds 30
+.\tools\check_pc_brain_quiet_soak_evidence.cmd -SoakJsonPath output\pc-brain\<soak-dir>\PC_BRAIN_QUIET_SOAK.json -SoakMarkdownPath output\pc-brain\<soak-dir>\PC_BRAIN_QUIET_SOAK.md -RequireReady -Json
+```
+
+The checker must report `pc-brain-quiet-soak-ready` before using PC Brain lab evidence for
+release promotion notes.
+
 Import the display photo or video into the packet:
 
 ```powershell

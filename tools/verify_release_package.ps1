@@ -413,6 +413,10 @@ $requiredFiles = @(
   "tools/collect_pc_brain_deploy_evidence.ps1",
   "tools/check_pc_brain_deploy_evidence.cmd",
   "tools/check_pc_brain_deploy_evidence.ps1",
+  "tools/run_pc_brain_quiet_soak.cmd",
+  "tools/run_pc_brain_quiet_soak.ps1",
+  "tools/check_pc_brain_quiet_soak_evidence.cmd",
+  "tools/check_pc_brain_quiet_soak_evidence.ps1",
   "tools/run_selected_voice_once.cmd",
   "tools/run_selected_voice_once.ps1",
   "tools/run_android_companion_probe.cmd",
@@ -1674,6 +1678,20 @@ $checkPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/ch
 foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")) {
   if ($checkPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence check support: $pattern"
+  }
+}
+
+$runPcBrainQuietSoakText = Get-Content -LiteralPath (Join-PackagePath "tools/run_pc_brain_quiet_soak.ps1") -Raw
+foreach ($pattern in @("stackchan.pc-brain-quiet-soak.v1", "requested_duration_seconds", "interval_seconds", "debug-endpoint-ok", "unexpected_audio_stream_during_quiet_soak", "PC_BRAIN_QUIET_SOAK.json", "PC_BRAIN_QUIET_SOAK.md")) {
+  if ($runPcBrainQuietSoakText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_pc_brain_quiet_soak.ps1 missing PC brain quiet soak support: $pattern"
+  }
+}
+
+$checkPcBrainQuietSoakText = Get-Content -LiteralPath (Join-PackagePath "tools/check_pc_brain_quiet_soak_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.pc-brain-quiet-soak-evidence-check.v1", "stackchan.pc-brain-quiet-soak.v1", "pc-brain-quiet-soak-ready", "MinDurationSeconds", "no-unexpected-audio-streams", "bridge-message-monotonic", "stable-local-ip", "RequireReady")) {
+  if ($checkPcBrainQuietSoakText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_pc_brain_quiet_soak_evidence.ps1 missing PC brain quiet soak evidence check support: $pattern"
   }
 }
 

@@ -314,6 +314,17 @@ audio downlink and speaker playback path with zero bridge/playback errors. Manag
 Python runtime payload evidence is still required before desktop distribution is considered
 self-contained.
 
+After a passing deploy packet, leave the PC brain and robot connected and run the quiet-soak
+gate:
+
+```powershell
+.\tools\run_pc_brain_quiet_soak.cmd -DeviceHost <robot-lan-ip> -DurationSeconds 600 -IntervalSeconds 30
+.\tools\check_pc_brain_quiet_soak_evidence.cmd -SoakJsonPath output\pc-brain\<soak-dir>\PC_BRAIN_QUIET_SOAK.json -SoakMarkdownPath output\pc-brain\<soak-dir>\PC_BRAIN_QUIET_SOAK.md -RequireReady -Json
+```
+
+It must report `pc-brain-quiet-soak-ready`, proving the bridge stays connected/ready for
+the full quiet window without parse/timeouts/playback errors or unexpected audio streams.
+
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:
