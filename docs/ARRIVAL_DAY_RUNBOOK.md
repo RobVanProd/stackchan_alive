@@ -151,13 +151,51 @@ If the Android service stops, crashes, loses foreground status, or fails during 
 soak, connect adb and run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` from the evidence packet
 immediately. It saves the filtered service excerpt under `android/logcat/` for review.
 
+Before treating desktop PC Brain installers as self-contained, prepare and validate the
+managed Python runtime payload on each desktop platform:
+
+```powershell
+.\tools\prepare_desktop_python_runtime.cmd -SourcePython <python.exe-or-python3> -RuntimeRoot output\desktop-python-runtime\<platform> -SourceName "python-3.12.x-<platform>" -Force
+.\tools\check_desktop_python_runtime_payload.ps1 -RuntimeRoot output\desktop-python-runtime\<platform> -Json
+```
+
+Package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
+`STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`, then attach the generated
+`stackchan-python-runtime.json` and checker output to the release evidence.
+
 For PC Brain Mode lab bring-up from the source checkout, start the local bridge with the
 selected voice path:
 
 ```powershell
-.\tools\start_pc_brain.cmd -Background -StopExisting
+.\tools\start_pc_brain.cmd -Background -StopExisting -SelectedVoiceStartBytes 65536 -DownlinkBinaryFrameDelayMs 80
 .\tools\run_pc_brain_probe.cmd --url ws://127.0.0.1:8765/bridge
 ```
+
+For the first CoreS3 lab deploy on Robot_Wifi, the calibrated speaker/output settings were:
+
+- firmware speaker volume: `150`
+- M5 speaker magnification: `16`
+- selected voice: `stackchan-rvc-bright-robot`
+- selected voice gain: `0.30`
+- selected voice start offset: `65536` bytes
+- selected voice max payload: `65536` bytes
+- downlink audio chunk size: `4096` bytes
+- downlink binary frame delay: `80` ms
+
+When the robot is already attached to the PC bridge, `run_pc_brain_probe` may time out because
+the current source-side LAN service accepts the active robot session. In that case, validate the
+robot-routed text turn over serial instead:
+
+```text
+bridge turn please confirm the first deploy voice path is online in one short sentence
+```
+
+Expected markers are `[bridge_text_turn] result=accepted`, `thinking`, `response_start`,
+`audio_stream_start`, 16 `audio_stream_chunk` records for a 65536-byte PCM16 stream,
+`audio_stream_end`, mouth `audio` frames, and `response_end`. Opening the USB serial port can
+reset the CoreS3 on some Windows setups; if that happens after a successful turn, restart the PC
+brain with `-StopExisting` and confirm the debug endpoint returns `network_state=connected` and
+`bridge_state=ready`.
 
 After the robot has Wi-Fi credentials and can reach the PC, flash or provision the Wi-Fi
 bridge target with `tools\flash_wifi_bridge.cmd` or the runtime `wifi set ... url

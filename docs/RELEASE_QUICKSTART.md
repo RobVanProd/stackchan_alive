@@ -278,6 +278,19 @@ robot already has Wi-Fi credentials, enter `pair ticket <stackchan://pair?...>` 
 `stackchan://pair?...` Android QR payload instead; that ticket carries only the pairing code
 and bridge target.
 
+For desktop PC Brain distribution, prepare a managed Python runtime payload on each target
+desktop platform before packaging installers:
+
+```powershell
+.\tools\prepare_desktop_python_runtime.cmd -SourcePython <python.exe-or-python3> -RuntimeRoot output\desktop-python-runtime\<platform> -SourceName "python-3.12.x-<platform>" -Force
+.\tools\check_desktop_python_runtime_payload.ps1 -RuntimeRoot output\desktop-python-runtime\<platform> -Json
+```
+
+Then pass that root into desktop packaging with
+`-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
+`STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`. A platform runtime only validates the
+matching platform installer; Windows, macOS, and Linux require separate native payloads.
+
 For PC Brain Mode lab bring-up, start the local brain bridge and selected voice TTS path:
 
 ```powershell

@@ -151,8 +151,11 @@ current v1 companion branch.
   `stackchan-python-runtime.json` plus platform Python executable layout. Desktop packaging
   now accepts `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
   `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT`, validates the payload before resource processing,
-  and copies it into app resources as `python-runtime/`. Supplying and shipping the actual
-  managed Python binary payload for each desktop platform remains open.
+  and copies it into app resources as `python-runtime/`. The source tree now also includes
+  `tools\prepare_desktop_python_runtime.ps1`, which can turn an installed Python 3.10+
+  runtime into the expected payload folder, manifest, and deterministic payload hash before
+  running the payload checker. Supplying and shipping the actual managed Python binary
+  payload for each desktop platform remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision
@@ -176,3 +179,4 @@ current v1 companion branch.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -RequireReady -Json`.
 7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -RequireReady -Json` before release promotion.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` as lab evidence while keeping the managed runtime payload gate open.
+9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.

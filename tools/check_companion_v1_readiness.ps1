@@ -555,6 +555,12 @@ Test-TextEvidence `
   -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+")
 
 Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-prep-tool" `
+  -Name "Desktop managed Python runtime payload preparation tool" `
+  -RelativePaths @("tools/prepare_desktop_python_runtime.ps1", "docs/DESKTOP_PYTHON_RUNTIME.md") `
+  -Patterns @("stackchan.desktop-python-runtime-prepare.v1", "stackchan.desktop-python-runtime.v1", "stackchan-python-runtime.json", "Get-RuntimePayloadHash", "check_desktop_python_runtime_payload.ps1", "DryRun", "preparedBy", "prepare_desktop_python_runtime.ps1")
+
+Test-TextEvidence `
   -Id "desktop-python-runtime-payload-packaging" `
   -Name "Desktop managed Python runtime payload packaging hook" `
   -RelativePaths @("companion/app-desktop/build.gradle.kts") `

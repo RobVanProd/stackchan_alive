@@ -295,6 +295,7 @@ Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/DESKTOP_PYTHON_RUNTIME.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PERSONA_PACKS.md" -Destination $docsDir
@@ -431,6 +432,10 @@ $releaseTools = @(
   "tools/flash_wifi_bridge.cmd",
   "tools/flash_wifi_bridge.ps1",
   "tools/platformio_apply_wifi_bridge_env.py",
+  "tools/prepare_desktop_python_runtime.cmd",
+  "tools/prepare_desktop_python_runtime.ps1",
+  "tools/check_desktop_python_runtime_payload.cmd",
+  "tools/check_desktop_python_runtime_payload.ps1",
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
@@ -996,6 +1001,10 @@ $manifest = [ordered]@{
     "tools/flash_wifi_bridge.cmd",
     "tools/flash_wifi_bridge.ps1",
     "tools/platformio_apply_wifi_bridge_env.py",
+    "tools/prepare_desktop_python_runtime.cmd",
+    "tools/prepare_desktop_python_runtime.ps1",
+    "tools/check_desktop_python_runtime_payload.cmd",
+    "tools/check_desktop_python_runtime_payload.ps1",
     "tools/platformio_resolver.ps1",
     "tools/check_native_toolchain.cmd",
     "tools/check_native_toolchain.ps1",

@@ -131,6 +131,7 @@ $requiredFiles = @(
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
+  "docs/DESKTOP_PYTHON_RUNTIME.md",
   "docs/GAP_ANALYSIS.md",
   "docs/JOHNNY_ALIVE_PATHWAY.md",
   "docs/PERSONA_PACKS.md",
@@ -295,6 +296,10 @@ $requiredFiles = @(
   "tools/flash_wifi_bridge.cmd",
   "tools/flash_wifi_bridge.ps1",
   "tools/platformio_apply_wifi_bridge_env.py",
+  "tools/prepare_desktop_python_runtime.cmd",
+  "tools/prepare_desktop_python_runtime.ps1",
+  "tools/check_desktop_python_runtime_payload.cmd",
+  "tools/check_desktop_python_runtime_payload.ps1",
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
@@ -1674,6 +1679,27 @@ $platformioWifiEnvText = Get-Content -LiteralPath (Join-PackagePath "tools/platf
 foreach ($pattern in @("STACKCHAN_ENABLE_WIFI_BRIDGE", "STACKCHAN_WIFI_SSID", "STACKCHAN_WIFI_PASSWORD", "STACKCHAN_BRIDGE_HOST", "STACKCHAN_BRIDGE_PORT", "STACKCHAN_BRIDGE_PATH", "CPPDEFINES", "CCFLAGS")) {
   if ($platformioWifiEnvText -notmatch [regex]::Escape($pattern)) {
     throw "tools/platformio_apply_wifi_bridge_env.py missing Wi-Fi bridge environment support: $pattern"
+  }
+}
+
+$desktopPythonRuntimeDocText = Get-Content -LiteralPath (Join-PackagePath "docs/DESKTOP_PYTHON_RUNTIME.md") -Raw
+foreach ($pattern in @("Desktop Managed Python Runtime", "python-runtime/", "runtime/python/", "stackchan-python-runtime.json", "prepare_desktop_python_runtime.ps1", "check_desktop_python_runtime_payload.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT")) {
+  if ($desktopPythonRuntimeDocText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/DESKTOP_PYTHON_RUNTIME.md missing managed runtime guidance: $pattern"
+  }
+}
+
+$prepareDesktopPythonRuntimeText = Get-Content -LiteralPath (Join-PackagePath "tools/prepare_desktop_python_runtime.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-python-runtime-prepare.v1", "stackchan.desktop-python-runtime.v1", "stackchan-python-runtime.json", "Python 3.10+", "Get-RuntimePayloadHash", "check_desktop_python_runtime_payload.ps1", "DryRun", "preparedBy")) {
+  if ($prepareDesktopPythonRuntimeText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/prepare_desktop_python_runtime.ps1 missing managed runtime prepare support: $pattern"
+  }
+}
+
+$checkDesktopPythonRuntimeText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_python_runtime_payload.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+")) {
+  if ($checkDesktopPythonRuntimeText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_desktop_python_runtime_payload.ps1 missing managed runtime payload check support: $pattern"
   }
 }
 

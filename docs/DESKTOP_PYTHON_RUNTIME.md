@@ -34,6 +34,33 @@ Manifest template:
 }
 ```
 
+## Preparing A Payload
+
+Use the prep helper to turn an already installed Python 3.10+ runtime into the folder
+layout expected by desktop packaging:
+
+```powershell
+.\tools\prepare_desktop_python_runtime.ps1 -SourcePython <python.exe-or-python3> -RuntimeRoot output\desktop-python-runtime\windows -SourceName "python-3.12.x-windows" -Force
+```
+
+The helper:
+
+- locates and probes a Python 3.10+ executable,
+- copies the containing runtime folder into the requested `RuntimeRoot`,
+- writes `stackchan-python-runtime.json`,
+- records a deterministic SHA-256 over the copied runtime payload, and
+- invokes `tools/check_desktop_python_runtime_payload.ps1` before reporting `ready`.
+
+Run a source-only preflight without copying files:
+
+```powershell
+.\tools\prepare_desktop_python_runtime.ps1 -DryRun -Json
+```
+
+Prepare one payload per desktop platform before release packaging. A Windows runtime only
+validates the Windows installer; macOS and Linux installers need their own platform-native
+runtime folders and manifests.
+
 ## Desktop Packaging
 
 Release builds can package the managed runtime by pointing Gradle at a validated runtime
