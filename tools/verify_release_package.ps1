@@ -411,6 +411,8 @@ $requiredFiles = @(
   "tools/run_pc_brain_probe.cmd",
   "tools/collect_pc_brain_deploy_evidence.cmd",
   "tools/collect_pc_brain_deploy_evidence.ps1",
+  "tools/check_pc_brain_deploy_evidence.cmd",
+  "tools/check_pc_brain_deploy_evidence.ps1",
   "tools/run_selected_voice_once.cmd",
   "tools/run_selected_voice_once.ps1",
   "tools/run_android_companion_probe.cmd",
@@ -1662,9 +1664,16 @@ foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKC
 }
 
 $collectPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/collect_pc_brain_deploy_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "bridge_downlink_playback_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
   if ($collectPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/collect_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence support: $pattern"
+  }
+}
+
+$checkPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/check_pc_brain_deploy_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")) {
+  if ($checkPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence check support: $pattern"
   }
 }
 

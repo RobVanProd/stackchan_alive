@@ -304,11 +304,15 @@ evidence:
 
 ```powershell
 .\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -RunTests
+.\tools\check_pc_brain_deploy_evidence.cmd -EvidenceJsonPath output\pc-brain\<deploy-dir>\PC_BRAIN_DEPLOY_EVIDENCE.json -EvidenceMarkdownPath output\pc-brain\<deploy-dir>\PC_BRAIN_DEPLOY_EVIDENCE.md -RequireTests -RequireReady -Json
 ```
 
 This writes `PC_BRAIN_DEPLOY_EVIDENCE.json/md` plus copied PC logs and robot debug JSON. It
-is lab proof for the current machine; managed desktop Python runtime payload evidence is
-still required before desktop distribution is considered self-contained.
+is lab proof for the current machine only when the checker reports `pc-brain-deploy-ready`.
+Connectivity-only packets are not enough; the evidence must show at least one completed
+audio downlink and speaker playback path with zero bridge/playback errors. Managed desktop
+Python runtime payload evidence is still required before desktop distribution is considered
+self-contained.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 

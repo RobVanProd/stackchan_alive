@@ -204,11 +204,14 @@ audio stream, run:
 
 ```powershell
 .\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -RunTests
+.\tools\check_pc_brain_deploy_evidence.cmd -EvidenceJsonPath output\pc-brain\<deploy-dir>\PC_BRAIN_DEPLOY_EVIDENCE.json -EvidenceMarkdownPath output\pc-brain\<deploy-dir>\PC_BRAIN_DEPLOY_EVIDENCE.md -RequireTests -RequireReady -Json
 ```
 
 The collector writes `PC_BRAIN_DEPLOY_EVIDENCE.json/md`, copies PC brain logs, and pulls
-`stackchan.bridge-debug.v1` from the robot debug endpoint. This proves the lab PC brain path
-on the current machine; it does not close the managed desktop Python runtime payload gate.
+`stackchan.bridge-debug.v1` from the robot debug endpoint. The checker must report
+`pc-brain-deploy-ready`; a packet that only proves bridge connectivity is not sufficient.
+This proves the lab PC brain path on the current machine; it does not close the managed
+desktop Python runtime payload gate.
 
 Import the display photo or video into the packet:
 

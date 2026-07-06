@@ -600,7 +600,13 @@ Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-helper" `
   -Name "PC Brain deploy evidence collector" `
   -RelativePaths @("tools/collect_pc_brain_deploy_evidence.ps1") `
-  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
+  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_not_started", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
+
+Test-TextEvidence `
+  -Id "pc-brain-deploy-evidence-check" `
+  -Name "PC Brain deploy evidence checker" `
+  -RelativePaths @("tools/check_pc_brain_deploy_evidence.ps1") `
+  -Patterns @("stackchan.pc-brain-deploy-evidence-check.v1", "stackchan.pc-brain-deploy-evidence.v1", "pc-brain-deploy-ready", "audio-stream-started", "playback-started", "speaker-task-bytes-match", "RequireTests", "RequireReady")
 
 Test-TextEvidence `
   -Id "pc-brain-runner-and-selected-voice" `

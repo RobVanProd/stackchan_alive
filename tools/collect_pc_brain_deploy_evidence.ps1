@@ -137,11 +137,35 @@ if ($summary.device_debug) {
   if ((Get-IntValue $Debug "audio_stream_errors" 0) -ne 0) { $summary.issues += "audio_stream_errors" }
   if ((Get-IntValue $Debug "bridge_downlink_errors" 0) -ne 0) { $summary.issues += "bridge_downlink_errors" }
   if ((Get-IntValue $Debug "bridge_downlink_playback_errors" 0) -ne 0) { $summary.issues += "bridge_downlink_playback_errors" }
+  if ((Get-IntValue $Debug "bridge_downlink_playback_unsupported" 0) -ne 0) { $summary.issues += "bridge_downlink_playback_unsupported" }
+  if ((Get-IntValue $Debug "speaker_stream_play_raw_failed" 0) -ne 0) { $summary.issues += "speaker_stream_play_raw_failed" }
+  if ((Get-IntValue $Debug "audio_streams_started" 0) -lt 1) { $summary.issues += "audio_stream_not_started" }
+  if ((Get-IntValue $Debug "audio_streams_ended" 0) -lt 1) { $summary.issues += "audio_stream_not_ended" }
+  if ((Get-IntValue $Debug "bridge_downlink_streams" 0) -lt 1) { $summary.issues += "bridge_downlink_stream_missing" }
+  if ((Get-IntValue $Debug "bridge_downlink_completed" 0) -lt 1) { $summary.issues += "bridge_downlink_not_completed" }
+  if ((Get-IntValue $Debug "bridge_downlink_playback_starts" 0) -lt 1) { $summary.issues += "bridge_downlink_playback_not_started" }
+  if ((Get-IntValue $Debug "audio_stream_bytes_expected" 0) -le 0) { $summary.issues += "audio_stream_bytes_missing" }
+  if ((Get-IntValue $Debug "audio_stream_chunks_expected" 0) -le 0) { $summary.issues += "audio_stream_chunks_missing" }
+  if ((Get-IntValue $Debug "bridge_downlink_bytes" 0) -ne (Get-IntValue $Debug "audio_stream_bytes_expected" -1)) {
+    $summary.issues += "bridge_downlink_byte_mismatch"
+  }
+  if ((Get-IntValue $Debug "bridge_downlink_chunks" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_expected" -1)) {
+    $summary.issues += "bridge_downlink_chunk_mismatch"
+  }
+  if ((Get-IntValue $Debug "bridge_downlink_playback_bytes" 0) -ne (Get-IntValue $Debug "audio_stream_bytes_expected" -1)) {
+    $summary.issues += "playback_byte_mismatch"
+  }
   if ((Get-IntValue $Debug "audio_stream_chunks_expected" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_received" -1)) {
     $summary.issues += "audio_stream_chunk_mismatch"
   }
   if ((Get-IntValue $Debug "bridge_downlink_playback_chunks" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_expected" -1)) {
     $summary.issues += "playback_chunk_mismatch"
+  }
+  if ((Get-IntValue $Debug "speaker_stream_task_bytes" 0) -ne (Get-IntValue $Debug "audio_stream_bytes_expected" -1)) {
+    $summary.issues += "speaker_task_byte_mismatch"
+  }
+  if ((Get-IntValue $Debug "speaker_stream_task_chunks" 0) -ne (Get-IntValue $Debug "audio_stream_chunks_expected" -1)) {
+    $summary.issues += "speaker_task_chunk_mismatch"
   }
 }
 
