@@ -327,6 +327,71 @@ function Test-AndroidReleaseAabHashMatchesReleaseEvidence {
   }
 }
 
+function Test-AndroidReleaseApkHashMatchesReleaseEvidence {
+  param([object]$Reports)
+
+  $androidRelativePath = [string](Get-Field $Reports "androidV1BundleReport")
+  $androidPath = Resolve-EvidencePath $androidRelativePath
+  if ([string]::IsNullOrWhiteSpace($androidRelativePath)) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "pending" "" "Record reports.androidV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $androidPath -PathType Leaf)) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "pending" (Convert-ToRelativePath $androidPath) "Missing Android v1 bundle report."
+    return
+  }
+
+  $releaseRelativePath = [string](Get-Field $Reports "companionReleaseEvidenceReport")
+  $releasePath = Resolve-EvidencePath $releaseRelativePath
+  if ([string]::IsNullOrWhiteSpace($releaseRelativePath)) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "pending" "" "Record reports.companionReleaseEvidenceReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $releasePath -PathType Leaf)) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "pending" (Convert-ToRelativePath $releasePath) "Missing Companion release evidence report."
+    return
+  }
+
+  try {
+    $androidReport = Read-JsonOrNull $androidPath
+    $releaseReport = Read-JsonOrNull $releasePath
+  } catch {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "fail" "reports" "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $expectedHash = ([string](Get-Field $androidReport "apkSha256")).ToLowerInvariant()
+  if (-not (Test-Hash $expectedHash)) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "fail" (Convert-ToRelativePath $androidPath) "Android v1 bundle report is missing a valid apkSha256."
+    return
+  }
+
+  $releaseApkHashes = @()
+  foreach ($group in @($releaseReport.artifacts)) {
+    foreach ($entry in @($group.entries)) {
+      $entryPath = [string](Get-Field $entry "path")
+      $entryName = [string](Get-Field $entry "name")
+      $candidateName = "$entryPath $entryName"
+      $isApk = $entryPath.EndsWith(".apk", [System.StringComparison]::OrdinalIgnoreCase) -or $entryName.EndsWith(".apk", [System.StringComparison]::OrdinalIgnoreCase)
+      $isRelease = $candidateName -match "(?i)release" -and $candidateName -notmatch "(?i)debug"
+      if ($isApk -and $isRelease) {
+        $entrySha = ([string](Get-Field $entry "sha256")).ToLowerInvariant()
+        if (Test-Hash $entrySha) {
+          $releaseApkHashes += $entrySha
+        }
+      }
+    }
+  }
+
+  if ($releaseApkHashes.Count -eq 0) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "fail" (Convert-ToRelativePath $releasePath) "Companion release evidence does not list a release APK artifact hash."
+  } elseif ($releaseApkHashes -contains $expectedHash) {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "pass" (Convert-ToRelativePath $releasePath) "Installed target-phone apkSha256 matches the release APK artifact hash."
+  } else {
+    Add-Check "android-v1-release-apk-hash-match" "Android v1 installed APK hash matches release evidence" "fail" (Convert-ToRelativePath $releasePath) "Expected release evidence to include release APK SHA-256 $expectedHash."
+  }
+}
+
 function Test-DesktopArtifactHashesMatchReleaseEvidence {
   param([object]$Reports)
 
@@ -587,7 +652,8 @@ Required ready statuses:
 - ``stackchan.android-v1-evidence-bundle-check.v1``: ``android-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
-- Android ``versionName`` must match the release version, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
+- Android ``versionName`` must match the release version, Android ``apkSha256`` must match
+  a release APK artifact hash, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
 - Desktop MSI, DMG, and DEB hashes must match release evidence package artifact hashes.
 - Release evidence ``packageEvidence`` must include hashed package core files from the extracted release package.
 - Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
@@ -719,6 +785,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "rollout-status-version-match" "Rollout status version matches bundle" $reports "rolloutStatusReport" "version" $releaseVersion "releaseVersion"
     Test-ReportFieldEquals "voice-source-commit-match" "Production voice-source readiness matches bundle commit" $reports "voiceSourceReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-AndroidVersionNameMatchesRelease $reports $releaseVersion
+    Test-AndroidReleaseApkHashMatchesReleaseEvidence $reports
     Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
     Test-DesktopArtifactHashesMatchReleaseEvidence $reports
     Test-ReleasePackageEvidencePresent $reports

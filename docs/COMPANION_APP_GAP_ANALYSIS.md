@@ -165,11 +165,12 @@ current v1 companion branch.
   rejects mismatched commit or version evidence across source readiness, release, CI,
   rollout, Android v1, desktop v1, and production voice-source reports. It also rejects an
   Android app `versionName` that does not match the final release version, rejects an Android
-  Play `releaseAabSha256` that is not present in companion release evidence, rejects desktop
-  MSI/DMG/DEB hashes that are not present in companion release evidence, rejects release
-  evidence that lacks hashed package core files from the extracted release package, and
-  verifies that the rollout report's strict hardware evidence root and hardware metadata
-  commit match the final bundle.
+  target-phone `apkSha256` that is not present as a release APK in companion release evidence,
+  rejects an Android Play `releaseAabSha256` that is not present in companion release evidence,
+  rejects desktop MSI/DMG/DEB hashes that are not present in companion release evidence,
+  rejects release evidence that lacks hashed package core files from the extracted release
+  package, and verifies that the rollout report's strict hardware evidence root and hardware
+  metadata commit match the final bundle.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the

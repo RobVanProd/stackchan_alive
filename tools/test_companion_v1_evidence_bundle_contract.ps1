@@ -81,6 +81,7 @@ function Write-StatusReport {
     [string]$SourceCommit = "",
     [string]$Version = "",
     [string]$EvidenceRoot = "",
+    [string]$ReleaseApkSha256 = "",
     [string]$ReleaseAabSha256 = "",
     [string]$WindowsMsiSha256 = "",
     [string]$MacosDmgSha256 = "",
@@ -113,18 +114,28 @@ function Write-StatusReport {
     }
   }
   $artifactGroups = @()
-  if (-not [string]::IsNullOrWhiteSpace($ReleaseAabSha256)) {
+  if (-not [string]::IsNullOrWhiteSpace($ReleaseApkSha256) -or -not [string]::IsNullOrWhiteSpace($ReleaseAabSha256)) {
+    $androidEntries = @()
+    if (-not [string]::IsNullOrWhiteSpace($ReleaseApkSha256)) {
+      $androidEntries += [ordered]@{
+        name = "app-android-release.apk"
+        path = "companion/app-android/build/outputs/apk/release/app-android-release.apk"
+        bytes = 123456
+        sha256 = $ReleaseApkSha256
+      }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ReleaseAabSha256)) {
+      $androidEntries += [ordered]@{
+        name = "app-android-release.aab"
+        path = "companion/app-android/build/outputs/bundle/release/app-android-release.aab"
+        bytes = 123456
+        sha256 = $ReleaseAabSha256
+      }
+    }
     $artifactGroups += [ordered]@{
         kind = "android-apk"
         root = "companion/app-android/build/outputs"
-        entries = @(
-          [ordered]@{
-            name = "app-android-release.aab"
-            path = "companion/app-android/build/outputs/bundle/release/app-android-release.aab"
-            bytes = 123456
-            sha256 = $ReleaseAabSha256
-          }
-        )
+        entries = @($androidEntries)
       }
   }
   if (-not [string]::IsNullOrWhiteSpace($WindowsMsiSha256) -or -not [string]::IsNullOrWhiteSpace($MacosDmgSha256) -or -not [string]::IsNullOrWhiteSpace($LinuxDebSha256)) {
@@ -172,6 +183,7 @@ try {
   $readyRoot = New-TempEvidenceRoot
   $sourceCommit = "d" * 40
   $releaseVersion = "v1.0.0"
+  $releaseApkSha = "9" * 64
   $releaseAabSha = "a" * 64
   $windowsMsiSha = "b" * 64
   $macosDmgSha = "c" * 64
@@ -208,13 +220,14 @@ try {
       reviewPath = "COMPANION_V1_REVIEW.md"
     })
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion -ReleaseAabSha256 $releaseAabSha -WindowsMsiSha256 $windowsMsiSha -MacosDmgSha256 $macosDmgSha -LinuxDebSha256 $linuxDebSha
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion -ReleaseApkSha256 $releaseApkSha -ReleaseAabSha256 $releaseAabSha -WindowsMsiSha256 $windowsMsiSha -MacosDmgSha256 $macosDmgSha -LinuxDebSha256 $linuxDebSha
   Write-StatusReport -Path (Join-Path $readyRoot $reports.githubActionsStatusReport) -Schema "stackchan.github-actions-status.v1" -Status "success" -Commit $sourceCommit -Version $releaseVersion
   Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot
   Write-JsonFile -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Value ([ordered]@{
       schema = "stackchan.android-v1-evidence-bundle-check.v1"
       status = "android-v1-evidence-ready"
       sourceCommit = $sourceCommit
+      apkSha256 = $releaseApkSha
       versionName = "1.0.0"
       versionCode = "1"
       releaseAabSha256 = $releaseAabSha
@@ -272,7 +285,7 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
     throw "Expected Companion v1 bundle check report to emit sourceCommit and releaseVersion."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -374,6 +387,19 @@ try {
   }
   Assert-CheckStatus -Report $androidVersionMismatchResult.report -Id "android-v1-version-name-match" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 Android app version is rejected"
+
+  $androidApkHashMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidApkHashMismatchRoot -Recurse -Force
+  $androidApkHashMismatchReportPath = Join-Path $androidApkHashMismatchRoot $reports.androidV1BundleReport
+  $androidApkHashMismatchReport = Get-Content -LiteralPath $androidApkHashMismatchReportPath -Raw | ConvertFrom-Json
+  $androidApkHashMismatchReport.apkSha256 = "e" * 64
+  Write-JsonFile -Path $androidApkHashMismatchReportPath -Value $androidApkHashMismatchReport
+  $androidApkHashMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $androidApkHashMismatchRoot
+  if ([int]$androidApkHashMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Companion v1 Android release APK hash to fail."
+  }
+  Assert-CheckStatus -Report $androidApkHashMismatchResult.report -Id "android-v1-release-apk-hash-match" -Status "fail"
+  Write-Host "[ok] mismatched Companion v1 Android release APK hash is rejected"
 
   $androidAabHashMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidAabHashMismatchRoot -Recurse -Force
