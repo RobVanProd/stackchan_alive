@@ -26,6 +26,20 @@ function Write-JsonFile {
   $Value | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding UTF8
 }
 
+function Write-TestImage {
+  param([string]$Path)
+
+  $dir = Split-Path -Parent $Path
+  if (-not [string]::IsNullOrWhiteSpace($dir)) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  }
+
+  $bytes = New-Object byte[] 2048
+  $signature = [byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+  [Array]::Copy($signature, 0, $bytes, 0, $signature.Length)
+  [System.IO.File]::WriteAllBytes($Path, $bytes)
+}
+
 function Invoke-AndroidV1BundleCheck {
   param(
     [string]$EvidenceRoot,
@@ -142,6 +156,11 @@ try {
   $readyRoot = New-TempEvidenceRoot
   $sourceCommit = "b" * 40
   $releaseAabSha = "c" * 64
+  $requiredScreenshotIds = @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
+  New-Item -ItemType Directory -Force -Path (Join-Path $readyRoot "screenshots") | Out-Null
+  foreach ($name in $requiredScreenshotIds) {
+    Write-TestImage -Path (Join-Path $readyRoot "screenshots/$name.png")
+  }
   $reports = [ordered]@{
     apkInstallReport = "reports/android_apk_install.json"
     companionReadinessReport = "reports/companion_v1_readiness.json"
@@ -163,9 +182,16 @@ try {
       hardwareEvidenceStatus = "verified"
       hardwareEvidenceRoot = "output/hardware-evidence/contract"
       androidDashboardEvidenceStatus = "verified"
+      androidDashboardEvidenceRoot = "screenshots"
+      androidDashboardMedia = @(
+        [ordered]@{ id = "phone-pairing-setup"; path = "screenshots/phone-pairing-setup.png"; sourceCommit = $sourceCommit; notes = "Guided setup with pairing short code, QR ticket, and saved robot controls." },
+        [ordered]@{ id = "phone-live-dashboard"; path = "screenshots/phone-live-dashboard.png"; sourceCommit = $sourceCommit; notes = "Connected dashboard with square Stack-chan face preview and honest telemetry labels." },
+        [ordered]@{ id = "phone-brain-model"; path = "screenshots/phone-brain-model.png"; sourceCommit = $sourceCommit; notes = "Gemma-4-E2B download, load, eject, checksum, and model settings controls." },
+        [ordered]@{ id = "phone-personas-diagnostics"; path = "screenshots/phone-personas-diagnostics.png"; sourceCommit = $sourceCommit; notes = "Persona import/export and diagnostics export without private values visible." }
+      )
       reports = $reports
       reviewPath = "ANDROID_V1_REVIEW.md"
-      requiredScreenshotIds = @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
+      requiredScreenshotIds = $requiredScreenshotIds
     })
   Write-JsonFile -Path (Join-Path $readyRoot $reports.apkInstallReport) -Value ([ordered]@{
       schema = "stackchan.android-apk-install.v1"
@@ -193,6 +219,7 @@ try {
 - Source commit: $sourceCommit
 - Overall Android v1 decision: pass
 - Target phone install decision: pass
+- Connected dashboard media decision: pass
 - Physical robot pairing decision: pass
 - Push-to-talk/STT decision: pass
 - Settings and handoff decision: pass
@@ -218,10 +245,39 @@ try {
   if ($readyResult.report.gemmaBenchmarkProfile -ne "gemma4-e2b-litert-lm" -or [double]$readyResult.report.gemmaBenchmarkMedianMs -ne 1200.0 -or [double]$readyResult.report.gemmaBenchmarkMedianTokensPerSec -ne 8.5) {
     throw "Expected Android v1 bundle check report to emit Gemma benchmark profile and speed evidence."
   }
-  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "gemma-benchmark-profile", "gemma-benchmark-speed", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "apk-install-application-id-match", "play-store-application-id-match", "play-store-version-name-match", "play-store-version-code-match", "android-v1-review")) {
+  if (@($readyResult.report.androidDashboardMediaIds).Count -ne 4 -or "phone-live-dashboard" -notin @($readyResult.report.androidDashboardMediaIds)) {
+    throw "Expected Android v1 bundle check report to emit dashboard media IDs."
+  }
+  foreach ($id in @("hardware-evidence", "dashboard-evidence", "apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "gemma-benchmark-profile", "gemma-benchmark-speed", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "apk-install-application-id-match", "play-store-application-id-match", "play-store-version-name-match", "play-store-version-code-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android v1 evidence bundle is accepted"
+
+  $dashboardMissingMediaRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $dashboardMissingMediaRoot -Recurse -Force
+  $dashboardMissingMediaBundlePath = Join-Path $dashboardMissingMediaRoot "ANDROID_V1_EVIDENCE_BUNDLE.json"
+  $dashboardMissingMediaBundle = Get-Content -LiteralPath $dashboardMissingMediaBundlePath -Raw | ConvertFrom-Json
+  $dashboardMissingMediaBundle.PSObject.Properties.Remove("androidDashboardMedia")
+  Write-JsonFile -Path $dashboardMissingMediaBundlePath -Value $dashboardMissingMediaBundle
+  $dashboardMissingMediaResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $dashboardMissingMediaRoot
+  if ([int]$dashboardMissingMediaResult.exitCode -eq 0) {
+    throw "Expected Android v1 dashboard evidence without media entries to fail."
+  }
+  Assert-CheckStatus -Report $dashboardMissingMediaResult.report -Id "dashboard-evidence" -Status "fail"
+  Write-Host "[ok] Android v1 dashboard verified status without media is rejected"
+
+  $dashboardCommitMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $dashboardCommitMismatchRoot -Recurse -Force
+  $dashboardCommitMismatchBundlePath = Join-Path $dashboardCommitMismatchRoot "ANDROID_V1_EVIDENCE_BUNDLE.json"
+  $dashboardCommitMismatchBundle = Get-Content -LiteralPath $dashboardCommitMismatchBundlePath -Raw | ConvertFrom-Json
+  $dashboardCommitMismatchBundle.androidDashboardMedia[0].sourceCommit = "e" * 40
+  Write-JsonFile -Path $dashboardCommitMismatchBundlePath -Value $dashboardCommitMismatchBundle
+  $dashboardCommitMismatchResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $dashboardCommitMismatchRoot
+  if ([int]$dashboardCommitMismatchResult.exitCode -eq 0) {
+    throw "Expected Android v1 dashboard media source commit mismatch to fail."
+  }
+  Assert-CheckStatus -Report $dashboardCommitMismatchResult.report -Id "dashboard-evidence" -Status "fail"
+  Write-Host "[ok] Android v1 dashboard media source commit mismatch is rejected"
 
   $readinessMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $readinessMismatchRoot -Recurse -Force
@@ -322,6 +378,7 @@ try {
 - Source commit: $("e" * 40)
 - Overall Android v1 decision: pass
 - Target phone install decision: pass
+- Connected dashboard media decision: pass
 - Physical robot pairing decision: pass
 - Push-to-talk/STT decision: pass
 - Settings and handoff decision: pass

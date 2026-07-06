@@ -114,6 +114,11 @@ function Convert-ToDoubleOrNull {
   }
 }
 
+function Test-NonPlaceholder {
+  param([string]$Value)
+  return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -notmatch "<|>|pending|TBD"
+}
+
 function Read-JsonOrNull {
   param([string]$Path)
 
@@ -121,6 +126,91 @@ function Read-JsonOrNull {
     return $null
   }
   return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+}
+
+function Test-MediaPath {
+  param([string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return "Media path is blank."
+  }
+  $fullPath = Resolve-EvidencePath $Path
+  if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+    return "Missing media file: $Path"
+  }
+  if ($fullPath -notmatch "\.(png|jpg|jpeg)$") {
+    return "Media evidence must be PNG or JPEG: $Path"
+  }
+  if ((Get-Item -LiteralPath $fullPath).Length -lt 1024) {
+    return "Media file is too small to be credible: $Path"
+  }
+  return ""
+}
+
+function Get-MediaId {
+  param([object]$Media)
+
+  $id = [string](Get-Field $Media "id")
+  if (-not [string]::IsNullOrWhiteSpace($id)) {
+    return $id
+  }
+
+  $path = [string](Get-Field $Media "path")
+  if ([string]::IsNullOrWhiteSpace($path)) {
+    return ""
+  }
+  return [System.IO.Path]::GetFileNameWithoutExtension($path)
+}
+
+function Test-AndroidDashboardEvidence {
+  param([object]$Bundle)
+
+  $status = [string](Get-Field $Bundle "androidDashboardEvidenceStatus")
+  $root = [string](Get-Field $Bundle "androidDashboardEvidenceRoot")
+  $media = @((Get-Field $Bundle "androidDashboardMedia") | Where-Object { $null -ne $_ })
+  $requiredIds = @((Get-Field $Bundle "requiredScreenshotIds"))
+  if ($requiredIds.Count -eq 0) {
+    $requiredIds = @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
+  }
+
+  $mediaIds = @($media | ForEach-Object { Get-MediaId $_ })
+  $script:androidDashboardMediaIds = @($mediaIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  $missingIds = @($requiredIds | Where-Object { $_ -notin $mediaIds })
+  $issues = @()
+
+  if ($status -notin @("verified", "pass", "passed")) {
+    $issues += "Set androidDashboardEvidenceStatus to verified/pass only after final-build media review."
+  }
+  if (-not (Test-NonPlaceholder $root)) {
+    $issues += "Record androidDashboardEvidenceRoot for the captured media packet."
+  }
+  if ($media.Count -eq 0) {
+    $issues += "Record androidDashboardMedia entries."
+  }
+  if ($missingIds.Count -gt 0) {
+    $issues += ("Missing required media IDs: " + ($missingIds -join ", "))
+  }
+  foreach ($item in $media) {
+    $mediaId = Get-MediaId $item
+    $issue = Test-MediaPath ([string](Get-Field $item "path"))
+    if (-not [string]::IsNullOrWhiteSpace($issue)) {
+      $issues += "${mediaId}: $issue"
+    }
+    if ([string](Get-Field $item "sourceCommit") -ne [string](Get-Field $Bundle "sourceCommit")) {
+      $issues += "Media sourceCommit for $mediaId does not match bundle sourceCommit."
+    }
+    if ([string]::IsNullOrWhiteSpace([string](Get-Field $item "notes"))) {
+      $issues += "Media notes are blank for $mediaId."
+    }
+  }
+
+  if ($issues.Count -eq 0) {
+    Add-Check "dashboard-evidence" "Android connected dashboard media" "pass" "ANDROID_V1_EVIDENCE_BUNDLE.json" "All required final-build dashboard/media IDs are present."
+  } elseif ($status -in @("verified", "pass", "passed")) {
+    Add-Check "dashboard-evidence" "Android connected dashboard media" "fail" "ANDROID_V1_EVIDENCE_BUNDLE.json" ($issues -join "; ")
+  } else {
+    Add-Check "dashboard-evidence" "Android connected dashboard media" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" ($issues -join "; ")
+  }
 }
 
 function Test-ReportStatus {
@@ -295,6 +385,33 @@ function Write-AndroidV1EvidenceTemplate {
     hardwareEvidenceStatus = "pending"
     hardwareEvidenceRoot = "<output/hardware-evidence/...>"
     androidDashboardEvidenceStatus = "pending"
+    androidDashboardEvidenceRoot = "screenshots"
+    androidDashboardMedia = @(
+      [ordered]@{
+        id = "phone-pairing-setup"
+        path = "screenshots/phone-pairing-setup.png"
+        sourceCommit = "<40-character git commit>"
+        notes = "Final-build setup media showing pairing code or QR ticket, bridge status, and saved robot add/remove affordance."
+      },
+      [ordered]@{
+        id = "phone-live-dashboard"
+        path = "screenshots/phone-live-dashboard.png"
+        sourceCommit = "<40-character git commit>"
+        notes = "Final-build connected dashboard media showing robot identity, square Stack-chan face preview, active brain owner, and honest telemetry labels."
+      },
+      [ordered]@{
+        id = "phone-brain-model"
+        path = "screenshots/phone-brain-model.png"
+        sourceCommit = "<40-character git commit>"
+        notes = "Final-build Brain/model media showing Gemma-4-E2B download, load, eject, checksum, and settings controls."
+      },
+      [ordered]@{
+        id = "phone-personas-diagnostics"
+        path = "screenshots/phone-personas-diagnostics.png"
+        sourceCommit = "<40-character git commit>"
+        notes = "Final-build persona/diagnostics media showing import/export and diagnostics export without private values."
+      }
+    )
     reports = [ordered]@{
       apkInstallReport = "reports/android_apk_install.json"
       companionReadinessReport = "reports/companion_v1_readiness.json"
@@ -362,6 +479,7 @@ Complete after the target-phone and physical-robot evidence is assembled.
 - Source commit:
 - Overall Android v1 decision: pending
 - Target phone install decision: pending
+- Connected dashboard media decision: pending
 - Physical robot pairing decision: pending
 - Push-to-talk/STT decision: pending
 - Settings and handoff decision: pending
@@ -382,6 +500,7 @@ $playStore = $null
 $gemmaBenchmarkProfile = ""
 $gemmaBenchmarkMedianMs = $null
 $gemmaBenchmarkMedianTokensPerSec = $null
+$androidDashboardMediaIds = @()
 
 $bundlePath = Join-Path $EvidenceRoot "ANDROID_V1_EVIDENCE_BUNDLE.json"
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
@@ -414,11 +533,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       Add-Check "hardware-evidence" "Physical robot hardware evidence" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record verified hardware evidence root after tools/verify_hardware_evidence.cmd passes."
     }
 
-    if ([string]$bundle.androidDashboardEvidenceStatus -in @("verified", "pass", "passed")) {
-      Add-Check "dashboard-evidence" "Android connected dashboard media" "pass" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Connected dashboard media is recorded as verified."
-    } else {
-      Add-Check "dashboard-evidence" "Android connected dashboard media" "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record verified connected dashboard screenshot/media evidence."
-    }
+    Test-AndroidDashboardEvidence $bundle
 
     $reports = Get-Field $bundle "reports"
     $apkPath = Resolve-EvidencePath ([string](Get-Field $reports "apkInstallReport"))
@@ -503,6 +618,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
         "Source commit:",
         "Overall Android v1 decision: pass",
         "Target phone install decision: pass",
+        "Connected dashboard media decision: pass",
         "Physical robot pairing decision: pass",
         "Push-to-talk/STT decision: pass",
         "Settings and handoff decision: pass",
@@ -544,6 +660,7 @@ $report = [ordered]@{
   gemmaBenchmarkProfile = $gemmaBenchmarkProfile
   gemmaBenchmarkMedianMs = $gemmaBenchmarkMedianMs
   gemmaBenchmarkMedianTokensPerSec = $gemmaBenchmarkMedianTokensPerSec
+  androidDashboardMediaIds = @($androidDashboardMediaIds)
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count

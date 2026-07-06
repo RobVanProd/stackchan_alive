@@ -154,10 +154,13 @@ current v1 companion branch.
   gate rejects any source readiness, hardware, target-phone APK install, or Play Store
   evidence report generated for a different source commit than the Android v1 bundle. It
   also rejects Play Store evidence whose uploaded package or version identity differs from
-  the target-phone APK install report. The Android v1 aggregate checker emits that same
-  `sourceCommit`, plus the target-phone `applicationId`, `apkSha256`, `versionName`,
-  `versionCode`, and Play `releaseAabSha256`, so the final Companion v1 gate can reject
-  stale Android bundle evidence.
+  the target-phone APK install report. It also requires explicit final-build dashboard media
+  entries for the required phone screenshots, verifies those media files exist and match the
+  bundle source commit, and requires a connected-dashboard human review decision before the
+  Android bundle can pass. The Android v1 aggregate checker emits that same `sourceCommit`,
+  plus the target-phone `applicationId`, `apkSha256`, `versionName`, `versionCode`, Play
+  `releaseAabSha256`, Gemma benchmark summary, and dashboard media IDs, so the final
+  Companion v1 gate can reject stale Android bundle evidence.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle

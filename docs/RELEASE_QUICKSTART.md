@@ -125,7 +125,8 @@ Android v1 evidence bundle:
 ```
 
 Copy the individual checker JSON outputs into `reports\`, fill
-`ANDROID_V1_EVIDENCE_BUNDLE.json` and `ANDROID_V1_REVIEW.md`, then run:
+`ANDROID_V1_EVIDENCE_BUNDLE.json` and `ANDROID_V1_REVIEW.md`, attach the final-build
+dashboard media referenced by `androidDashboardMedia`, then run:
 
 ```powershell
 .\tools\check_android_v1_evidence_bundle.cmd -EvidenceRoot output\android-v1-evidence\latest -RequireReady -Json
@@ -134,7 +135,10 @@ Copy the individual checker JSON outputs into `reports\`, fill
 It must report `android-v1-evidence-ready` before treating the Android companion as
 release-ready. The aggregate checker also verifies that the Android hardware evidence checker
 reports, target-phone APK install report, and Play Store evidence-check JSON match the
-`ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
+`ANDROID_V1_EVIDENCE_BUNDLE.json` source commit. The dashboard media entries must include
+the required `phone-pairing-setup`, `phone-live-dashboard`, `phone-brain-model`, and
+`phone-personas-diagnostics` IDs, real PNG/JPEG files, matching `sourceCommit` values, and
+the `Connected dashboard media decision: pass` review marker.
 
 After the Android phone has captured a push-to-talk turn against a connected robot, run the
 speech evidence gate:
@@ -301,7 +305,8 @@ It must report `android-screen-off-soak-ready` before the Android bridge soak ga
 closed.
 After the robot connects through the phone, capture the Android dashboard connected state
 showing robot identity, firmware/version signal, last bridge frame, active brain owner,
-and foreground service state.
+foreground service state, the square Stack-chan display preview, and app content clear of
+the phone status/navigation bars.
 For first Wi-Fi setup, enter the Android-generated
 `wifi set ssid "<network-name>" pass "<network-password>" url "ws://phone-lan-ip:8765/bridge"`
 command on the robot and verify password redaction plus persisted store telemetry. If the
