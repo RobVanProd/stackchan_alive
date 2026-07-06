@@ -458,6 +458,11 @@ The Android companion path is ready to integrate with firmware when:
 - `settings_get` and `settings_set` round trip, including version conflict handling.
 - A raw WebSocket connection without robot `hello` does not enable Talk, promote the Android
   session wake lock, or accept audio/settings/app-text writes.
+- QR/short-code pairing evidence proves the Android setup media, wrong-code
+  `pairing_code_mismatch`, `stackchan://pair` ticket/manual code entry, accepted
+  `endpoint_hello_result`, and `trusted_endpoints_result` on the physical robot. The v1
+  evidence packet must pass `tools/check_android_pairing_evidence.ps1` and report
+  `android-pairing-ready`.
 - A connected robot receives a Talk text turn as `thinking`, `response_start`,
   `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - Android push-to-talk requests microphone permission only from the Talk action, reports

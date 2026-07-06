@@ -80,8 +80,13 @@ current v1 companion branch.
   Firmware now accepts that same ticket payload over the bench/setup path as either
   `pair ticket <stackchan://pair?...>` or the raw payload, extracts the pairing code and
   percent-decoded bridge URL, and can retarget the bridge when robot Wi-Fi credentials are
-  already configured. Physical robot QR scanning/menu proof still remains blocking before
-  public distribution.
+  already configured. The source tree now includes
+  `tools/check_android_pairing_evidence.ps1` to gate final pairing evidence on the Android
+  diagnostics export, setup QR/code media, robot-side `pairing_code_mismatch`,
+  `stackchan://pair?`, `bridge_url_applied`, `endpoint_hello_result`, and
+  `trusted_endpoints_result` markers, plus a human review packet. Physical robot QR
+  scanning/menu proof and `android-pairing-ready` still remain blocking before public
+  distribution.
 - G6 first-run Wi-Fi provisioning is partially closed. The Android Nodes setup flow now
   starts with a Wi-Fi bootstrap step, reports whether the phone is currently on Wi-Fi,
   opens native Wi-Fi settings, and explains that the robot must reach the phone bridge URL.
@@ -150,7 +155,7 @@ current v1 companion branch.
 
 1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -RequireReady -Json`, and attach transcript-redacted evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -RequireReady -Json`.
-3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence.
+3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -RequireReady -Json`.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject and real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof.

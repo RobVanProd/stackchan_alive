@@ -126,6 +126,16 @@ claim/release against a connected robot, run the controls evidence gate:
 It must report `android-controls-ready` before Android settings/handoff controls are
 considered validated for v1.
 
+After the Android setup flow has paired a physical robot through QR/short-code entry, run
+the pairing evidence gate:
+
+```powershell
+.\tools\check_android_pairing_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_pairing_serial.log> -PairingMediaPath <android_pairing_setup.jpg> -ReviewPath <ANDROID_PAIRING_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-pairing-ready` before Android QR/short-code pairing is considered
+validated for v1.
+
 After the Android phone has downloaded, checksum-verified, loaded, ejected, reloaded, and
 used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:
 

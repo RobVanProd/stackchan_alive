@@ -170,8 +170,9 @@ Evidence to capture:
 - [ ] Robot receives `endpoint_hello`.
 - [ ] A firmware build configured with `STACKCHAN_PAIRING_SHORT_CODE` rejects missing or wrong `endpoint_hello.pairing_code` with `pairing_code_mismatch` and does not persist that endpoint as trusted.
 - [ ] Over serial/lab control, `pairing code <ABC123>` enables the same pairing gate without reflashing, and `pairing clear` disables the temporary requirement.
-- [ ] Over serial/lab setup, `pair ticket <stackchan://pair?...>` or the raw `stackchan://pair?...` payload from the Android QR ticket enables the same pairing gate, extracts the bridge URL, and does not require or print a Wi-Fi password.
+- [ ] Over serial/lab setup, `pair ticket <stackchan://pair?...>` or the raw `stackchan://pair?...` payload from the Android QR ticket enables the same pairing gate, extracts the bridge URL, logs `bridge_url_applied`, and does not require or print a Wi-Fi password.
 - [ ] The same firmware build accepts the displayed Android pairing code, stores the endpoint as trusted, and reports the phone in `trusted_endpoints_result`.
+- [ ] Run `tools\check_android_pairing_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_pairing_serial.log> -PairingMediaPath <android_pairing_setup.jpg> -ReviewPath <ANDROID_PAIRING_REVIEW.md> -RequireReady -Json`; it must report `android-pairing-ready` before G5 QR/short-code pairing is closed. Use `-WriteTemplate` first to create the pairing review template.
 - [ ] Heartbeats continue for at least 10 minutes with the phone screen off.
 - [ ] Android session wake lock is released after the robot disconnects.
 - [ ] Reopening the app still shows the same endpoint identity.
@@ -232,5 +233,6 @@ Attach these to the arrival-day packet:
 - `ANDROID_GEMMA_REVIEW.md`, `android_gemma_logcat.txt`, and the JSON output from `tools/check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json`
 - `ANDROID_SPEECH_REVIEW.md`, `android_speech_logcat.txt`, `robot_speech_serial.log`, and the JSON output from `tools/check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -RequireReady -Json`
 - `ANDROID_CONTROLS_REVIEW.md`, `robot_controls_serial.log`, and the JSON output from `tools/check_android_controls_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_controls_serial.log> -ReviewPath <ANDROID_CONTROLS_REVIEW.md> -RequireReady -Json`
+- `ANDROID_PAIRING_REVIEW.md`, `robot_pairing_serial.log`, `android_pairing_setup.jpg` or equivalent setup media, and the JSON output from `tools/check_android_pairing_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_pairing_serial.log> -PairingMediaPath <android_pairing_setup.jpg> -ReviewPath <ANDROID_PAIRING_REVIEW.md> -RequireReady -Json`
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

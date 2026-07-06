@@ -112,6 +112,10 @@ If the robot already has Wi-Fi credentials, enter the Android QR payload as
 `pair ticket <stackchan://pair?...>` or the raw `stackchan://pair?...` payload instead.
 That ticket carries the pairing code and bridge target only; it must not contain or print a
 Wi-Fi password.
+After QR/short-code pairing is exercised, capture Android setup media and robot serial output
+showing `pairing_code_mismatch`, `stackchan://pair?`, `bridge_url_applied`,
+`endpoint_hello_result`, and `trusted_endpoints_result`, then run
+`tools\check_android_pairing_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_pairing_serial.log> -PairingMediaPath <android_pairing_setup.jpg> -ReviewPath <ANDROID_PAIRING_REVIEW.md> -RequireReady -Json` and attach the JSON plus `ANDROID_PAIRING_REVIEW.md`.
 After the robot connects, capture the Android dashboard connected state. The screenshot
 must show the robot identity, firmware/version signal, last bridge frame, active brain
 owner, and foreground service state so the phone-hosted bridge path is reviewable without
