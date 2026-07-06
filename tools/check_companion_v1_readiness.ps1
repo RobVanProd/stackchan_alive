@@ -561,6 +561,18 @@ Test-TextEvidence `
   -Patterns @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "Desktop Python runtime payload contract tests passed")
 
 Test-TextEvidence `
+  -Id "desktop-v1-evidence-bundle-check" `
+  -Name "Desktop v1 aggregate evidence bundle check" `
+  -RelativePaths @("tools/check_desktop_v1_evidence_bundle.ps1") `
+  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "DESKTOP_V1_REVIEW.md", "RequireReady")
+
+Test-TextEvidence `
+  -Id "desktop-v1-evidence-bundle-contract" `
+  -Name "Desktop v1 aggregate evidence bundle contract test" `
+  -RelativePaths @("tools/test_desktop_v1_evidence_bundle_contract.ps1") `
+  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
+
+Test-TextEvidence `
   -Id "desktop-python-runtime-payload-prep-tool" `
   -Name "Desktop managed Python runtime payload preparation tool" `
   -RelativePaths @("tools/prepare_desktop_python_runtime.ps1", "docs/DESKTOP_PYTHON_RUNTIME.md") `

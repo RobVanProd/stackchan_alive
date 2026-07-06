@@ -223,6 +223,18 @@ If the deploy packet passes, leave the PC brain bridge online and run the quiet 
 The checker must report `pc-brain-quiet-soak-ready` before using PC Brain lab evidence for
 release promotion notes.
 
+After desktop package hashes, all three managed runtime payload checks, C6 evidence,
+deploy audio evidence, quiet-soak evidence, production voice-source readiness, and the
+human review are collected, assemble the aggregate desktop v1 packet:
+
+```powershell
+.\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -WriteTemplate
+.\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json
+```
+
+It must report `desktop-v1-evidence-ready` before desktop PC Brain installers are treated
+as v1 release-ready.
+
 Import the display photo or video into the packet:
 
 ```powershell

@@ -162,8 +162,12 @@ current v1 companion branch.
   running the payload checker. The payload checker now rejects placeholder SHA-256 values,
   wrong-platform manifests, and stale manifest `pythonVersion` values, with
   `tools\test_desktop_python_runtime_payload_contract.ps1` covering those failure modes.
-  Supplying and shipping the actual managed Python binary payload for each desktop platform
-  remains open.
+  The source tree now also includes `tools\check_desktop_v1_evidence_bundle.ps1`, which
+  aggregates the desktop package hashes, C6 supervisor/GUI evidence, Windows/macOS/Linux
+  managed runtime payload checks, PC Brain deploy audio evidence, quiet-soak evidence,
+  production voice-source readiness, and a human `DESKTOP_V1_REVIEW.md` before reporting
+  `desktop-v1-evidence-ready`. Supplying and shipping the actual managed Python binary
+  payload for each desktop platform remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision
@@ -195,3 +199,4 @@ current v1 companion branch.
 7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
 9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.
+9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs.

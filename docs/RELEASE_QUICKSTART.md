@@ -359,6 +359,18 @@ gate:
 It must report `pc-brain-quiet-soak-ready`, proving the bridge stays connected/ready for
 the full quiet window without parse/timeouts/playback errors or unexpected audio streams.
 
+Assemble the final desktop/PC Brain aggregate packet after the three platform runtime
+payload reports, package hashes, C6 evidence, deploy evidence, quiet-soak evidence, and
+production voice-source readiness are captured:
+
+```powershell
+.\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -WriteTemplate
+.\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json
+```
+
+The checker must report `desktop-v1-evidence-ready` before treating desktop installers as
+v1 release-ready.
+
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:

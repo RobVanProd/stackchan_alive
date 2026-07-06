@@ -104,3 +104,18 @@ manifests fail while a minimal valid runtime payload reports `ready`.
 
 The desktop app exports this state under `brain_service.python_runtime.managed_runtime` in
 diagnostics and C6 brain-supervisor evidence.
+
+## Desktop V1 Evidence Bundle
+
+After Windows, macOS, and Linux runtime payloads are prepared and checked, copy those
+checker JSON outputs into the desktop aggregate evidence packet together with C6
+supervisor/GUI evidence, package artifact hashes, PC Brain deploy audio proof, quiet-soak
+proof, production voice-source readiness, and `DESKTOP_V1_REVIEW.md`:
+
+```powershell
+.\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -WriteTemplate
+.\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json
+```
+
+The aggregate checker reports `desktop-v1-evidence-ready` only when those release evidence
+items all describe the same desktop v1 candidate.
