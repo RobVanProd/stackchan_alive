@@ -365,6 +365,7 @@ $status = if ($failedChecks.Count -gt 0) { "pending-play-store-evidence" } else 
 $report = [ordered]@{
   schema = "stackchan.android-play-store-evidence-check.v1"
   status = $status
+  sourceCommit = if ($null -ne $evidence) { [string]$evidence.sourceCommit } else { "" }
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
   passed = $passedChecks.Count

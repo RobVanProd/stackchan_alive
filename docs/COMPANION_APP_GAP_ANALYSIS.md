@@ -142,7 +142,9 @@ current v1 companion branch.
   `tools/check_android_v1_evidence_bundle.ps1` consumes the target-phone APK install report,
   companion source readiness report, diagnostics, speech, controls, pairing, Wi-Fi, Gemma,
   screen-off soak, Play Store evidence-check JSON, connected-dashboard/hardware status, and
-  a human `ANDROID_V1_REVIEW.md` before reporting `android-v1-evidence-ready`.
+  a human `ANDROID_V1_REVIEW.md` before reporting `android-v1-evidence-ready`. The gate also
+  rejects a target-phone APK install report or Play Store evidence report generated for a
+  different source commit than the Android v1 bundle.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle

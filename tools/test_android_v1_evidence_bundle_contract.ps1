@@ -76,17 +76,22 @@ function Write-StatusReport {
   param(
     [string]$Path,
     [string]$Schema,
-    [string]$Status
+    [string]$Status,
+    [string]$SourceCommit = ""
   )
 
-  Write-JsonFile -Path $Path -Value ([ordered]@{
-      schema = $Schema
-      status = $Status
-      passed = 1
-      failed = 0
-      pending = 0
-      checks = @()
-    })
+  $report = [ordered]@{
+    schema = $Schema
+    status = $Status
+    passed = 1
+    failed = 0
+    pending = 0
+    checks = @()
+  }
+  if (-not [string]::IsNullOrWhiteSpace($SourceCommit)) {
+    $report.sourceCommit = $SourceCommit
+  }
+  Write-JsonFile -Path $Path -Value $report
 }
 
 try {
@@ -103,6 +108,7 @@ try {
   Write-Host "[ok] placeholder Android v1 evidence bundle is pending"
 
   $readyRoot = New-TempEvidenceRoot
+  $sourceCommit = "b" * 40
   $reports = [ordered]@{
     apkInstallReport = "reports/android_apk_install.json"
     companionReadinessReport = "reports/companion_v1_readiness.json"
@@ -118,7 +124,7 @@ try {
   Write-JsonFile -Path (Join-Path $readyRoot "ANDROID_V1_EVIDENCE_BUNDLE.json") -Value ([ordered]@{
       schema = "stackchan.android-v1-evidence-bundle.v1"
       status = "ready"
-      sourceCommit = ("b" * 40)
+      sourceCommit = $sourceCommit
       targetPhone = "Pixel 8 / Android 16"
       releaseBuild = "app-android-release.apk / app-android-release.aab"
       hardwareEvidenceStatus = "verified"
@@ -132,7 +138,7 @@ try {
       schema = "stackchan.android-apk-install.v1"
       status = "installed"
       apkSha256 = ("a" * 64)
-      sourceCommit = ("b" * 40)
+      sourceCommit = $sourceCommit
       versionName = "1.0.0"
       versionCode = "1"
     })
@@ -144,7 +150,7 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit
   @"
 # Android V1 Review
 
@@ -168,10 +174,20 @@ try {
   if ($readyResult.report.status -ne "android-v1-evidence-ready") {
     throw "Expected android-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "android-v1-review")) {
+  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "apk-install-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android v1 evidence bundle is accepted"
+
+  $mismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $mismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $mismatchRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit ("d" * 40)
+  $mismatchResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $mismatchRoot
+  if ([int]$mismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Play Store source commit to fail."
+  }
+  Assert-CheckStatus -Report $mismatchResult.report -Id "play-store-source-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Android v1 Play Store source commit is rejected"
 
   Write-Host "Android v1 evidence bundle contract tests passed."
 } finally {
@@ -185,3 +201,5 @@ try {
     }
   }
 }
+
+exit 0

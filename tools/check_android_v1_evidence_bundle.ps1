@@ -140,6 +140,49 @@ function Test-ReportStatus {
   Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report is $ExpectedStatus."
 }
 
+function Test-ReportFieldEquals {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [object]$Reports,
+    [string]$Field,
+    [string]$ReportProperty,
+    [string]$ExpectedValue,
+    [string]$ExpectedLabel
+  )
+
+  $relativePath = [string](Get-Field $Reports $Field)
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($ExpectedValue) -or $ExpectedValue -match "<|TBD|pending") {
+    Add-Check $Id $Name "pending" "ANDROID_V1_EVIDENCE_BUNDLE.json" "Record $ExpectedLabel before checking report consistency."
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check $Id $Name "pending" "" "Record reports.$Field in ANDROID_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check $Id $Name "pending" (Convert-ToRelativePath $path) "Missing report file."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $actual = [string](Get-Field $report $ReportProperty)
+  if ([string]::IsNullOrWhiteSpace($actual)) {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report is missing $ReportProperty."
+  } elseif ($actual -eq $ExpectedValue) {
+    Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Report $ReportProperty matches $ExpectedLabel."
+  } else {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Expected $ReportProperty=$ExpectedValue, got $actual."
+  }
+}
+
 function Write-AndroidV1EvidenceTemplate {
   New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "reports") | Out-Null
@@ -295,6 +338,8 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "gemma-ready" "Android Gemma evidence report" $reports "gemmaCheckReport" "stackchan.android-gemma-evidence.v1" "android-gemma-real-device-ready"
     Test-ReportStatus "screen-off-soak-ready" "Android screen-off soak evidence report" $reports "screenOffSoakCheckReport" "stackchan.android-screen-off-soak-evidence.v1" "android-screen-off-soak-ready"
     Test-ReportStatus "play-store-ready" "Android Play Store evidence report" $reports "playStoreCheckReport" "stackchan.android-play-store-evidence-check.v1" "play-internal-testing-ready"
+    Test-ReportFieldEquals "apk-install-source-commit-match" "APK install source commit matches bundle" $reports "apkInstallReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "play-store-source-commit-match" "Play Store evidence source commit matches bundle" $reports "playStoreCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
     if ([string]::IsNullOrWhiteSpace([string]$bundle.reviewPath) -or -not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {

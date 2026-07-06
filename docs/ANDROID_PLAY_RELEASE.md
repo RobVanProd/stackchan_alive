@@ -96,6 +96,10 @@ track, and adding screenshots, run:
 tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-store/latest -Json
 ```
 
+The generated Play evidence-check JSON includes the reviewed `sourceCommit`. The final
+Android v1 bundle rejects Play evidence if that commit does not match the installed APK
+and `ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
+
 ## Manifest And Policy Review
 
 Use `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md` as the source-side draft for the
