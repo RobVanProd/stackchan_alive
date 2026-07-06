@@ -584,7 +584,7 @@ Test-TextEvidence `
   -Id "android-play-release-prep" `
   -Name "Android Play release preparation" `
   -RelativePaths @("docs/ANDROID_PLAY_RELEASE.md", "provenance/docs/ANDROID_PLAY_RELEASE.md") `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "physical robot validation", "RECORD_AUDIO", "Play Console internal testing")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "physical robot validation", "RECORD_AUDIO", "Play Console internal testing")
 
 Test-TextEvidence `
   -Id "android-play-policy-declarations" `
@@ -596,13 +596,13 @@ Test-TextEvidence `
   -Id "android-play-readiness-check" `
   -Name "Android Play source readiness check" `
   -RelativePaths @("tools/check_android_play_release_readiness.ps1", "provenance/tools/check_android_play_release_readiness.ps1") `
-  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "play-policy-declarations")
+  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "play-policy-declarations")
 
 Test-TextEvidence `
   -Id "android-play-store-evidence-check" `
   -Name "Android Play Store post-upload evidence check" `
   -RelativePaths @("tools/check_android_play_store_evidence.ps1", "provenance/tools/check_android_play_store_evidence.ps1") `
-  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
+  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextEvidence `
   -Id "android-screen-off-soak-helper" `

@@ -80,6 +80,21 @@ function Test-ImagePath {
   return ""
 }
 
+function Get-ScreenshotId {
+  param([object]$Screenshot)
+
+  $id = [string]$Screenshot.id
+  if (-not [string]::IsNullOrWhiteSpace($id)) {
+    return $id
+  }
+
+  $path = [string]$Screenshot.path
+  if ([string]::IsNullOrWhiteSpace($path)) {
+    return ""
+  }
+  return [System.IO.Path]::GetFileNameWithoutExtension($path)
+}
+
 function Write-PlayStoreEvidenceTemplate {
   New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "screenshots") | Out-Null
@@ -101,14 +116,44 @@ function Write-PlayStoreEvidenceTemplate {
     uploadedAtUtc = ""
     screenshots = @(
       [ordered]@{
-        path = "screenshots/phone-live-dashboard.png"
+        id = "phone-pairing-setup"
+        required = $true
+        path = "screenshots/phone-pairing-setup.png"
         device = "<phone model>"
-        notes = "Connected live dashboard with robot identity, firmware/version signal, last bridge frame, active brain owner, and foreground service state."
+        androidVersion = "<android version>"
+        appVersion = "1.0.0"
+        sourceCommit = "<40-character git commit>"
+        notes = "Guided setup screen with bridge status, pairing short code or QR ticket, saved robot add/remove affordance, and current next step."
       },
       [ordered]@{
-        path = "screenshots/phone-nodes-or-telemetry.png"
+        id = "phone-live-dashboard"
+        required = $true
+        path = "screenshots/phone-live-dashboard.png"
         device = "<phone model>"
-        notes = "Second Play listing screenshot from the final Android build."
+        androidVersion = "<android version>"
+        appVersion = "1.0.0"
+        sourceCommit = "<40-character git commit>"
+        notes = "Connected live dashboard with robot identity or connection status, square Stack-chan face preview, active brain owner, and honest telemetry labels."
+      },
+      [ordered]@{
+        id = "phone-brain-model"
+        required = $true
+        path = "screenshots/phone-brain-model.png"
+        device = "<phone model>"
+        androidVersion = "<android version>"
+        appVersion = "1.0.0"
+        sourceCommit = "<40-character git commit>"
+        notes = "Brain/model controls with Gemma-4-E2B download/load/eject state, checksum or staged status, and model settings entry point."
+      },
+      [ordered]@{
+        id = "phone-personas-diagnostics"
+        required = $true
+        path = "screenshots/phone-personas-diagnostics.png"
+        device = "<phone model>"
+        androidVersion = "<android version>"
+        appVersion = "1.0.0"
+        sourceCommit = "<40-character git commit>"
+        notes = "Persona import/export or diagnostics export screen from the final build with no private data or local secrets visible."
       }
     )
     dataSafetyReviewPath = "DATA_SAFETY_REVIEW.md"
@@ -128,7 +173,8 @@ Required proof:
 - ``releaseAabSha256`` matches the CI release evidence.
 - Play App Signing is enabled.
 - Internal test install succeeds on the target phone.
-- At least two screenshots are captured from the final Android build.
+- Four final-build screenshots cover setup, live dashboard, Brain/model controls,
+  and persona/diagnostics support workflows.
 - Data safety and permission/policy notes are reviewed against actual app behavior.
 
 Run:
@@ -178,6 +224,13 @@ uploaded build.
 Place final Play listing screenshots in this directory and reference them from
 ``PLAY_STORE_EVIDENCE.json``. Use real final-build screenshots, not simulator
 mockups, once physical robot validation is complete.
+
+Required IDs:
+
+- ``phone-pairing-setup``
+- ``phone-live-dashboard``
+- ``phone-brain-model``
+- ``phone-personas-diagnostics``
 "@ | Set-Content -Path (Join-Path $EvidenceRoot "screenshots/README.md") -Encoding UTF8
 }
 
@@ -241,17 +294,34 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
   }
 
   $screenshots = @($evidence.screenshots)
+  $requiredScreenshotIds = @(
+    "phone-pairing-setup",
+    "phone-live-dashboard",
+    "phone-brain-model",
+    "phone-personas-diagnostics"
+  )
+  $screenshotIds = @($screenshots | ForEach-Object { Get-ScreenshotId $_ })
+  $missingScreenshotIds = @($requiredScreenshotIds | Where-Object { $_ -notin $screenshotIds })
   $screenshotIssues = @()
   foreach ($screenshot in $screenshots) {
     $issue = Test-ImagePath ([string]$screenshot.path)
     if (-not [string]::IsNullOrWhiteSpace($issue)) {
       $screenshotIssues += $issue
     }
+    if ([string]::IsNullOrWhiteSpace([string]$screenshot.device)) {
+      $screenshotIssues += "Screenshot device is blank for $(Get-ScreenshotId $screenshot)."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$screenshot.notes)) {
+      $screenshotIssues += "Screenshot notes are blank for $(Get-ScreenshotId $screenshot)."
+    }
   }
-  if ($screenshots.Count -ge 2 -and $screenshotIssues.Count -eq 0) {
-    Add-Check "screenshots" "Play screenshots" "pass" "PLAY_STORE_EVIDENCE.json" "At least two screenshot files are present."
+  if ($missingScreenshotIds.Count -gt 0) {
+    $screenshotIssues += ("Missing required screenshot IDs: " + ($missingScreenshotIds -join ", "))
+  }
+  if ($screenshots.Count -ge 4 -and $screenshotIssues.Count -eq 0) {
+    Add-Check "screenshots" "Play screenshots" "pass" "PLAY_STORE_EVIDENCE.json" "All required final-build screenshot files are present."
   } else {
-    $detail = if ($screenshots.Count -lt 2) { "At least two screenshots are required." } else { $screenshotIssues -join "; " }
+    $detail = if ($screenshots.Count -lt 4) { "Four required screenshots are expected for v1." } else { $screenshotIssues -join "; " }
     Add-Check "screenshots" "Play screenshots" "fail" "PLAY_STORE_EVIDENCE.json" $detail
   }
 

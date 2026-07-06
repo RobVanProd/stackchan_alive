@@ -217,6 +217,12 @@ Test-PngSize "play-icon-png" "Play high-resolution icon" "docs/store-assets/play
 Test-PngSize "play-feature-graphic" "Play feature graphic" "docs/store-assets/play/feature-graphic-1024x500.png" 1024 500
 
 Test-TextPatterns `
+  -Id "play-screenshot-capture-plan" `
+  -Name "Play screenshot capture plan" `
+  -RelativePath "docs/store-assets/play/SCREENSHOT_CAPTURE_PLAN.md" `
+  -Patterns @("Play Screenshot Capture Plan", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "physical Android phone", "square Stack-chan display face", "final internal-testing or release-candidate build")
+
+Test-TextPatterns `
   -Id "gradle-play-signing" `
   -Name "Gradle Play upload signing inputs" `
   -RelativePath "companion/app-android/build.gradle.kts" `
@@ -240,13 +246,13 @@ Test-TextPatterns `
   -Id "play-store-evidence-checker" `
   -Name "Play Store evidence checker" `
   -RelativePath "tools/check_android_play_store_evidence.ps1" `
-  -Patterns @("stackchan.android-play-store-evidence.v1", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
+  -Patterns @("stackchan.android-play-store-evidence.v1", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextPatterns `
   -Id "play-release-doc" `
   -Name "Play release checklist" `
   -RelativePath "docs/ANDROID_PLAY_RELEASE.md" `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
 
 Test-TextPatterns `
   -Id "play-policy-declarations" `

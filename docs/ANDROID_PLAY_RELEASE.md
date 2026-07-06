@@ -70,13 +70,16 @@ Prepared source-controlled assets:
 - Monochrome icon vector: `companion/app-android/src/main/res/drawable/ic_launcher_monochrome.xml`
 - Play high-resolution icon: `docs/store-assets/play/icon-512.png`
 - Play feature graphic: `docs/store-assets/play/feature-graphic-1024x500.png`
+- Final screenshot capture plan: `docs/store-assets/play/SCREENSHOT_CAPTURE_PLAN.md`
 - Listing metadata: `fastlane/metadata/android/en-US/`
 - Play policy/data-safety declaration draft: `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md`
 
 Screenshots still need to be captured from the final phone build after physical
 robot validation, because the store screenshots should show a real connected
 session rather than a simulated dashboard.
-The Play listing also requires at least two screenshots before store submission.
+The Play listing requires at least two phone screenshots before store submission; v1 should
+capture four final-build shots covering setup/pairing, live dashboard, Brain/model controls,
+and persona/diagnostics support.
 
 Create the Play evidence packet before uploading, then fill it after the internal
 testing release is available:
