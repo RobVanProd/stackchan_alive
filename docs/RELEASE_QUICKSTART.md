@@ -106,6 +106,16 @@ Check the mobile LiteRT-LM runner contract:
 This writes `output/litert-lm-smoke/latest/LITERT_LM_SMOKE.md/json` and verifies the wrapper
 contract without claiming real model speed.
 
+After the Android phone has captured a push-to-talk turn against a connected robot, run the
+speech evidence gate:
+
+```powershell
+.\tools\check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-speech-ready` before Android push-to-talk/STT is considered
+validated for v1.
+
 After the Android phone has downloaded, checksum-verified, loaded, ejected, reloaded, and
 used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:
 

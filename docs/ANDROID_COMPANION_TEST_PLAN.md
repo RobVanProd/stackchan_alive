@@ -156,6 +156,7 @@ Evidence to capture:
 - [ ] Tapping Push-to-talk requests `RECORD_AUDIO` if needed, shows listening/partial transcript status, and submits the final transcript as a robot text turn.
 - [ ] Denying microphone permission leaves that turn unsent, records a not-sent microphone message, and changes the Talk status to `Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent.`
 - [ ] Sending a text turn from the Talk screen produces `app_text_turn` status and the robot receives `thinking`, `response_start`, `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
+- [ ] Run `tools\check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -RequireReady -Json`; it must report `android-speech-ready` before G1 push-to-talk/STT is closed. Use `-WriteTemplate` first to create the speech review template.
 - [ ] The Brain screen shows settings, diagnostics, persona, and handoff status from the current settings repository, diagnostics snapshot, and live bridge state.
 - [ ] Safe local settings actions work: Select persona cycles the active persona, Save display toggles display reduced-motion, and Privacy toggles diagnostics log-export preference.
 - [ ] Before robot `hello`, protected settings writes and manual brain claim/release actions remain unavailable or return the robot-hello-required state.
@@ -228,5 +229,6 @@ Attach these to the arrival-day packet:
 - `ANDROID_DIAGNOSTICS_EXPORT.json` shared from the app after the robot session, with transcript/text-turn content redacted unless the tester explicitly opts in
 - `ANDROID_DIAGNOSTICS_REVIEW.md` plus the JSON output from `tools/check_android_diagnostics_export_evidence.cmd -ExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -ReviewPath <ANDROID_DIAGNOSTICS_REVIEW.md> -RequireReady -Json`
 - `ANDROID_GEMMA_REVIEW.md`, `android_gemma_logcat.txt`, and the JSON output from `tools/check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json`
+- `ANDROID_SPEECH_REVIEW.md`, `android_speech_logcat.txt`, `robot_speech_serial.log`, and the JSON output from `tools/check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -RequireReady -Json`
 - robot serial log covering connect, heartbeat, screen-off soak, and disconnect
 - `android/logcat/ANDROID_COMPANION_LOGCAT.md`, `android_companion_logcat.json`, and `android_companion_logcat.txt` if the service stops, crashes, loses foreground status, or fails during screen-off soak

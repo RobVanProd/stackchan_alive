@@ -21,6 +21,14 @@ import org.junit.Test
 
 class AndroidBridgeRuntimeStatusTest {
     @Test
+    fun speechEvidenceLengthBucketDoesNotExposeTranscriptContent() {
+        assertEquals("empty", speechEvidenceLengthBucket("   "))
+        assertEquals("short", speechEvidenceLengthBucket("hello stackchan"))
+        assertEquals("medium", speechEvidenceLengthBucket("please look left and say hello to the room"))
+        assertEquals("long", speechEvidenceLengthBucket("x".repeat(129)))
+    }
+
+    @Test
     fun androidGemmaChecksumUsesSha256() {
         val file = Files.createTempFile("stackchan-android-gemma-checksum", ".bin").toFile()
         file.writeText("stackchan")

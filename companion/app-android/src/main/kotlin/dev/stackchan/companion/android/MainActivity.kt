@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,6 +53,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+
+private const val SPEECH_EVIDENCE_TAG = "StackchanSpeech"
 
 class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -167,7 +170,11 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-            fun submitTurn(text: String, userDetail: String = "Sending") {
+            fun submitTurn(
+                text: String,
+                userDetail: String = "Sending",
+                onSubmitted: ((accepted: Boolean, seq: Int) -> Unit)? = null,
+            ) {
                 val cleanedText = text.trim()
                 if (cleanedText.isBlank()) {
                     return
@@ -175,6 +182,7 @@ class MainActivity : ComponentActivity() {
                 conversationMessages = conversationMessages + ConversationMessage("You", cleanedText, userDetail)
                 coroutineScope.launch {
                     val result = CompanionBridgeService.submitTextTurn(cleanedText)
+                    onSubmitted?.invoke(result.accepted, result.seq)
                     conversationMessages = conversationMessages + ConversationMessage(
                         sender = "Bridge",
                         text = if (result.accepted) result.responseText else result.detail,
@@ -367,25 +375,49 @@ class MainActivity : ComponentActivity() {
                 },
                 onPushToTalk = {
                     if (!bridgeStatus.robotConnected) {
+                        logSpeechEvidenceEvent("blocked_robot_not_connected", "transcript_sent=0")
                         pushToTalkStatus = "Connect Stack-chan before using push-to-talk."
                         return@CompanionConsole
                     }
                     val startListening = {
                         microphonePermissionDenied = false
                         pushToTalkStatus = "Listening..."
+                        logSpeechEvidenceEvent(
+                            "listening_start",
+                            "speech_recognizer_available=1 microphone_permission_granted=1",
+                        )
                         conversationMessages = conversationMessages + ConversationMessage("Mic", "Listening for a short turn.", "Push-to-talk")
                         speechController.start(
                             onListening = {
+                                logSpeechEvidenceEvent("listening_ready")
                                 pushToTalkStatus = "Listening..."
                             },
                             onPartialTranscript = { transcript ->
+                                logSpeechEvidenceEvent(
+                                    "partial_transcript",
+                                    "transcript_present=${transcript.isNotBlank().asEvidenceInt()}",
+                                )
                                 pushToTalkStatus = "Heard: $transcript"
                             },
                             onFinalTranscript = { transcript ->
+                                logSpeechEvidenceEvent(
+                                    "final_transcript",
+                                    "transcript_present=1 transcript_length_bucket=${speechEvidenceLengthBucket(transcript)}",
+                                )
                                 pushToTalkStatus = "Transcript ready."
-                                submitTurn(transcript, userDetail = "Speech transcript")
+                                submitTurn(
+                                    transcript,
+                                    userDetail = "Speech transcript",
+                                    onSubmitted = { accepted, seq ->
+                                        logSpeechEvidenceEvent(
+                                            "submit_result",
+                                            "accepted=${accepted.asEvidenceInt()} seq_present=${(seq > 0).asEvidenceInt()} message_type=app_text_turn",
+                                        )
+                                    },
+                                )
                             },
                             onError = { message ->
+                                logSpeechEvidenceEvent("recognizer_error", "transcript_sent=0")
                                 pushToTalkStatus = message
                                 conversationMessages = conversationMessages + ConversationMessage("Mic", message, "Not sent")
                             },
@@ -394,11 +426,13 @@ class MainActivity : ComponentActivity() {
                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         startListening()
                     } else {
+                        logSpeechEvidenceEvent("permission_required", "transcript_sent=0")
                         pushToTalkStatus = "Microphone permission is required for push-to-talk."
                         if (
                             microphonePermissionDenied &&
                             !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
                         ) {
+                            logSpeechEvidenceEvent("permission_denied_open_settings", "transcript_sent=0")
                             pushToTalkStatus =
                                 "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent."
                             conversationMessages = conversationMessages + ConversationMessage(
@@ -414,11 +448,16 @@ class MainActivity : ComponentActivity() {
                             return@CompanionConsole
                         }
                         pendingSpeechPermissionResult = { granted ->
+                            logSpeechEvidenceEvent(
+                                "permission_result",
+                                "granted=${granted.asEvidenceInt()} transcript_sent=0",
+                            )
                             if (granted) {
                                 microphonePermissionDenied = false
                                 startListening()
                             } else {
                                 microphonePermissionDenied = true
+                                logSpeechEvidenceEvent("permission_denied", "transcript_sent=0")
                                 pushToTalkStatus =
                                     "Microphone permission denied. Enable it in Android app settings, then retry. No transcript was sent."
                                 conversationMessages = conversationMessages + ConversationMessage(
@@ -782,6 +821,24 @@ private fun androidConversationUiState(
                 ),
             )
         },
+    )
+}
+
+internal fun speechEvidenceLengthBucket(transcript: String): String =
+    when (transcript.trim().length) {
+        0 -> "empty"
+        in 1..32 -> "short"
+        in 33..128 -> "medium"
+        else -> "long"
+    }
+
+private fun Boolean.asEvidenceInt(): Int = if (this) 1 else 0
+
+private fun logSpeechEvidenceEvent(event: String, detail: String = "") {
+    val suffix = if (detail.isBlank()) "" else " $detail"
+    Log.i(
+        SPEECH_EVIDENCE_TAG,
+        "stackchan_speech_evidence event=$event$suffix transcript_redacted=1 raw_audio_retention=none",
     )
 }
 

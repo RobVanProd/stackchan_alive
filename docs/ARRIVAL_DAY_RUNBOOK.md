@@ -118,6 +118,8 @@ owner, and foreground service state so the phone-hosted bridge path is reviewabl
 the device in hand.
 For the full Android phone/LAN validation pass, use `docs/ANDROID_COMPANION_TEST_PLAN.md`
 and attach its evidence to the packet.
+After a push-to-talk turn succeeds on the target phone, capture Android logcat and robot
+serial output, then run `tools\check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -RequireReady -Json` and attach the JSON plus `ANDROID_SPEECH_REVIEW.md`.
 After Gemma-4-E2B is downloaded, checksum-verified, loaded, ejected, reloaded, and used for
 a real phone text turn, run `tools\check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json` and attach the JSON plus `ANDROID_GEMMA_REVIEW.md`.
 Before asking the robot to connect manually, run

@@ -462,7 +462,9 @@ The Android companion path is ready to integrate with firmware when:
   `audio_stream_start`, audio chunks, `audio_stream_end`, and `response_end`.
 - Android push-to-talk requests microphone permission only from the Talk action, reports
   listening/transcript/error state, and submits the final transcript through the same
-  robot-gated text-turn path.
+  robot-gated text-turn path. The v1 evidence packet must pass
+  `tools/check_android_speech_evidence.ps1`, including content-free `StackchanSpeech`
+  logcat markers, robot response-frame serial evidence, and transcript-redacted diagnostics.
 - Safety-locked settings cannot be changed from the app.
 - Offline fallback still works with no active brain owner.
 - Mobile model mode passes the same Character Lock red-team and benchmark gates as the PC
