@@ -82,7 +82,39 @@ function Test-PythonVersion {
   return [ordered]@{
     ok = $ok
     version = $version
+    major = $major
+    minor = $minor
     detail = if ($ok) { "Python version satisfies 3.10+." } else { "Python 3.10+ is required." }
+  }
+}
+
+function Get-ExpectedPlatform {
+  if ($script:IsWindowsPlatform) { return "windows" }
+  if ($script:IsMacOSPlatform) { return "macos" }
+  return "linux"
+}
+
+function Test-Sha256 {
+  param([string]$Value)
+  return $Value -match "^[a-fA-F0-9]{64}$"
+}
+
+function Convert-ToManifestVersion {
+  param([string]$Value)
+
+  $match = [regex]::Match($Value, "(\d+)\.(\d+)")
+  if (-not $match.Success) {
+    return [ordered]@{ ok = $false; major = 0; minor = 0; detail = "Manifest pythonVersion is not parseable." }
+  }
+
+  $major = [int]$match.Groups[1].Value
+  $minor = [int]$match.Groups[2].Value
+  $ok = $major -gt 3 -or ($major -eq 3 -and $minor -ge 10)
+  return [ordered]@{
+    ok = $ok
+    major = $major
+    minor = $minor
+    detail = if ($ok) { "Manifest pythonVersion satisfies 3.10+." } else { "Manifest pythonVersion must be Python 3.10+." }
   }
 }
 
@@ -139,6 +171,25 @@ if (-not [string]::IsNullOrWhiteSpace($rootPath)) {
           Add-Check "manifest-$field" "fail" "Manifest field $field is required."
         }
       }
+      if ($null -ne $manifest.platform -and -not [string]::IsNullOrWhiteSpace([string]$manifest.platform)) {
+        $expectedPlatform = Get-ExpectedPlatform
+        if ([string]$manifest.platform -eq $expectedPlatform) {
+          Add-Check "manifest-platform-match" "pass" "Manifest platform matches this host: $expectedPlatform."
+        } else {
+          Add-Check "manifest-platform-match" "fail" "Manifest platform must be $expectedPlatform for this package host, got $($manifest.platform)."
+        }
+      }
+      if ($null -ne $manifest.sha256 -and -not [string]::IsNullOrWhiteSpace([string]$manifest.sha256)) {
+        if (Test-Sha256 ([string]$manifest.sha256)) {
+          Add-Check "manifest-sha256-format" "pass" "Manifest sha256 is a 64-character hex digest."
+        } else {
+          Add-Check "manifest-sha256-format" "fail" "Manifest sha256 must be a 64-character hex digest, not a placeholder."
+        }
+      }
+      if ($null -ne $manifest.pythonVersion -and -not [string]::IsNullOrWhiteSpace([string]$manifest.pythonVersion)) {
+        $manifestVersion = Convert-ToManifestVersion ([string]$manifest.pythonVersion)
+        Add-Check "manifest-python-version-parse" ($(if ($manifestVersion.ok) { "pass" } else { "fail" })) $manifestVersion.detail
+      }
     } catch {
       Add-Check "manifest-schema" "fail" "Manifest is not valid JSON: $($_.Exception.Message)"
     }
@@ -153,6 +204,16 @@ if (-not [string]::IsNullOrWhiteSpace($rootPath)) {
     Add-Check "python-executable" "pass" "Python executable found: $pythonPath"
     $versionCheck = Test-PythonVersion $pythonPath
     Add-Check "python-version" ($(if ($versionCheck.ok) { "pass" } else { "fail" })) "$($versionCheck.version) $($versionCheck.detail)"
+    if ($null -ne $manifest -and $null -ne $manifest.pythonVersion -and -not [string]::IsNullOrWhiteSpace([string]$manifest.pythonVersion)) {
+      $manifestVersion = Convert-ToManifestVersion ([string]$manifest.pythonVersion)
+      if ($manifestVersion.ok -and $versionCheck.ok) {
+        if ($manifestVersion.major -eq $versionCheck.major -and $manifestVersion.minor -eq $versionCheck.minor) {
+          Add-Check "manifest-python-version-match" "pass" "Manifest pythonVersion matches probed Python major/minor."
+        } else {
+          Add-Check "manifest-python-version-match" "fail" "Manifest pythonVersion $($manifest.pythonVersion) does not match probed $($versionCheck.version)."
+        }
+      }
+    }
   }
 }
 

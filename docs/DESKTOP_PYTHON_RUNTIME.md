@@ -88,7 +88,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check_desktop_python
 
 The checker verifies that the manifest is present, declares
 `stackchan.desktop-python-runtime.v1`, exposes the expected provenance fields, and that the
-platform Python executable runs `--version` with Python 3.10 or newer.
+platform Python executable runs `--version` with Python 3.10 or newer. It also rejects
+placeholder SHA-256 values, requires `platform` to match the current package host, and
+requires the manifest `pythonVersion` major/minor to match the executable's reported
+version.
+
+Run the checker contract before relying on the payload gate in a release package:
+
+```powershell
+.\tools\test_desktop_python_runtime_payload_contract.cmd
+```
+
+The contract proves placeholder hashes, platform mismatches, and stale `pythonVersion`
+manifests fail while a minimal valid runtime payload reports `ready`.
 
 The desktop app exports this state under `brain_service.python_runtime.managed_runtime` in
 diagnostics and C6 brain-supervisor evidence.

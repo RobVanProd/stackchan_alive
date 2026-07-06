@@ -159,8 +159,11 @@ current v1 companion branch.
   and copies it into app resources as `python-runtime/`. The source tree now also includes
   `tools\prepare_desktop_python_runtime.ps1`, which can turn an installed Python 3.10+
   runtime into the expected payload folder, manifest, and deterministic payload hash before
-  running the payload checker. Supplying and shipping the actual managed Python binary
-  payload for each desktop platform remains open.
+  running the payload checker. The payload checker now rejects placeholder SHA-256 values,
+  wrong-platform manifests, and stale manifest `pythonVersion` values, with
+  `tools\test_desktop_python_runtime_payload_contract.ps1` covering those failure modes.
+  Supplying and shipping the actual managed Python binary payload for each desktop platform
+  remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision

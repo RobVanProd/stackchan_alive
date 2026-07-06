@@ -314,6 +314,12 @@ desktop platform before packaging installers:
 .\tools\check_desktop_python_runtime_payload.ps1 -RuntimeRoot output\desktop-python-runtime\<platform> -Json
 ```
 
+Before trusting the managed-runtime gate, run its contract test:
+
+```powershell
+.\tools\test_desktop_python_runtime_payload_contract.cmd
+```
+
 Then pass that root into desktop packaging with
 `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
 `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`. A platform runtime only validates the

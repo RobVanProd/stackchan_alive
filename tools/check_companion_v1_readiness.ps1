@@ -552,7 +552,13 @@ Test-TextEvidence `
   -Id "desktop-python-runtime-payload-checker" `
   -Name "Desktop managed Python runtime payload checker" `
   -RelativePaths @("tools/check_desktop_python_runtime_payload.ps1") `
-  -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+")
+  -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+", "manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match")
+
+Test-TextEvidence `
+  -Id "desktop-python-runtime-payload-contract-test" `
+  -Name "Desktop managed Python runtime payload contract test" `
+  -RelativePaths @("tools/test_desktop_python_runtime_payload_contract.ps1") `
+  -Patterns @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "Desktop Python runtime payload contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-payload-prep-tool" `

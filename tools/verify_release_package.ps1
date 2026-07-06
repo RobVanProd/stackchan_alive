@@ -300,6 +300,8 @@ $requiredFiles = @(
   "tools/prepare_desktop_python_runtime.ps1",
   "tools/check_desktop_python_runtime_payload.cmd",
   "tools/check_desktop_python_runtime_payload.ps1",
+  "tools/test_desktop_python_runtime_payload_contract.cmd",
+  "tools/test_desktop_python_runtime_payload_contract.ps1",
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
@@ -1744,9 +1746,16 @@ foreach ($pattern in @("stackchan.desktop-python-runtime-prepare.v1", "stackchan
 }
 
 $checkDesktopPythonRuntimeText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_python_runtime_payload.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+")) {
+foreach ($pattern in @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+", "manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match")) {
   if ($checkDesktopPythonRuntimeText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_python_runtime_payload.ps1 missing managed runtime payload check support: $pattern"
+  }
+}
+
+$desktopPythonRuntimeContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_python_runtime_payload_contract.ps1") -Raw
+foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "Desktop Python runtime payload contract tests passed")) {
+  if ($desktopPythonRuntimeContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_desktop_python_runtime_payload_contract.ps1 missing managed runtime payload contract coverage: $pattern"
   }
 }
 

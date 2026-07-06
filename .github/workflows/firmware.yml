@@ -160,6 +160,10 @@ jobs:
         shell: pwsh
         run: ./tools/test_android_v1_evidence_bundle_contract.ps1
 
+      - name: Run desktop Python runtime payload contract
+        shell: pwsh
+        run: ./tools/test_desktop_python_runtime_payload_contract.ps1
+
       - name: Upload companion C0 spike report
         uses: actions/upload-artifact@v7
         with:
