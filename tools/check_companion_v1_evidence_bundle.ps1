@@ -408,6 +408,73 @@ function Test-DesktopArtifactHashesMatchReleaseEvidence {
   }
 }
 
+function Test-ReleasePackageEvidencePresent {
+  param([object]$Reports)
+
+  $releaseRelativePath = [string](Get-Field $Reports "companionReleaseEvidenceReport")
+  $releasePath = Resolve-EvidencePath $releaseRelativePath
+  if ([string]::IsNullOrWhiteSpace($releaseRelativePath)) {
+    Add-Check "release-package-evidence-present" "Release package evidence is attached to release evidence" "pending" "" "Record reports.companionReleaseEvidenceReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $releasePath -PathType Leaf)) {
+    Add-Check "release-package-evidence-present" "Release package evidence is attached to release evidence" "pending" (Convert-ToRelativePath $releasePath) "Missing Companion release evidence report."
+    return
+  }
+
+  try {
+    $releaseReport = Read-JsonOrNull $releasePath
+  } catch {
+    Add-Check "release-package-evidence-present" "Release package evidence is attached to release evidence" "fail" (Convert-ToRelativePath $releasePath) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $packageEvidence = Get-Field $releaseReport "packageEvidence"
+  $issues = @()
+  if ($null -eq $packageEvidence) {
+    $issues += "Companion release evidence is missing packageEvidence."
+  } elseif ([string](Get-Field $packageEvidence "status") -ne "present") {
+    $issues += "packageEvidence.status must be present."
+  }
+
+  $requiredFiles = @(
+    "release_manifest.json",
+    "release_assets.json",
+    "COMPANION_RELEASE_EVIDENCE.json",
+    "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
+  )
+  $filesByPath = @{}
+  foreach ($file in @((Get-Field $packageEvidence "files"))) {
+    $filePath = [string](Get-Field $file "path")
+    if (-not [string]::IsNullOrWhiteSpace($filePath)) {
+      $filesByPath[$filePath] = $file
+    }
+  }
+
+  foreach ($requiredFile in $requiredFiles) {
+    if (-not $filesByPath.ContainsKey($requiredFile)) {
+      $issues += "packageEvidence.files missing $requiredFile."
+      continue
+    }
+    $file = $filesByPath[$requiredFile]
+    [int64]$bytes = 0
+    [void][int64]::TryParse([string](Get-Field $file "bytes"), [ref]$bytes)
+    $sha256 = [string](Get-Field $file "sha256")
+    if ($bytes -le 0) {
+      $issues += "packageEvidence file $requiredFile has invalid bytes."
+    }
+    if (-not (Test-Hash $sha256)) {
+      $issues += "packageEvidence file $requiredFile has invalid SHA-256."
+    }
+  }
+
+  if ($issues.Count -eq 0) {
+    Add-Check "release-package-evidence-present" "Release package evidence is attached to release evidence" "pass" (Convert-ToRelativePath $releasePath) "Release evidence includes hashed package core files."
+  } else {
+    Add-Check "release-package-evidence-present" "Release package evidence is attached to release evidence" "fail" (Convert-ToRelativePath $releasePath) ($issues -join " ")
+  }
+}
+
 function Convert-ToComparablePath {
   param([string]$Path)
 
@@ -522,6 +589,7 @@ Required ready statuses:
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
 - Android ``versionName`` must match the release version, and Android ``releaseAabSha256`` must match a release evidence AAB artifact hash.
 - Desktop MSI, DMG, and DEB hashes must match release evidence package artifact hashes.
+- Release evidence ``packageEvidence`` must include hashed package core files from the extracted release package.
 - Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
 
 Run:
@@ -653,6 +721,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-AndroidVersionNameMatchesRelease $reports $releaseVersion
     Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
     Test-DesktopArtifactHashesMatchReleaseEvidence $reports
+    Test-ReleasePackageEvidencePresent $reports
     Test-RolloutHardwareEvidence $reports ([string]$bundle.hardwareEvidenceRoot) ([string]$bundle.sourceCommit)
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)

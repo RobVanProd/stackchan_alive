@@ -141,6 +141,18 @@ function Write-StatusReport {
   if ($artifactGroups.Count -gt 0) {
     $report.artifacts = @($artifactGroups)
   }
+  if ($Schema -eq "stackchan.companion-release-evidence.v1") {
+    $report.packageEvidence = [ordered]@{
+      status = "present"
+      root = "output/release/v1.0.0"
+      files = @(
+        [ordered]@{ path = "release_manifest.json"; bytes = 1234; sha256 = "1" * 64 },
+        [ordered]@{ path = "release_assets.json"; bytes = 1234; sha256 = "2" * 64 },
+        [ordered]@{ path = "COMPANION_RELEASE_EVIDENCE.json"; bytes = 1234; sha256 = "3" * 64 },
+        [ordered]@{ path = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"; bytes = 1234; sha256 = "4" * 64 }
+      )
+    }
+  }
   Write-JsonFile -Path $Path -Value $report
 }
 
@@ -260,7 +272,7 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
     throw "Expected Companion v1 bundle check report to emit sourceCommit and releaseVersion."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-version-name-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
@@ -277,6 +289,20 @@ try {
   }
   Assert-CheckStatus -Report $releaseHashMismatchResult.report -Id "release-package" -Status "fail"
   Write-Host "[ok] mismatched Companion v1 release ZIP hash is rejected"
+
+  $releasePackageEvidenceMissingRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $releasePackageEvidenceMissingRoot -Recurse -Force
+  $releasePackageEvidenceMissingPath = Join-Path $releasePackageEvidenceMissingRoot $reports.companionReleaseEvidenceReport
+  $releasePackageEvidenceMissingReport = Get-Content -LiteralPath $releasePackageEvidenceMissingPath -Raw | ConvertFrom-Json
+  $releasePackageEvidenceMissingReport.packageEvidence.status = "not-provided"
+  $releasePackageEvidenceMissingReport.packageEvidence.files = @()
+  Write-JsonFile -Path $releasePackageEvidenceMissingPath -Value $releasePackageEvidenceMissingReport
+  $releasePackageEvidenceMissingResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $releasePackageEvidenceMissingRoot
+  if ([int]$releasePackageEvidenceMissingResult.exitCode -eq 0) {
+    throw "Expected missing Companion v1 release package evidence to fail."
+  }
+  Assert-CheckStatus -Report $releasePackageEvidenceMissingResult.report -Id "release-package-evidence-present" -Status "fail"
+  Write-Host "[ok] missing Companion v1 release package evidence is rejected"
 
   $readinessMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $readinessMismatchRoot -Recurse -Force
