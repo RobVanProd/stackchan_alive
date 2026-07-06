@@ -116,6 +116,16 @@ speech evidence gate:
 It must report `android-speech-ready` before Android push-to-talk/STT is considered
 validated for v1.
 
+After the Android phone has exercised protected settings writes and manual brain
+claim/release against a connected robot, run the controls evidence gate:
+
+```powershell
+.\tools\check_android_controls_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_controls_serial.log> -ReviewPath <ANDROID_CONTROLS_REVIEW.md> -RequireReady -Json
+```
+
+It must report `android-controls-ready` before Android settings/handoff controls are
+considered validated for v1.
+
 After the Android phone has downloaded, checksum-verified, loaded, ejected, reloaded, and
 used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:
 

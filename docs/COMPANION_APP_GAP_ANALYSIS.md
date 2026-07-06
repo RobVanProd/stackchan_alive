@@ -53,8 +53,12 @@ current v1 companion branch.
   `release_brain`; Android submits protected settings writes after local save when a robot
   is connected, and Android/desktop manual brain claim/release buttons send real
   `claim_brain` / `release_brain` frames. Simulated robot tests prove `settings_result` and
-  `owner_status` responses update app state. Physical robot round-trip evidence is still
-  required before G3 is complete.
+  `owner_status` responses update app state. The source tree now includes
+  `tools/check_android_controls_evidence.ps1` to gate the final phone evidence on a
+  diagnostics export, robot-side `settings_set` / `settings_result` /
+  `claim_brain` / `release_brain` / `owner_status` log markers, the pre-hello
+  `robot_hello_required` safety gate, and a human review packet. Physical robot
+  round-trip evidence and `android-controls-ready` are still required before G3 is complete.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, shared UI defaults no longer show invented battery/temperature/firmware values,
   heartbeat is now an honest bridge status instead of a fake millisecond value, and audio
@@ -145,7 +149,7 @@ current v1 companion branch.
 ## Next Attack Order
 
 1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -RequireReady -Json`, and attach transcript-redacted evidence.
-2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware.
+2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -RequireReady -Json`.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject and real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.

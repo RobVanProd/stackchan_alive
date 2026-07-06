@@ -465,6 +465,12 @@ The Android companion path is ready to integrate with firmware when:
   robot-gated text-turn path. The v1 evidence packet must pass
   `tools/check_android_speech_evidence.ps1`, including content-free `StackchanSpeech`
   logcat markers, robot response-frame serial evidence, and transcript-redacted diagnostics.
+- Android protected controls prove the real robot round trip for settings and handoff:
+  pre-hello writes return or remain blocked on `robot_hello_required`; after robot `hello`,
+  `settings_set` returns `settings_result`, Claim sends `claim_brain` and receives
+  `owner_status`, and Release sends `release_brain` and receives `owner_status`. The v1
+  evidence packet must pass `tools/check_android_controls_evidence.ps1` and report
+  `android-controls-ready`.
 - Safety-locked settings cannot be changed from the app.
 - Offline fallback still works with no active brain owner.
 - Mobile model mode passes the same Character Lock red-team and benchmark gates as the PC
