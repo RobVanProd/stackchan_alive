@@ -351,6 +351,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "gemma-ready" "Android Gemma evidence report" $reports "gemmaCheckReport" "stackchan.android-gemma-evidence.v1" "android-gemma-real-device-ready"
     Test-ReportStatus "screen-off-soak-ready" "Android screen-off soak evidence report" $reports "screenOffSoakCheckReport" "stackchan.android-screen-off-soak-evidence.v1" "android-screen-off-soak-ready"
     Test-ReportStatus "play-store-ready" "Android Play Store evidence report" $reports "playStoreCheckReport" "stackchan.android-play-store-evidence-check.v1" "play-internal-testing-ready"
+    Test-ReportFieldEquals "companion-readiness-source-commit-match" "Companion source readiness source commit matches bundle" $reports "companionReadinessReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "apk-install-source-commit-match" "APK install source commit matches bundle" $reports "apkInstallReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "diagnostics-source-commit-match" "Android diagnostics source commit matches bundle" $reports "diagnosticsCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "speech-source-commit-match" "Android speech source commit matches bundle" $reports "speechCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"

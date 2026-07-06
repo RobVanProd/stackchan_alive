@@ -142,7 +142,7 @@ try {
       versionName = "1.0.0"
       versionCode = "1"
     })
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.diagnosticsCheckReport) -Schema "stackchan.android-diagnostics-export-evidence.v1" -Status "android-diagnostics-export-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.controlsCheckReport) -Schema "stackchan.android-controls-evidence.v1" -Status "android-controls-ready" -SourceCommit $sourceCommit
@@ -178,10 +178,20 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit) {
     throw "Expected Android v1 bundle check report sourceCommit to match fixture commit."
   }
-  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
+  foreach ($id in @("apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android v1 evidence bundle is accepted"
+
+  $readinessMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $readinessMismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $readinessMismatchRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit ("e" * 40)
+  $readinessMismatchResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $readinessMismatchRoot
+  if ([int]$readinessMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Android v1 companion readiness source commit to fail."
+  }
+  Assert-CheckStatus -Report $readinessMismatchResult.report -Id "companion-readiness-source-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Android v1 companion readiness source commit is rejected"
 
   $speechMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $speechMismatchRoot -Recurse -Force

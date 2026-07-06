@@ -144,10 +144,10 @@ current v1 companion branch.
   screen-off soak, Play Store evidence-check JSON, connected-dashboard/hardware status, and
   a human `ANDROID_V1_REVIEW.md` before reporting `android-v1-evidence-ready`. The individual
   Android hardware evidence checkers now require a full reviewed source commit and the aggregate
-  gate rejects any hardware, target-phone APK install, or Play Store evidence report generated
-  for a different source commit than the Android v1 bundle. The Android v1 aggregate checker
-  emits that same `sourceCommit` so the final Companion v1 gate can reject stale Android
-  bundle evidence.
+  gate rejects any source readiness, hardware, target-phone APK install, or Play Store
+  evidence report generated for a different source commit than the Android v1 bundle. The
+  Android v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
+  can reject stale Android bundle evidence.
 - Companion final-release evidence now has a top-level aggregate source-side bundle gate:
   `tools/check_companion_v1_evidence_bundle.ps1` consumes companion source readiness,
   companion release evidence, GitHub Actions status, rollout status, Android v1 bundle
@@ -183,11 +183,12 @@ current v1 companion branch.
   production voice-source readiness, and a human `DESKTOP_V1_REVIEW.md` before reporting
   `desktop-v1-evidence-ready`. The review packet must record the same full source commit
   as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human sign-off from a different build
-  cannot close the aggregate gate. The production voice-source readiness report must also
-  record that same source commit, so stale voice approval evidence cannot close the desktop
-  bundle. The Desktop v1 aggregate checker emits that same `sourceCommit` so the final
-  Companion v1 gate can reject stale desktop bundle evidence. Supplying and shipping the
-  actual managed Python binary payload for each desktop platform remains open.
+  cannot close the aggregate gate. The companion source-readiness and production voice-source
+  reports must also record that same source commit, so stale source or voice approval evidence
+  cannot close the desktop bundle. The Desktop v1 aggregate checker emits that same
+  `sourceCommit` so the final Companion v1 gate can reject stale desktop bundle evidence.
+  Supplying and shipping the actual managed Python binary payload for each desktop platform
+  remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision

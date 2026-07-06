@@ -1188,14 +1188,14 @@ foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-interna
 }
 
 $androidV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "sourceCommit", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "Get-ReviewSourceCommit", "Source commit:", "ANDROID_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.android-v1-evidence-bundle.v1", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "stackchan.android-apk-install.v1", "android-speech-ready", "android-controls-ready", "android-pairing-ready", "android-wifi-ready", "android-gemma-real-device-ready", "android-screen-off-soak-ready", "play-internal-testing-ready", "sourceCommit", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "speech-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "Get-ReviewSourceCommit", "Source commit:", "ANDROID_V1_REVIEW.md", "RequireReady")) {
   if ($androidV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_v1_evidence_bundle.ps1 missing Android v1 evidence bundle logic: $pattern"
   }
 }
 
 $androidV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "mismatched Android v1 speech source commit is rejected", "mismatched Android v1 Play Store source commit is rejected", "mismatched Android v1 review source commit is rejected", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "Android v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Android v1 evidence bundle is pending", "complete Android v1 evidence bundle is accepted", "mismatched Android v1 companion readiness source commit is rejected", "mismatched Android v1 speech source commit is rejected", "mismatched Android v1 Play Store source commit is rejected", "mismatched Android v1 review source commit is rejected", "android-v1-evidence-ready", "pending-android-v1-evidence-bundle", "Android v1 evidence bundle contract tests passed")) {
   if ($androidV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_v1_evidence_bundle_contract.ps1 missing Android v1 evidence bundle contract coverage: $pattern"
   }
@@ -1772,14 +1772,14 @@ foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is r
 }
 
 $desktopV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
   if ($desktopV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_v1_evidence_bundle.ps1 missing desktop v1 evidence bundle logic: $pattern"
   }
 }
 
 $desktopV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
   if ($desktopV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_v1_evidence_bundle_contract.ps1 missing desktop v1 evidence bundle contract coverage: $pattern"
   }

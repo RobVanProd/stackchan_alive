@@ -155,7 +155,7 @@ try {
       reports = $reports
       reviewPath = "DESKTOP_V1_REVIEW.md"
     })
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
   Write-C6Report -Path (Join-Path $readyRoot $reports.c6BrainSupervisorSmokeReport) -Schema "stackchan.companion.c6-brain-supervisor-smoke.v1"
   Write-C6Report -Path (Join-Path $readyRoot $reports.c6GuiRehearsalReport) -Schema "stackchan.companion.c6-gui-rehearsal.v1"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.windowsRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready"
@@ -198,10 +198,20 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit) {
     throw "Expected Desktop v1 bundle check report sourceCommit to match fixture commit."
   }
-  foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
+  foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Desktop v1 evidence bundle is accepted"
+
+  $readinessMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $readinessMismatchRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $readinessMismatchRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit ("d" * 40)
+  $readinessMismatchResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $readinessMismatchRoot
+  if ([int]$readinessMismatchResult.exitCode -eq 0) {
+    throw "Expected mismatched Desktop v1 companion readiness source commit to fail."
+  }
+  Assert-CheckStatus -Report $readinessMismatchResult.report -Id "companion-readiness-source-commit-match" -Status "fail"
+  Write-Host "[ok] mismatched Desktop v1 companion readiness source commit is rejected"
 
   $mismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $mismatchRoot -Recurse -Force
