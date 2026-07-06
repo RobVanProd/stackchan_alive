@@ -167,7 +167,10 @@ void BridgeNetworkSession::readHandshake(uint32_t nowMs) {
     return;
   }
 
-  while (socket_->available() > 0 && handshakeBytes_ < sizeof(handshakeResponse_) - 1u) {
+  while (handshakeBytes_ < sizeof(handshakeResponse_) - 1u) {
+    if (socket_->available() <= 0 && handshakeBytes_ > 0) {
+      break;
+    }
     uint8_t value = 0;
     const int bytes = socket_->read(&value, 1);
     if (bytes <= 0) {
@@ -200,7 +203,8 @@ void BridgeNetworkSession::readConnected(uint32_t nowMs) {
   }
   const uint16_t budget = config_.readBudgetBytes == 0 ? kBridgeNetworkReadChunkMax : config_.readBudgetBytes;
   uint16_t consumed = 0;
-  while (socket_->available() > 0 && consumed < budget) {
+  while (socket_->available() > 0 && consumed < budget &&
+         (bridge_ == nullptr || !bridge_->hasPendingOutput())) {
     const size_t want = (budget - consumed) < sizeof(readChunk_) ? (budget - consumed) : sizeof(readChunk_);
     const int bytes = socket_->read(readChunk_, want);
     if (bytes <= 0) {

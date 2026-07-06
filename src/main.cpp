@@ -5,6 +5,12 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiServer.h>
+#endif
+
 #include "config/RobotConfig.hpp"
 #include "face/ProceduralFace.hpp"
 #include "io/AudioCaptureAdapter.hpp"
@@ -80,6 +86,8 @@ uint16_t gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
 #if defined(ARDUINO_ARCH_ESP32)
 BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
 BridgeWiFiProvisioningPreferencesStore gBridgeWiFiStoreBackend;
+WiFiServer gBridgeDebugServer(8789);
+bool gBridgeDebugServerStarted = false;
 #else
 BridgeEndpointMemoryStore gBridgeEndpointStoreBackend;
 BridgeWiFiProvisioningMemoryStore gBridgeWiFiStoreBackend;
@@ -112,11 +120,29 @@ struct MotionControlInput {
 class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlinkSink {
  public:
   bool begin() override {
+    auto speakerConfig = M5.Speaker.config();
+    speakerConfig.magnification = 16;
+    M5.Speaker.config(speakerConfig);
     if (!M5.Speaker.begin()) {
       ready_ = false;
       return false;
     }
-    M5.Speaker.setVolume(96);
+    if (streamQueue_ == nullptr) {
+      streamQueue_ = xQueueCreate(kStreamQueueDepth, sizeof(StreamQueueItem));
+    }
+    if (streamQueue_ == nullptr) {
+      ready_ = false;
+      return false;
+    }
+    if (streamTaskHandle_ == nullptr) {
+      BaseType_t ok = xTaskCreatePinnedToCore(
+          StreamPlaybackTask, "StreamAudio", 6144, this, 4, &streamTaskHandle_, 1);
+      if (ok != pdPASS) {
+        ready_ = false;
+        return false;
+      }
+    }
+    M5.Speaker.setVolume(224);
     M5.Speaker.setChannelVolume(kChannel, 255);
     ready_ = true;
     return true;
@@ -171,6 +197,9 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       return false;
     }
     M5.Speaker.stop(kChannel);
+    if (streamQueue_ != nullptr) {
+      xQueueReset(streamQueue_);
+    }
     active_ = false;
     wavActive_ = false;
     downlinkActive_ = true;
@@ -185,13 +214,39 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       return false;
     }
 
-    const size_t sampleCount = min(static_cast<size_t>(chunk.payloadBytes / 2u), kMaxStreamSamples);
-    for (size_t i = 0; i < sampleCount; ++i) {
-      const uint8_t lo = chunk.payload[i * 2u];
-      const uint8_t hi = chunk.payload[i * 2u + 1u];
-      streamSamples_[i] = static_cast<int16_t>(static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8));
+    if (streamQueue_ == nullptr) {
+      return false;
     }
-    return M5.Speaker.playRaw(streamSamples_, sampleCount, downlinkSampleRate_, false, 1, kChannel, false);
+    queueItem_.sampleRate = downlinkSampleRate_;
+    queueItem_.bytes = min(static_cast<uint16_t>(chunk.payloadBytes), static_cast<uint16_t>(kBridgeAudioStreamChunkPayloadMax));
+    memcpy(queueItem_.payload, chunk.payload, queueItem_.bytes);
+    return xQueueSend(streamQueue_, &queueItem_, 0) == pdTRUE;
+  }
+
+  void runStreamPlaybackTask() {
+    while (true) {
+      if (streamQueue_ == nullptr ||
+          xQueueReceive(streamQueue_, &streamTaskItem_, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        continue;
+      }
+      const size_t sampleCount = min(static_cast<size_t>(streamTaskItem_.bytes / 2u), kMaxStreamSamples);
+      int16_t* streamSamples = streamSamples_[downlinkBufferIndex_];
+      downlinkBufferIndex_ = (downlinkBufferIndex_ + 1u) % kStreamBufferCount;
+      for (size_t i = 0; i < sampleCount; ++i) {
+        const uint8_t lo = streamTaskItem_.payload[i * 2u];
+        const uint8_t hi = streamTaskItem_.payload[i * 2u + 1u];
+        streamSamples[i] = static_cast<int16_t>(static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8));
+      }
+      streamTaskChunks_++;
+      streamTaskBytes_ += streamTaskItem_.bytes;
+      streamLastSampleCount_ = static_cast<uint32_t>(sampleCount);
+      streamLastSampleRate_ = streamTaskItem_.sampleRate;
+      if (M5.Speaker.playRaw(streamSamples, sampleCount, streamTaskItem_.sampleRate, false, 1, kChannel, false)) {
+        streamPlayRawOk_++;
+      } else {
+        streamPlayRawFailed_++;
+      }
+    }
   }
 
   void stop() override {
@@ -199,6 +254,9 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       return;
     }
     M5.Speaker.stop(kChannel);
+    if (streamQueue_ != nullptr) {
+      xQueueReset(streamQueue_);
+    }
     active_ = false;
     wavActive_ = false;
     downlinkActive_ = false;
@@ -206,11 +264,92 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
 
   void stop(uint32_t nowMs) override {
     (void)nowMs;
-    stop();
+    downlinkActive_ = false;
   }
 
   bool isReady() const override {
     return ready_;
+  }
+
+  bool playDiagnosticTone(uint32_t frequency = 880, uint32_t durationMs = 700) {
+    if (!ready_) {
+      diagnosticToneFailed_++;
+      return false;
+    }
+    M5.Speaker.stop(kChannel);
+    M5.Speaker.setVolume(224);
+    M5.Speaker.setChannelVolume(kChannel, 255);
+    const bool ok = M5.Speaker.tone(static_cast<float>(frequency), durationMs, kChannel, true);
+    if (ok) {
+      diagnosticToneOk_++;
+    } else {
+      diagnosticToneFailed_++;
+    }
+    return ok;
+  }
+
+  uint32_t streamTaskChunks() const {
+    return streamTaskChunks_;
+  }
+
+  uint32_t streamTaskBytes() const {
+    return streamTaskBytes_;
+  }
+
+  uint32_t streamPlayRawOk() const {
+    return streamPlayRawOk_;
+  }
+
+  uint32_t streamPlayRawFailed() const {
+    return streamPlayRawFailed_;
+  }
+
+  uint32_t streamLastSampleCount() const {
+    return streamLastSampleCount_;
+  }
+
+  uint32_t streamLastSampleRate() const {
+    return streamLastSampleRate_;
+  }
+
+  uint8_t speakerVolume() const {
+    return ready_ ? M5.Speaker.getVolume() : 0;
+  }
+
+  uint32_t speakerEnabled() const {
+    return M5.Speaker.isEnabled() ? 1u : 0u;
+  }
+
+  uint32_t speakerChannelState() const {
+    return ready_ ? static_cast<uint32_t>(M5.Speaker.isPlaying(kChannel)) : 0u;
+  }
+
+  int speakerPinDataOut() const {
+    return M5.Speaker.config().pin_data_out;
+  }
+
+  int speakerPinBck() const {
+    return M5.Speaker.config().pin_bck;
+  }
+
+  int speakerPinWs() const {
+    return M5.Speaker.config().pin_ws;
+  }
+
+  uint32_t speakerMagnification() const {
+    return M5.Speaker.config().magnification;
+  }
+
+  uint32_t speakerSampleRate() const {
+    return M5.Speaker.config().sample_rate;
+  }
+
+  uint32_t diagnosticToneOk() const {
+    return diagnosticToneOk_;
+  }
+
+  uint32_t diagnosticToneFailed() const {
+    return diagnosticToneFailed_;
   }
 
  private:
@@ -218,6 +357,18 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   static constexpr uint32_t kSampleRate = 22050;
   static constexpr size_t kSamplesPerFrame = 441;
   static constexpr size_t kMaxStreamSamples = kBridgeAudioStreamChunkPayloadMax / 2u;
+  static constexpr size_t kStreamBufferCount = 3;
+  static constexpr UBaseType_t kStreamQueueDepth = 16;
+
+  struct StreamQueueItem {
+    uint32_t sampleRate = kSampleRate;
+    uint16_t bytes = 0;
+    uint8_t payload[kBridgeAudioStreamChunkPayloadMax] {};
+  };
+
+  static void StreamPlaybackTask(void* pv) {
+    static_cast<M5SpeakerAudioSink*>(pv)->runStreamPlaybackTask();
+  }
 
   static uint32_t frequencyForViseme(AudioOutViseme viseme) {
     switch (viseme) {
@@ -270,18 +421,35 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   bool active_ = false;
   bool wavActive_ = false;
   bool downlinkActive_ = false;
+  size_t downlinkBufferIndex_ = 0;
   uint32_t downlinkSampleRate_ = kSampleRate;
+  uint32_t streamTaskChunks_ = 0;
+  uint32_t streamTaskBytes_ = 0;
+  uint32_t streamPlayRawOk_ = 0;
+  uint32_t streamPlayRawFailed_ = 0;
+  uint32_t streamLastSampleCount_ = 0;
+  uint32_t streamLastSampleRate_ = 0;
+  uint32_t diagnosticToneOk_ = 0;
+  uint32_t diagnosticToneFailed_ = 0;
+  QueueHandle_t streamQueue_ = nullptr;
+  TaskHandle_t streamTaskHandle_ = nullptr;
   uint32_t phase_ = 0;
   uint32_t phaseFifth_ = 0;
   uint32_t noise_ = 0x1234abcd;
   int32_t heldNoise_ = 0;
   int16_t samples_[kSamplesPerFrame] {};
-  int16_t streamSamples_[kMaxStreamSamples] {};
+  int16_t streamSamples_[kStreamBufferCount][kMaxStreamSamples] {};
+  StreamQueueItem queueItem_ {};
+  StreamQueueItem streamTaskItem_ {};
 };
 
 M5SpeakerAudioSink gSpeakerSink;
 char gBridgeSpeechText[kBridgeTextMax] = {};
 char gBridgeEndpointResponse[kBridgeEndpointControlResponseMax] = {};
+SpeechCue gPendingBridgeSpeechCue {};
+bool gBridgeSpeechCuePending = false;
+bool gBridgeResponseHadAudioStream = false;
+uint32_t gBridgeLocalSpeechSuppressedUntilMs = 0;
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_ENABLE_SERVOS
@@ -713,6 +881,34 @@ void printRuntimeStatus() {
   Serial.print(audioOut.hardwareFramesSubmitted);
   Serial.print(F(" audio_out_hw_drops="));
   Serial.print(audioOut.hardwareFrameDrops);
+  Serial.print(F(" speaker_volume="));
+  Serial.print(gSpeakerSink.speakerVolume());
+  Serial.print(F(" speaker_enabled="));
+  Serial.print(gSpeakerSink.speakerEnabled());
+  Serial.print(F(" speaker_channel_state="));
+  Serial.print(gSpeakerSink.speakerChannelState());
+  Serial.print(F(" speaker_pin_data_out="));
+  Serial.print(gSpeakerSink.speakerPinDataOut());
+  Serial.print(F(" speaker_pin_bck="));
+  Serial.print(gSpeakerSink.speakerPinBck());
+  Serial.print(F(" speaker_pin_ws="));
+  Serial.print(gSpeakerSink.speakerPinWs());
+  Serial.print(F(" speaker_magnification="));
+  Serial.print(gSpeakerSink.speakerMagnification());
+  Serial.print(F(" speaker_sample_rate="));
+  Serial.print(gSpeakerSink.speakerSampleRate());
+  Serial.print(F(" speaker_stream_task_chunks="));
+  Serial.print(gSpeakerSink.streamTaskChunks());
+  Serial.print(F(" speaker_stream_task_bytes="));
+  Serial.print(gSpeakerSink.streamTaskBytes());
+  Serial.print(F(" speaker_stream_play_raw_ok="));
+  Serial.print(gSpeakerSink.streamPlayRawOk());
+  Serial.print(F(" speaker_stream_play_raw_failed="));
+  Serial.print(gSpeakerSink.streamPlayRawFailed());
+  Serial.print(F(" speaker_tone_ok="));
+  Serial.print(gSpeakerSink.diagnosticToneOk());
+  Serial.print(F(" speaker_tone_failed="));
+  Serial.print(gSpeakerSink.diagnosticToneFailed());
   const BridgeClientTelemetry& bridge = gBridge.telemetry();
   Serial.print(F(" bridge_ready="));
   Serial.print(bridge.ready ? 1 : 0);
@@ -773,10 +969,19 @@ void printRuntimeStatus() {
   Serial.print(bridgeNetworkStateName(network.state));
   Serial.print(F(" bridge_network_connects="));
   Serial.print(network.connectAttempts);
+  Serial.print(F(" bridge_network_connect_failures="));
+  Serial.print(network.connectFailures);
+  Serial.print(F(" bridge_network_handshakes_sent="));
+  Serial.print(network.handshakesSent);
   Serial.print(F(" bridge_network_handshakes="));
   Serial.print(network.handshakesAccepted);
+  Serial.print(F(" bridge_network_handshakes_failed="));
+  Serial.print(network.handshakesFailed);
   Serial.print(F(" bridge_network_reconnects="));
   Serial.print(network.reconnectsScheduled);
+  Serial.print(F(" bridge_network_error=\""));
+  Serial.print(network.lastError);
+  Serial.print(F("\""));
   Serial.print(F(" bridge_network_bytes_in="));
   Serial.print(network.bytesRead);
   Serial.print(F(" bridge_network_bytes_out="));
@@ -1065,6 +1270,16 @@ void printBenchControl(const BenchControl& control) {
     Serial.print(F(" bridge_uplink_wake="));
     Serial.print(control.bridgeUpload.wakeGateOpen ? 1 : 0);
   }
+  if (control.hasBridgeTextTurn) {
+    Serial.print(F(" bridge_text_seq="));
+    Serial.print(control.bridgeTextTurn.seq);
+    Serial.print(F(" bridge_text=\""));
+    Serial.print(control.bridgeTextTurn.text);
+    Serial.print(F("\""));
+  }
+  if (control.hasSpeakerTest) {
+    Serial.print(F(" speaker_test=1"));
+  }
   if (control.hasPairingControl) {
     Serial.print(F(" pairing_action="));
     Serial.print(control.pairing.clear ? F("clear") : F("set"));
@@ -1174,6 +1389,47 @@ void handleBridgeUplinkBench(const BenchBridgeUpload& upload, uint32_t nowMs) {
   printBridgeUplinkResult(upload.action, accepted, upload.seq, bytes, nowMs);
 }
 
+void printBridgeTextTurnResult(const BenchBridgeTextTurn& turn,
+                               bool accepted,
+                               uint32_t nowMs,
+                               const char* error) {
+  Serial.print(F("[bridge_text_turn] result="));
+  Serial.print(accepted ? F("accepted") : F("rejected"));
+  Serial.print(F(" seq="));
+  Serial.print(turn.seq);
+  Serial.print(F(" text=\""));
+  Serial.print(turn.text);
+  Serial.print(F("\" network_state="));
+  Serial.print(bridgeNetworkStateName(gBridgeNetworkSession.telemetry().state));
+  Serial.print(F(" error=\""));
+  Serial.print(error == nullptr ? "" : error);
+  Serial.print(F("\" at_ms="));
+  Serial.println(nowMs);
+}
+
+void handleBridgeTextTurnBench(const BenchBridgeTextTurn& turn, uint32_t nowMs) {
+  char text[96] = {};
+  const char* sourceText = turn.text[0] != '\0' ? turn.text : "hello stackchan";
+  strncpy(text, sourceText, sizeof(text) - 1u);
+  text[sizeof(text) - 1u] = '\0';
+  for (size_t i = 0; text[i] != '\0'; ++i) {
+    if (text[i] == '"' || text[i] == '\\') {
+      text[i] = '\'';
+    }
+  }
+
+  char frame[kBridgeEndpointControlResponseMax] = {};
+  const int written = snprintf(frame,
+                               sizeof(frame),
+                               "{\"type\":\"utterance_end\",\"seq\":%lu,\"text\":\"%s\"}",
+                               static_cast<unsigned long>(turn.seq),
+                               text);
+  const bool accepted = written > 0 && static_cast<size_t>(written) < sizeof(frame) &&
+                        gBridgeNetworkSession.queueTextFrame(frame);
+  const char* error = accepted ? "" : gBridgeNetworkSession.writer().telemetry().lastError;
+  printBridgeTextTurnResult(turn, accepted, nowMs, error);
+}
+
 void copyRuntimeString(char* out, size_t outSize, const char* value) {
   if (out == nullptr || outSize == 0) {
     return;
@@ -1216,6 +1472,13 @@ BridgeWiFiProvisioningRecord runtimeBridgeWiFiRecord() {
 }
 
 BridgeWiFiProvisioningConfig storedBridgeWiFiConfigOrDefault(uint32_t nowMs) {
+#if STACKCHAN_ENABLE_WIFI_BRIDGE != 0
+  if (STACKCHAN_WIFI_SSID[0] != '\0' && STACKCHAN_BRIDGE_HOST[0] != '\0') {
+    BridgeWiFiProvisioningRecord ignoredRecord;
+    gBridgeWiFiStore.load(ignoredRecord, nowMs);
+    return BridgeWiFiProvisioningConfig {};
+  }
+#endif
   BridgeWiFiProvisioningRecord record;
   if (!gBridgeWiFiStore.load(record, nowMs) || !record.enabled) {
     return BridgeWiFiProvisioningConfig {};
@@ -1613,16 +1876,18 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   if (output.type == BridgeClientOutputType::ResponseStart) {
     gIntent.applyEvent(output.event, CharacterMode::Speak);
     gBridgeWakeGate.applyEvent(output.event, nowMs);
+    gAudioOut.cancel();
+    gBridgeLocalSpeechSuppressedUntilMs = nowMs + 120000u;
     strncpy(gBridgeSpeechText, output.response.text, sizeof(gBridgeSpeechText) - 1);
     gBridgeSpeechText[sizeof(gBridgeSpeechText) - 1] = '\0';
 
-    SpeechCue cue;
-    cue.intent = output.response.intent;
-    cue.text = gBridgeSpeechText;
-    cue.priority = 250;
-    cue.earcon = earconForIntent(output.response.intent);
-    cue.earconDelayMs = 40;
-    gIntent.queueSpeechCue(cue, nowMs);
+    gPendingBridgeSpeechCue.intent = output.response.intent;
+    gPendingBridgeSpeechCue.text = gBridgeSpeechText;
+    gPendingBridgeSpeechCue.priority = 250;
+    gPendingBridgeSpeechCue.earcon = earconForIntent(output.response.intent);
+    gPendingBridgeSpeechCue.earconDelayMs = 40;
+    gBridgeSpeechCuePending = true;
+    gBridgeResponseHadAudioStream = false;
   }
 
   if (output.type == BridgeClientOutputType::AudioFrame) {
@@ -1630,6 +1895,9 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   }
 
   if (output.type == BridgeClientOutputType::AudioStreamStart) {
+    gBridgeResponseHadAudioStream = true;
+    gAudioOut.cancel();
+    gBridgeLocalSpeechSuppressedUntilMs = nowMs + 120000u;
     gBridgeAudioDownlink.start(output.stream, nowMs);
   }
   if (output.type == BridgeClientOutputType::AudioStreamChunk) {
@@ -1640,6 +1908,21 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   }
   if (output.type == BridgeClientOutputType::Error ||
       output.type == BridgeClientOutputType::ResponseEnd) {
+    if (output.type == BridgeClientOutputType::ResponseEnd &&
+        gBridgeSpeechCuePending && !gBridgeResponseHadAudioStream) {
+#if STACKCHAN_ENABLE_WIFI_BRIDGE
+      gBridgeLocalSpeechSuppressedUntilMs = nowMs + 750u;
+#else
+      gBridgeLocalSpeechSuppressedUntilMs = 0;
+      gIntent.queueSpeechCue(gPendingBridgeSpeechCue, nowMs);
+#endif
+    } else if (output.type == BridgeClientOutputType::ResponseEnd && gBridgeResponseHadAudioStream) {
+      gBridgeLocalSpeechSuppressedUntilMs = nowMs + 750u;
+    } else {
+      gBridgeLocalSpeechSuppressedUntilMs = 0;
+    }
+    gBridgeSpeechCuePending = false;
+    gBridgeResponseHadAudioStream = false;
     gBridgeAudioDownlink.abort(nowMs);
   }
 }
@@ -1652,14 +1935,90 @@ void pollBridgeOutputs(uint32_t nowMs) {
   }
 }
 
+void printWiFiBridgeStatus(const char* source, uint32_t nowMs) {
+  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  Serial.print(F("[wifi] source="));
+  Serial.print(source == nullptr ? "" : source);
+  Serial.print(F(" ready="));
+  Serial.print(wifi.ready ? 1 : 0);
+  Serial.print(F(" enabled="));
+  Serial.print(STACKCHAN_ENABLE_WIFI_BRIDGE != 0 ? 1 : 0);
+  Serial.print(F(" configured="));
+  Serial.print(wifi.configured ? 1 : 0);
+  Serial.print(F(" connecting="));
+  Serial.print(wifi.connecting ? 1 : 0);
+  Serial.print(F(" connected="));
+  Serial.print(wifi.connected ? 1 : 0);
+  Serial.print(F(" attempts="));
+  Serial.print(wifi.beginAttempts);
+  Serial.print(F(" failures="));
+  Serial.print(wifi.connectFailures);
+  Serial.print(F(" status="));
+  Serial.print(wifi.status);
+#if defined(ARDUINO_ARCH_ESP32)
+  Serial.print(F(" local_ip="));
+  Serial.print(WiFi.localIP());
+  Serial.print(F(" gateway="));
+  Serial.print(WiFi.gatewayIP());
+#endif
+  Serial.print(F(" network_state="));
+  Serial.print(bridgeNetworkStateName(network.state));
+  Serial.print(F(" connect_failures="));
+  Serial.print(network.connectFailures);
+  Serial.print(F(" handshakes_sent="));
+  Serial.print(network.handshakesSent);
+  Serial.print(F(" handshakes="));
+  Serial.print(network.handshakesAccepted);
+  Serial.print(F(" handshakes_failed="));
+  Serial.print(network.handshakesFailed);
+  Serial.print(F(" error=\""));
+  Serial.print(wifi.lastError);
+  Serial.print(F("\" network_error=\""));
+  Serial.print(network.lastError);
+  Serial.print(F("\" at_ms="));
+  Serial.println(nowMs);
+}
+
 void updateBridgeNetwork(uint32_t nowMs) {
+  static bool lastReady = false;
+  static bool lastConfigured = false;
+  static bool lastConnected = false;
+  static bool lastConnecting = false;
+  static uint32_t lastAttempts = 0;
+  static uint32_t lastFailures = 0;
+  static int lastStatus = -1;
+  static uint32_t lastReportMs = 0;
+  static uint32_t lastHeartbeatMs = 0;
+  static uint32_t heartbeatPendingSinceMs = 0;
+  static uint32_t heartbeatBytesRead = 0;
+  static bool heartbeatPending = false;
+  constexpr uint32_t kBridgeHeartbeatTimeoutMs = 120000;
+
   gBridgeWiFi.update(nowMs);
   const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  const bool changed = wifi.ready != lastReady || wifi.configured != lastConfigured ||
+                       wifi.connected != lastConnected || wifi.connecting != lastConnecting ||
+                       wifi.beginAttempts != lastAttempts || wifi.connectFailures != lastFailures ||
+                       wifi.status != lastStatus;
+  if (changed || lastReportMs == 0 || nowMs - lastReportMs >= 10000) {
+    printWiFiBridgeStatus("update", nowMs);
+    lastReady = wifi.ready;
+    lastConfigured = wifi.configured;
+    lastConnected = wifi.connected;
+    lastConnecting = wifi.connecting;
+    lastAttempts = wifi.beginAttempts;
+    lastFailures = wifi.connectFailures;
+    lastStatus = wifi.status;
+    lastReportMs = nowMs;
+  }
   if (!wifi.ready || !wifi.configured) {
+    heartbeatPending = false;
     return;
   }
 
   if (!gBridgeWiFi.isConnected()) {
+    heartbeatPending = false;
     const BridgeNetworkSessionState state = gBridgeNetworkSession.telemetry().state;
     if (state == BridgeNetworkSessionState::Connecting ||
         state == BridgeNetworkSessionState::Handshaking ||
@@ -1670,6 +2029,197 @@ void updateBridgeNetwork(uint32_t nowMs) {
   }
 
   gBridgeNetworkSession.update(nowMs);
+
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  if (network.state != BridgeNetworkSessionState::Connected) {
+    heartbeatPending = false;
+    return;
+  }
+
+  if (heartbeatPending && network.bytesRead != heartbeatBytesRead) {
+    heartbeatPending = false;
+  }
+
+  if (heartbeatPending && nowMs - heartbeatPendingSinceMs >= kBridgeHeartbeatTimeoutMs) {
+    heartbeatPending = false;
+    lastHeartbeatMs = 0;
+    gBridgeNetworkSession.stop(nowMs);
+    printWiFiBridgeStatus("heartbeat_timeout", nowMs);
+    return;
+  }
+
+  const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
+  if (!heartbeatPending && !writer.textFrameQueued &&
+      (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 5000)) {
+    if (gBridgeNetworkSession.queueTextFrame("{\"type\":\"heartbeat\"}")) {
+      lastHeartbeatMs = nowMs;
+      heartbeatPendingSinceMs = nowMs;
+      heartbeatBytesRead = network.bytesRead;
+      heartbeatPending = true;
+    }
+  }
+}
+
+void pollBridgeDebugServer(uint32_t nowMs) {
+  (void)nowMs;
+#if defined(ARDUINO_ARCH_ESP32)
+  if (!gBridgeWiFi.isConnected()) {
+    return;
+  }
+  if (!gBridgeDebugServerStarted) {
+    gBridgeDebugServer.begin();
+    gBridgeDebugServerStarted = true;
+  }
+
+  WiFiClient client = gBridgeDebugServer.available();
+  if (!client) {
+    return;
+  }
+  client.setTimeout(100);
+  uint32_t requestStartMs = millis();
+  while (client.connected() && requestStartMs != 0 && millis() - requestStartMs < 150) {
+    while (client.available() > 0) {
+      const char ch = static_cast<char>(client.read());
+      if (ch == '\n') {
+        requestStartMs = 0;
+      }
+    }
+    if (requestStartMs != 0) {
+      delay(1);
+    }
+  }
+
+  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  const BridgeWiFiProvisioningStoreTelemetry& store = gBridgeWiFiStore.telemetry();
+  const BridgeClientTelemetry& bridge = gBridge.telemetry();
+  const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: application/json"));
+  client.println(F("Connection: close"));
+  client.println();
+  client.print(F("{\"schema\":\"stackchan.bridge-debug.v1\""));
+  client.print(F(",\"wifi_connected\":"));
+  client.print(wifi.connected ? F("true") : F("false"));
+  client.print(F(",\"board\":"));
+  client.print(static_cast<int>(M5.getBoard()));
+  client.print(F(",\"local_ip\":\""));
+  client.print(WiFi.localIP());
+  client.print(F("\",\"gateway\":\""));
+  client.print(WiFi.gatewayIP());
+  client.print(F("\",\"compiled_bridge_host\":\""));
+  client.print(STACKCHAN_BRIDGE_HOST);
+  client.print(F("\",\"compiled_bridge_port\":"));
+  client.print(STACKCHAN_BRIDGE_PORT);
+  client.print(F(",\"store_has_record\":"));
+  client.print(store.hasRecord ? F("true") : F("false"));
+  client.print(F(",\"network_state\":\""));
+  client.print(bridgeNetworkStateName(network.state));
+  client.print(F("\",\"connect_attempts\":"));
+  client.print(network.connectAttempts);
+  client.print(F(",\"connect_failures\":"));
+  client.print(network.connectFailures);
+  client.print(F(",\"handshakes_sent\":"));
+  client.print(network.handshakesSent);
+  client.print(F(",\"handshakes\":"));
+  client.print(network.handshakesAccepted);
+  client.print(F(",\"handshakes_failed\":"));
+  client.print(network.handshakesFailed);
+  client.print(F(",\"network_error\":\""));
+  client.print(network.lastError);
+  client.print(F("\",\"bytes_in\":"));
+  client.print(network.bytesRead);
+  client.print(F(",\"bytes_out\":"));
+  client.print(network.bytesWritten);
+  client.print(F(",\"bridge_state\":\""));
+  client.print(bridgeStateName(bridge.state));
+  client.print(F("\",\"bridge_messages\":"));
+  client.print(bridge.inboundMessages);
+  client.print(F(",\"bridge_outputs\":"));
+  client.print(bridge.outputsQueued);
+  client.print(F(",\"bridge_outputs_dropped\":"));
+  client.print(bridge.outputsDropped);
+  client.print(F(",\"bridge_parse_errors\":"));
+  client.print(bridge.parseErrors);
+  client.print(F(",\"bridge_timeouts\":"));
+  client.print(bridge.timeouts);
+  client.print(F(",\"bridge_last_seq\":"));
+  client.print(bridge.lastSeq);
+  client.print(F(",\"audio_streams_started\":"));
+  client.print(bridge.audioStreamsStarted);
+  client.print(F(",\"audio_streams_ended\":"));
+  client.print(bridge.audioStreamsEnded);
+  client.print(F(",\"audio_stream_errors\":"));
+  client.print(bridge.audioStreamErrors);
+  client.print(F(",\"audio_stream_active\":"));
+  client.print(bridge.audioStreamActive ? F("true") : F("false"));
+  client.print(F(",\"audio_stream_bytes_expected\":"));
+  client.print(bridge.audioStreamBytes);
+  client.print(F(",\"audio_stream_chunks_expected\":"));
+  client.print(bridge.audioStreamChunksExpected);
+  client.print(F(",\"audio_stream_bytes_received\":"));
+  client.print(bridge.audioStreamBytesReceived);
+  client.print(F(",\"audio_stream_chunks_received\":"));
+  client.print(bridge.audioStreamChunksReceived);
+  client.print(F(",\"bridge_downlink_streams\":"));
+  client.print(downlink.streamsStarted);
+  client.print(F(",\"bridge_downlink_completed\":"));
+  client.print(downlink.streamsCompleted);
+  client.print(F(",\"bridge_downlink_chunks\":"));
+  client.print(downlink.chunksAccepted);
+  client.print(F(",\"bridge_downlink_bytes\":"));
+  client.print(downlink.bytesAccepted);
+  client.print(F(",\"bridge_downlink_errors\":"));
+  client.print(downlink.errors);
+  client.print(F(",\"bridge_downlink_playback_ready\":"));
+  client.print(downlink.playbackReady ? F("true") : F("false"));
+  client.print(F(",\"bridge_downlink_playback_starts\":"));
+  client.print(downlink.playbackStarts);
+  client.print(F(",\"bridge_downlink_playback_chunks\":"));
+  client.print(downlink.playbackChunks);
+  client.print(F(",\"bridge_downlink_playback_bytes\":"));
+  client.print(downlink.playbackBytes);
+  client.print(F(",\"bridge_downlink_playback_unsupported\":"));
+  client.print(downlink.playbackUnsupported);
+  client.print(F(",\"bridge_downlink_playback_errors\":"));
+  client.print(downlink.playbackErrors);
+  client.print(F(",\"speaker_volume\":"));
+  client.print(gSpeakerSink.speakerVolume());
+  client.print(F(",\"speaker_enabled\":"));
+  client.print(gSpeakerSink.speakerEnabled());
+  client.print(F(",\"speaker_channel_state\":"));
+  client.print(gSpeakerSink.speakerChannelState());
+  client.print(F(",\"speaker_pin_data_out\":"));
+  client.print(gSpeakerSink.speakerPinDataOut());
+  client.print(F(",\"speaker_pin_bck\":"));
+  client.print(gSpeakerSink.speakerPinBck());
+  client.print(F(",\"speaker_pin_ws\":"));
+  client.print(gSpeakerSink.speakerPinWs());
+  client.print(F(",\"speaker_magnification\":"));
+  client.print(gSpeakerSink.speakerMagnification());
+  client.print(F(",\"speaker_sample_rate\":"));
+  client.print(gSpeakerSink.speakerSampleRate());
+  client.print(F(",\"speaker_stream_task_chunks\":"));
+  client.print(gSpeakerSink.streamTaskChunks());
+  client.print(F(",\"speaker_stream_task_bytes\":"));
+  client.print(gSpeakerSink.streamTaskBytes());
+  client.print(F(",\"speaker_stream_play_raw_ok\":"));
+  client.print(gSpeakerSink.streamPlayRawOk());
+  client.print(F(",\"speaker_stream_play_raw_failed\":"));
+  client.print(gSpeakerSink.streamPlayRawFailed());
+  client.print(F(",\"speaker_tone_ok\":"));
+  client.print(gSpeakerSink.diagnosticToneOk());
+  client.print(F(",\"speaker_tone_failed\":"));
+  client.print(gSpeakerSink.diagnosticToneFailed());
+  client.print(F(",\"speaker_stream_last_sample_count\":"));
+  client.print(gSpeakerSink.streamLastSampleCount());
+  client.print(F(",\"speaker_stream_last_sample_rate\":"));
+  client.print(gSpeakerSink.streamLastSampleRate());
+  client.println(F("}"));
+  client.flush();
+  delay(10);
+  client.stop();
+#endif
 }
 
 void publishFrame(const RobotFrame& frame) {
@@ -1762,6 +2312,7 @@ void FaceTask(void* pv) {
 
 void IntentTask(void* pv) {
   (void)pv;
+  Serial.println(F("[task] intent started core=1 priority=3"));
   TickType_t wake = xTaskGetTickCount();
   uint32_t lastSpeechSeq = 0;
   RobotEvent pendingAudioEvents[4];
@@ -1831,7 +2382,9 @@ void IntentTask(void* pv) {
         gIntent.applyCircadian(control.hourOfDay);
       }
       if (control.hasSpeechCue) {
+#if !STACKCHAN_ENABLE_WIFI_BRIDGE
         gIntent.queueSpeechCue(control.speechCue, millis());
+#endif
       }
       if (control.hasBridge) {
         const uint32_t nowMs = millis();
@@ -1842,6 +2395,9 @@ void IntentTask(void* pv) {
       if (control.hasBridgeUpload) {
         handleBridgeUplinkBench(control.bridgeUpload, millis());
       }
+      if (control.hasBridgeTextTurn) {
+        handleBridgeTextTurnBench(control.bridgeTextTurn, millis());
+      }
       if (control.hasPairingTicket) {
         handlePairingTicketControl(control.pairingTicket, millis());
       } else if (control.hasPairingControl) {
@@ -1850,13 +2406,29 @@ void IntentTask(void* pv) {
       if (control.hasWiFiProvisioning) {
         handleWiFiProvisioningControl(control.wifi, millis());
       }
+      if (control.hasSpeakerTest) {
+        const bool speakerOk = gSpeakerSink.playDiagnosticTone();
+        Serial.print(F("[speaker] test=1 accepted="));
+        Serial.print(speakerOk ? 1 : 0);
+        Serial.print(F(" volume="));
+        Serial.print(gSpeakerSink.speakerVolume());
+        Serial.print(F(" channel_state="));
+        Serial.print(gSpeakerSink.speakerChannelState());
+        Serial.print(F(" at_ms="));
+        Serial.println(millis());
+      }
+      pollBridgeDebugServer(millis());
       publishSpeechInput(control);
+      if (control.speech.clear || (control.hasDemoEnable && !control.demoEnabled)) {
+        gAudioOut.cancel();
+      }
       publishFaceControl(control);
       publishMotionControl(control);
       pollBridgeOutputs(millis());
       printBenchControl(control);
     }
     pollBridgeOutputs(millis());
+    pollBridgeDebugServer(millis());
 
     RobotFrame frame = gIntent.update(millis());
     for (uint8_t i = 0; i < pendingAudioEventCount; ++i) {
@@ -1865,11 +2437,20 @@ void IntentTask(void* pv) {
     pendingAudioEventCount = 0;
     if (frame.speechSeq != 0 && frame.speechSeq != lastSpeechSeq && frame.speech.shouldSpeak()) {
       lastSpeechSeq = frame.speechSeq;
-      printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);
-      if (gSpeechAdapter.handleCue(frame.speech, frame.speechSeq, frame.emotion, frame.timestampMs)) {
+#if STACKCHAN_ENABLE_WIFI_BRIDGE
+      gAudioOut.cancel();
+#else
+      if (gBridgeLocalSpeechSuppressedUntilMs != 0 &&
+          static_cast<int32_t>(frame.timestampMs - gBridgeLocalSpeechSuppressedUntilMs) < 0) {
+        gAudioOut.cancel();
+      } else {
+        printSpeechCue(frame.speech, frame.speechSeq, frame.timestampMs);
+        if (gSpeechAdapter.handleCue(frame.speech, frame.speechSeq, frame.emotion, frame.timestampMs)) {
         printSpeechPlayback(gSpeechAdapter.lastPlan());
         printAudioOutPlayback(gAudioOut.lastRequest());
+        }
       }
+#endif
     }
     publishAudioOutSpeechFrame(frame.timestampMs);
     publishFrame(frame);
@@ -1904,7 +2485,9 @@ void setup() {
   gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   gBridgeAudioDownlink.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   gSpeechAdapter.begin(false, &gAudioOut);
-  gBridge.begin();
+  BridgeClientConfig bridgeConfig;
+  bridgeConfig.responseTimeoutMs = 120000;
+  gBridge.begin(bridgeConfig);
   const uint32_t bootMs = millis();
   gBridgeEndpointRegistry.begin();
   gBridgeEndpointStore.begin(gBridgeEndpointStoreBackend);
@@ -1923,15 +2506,25 @@ void setup() {
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
+  printHeartbeat();
+  printSystemTelemetry();
+  printRuntimeStatus();
+  printWiFiBridgeStatus("boot", bootMs);
 
   publishFrame(makeNeutralFrame());
 
-  BaseType_t ok = xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, &gMotionTaskHandle, 1);
-  ok &= xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, &gFaceTaskHandle, 1);
-  ok &= xTaskCreatePinnedToCore(IntentTask, "IntentTask", 4096, nullptr, 2, &gIntentTaskHandle, 1);
+  const BaseType_t intentOk = xTaskCreatePinnedToCore(IntentTask, "IntentTask", 8192, nullptr, 3, &gIntentTaskHandle, 1);
+  const BaseType_t motionOk = xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, &gMotionTaskHandle, 1);
+  const BaseType_t faceOk = xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, &gFaceTaskHandle, 1);
 
-  if (ok != pdPASS) {
+  if (motionOk != pdPASS || faceOk != pdPASS || intentOk != pdPASS) {
     Serial.println(F("[fatal] task creation failed"));
+    Serial.print(F("[fatal] motion_ok="));
+    Serial.print(motionOk);
+    Serial.print(F(" face_ok="));
+    Serial.print(faceOk);
+    Serial.print(F(" intent_ok="));
+    Serial.println(intentOk);
     abort();
   }
 }

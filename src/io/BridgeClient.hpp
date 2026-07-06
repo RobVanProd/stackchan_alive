@@ -15,6 +15,7 @@ constexpr size_t kBridgeTextMax = 160;
 constexpr size_t kBridgeErrorMax = 64;
 constexpr size_t kBridgeAudioFormatMax = 16;
 constexpr size_t kBridgeAudioStreamChunkPayloadMax = 4096;
+constexpr size_t kBridgeClientOutputQueueDepth = 8;
 
 enum class BridgeClientState : uint8_t {
   Offline,
@@ -129,6 +130,9 @@ class BridgeClient {
   bool submitControlLine(const char* jsonLine, uint32_t nowMs);
   bool submitBinaryFrame(const uint8_t* payload, size_t length, uint32_t nowMs);
   bool poll(BridgeClientOutput* outputOut);
+  bool hasPendingOutput() const {
+    return outputCount_ > 0;
+  }
 
   const BridgeClientTelemetry& telemetry() const {
     return telemetry_;
@@ -153,13 +157,15 @@ class BridgeClient {
 
   BridgeClientConfig config_;
   BridgeClientTelemetry telemetry_;
-  BridgeClientOutput pending_;
+  BridgeClientOutput outputQueue_[kBridgeClientOutputQueueDepth] {};
+  uint8_t outputPayloads_[kBridgeClientOutputQueueDepth][kBridgeAudioStreamChunkPayloadMax] {};
   BridgeAudioStream activeStream_;
-  uint8_t streamChunkPayload_[kBridgeAudioStreamChunkPayloadMax] = {};
+  size_t outputHead_ = 0;
+  size_t outputTail_ = 0;
+  size_t outputCount_ = 0;
   uint32_t activeStreamBytesReceived_ = 0;
   uint32_t activeStreamChunksReceived_ = 0;
   uint32_t activeStreamChecksum_ = 0;
-  bool hasPending_ = false;
   bool audioStreamActive_ = false;
 };
 

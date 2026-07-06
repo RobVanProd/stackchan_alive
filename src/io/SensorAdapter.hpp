@@ -44,6 +44,11 @@ struct BenchBridgeUpload {
   bool wakeGateOpen = true;
 };
 
+struct BenchBridgeTextTurn {
+  uint32_t seq = 1;
+  char text[96] = {};
+};
+
 struct BenchPairingControl {
   bool clear = false;
   char code[7] = {};
@@ -80,9 +85,11 @@ struct BenchControl {
   bool hasSpeechCue = false;
   bool hasBridge = false;
   bool hasBridgeUpload = false;
+  bool hasBridgeTextTurn = false;
   bool hasPairingControl = false;
   bool hasPairingTicket = false;
   bool hasWiFiProvisioning = false;
+  bool hasSpeakerTest = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;
@@ -93,6 +100,7 @@ struct BenchControl {
   BenchAmbientReading ambient;
   BenchBridgeControl bridge;
   BenchBridgeUpload bridgeUpload;
+  BenchBridgeTextTurn bridgeTextTurn;
   BenchPairingControl pairing;
   BenchPairingTicketControl pairingTicket;
   BenchWiFiProvisioningControl wifi;

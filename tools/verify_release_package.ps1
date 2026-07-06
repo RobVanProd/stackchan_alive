@@ -173,6 +173,9 @@ $requiredFiles = @(
   "bridge/test_tts_adapter.py",
   "bridge/lan_service.py",
   "bridge/test_lan_service.py",
+  "bridge/ollama_stackchan_runner.py",
+  "bridge/pc_brain_probe.py",
+  "bridge/selected_voice_tts.py",
   "bridge/lan_smoke.py",
   "bridge/test_lan_smoke.py",
   "bridge/android_companion_probe.py",
@@ -289,6 +292,9 @@ $requiredFiles = @(
   "tools/provision_stackchan_wifi.ps1",
   "tools/flash_release_firmware.cmd",
   "tools/flash_release_firmware.ps1",
+  "tools/flash_wifi_bridge.cmd",
+  "tools/flash_wifi_bridge.ps1",
+  "tools/platformio_apply_wifi_bridge_env.py",
   "tools/platformio_resolver.ps1",
   "tools/check_native_toolchain.cmd",
   "tools/check_native_toolchain.ps1",
@@ -395,6 +401,13 @@ $requiredFiles = @(
   "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
+  "tools/start_pc_brain.cmd",
+  "tools/start_pc_brain.ps1",
+  "tools/run_pc_brain_probe.cmd",
+  "tools/collect_pc_brain_deploy_evidence.cmd",
+  "tools/collect_pc_brain_deploy_evidence.ps1",
+  "tools/run_selected_voice_once.cmd",
+  "tools/run_selected_voice_once.ps1",
   "tools/run_android_companion_probe.cmd",
   "tools/run_android_companion_probe.ps1",
   "tools/run_android_companion_soak.cmd",
@@ -1609,9 +1622,58 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
+  }
+}
+
+$ollamaRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/ollama_stackchan_runner.py") -Raw
+foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "--format", "json", "validate_response")) {
+  if ($ollamaRunnerText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/ollama_stackchan_runner.py missing PC brain runner support: $pattern"
+  }
+}
+
+$selectedVoiceTtsText = Get-Content -LiteralPath (Join-PackagePath "bridge/selected_voice_tts.py") -Raw
+foreach ($pattern in @("stackchan.tts-metadata.v1", "STACKCHAN_SELECTED_VOICE_SAMPLE", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "audio_format", "pcm16", "audio_b64", "stackchan-rvc-bright-robot")) {
+  if ($selectedVoiceTtsText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/selected_voice_tts.py missing selected voice TTS support: $pattern"
+  }
+}
+
+$pcBrainProbeText = Get-Content -LiteralPath (Join-PackagePath "bridge/pc_brain_probe.py") -Raw
+foreach ($pattern in @("stackchan.pc-brain-probe.v1", "endpoint_hello", "claim_brain", "utterance_end", "response_end", "binary_frames", "binary_bytes", "PC_BRAIN_PROBE.json", "PC_BRAIN_PROBE.md")) {
+  if ($pcBrainProbeText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/pc_brain_probe.py missing PC brain probe support: $pattern"
+  }
+}
+
+$startPcBrainText = Get-Content -LiteralPath (Join-PackagePath "tools/start_pc_brain.ps1") -Raw
+foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "selected_voice_tts.py", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")) {
+  if ($startPcBrainText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_pc_brain.ps1 missing PC brain launch support: $pattern"
+  }
+}
+
+$collectPcBrainEvidenceText = Get-Content -LiteralPath (Join-PackagePath "tools/collect_pc_brain_deploy_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_chunk_mismatch", "playback_chunk_mismatch", "RunTests")) {
+  if ($collectPcBrainEvidenceText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/collect_pc_brain_deploy_evidence.ps1 missing PC brain deploy evidence support: $pattern"
+  }
+}
+
+$flashWifiBridgeText = Get-Content -LiteralPath (Join-PackagePath "tools/flash_wifi_bridge.ps1") -Raw
+foreach ($pattern in @("STACKCHAN_WIFI_SSID", "STACKCHAN_WIFI_PASSWORD", "STACKCHAN_BRIDGE_HOST", "STACKCHAN_BRIDGE_PORT", "STACKCHAN_BRIDGE_PATH", "flash_device.cmd", "stackchan_wifi")) {
+  if ($flashWifiBridgeText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/flash_wifi_bridge.ps1 missing Wi-Fi bridge flash support: $pattern"
+  }
+}
+
+$platformioWifiEnvText = Get-Content -LiteralPath (Join-PackagePath "tools/platformio_apply_wifi_bridge_env.py") -Raw
+foreach ($pattern in @("STACKCHAN_ENABLE_WIFI_BRIDGE", "STACKCHAN_WIFI_SSID", "STACKCHAN_WIFI_PASSWORD", "STACKCHAN_BRIDGE_HOST", "STACKCHAN_BRIDGE_PORT", "STACKCHAN_BRIDGE_PATH", "CPPDEFINES", "CCFLAGS")) {
+  if ($platformioWifiEnvText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/platformio_apply_wifi_bridge_env.py missing Wi-Fi bridge environment support: $pattern"
   }
 }
 

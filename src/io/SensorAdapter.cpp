@@ -1135,6 +1135,37 @@ bool fillBridgeUpload(char** tokens, uint8_t tokenCount, BenchControl* controlOu
   return false;
 }
 
+bool fillBridgeTextTurn(char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
+  if (tokens == nullptr || tokenCount == 0 || tokens[0] == nullptr || controlOut == nullptr) {
+    return false;
+  }
+
+  uint8_t textStart = 0;
+  if (strcmp(tokens[0], "turn") == 0 || strcmp(tokens[0], "text") == 0 ||
+      strcmp(tokens[0], "ask") == 0 || strcmp(tokens[0], "say") == 0) {
+    textStart = 1;
+  }
+
+  BenchControl parsed;
+  parsed.hasBridgeTextTurn = true;
+  parsed.command = "bridge_text_turn";
+  parsed.bridgeTextTurn.seq = millis();
+
+  if (textStart < tokenCount && parseUintToken(tokens[textStart], &parsed.bridgeTextTurn.seq)) {
+    textStart++;
+  }
+
+  for (uint8_t i = textStart; i < tokenCount; ++i) {
+    appendTextToken(parsed.bridgeTextTurn.text, sizeof(parsed.bridgeTextTurn.text), tokens[i]);
+  }
+  if (parsed.bridgeTextTurn.text[0] == '\0') {
+    strncpy(parsed.bridgeTextTurn.text, "hello stackchan", sizeof(parsed.bridgeTextTurn.text) - 1);
+  }
+
+  *controlOut = parsed;
+  return true;
+}
+
 bool fillPairingControl(const char* first, char** tokens, uint8_t tokenCount, BenchControl* controlOut) {
   if (controlOut == nullptr) {
     return false;
@@ -1588,6 +1619,14 @@ bool fillSafeResume(BenchControl* controlOut) {
   return true;
 }
 
+bool fillSpeakerTest(BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasSpeakerTest = true;
+  parsed.command = "speaker_test";
+  *controlOut = parsed;
+  return true;
+}
+
 bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchControl* controlOut) {
   for (const ModeCommand& command : kModeCommands) {
     if (strcmp(token, command.name) != 0) {
@@ -1763,6 +1802,10 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       strcmp(first, "upload") == 0) {
     return fillBridgeUpload(ambientTokens, ambientTokenCount, controlOut);
   }
+  if (strcmp(first, "brain") == 0 || strcmp(first, "pcbrain") == 0 ||
+      strcmp(first, "pc_brain") == 0) {
+    return fillBridgeTextTurn(ambientTokens, ambientTokenCount, controlOut);
+  }
   if (strcmp(first, "pairing") == 0 || strcmp(first, "pair") == 0) {
     return fillPairingControl(first, ambientTokens, ambientTokenCount, controlOut);
   }
@@ -1772,6 +1815,13 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
       (strcmp(second, "upload") == 0 || strcmp(second, "uplink") == 0 ||
        strcmp(second, "mic") == 0)) {
     return fillBridgeUpload(&ambientTokens[1], ambientTokenCount - 1u, controlOut);
+  }
+  if ((strcmp(first, "bridge") == 0 || strcmp(first, "conversation") == 0 ||
+       strcmp(first, "conv") == 0) &&
+      second != nullptr &&
+      (strcmp(second, "turn") == 0 || strcmp(second, "text") == 0 ||
+       strcmp(second, "ask") == 0 || strcmp(second, "brain") == 0)) {
+    return fillBridgeTextTurn(&ambientTokens[1], ambientTokenCount - 1u, controlOut);
   }
   if (strcmp(first, "bridge") == 0 || strcmp(first, "conversation") == 0 ||
       strcmp(first, "conv") == 0) {
@@ -1835,6 +1885,14 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   if (strcmp(first, "demo") == 0 && second != nullptr) {
     return fillDemoEnable(second, controlOut);
   }
+  if ((strcmp(first, "speaker") == 0 || strcmp(first, "audio") == 0) &&
+      second != nullptr &&
+      (strcmp(second, "test") == 0 || strcmp(second, "beep") == 0 || strcmp(second, "tone") == 0)) {
+    return fillSpeakerTest(controlOut);
+  }
+  if (strcmp(first, "beep") == 0 || strcmp(first, "tone") == 0) {
+    return fillSpeakerTest(controlOut);
+  }
   if (strcmp(first, "panic") == 0 || strcmp(first, "estop") == 0 ||
       strcmp(first, "e_stop") == 0 || strcmp(first, "all_stop") == 0 ||
       strcmp(first, "safestop") == 0 ||
@@ -1897,6 +1955,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));
+  Serial.println(F("[control] help: speaker test|beep"));
   Serial.println(F("[control] help: safe stop|panic; safe resume|restore"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif

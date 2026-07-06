@@ -278,6 +278,25 @@ robot already has Wi-Fi credentials, enter `pair ticket <stackchan://pair?...>` 
 `stackchan://pair?...` Android QR payload instead; that ticket carries only the pairing code
 and bridge target.
 
+For PC Brain Mode lab bring-up, start the local brain bridge and selected voice TTS path:
+
+```powershell
+.\tools\start_pc_brain.cmd -Background -StopExisting
+.\tools\run_pc_brain_probe.cmd --url ws://127.0.0.1:8765/bridge
+```
+
+Point the robot at `ws://<pc-lan-ip>:8765/bridge` with `tools\flash_wifi_bridge.cmd` or the
+runtime `wifi set ... url "ws://<pc-lan-ip>:8765/bridge"` command, then collect deployment
+evidence:
+
+```powershell
+.\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -RunTests
+```
+
+This writes `PC_BRAIN_DEPLOY_EVIDENCE.json/md` plus copied PC logs and robot debug JSON. It
+is lab proof for the current machine; managed desktop Python runtime payload evidence is
+still required before desktop distribution is considered self-contained.
+
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:

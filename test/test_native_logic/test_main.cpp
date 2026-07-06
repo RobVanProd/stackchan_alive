@@ -2367,6 +2367,37 @@ void test_audio_out_feeds_enabled_hardware_speaker_sink() {
   TEST_ASSERT_EQUAL_UINT32(1, sink.stopCalls);
 }
 
+void test_audio_out_cancel_stops_active_hardware_playback() {
+  CountingAudioOutSink sink;
+  AudioOut audio;
+  TEST_ASSERT_TRUE(audio.begin(true, &sink));
+
+  AudioOutPlaybackRequest request;
+  request.seq = 46;
+  request.queuedAtMs = 4000;
+  request.source = AudioOutSource::PackagedPrompt;
+  request.promptId = "think_processing";
+  request.wavPath = "media/voice/stackchan_spark_thinking.wav";
+  request.sidecarPath = "media/voice/sidecars/stackchan_spark_thinking.speech_envelope.json";
+  request.hasPrompt = true;
+
+  TEST_ASSERT_TRUE(audio.enqueue(request));
+  TEST_ASSERT_TRUE(audio.telemetry().playbackActive);
+  TEST_ASSERT_TRUE(audio.telemetry().hardwarePlaybackActive);
+  TEST_ASSERT_TRUE(sink.active);
+
+  TEST_ASSERT_TRUE(audio.cancel());
+  TEST_ASSERT_FALSE(audio.telemetry().playbackActive);
+  TEST_ASSERT_FALSE(audio.telemetry().hardwarePlaybackActive);
+  TEST_ASSERT_FALSE(sink.active);
+  TEST_ASSERT_EQUAL_UINT32(1, audio.telemetry().hardwareStops);
+  TEST_ASSERT_EQUAL_UINT32(1, sink.stopCalls);
+
+  AudioOutSpeechFrame frame;
+  TEST_ASSERT_FALSE(audio.pollSpeechFrame(4100, &frame));
+  TEST_ASSERT_FALSE(audio.cancel());
+}
+
 void test_speech_adapter_queues_audio_out_request() {
   AudioOut audio;
   SpeechAdapter adapter;
@@ -2664,6 +2695,51 @@ void test_bridge_client_parses_audio_stream_metadata() {
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamsEnded);
   TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
   TEST_ASSERT_GREATER_THAN_UINT32(0, bridge.telemetry().audioStreamChecksum);
+}
+
+void test_bridge_client_queues_stream_outputs_until_polled() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_start\",\"seq\":18,\"format\":\"pcm16\",\"sample_rate\":22050,"
+      "\"audio_bytes\":6,\"chunk_bytes\":2,\"chunks\":3}",
+      560));
+
+  const uint8_t chunk0[] = {1, 2};
+  const uint8_t chunk1[] = {3, 4};
+  const uint8_t chunk2[] = {5, 6};
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk0, sizeof(chunk0), 561));
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk1, sizeof(chunk1), 562));
+  TEST_ASSERT_TRUE(bridge.submitBinaryFrame(chunk2, sizeof(chunk2), 563));
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"audio_stream_end\",\"seq\":18,\"audio_bytes\":6,\"chunks\":3}",
+      564));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamStart), static_cast<int>(output.type));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(1, output.streamChunk.index);
+  TEST_ASSERT_EQUAL_UINT8(1, output.streamChunk.payload[0]);
+  TEST_ASSERT_EQUAL_UINT8(2, output.streamChunk.payload[1]);
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(2, output.streamChunk.index);
+  TEST_ASSERT_EQUAL_UINT8(3, output.streamChunk.payload[0]);
+  TEST_ASSERT_EQUAL_UINT8(4, output.streamChunk.payload[1]);
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamChunk), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(3, output.streamChunk.index);
+  TEST_ASSERT_EQUAL_UINT8(5, output.streamChunk.payload[0]);
+  TEST_ASSERT_EQUAL_UINT8(6, output.streamChunk.payload[1]);
+  TEST_ASSERT_TRUE(output.streamChunk.finalChunk);
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::AudioStreamEnd), static_cast<int>(output.type));
+  TEST_ASSERT_FALSE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL_UINT32(5, bridge.telemetry().outputsQueued);
+  TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().outputsDropped);
 }
 
 void test_bridge_client_rejects_binary_without_audio_stream() {
@@ -5322,6 +5398,7 @@ int main() {
   RUN_TEST(test_audio_out_streams_packaged_sidecar_mouth_frames);
   RUN_TEST(test_audio_out_ducks_active_playback_for_barge_in);
   RUN_TEST(test_audio_out_feeds_enabled_hardware_speaker_sink);
+  RUN_TEST(test_audio_out_cancel_stops_active_hardware_playback);
   RUN_TEST(test_speech_adapter_queues_audio_out_request);
   RUN_TEST(test_speech_adapter_rejects_empty_or_uninitialized_cues);
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
@@ -5332,6 +5409,7 @@ int main() {
   RUN_TEST(test_serial_bridge_response_preserves_attend_intent);
   RUN_TEST(test_bridge_client_parses_audio_frames_for_mouth_sync);
   RUN_TEST(test_bridge_client_parses_audio_stream_metadata);
+  RUN_TEST(test_bridge_client_queues_stream_outputs_until_polled);
   RUN_TEST(test_bridge_client_rejects_binary_without_audio_stream);
   RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
   RUN_TEST(test_bridge_client_rejects_oversized_audio_stream_chunk);

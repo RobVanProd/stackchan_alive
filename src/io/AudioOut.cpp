@@ -148,6 +148,19 @@ bool AudioOut::duck(uint32_t nowMs) {
   return true;
 }
 
+bool AudioOut::cancel() {
+  if (!telemetry_.ready || !playback_.active) {
+    return false;
+  }
+  stopHardwarePlayback();
+  playback_ = PlaybackState {};
+  telemetry_.playbackActive = false;
+  telemetry_.duckActive = false;
+  telemetry_.lastEnvelope = 0.0f;
+  telemetry_.lastViseme = AudioOutViseme::Neutral;
+  return true;
+}
+
 void AudioOut::startHardwarePlayback(const AudioOutPlaybackRequest& request) {
   telemetry_.hardwarePlaybackActive = false;
   if (!telemetry_.hardwareEnabled || !telemetry_.hardwareReady || speakerSink_ == nullptr || !playback_.active) {

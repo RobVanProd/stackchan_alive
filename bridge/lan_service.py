@@ -32,6 +32,8 @@ MAX_TEXT_BYTES = 65535
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
+DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS = 180
+DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS = 40
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_TRUSTED_ENDPOINTS = 8
 
@@ -341,8 +343,11 @@ class LanBridgeConfig:
     tts_voice: str = DEFAULT_TTS_VOICE
     tts_timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS
     downlink_audio_chunk_bytes: int = DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES
+    downlink_binary_frame_delay_ms: int = DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS
+    downlink_text_frame_delay_ms: int = DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS
     max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
     memory_file: Path | None = None
+    auto_turn_text: str = ""
     once: bool = False
 
 
@@ -790,6 +795,16 @@ class LanBridgeSession:
                 if frame.get("type") == "response_start":
                     frame.update(tts_summary)
                     if downlink_frames:
+                        audio_seen = 0
+                        sparse_frames: list[dict[str, object]] = []
+                        for candidate in frames:
+                            if candidate.get("type") != "audio":
+                                sparse_frames.append(candidate)
+                                continue
+                            audio_seen += 1
+                            if audio_seen <= 4 or candidate.get("final"):
+                                sparse_frames.append(candidate)
+                        frames = sparse_frames
                         index = frames.index(frame)
                         frames[index + 1:index + 1] = downlink_frames
                     break
@@ -821,7 +836,44 @@ def handle_connection(
 ) -> BridgeMemory:
     session = LanBridgeSession(config, memory, control_state)
     request = read_http_request(conn)
+    print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)
     conn.sendall(build_handshake_response(request))
+    conn.settimeout(30.0)
+    print("[bridge-lan] handshake_accepted=1", flush=True)
+    if config.auto_turn_text:
+        seq = now_ms() % 1000000
+        auto_turn = {"type": "utterance_end", "seq": seq, "text": config.auto_turn_text}
+        print(f"[bridge-lan] auto_turn_start seq={seq}", flush=True)
+        conn.sendall(encode_ws_text(frame_to_text({"type": "thinking", "seq": seq})))
+        frames = session.handle_text(json.dumps(auto_turn), suppress_thinking=True)
+        text_frames = 0
+        binary_frames = 0
+        binary_bytes = 0
+        text_types: list[str] = []
+        for frame in frames:
+            if isinstance(frame, bytes):
+                binary_frames += 1
+                binary_bytes += len(frame)
+                conn.sendall(encode_ws_frame(frame, opcode=0x2))
+                delay_ms = config.downlink_binary_frame_delay_ms
+                if len(frame) < config.downlink_audio_chunk_bytes:
+                    delay_ms = max(delay_ms, 250)
+                if delay_ms > 0:
+                    time.sleep(delay_ms / 1000.0)
+            else:
+                text_frames += 1
+                frame_type = str(frame.get("type", ""))
+                if frame_type and len(text_types) < 12:
+                    text_types.append(frame_type)
+                conn.sendall(encode_ws_text(frame_to_text(frame)))
+                if config.downlink_text_frame_delay_ms > 0:
+                    time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
+        print(
+            f"[bridge-lan] auto_turn_sent seq={seq} frames={len(frames)} "
+            f"text_frames={text_frames} binary_frames={binary_frames} "
+            f"binary_bytes={binary_bytes} text_types={','.join(text_types)}",
+            flush=True,
+        )
     while True:
         opcode, payload = read_ws_frame(conn)
         if opcode == 0x8:
@@ -843,8 +895,15 @@ def handle_connection(
         for frame in frames:
             if isinstance(frame, bytes):
                 conn.sendall(encode_ws_frame(frame, opcode=0x2))
+                delay_ms = config.downlink_binary_frame_delay_ms
+                if len(frame) < config.downlink_audio_chunk_bytes:
+                    delay_ms = max(delay_ms, 250)
+                if delay_ms > 0:
+                    time.sleep(delay_ms / 1000.0)
             else:
                 conn.sendall(encode_ws_text(frame_to_text(frame)))
+                if config.downlink_text_frame_delay_ms > 0:
+                    time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
     return session.memory
 
 
@@ -858,10 +917,13 @@ def serve(config: LanBridgeConfig) -> None:
             conn, address = server.accept()
             print(f"[bridge-lan] client={address[0]}:{address[1]}", flush=True)
             with conn:
+                conn.settimeout(5.0)
                 try:
                     memory = handle_connection(conn, config, memory, control_state)
                 except WebSocketProtocolError as exc:
                     print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"{exc}\"", flush=True)
+                except OSError as exc:
+                    print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"socket:{exc}\"", flush=True)
             if config.once:
                 break
 
@@ -882,8 +944,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
     parser.add_argument("--tts-timeout-ms", type=int, default=DEFAULT_TTS_TIMEOUT_MS)
     parser.add_argument("--downlink-audio-chunk-bytes", type=int, default=DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES)
+    parser.add_argument("--downlink-binary-frame-delay-ms", type=int, default=DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS)
+    parser.add_argument("--downlink-text-frame-delay-ms", type=int, default=DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS)
     parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
     parser.add_argument("--memory-file", type=Path)
+    parser.add_argument("--auto-turn-text", default="")
     parser.add_argument("--reset-memory", action="store_true")
     return parser
 
@@ -907,8 +972,11 @@ def main() -> int:
         tts_voice=args.tts_voice,
         tts_timeout_ms=args.tts_timeout_ms,
         downlink_audio_chunk_bytes=args.downlink_audio_chunk_bytes,
+        downlink_binary_frame_delay_ms=max(0, args.downlink_binary_frame_delay_ms),
+        downlink_text_frame_delay_ms=max(0, args.downlink_text_frame_delay_ms),
         max_audio_bytes=args.max_audio_bytes,
         memory_file=args.memory_file,
+        auto_turn_text=args.auto_turn_text,
     )
     serve(config)
     return 0

@@ -102,6 +102,7 @@ class AudioOut {
   bool enqueue(const AudioOutPlaybackRequest& request);
   bool pollSpeechFrame(uint32_t nowMs, AudioOutSpeechFrame* frameOut);
   bool duck(uint32_t nowMs);
+  bool cancel();
 
   const AudioOutTelemetry& telemetry() const {
     return telemetry_;

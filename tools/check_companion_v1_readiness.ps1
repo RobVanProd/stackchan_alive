@@ -579,6 +579,36 @@ Test-TextEvidence `
   -Patterns @("python_runtime", "available", "version", "script_available", "searched_commands")
 
 Test-TextEvidence `
+  -Id "pc-brain-live-probe" `
+  -Name "PC Brain live WebSocket probe" `
+  -RelativePaths @("bridge/pc_brain_probe.py") `
+  -Patterns @("stackchan.pc-brain-probe.v1", "endpoint_hello", "claim_brain", "utterance_end", "response_end", "binary_frames", "binary_bytes", "PC_BRAIN_PROBE.json")
+
+Test-TextEvidence `
+  -Id "pc-brain-launch-helper" `
+  -Name "PC Brain Ollama selected-voice launch helper" `
+  -RelativePaths @("tools/start_pc_brain.ps1") `
+  -Patterns @("STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "selected_voice_tts.py", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")
+
+Test-TextEvidence `
+  -Id "pc-brain-deploy-evidence-helper" `
+  -Name "PC Brain deploy evidence collector" `
+  -RelativePaths @("tools/collect_pc_brain_deploy_evidence.ps1") `
+  -Patterns @("stackchan.pc-brain-deploy-evidence.v1", "stackchan_debug.json", "PC_BRAIN_DEPLOY_EVIDENCE.json", "PC_BRAIN_DEPLOY_EVIDENCE.md", "bridge_downlink_playback_errors", "audio_stream_chunk_mismatch", "playback_chunk_mismatch")
+
+Test-TextEvidence `
+  -Id "pc-brain-runner-and-selected-voice" `
+  -Name "PC Brain Ollama runner and selected voice TTS" `
+  -RelativePaths @("bridge/ollama_stackchan_runner.py", "bridge/selected_voice_tts.py") `
+  -Patterns @("Ollama-backed Stackchan runner", "STACKCHAN_OLLAMA_MODEL", "validate_response")
+
+Test-TextEvidence `
+  -Id "pc-brain-selected-voice-tts" `
+  -Name "PC Brain selected voice TTS adapter" `
+  -RelativePaths @("bridge/selected_voice_tts.py") `
+  -Patterns @("stackchan.tts-metadata.v1", "STACKCHAN_SELECTED_VOICE_SAMPLE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "audio_format", "pcm16", "audio_b64", "stackchan-rvc-bright-robot")
+
+Test-TextEvidence `
   -Id "android-push-to-talk-permission" `
   -Name "Android push-to-talk microphone permission" `
   -RelativePaths @("companion/app-android/src/main/AndroidManifest.xml", "provenance/companion/app-android/src/main/AndroidManifest.xml") `

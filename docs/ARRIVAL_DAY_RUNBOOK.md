@@ -151,6 +151,27 @@ If the Android service stops, crashes, loses foreground status, or fails during 
 soak, connect adb and run `RUN_ANDROID_LOGCAT_CAPTURE.cmd` from the evidence packet
 immediately. It saves the filtered service excerpt under `android/logcat/` for review.
 
+For PC Brain Mode lab bring-up from the source checkout, start the local bridge with the
+selected voice path:
+
+```powershell
+.\tools\start_pc_brain.cmd -Background -StopExisting
+.\tools\run_pc_brain_probe.cmd --url ws://127.0.0.1:8765/bridge
+```
+
+After the robot has Wi-Fi credentials and can reach the PC, flash or provision the Wi-Fi
+bridge target with `tools\flash_wifi_bridge.cmd` or the runtime `wifi set ... url
+"ws://<pc-lan-ip>:8765/bridge"` command. Once the robot connects and plays the downlink
+audio stream, run:
+
+```powershell
+.\tools\collect_pc_brain_deploy_evidence.cmd -DeviceHost <robot-lan-ip> -RunTests
+```
+
+The collector writes `PC_BRAIN_DEPLOY_EVIDENCE.json/md`, copies PC brain logs, and pulls
+`stackchan.bridge-debug.v1` from the robot debug endpoint. This proves the lab PC brain path
+on the current machine; it does not close the managed desktop Python runtime payload gate.
+
 Import the display photo or video into the packet:
 
 ```powershell

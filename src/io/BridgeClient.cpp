@@ -29,8 +29,12 @@ uint32_t updateAudioStreamChecksum(uint32_t checksum, const uint8_t* payload, si
 
 bool BridgeClient::begin(const BridgeClientConfig& config) {
   telemetry_ = BridgeClientTelemetry {};
-  pending_ = BridgeClientOutput {};
-  hasPending_ = false;
+  for (size_t i = 0; i < kBridgeClientOutputQueueDepth; ++i) {
+    outputQueue_[i] = BridgeClientOutput {};
+  }
+  outputHead_ = 0;
+  outputTail_ = 0;
+  outputCount_ = 0;
   clearAudioStream();
   config_ = config;
 
@@ -57,12 +61,17 @@ void BridgeClient::markDisconnected(uint32_t nowMs) {
   }
   telemetry_.state = BridgeClientState::Offline;
   telemetry_.lastMessageMs = nowMs;
-  hasPending_ = false;
+  for (size_t i = 0; i < kBridgeClientOutputQueueDepth; ++i) {
+    outputQueue_[i] = BridgeClientOutput {};
+  }
+  outputHead_ = 0;
+  outputTail_ = 0;
+  outputCount_ = 0;
   clearAudioStream();
 }
 
 bool BridgeClient::update(uint32_t nowMs) {
-  if (!telemetry_.ready || config_.responseTimeoutMs == 0 || hasPending_) {
+  if (!telemetry_.ready || config_.responseTimeoutMs == 0 || outputCount_ > 0) {
     return false;
   }
   if (!isTimeoutState(telemetry_.state)) {
@@ -305,9 +314,7 @@ bool BridgeClient::submitBinaryFrame(const uint8_t* payload, size_t length, uint
   output.streamChunk.payloadBytes = chunkBytes;
   output.streamChunk.receivedBytes = nextBytes;
   output.streamChunk.checksum = activeStreamChecksum_;
-  std::memcpy(streamChunkPayload_, payload, length);
-  output.streamChunk.payload = streamChunkPayload_;
-
+  output.streamChunk.payload = payload;
   const bool expectedBytesDone = activeStream_.audioBytes != 0 && nextBytes >= activeStream_.audioBytes;
   const bool expectedChunksDone = activeStream_.chunks != 0 && nextChunks >= activeStream_.chunks;
   if (activeStream_.audioBytes != 0 && activeStream_.chunks != 0) {
@@ -321,12 +328,17 @@ bool BridgeClient::submitBinaryFrame(const uint8_t* payload, size_t length, uint
 }
 
 bool BridgeClient::poll(BridgeClientOutput* outputOut) {
-  if (outputOut == nullptr || !hasPending_) {
+  if (outputOut == nullptr || outputCount_ == 0) {
     return false;
   }
-  *outputOut = pending_;
-  pending_ = BridgeClientOutput {};
-  hasPending_ = false;
+  *outputOut = outputQueue_[outputTail_];
+  if (outputOut->type == BridgeClientOutputType::AudioStreamChunk &&
+      outputOut->streamChunk.payloadBytes > 0) {
+    outputOut->streamChunk.payload = outputPayloads_[outputTail_];
+  }
+  outputQueue_[outputTail_] = BridgeClientOutput {};
+  outputTail_ = (outputTail_ + 1u) % kBridgeClientOutputQueueDepth;
+  outputCount_--;
   return true;
 }
 
@@ -493,11 +505,25 @@ void BridgeClient::copyBounded(char* out, size_t outSize, const char* value) {
 }
 
 void BridgeClient::queueOutput(const BridgeClientOutput& output) {
-  if (hasPending_) {
+  if (outputCount_ >= kBridgeClientOutputQueueDepth) {
     telemetry_.outputsDropped++;
+    return;
   }
-  pending_ = output;
-  hasPending_ = true;
+  BridgeClientOutput queued = output;
+  if (queued.type == BridgeClientOutputType::AudioStreamChunk &&
+      queued.streamChunk.payload != nullptr &&
+      queued.streamChunk.payloadBytes > 0) {
+    const size_t copyBytes = queued.streamChunk.payloadBytes < kBridgeAudioStreamChunkPayloadMax
+                                 ? queued.streamChunk.payloadBytes
+                                 : kBridgeAudioStreamChunkPayloadMax;
+    std::memcpy(outputPayloads_[outputHead_], queued.streamChunk.payload, copyBytes);
+    queued.streamChunk.payload = outputPayloads_[outputHead_];
+    queued.streamChunk.payloadBytes = static_cast<uint32_t>(copyBytes);
+    queued.streamChunk.bytes = static_cast<uint32_t>(copyBytes);
+  }
+  outputQueue_[outputHead_] = queued;
+  outputHead_ = (outputHead_ + 1u) % kBridgeClientOutputQueueDepth;
+  outputCount_++;
   telemetry_.outputsQueued++;
 }
 
