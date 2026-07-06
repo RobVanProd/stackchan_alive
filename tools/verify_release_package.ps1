@@ -121,6 +121,8 @@ $requiredFiles = @(
   "docs/ANDROID_COMPANION_SPEC.md",
   "docs/ANDROID_COMPANION_TEST_PLAN.md",
   "docs/ANDROID_PLAY_RELEASE.md",
+  "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md",
+  "docs/ANDROID_PLAY_PRIVACY_POLICY.md",
   "docs/store-assets/play/icon-512.png",
   "docs/store-assets/play/icon-512.svg",
   "docs/store-assets/play/feature-graphic-1024x500.png",
@@ -1902,6 +1904,14 @@ if ($manifest.androidPlayRelease -ne "docs/ANDROID_PLAY_RELEASE.md") {
   throw "Manifest androidPlayRelease mismatch: $($manifest.androidPlayRelease)"
 }
 
+if ($manifest.androidPlayPolicyDeclarations -ne "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md") {
+  throw "Manifest androidPlayPolicyDeclarations mismatch: $($manifest.androidPlayPolicyDeclarations)"
+}
+
+if ($manifest.androidPlayPrivacyPolicy -ne "docs/ANDROID_PLAY_PRIVACY_POLICY.md") {
+  throw "Manifest androidPlayPrivacyPolicy mismatch: $($manifest.androidPlayPrivacyPolicy)"
+}
+
 if ($manifest.androidPlayIcon -ne "docs/store-assets/play/icon-512.png") {
   throw "Manifest androidPlayIcon mismatch: $($manifest.androidPlayIcon)"
 }
@@ -2375,9 +2385,23 @@ foreach ($pattern in @("robotHelloReceived", "robot_hello_required", "audio, set
 }
 
 $androidPlayRelease = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_RELEASE.md") -Raw
-foreach ($pattern in @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "physical robot validation", "Play Console internal testing")) {
+foreach ($pattern in @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "physical robot validation", "Play Console internal testing")) {
   if ($androidPlayRelease -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_PLAY_RELEASE.md missing expected Play release guidance: $pattern"
+  }
+}
+
+$androidPlayPolicyDeclarations = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md") -Raw
+foreach ($pattern in @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "Foreground service Play Console draft", "connectedDevice", "not directed to children")) {
+  if ($androidPlayPolicyDeclarations -notmatch [regex]::Escape($pattern)) {
+    throw "ANDROID_PLAY_POLICY_DECLARATIONS.md missing expected Play policy guidance: $pattern"
+  }
+}
+
+$androidPlayPrivacyPolicy = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_PRIVACY_POLICY.md") -Raw
+foreach ($pattern in @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")) {
+  if ($androidPlayPrivacyPolicy -notmatch [regex]::Escape($pattern)) {
+    throw "ANDROID_PLAY_PRIVACY_POLICY.md missing expected Play privacy policy guidance: $pattern"
   }
 }
 

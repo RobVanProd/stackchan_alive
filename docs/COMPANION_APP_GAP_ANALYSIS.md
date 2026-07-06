@@ -90,12 +90,14 @@ current v1 companion branch.
   a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
   Source-side Play prep now includes a policy/data-safety declaration draft for
   `dev.stackchan.companion`, foreground-service `connectedDevice` justification,
-  microphone/battery/network permission review, and improved Play evidence packet
-  templates. The store asset packet now also defines a four-shot final-build screenshot
-  plan covering pairing/setup, live dashboard, Brain/model controls, and
+  microphone/battery/network permission review, a Play-facing privacy policy page derived
+  from the core privacy boundary, and improved Play evidence packet templates. The Play
+  evidence checker now requires a hosted HTTPS privacy-policy URL before marking internal
+  testing evidence ready. The store asset packet now also defines a four-shot final-build
+  screenshot plan covering pairing/setup, live dashboard, Brain/model controls, and
   persona/diagnostics support, and the Play evidence checker requires those screenshot IDs
-  before marking internal-testing evidence ready. Those answers and screenshots still must
-  be reviewed against the exact uploaded build before submission.
+  before marking internal-testing evidence ready. Those answers, hosted privacy URL, and
+  screenshots still must be reviewed against the exact uploaded build before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.

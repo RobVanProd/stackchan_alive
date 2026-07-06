@@ -246,19 +246,25 @@ Test-TextPatterns `
   -Id "play-store-evidence-checker" `
   -Name "Play Store evidence checker" `
   -RelativePath "tools/check_android_play_store_evidence.ps1" `
-  -Patterns @("stackchan.android-play-store-evidence.v1", "releaseAabSha256", "playSigningEnabled", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
+  -Patterns @("stackchan.android-play-store-evidence.v1", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextPatterns `
   -Id "play-release-doc" `
   -Name "Play release checklist" `
   -RelativePath "docs/ANDROID_PLAY_RELEASE.md" `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
 
 Test-TextPatterns `
   -Id "play-policy-declarations" `
   -Name "Play policy and data-safety declarations" `
   -RelativePath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" `
-  -Patterns @("Google Play Data safety form", "Privacy policy URL", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "password_redacted=true", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
+  -Patterns @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "password_redacted=true", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
+
+Test-TextPatterns `
+  -Id "play-privacy-policy-page" `
+  -Name "Play-facing privacy policy page" `
+  -RelativePath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" `
+  -Patterns @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")
 
 foreach ($relativePath in @(
   "fastlane/metadata/android/en-US/title.txt",

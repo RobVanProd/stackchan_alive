@@ -289,6 +289,8 @@ Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_RELEASE.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
@@ -876,6 +878,8 @@ $manifest = [ordered]@{
   androidCompanionSpec = "docs/ANDROID_COMPANION_SPEC.md"
   androidCompanionTestPlan = "docs/ANDROID_COMPANION_TEST_PLAN.md"
   androidPlayRelease = "docs/ANDROID_PLAY_RELEASE.md"
+  androidPlayPolicyDeclarations = "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md"
+  androidPlayPrivacyPolicy = "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
   androidPlayIcon = "docs/store-assets/play/icon-512.png"
   androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"

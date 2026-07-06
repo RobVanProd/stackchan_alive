@@ -61,6 +61,11 @@ function Test-Commit {
   return $Value -match "^[a-fA-F0-9]{40}$"
 }
 
+function Test-HttpsUrl {
+  param([string]$Value)
+  return $Value -match "^https://[^<>\s]+$"
+}
+
 function Test-ImagePath {
   param([string]$Path)
 
@@ -108,6 +113,8 @@ function Write-PlayStoreEvidenceTemplate {
     sourceCommit = "<40-character git commit>"
     releaseAabSha256 = "<64-character app-android-release.aab sha256>"
     playSigningEnabled = $false
+    privacyPolicyUrl = "https://<hosted-final-privacy-policy-url>"
+    privacyPolicySourcePath = "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
     track = "internal"
     uploadStatus = "pending"
     internalTestingInstallStatus = "pending"
@@ -172,6 +179,8 @@ Required proof:
 - Play Console internal testing release uses ``app-android-release.aab`` from the vetted CI run.
 - ``releaseAabSha256`` matches the CI release evidence.
 - Play App Signing is enabled.
+- The hosted privacy policy URL points to the final reviewed
+  ``docs/ANDROID_PLAY_PRIVACY_POLICY.md`` content.
 - Internal test install succeeds on the target phone.
 - Four final-build screenshots cover setup, live dashboard, Brain/model controls,
   and persona/diagnostics support workflows.
@@ -273,6 +282,18 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
     Add-Check "play-signing" "Play App Signing" "pass" "PLAY_STORE_EVIDENCE.json" "Play App Signing is recorded as enabled."
   } else {
     Add-Check "play-signing" "Play App Signing" "fail" "PLAY_STORE_EVIDENCE.json" "Set playSigningEnabled to true after confirming Play App Signing."
+  }
+
+  if ((Test-HttpsUrl ([string]$evidence.privacyPolicyUrl)) -and ([string]$evidence.privacyPolicyUrl -notmatch "<|hosted-final")) {
+    Add-Check "privacy-policy-url" "Hosted privacy policy URL" "pass" "PLAY_STORE_EVIDENCE.json" "Hosted HTTPS privacy policy URL recorded."
+  } else {
+    Add-Check "privacy-policy-url" "Hosted privacy policy URL" "fail" "PLAY_STORE_EVIDENCE.json" "Record the hosted HTTPS privacy policy URL after publishing docs/ANDROID_PLAY_PRIVACY_POLICY.md."
+  }
+
+  if ($evidence.privacyPolicySourcePath -eq "docs/ANDROID_PLAY_PRIVACY_POLICY.md") {
+    Add-Check "privacy-policy-source" "Privacy policy source document" "pass" "PLAY_STORE_EVIDENCE.json" "Privacy policy source path recorded."
+  } else {
+    Add-Check "privacy-policy-source" "Privacy policy source document" "fail" "PLAY_STORE_EVIDENCE.json" "privacyPolicySourcePath must be docs/ANDROID_PLAY_PRIVACY_POLICY.md."
   }
 
   if ($evidence.track -eq "internal") {

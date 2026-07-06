@@ -18,8 +18,9 @@ Authoritative policy references checked for this source review:
 ## Play Console App Content
 
 - Privacy policy URL: required before closed/open/production testing. The hosted
-  page must be derived from `docs/PRIVACY.md` plus this declaration and must name
-  the Android package `dev.stackchan.companion`.
+  page must be derived from `docs/ANDROID_PLAY_PRIVACY_POLICY.md`, which is in
+  turn derived from `docs/PRIVACY.md` plus this declaration and names the
+  Android package `dev.stackchan.companion`.
 - Ads: no ads.
 - App access: no login account. Access requires a Stack-chan robot on the same
   LAN for the meaningful connected flows. Review notes must explain that the app
