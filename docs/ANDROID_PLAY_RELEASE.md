@@ -90,7 +90,9 @@ tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-st
 ```
 
 After uploading the AAB to Play Console, installing from the internal testing
-track, and adding screenshots, run:
+track, and adding screenshots, set the evidence packet status to
+`internal-testing-ready`, record the Play Console release name, internal tester group,
+and `uploadedAtUtc` timestamp for that exact upload, then run:
 
 ```powershell
 tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-store/latest -Json
@@ -99,6 +101,9 @@ tools/check_android_play_store_evidence.cmd -EvidenceRoot output/android-play-st
 The generated Play evidence-check JSON includes the reviewed `sourceCommit`. The final
 Android v1 bundle rejects Play evidence if that commit does not match the installed APK,
 hardware evidence checker outputs, and `ANDROID_V1_EVIDENCE_BUNDLE.json` source commit.
+The Play evidence checker also rejects packets that are not explicitly marked
+`internal-testing-ready`, do not name the uploaded Play Console release/tester group, or
+do not include a UTC upload timestamp.
 
 ## Manifest And Policy Review
 

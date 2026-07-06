@@ -118,8 +118,11 @@ current v1 companion branch.
   testing evidence ready. The store asset packet now also defines a four-shot final-build
   screenshot plan covering pairing/setup, live dashboard, Brain/model controls, and
   persona/diagnostics support, and the Play evidence checker requires those screenshot IDs
-  before marking internal-testing evidence ready. Those answers, hosted privacy URL, and
-  screenshots still must be reviewed against the exact uploaded build before submission.
+  before marking internal-testing evidence ready. The checker also requires the packet to
+  be explicitly marked `internal-testing-ready` with the Play Console release name, tester
+  group, and UTC upload timestamp for the exact uploaded build. Those answers, hosted
+  privacy URL, release identity fields, and screenshots still must be reviewed against the
+  exact uploaded build before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.

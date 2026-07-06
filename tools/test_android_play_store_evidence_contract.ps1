@@ -141,7 +141,7 @@ try {
   if ($templateResult.report.status -ne "pending-play-store-evidence") {
     throw "Expected placeholder template status pending-play-store-evidence, got $($templateResult.report.status)."
   }
-  foreach ($id in @("source-commit", "release-aab-sha", "play-signing", "privacy-policy-url", "upload-status", "internal-install", "screenshots")) {
+  foreach ($id in @("evidence-status", "source-commit", "release-aab-sha", "play-signing", "privacy-policy-url", "upload-status", "internal-install", "play-console-release", "tester-group", "uploaded-at-utc", "screenshots")) {
     Assert-CheckStatus -Report $templateResult.report -Id $id -Status "fail"
   }
   Write-Host "[ok] placeholder Play Store template is rejected"
@@ -187,10 +187,48 @@ pairing evidence tied to the final internal testing build.
   if ($completeResult.report.status -ne "play-internal-testing-ready") {
     throw "Expected complete packet status play-internal-testing-ready, got $($completeResult.report.status)."
   }
-  foreach ($id in @("schema", "source-commit", "release-aab-sha", "play-signing", "privacy-policy-url", "upload-status", "internal-install", "screenshots", "data-safety", "policy-review")) {
+  foreach ($id in @("schema", "evidence-status", "app-version", "source-commit", "release-aab-sha", "play-signing", "privacy-policy-url", "upload-status", "internal-install", "play-console-release", "tester-group", "uploaded-at-utc", "screenshots", "data-safety", "policy-review")) {
     Assert-CheckStatus -Report $completeResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Play Store internal testing packet is accepted"
+
+  $pendingStatusRoot = New-TempEvidenceRoot
+  New-Item -ItemType Directory -Force -Path (Join-Path $pendingStatusRoot "screenshots") | Out-Null
+  foreach ($name in @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")) {
+    Write-TestImage -Path (Join-Path $pendingStatusRoot "screenshots/$name.png")
+  }
+  $pendingStatusEvidence = New-CompletePlayEvidence
+  $pendingStatusEvidence.status = "pending"
+  Write-JsonFile -Path (Join-Path $pendingStatusRoot "PLAY_STORE_EVIDENCE.json") -Value $pendingStatusEvidence
+  Copy-Item -Path (Join-Path $completeRoot "DATA_SAFETY_REVIEW.md") -Destination (Join-Path $pendingStatusRoot "DATA_SAFETY_REVIEW.md")
+  Copy-Item -Path (Join-Path $completeRoot "POLICY_REVIEW.md") -Destination (Join-Path $pendingStatusRoot "POLICY_REVIEW.md")
+  $pendingStatusResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $pendingStatusRoot
+  if ([int]$pendingStatusResult.exitCode -eq 0) {
+    throw "Expected pending Play evidence packet status to fail."
+  }
+  Assert-CheckStatus -Report $pendingStatusResult.report -Id "evidence-status" -Status "fail"
+  Write-Host "[ok] pending Play evidence packet status is rejected"
+
+  $releaseIdentityMissingRoot = New-TempEvidenceRoot
+  New-Item -ItemType Directory -Force -Path (Join-Path $releaseIdentityMissingRoot "screenshots") | Out-Null
+  foreach ($name in @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")) {
+    Write-TestImage -Path (Join-Path $releaseIdentityMissingRoot "screenshots/$name.png")
+  }
+  $releaseIdentityMissingEvidence = New-CompletePlayEvidence
+  $releaseIdentityMissingEvidence.playConsoleReleaseName = "Stackchan Companion"
+  $releaseIdentityMissingEvidence.testerGroup = ""
+  $releaseIdentityMissingEvidence.uploadedAtUtc = "July 6 2026"
+  Write-JsonFile -Path (Join-Path $releaseIdentityMissingRoot "PLAY_STORE_EVIDENCE.json") -Value $releaseIdentityMissingEvidence
+  Copy-Item -Path (Join-Path $completeRoot "DATA_SAFETY_REVIEW.md") -Destination (Join-Path $releaseIdentityMissingRoot "DATA_SAFETY_REVIEW.md")
+  Copy-Item -Path (Join-Path $completeRoot "POLICY_REVIEW.md") -Destination (Join-Path $releaseIdentityMissingRoot "POLICY_REVIEW.md")
+  $releaseIdentityMissingResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $releaseIdentityMissingRoot
+  if ([int]$releaseIdentityMissingResult.exitCode -eq 0) {
+    throw "Expected missing Play release identity fields to fail."
+  }
+  Assert-CheckStatus -Report $releaseIdentityMissingResult.report -Id "play-console-release" -Status "fail"
+  Assert-CheckStatus -Report $releaseIdentityMissingResult.report -Id "tester-group" -Status "fail"
+  Assert-CheckStatus -Report $releaseIdentityMissingResult.report -Id "uploaded-at-utc" -Status "fail"
+  Write-Host "[ok] incomplete Play release identity fields are rejected"
 
   $screenshotCommitMismatchRoot = New-TempEvidenceRoot
   New-Item -ItemType Directory -Force -Path (Join-Path $screenshotCommitMismatchRoot "screenshots") | Out-Null

@@ -770,7 +770,7 @@ Test-TextEvidence `
   -Id "android-play-store-evidence-check" `
   -Name "Android Play Store post-upload evidence check" `
   -RelativePaths @("tools/check_android_play_store_evidence.ps1", "provenance/tools/check_android_play_store_evidence.ps1") `
-  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
+  -Patterns @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "internal-testing-ready", "releaseAabSha256", "playSigningEnabled", "privacyPolicyUrl", "privacyPolicySourcePath", "docs/ANDROID_PLAY_PRIVACY_POLICY.md", "playConsoleReleaseName", "testerGroup", "uploadedAtUtc", "play-console-release", "tester-group", "uploaded-at-utc", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "raw microphone audio is not stored")
 
 Test-TextEvidence `
   -Id "android-play-store-evidence-contract" `

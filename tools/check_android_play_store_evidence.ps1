@@ -66,6 +66,22 @@ function Test-HttpsUrl {
   return $Value -match "^https://[^<>\s]+$"
 }
 
+function Test-NonPlaceholder {
+  param([string]$Value)
+  return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -notmatch "<|>|pending|TBD"
+}
+
+function Test-UtcTimestamp {
+  param([string]$Value)
+
+  if ($Value -notmatch "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$") {
+    return $false
+  }
+
+  $parsed = [DateTimeOffset]::MinValue
+  return [DateTimeOffset]::TryParse($Value, [ref]$parsed)
+}
+
 function Get-ReviewSourceCommit {
   param([string]$Text)
 
@@ -292,6 +308,18 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
     Add-Check "application-id" "Application ID" "fail" "PLAY_STORE_EVIDENCE.json" "Expected dev.stackchan.companion, got $($evidence.applicationId)."
   }
 
+  if ($evidence.status -eq "internal-testing-ready") {
+    Add-Check "evidence-status" "Play evidence packet status" "pass" "PLAY_STORE_EVIDENCE.json" "Evidence packet is marked internal-testing-ready."
+  } else {
+    Add-Check "evidence-status" "Play evidence packet status" "fail" "PLAY_STORE_EVIDENCE.json" "Set status to internal-testing-ready only after Play internal testing upload, install, screenshots, and reviews are complete."
+  }
+
+  if ((Test-NonPlaceholder ([string]$evidence.versionName)) -and ([int]$evidence.versionCode -gt 0)) {
+    Add-Check "app-version" "Play app version identity" "pass" "PLAY_STORE_EVIDENCE.json" "Version name and code are recorded."
+  } else {
+    Add-Check "app-version" "Play app version identity" "fail" "PLAY_STORE_EVIDENCE.json" "Record a non-placeholder versionName and positive versionCode for the uploaded build."
+  }
+
   if (Test-Commit ([string]$evidence.sourceCommit)) {
     Add-Check "source-commit" "Source commit" "pass" "PLAY_STORE_EVIDENCE.json" "Full source commit recorded."
   } else {
@@ -338,6 +366,24 @@ if (-not (Test-Path -LiteralPath $evidenceJsonPath -PathType Leaf)) {
     Add-Check "internal-install" "Internal testing install" "pass" "PLAY_STORE_EVIDENCE.json" "Internal testing install is $($evidence.internalTestingInstallStatus)."
   } else {
     Add-Check "internal-install" "Internal testing install" "fail" "PLAY_STORE_EVIDENCE.json" "Record internalTestingInstallStatus as installed or passed after installing from Play."
+  }
+
+  if ((Test-NonPlaceholder ([string]$evidence.playConsoleReleaseName)) -and ([string]$evidence.playConsoleReleaseName -match [regex]::Escape([string]$evidence.versionName))) {
+    Add-Check "play-console-release" "Play Console release identity" "pass" "PLAY_STORE_EVIDENCE.json" "Play Console release name includes the uploaded app version."
+  } else {
+    Add-Check "play-console-release" "Play Console release identity" "fail" "PLAY_STORE_EVIDENCE.json" "Record a Play Console release name that includes the uploaded versionName."
+  }
+
+  if (Test-NonPlaceholder ([string]$evidence.testerGroup)) {
+    Add-Check "tester-group" "Internal tester group" "pass" "PLAY_STORE_EVIDENCE.json" "Internal tester group is recorded."
+  } else {
+    Add-Check "tester-group" "Internal tester group" "fail" "PLAY_STORE_EVIDENCE.json" "Record the Play internal testing tester group."
+  }
+
+  if (Test-UtcTimestamp ([string]$evidence.uploadedAtUtc)) {
+    Add-Check "uploaded-at-utc" "Play upload timestamp" "pass" "PLAY_STORE_EVIDENCE.json" "Play upload timestamp is an ISO-8601 UTC instant."
+  } else {
+    Add-Check "uploaded-at-utc" "Play upload timestamp" "fail" "PLAY_STORE_EVIDENCE.json" "Record uploadedAtUtc as yyyy-MM-ddTHH:mm:ssZ after Play Console upload."
   }
 
   $screenshots = @($evidence.screenshots)
