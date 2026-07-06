@@ -285,6 +285,8 @@ $requiredFiles = @(
   "media/voice/rvc/stackchan_rvc_safety_neutral.wav",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
+  "tools/provision_stackchan_wifi.cmd",
+  "tools/provision_stackchan_wifi.ps1",
   "tools/flash_release_firmware.cmd",
   "tools/flash_release_firmware.ps1",
   "tools/platformio_resolver.ps1",
@@ -1294,6 +1296,12 @@ $flashDeviceText = Get-Content -LiteralPath (Join-PackagePath "tools/flash_devic
 foreach ($pattern in @("stackchan_wifi", "stackchan_servo_calibration", "ConfirmServoRisk", "--target", "upload")) {
   if ($flashDeviceText -notmatch [regex]::Escape($pattern)) {
     throw "tools/flash_device.ps1 missing flash target support: $pattern"
+  }
+}
+$provisionWiFiText = Get-Content -LiteralPath (Join-PackagePath "tools/provision_stackchan_wifi.ps1") -Raw
+foreach ($pattern in @("ConvertTo-SerialQuotedToken", "Read-Host -AsSecureString", "Redact-Line", "wifi set ssid", "pass", "url", "Did not see a [wifi] result line")) {
+  if ($provisionWiFiText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/provision_stackchan_wifi.ps1 missing serial provisioning support: $pattern"
   }
 }
 

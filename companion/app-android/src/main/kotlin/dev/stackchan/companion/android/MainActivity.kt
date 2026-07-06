@@ -923,7 +923,7 @@ private fun androidRobotSetup(
 
 internal fun androidWifiProvisioningCommand(primaryBridgeUrl: String, serviceRunning: Boolean): String =
     if (serviceRunning && primaryBridgeUrl.isNotBlank()) {
-        "wifi set ssid <network-name> pass <network-password> url $primaryBridgeUrl"
+        "wifi set ssid \"<network-name>\" pass \"<network-password>\" url \"$primaryBridgeUrl\""
     } else {
         ""
     }

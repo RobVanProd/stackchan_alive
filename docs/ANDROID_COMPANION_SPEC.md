@@ -115,7 +115,7 @@ defines the firmware TCP/WebSocket session loop for handshake, incoming frames, 
 response writeback, and reconnect scheduling, with `BridgeWiFiClientSocket` as the ESP32
 `WiFiClient` binding. `BridgeWiFiProvisioner` is boot-wired behind compile-time settings and
 can also be pointed at an Android phone bridge during lab setup with the native-tested serial
-commands `wifi set ssid <name> pass <password> url <ws://host:port/bridge>` and `wifi clear`.
+commands `wifi set ssid "<name>" pass "<password>" url "ws://host:port/bridge"` and `wifi clear`.
 Firmware now saves that runtime Wi-Fi bridge record in the `stackchan.bridge-wifi.v1`
 schema using an ESP32 Preferences backend, loads it at boot, exposes store telemetry, and
 clears it with `wifi clear` without echoing the password in serial status. Live transport
@@ -214,7 +214,7 @@ test node without editing files. Forgetting a saved robot in Android removes the
 record only; persistent robot-side unpair still requires firmware support.
 The app-side Wi-Fi bootstrap is not a replacement for a polished robot setup menu:
 v1 must state clearly that the robot still needs configured Wi-Fi credentials, its pairing
-menu, or the serial command `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
+menu, or the serial command `wifi set ssid "<name>" pass "<password>" url "ws://host:port/bridge"`
 before it can reach the phone bridge URL. The serial command saves the robot-side record
 persistently and must never echo the password back in logs; it remains a bring-up path until
 a consumer setup menu or BLE provisioning flow lands.

@@ -1676,6 +1676,27 @@ void test_sensor_adapter_parses_wifi_provisioning_commands() {
   TEST_ASSERT_EQUAL_UINT16(8765, control.wifi.bridgePort);
   TEST_ASSERT_EQUAL_STRING("/bridge", control.wifi.bridgePath);
 
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "wifi set ssid \"Rob Phone\" pass \"Case Sensitive 123\" host 192.168.1.42 port 8765 path /bridge",
+      4138,
+      &control));
+  TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
+  TEST_ASSERT_FALSE(control.wifi.clear);
+  TEST_ASSERT_EQUAL_STRING("Rob Phone", control.wifi.ssid);
+  TEST_ASSERT_EQUAL_STRING("Case Sensitive 123", control.wifi.password);
+  TEST_ASSERT_EQUAL_STRING("192.168.1.42", control.wifi.bridgeHost);
+  TEST_ASSERT_EQUAL_UINT16(8765, control.wifi.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("/bridge", control.wifi.bridgePath);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "wifi set ssid=\"Studio WiFi\" pass=\"quoted psk\" url=ws://10.0.0.5:8765/bridge",
+      4139,
+      &control));
+  TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
+  TEST_ASSERT_EQUAL_STRING("Studio WiFi", control.wifi.ssid);
+  TEST_ASSERT_EQUAL_STRING("quoted psk", control.wifi.password);
+  TEST_ASSERT_EQUAL_STRING("10.0.0.5", control.wifi.bridgeHost);
+
   TEST_ASSERT_TRUE(parseBenchControlLine("wifi clear", 4132, &control));
   TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
   TEST_ASSERT_TRUE(control.wifi.clear);
@@ -1685,6 +1706,7 @@ void test_sensor_adapter_parses_wifi_provisioning_commands() {
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url wss://10.0.0.5:8765/bridge", 4135, &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab host 10.0.0.5 port 8765x", 4136, &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url ws://10.0.0.5:8765x/bridge", 4137, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid \"Unclosed pass nope url ws://10.0.0.5:8765/bridge", 4140, &control));
 }
 
 void test_sensor_adapter_parses_audio_awareness_commands() {

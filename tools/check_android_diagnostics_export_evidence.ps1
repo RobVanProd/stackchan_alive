@@ -249,7 +249,7 @@ if (-not (Test-Path -LiteralPath $ExportPath -PathType Leaf)) {
       Add-Check "wifi-password-redacted" "Wi-Fi password redacted" "fail" $exportEvidence "Diagnostics export must never include a real Wi-Fi password."
     }
     $wifiTemplate = [string](Get-Field $pairing "wifi_provisioning_command_template")
-    if ($wifiTemplate -match "wifi set ssid <network-name> pass <network-password> url " -or $wifiTemplate -eq "Start the phone bridge first, then rerun diagnostics to generate the Wi-Fi command template.") {
+    if ($wifiTemplate -match 'wifi set ssid "?<network-name>"? pass "?<network-password>"? url ' -or $wifiTemplate -eq "Start the phone bridge first, then rerun diagnostics to generate the Wi-Fi command template.") {
       Add-Check "wifi-command-template" "Wi-Fi provisioning command template" "pass" $exportEvidence "Template uses placeholders or explains why bridge URL is not available."
     } else {
       Add-Check "wifi-command-template" "Wi-Fi provisioning command template" "fail" $exportEvidence "Wi-Fi command template must use placeholder credentials."

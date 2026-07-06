@@ -30,7 +30,7 @@ schedule reconnects. `BridgeWiFiClientSocket` is the ESP32 `WiFiClient` binding 
 socket interface. `BridgeWiFiProvisioner` supplies compile-time Wi-Fi/bridge provisioning,
 nonblocking connection retries, boot-time session initialization, and the intent-loop update
 hook that keeps `BridgeClient` access single-threaded. The serial bench path can temporarily
-replace the compile-time target with `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`
+replace the compile-time target with `wifi set ssid "<name>" pass "<password>" url "ws://host:port/bridge"`
 or equivalent `host`/`port`/`path` tokens, and `wifi clear` returns to the build-time config.
 That lab path does not persist credentials and does not echo the password in logs. It still
 needs real configured credentials/bridge host on the CoreS3 before collecting live PC/mobile

@@ -242,13 +242,13 @@ Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
-  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "staging and unstaging the local model", "LiteRT runtime adapter", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "stackchan://pair", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing code <ABC123>", "pairing_code_mismatch", "wifi set ssid <name> pass <password> url <ws://host:port/bridge>", "wifi clear", "command template", "password-redacted flag", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "settings_result", "owner_status", "hello-connected robot session", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
+  -Patterns @("PC Brain Mode", "Mobile Brain Mode", "active brain owner", "settings_get", "settings_set", "forget_endpoint", "LiteRT-LM", "Gemma-4-E2B", "download button", "load/eject controls", "staging and unstaging the local model", "LiteRT runtime adapter", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "Persona library", "import a validated persona pack", "safety-locked", "Add your Stack-chan", "Wi-Fi bootstrap step", "native Wi-Fi settings", "pairing code", "phone fingerprint", "stackchan://pair", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing code <ABC123>", "pairing_code_mismatch", "wifi set ssid ""<name>"" pass ""<password>"" url ""ws://host:port/bridge""", "wifi clear", "command template", "password-redacted flag", "saved robot", "diagnostics, persona", "handoff status panels", "claim_brain", "release_brain", "settings_result", "owner_status", "hello-connected robot session", "remove path", "Talk surface", "app_text_turn", "robot completes the", "raw WebSocket connection without robot", "stackchan.android.diagnostics-export.v1", "ANDROID_DIAGNOSTICS_EXPORT.json")
 
 Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "Robot Wi-Fi setup", "wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>", "wifi clear", "password redaction", "pairing code", "phone fingerprint", "stackchan://pair", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing code <ABC123>", "pairing clear", "pairing_code_mismatch", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "staging the verified asset", "real inference is gated on LiteRT runtime validation", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "Robot Wi-Fi setup", "wifi set ssid ""<network-name>"" pass ""<network-password>"" url ""ws://<phone-lan-ip>:8765/bridge""", "tools\provision_stackchan_wifi.cmd", "wifi clear", "password redaction", "pairing code", "phone fingerprint", "stackchan://pair", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing code <ABC123>", "pairing clear", "pairing_code_mismatch", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "Gemma-4-E2B", "download, load, eject", "staging the verified asset", "real inference is gated on LiteRT runtime validation", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
@@ -338,7 +338,7 @@ Test-TextEvidence `
   -Id "firmware-wifi-runtime-command" `
   -Name "Firmware serial Wi-Fi bridge provisioning command" `
   -RelativePaths @("src/io/SensorAdapter.cpp", "src/io/SensorAdapter.hpp") `
-  -Patterns @("BenchWiFiProvisioningControl", "fillWiFiProvisioningControlRaw", "parseBridgeUrl", "wifi set ssid <name> pass <password>", "wifi clear", "saved to robot flash without echoing password", "hasWiFiProvisioning")
+  -Patterns @("BenchWiFiProvisioningControl", "fillWiFiProvisioningControlRaw", "tokenizeQuoted", "parseBridgeUrl", 'wifi set ssid \"<name>\" pass \"<password>\"', "wifi clear", "saved to robot flash without echoing password", "hasWiFiProvisioning")
 
 Test-TextEvidence `
   -Id "firmware-wifi-runtime-handler" `
@@ -356,13 +356,13 @@ Test-TextEvidence `
   -Id "firmware-wifi-runtime-test" `
   -Name "Firmware Wi-Fi provisioning native regression test" `
   -RelativePaths @("test/test_native_logic/test_main.cpp") `
-  -Patterns @("test_sensor_adapter_parses_wifi_provisioning_commands", "test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status", "test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials", "test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payloads", "CaseSensitive123", "ws://10.0.0.5:8765/bridge", "wifi clear", "8765x")
+  -Patterns @("test_sensor_adapter_parses_wifi_provisioning_commands", "test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status", "test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials", "test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payloads", "CaseSensitive123", "Rob Phone", "quoted psk", "ws://10.0.0.5:8765/bridge", "wifi clear", "8765x")
 
 Test-TextEvidence `
   -Id "firmware-wifi-runtime-flash-target" `
   -Name "Firmware Wi-Fi runtime flash target" `
   -RelativePaths @("platformio.ini") `
-  -Patterns @("[env:stackchan_wifi]", "extends = env:stackchan", "STACKCHAN_ENABLE_WIFI_BRIDGE=1", "Do not bake Wi-Fi credentials into release or lab builds.", "wifi set ssid <name> pass <password> url <ws://host:port/bridge>")
+  -Patterns @("[env:stackchan_wifi]", "extends = env:stackchan", "STACKCHAN_ENABLE_WIFI_BRIDGE=1", "Do not bake Wi-Fi credentials into release or lab builds.", "wifi set ssid ""<name>"" pass ""<password>"" url ""ws://host:port/bridge""")
 
 Test-TextEvidence `
   -Id "firmware-wifi-flash-helper" `
@@ -374,7 +374,13 @@ Test-TextEvidence `
   -Id "firmware-wifi-runtime-bringup-doc" `
   -Name "Firmware Wi-Fi runtime bring-up guidance" `
   -RelativePaths @("docs/DEVICE_BRINGUP.md") `
-  -Patterns @("flash_device.cmd -Environment stackchan_wifi", "compiling secrets", "wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>", "persists the runtime bridge target in robot flash until", "STACKCHAN_WIFI_SSID", "STACKCHAN_WIFI_PASSWORD", "build flags")
+  -Patterns @("flash_device.cmd -Environment stackchan_wifi", "compiling secrets", "tools\provision_stackchan_wifi.cmd", "wifi set ssid ""<network-name>"" pass ""<network-password>"" url ""ws://<phone-lan-ip>:8765/bridge""", "persists the runtime bridge target in robot flash until", "STACKCHAN_WIFI_SSID", "STACKCHAN_WIFI_PASSWORD", "build flags")
+
+Test-TextEvidence `
+  -Id "firmware-wifi-serial-provision-helper" `
+  -Name "Firmware Wi-Fi serial provisioning helper" `
+  -RelativePaths @("tools/provision_stackchan_wifi.ps1", "tools/provision_stackchan_wifi.cmd") `
+  -Patterns @("ConvertTo-SerialQuotedToken", "Read-Host -AsSecureString", "Redact-Line", "wifi set ssid", "pass", "url", "password is too long", "Did not see a [wifi] result line")
 
 Test-TextEvidence `
   -Id "android-saved-robot-store" `

@@ -301,7 +301,7 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(uiState.robotSetup.wifiInstruction.contains("mDNS"))
         assertTrue(uiState.robotSetup.wifiProvisioningSummary.contains("robot serial console"))
         assertEquals(
-            "wifi set ssid <network-name> pass <network-password> url ws://192.168.1.42:8765/bridge",
+            "wifi set ssid \"<network-name>\" pass \"<network-password>\" url \"ws://192.168.1.42:8765/bridge\"",
             uiState.robotSetup.wifiProvisioningCommand,
         )
         assertEquals("wifi clear", uiState.robotSetup.wifiClearCommand)
@@ -876,7 +876,7 @@ class AndroidBridgeRuntimeStatusTest {
         assertTrue(pairing["pairing_code_present"]!!.jsonPrimitive.boolean)
         assertEquals("stackchan://pair", pairing["pairing_qr_scheme"]!!.jsonPrimitive.content)
         assertEquals(
-            "wifi set ssid <network-name> pass <network-password> url ws://192.168.1.42:8765/bridge",
+            "wifi set ssid \"<network-name>\" pass \"<network-password>\" url \"ws://192.168.1.42:8765/bridge\"",
             pairing["wifi_provisioning_command_template"]!!.jsonPrimitive.content,
         )
         assertEquals("wifi clear", pairing["wifi_clear_command"]!!.jsonPrimitive.content)

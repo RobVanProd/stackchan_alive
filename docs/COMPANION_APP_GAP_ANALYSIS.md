@@ -79,10 +79,13 @@ current v1 companion branch.
   command template using the current bridge URL and placeholder network credentials so lab
   setup can proceed without hunting through docs.
   Firmware now has a native-tested serial path for persistent Wi-Fi/bridge provisioning:
-  `wifi set ssid <name> pass <password> url <ws://host:port/bridge>`, equivalent host/port/path
+  `wifi set ssid "<name>" pass "<password>" url "ws://host:port/bridge"`, equivalent host/port/path
   tokens, and `wifi clear`. The command preserves case-sensitive credentials in a
   `stackchan.bridge-wifi.v1` Preferences-backed store, loads the saved bridge target at boot,
-  does not print the password, and restarts the bridge client without reflashing. A polished
+  does not print the password, and restarts the bridge client without reflashing. The parser
+  now accepts quoted SSID/password/URL values for normal network names with spaces, and the
+  Windows lab helper `tools\provision_stackchan_wifi.cmd` emits the quoted serial command,
+  prompts for the password when omitted, and redacts it from captured logs. A polished
   consumer robot-side menu/BLE provisioning flow plus hardware proof remain open; the
   `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields, not
   Wi-Fi credentials.

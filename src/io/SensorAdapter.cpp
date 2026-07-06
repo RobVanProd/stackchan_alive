@@ -169,6 +169,72 @@ bool splitKeyValue(char* token, char** keyOut, char** valueOut) {
   return true;
 }
 
+bool tokenizeQuoted(char* text, char** tokens, uint8_t maxTokens, uint8_t* tokenCountOut) {
+  if (text == nullptr || tokens == nullptr || tokenCountOut == nullptr) {
+    return false;
+  }
+
+  uint8_t tokenCount = 0;
+  char* read = text;
+  char* write = text;
+  while (*read != '\0') {
+    while (*read == ' ' || *read == '\t' || *read == '\r' || *read == '\n') {
+      ++read;
+    }
+    if (*read == '\0') {
+      break;
+    }
+    if (tokenCount >= maxTokens) {
+      return false;
+    }
+
+    tokens[tokenCount++] = write;
+    char quote = '\0';
+    while (*read != '\0') {
+      const char ch = *read;
+      if (quote != '\0') {
+        if (ch == '\\' && read[1] != '\0') {
+          *write++ = read[1];
+          read += 2;
+          continue;
+        }
+        if (ch == quote) {
+          quote = '\0';
+          ++read;
+          continue;
+        }
+        *write++ = ch;
+        ++read;
+        continue;
+      }
+
+      if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+        ++read;
+        break;
+      }
+      if (ch == '"' || ch == '\'') {
+        quote = ch;
+        ++read;
+        continue;
+      }
+      if (ch == '\\' && read[1] != '\0') {
+        *write++ = read[1];
+        read += 2;
+        continue;
+      }
+      *write++ = ch;
+      ++read;
+    }
+    if (quote != '\0') {
+      return false;
+    }
+    *write++ = '\0';
+  }
+
+  *tokenCountOut = tokenCount;
+  return true;
+}
+
 int hexValue(char ch) {
   if (ch >= '0' && ch <= '9') {
     return ch - '0';
@@ -388,7 +454,12 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
 
   char copy[192] = {};
   copyBounded(copy, sizeof(copy), line);
-  char* first = strtok(copy, " \t\r\n");
+  char* allTokens[15] = {};
+  uint8_t allTokenCount = 0;
+  if (!tokenizeQuoted(copy, allTokens, 15, &allTokenCount)) {
+    return false;
+  }
+  char* first = allTokenCount >= 1 ? allTokens[0] : nullptr;
   if (first == nullptr ||
       (!equalsIgnoreCase(first, "wifi") && !equalsIgnoreCase(first, "bridgewifi") &&
        !equalsIgnoreCase(first, "bridge_wifi"))) {
@@ -400,13 +471,9 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
   parsed.command = "wifi_provision";
 
   char* tokens[14] = {};
-  uint8_t tokenCount = 0;
-  while (tokenCount < 14) {
-    char* token = strtok(nullptr, " \t\r\n");
-    if (token == nullptr) {
-      break;
-    }
-    tokens[tokenCount++] = token;
+  const uint8_t tokenCount = static_cast<uint8_t>(allTokenCount - 1u);
+  for (uint8_t i = 0; i < tokenCount; ++i) {
+    tokens[i] = allTokens[i + 1u];
   }
 
   if (tokenCount == 0) {
@@ -1822,7 +1889,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: bridge hello|listening|thinking|response|audio|end|error"));
   Serial.println(F("[control] help: uplink start <seq> [wake|closed]; uplink chunk <seq> [bytes]; uplink end <seq>; uplink abort"));
   Serial.println(F("[control] help: pairing code <ABC123>; pairing clear; pair ticket <stackchan://pair?...>"));
-  Serial.println(F("[control] help: wifi set ssid <name> pass <password> host <ip> port <8765> path </bridge>; wifi set ssid <name> url <ws://host:port/bridge>; wifi clear; saved to robot flash without echoing password"));
+  Serial.println(F("[control] help: wifi set ssid \"<name>\" pass \"<password>\" host <ip> port <8765> path </bridge>; wifi set ssid \"<name>\" url <ws://host:port/bridge>; wifi clear; saved to robot flash without echoing password"));
   Serial.println(F("[control] help: facepos x=<..> y=<..> s=<..>; facelost"));
   Serial.println(F("[control] help: sound dir=<deg> level=<0.0-1.0>; noise level=<0.0-1.0>"));
   Serial.println(F("[control] help: touch cheek|forehead|<x> <y> [strength]; proximity <0.0-1.0>"));

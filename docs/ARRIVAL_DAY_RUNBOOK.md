@@ -100,7 +100,7 @@ For firmware that still needs robot Wi-Fi credentials, use the serial console af
 phone bridge is ready:
 
 ```text
-wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
+wifi set ssid "<network-name>" pass "<network-password>" url "ws://phone-lan-ip:8765/bridge"
 ```
 
 The firmware should log `[wifi] persisted=1`, `store_has_record=1`, `enabled=1`,

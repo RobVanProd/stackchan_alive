@@ -72,9 +72,16 @@ into the firmware:
 Then provision the Wi-Fi and bridge target over the serial bench path:
 
 ```text
-wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
-wifi set ssid <network-name> pass <network-password> host <phone-lan-ip> port 8765 path /bridge
+wifi set ssid "<network-name>" pass "<network-password>" url "ws://<phone-lan-ip>:8765/bridge"
+wifi set ssid "<network-name>" pass "<network-password>" host <phone-lan-ip> port 8765 path /bridge
 wifi clear
+```
+
+From a Windows lab machine, `tools\provision_stackchan_wifi.cmd` sends the quoted serial
+command, prompts for the password when omitted, and redacts the password in the saved log:
+
+```powershell
+.\tools\provision_stackchan_wifi.cmd -Port COM3 -Ssid "Rob Phone" -BridgeUrl "ws://192.168.1.42:8765/bridge"
 ```
 
 The command preserves case-sensitive SSID/password tokens, does not print the password in
@@ -120,7 +127,7 @@ Before the robot session test, start the phone bridge and copy the setup URL fro
 **Add your Stack-chan** flow. On the firmware serial console, send:
 
 ```text
-wifi set ssid <network-name> pass <network-password> url <ws://phone-lan-ip:8765/bridge>
+wifi set ssid "<network-name>" pass "<network-password>" url "ws://<phone-lan-ip>:8765/bridge"
 ```
 
 Then watch `[wifi]` and `[runtime]` telemetry for `enabled=1`, the expected host/port/path,
