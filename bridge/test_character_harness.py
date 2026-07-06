@@ -125,6 +125,10 @@ class CharacterHarnessTests(unittest.TestCase):
         prompt = build_prompt(PROMPT_SUITE[0])
         self.assertIn("Return only one JSON object", prompt)
         self.assertIn("spoken_text", prompt)
+        self.assertIn('"mode":"idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety"', prompt)
+        self.assertIn('"earcon":"none|wake|confirm|think|happy|concern|sleep|error|safety"', prompt)
+        self.assertIn('"emotion":{"arousal":0.0,"valence":0.0}', prompt)
+        self.assertIn("Do not use any other mode or earcon value", prompt)
 
     def test_enums_match_character_lock_contract(self):
         for mode in ("idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"):

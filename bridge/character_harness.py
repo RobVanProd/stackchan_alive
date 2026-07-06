@@ -272,7 +272,14 @@ def validate_response(raw_response: str, persona: PersonaPack | None = None) -> 
 def build_prompt(case: dict[str, str], persona: PersonaPack | None = None) -> str:
     pack = persona or DEFAULT_PERSONA
     base = pack.render_prompt(memory_lines=("turns_seen: 0",), context_markers=(f"case: {case.get('name', 'ad-hoc')}",))
-    return f"{base}\n\nUser/context: {case['user']}\nAcceptance target: {case['expect']}\nReturn only one JSON object."
+    schema = (
+        "Use exactly this JSON shape: "
+        '{"spoken_text":"...","mode":"idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety",'
+        '"earcon":"none|wake|confirm|think|happy|concern|sleep|error|safety",'
+        '"emotion":{"arousal":0.0,"valence":0.0},"memory_write":{},"memory_forget":[]}. '
+        "Do not use any other mode or earcon value. emotion must be an object with numeric arousal and valence."
+    )
+    return f"{base}\n\n{schema}\nUser/context: {case['user']}\nAcceptance target: {case['expect']}\nReturn only one JSON object."
 
 
 def run_model_command(command: str, prompt: str) -> tuple[str, float, float]:
