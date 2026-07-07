@@ -456,6 +456,9 @@ Required ready statuses:
 - ``stackchan.android-play-store-evidence-check.v1``: ``play-internal-testing-ready``
 - Every Android hardware evidence report and the Play Store evidence-check JSON must match
   this bundle's ``sourceCommit``.
+- Every Android hardware evidence report that supports strict collection must also carry
+  ``expectedSourceCommit`` matching this bundle's ``sourceCommit``, proving it was run with
+  ``-SourceCommit <git-commit>``.
 - The target-phone APK install ``packageName`` and Play Store evidence-check
   ``applicationId`` must match the source Gradle ``applicationId``.
 - The Play Store evidence-check ``versionName`` and ``versionCode`` must match the
@@ -580,6 +583,13 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportFieldEquals "gemma-source-commit-match" "Android Gemma source commit matches bundle" $reports "gemmaCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "screen-off-soak-source-commit-match" "Android screen-off soak source commit matches bundle" $reports "screenOffSoakCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     Test-ReportFieldEquals "play-store-source-commit-match" "Play Store evidence source commit matches bundle" $reports "playStoreCheckReport" "sourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "diagnostics-expected-source-commit-match" "Android diagnostics strict SourceCommit matches bundle" $reports "diagnosticsCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "speech-expected-source-commit-match" "Android speech strict SourceCommit matches bundle" $reports "speechCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "controls-expected-source-commit-match" "Android controls strict SourceCommit matches bundle" $reports "controlsCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "pairing-expected-source-commit-match" "Android pairing strict SourceCommit matches bundle" $reports "pairingCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "wifi-expected-source-commit-match" "Android Wi-Fi strict SourceCommit matches bundle" $reports "wifiCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "gemma-expected-source-commit-match" "Android Gemma strict SourceCommit matches bundle" $reports "gemmaCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
+    Test-ReportFieldEquals "screen-off-soak-expected-source-commit-match" "Android screen-off soak strict SourceCommit matches bundle" $reports "screenOffSoakCheckReport" "expectedSourceCommit" ([string]$bundle.sourceCommit) "sourceCommit"
     $sourceApplicationId = Get-AndroidSourceApplicationId
     if ($sourceApplicationId.status -ne "pass") {
       Add-Check "apk-install-application-id-match" "APK install packageName matches source applicationId" $sourceApplicationId.status $sourceApplicationId.evidence $sourceApplicationId.detail

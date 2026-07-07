@@ -99,7 +99,8 @@ function Write-StatusReport {
     [string]$BenchmarkProfile = "",
     [string]$BenchmarkRecommendedProfile = "",
     [object]$BenchmarkMedianMs = $null,
-    [object]$BenchmarkMedianTokensPerSec = $null
+    [object]$BenchmarkMedianTokensPerSec = $null,
+    [string]$ExpectedSourceCommit = ""
   )
 
   $report = [ordered]@{
@@ -112,6 +113,9 @@ function Write-StatusReport {
   }
   if (-not [string]::IsNullOrWhiteSpace($SourceCommit)) {
     $report.sourceCommit = $SourceCommit
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceCommit)) {
+    $report.expectedSourceCommit = $ExpectedSourceCommit
   }
   if (-not [string]::IsNullOrWhiteSpace($ApplicationId)) {
     $report.applicationId = $ApplicationId
@@ -203,13 +207,13 @@ try {
       versionCode = "1"
     })
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.diagnosticsCheckReport) -Schema "stackchan.android-diagnostics-export-evidence.v1" -Status "android-diagnostics-export-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.controlsCheckReport) -Schema "stackchan.android-controls-evidence.v1" -Status "android-controls-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.pairingCheckReport) -Schema "stackchan.android-pairing-evidence.v1" -Status "android-pairing-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready" -SourceCommit $sourceCommit
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit -BenchmarkProfile "gemma4-e2b-litert-lm" -BenchmarkRecommendedProfile "gemma4-e2b-litert-lm" -BenchmarkMedianMs 1200.0 -BenchmarkMedianTokensPerSec 8.5
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.diagnosticsCheckReport) -Schema "stackchan.android-diagnostics-export-evidence.v1" -Status "android-diagnostics-export-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.controlsCheckReport) -Schema "stackchan.android-controls-evidence.v1" -Status "android-controls-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.pairingCheckReport) -Schema "stackchan.android-pairing-evidence.v1" -Status "android-pairing-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.wifiCheckReport) -Schema "stackchan.android-wifi-evidence.v1" -Status "android-wifi-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit -BenchmarkProfile "gemma4-e2b-litert-lm" -BenchmarkRecommendedProfile "gemma4-e2b-litert-lm" -BenchmarkMedianMs 1200.0 -BenchmarkMedianTokensPerSec 8.5
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.screenOffSoakCheckReport) -Schema "stackchan.android-screen-off-soak-evidence.v1" -Status "android-screen-off-soak-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.playStoreCheckReport) -Schema "stackchan.android-play-store-evidence-check.v1" -Status "play-internal-testing-ready" -SourceCommit $sourceCommit -ApplicationId "dev.stackchan.companion" -VersionName "1.0.0" -VersionCode "1" -ReleaseAabSha256 $releaseAabSha
   @"
 # Android V1 Review
@@ -248,7 +252,7 @@ try {
   if (@($readyResult.report.androidDashboardMediaIds).Count -ne 4 -or "phone-live-dashboard" -notin @($readyResult.report.androidDashboardMediaIds)) {
     throw "Expected Android v1 bundle check report to emit dashboard media IDs."
   }
-  foreach ($id in @("hardware-evidence", "dashboard-evidence", "apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "gemma-benchmark-profile", "gemma-benchmark-speed", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "apk-install-application-id-match", "play-store-application-id-match", "play-store-version-name-match", "play-store-version-code-match", "android-v1-review")) {
+  foreach ($id in @("hardware-evidence", "dashboard-evidence", "apk-install", "companion-readiness", "diagnostics-ready", "speech-ready", "controls-ready", "pairing-ready", "wifi-ready", "gemma-ready", "gemma-benchmark-profile", "gemma-benchmark-speed", "screen-off-soak-ready", "play-store-ready", "companion-readiness-source-commit-match", "apk-install-source-commit-match", "diagnostics-source-commit-match", "speech-source-commit-match", "controls-source-commit-match", "pairing-source-commit-match", "wifi-source-commit-match", "gemma-source-commit-match", "screen-off-soak-source-commit-match", "play-store-source-commit-match", "diagnostics-expected-source-commit-match", "speech-expected-source-commit-match", "controls-expected-source-commit-match", "pairing-expected-source-commit-match", "wifi-expected-source-commit-match", "gemma-expected-source-commit-match", "screen-off-soak-expected-source-commit-match", "apk-install-application-id-match", "play-store-application-id-match", "play-store-version-name-match", "play-store-version-code-match", "android-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android v1 evidence bundle is accepted"
@@ -299,9 +303,20 @@ try {
   Assert-CheckStatus -Report $speechMismatchResult.report -Id "speech-source-commit-match" -Status "fail"
   Write-Host "[ok] mismatched Android v1 speech source commit is rejected"
 
+  $missingStrictSourceRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $missingStrictSourceRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $missingStrictSourceRoot $reports.speechCheckReport) -Schema "stackchan.android-speech-evidence.v1" -Status "android-speech-ready" -SourceCommit $sourceCommit
+  $missingStrictSourceResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $missingStrictSourceRoot
+  if ([int]$missingStrictSourceResult.exitCode -eq 0) {
+    throw "Expected Android v1 speech evidence without strict expectedSourceCommit to fail."
+  }
+  Assert-CheckStatus -Report $missingStrictSourceResult.report -Id "speech-source-commit-match" -Status "pass"
+  Assert-CheckStatus -Report $missingStrictSourceResult.report -Id "speech-expected-source-commit-match" -Status "fail"
+  Write-Host "[ok] Android v1 evidence without strict SourceCommit pin is rejected"
+
   $gemmaMissingBenchmarkRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $gemmaMissingBenchmarkRoot -Recurse -Force
-  Write-StatusReport -Path (Join-Path $gemmaMissingBenchmarkRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit
+  Write-StatusReport -Path (Join-Path $gemmaMissingBenchmarkRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit
   $gemmaMissingBenchmarkResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $gemmaMissingBenchmarkRoot
   if ([int]$gemmaMissingBenchmarkResult.exitCode -eq 0) {
     throw "Expected Android v1 Gemma report without benchmark fields to fail."
@@ -312,7 +327,7 @@ try {
 
   $gemmaSlowBenchmarkRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $gemmaSlowBenchmarkRoot -Recurse -Force
-  Write-StatusReport -Path (Join-Path $gemmaSlowBenchmarkRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit -BenchmarkProfile "gemma4-e2b-litert-lm" -BenchmarkRecommendedProfile "gemma4-e2b-litert-lm" -BenchmarkMedianMs 2600.0 -BenchmarkMedianTokensPerSec 4.5
+  Write-StatusReport -Path (Join-Path $gemmaSlowBenchmarkRoot $reports.gemmaCheckReport) -Schema "stackchan.android-gemma-evidence.v1" -Status "android-gemma-real-device-ready" -SourceCommit $sourceCommit -ExpectedSourceCommit $sourceCommit -BenchmarkProfile "gemma4-e2b-litert-lm" -BenchmarkRecommendedProfile "gemma4-e2b-litert-lm" -BenchmarkMedianMs 2600.0 -BenchmarkMedianTokensPerSec 4.5
   $gemmaSlowBenchmarkResult = Invoke-AndroidV1BundleCheck -EvidenceRoot $gemmaSlowBenchmarkRoot
   if ([int]$gemmaSlowBenchmarkResult.exitCode -eq 0) {
     throw "Expected Android v1 Gemma report with slow benchmark fields to fail."
