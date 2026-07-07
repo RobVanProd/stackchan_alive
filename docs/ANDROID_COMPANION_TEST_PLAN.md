@@ -198,11 +198,12 @@ rerun.
 After the soak completes, run the strict soak evidence gate:
 
 ```powershell
-.\tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json
+.\tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-screen-off-soak-ready` before the screen-off bridge soak gate is
-closed. Use `-WriteTemplate` first to create the review packet.
+closed. Use `-WriteTemplate` first to create the review packet and run
+`tools\test_android_screen_off_soak_evidence_contract.cmd` before trusting the gate.
 
 ## Handoff And Failure Cases
 
@@ -239,7 +240,7 @@ Attach these to the arrival-day packet:
 - `android/udp-beacon-probe/ANDROID_UDP_BEACON_PROBE.md` and `android_udp_beacon_probe.json`, or the repo `output/android-udp-beacon/latest/` equivalents
 - `android/companion-probe/ANDROID_COMPANION_PROBE.md` and `android_companion_probe.json`, or the repo `output/android-companion-probe/latest/` equivalents
 - `android/screen-off-soak/ANDROID_COMPANION_SOAK.md` and `android_companion_soak.json`, or the repo `output/android-companion-soak/latest/` equivalents
-- `ANDROID_SCREEN_OFF_SOAK_REVIEW.md` plus the JSON output from `tools/check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json`
+- `ANDROID_SCREEN_OFF_SOAK_REVIEW.md` plus the JSON output from `tools/check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json`
 - `ANDROID_DIAGNOSTICS_EXPORT.json` shared from the app after the robot session, with transcript/text-turn content redacted unless the tester explicitly opts in
 - `ANDROID_DIAGNOSTICS_REVIEW.md` plus the JSON output from `tools/check_android_diagnostics_export_evidence.cmd -ExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -ReviewPath <ANDROID_DIAGNOSTICS_REVIEW.md> -RequireReady -Json`
 - `ANDROID_GEMMA_REVIEW.md`, `android_gemma_logcat.txt`, `model_benchmark.json`, and the JSON output from `tools/check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -BenchmarkPath <model_benchmark.json> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json`

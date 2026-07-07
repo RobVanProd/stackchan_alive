@@ -155,7 +155,9 @@ current v1 companion branch.
   samples the Android bridge during the strict 10-minute screen-off window, and
   `tools/check_android_screen_off_soak_evidence.ps1` validates the soak JSON, markdown
   summary, passing Android endpoint samples, zero failures, stable endpoint identity, and a
-  human review packet before reporting `android-screen-off-soak-ready`.
+  source-commit-pinned human review packet before reporting `android-screen-off-soak-ready`.
+  `tools/test_android_screen_off_soak_evidence_contract.ps1` covers complete soak evidence,
+  short-duration rejection, unstable endpoint identity, and stale soak review commits.
 - Android final-release evidence now has an aggregate source-side bundle gate:
   `tools/check_android_v1_evidence_bundle.ps1` consumes the target-phone APK install report,
   companion source readiness report, diagnostics, speech, controls, pairing, Wi-Fi, Gemma,
@@ -260,7 +262,7 @@ current v1 companion branch.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject, run the non-dry-run `gemma4-e2b-litert-lm` benchmark, and capture a real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -RequireReady -Json` before release promotion.
+7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json` before release promotion.
 7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd -SourceCommit <git-commit>`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600 -SourceCommit <git-commit>` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
 9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.

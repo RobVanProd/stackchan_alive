@@ -836,7 +836,13 @@ Test-TextEvidence `
   -Id "android-screen-off-soak-evidence-check" `
   -Name "Android screen-off soak evidence check" `
   -RelativePaths @("tools/check_android_screen_off_soak_evidence.ps1") `
-  -Patterns @("stackchan.android-screen-off-soak-evidence.v1", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "stackchan.android-companion-soak.v1", "requested_duration_seconds", "success_rate", "endpoint_kind", "sourceCommit", "Get-ReviewSourceCommit", "android-screen-off-soak-ready", "pending-android-screen-off-soak-evidence", "Screen-off decision: pass", "Heartbeat continuity decision: pass", "Wake-lock release decision: pass", "Foreground-service decision: pass", "RequireReady")
+  -Patterns @("stackchan.android-screen-off-soak-evidence.v1", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "stackchan.android-companion-soak.v1", "requested_duration_seconds", "success_rate", "endpoint_kind", "sourceCommit", "expectedSourceCommit", "soak-review-source-commit-match", "Get-ReviewSourceCommit", "android-screen-off-soak-ready", "pending-android-screen-off-soak-evidence", "Screen-off decision: pass", "Heartbeat continuity decision: pass", "Wake-lock release decision: pass", "Foreground-service decision: pass", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-screen-off-soak-evidence-contract" `
+  -Name "Android screen-off soak evidence contract test" `
+  -RelativePaths @("tools/test_android_screen_off_soak_evidence_contract.ps1", "tools/test_android_screen_off_soak_evidence_contract.cmd") `
+  -Patterns @("complete Android screen-off soak evidence is accepted", "short Android screen-off soak duration is rejected", "unstable Android screen-off endpoint identity remains pending", "stale Android screen-off soak review source commit is rejected", "Android screen-off soak evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-screen-off-soak-evidence-docs" `

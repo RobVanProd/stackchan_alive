@@ -3,6 +3,8 @@ param(
   [string]$SoakJsonPath = "output/android-companion-soak/latest/android_companion_soak.json",
   [string]$SoakMarkdownPath = "output/android-companion-soak/latest/ANDROID_COMPANION_SOAK.md",
   [string]$ReviewPath = "output/android-companion-soak/latest/ANDROID_SCREEN_OFF_SOAK_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -25,6 +27,7 @@ foreach ($name in @("SoakJsonPath", "SoakMarkdownPath", "ReviewPath")) {
   }
 }
 
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 $checks = @()
 
 function Add-Check {
@@ -309,6 +312,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "soak-review" "Android screen-off soak human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Screen-off decision: pass, Heartbeat continuity decision: pass, Wake-lock release decision: pass, Foreground-service decision: pass, and Reopen identity decision: pass."
   }
+
+  if (-not [string]::IsNullOrWhiteSpace($expectedSourceCommitValue)) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "soak-review-source-commit-match" "Android screen-off soak review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected release source commit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "soak-review-source-commit-match" "Android screen-off soak review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit $sourceCommit does not match expected source commit $expectedSourceCommitValue."
+    } else {
+      Add-Check "soak-review-source-commit-match" "Android screen-off soak review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit must be a full 40-character SHA matching expected source commit $expectedSourceCommitValue."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -320,6 +333,7 @@ $report = [ordered]@{
   schema = "stackchan.android-screen-off-soak-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   root = [string]$Root
   soakJsonPath = Convert-ToRelativePath $SoakJsonPath
   soakMarkdownPath = Convert-ToRelativePath $SoakMarkdownPath

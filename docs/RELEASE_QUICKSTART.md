@@ -302,11 +302,12 @@ After the screen-off soak finishes, run the source checkout checker against the 
 repo output:
 
 ```powershell
-.\tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -RequireReady -Json
+.\tools\check_android_screen_off_soak_evidence.cmd -SoakJsonPath <android_companion_soak.json> -SoakMarkdownPath <ANDROID_COMPANION_SOAK.md> -ReviewPath <ANDROID_SCREEN_OFF_SOAK_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-screen-off-soak-ready` before the Android bridge soak gate is
-closed.
+closed. Run `tools\test_android_screen_off_soak_evidence_contract.cmd` before trusting
+the gate.
 After the robot connects through the phone, capture the Android dashboard connected state
 showing robot identity, firmware/version signal, last bridge frame, active brain owner,
 foreground service state, the square Stack-chan display preview, and app content clear of

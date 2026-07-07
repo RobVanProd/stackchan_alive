@@ -343,6 +343,8 @@ $requiredFiles = @(
   "tools/test_android_wifi_evidence_contract.ps1",
   "tools/check_android_screen_off_soak_evidence.cmd",
   "tools/check_android_screen_off_soak_evidence.ps1",
+  "tools/test_android_screen_off_soak_evidence_contract.cmd",
+  "tools/test_android_screen_off_soak_evidence_contract.ps1",
   "tools/check_android_gemma_evidence.cmd",
   "tools/check_android_gemma_evidence.ps1",
   "tools/test_android_gemma_evidence_contract.cmd",
@@ -1283,6 +1285,20 @@ foreach ($pattern in @("complete Android Wi-Fi evidence is accepted", "missing A
   }
 }
 
+$androidScreenOffSoakEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_screen_off_soak_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.android-screen-off-soak-evidence.v1", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android_companion_soak.json", "ANDROID_COMPANION_SOAK.md", "stackchan.android-companion-soak.v1", "requested_duration_seconds", "success_rate", "endpoint_kind", "sourceCommit", "expectedSourceCommit", "soak-review-source-commit-match", "Get-ReviewSourceCommit", "Screen-off decision: pass", "Heartbeat continuity decision: pass", "Wake-lock release decision: pass", "Foreground-service decision: pass", "pending-android-screen-off-soak-evidence", "android-screen-off-soak-ready")) {
+  if ($androidScreenOffSoakEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_screen_off_soak_evidence.ps1 missing Android screen-off soak evidence logic: $pattern"
+  }
+}
+
+$androidScreenOffSoakEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_screen_off_soak_evidence_contract.ps1") -Raw
+foreach ($pattern in @("complete Android screen-off soak evidence is accepted", "short Android screen-off soak duration is rejected", "unstable Android screen-off endpoint identity remains pending", "stale Android screen-off soak review source commit is rejected", "Android screen-off soak evidence contract tests passed")) {
+  if ($androidScreenOffSoakEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_screen_off_soak_evidence_contract.ps1 missing Android screen-off soak evidence contract coverage: $pattern"
+  }
+}
+
 $androidGemmaEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_gemma_evidence.ps1") -Raw
 foreach ($pattern in @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "BenchmarkPath", "stackchan.model-benchmark.v1", "gemma4-e2b-litert-lm", "benchmark-candidate-gate", "benchmark-profile-ready", "benchmark-speed", "Benchmark decision: pass", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready")) {
   if ($androidGemmaEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
@@ -1298,7 +1314,7 @@ foreach ($pattern in @("complete Android Gemma benchmark evidence is accepted", 
 }
 
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-speech-evidence-contract", "android-controls-evidence-check", "android-controls-evidence-contract", "android-pairing-evidence-check", "android-pairing-evidence-contract", "android-wifi-evidence-check", "android-wifi-evidence-contract", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-screen-off-soak-evidence-contract", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-speech-evidence-contract", "android-controls-evidence-check", "android-controls-evidence-contract", "android-pairing-evidence-check", "android-pairing-evidence-contract", "android-wifi-evidence-check", "android-wifi-evidence-contract", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }
