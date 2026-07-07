@@ -4,6 +4,8 @@ param(
   [string]$LogcatPath = "output/android-gemma/latest/android_gemma_logcat.txt",
   [string]$BenchmarkPath = "output/android-gemma/latest/model_benchmark.json",
   [string]$ReviewPath = "output/android-gemma/latest/ANDROID_GEMMA_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -42,6 +44,7 @@ $ExpectedBenchmarkProfile = "gemma4-e2b-litert-lm"
 $ExpectedBenchmarkMaxMedianMs = 2500.0
 $ExpectedBenchmarkMinTokensPerSec = 5.0
 $ExpectedBenchmarkMinPassRate = 0.95
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 $checks = @()
 
 function Add-Check {
@@ -395,6 +398,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "gemma-review" "Android Gemma human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, LiteRT turn decision: pass, Benchmark decision: pass, Eject/reload decision: pass, and Robot audio/TTS decision: pass."
   }
+
+  if (Test-Commit $expectedSourceCommitValue) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "gemma-review-source-commit-match" "Android Gemma review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected SourceCommit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "gemma-review-source-commit-match" "Android Gemma review source commit matches expected commit" "fail" $reviewEvidence "Review source commit $sourceCommit does not match expected SourceCommit $expectedSourceCommitValue."
+    } else {
+      Add-Check "gemma-review-source-commit-match" "Android Gemma review source commit matches expected commit" "fail" $reviewEvidence "Review must record a full 40-character Source commit before strict evidence collection."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -406,6 +419,7 @@ $report = [ordered]@{
   schema = "stackchan.android-gemma-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   logcatPath = Convert-ToRelativePath $LogcatPath

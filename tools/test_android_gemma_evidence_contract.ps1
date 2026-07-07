@@ -37,7 +37,10 @@ function Write-Logcat {
 }
 
 function Write-Review {
-  param([string]$Path)
+  param(
+    [string]$Path,
+    [string]$ReviewSourceCommit = $sourceCommit
+  )
 
   @"
 # Android Gemma-4-E2B Real-Device Review
@@ -48,7 +51,7 @@ function Write-Review {
 - Android device: Pixel contract
 - Android version: 15
 - App version: 1.0.0
-- Source commit: $sourceCommit
+- Source commit: $ReviewSourceCommit
 - Diagnostics export path: ANDROID_DIAGNOSTICS_EXPORT.json
 - Logcat path: android_gemma_logcat.txt
 - Benchmark path: model_benchmark.json
@@ -184,12 +187,15 @@ function New-ReadyBenchmark {
 }
 
 function Write-ReadyEvidence {
-  param([string]$EvidenceRoot)
+  param(
+    [string]$EvidenceRoot,
+    [string]$ReviewSourceCommit = $sourceCommit
+  )
 
   Write-JsonFile -Path (Join-Path $EvidenceRoot "ANDROID_DIAGNOSTICS_EXPORT.json") -Value (New-ReadyExport)
   Write-Logcat -Path (Join-Path $EvidenceRoot "android_gemma_logcat.txt")
   Write-JsonFile -Path (Join-Path $EvidenceRoot "model_benchmark.json") -Value (New-ReadyBenchmark)
-  Write-Review -Path (Join-Path $EvidenceRoot "ANDROID_GEMMA_REVIEW.md")
+  Write-Review -Path (Join-Path $EvidenceRoot "ANDROID_GEMMA_REVIEW.md") -ReviewSourceCommit $ReviewSourceCommit
 }
 
 function Invoke-GemmaCheck {
@@ -210,6 +216,8 @@ function Invoke-GemmaCheck {
     (Join-Path $EvidenceRoot "model_benchmark.json"),
     "-ReviewPath",
     (Join-Path $EvidenceRoot "ANDROID_GEMMA_REVIEW.md"),
+    "-SourceCommit",
+    $sourceCommit,
     "-RequireReady",
     "-Json"
   )
@@ -253,10 +261,13 @@ try {
   if ([int]$readyResult.exitCode -ne 0 -or $readyResult.report.status -ne "android-gemma-real-device-ready") {
     throw "Expected complete Android Gemma evidence to be ready. Output: $($readyResult.text)"
   }
+  if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.expectedSourceCommit -ne $sourceCommit) {
+    throw "Expected Android Gemma evidence report to emit matching sourceCommit and expectedSourceCommit."
+  }
   if ($readyResult.report.benchmarkProfile -ne "gemma4-e2b-litert-lm" -or $readyResult.report.benchmarkRecommendedProfile -ne "gemma4-e2b-litert-lm") {
     throw "Expected Android Gemma evidence report to emit benchmark profile identity."
   }
-  foreach ($id in @("benchmark-json", "benchmark-schema", "benchmark-require-runner", "benchmark-summary-status", "benchmark-candidate-gate", "benchmark-recommended-profile", "benchmark-profile-ready", "benchmark-speed", "gemma-review")) {
+  foreach ($id in @("benchmark-json", "benchmark-schema", "benchmark-require-runner", "benchmark-summary-status", "benchmark-candidate-gate", "benchmark-recommended-profile", "benchmark-profile-ready", "benchmark-speed", "gemma-review", "gemma-review-source-commit-match")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android Gemma benchmark evidence is accepted"
@@ -305,6 +316,15 @@ try {
   }
   Assert-CheckStatus -Report $slowBenchmarkResult.report -Id "benchmark-speed" -Status "fail"
   Write-Host "[ok] slow Android Gemma benchmark evidence is rejected"
+
+  $staleReviewRoot = New-TempEvidenceRoot
+  Write-ReadyEvidence -EvidenceRoot $staleReviewRoot -ReviewSourceCommit ("b" * 40)
+  $staleReviewResult = Invoke-GemmaCheck -EvidenceRoot $staleReviewRoot
+  if ([int]$staleReviewResult.exitCode -eq 0) {
+    throw "Expected stale Android Gemma review source commit to fail."
+  }
+  Assert-CheckStatus -Report $staleReviewResult.report -Id "gemma-review-source-commit-match" -Status "fail"
+  Write-Host "[ok] stale Android Gemma review source commit is rejected"
 
   Write-Host "Android Gemma evidence contract tests passed."
 } finally {

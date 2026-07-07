@@ -189,7 +189,7 @@ used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:
 
 ```powershell
 python bridge\model_benchmark.py --profile gemma4-e2b-litert-lm --require-runner --json --out-dir output\android-gemma\latest
-.\tools\check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -BenchmarkPath <model_benchmark.json> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -RequireReady -Json
+.\tools\check_android_gemma_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_gemma_logcat.txt> -BenchmarkPath <model_benchmark.json> -ReviewPath <ANDROID_GEMMA_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-gemma-real-device-ready` before Mobile Brain Mode is considered

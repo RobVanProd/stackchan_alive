@@ -1300,14 +1300,14 @@ foreach ($pattern in @("complete Android screen-off soak evidence is accepted", 
 }
 
 $androidGemmaEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_gemma_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "BenchmarkPath", "stackchan.model-benchmark.v1", "gemma4-e2b-litert-lm", "benchmark-candidate-gate", "benchmark-profile-ready", "benchmark-speed", "Benchmark decision: pass", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready")) {
+foreach ($pattern in @("stackchan.android-gemma-evidence.v1", "ANDROID_GEMMA_REVIEW.md", "android_gemma_logcat.txt", "BenchmarkPath", "stackchan.model-benchmark.v1", "gemma4-e2b-litert-lm", "benchmark-candidate-gate", "benchmark-profile-ready", "benchmark-speed", "Benchmark decision: pass", "Gemma-4-E2B", "LiteRT-LM", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "litert_adapter_selected", "mobile_brain_litert_turn", "mobile_brain_litert_error", "sourceCommit", "expectedSourceCommit", "ExpectedSourceCommit", "gemma-review-source-commit-match", "Eject/reload decision: pass", "Robot audio/TTS decision: pass", "pending-android-gemma-evidence", "android-gemma-real-device-ready")) {
   if ($androidGemmaEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_gemma_evidence.ps1 missing Android Gemma evidence logic: $pattern"
   }
 }
 
 $androidGemmaEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_gemma_evidence_contract.ps1") -Raw
-foreach ($pattern in @("complete Android Gemma benchmark evidence is accepted", "missing Android Gemma benchmark evidence is rejected", "dry-run Android Gemma benchmark evidence is rejected", "slow Android Gemma benchmark evidence is rejected", "Android Gemma evidence contract tests passed")) {
+foreach ($pattern in @("complete Android Gemma benchmark evidence is accepted", "missing Android Gemma benchmark evidence is rejected", "dry-run Android Gemma benchmark evidence is rejected", "slow Android Gemma benchmark evidence is rejected", "stale Android Gemma review source commit is rejected", "Android Gemma evidence contract tests passed")) {
   if ($androidGemmaEvidenceContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_android_gemma_evidence_contract.ps1 missing Android Gemma evidence contract coverage: $pattern"
   }
