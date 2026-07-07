@@ -734,7 +734,13 @@ Test-TextEvidence `
   -Id "android-controls-evidence-check" `
   -Name "Android protected controls evidence check" `
   -RelativePaths @("tools/check_android_controls_evidence.ps1", "provenance/tools/check_android_controls_evidence.ps1") `
-  -Patterns @("stackchan.android-controls-evidence.v1", "ANDROID_CONTROLS_REVIEW.md", "robot_controls_serial.log", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "robot_hello_required", "sourceCommit", "Get-ReviewSourceCommit", "Settings write decision: pass", "Claim brain decision: pass", "Release brain decision: pass", "Robot hello gate decision: pass", "pending-android-controls-evidence", "android-controls-ready", "RequireReady")
+  -Patterns @("stackchan.android-controls-evidence.v1", "ANDROID_CONTROLS_REVIEW.md", "robot_controls_serial.log", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "robot_hello_required", "sourceCommit", "expectedSourceCommit", "controls-review-source-commit-match", "Get-ReviewSourceCommit", "Settings write decision: pass", "Claim brain decision: pass", "Release brain decision: pass", "Robot hello gate decision: pass", "pending-android-controls-evidence", "android-controls-ready", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-controls-evidence-contract" `
+  -Name "Android protected controls evidence contract test" `
+  -RelativePaths @("tools/test_android_controls_evidence_contract.ps1", "tools/test_android_controls_evidence_contract.cmd") `
+  -Patterns @("complete Android controls evidence is accepted", "missing Android controls robot hello gate remains pending", "Android controls non-Android endpoint identity is rejected", "stale Android controls review source commit is rejected", "Android controls evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-pairing-evidence-check" `

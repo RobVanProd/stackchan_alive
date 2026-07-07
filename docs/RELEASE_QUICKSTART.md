@@ -155,11 +155,12 @@ After the Android phone has exercised protected settings writes and manual brain
 claim/release against a connected robot, run the controls evidence gate:
 
 ```powershell
-.\tools\check_android_controls_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_controls_serial.log> -ReviewPath <ANDROID_CONTROLS_REVIEW.md> -RequireReady -Json
+.\tools\check_android_controls_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_controls_serial.log> -ReviewPath <ANDROID_CONTROLS_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-controls-ready` before Android settings/handoff controls are
-considered validated for v1.
+considered validated for v1. Run `tools\test_android_controls_evidence_contract.cmd`
+before trusting the gate.
 
 After the Android setup flow has paired a physical robot through QR/short-code entry, run
 the pairing evidence gate:

@@ -3,6 +3,8 @@ param(
   [string]$DiagnosticsExportPath = "output/android-controls/latest/ANDROID_DIAGNOSTICS_EXPORT.json",
   [string]$RobotLogPath = "output/android-controls/latest/robot_controls_serial.log",
   [string]$ReviewPath = "output/android-controls/latest/ANDROID_CONTROLS_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -196,6 +198,7 @@ $exportEvidence = Convert-ToRelativePath $DiagnosticsExportPath
 $robotEvidence = Convert-ToRelativePath $RobotLogPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
 $sourceCommit = ""
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after settings and handoff controls are exercised on a connected robot."
@@ -284,6 +287,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "controls-review" "Android controls human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Settings write decision: pass, Claim brain decision: pass, Release brain decision: pass, Robot hello gate decision: pass, and Privacy decision: pass."
   }
+
+  if (Test-Commit $expectedSourceCommitValue) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "controls-review-source-commit-match" "Android controls review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected SourceCommit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "controls-review-source-commit-match" "Android controls review source commit matches expected commit" "fail" $reviewEvidence "Review source commit $sourceCommit does not match expected SourceCommit $expectedSourceCommitValue."
+    } else {
+      Add-Check "controls-review-source-commit-match" "Android controls review source commit matches expected commit" "fail" $reviewEvidence "Review must record a full 40-character Source commit before strict evidence collection."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -295,6 +308,7 @@ $report = [ordered]@{
   schema = "stackchan.android-controls-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   robotLogPath = Convert-ToRelativePath $RobotLogPath

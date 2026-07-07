@@ -60,8 +60,12 @@ current v1 companion branch.
   `tools/check_android_controls_evidence.ps1` to gate the final phone evidence on a
   diagnostics export, robot-side `settings_set` / `settings_result` /
   `claim_brain` / `release_brain` / `owner_status` log markers, the pre-hello
-  `robot_hello_required` safety gate, and a human review packet. Physical robot
-  round-trip evidence and `android-controls-ready` are still required before G3 is complete.
+  `robot_hello_required` safety gate, and a human review packet. The controls checker now
+  supports source-commit-pinned strict evidence, and
+  `tools/test_android_controls_evidence_contract.ps1` covers complete controls evidence,
+  missing hello-gate proof, non-Android endpoint identity, and stale controls review commits.
+  Physical robot round-trip evidence and `android-controls-ready` are still required before
+  G3 is complete.
 - G4 decorative controls are improved but not fully closed. Unsupported controls are
   disabled, shared UI defaults no longer show invented battery/temperature/firmware values,
   heartbeat is now an honest bridge status instead of a fake millisecond value, and audio
@@ -246,7 +250,7 @@ current v1 companion branch.
 ## Next Attack Order
 
 1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach transcript-redacted evidence.
-2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -RequireReady -Json`.
+2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -RequireReady -Json`.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject, run the non-dry-run `gemma4-e2b-litert-lm` benchmark, and capture a real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
