@@ -232,6 +232,10 @@ try {
       versionName = "1.0.0"
       versionCode = "1"
       releaseAabSha256 = $releaseAabSha
+      gemmaBenchmarkProfile = "gemma4-e2b-litert-lm"
+      gemmaBenchmarkMedianMs = 1200.0
+      gemmaBenchmarkMedianTokensPerSec = 8.5
+      androidDashboardMediaIds = @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
       passed = 1
       failed = 0
       pending = 0
@@ -286,10 +290,45 @@ try {
   if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
     throw "Expected Companion v1 bundle check report to emit sourceCommit and releaseVersion."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
+  if ($readyResult.report.androidGemmaBenchmarkProfile -ne "gemma4-e2b-litert-lm" -or [double]$readyResult.report.androidGemmaBenchmarkMedianMs -ne 1200.0 -or [double]$readyResult.report.androidGemmaBenchmarkMedianTokensPerSec -ne 8.5 -or "phone-live-dashboard" -notin @($readyResult.report.androidDashboardMediaIds)) {
+    throw "Expected Companion v1 bundle check report to emit Android Gemma benchmark and dashboard media summaries."
+  }
+  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
+
+  $androidSummaryMissingRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidSummaryMissingRoot -Recurse -Force
+  $androidSummaryMissingReportPath = Join-Path $androidSummaryMissingRoot $reports.androidV1BundleReport
+  $androidSummaryMissingReport = Get-Content -LiteralPath $androidSummaryMissingReportPath -Raw | ConvertFrom-Json
+  $androidSummaryMissingReport.PSObject.Properties.Remove("gemmaBenchmarkProfile")
+  $androidSummaryMissingReport.PSObject.Properties.Remove("gemmaBenchmarkMedianMs")
+  $androidSummaryMissingReport.PSObject.Properties.Remove("gemmaBenchmarkMedianTokensPerSec")
+  $androidSummaryMissingReport.PSObject.Properties.Remove("androidDashboardMediaIds")
+  Write-JsonFile -Path $androidSummaryMissingReportPath -Value $androidSummaryMissingReport
+  $androidSummaryMissingResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $androidSummaryMissingRoot
+  if ([int]$androidSummaryMissingResult.exitCode -eq 0) {
+    throw "Expected stale Companion v1 Android bundle summary fields to fail."
+  }
+  Assert-CheckStatus -Report $androidSummaryMissingResult.report -Id "android-v1-gemma-benchmark-summary" -Status "fail"
+  Assert-CheckStatus -Report $androidSummaryMissingResult.report -Id "android-v1-dashboard-media-summary" -Status "fail"
+  Write-Host "[ok] stale Companion v1 Android evidence summary is rejected"
+
+  $androidSummarySlowRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidSummarySlowRoot -Recurse -Force
+  $androidSummarySlowReportPath = Join-Path $androidSummarySlowRoot $reports.androidV1BundleReport
+  $androidSummarySlowReport = Get-Content -LiteralPath $androidSummarySlowReportPath -Raw | ConvertFrom-Json
+  $androidSummarySlowReport.gemmaBenchmarkMedianMs = 2600.0
+  $androidSummarySlowReport.androidDashboardMediaIds = @("phone-pairing-setup", "phone-live-dashboard")
+  Write-JsonFile -Path $androidSummarySlowReportPath -Value $androidSummarySlowReport
+  $androidSummarySlowResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $androidSummarySlowRoot
+  if ([int]$androidSummarySlowResult.exitCode -eq 0) {
+    throw "Expected slow/missing Companion v1 Android evidence summary to fail."
+  }
+  Assert-CheckStatus -Report $androidSummarySlowResult.report -Id "android-v1-gemma-benchmark-summary" -Status "fail"
+  Assert-CheckStatus -Report $androidSummarySlowResult.report -Id "android-v1-dashboard-media-summary" -Status "fail"
+  Write-Host "[ok] slow or incomplete Companion v1 Android evidence summary is rejected"
 
   $releaseHashMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $releaseHashMismatchRoot -Recurse -Force

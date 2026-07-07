@@ -216,6 +216,20 @@ function Test-ReportFieldEquals {
   }
 }
 
+function Convert-ToDoubleOrNull {
+  param([object]$Value)
+
+  if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) {
+    return $null
+  }
+
+  try {
+    return [double]$Value
+  } catch {
+    return $null
+  }
+}
+
 function Convert-ToAndroidVersionName {
   param([string]$ReleaseVersion)
 
@@ -283,6 +297,53 @@ function Get-AndroidSourceApplicationId {
     value = $matches[0].Groups[1].Value
     evidence = Convert-ToRelativePath $gradlePath
     detail = "Android source applicationId parsed."
+  }
+}
+
+function Test-AndroidV1EvidenceSummary {
+  param([object]$Reports)
+
+  $relativePath = [string](Get-Field $Reports "androidV1BundleReport")
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check "android-v1-gemma-benchmark-summary" "Android v1 Gemma benchmark summary" "pending" "" "Record reports.androidV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    Add-Check "android-v1-dashboard-media-summary" "Android v1 dashboard media summary" "pending" "" "Record reports.androidV1BundleReport in COMPANION_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check "android-v1-gemma-benchmark-summary" "Android v1 Gemma benchmark summary" "pending" (Convert-ToRelativePath $path) "Missing Android v1 bundle report."
+    Add-Check "android-v1-dashboard-media-summary" "Android v1 dashboard media summary" "pending" (Convert-ToRelativePath $path) "Missing Android v1 bundle report."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check "android-v1-gemma-benchmark-summary" "Android v1 Gemma benchmark summary" "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    Add-Check "android-v1-dashboard-media-summary" "Android v1 dashboard media summary" "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $profile = [string](Get-Field $report "gemmaBenchmarkProfile")
+  $medianMs = Convert-ToDoubleOrNull (Get-Field $report "gemmaBenchmarkMedianMs")
+  $medianTokensPerSec = Convert-ToDoubleOrNull (Get-Field $report "gemmaBenchmarkMedianTokensPerSec")
+  $script:androidGemmaBenchmarkProfile = $profile
+  $script:androidGemmaBenchmarkMedianMs = $medianMs
+  $script:androidGemmaBenchmarkMedianTokensPerSec = $medianTokensPerSec
+  if ($profile -eq "gemma4-e2b-litert-lm" -and $null -ne $medianMs -and $medianMs -le 2500.0 -and $null -ne $medianTokensPerSec -and $medianTokensPerSec -ge 5.0) {
+    Add-Check "android-v1-gemma-benchmark-summary" "Android v1 Gemma benchmark summary" "pass" (Convert-ToRelativePath $path) "Android v1 report carries the required Gemma benchmark summary."
+  } else {
+    Add-Check "android-v1-gemma-benchmark-summary" "Android v1 Gemma benchmark summary" "fail" (Convert-ToRelativePath $path) "Expected gemmaBenchmarkProfile=gemma4-e2b-litert-lm, gemmaBenchmarkMedianMs <= 2500, and gemmaBenchmarkMedianTokensPerSec >= 5."
+  }
+
+  $requiredMediaIds = @("phone-pairing-setup", "phone-live-dashboard", "phone-brain-model", "phone-personas-diagnostics")
+  $mediaIds = @((Get-Field $report "androidDashboardMediaIds") | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  $script:androidDashboardMediaIds = @($mediaIds)
+  $missingMediaIds = @($requiredMediaIds | Where-Object { $_ -notin $mediaIds })
+  if ($missingMediaIds.Count -eq 0) {
+    Add-Check "android-v1-dashboard-media-summary" "Android v1 dashboard media summary" "pass" (Convert-ToRelativePath $path) "Android v1 report carries all required dashboard media IDs."
+  } else {
+    Add-Check "android-v1-dashboard-media-summary" "Android v1 dashboard media summary" "fail" (Convert-ToRelativePath $path) ("Missing dashboard media IDs: " + ($missingMediaIds -join ", "))
   }
 }
 
@@ -792,6 +853,8 @@ Required ready statuses:
 - ``stackchan.android-v1-evidence-bundle-check.v1``: ``android-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.desktop-v1-evidence-bundle-check.v1``: ``desktop-v1-evidence-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
+- Android v1 report must include the required Gemma benchmark summary and all required
+  dashboard media IDs from the final Android aggregate gate.
 - Android ``applicationId`` and ``versionCode`` must match the source Gradle release
   configuration, Android ``versionName`` must match the release version, Android
   ``apkSha256`` must match a release APK artifact hash, and Android ``releaseAabSha256``
@@ -832,6 +895,11 @@ evidence are assembled for the same source commit and release package.
 if ($WriteTemplate) {
   Write-CompanionV1EvidenceTemplate
 }
+
+$androidGemmaBenchmarkProfile = ""
+$androidGemmaBenchmarkMedianMs = $null
+$androidGemmaBenchmarkMedianTokensPerSec = $null
+$androidDashboardMediaIds = @()
 
 $bundlePath = Join-Path $EvidenceRoot "COMPANION_V1_EVIDENCE_BUNDLE.json"
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
@@ -929,6 +997,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-AndroidApplicationIdMatchesSource $reports
     Test-AndroidVersionNameMatchesRelease $reports $releaseVersion
     Test-AndroidVersionCodeMatchesSource $reports
+    Test-AndroidV1EvidenceSummary $reports
     Test-AndroidReleaseApkHashMatchesReleaseEvidence $reports
     Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
     Test-DesktopArtifactHashesMatchReleaseEvidence $reports
@@ -984,6 +1053,10 @@ $report = [ordered]@{
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
   sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
   releaseVersion = if ($null -ne $bundle) { [string]$bundle.releaseVersion } else { "" }
+  androidGemmaBenchmarkProfile = $androidGemmaBenchmarkProfile
+  androidGemmaBenchmarkMedianMs = $androidGemmaBenchmarkMedianMs
+  androidGemmaBenchmarkMedianTokensPerSec = $androidGemmaBenchmarkMedianTokensPerSec
+  androidDashboardMediaIds = @($androidDashboardMediaIds)
   passed = $passedChecks.Count
   failed = $failedChecks.Count
   pending = $pendingChecks.Count

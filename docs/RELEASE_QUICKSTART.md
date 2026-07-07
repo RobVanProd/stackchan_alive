@@ -399,8 +399,10 @@ computes its SHA-256 and rejects a bundle hash that does not match the attached 
 also verifies that source readiness, release evidence, GitHub Actions status, and rollout
 status all match the bundle source commit and release version, and that production
 voice-source readiness plus the Android/Desktop v1 bundle checks were generated for the same
-source commit. The rollout report must point at the same strict hardware evidence packet and
-hardware metadata commit recorded in the final bundle.
+source commit. The Android v1 bundle report must also carry the Gemma benchmark summary and
+required dashboard media IDs from the final Android aggregate gate. The rollout report must
+point at the same strict hardware evidence packet and hardware metadata commit recorded in
+the final bundle.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 

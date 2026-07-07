@@ -171,6 +171,8 @@ current v1 companion branch.
   rollout, Android v1, desktop v1, and production voice-source reports. It also rejects an
   Android app `versionName` that does not match the final release version, rejects an Android
   `applicationId` or `versionCode` that does not match the source Gradle release configuration,
+  rejects stale Android v1 bundle reports that do not carry the required Gemma benchmark
+  summary and dashboard media IDs,
   rejects an Android target-phone `apkSha256` that is not present as a release APK in
   companion release evidence,
   rejects an Android Play `releaseAabSha256` that is not present in companion release evidence,
