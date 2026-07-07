@@ -91,8 +91,10 @@ current v1 companion branch.
   `tools/check_android_pairing_evidence.ps1` to gate final pairing evidence on the Android
   diagnostics export, setup QR/code media, robot-side `pairing_code_mismatch`,
   `stackchan://pair?`, `bridge_url_applied`, `endpoint_hello_result`, and
-  `trusted_endpoints_result` markers, plus a human review packet. Physical robot QR
-  scanning/menu proof and `android-pairing-ready` still remain blocking before public
+  `trusted_endpoints_result` markers, plus a source-commit-pinned human review packet.
+  `tools/test_android_pairing_evidence_contract.ps1` covers complete pairing evidence,
+  missing wrong-code rejection proof, non-Android endpoint identity, and stale pairing
+  review commits. Physical robot QR scanning/menu proof and `android-pairing-ready` still remain blocking before public
   distribution.
 - G6 first-run Wi-Fi provisioning is partially closed. The Android Nodes setup flow now
   starts with a Wi-Fi bootstrap step, reports whether the phone is currently on Wi-Fi,
@@ -113,8 +115,11 @@ current v1 companion branch.
   evidence on the Android diagnostics command template, robot-side `[wifi] persisted=1`,
   `store_has_record=1`, `ssid_set=1`, power-cycle `bridge_wifi_store_loads`,
   `bridge_wifi_store_has_record=1`, `wifi clear`, `store_has_record=0`, and password
-  redaction review. The `stackchan://pair` ticket intentionally carries only the bridge URL
-  and pairing fields, not Wi-Fi credentials.
+  redaction review, with source-commit-pinned review matching.
+  `tools/test_android_wifi_evidence_contract.ps1` covers complete Wi-Fi evidence, missing
+  reload proof, robot-log password leakage, and stale Wi-Fi review commits. The
+  `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields,
+  not Wi-Fi credentials.
 - G7 Play submission remains pending on upload signing, developer verification,
   a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
   Source-side Play prep now includes a policy/data-safety declaration draft for
@@ -251,10 +256,10 @@ current v1 companion branch.
 
 1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach transcript-redacted evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -RequireReady -Json`.
+3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject, run the non-dry-run `gemma4-e2b-litert-lm` benchmark, and capture a real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
-6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -RequireReady -Json`.
+6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -RequireReady -Json` before release promotion.
 7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd -SourceCommit <git-commit>`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600 -SourceCommit <git-commit>` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.

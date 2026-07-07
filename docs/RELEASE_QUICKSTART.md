@@ -166,21 +166,23 @@ After the Android setup flow has paired a physical robot through QR/short-code e
 the pairing evidence gate:
 
 ```powershell
-.\tools\check_android_pairing_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_pairing_serial.log> -PairingMediaPath <android_pairing_setup.jpg> -ReviewPath <ANDROID_PAIRING_REVIEW.md> -RequireReady -Json
+.\tools\check_android_pairing_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_pairing_serial.log> -PairingMediaPath <android_pairing_setup.jpg> -ReviewPath <ANDROID_PAIRING_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-pairing-ready` before Android QR/short-code pairing is considered
-validated for v1.
+validated for v1. Run `tools\test_android_pairing_evidence_contract.cmd` before trusting
+the gate.
 
 After the Android setup flow has provisioned the robot Wi-Fi bridge target and the robot has
 been power-cycled and cleared once, run the Wi-Fi evidence gate:
 
 ```powershell
-.\tools\check_android_wifi_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_wifi_serial.log> -ReviewPath <ANDROID_WIFI_REVIEW.md> -RequireReady -Json
+.\tools\check_android_wifi_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -RobotLogPath <robot_wifi_serial.log> -ReviewPath <ANDROID_WIFI_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-wifi-ready` before Android-assisted Wi-Fi provisioning is considered
-validated for v1.
+validated for v1. Run `tools\test_android_wifi_evidence_contract.cmd` before trusting the
+gate.
 
 After the Android phone has downloaded, checksum-verified, loaded, ejected, reloaded, and
 used Gemma-4-E2B for a real LiteRT turn, run the real-device evidence gate:

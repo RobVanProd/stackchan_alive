@@ -3,6 +3,8 @@ param(
   [string]$DiagnosticsExportPath = "output/android-wifi/latest/ANDROID_DIAGNOSTICS_EXPORT.json",
   [string]$RobotLogPath = "output/android-wifi/latest/robot_wifi_serial.log",
   [string]$ReviewPath = "output/android-wifi/latest/ANDROID_WIFI_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -25,6 +27,7 @@ foreach ($name in @("DiagnosticsExportPath", "RobotLogPath", "ReviewPath")) {
   }
 }
 
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 $checks = @()
 
 function Add-Check {
@@ -297,6 +300,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "wifi-review" "Android Wi-Fi provisioning human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Wi-Fi command decision: pass, Persistence decision: pass, Power-cycle reload decision: pass, Clear command decision: pass, and Password privacy decision: pass."
   }
+
+  if (-not [string]::IsNullOrWhiteSpace($expectedSourceCommitValue)) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "wifi-review-source-commit-match" "Android Wi-Fi review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected release source commit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "wifi-review-source-commit-match" "Android Wi-Fi review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit $sourceCommit does not match expected source commit $expectedSourceCommitValue."
+    } else {
+      Add-Check "wifi-review-source-commit-match" "Android Wi-Fi review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit must be a full 40-character SHA matching expected source commit $expectedSourceCommitValue."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -308,6 +321,7 @@ $report = [ordered]@{
   schema = "stackchan.android-wifi-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   robotLogPath = Convert-ToRelativePath $RobotLogPath

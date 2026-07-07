@@ -746,13 +746,25 @@ Test-TextEvidence `
   -Id "android-pairing-evidence-check" `
   -Name "Android QR short-code pairing evidence check" `
   -RelativePaths @("tools/check_android_pairing_evidence.ps1", "provenance/tools/check_android_pairing_evidence.ps1") `
-  -Patterns @("stackchan.android-pairing-evidence.v1", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "pairing_code_present", "stackchan://pair", "pairing_code_mismatch", "bridge_url_applied", "endpoint_hello_result", "trusted_endpoints_result", "sourceCommit", "Get-ReviewSourceCommit", "Setup media decision: pass", "Wrong-code rejection decision: pass", "QR ticket/manual code decision: pass", "Trusted endpoint decision: pass", "Password privacy decision: pass", "pending-android-pairing-evidence", "android-pairing-ready", "RequireReady")
+  -Patterns @("stackchan.android-pairing-evidence.v1", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "pairing_code_present", "stackchan://pair", "pairing_code_mismatch", "bridge_url_applied", "endpoint_hello_result", "trusted_endpoints_result", "sourceCommit", "expectedSourceCommit", "pairing-review-source-commit-match", "Get-ReviewSourceCommit", "Setup media decision: pass", "Wrong-code rejection decision: pass", "QR ticket/manual code decision: pass", "Trusted endpoint decision: pass", "Password privacy decision: pass", "pending-android-pairing-evidence", "android-pairing-ready", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-pairing-evidence-contract" `
+  -Name "Android QR short-code pairing evidence contract test" `
+  -RelativePaths @("tools/test_android_pairing_evidence_contract.ps1", "tools/test_android_pairing_evidence_contract.cmd") `
+  -Patterns @("complete Android pairing evidence is accepted", "missing Android pairing wrong-code rejection remains pending", "Android pairing non-Android endpoint identity is rejected", "stale Android pairing review source commit is rejected", "Android pairing evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-wifi-evidence-check" `
   -Name "Android Wi-Fi provisioning evidence check" `
   -RelativePaths @("tools/check_android_wifi_evidence.ps1", "provenance/tools/check_android_wifi_evidence.ps1") `
-  -Patterns @("stackchan.android-wifi-evidence.v1", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "wifi_provisioning_command_template", "password_redacted", "[wifi]", "persisted=1", "store_has_record=1", "enabled=1", "ssid_set=1", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "wifi clear", "store_has_record=0", "sourceCommit", "Get-ReviewSourceCommit", "Power-cycle reload decision: pass", "Clear command decision: pass", "pending-android-wifi-evidence", "android-wifi-ready", "RequireReady")
+  -Patterns @("stackchan.android-wifi-evidence.v1", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "wifi_provisioning_command_template", "password_redacted", "[wifi]", "persisted=1", "store_has_record=1", "enabled=1", "ssid_set=1", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "wifi clear", "store_has_record=0", "sourceCommit", "expectedSourceCommit", "wifi-review-source-commit-match", "Get-ReviewSourceCommit", "Power-cycle reload decision: pass", "Clear command decision: pass", "pending-android-wifi-evidence", "android-wifi-ready", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-wifi-evidence-contract" `
+  -Name "Android Wi-Fi provisioning evidence contract test" `
+  -RelativePaths @("tools/test_android_wifi_evidence_contract.ps1", "tools/test_android_wifi_evidence_contract.cmd") `
+  -Patterns @("complete Android Wi-Fi evidence is accepted", "missing Android Wi-Fi reload proof remains pending", "Android Wi-Fi robot log password leak is rejected", "stale Android Wi-Fi review source commit is rejected", "Android Wi-Fi evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-gemma-evidence-check" `

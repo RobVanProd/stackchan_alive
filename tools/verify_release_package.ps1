@@ -335,8 +335,12 @@ $requiredFiles = @(
   "tools/test_android_controls_evidence_contract.ps1",
   "tools/check_android_pairing_evidence.cmd",
   "tools/check_android_pairing_evidence.ps1",
+  "tools/test_android_pairing_evidence_contract.cmd",
+  "tools/test_android_pairing_evidence_contract.ps1",
   "tools/check_android_wifi_evidence.cmd",
   "tools/check_android_wifi_evidence.ps1",
+  "tools/test_android_wifi_evidence_contract.cmd",
+  "tools/test_android_wifi_evidence_contract.ps1",
   "tools/check_android_screen_off_soak_evidence.cmd",
   "tools/check_android_screen_off_soak_evidence.ps1",
   "tools/check_android_gemma_evidence.cmd",
@@ -1252,16 +1256,30 @@ foreach ($pattern in @("complete Android controls evidence is accepted", "missin
 }
 
 $androidPairingEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_pairing_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.android-pairing-evidence.v1", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "pairing_code_present", "stackchan://pair", "pairing_code_mismatch", "bridge_url_applied", "endpoint_hello_result", "trusted_endpoints_result", "Setup media decision: pass", "Wrong-code rejection decision: pass", "QR ticket/manual code decision: pass", "Trusted endpoint decision: pass", "Password privacy decision: pass", "pending-android-pairing-evidence", "android-pairing-ready")) {
+foreach ($pattern in @("stackchan.android-pairing-evidence.v1", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "pairing_code_present", "stackchan://pair", "pairing_code_mismatch", "bridge_url_applied", "endpoint_hello_result", "trusted_endpoints_result", "Setup media decision: pass", "Wrong-code rejection decision: pass", "QR ticket/manual code decision: pass", "Trusted endpoint decision: pass", "Password privacy decision: pass", "expectedSourceCommit", "pairing-review-source-commit-match", "pending-android-pairing-evidence", "android-pairing-ready")) {
   if ($androidPairingEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_pairing_evidence.ps1 missing Android pairing evidence logic: $pattern"
   }
 }
 
+$androidPairingEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_pairing_evidence_contract.ps1") -Raw
+foreach ($pattern in @("complete Android pairing evidence is accepted", "missing Android pairing wrong-code rejection remains pending", "Android pairing non-Android endpoint identity is rejected", "stale Android pairing review source commit is rejected", "Android pairing evidence contract tests passed")) {
+  if ($androidPairingEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_pairing_evidence_contract.ps1 missing Android pairing evidence contract coverage: $pattern"
+  }
+}
+
 $androidWifiEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_wifi_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.android-wifi-evidence.v1", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "wifi_provisioning_command_template", "password_redacted", "[wifi]", "persisted=1", "store_has_record=1", "enabled=1", "ssid_set=1", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "wifi clear", "store_has_record=0", "Power-cycle reload decision: pass", "Clear command decision: pass", "pending-android-wifi-evidence", "android-wifi-ready")) {
+foreach ($pattern in @("stackchan.android-wifi-evidence.v1", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "wifi_provisioning_command_template", "password_redacted", "[wifi]", "persisted=1", "store_has_record=1", "enabled=1", "ssid_set=1", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "wifi clear", "store_has_record=0", "Power-cycle reload decision: pass", "Clear command decision: pass", "expectedSourceCommit", "wifi-review-source-commit-match", "pending-android-wifi-evidence", "android-wifi-ready")) {
   if ($androidWifiEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_wifi_evidence.ps1 missing Android Wi-Fi evidence logic: $pattern"
+  }
+}
+
+$androidWifiEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_wifi_evidence_contract.ps1") -Raw
+foreach ($pattern in @("complete Android Wi-Fi evidence is accepted", "missing Android Wi-Fi reload proof remains pending", "Android Wi-Fi robot log password leak is rejected", "stale Android Wi-Fi review source commit is rejected", "Android Wi-Fi evidence contract tests passed")) {
+  if ($androidWifiEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_wifi_evidence_contract.ps1 missing Android Wi-Fi evidence contract coverage: $pattern"
   }
 }
 
@@ -1280,7 +1298,7 @@ foreach ($pattern in @("complete Android Gemma benchmark evidence is accepted", 
 }
 
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-speech-evidence-contract", "android-controls-evidence-check", "android-controls-evidence-contract", "android-pairing-evidence-check", "android-wifi-evidence-check", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-speech-evidence-contract", "android-controls-evidence-check", "android-controls-evidence-contract", "android-pairing-evidence-check", "android-pairing-evidence-contract", "android-wifi-evidence-check", "android-wifi-evidence-contract", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }

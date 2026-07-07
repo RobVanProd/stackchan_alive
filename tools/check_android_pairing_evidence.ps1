@@ -4,6 +4,8 @@ param(
   [string]$RobotLogPath = "output/android-pairing/latest/robot_pairing_serial.log",
   [string]$PairingMediaPath = "output/android-pairing/latest/android_pairing_setup.jpg",
   [string]$ReviewPath = "output/android-pairing/latest/ANDROID_PAIRING_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -26,6 +28,7 @@ foreach ($name in @("DiagnosticsExportPath", "RobotLogPath", "PairingMediaPath",
   }
 }
 
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 $checks = @()
 
 function Add-Check {
@@ -314,6 +317,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "pairing-review" "Android pairing human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Setup media decision: pass, Wrong-code rejection decision: pass, QR ticket/manual code decision: pass, Trusted endpoint decision: pass, and Password privacy decision: pass."
   }
+
+  if (-not [string]::IsNullOrWhiteSpace($expectedSourceCommitValue)) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "pairing-review-source-commit-match" "Android pairing review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected release source commit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "pairing-review-source-commit-match" "Android pairing review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit $sourceCommit does not match expected source commit $expectedSourceCommitValue."
+    } else {
+      Add-Check "pairing-review-source-commit-match" "Android pairing review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit must be a full 40-character SHA matching expected source commit $expectedSourceCommitValue."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -325,6 +338,7 @@ $report = [ordered]@{
   schema = "stackchan.android-pairing-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   robotLogPath = Convert-ToRelativePath $RobotLogPath
