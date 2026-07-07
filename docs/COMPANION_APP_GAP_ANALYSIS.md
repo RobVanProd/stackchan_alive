@@ -19,9 +19,11 @@ current v1 companion branch.
   the Android app-settings retry path without submitting a transcript. Android now emits
   privacy-safe `StackchanSpeech` logcat markers for push-to-talk evidence without transcript
   content, and `tools/check_android_speech_evidence.ps1` validates the diagnostics export,
-  logcat markers, robot response frames, and support-review packet. Target-phone STT
-  behavior, robot response-frame capture, and `android-speech-ready` evidence still need to
-  be captured before G1 is complete.
+  logcat markers, robot response frames, support-review packet, and optional expected
+  source-commit match. `tools/test_android_speech_evidence_contract.ps1` now covers complete
+  speech evidence, missing robot response frames, transcript privacy leaks, and stale speech
+  review commits. Target-phone STT behavior, robot response-frame capture, and
+  `android-speech-ready` evidence still need to be captured before G1 is complete.
 - G2 real Mobile Brain Mode is still open. The bridge text-turn and audio-turn path now
   runs through a `BrainTurnEngine` boundary with deterministic fake output as the default.
   Android now includes the pinned `com.google.ai.edge.litertlm:litertlm-android:0.13.1`
@@ -243,7 +245,7 @@ current v1 companion branch.
 
 ## Next Attack Order
 
-1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -RequireReady -Json`, and attach transcript-redacted evidence.
+1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach transcript-redacted evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -RequireReady -Json`.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -RequireReady -Json`.
 4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.

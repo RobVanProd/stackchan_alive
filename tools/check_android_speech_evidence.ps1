@@ -4,6 +4,8 @@ param(
   [string]$LogcatPath = "output/android-speech/latest/android_speech_logcat.txt",
   [string]$RobotLogPath = "output/android-speech/latest/robot_speech_serial.log",
   [string]$ReviewPath = "output/android-speech/latest/ANDROID_SPEECH_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -203,6 +205,7 @@ $logcatEvidence = Convert-ToRelativePath $LogcatPath
 $robotEvidence = Convert-ToRelativePath $RobotLogPath
 $reviewEvidence = Convert-ToRelativePath $ReviewPath
 $sourceCommit = ""
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 
 if (-not (Test-Path -LiteralPath $DiagnosticsExportPath -PathType Leaf)) {
   Add-Check "diagnostics-export-json" "Android diagnostics export JSON" "pending" $exportEvidence "Share ANDROID_DIAGNOSTICS_EXPORT.json after a push-to-talk turn on a connected robot."
@@ -288,6 +291,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "speech-review" "Android speech human review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, Support decision: pass, Speech recognizer decision: pass, Transcript submission decision: pass, Robot response-frame decision: pass, and Privacy decision: pass."
   }
+
+  if (Test-Commit $expectedSourceCommitValue) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "speech-review-source-commit-match" "Android speech review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected SourceCommit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "speech-review-source-commit-match" "Android speech review source commit matches expected commit" "fail" $reviewEvidence "Review source commit $sourceCommit does not match expected SourceCommit $expectedSourceCommitValue."
+    } else {
+      Add-Check "speech-review-source-commit-match" "Android speech review source commit matches expected commit" "fail" $reviewEvidence "Review must record a full 40-character Source commit before strict evidence collection."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -299,6 +312,7 @@ $report = [ordered]@{
   schema = "stackchan.android-speech-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   root = [string]$Root
   diagnosticsExportPath = Convert-ToRelativePath $DiagnosticsExportPath
   logcatPath = Convert-ToRelativePath $LogcatPath

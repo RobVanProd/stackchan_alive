@@ -722,7 +722,13 @@ Test-TextEvidence `
   -Id "android-speech-evidence-check" `
   -Name "Android speech push-to-talk evidence check" `
   -RelativePaths @("tools/check_android_speech_evidence.ps1", "provenance/tools/check_android_speech_evidence.ps1") `
-  -Patterns @("stackchan.android-speech-evidence.v1", "ANDROID_SPEECH_REVIEW.md", "android_speech_logcat.txt", "robot_speech_serial.log", "stackchan_speech_evidence", "event=final_transcript", "event=submit_result", "accepted=1", "seq_present=1", "message_type=app_text_turn", "transcript_redacted=1", "raw_audio_retention=none", "response_start", "audio_stream_start", "audio_stream_end", "response_end", "sourceCommit", "Get-ReviewSourceCommit", "Speech recognizer decision: pass", "Transcript submission decision: pass", "Robot response-frame decision: pass", "pending-android-speech-evidence", "android-speech-ready", "RequireReady")
+  -Patterns @("stackchan.android-speech-evidence.v1", "ANDROID_SPEECH_REVIEW.md", "android_speech_logcat.txt", "robot_speech_serial.log", "stackchan_speech_evidence", "event=final_transcript", "event=submit_result", "accepted=1", "seq_present=1", "message_type=app_text_turn", "transcript_redacted=1", "raw_audio_retention=none", "response_start", "audio_stream_start", "audio_stream_end", "response_end", "sourceCommit", "expectedSourceCommit", "speech-review-source-commit-match", "Get-ReviewSourceCommit", "Speech recognizer decision: pass", "Transcript submission decision: pass", "Robot response-frame decision: pass", "pending-android-speech-evidence", "android-speech-ready", "RequireReady")
+
+Test-TextEvidence `
+  -Id "android-speech-evidence-contract" `
+  -Name "Android speech push-to-talk evidence contract test" `
+  -RelativePaths @("tools/test_android_speech_evidence_contract.ps1", "tools/test_android_speech_evidence_contract.cmd") `
+  -Patterns @("complete Android speech evidence is accepted", "missing Android speech robot response frames remain pending", "Android speech diagnostics transcript privacy leak is rejected", "stale Android speech review source commit is rejected", "Android speech evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "android-controls-evidence-check" `

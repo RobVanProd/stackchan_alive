@@ -144,11 +144,12 @@ After the Android phone has captured a push-to-talk turn against a connected rob
 speech evidence gate:
 
 ```powershell
-.\tools\check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -RequireReady -Json
+.\tools\check_android_speech_evidence.cmd -DiagnosticsExportPath <shared-ANDROID_DIAGNOSTICS_EXPORT.json> -LogcatPath <android_speech_logcat.txt> -RobotLogPath <robot_speech_serial.log> -ReviewPath <ANDROID_SPEECH_REVIEW.md> -SourceCommit <git-commit> -RequireReady -Json
 ```
 
 It must report `android-speech-ready` before Android push-to-talk/STT is considered
-validated for v1.
+validated for v1. Run `tools\test_android_speech_evidence_contract.cmd` before trusting
+the gate.
 
 After the Android phone has exercised protected settings writes and manual brain
 claim/release against a connected robot, run the controls evidence gate:
