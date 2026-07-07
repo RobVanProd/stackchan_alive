@@ -328,6 +328,11 @@ Before trusting the managed-runtime gate, run its contract test:
 .\tools\test_desktop_python_runtime_payload_contract.cmd
 ```
 
+The runtime payload check report must include the matching `platform`, a valid
+`runtimeSha256`, `pythonVersion`, and `probedPythonVersion`. The Desktop v1 aggregate gate
+rejects status-only runtime reports and wrong-platform summaries for Windows, macOS, and
+Linux.
+
 Then pass that root into desktop packaging with
 `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
 `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`. A platform runtime only validates the

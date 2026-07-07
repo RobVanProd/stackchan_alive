@@ -566,25 +566,25 @@ Test-TextEvidence `
   -Id "desktop-python-runtime-payload-checker" `
   -Name "Desktop managed Python runtime payload checker" `
   -RelativePaths @("tools/check_desktop_python_runtime_payload.ps1") `
-  -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+", "manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match")
+  -Patterns @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+", "manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match", "platform =", "pythonVersion =", "runtimeSha256", "runtimeSource", "probedPythonVersion")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-payload-contract-test" `
   -Name "Desktop managed Python runtime payload contract test" `
   -RelativePaths @("tools/test_desktop_python_runtime_payload_contract.ps1") `
-  -Patterns @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "Desktop Python runtime payload contract tests passed")
+  -Patterns @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, and runtimeSha256", "Desktop Python runtime payload contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_desktop_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-contract" `
   -Name "Desktop v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_desktop_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "missing Desktop v1 runtime payload summary is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `

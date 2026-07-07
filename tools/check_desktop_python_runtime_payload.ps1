@@ -119,6 +119,11 @@ function Convert-ToManifestVersion {
 }
 
 $checks = @()
+$manifestPlatform = ""
+$manifestPythonVersion = ""
+$manifestSha256 = ""
+$manifestSource = ""
+$probedPythonVersion = ""
 
 if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
   $RuntimeRoot = $env:STACKCHAN_BRAIN_PYTHON_RUNTIME
@@ -159,6 +164,10 @@ if (-not [string]::IsNullOrWhiteSpace($rootPath)) {
   if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
     try {
       $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+      $manifestPlatform = [string]$manifest.platform
+      $manifestPythonVersion = [string]$manifest.pythonVersion
+      $manifestSha256 = [string]$manifest.sha256
+      $manifestSource = [string]$manifest.source
       if ($manifest.schema -eq "stackchan.desktop-python-runtime.v1") {
         Add-Check "manifest-schema" "pass" "Manifest schema is stackchan.desktop-python-runtime.v1."
       } else {
@@ -203,6 +212,7 @@ if (-not [string]::IsNullOrWhiteSpace($rootPath)) {
   } else {
     Add-Check "python-executable" "pass" "Python executable found: $pythonPath"
     $versionCheck = Test-PythonVersion $pythonPath
+    $probedPythonVersion = [string]$versionCheck.version
     Add-Check "python-version" ($(if ($versionCheck.ok) { "pass" } else { "fail" })) "$($versionCheck.version) $($versionCheck.detail)"
     if ($null -ne $manifest -and $null -ne $manifest.pythonVersion -and -not [string]::IsNullOrWhiteSpace([string]$manifest.pythonVersion)) {
       $manifestVersion = Convert-ToManifestVersion ([string]$manifest.pythonVersion)
@@ -225,6 +235,11 @@ $result = [ordered]@{
   schema = "stackchan.desktop-python-runtime-payload.v1"
   status = $status
   runtimeRoot = $rootPath
+  platform = $manifestPlatform
+  pythonVersion = $manifestPythonVersion
+  runtimeSha256 = $manifestSha256
+  runtimeSource = $manifestSource
+  probedPythonVersion = $probedPythonVersion
   checks = $checks
 }
 

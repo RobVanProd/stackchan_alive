@@ -198,17 +198,22 @@ current v1 companion branch.
   runtime into the expected payload folder, manifest, and deterministic payload hash before
   running the payload checker. The payload checker now rejects placeholder SHA-256 values,
   wrong-platform manifests, and stale manifest `pythonVersion` values, with
-  `tools\test_desktop_python_runtime_payload_contract.ps1` covering those failure modes.
+  `tools\test_desktop_python_runtime_payload_contract.ps1` covering those failure modes. It
+  also emits the manifest platform, manifest/probed Python versions, runtime SHA-256, and
+  runtime source into its JSON report.
   The source tree now also includes `tools\check_desktop_v1_evidence_bundle.ps1`, which
   aggregates the desktop package hashes, C6 supervisor/GUI evidence, Windows/macOS/Linux
   managed runtime payload checks, PC Brain deploy audio evidence, quiet-soak evidence,
   production voice-source readiness, and a human `DESKTOP_V1_REVIEW.md` before reporting
-  `desktop-v1-evidence-ready`. The review packet must record the same full source commit
-  as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human sign-off from a different build
-  cannot close the aggregate gate. The companion source-readiness and production voice-source
-  reports must also record that same source commit, so stale source or voice approval evidence
-  cannot close the desktop bundle. The Desktop v1 aggregate checker emits that same
-  `sourceCommit` so the final Companion v1 gate can reject stale desktop bundle evidence.
+  `desktop-v1-evidence-ready`. The aggregate gate now rejects status-only or wrong-platform
+  runtime payload reports by requiring Windows/macOS/Linux summaries with `platform`,
+  `runtimeSha256`, `pythonVersion`, and `probedPythonVersion`. The review packet must record
+  the same full source commit as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human
+  sign-off from a different build cannot close the aggregate gate. The companion
+  source-readiness and production voice-source reports must also record that same source
+  commit, so stale source or voice approval evidence cannot close the desktop bundle. The
+  Desktop v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
+  can reject stale desktop bundle evidence.
   Supplying and shipping the actual managed Python binary payload for each desktop platform
   remains open.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
@@ -246,5 +251,5 @@ current v1 companion branch.
 7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.
 8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd -SourceCommit <git-commit>`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600 -SourceCommit <git-commit>` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
 9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.
-9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs. The PC Brain deploy and quiet-soak reports must carry the same `sourceCommit` as the desktop bundle.
+9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs. The Windows/macOS/Linux runtime payload reports must include matching `platform`, valid `runtimeSha256`, `pythonVersion`, and `probedPythonVersion` summaries. The PC Brain deploy and quiet-soak reports must carry the same `sourceCommit` as the desktop bundle.
 10. Assemble the final Companion v1 evidence bundle and run `tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json`; attach `COMPANION_V1_EVIDENCE_BUNDLE.json/md`, `COMPANION_V1_REVIEW.md`, and the `reports/` JSON outputs before calling v1 release-ready.

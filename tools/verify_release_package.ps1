@@ -1776,28 +1776,28 @@ foreach ($pattern in @("stackchan.desktop-python-runtime-prepare.v1", "stackchan
 }
 
 $checkDesktopPythonRuntimeText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_python_runtime_payload.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+", "manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match")) {
+foreach ($pattern in @("stackchan.desktop-python-runtime.v1", "stackchan.desktop-python-runtime-payload.v1", "Find-PythonExecutable", "Test-PythonVersion", "STACKCHAN_BRAIN_PYTHON_RUNTIME", "Python 3.10+", "manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match", "platform =", "pythonVersion =", "runtimeSha256", "runtimeSource", "probedPythonVersion")) {
   if ($checkDesktopPythonRuntimeText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_python_runtime_payload.ps1 missing managed runtime payload check support: $pattern"
   }
 }
 
 $desktopPythonRuntimeContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_python_runtime_payload_contract.ps1") -Raw
-foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "Desktop Python runtime payload contract tests passed")) {
+foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, and runtimeSha256", "Desktop Python runtime payload contract tests passed")) {
   if ($desktopPythonRuntimeContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_python_runtime_payload_contract.ps1 missing managed runtime payload contract coverage: $pattern"
   }
 }
 
 $desktopV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
   if ($desktopV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_v1_evidence_bundle.ps1 missing desktop v1 evidence bundle logic: $pattern"
   }
 }
 
 $desktopV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "missing Desktop v1 runtime payload summary is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
   if ($desktopV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_v1_evidence_bundle_contract.ps1 missing desktop v1 evidence bundle contract coverage: $pattern"
   }

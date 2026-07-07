@@ -197,6 +197,54 @@ function Test-ReportFieldEquals {
   }
 }
 
+function Test-RuntimePayloadSummary {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [object]$Reports,
+    [string]$Field,
+    [string]$ExpectedPlatform
+  )
+
+  $relativePath = [string](Get-Field $Reports $Field)
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check $Id $Name "pending" "" "Record reports.$Field in DESKTOP_V1_EVIDENCE_BUNDLE.json."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check $Id $Name "pending" (Convert-ToRelativePath $path) "Missing runtime payload report."
+    return
+  }
+
+  try {
+    $report = Read-JsonOrNull $path
+  } catch {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Report JSON does not parse: $($_.Exception.Message)"
+    return
+  }
+
+  $issues = @()
+  if ([string](Get-Field $report "platform") -ne $ExpectedPlatform) {
+    $issues += "Expected platform=$ExpectedPlatform, got $([string](Get-Field $report "platform"))."
+  }
+  if (-not (Test-Hash ([string](Get-Field $report "runtimeSha256")))) {
+    $issues += "runtimeSha256 must be a valid SHA-256."
+  }
+  if ([string]::IsNullOrWhiteSpace([string](Get-Field $report "pythonVersion"))) {
+    $issues += "pythonVersion is required."
+  }
+  if ([string]::IsNullOrWhiteSpace([string](Get-Field $report "probedPythonVersion"))) {
+    $issues += "probedPythonVersion is required."
+  }
+
+  if ($issues.Count -eq 0) {
+    Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Runtime payload summary matches $ExpectedPlatform."
+  } else {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) ($issues -join " ")
+  }
+}
+
 function Test-C6Report {
   param(
     [string]$Id,
@@ -404,6 +452,9 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-ReportStatus "runtime-windows" "Windows managed Python runtime payload report" $reports "windowsRuntimePayloadReport" "stackchan.desktop-python-runtime-payload.v1" "ready"
     Test-ReportStatus "runtime-macos" "macOS managed Python runtime payload report" $reports "macosRuntimePayloadReport" "stackchan.desktop-python-runtime-payload.v1" "ready"
     Test-ReportStatus "runtime-linux" "Linux managed Python runtime payload report" $reports "linuxRuntimePayloadReport" "stackchan.desktop-python-runtime-payload.v1" "ready"
+    Test-RuntimePayloadSummary "runtime-windows-summary" "Windows runtime payload summary" $reports "windowsRuntimePayloadReport" "windows"
+    Test-RuntimePayloadSummary "runtime-macos-summary" "macOS runtime payload summary" $reports "macosRuntimePayloadReport" "macos"
+    Test-RuntimePayloadSummary "runtime-linux-summary" "Linux runtime payload summary" $reports "linuxRuntimePayloadReport" "linux"
     Test-ReportStatus "pc-brain-deploy" "PC Brain deploy audio evidence report" $reports "pcBrainDeployCheckReport" "stackchan.pc-brain-deploy-evidence-check.v1" "pc-brain-deploy-ready"
     Test-ReportStatus "pc-brain-quiet-soak" "PC Brain quiet-soak evidence report" $reports "pcBrainQuietSoakCheckReport" "stackchan.pc-brain-quiet-soak-evidence-check.v1" "pc-brain-quiet-soak-ready"
     Test-ReportStatus "voice-source-ready" "Production voice-source readiness report" $reports "voiceSourceReadinessReport" "stackchan.voice-source-readiness.v1" "production-voice-source-ready"

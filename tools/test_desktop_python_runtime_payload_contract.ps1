@@ -161,6 +161,9 @@ try {
   if ($valid.report.status -ne "ready") {
     throw "Expected valid runtime payload status ready, got $($valid.report.status)."
   }
+  if ($valid.report.platform -ne $expectedPlatform -or $valid.report.runtimeSha256 -ne $validSha -or [string]::IsNullOrWhiteSpace([string]$valid.report.pythonVersion) -or [string]::IsNullOrWhiteSpace([string]$valid.report.probedPythonVersion)) {
+    throw "Expected valid runtime payload report to emit platform, pythonVersion, probedPythonVersion, and runtimeSha256."
+  }
   foreach ($id in @("manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match", "python-version")) {
     Assert-CheckStatus -Report $valid.report -Id $id -Status "pass"
   }
