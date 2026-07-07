@@ -146,7 +146,8 @@ current v1 companion branch.
   password-redacted flag. The export redacts the last text turn to a presence-only flag. The
   source tree now includes `tools/check_android_diagnostics_export_evidence.ps1` to validate
   the shared export, reject app identity drift against Gradle release config, and require the
-  support-review packet. Gemma-specific runtime evidence is separated into
+  source-commit-pinned support-review packet. The diagnostics checker contract now rejects
+  stale support-review commits. Gemma-specific runtime evidence is separated into
   `tools/check_android_gemma_evidence.ps1` so a staged model cannot be mistaken for a
   validated LiteRT run. Hardware-run capture, connected robot/session proof, Gemma loaded
   state, `android-gemma-real-device-ready`, and `Support decision: pass` review are still
@@ -259,7 +260,7 @@ current v1 companion branch.
 1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach transcript-redacted evidence.
 2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -RequireReady -Json`, and attach support-reviewed evidence.
+4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach support-reviewed evidence.
 5. Validate Gemma-4-E2B model download/load/eject, run the non-dry-run `gemma4-e2b-litert-lm` benchmark, and capture a real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -RequireReady -Json`.
 6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json` before release promotion.

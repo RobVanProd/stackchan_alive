@@ -28,7 +28,10 @@ function Write-JsonFile {
 }
 
 function Write-Review {
-  param([string]$Path)
+  param(
+    [string]$Path,
+    [string]$ReviewSourceCommit = $sourceCommit
+  )
 
   @"
 # Android Diagnostics Export Review
@@ -39,7 +42,7 @@ function Write-Review {
 - Device: Pixel contract
 - Android version: 15
 - App version: 1.0.0
-- Source commit: $sourceCommit
+- Source commit: $ReviewSourceCommit
 - Robot evidence packet: contract
 - Diagnostics export path: ANDROID_DIAGNOSTICS_EXPORT.json
 "@ | Set-Content -Path $Path -Encoding UTF8
@@ -122,7 +125,10 @@ function New-ReadyExport {
 }
 
 function Invoke-DiagnosticsCheck {
-  param([string]$EvidenceRoot)
+  param(
+    [string]$EvidenceRoot,
+    [string]$ExpectedSourceCommit = $sourceCommit
+  )
 
   $powerShellExe = (Get-Process -Id $PID).Path
   $arguments = @(
@@ -135,6 +141,8 @@ function Invoke-DiagnosticsCheck {
     (Join-Path $EvidenceRoot "ANDROID_DIAGNOSTICS_EXPORT.json"),
     "-ReviewPath",
     (Join-Path $EvidenceRoot "ANDROID_DIAGNOSTICS_REVIEW.md"),
+    "-SourceCommit",
+    $ExpectedSourceCommit,
     "-RequireReady",
     "-Json"
   )
@@ -179,10 +187,10 @@ try {
   if ([int]$readyResult.exitCode -ne 0 -or $readyResult.report.status -ne "android-diagnostics-export-ready") {
     throw "Expected complete Android diagnostics export evidence to be ready. Output: $($readyResult.text)"
   }
-  if ($readyResult.report.applicationId -ne "dev.stackchan.companion" -or $readyResult.report.versionName -ne "1.0.0" -or [string]$readyResult.report.versionCode -ne "1") {
-    throw "Expected diagnostics evidence report to emit applicationId, versionName, and versionCode."
+  if ($readyResult.report.applicationId -ne "dev.stackchan.companion" -or $readyResult.report.versionName -ne "1.0.0" -or [string]$readyResult.report.versionCode -ne "1" -or $readyResult.report.expectedSourceCommit -ne $sourceCommit) {
+    throw "Expected diagnostics evidence report to emit applicationId, versionName, versionCode, and expectedSourceCommit."
   }
-  foreach ($id in @("app-fields", "app-package-name", "app-version-name", "app-version-code", "support-review")) {
+  foreach ($id in @("app-fields", "app-package-name", "app-version-name", "app-version-code", "support-review", "diagnostics-review-source-commit-match")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Android diagnostics export evidence is accepted"
@@ -210,6 +218,16 @@ try {
   }
   Assert-CheckStatus -Report $versionMismatchResult.report -Id "app-version-code" -Status "fail"
   Write-Host "[ok] mismatched Android diagnostics versionCode is rejected"
+
+  $staleReviewRoot = New-TempEvidenceRoot
+  Write-JsonFile -Path (Join-Path $staleReviewRoot "ANDROID_DIAGNOSTICS_EXPORT.json") -Value (New-ReadyExport)
+  Write-Review -Path (Join-Path $staleReviewRoot "ANDROID_DIAGNOSTICS_REVIEW.md") -ReviewSourceCommit ("b" * 40)
+  $staleReviewResult = Invoke-DiagnosticsCheck -EvidenceRoot $staleReviewRoot
+  if ([int]$staleReviewResult.exitCode -eq 0) {
+    throw "Expected stale Android diagnostics review source commit to fail."
+  }
+  Assert-CheckStatus -Report $staleReviewResult.report -Id "diagnostics-review-source-commit-match" -Status "fail"
+  Write-Host "[ok] stale Android diagnostics review source commit is rejected"
 
   Write-Host "Android diagnostics export evidence contract tests passed."
 } finally {

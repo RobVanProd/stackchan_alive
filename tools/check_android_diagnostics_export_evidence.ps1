@@ -2,6 +2,8 @@ param(
   [string]$Root = "",
   [string]$ExportPath = "output/android-diagnostics/latest/ANDROID_DIAGNOSTICS_EXPORT.json",
   [string]$ReviewPath = "output/android-diagnostics/latest/ANDROID_DIAGNOSTICS_REVIEW.md",
+  [Alias("SourceCommit")]
+  [string]$ExpectedSourceCommit = "",
   [switch]$WriteTemplate,
   [switch]$RequireReady,
   [switch]$Json
@@ -27,6 +29,7 @@ if (-not [System.IO.Path]::IsPathRooted($ReviewPath)) {
 $ExpectedModelFile = "gemma-4-E2B-it.litertlm"
 $ExpectedModelBytes = 2588147712
 $ExpectedModelSha256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+$expectedSourceCommitValue = [string]$ExpectedSourceCommit
 $checks = @()
 
 function Add-Check {
@@ -369,6 +372,16 @@ if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
   } else {
     Add-Check "support-review" "Support review packet" "pending" $reviewEvidence "Complete Reviewer, Review date (YYYY-MM-DD), Source commit: <40-character SHA>, and Support decision: pass after inspecting the export."
   }
+
+  if (-not [string]::IsNullOrWhiteSpace($expectedSourceCommitValue)) {
+    if ($sourceCommitOk -and $sourceCommit -eq $expectedSourceCommitValue) {
+      Add-Check "diagnostics-review-source-commit-match" "Android diagnostics review source commit matches expected commit" "pass" $reviewEvidence "Review source commit matches expected release source commit."
+    } elseif ($sourceCommitOk) {
+      Add-Check "diagnostics-review-source-commit-match" "Android diagnostics review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit $sourceCommit does not match expected source commit $expectedSourceCommitValue."
+    } else {
+      Add-Check "diagnostics-review-source-commit-match" "Android diagnostics review source commit matches expected commit" "fail" $reviewEvidence "Review Source commit must be a full 40-character SHA matching expected source commit $expectedSourceCommitValue."
+    }
+  }
 }
 
 $failCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
@@ -380,6 +393,7 @@ $report = [ordered]@{
   schema = "stackchan.android-diagnostics-export-evidence.v1"
   status = $status
   sourceCommit = $sourceCommit
+  expectedSourceCommit = $expectedSourceCommitValue
   applicationId = $diagnosticsApplicationId
   versionName = $diagnosticsVersionName
   versionCode = $diagnosticsVersionCode
