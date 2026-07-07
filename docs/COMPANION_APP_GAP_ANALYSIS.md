@@ -234,10 +234,12 @@ current v1 companion branch.
   checker: `tools/check_voice_source_readiness.ps1` reports
   `pending-production-voice-source` until a licensed or owned production source, rights or
   consent evidence, completed provenance template, RVC rights review, and real target-speaker
-  evidence are recorded. The checker emits the reviewed `sourceCommit`, and the desktop and
-  top-level v1 bundle gates reject production voice-source reports from any other commit.
-  This keeps prototype/RVC review samples or stale approvals from being mistaken for a
-  consumer-ready voice source.
+  evidence are recorded. A production-ready provenance YAML must also record a
+  `source_commit` matching the checker report's `sourceCommit`; the checker and its contract
+  test reject missing or stale voice approvals. The checker emits both `sourceCommit` and
+  `voiceSourceCommit`, and the desktop and top-level v1 bundle gates reject production
+  voice-source reports from any other commit. This keeps prototype/RVC review samples or
+  stale approvals from being mistaken for a consumer-ready voice source.
 
 ## Next Attack Order
 

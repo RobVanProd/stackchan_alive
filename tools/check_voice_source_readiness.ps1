@@ -132,6 +132,8 @@ $template = if (Test-Path -LiteralPath $TemplatePath -PathType Leaf) {
   ""
 }
 
+$provenanceSourceCommit = ""
+
 if (-not [string]::IsNullOrWhiteSpace($yaml)) {
   $schema = Get-YamlTopLevelScalar $yaml "schema"
   if ($schema -eq "stackchan.voice-source-provenance.v1") {
@@ -141,12 +143,27 @@ if (-not [string]::IsNullOrWhiteSpace($yaml)) {
   }
 
   $status = Get-YamlTopLevelScalar $yaml "status"
+  $productionSourceReady = $false
   if ($status -eq "pending-production-source") {
     Add-Check "production-source-selected" "pending" "Production voice source is still pending." $VoiceSourceProvenancePath
   } elseif (Test-ReadyText $status) {
+    $productionSourceReady = $true
     Add-Check "production-source-selected" "pass" "Production voice source status: $status" $VoiceSourceProvenancePath
   } else {
     Add-Check "production-source-selected" "fail" "Production voice source status is blank or invalid: $status" $VoiceSourceProvenancePath
+  }
+
+  $provenanceSourceCommit = Get-YamlTopLevelScalar $yaml "source_commit"
+  if ($productionSourceReady) {
+    if ((Test-Commit $provenanceSourceCommit) -and (Test-Commit $SourceCommit) -and $provenanceSourceCommit -eq $SourceCommit) {
+      Add-Check "voice-source-provenance-commit-match" "pass" "Voice-source provenance source_commit matches the report sourceCommit." $VoiceSourceProvenancePath
+    } elseif (Test-Commit $provenanceSourceCommit) {
+      Add-Check "voice-source-provenance-commit-match" "fail" "Voice-source provenance source_commit $provenanceSourceCommit does not match report sourceCommit $SourceCommit." $VoiceSourceProvenancePath
+    } else {
+      Add-Check "voice-source-provenance-commit-match" "fail" "Production-ready voice provenance must record source_commit matching the reviewed source commit." $VoiceSourceProvenancePath
+    }
+  } else {
+    Add-Check "voice-source-provenance-commit-match" "pending" "Record source_commit in the completed production voice provenance YAML before consumer promotion." $VoiceSourceProvenancePath
   }
 
   foreach ($field in @(
@@ -246,6 +263,7 @@ $report = [ordered]@{
   status = $status
   root = [string]$Root
   sourceCommit = $SourceCommit
+  voiceSourceCommit = $provenanceSourceCommit
   voiceSourceProvenancePath = $VoiceSourceProvenancePath
   templatePath = $TemplatePath
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count

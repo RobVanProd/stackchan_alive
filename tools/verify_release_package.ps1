@@ -1262,7 +1262,7 @@ foreach ($pattern in @("complete Android Gemma benchmark evidence is accepted", 
 }
 
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-controls-evidence-check", "android-pairing-evidence-check", "android-wifi-evidence-check", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-controls-evidence-check", "android-pairing-evidence-check", "android-wifi-evidence-check", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }
@@ -1286,6 +1286,20 @@ $voiceSourceStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "too
 foreach ($pattern in @("stackchan.voice-source-status.v1", "blocked-pending-production-voice-source", "production-source-ready", "candidate-pending-rights-review", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "FailOnBlocked")) {
   if ($voiceSourceStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_voice_source_status.ps1 missing required voice-source status logic: $pattern"
+  }
+}
+
+$voiceSourceReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_voice_source_readiness.ps1") -Raw
+foreach ($pattern in @("stackchan.voice-source-readiness.v1", "pending-production-voice-source", "production-voice-source-ready", "voice-source-provenance-commit-match", "voiceSourceCommit", "source_commit", "RequireProductionReady")) {
+  if ($voiceSourceReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_voice_source_readiness.ps1 missing required voice-source readiness logic: $pattern"
+  }
+}
+
+$voiceSourceReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_voice_source_readiness_contract.ps1") -Raw
+foreach ($pattern in @("pending production voice source remains pending", "complete production voice source is accepted", "stale production voice-source provenance commit is rejected", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
+  if ($voiceSourceReadinessContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_voice_source_readiness_contract.ps1 missing required voice-source readiness contract coverage: $pattern"
   }
 }
 

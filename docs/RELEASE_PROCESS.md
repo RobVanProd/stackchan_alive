@@ -80,7 +80,7 @@ To audit the active production voice-source gate without generating package arti
 .\tools\check_voice_source_readiness.cmd -Json
 ```
 
-This should report `pending-production-voice-source` for prerelease work until a licensed or owned production voice source, consent/license evidence, completed provenance template, and target-speaker evidence are recorded. Use `-RequireProductionReady` only for consumer-promotion checks that must fail while the voice source is still pending.
+This should report `pending-production-voice-source` for prerelease work until a licensed or owned production voice source, consent/license evidence, completed provenance template, and target-speaker evidence are recorded. A production-ready provenance YAML must include `source_commit` matching the source commit passed to the checker, so stale voice approvals cannot be reused on a later build. Use `-RequireProductionReady` only for consumer-promotion checks that must fail while the voice source is still pending.
 
 To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
 

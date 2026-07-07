@@ -473,7 +473,10 @@ notepad .\VOICE_SOURCE_STATUS.md
 notepad .\RVC_VOICE_BASE_STATUS.md
 ```
 
-That report must move from `blocked-pending-production-voice-source` to production-ready before a non-prerelease rollout.
+That report must move from `blocked-pending-production-voice-source` to production-ready
+before a non-prerelease rollout. The completed voice provenance YAML must include a
+`source_commit` matching the reviewed build; run
+`tools\test_voice_source_readiness_contract.cmd` before trusting the gate.
 
 ## Promotion Evidence
 

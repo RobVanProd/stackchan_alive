@@ -824,7 +824,13 @@ Test-TextEvidence `
   -Id "voice-source-readiness-check" `
   -Name "Production voice-source readiness check" `
   -RelativePaths @("tools/check_voice_source_readiness.ps1") `
-  -Patterns @("stackchan.voice-source-readiness.v1", "pending-production-voice-source", "production-voice-source-ready", "licensed_or_owned_production_voice_source", "rvc-candidate-rights-review", "voice-source-source-commit", "sourceCommit", "SourceCommit", "RequireProductionReady")
+  -Patterns @("stackchan.voice-source-readiness.v1", "pending-production-voice-source", "production-voice-source-ready", "licensed_or_owned_production_voice_source", "rvc-candidate-rights-review", "voice-source-source-commit", "voice-source-provenance-commit-match", "voiceSourceCommit", "source_commit", "sourceCommit", "SourceCommit", "RequireProductionReady")
+
+Test-TextEvidence `
+  -Id "voice-source-readiness-contract" `
+  -Name "Production voice-source readiness contract test" `
+  -RelativePaths @("tools/test_voice_source_readiness_contract.ps1", "tools/test_voice_source_readiness_contract.cmd") `
+  -Patterns @("pending production voice source remains pending", "complete production voice source is accepted", "stale production voice-source provenance commit is rejected", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")
 
 Test-TextEvidence `
   -Id "ci-companion-tests" `
