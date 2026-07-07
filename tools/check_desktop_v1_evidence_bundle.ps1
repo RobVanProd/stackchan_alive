@@ -231,6 +231,10 @@ function Test-RuntimePayloadSummary {
   if (-not (Test-Hash ([string](Get-Field $report "runtimeSha256")))) {
     $issues += "runtimeSha256 must be a valid SHA-256."
   }
+  $runtimeSource = [string](Get-Field $report "runtimeSource")
+  if ([string]::IsNullOrWhiteSpace($runtimeSource) -or $runtimeSource -match "<|>|pending|TBD") {
+    $issues += "runtimeSource must identify the managed runtime build/source."
+  }
   if ([string]::IsNullOrWhiteSpace([string](Get-Field $report "pythonVersion"))) {
     $issues += "pythonVersion is required."
   }
@@ -239,7 +243,7 @@ function Test-RuntimePayloadSummary {
   }
 
   if ($issues.Count -eq 0) {
-    Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Runtime payload summary matches $ExpectedPlatform."
+    Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Runtime payload summary and source match $ExpectedPlatform."
   } else {
     Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) ($issues -join " ")
   }

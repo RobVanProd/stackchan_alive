@@ -81,6 +81,7 @@ function Write-StatusReport {
     [string]$Platform = "",
     [string]$PythonVersion = "",
     [string]$RuntimeSha256 = "",
+    [string]$RuntimeSource = "",
     [string]$ProbedPythonVersion = ""
   )
 
@@ -103,6 +104,9 @@ function Write-StatusReport {
   }
   if (-not [string]::IsNullOrWhiteSpace($RuntimeSha256)) {
     $report["runtimeSha256"] = $RuntimeSha256
+  }
+  if (-not [string]::IsNullOrWhiteSpace($RuntimeSource)) {
+    $report["runtimeSource"] = $RuntimeSource
   }
   if (-not [string]::IsNullOrWhiteSpace($ProbedPythonVersion)) {
     $report["probedPythonVersion"] = $ProbedPythonVersion
@@ -174,9 +178,9 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
   Write-C6Report -Path (Join-Path $readyRoot $reports.c6BrainSupervisorSmokeReport) -Schema "stackchan.companion.c6-brain-supervisor-smoke.v1"
   Write-C6Report -Path (Join-Path $readyRoot $reports.c6GuiRehearsalReport) -Schema "stackchan.companion.c6-gui-rehearsal.v1"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.windowsRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "windows" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("d" * 64) -ProbedPythonVersion "Python 3.12.0"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.macosRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "macos" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("e" * 64) -ProbedPythonVersion "Python 3.12.0"
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.linuxRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "linux" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("f" * 64) -ProbedPythonVersion "Python 3.12.0"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.windowsRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "windows" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("d" * 64) -RuntimeSource "python.org-embed-3.12.0-windows" -ProbedPythonVersion "Python 3.12.0"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.macosRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "macos" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("e" * 64) -RuntimeSource "python.org-embed-3.12.0-macos" -ProbedPythonVersion "Python 3.12.0"
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.linuxRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "linux" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("f" * 64) -RuntimeSource "python.org-embed-3.12.0-linux" -ProbedPythonVersion "Python 3.12.0"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.pcBrainDeployCheckReport) -Schema "stackchan.pc-brain-deploy-evidence-check.v1" -Status "pc-brain-deploy-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.pcBrainQuietSoakCheckReport) -Schema "stackchan.pc-brain-quiet-soak-evidence-check.v1" -Status "pc-brain-quiet-soak-ready" -SourceCommit $sourceCommit
   Write-JsonFile -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
@@ -232,9 +236,19 @@ try {
   Assert-CheckStatus -Report $runtimeMissingSummaryResult.report -Id "runtime-windows-summary" -Status "fail"
   Write-Host "[ok] missing Desktop v1 runtime payload summary is rejected"
 
+  $runtimeMissingSourceRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $runtimeMissingSourceRoot -Recurse -Force
+  Write-StatusReport -Path (Join-Path $runtimeMissingSourceRoot $reports.windowsRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "windows" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("d" * 64) -ProbedPythonVersion "Python 3.12.0"
+  $runtimeMissingSourceResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $runtimeMissingSourceRoot
+  if ([int]$runtimeMissingSourceResult.exitCode -eq 0) {
+    throw "Expected missing Desktop v1 runtime payload source to fail."
+  }
+  Assert-CheckStatus -Report $runtimeMissingSourceResult.report -Id "runtime-windows-summary" -Status "fail"
+  Write-Host "[ok] missing Desktop v1 runtime payload source is rejected"
+
   $runtimePlatformMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $runtimePlatformMismatchRoot -Recurse -Force
-  Write-StatusReport -Path (Join-Path $runtimePlatformMismatchRoot $reports.macosRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "linux" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("e" * 64) -ProbedPythonVersion "Python 3.12.0"
+  Write-StatusReport -Path (Join-Path $runtimePlatformMismatchRoot $reports.macosRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "linux" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("e" * 64) -RuntimeSource "python.org-embed-3.12.0-macos" -ProbedPythonVersion "Python 3.12.0"
   $runtimePlatformMismatchResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $runtimePlatformMismatchRoot
   if ([int]$runtimePlatformMismatchResult.exitCode -eq 0) {
     throw "Expected mismatched Desktop v1 runtime payload platform to fail."
