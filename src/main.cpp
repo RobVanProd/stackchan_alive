@@ -1,9 +1,532 @@
 #include <Arduino.h>
 #include <Esp.h>
 #include <M5Unified.h>
+#if __has_include(<utility/power/INA226_Class.hpp>)
+#include <utility/power/INA226_Class.hpp>
+#define STACKCHAN_HAS_INA226_MONITOR 1
+#else
+#define STACKCHAN_HAS_INA226_MONITOR 0
+#endif
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if defined(ARDUINO_ARCH_ESP32)
+#include <esp_heap_caps.h>
+#include <esp_system.h>
+#endif
+
+#ifndef STACKCHAN_ENABLE_SR_WAKE_PROBE
+#define STACKCHAN_ENABLE_SR_WAKE_PROBE 0
+#endif
+
+#if STACKCHAN_ENABLE_SR_WAKE_PROBE
+#include "sdkconfig.h"
+#if __has_include(<ESP_SR_M5Unified.h>) && defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3 && \
+    defined(CONFIG_MODEL_IN_FLASH) && CONFIG_MODEL_IN_FLASH
+#include <ESP_SR_M5Unified.h>
+#define STACKCHAN_HAS_SR_WAKE_PROBE 1
+#else
+#define STACKCHAN_HAS_SR_WAKE_PROBE 0
+#endif
+#else
+#define STACKCHAN_HAS_SR_WAKE_PROBE 0
+#endif
+
+#ifndef STACKCHAN_ENABLE_SR_WAKE_DIRECT
+#define STACKCHAN_ENABLE_SR_WAKE_DIRECT 0
+#endif
+
+#ifndef STACKCHAN_ENABLE_SR_WAKE_AFE_LITE
+#define STACKCHAN_ENABLE_SR_WAKE_AFE_LITE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_TASK_CORE
+#define STACKCHAN_SR_WAKE_DIRECT_TASK_CORE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_DIRECT_TASK_PRIORITY 1
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_COOLDOWN_MS
+#define STACKCHAN_SR_WAKE_DIRECT_COOLDOWN_MS 1500
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8
+#define STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8 256
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION
+#define STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION 2
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_STEREO
+#define STACKCHAN_SR_WAKE_DIRECT_STEREO 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_MONO_CHANNEL
+#define STACKCHAN_SR_WAKE_DIRECT_MONO_CHANNEL 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_MIC_INPUT_STEREO
+#define STACKCHAN_SR_WAKE_DIRECT_MIC_INPUT_STEREO 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_DET_MODE
+#define STACKCHAN_SR_WAKE_DIRECT_DET_MODE DET_MODE_90
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_DIRECT_RECORD_SAMPLES
+#define STACKCHAN_SR_WAKE_DIRECT_RECORD_SAMPLES 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_MIC_TASK_CORE
+#define STACKCHAN_SR_WAKE_MIC_TASK_CORE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY 2
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL
+#define STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_INIT_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_PROBE_INIT_TASK_PRIORITY 3
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_RUN_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_PROBE_RUN_TASK_PRIORITY 1
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_TASK_STACK_WORDS
+#define STACKCHAN_SR_WAKE_PROBE_TASK_STACK_WORDS 12288
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_USE_M5_MIC_DEFAULTS
+#define STACKCHAN_SR_WAKE_PROBE_USE_M5_MIC_DEFAULTS 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+#define STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_LISTEN_MS
+#define STACKCHAN_SR_WAKE_PROBE_LISTEN_MS 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_PROBE_REST_MS
+#define STACKCHAN_SR_WAKE_PROBE_REST_MS 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_CORE
+#define STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_CORE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_PRIORITY 1
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_CORE
+#define STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_CORE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_PRIORITY 1
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_CORE
+#define STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_CORE 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_PRIORITY
+#define STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_PRIORITY 1
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_STEREO
+#define STACKCHAN_SR_WAKE_AFE_LITE_STEREO 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_MONO_CHANNEL
+#define STACKCHAN_SR_WAKE_AFE_LITE_MONO_CHANNEL 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_MIC_INPUT_STEREO
+#define STACKCHAN_SR_WAKE_AFE_LITE_MIC_INPUT_STEREO 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_MIC_MAGNIFICATION
+#define STACKCHAN_SR_WAKE_AFE_LITE_MIC_MAGNIFICATION STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES
+#define STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_GAIN_Q8
+#define STACKCHAN_SR_WAKE_AFE_LITE_GAIN_Q8 256
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_DET_MODE
+#define STACKCHAN_SR_WAKE_AFE_LITE_DET_MODE DET_MODE_90
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_COOLDOWN_MS
+#define STACKCHAN_SR_WAKE_AFE_LITE_COOLDOWN_MS STACKCHAN_SR_WAKE_DIRECT_COOLDOWN_MS
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_DISABLE_EXTRA_ALGOS
+#define STACKCHAN_SR_WAKE_AFE_LITE_DISABLE_EXTRA_ALGOS 0
+#endif
+
+#ifndef STACKCHAN_SR_WAKE_AFE_LITE_HIGH_PERF
+#define STACKCHAN_SR_WAKE_AFE_LITE_HIGH_PERF 0
+#endif
+
+#ifndef STACKCHAN_ENABLE_MWW_WAKE_PROBE
+#define STACKCHAN_ENABLE_MWW_WAKE_PROBE 0
+#endif
+
+#ifndef STACKCHAN_ENABLE_PERIODIC_SERIAL_TELEMETRY
+#define STACKCHAN_ENABLE_PERIODIC_SERIAL_TELEMETRY 1
+#endif
+
+#ifndef STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+#define STACKCHAN_ENABLE_WAKE_SERIAL_LOGS 1
+#endif
+
+#ifndef STACKCHAN_ENABLE_BRIDGE_SERIAL_LOGS
+#define STACKCHAN_ENABLE_BRIDGE_SERIAL_LOGS 1
+#endif
+
+#ifndef STACKCHAN_ENABLE_MIC_ACTIVATION_CUE
+#define STACKCHAN_ENABLE_MIC_ACTIVATION_CUE 1
+#endif
+
+#ifndef STACKCHAN_BRIDGE_DEBUG_PORT
+#define STACKCHAN_BRIDGE_DEBUG_PORT 8789
+#endif
+
+#ifndef STACKCHAN_BRIDGE_DEBUG_REQUEST_TIMEOUT_MS
+#define STACKCHAN_BRIDGE_DEBUG_REQUEST_TIMEOUT_MS 40
+#endif
+
+#ifndef STACKCHAN_CHIP_TEMP_TELEMETRY_PERIOD_MS
+#define STACKCHAN_CHIP_TEMP_TELEMETRY_PERIOD_MS 2000
+#endif
+
+#ifndef STACKCHAN_POWER_TELEMETRY_PERIOD_MS
+#define STACKCHAN_POWER_TELEMETRY_PERIOD_MS 500
+#endif
+
+#ifndef STACKCHAN_ENABLE_POWER_FORENSICS
+#define STACKCHAN_ENABLE_POWER_FORENSICS 0
+#endif
+
+#ifndef STACKCHAN_BASE_USB_POWER_INPUT
+#define STACKCHAN_BASE_USB_POWER_INPUT 0
+#endif
+
+#ifndef STACKCHAN_CHARGE_CURRENT_MA
+#define STACKCHAN_CHARGE_CURRENT_MA 0
+#endif
+
+#ifndef STACKCHAN_LOW_INPUT_CHARGE_CURRENT_MA
+#define STACKCHAN_LOW_INPUT_CHARGE_CURRENT_MA 0
+#endif
+
+#ifndef STACKCHAN_ENABLE_BODY_POWER_MONITOR
+#define STACKCHAN_ENABLE_BODY_POWER_MONITOR 0
+#endif
+
+#ifndef STACKCHAN_BODY_POWER_TELEMETRY_PERIOD_MS
+#define STACKCHAN_BODY_POWER_TELEMETRY_PERIOD_MS 250
+#endif
+
+#ifndef STACKCHAN_INTENT_TASK_PRIORITY
+#define STACKCHAN_INTENT_TASK_PRIORITY 3
+#endif
+
+#ifndef STACKCHAN_MOTION_TASK_PRIORITY
+#define STACKCHAN_MOTION_TASK_PRIORITY 3
+#endif
+
+#ifndef STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS
+#define STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS 0
+#endif
+
+#ifndef STACKCHAN_MOTION_THERMAL_LOAD_SHED_C
+#define STACKCHAN_MOTION_THERMAL_LOAD_SHED_C 0
+#endif
+
+#ifndef STACKCHAN_MOTION_THERMAL_RESUME_C
+#define STACKCHAN_MOTION_THERMAL_RESUME_C 0
+#endif
+
+#ifndef STACKCHAN_MOTION_POWER_LOAD_SHED_MV
+#define STACKCHAN_MOTION_POWER_LOAD_SHED_MV 0
+#endif
+
+#ifndef STACKCHAN_MOTION_POWER_RESUME_MV
+#define STACKCHAN_MOTION_POWER_RESUME_MV 0
+#endif
+
+#ifndef STACKCHAN_MOTION_POWER_MIN_SUPPRESS_MS
+#define STACKCHAN_MOTION_POWER_MIN_SUPPRESS_MS 0
+#endif
+
+#ifndef STACKCHAN_MOTION_POWER_HARD_FLOOR_MV
+#define STACKCHAN_MOTION_POWER_HARD_FLOOR_MV STACKCHAN_MOTION_POWER_LOAD_SHED_MV
+#endif
+
+#ifndef STACKCHAN_MOTION_POWER_CHARGE_BACKED_CURRENT_MA
+#define STACKCHAN_MOTION_POWER_CHARGE_BACKED_CURRENT_MA 0
+#endif
+
+#ifndef STACKCHAN_FACE_TASK_PRIORITY
+#define STACKCHAN_FACE_TASK_PRIORITY 2
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_TASK_CORE
+#define STACKCHAN_MWW_WAKE_TASK_CORE 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_TASK_PRIORITY
+#define STACKCHAN_MWW_WAKE_TASK_PRIORITY 1
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_TASK_STACK_WORDS
+#define STACKCHAN_MWW_WAKE_TASK_STACK_WORDS 12288
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_RECORD_SAMPLES
+#define STACKCHAN_MWW_WAKE_RECORD_SAMPLES 160
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE
+#define STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE 16000
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_DC_CORRECT
+#define STACKCHAN_MWW_WAKE_DC_CORRECT 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_ES7210_GAIN_REG
+#define STACKCHAN_MWW_WAKE_ES7210_GAIN_REG -1
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_HIGHPASS_Q15
+#define STACKCHAN_MWW_WAKE_HIGHPASS_Q15 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_PROBABILITY_CUTOFF
+#define STACKCHAN_MWW_WAKE_PROBABILITY_CUTOFF 217
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_PEAK_PROBABILITY_CUTOFF
+#define STACKCHAN_MWW_WAKE_PEAK_PROBABILITY_CUTOFF 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_DIAG_INTERVAL
+#define STACKCHAN_MWW_WAKE_DIAG_INTERVAL 500
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_RESET_MODEL_ON_VALIDATION
+#define STACKCHAN_MWW_WAKE_RESET_MODEL_ON_VALIDATION 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_COOLDOWN_MS
+#define STACKCHAN_MWW_WAKE_COOLDOWN_MS 1500
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_STARTUP_SUPPRESSION_MS
+#define STACKCHAN_MWW_WAKE_STARTUP_SUPPRESSION_MS 4000
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_MIC_MAGNIFICATION
+#define STACKCHAN_MWW_WAKE_MIC_MAGNIFICATION 2
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_MIC_INPUT_STEREO
+#define STACKCHAN_MWW_WAKE_MIC_INPUT_STEREO 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_RECORD_STEREO
+#define STACKCHAN_MWW_WAKE_RECORD_STEREO 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_MONO_CHANNEL
+#define STACKCHAN_MWW_WAKE_MONO_CHANNEL 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_STEREO_MONO_CHANNEL
+#define STACKCHAN_MWW_WAKE_STEREO_MONO_CHANNEL 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_USE_M5_MODEL
+#define STACKCHAN_MWW_WAKE_USE_M5_MODEL 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_USE_HI_STACKCHAN_MODEL
+#define STACKCHAN_MWW_WAKE_USE_HI_STACKCHAN_MODEL 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
+#define STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK 0
+#endif
+
+#ifndef STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+#define STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE 0
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES
+#define STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES 1600
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_UPLINK_QUEUE_DEPTH
+#define STACKCHAN_MWW_WAKE_UPLINK_QUEUE_DEPTH 3
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS
+#define STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS 40
+#endif
+
+#ifndef STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_DELAY_MS
+#define STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_DELAY_MS 3
+#endif
+
+#ifndef STACKCHAN_SPEAKER_MAGNIFICATION
+#define STACKCHAN_SPEAKER_MAGNIFICATION 16
+#endif
+
+#ifndef STACKCHAN_VOICE_MASTER_VOLUME
+#define STACKCHAN_VOICE_MASTER_VOLUME 150
+#endif
+
+#ifndef STACKCHAN_VOICE_CHANNEL_VOLUME
+#define STACKCHAN_VOICE_CHANNEL_VOLUME 255
+#endif
+
+#ifndef STACKCHAN_VOICE_DUCKED_CHANNEL_VOLUME
+#define STACKCHAN_VOICE_DUCKED_CHANNEL_VOLUME 84
+#endif
+
+#ifndef STACKCHAN_ENABLE_BRIDGE_AUDIO_DOWNLINK_PLAYBACK
+#define STACKCHAN_ENABLE_BRIDGE_AUDIO_DOWNLINK_PLAYBACK 0
+#endif
+
+#ifndef STACKCHAN_BRIDGE_AUDIO_DOWNLINK_BUFFER_BYTES
+#define STACKCHAN_BRIDGE_AUDIO_DOWNLINK_BUFFER_BYTES 65536
+#endif
+
+#ifndef STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
+#define STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK 0
+#endif
+
+#ifndef STACKCHAN_BRIDGE_AUDIO_STREAMING_BUFFER_COUNT
+#define STACKCHAN_BRIDGE_AUDIO_STREAMING_BUFFER_COUNT 3
+#endif
+
+#ifndef STACKCHAN_REMOTE_RECOVERY_ENABLE
+#define STACKCHAN_REMOTE_RECOVERY_ENABLE STACKCHAN_ENABLE_WIFI_BRIDGE
+#endif
+
+#ifndef STACKCHAN_RECOVERY_WIFI_RESTART_MS
+#define STACKCHAN_RECOVERY_WIFI_RESTART_MS 90000
+#endif
+
+#ifndef STACKCHAN_RECOVERY_BRIDGE_RESTART_MS
+#define STACKCHAN_RECOVERY_BRIDGE_RESTART_MS 120000
+#endif
+
+#ifndef STACKCHAN_RECOVERY_REBOOT_MS
+#define STACKCHAN_RECOVERY_REBOOT_MS 600000
+#endif
+
+#ifndef STACKCHAN_RECOVERY_RESTART_COOLDOWN_MS
+#define STACKCHAN_RECOVERY_RESTART_COOLDOWN_MS 60000
+#endif
+
+#ifndef STACKCHAN_REMOTE_REBOOT_DELAY_MS
+#define STACKCHAN_REMOTE_REBOOT_DELAY_MS 350
+#endif
+
+#ifndef STACKCHAN_REMOTE_RECOVERY_DELAY_MS
+#define STACKCHAN_REMOTE_RECOVERY_DELAY_MS 750
+#endif
+
+#if STACKCHAN_ENABLE_SR_WAKE_DIRECT
+#include "sdkconfig.h"
+#if __has_include(<esp_wn_models.h>) && __has_include(<model_path.h>) && defined(CONFIG_IDF_TARGET_ESP32S3) && \
+    CONFIG_IDF_TARGET_ESP32S3 && defined(CONFIG_MODEL_IN_FLASH) && CONFIG_MODEL_IN_FLASH
+#include <esp_heap_caps.h>
+#include <esp_wn_iface.h>
+#include <esp_wn_models.h>
+#include <model_path.h>
+#define STACKCHAN_HAS_SR_WAKE_DIRECT 1
+#else
+#define STACKCHAN_HAS_SR_WAKE_DIRECT 0
+#endif
+#else
+#define STACKCHAN_HAS_SR_WAKE_DIRECT 0
+#endif
+
+#if STACKCHAN_ENABLE_SR_WAKE_AFE_LITE
+#include "sdkconfig.h"
+#if __has_include(<esp_afe_config.h>) && __has_include(<esp_afe_sr_iface.h>) && \
+        __has_include(<esp_afe_sr_models.h>) && __has_include(<model_path.h>) && \
+    defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3 && defined(CONFIG_MODEL_IN_FLASH) && \
+    CONFIG_MODEL_IN_FLASH
+#include <esp_afe_config.h>
+#include <esp_afe_sr_iface.h>
+#include <esp_afe_sr_models.h>
+#include <esp_err.h>
+#include <esp_heap_caps.h>
+#include <model_path.h>
+#define STACKCHAN_HAS_SR_WAKE_AFE_LITE 1
+#else
+#define STACKCHAN_HAS_SR_WAKE_AFE_LITE 0
+#endif
+#else
+#define STACKCHAN_HAS_SR_WAKE_AFE_LITE 0
+#endif
+
+#if STACKCHAN_ENABLE_MWW_WAKE_PROBE
+#include "sdkconfig.h"
+#if __has_include("wake/MicroWakeWordProbe.hpp") && __has_include("wake/HeyStackchanV1Model.hpp") && \
+    __has_include(<frontend.h>) && __has_include(<tensorflow/lite/micro/micro_interpreter.h>) && \
+    defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
+#include "wake/HeyStackchanV1Model.hpp"
+#if __has_include("wake/HiStackchanModel.hpp")
+#include "wake/HiStackchanModel.hpp"
+#define STACKCHAN_HAS_MWW_HI_STACKCHAN_MODEL 1
+#else
+#define STACKCHAN_HAS_MWW_HI_STACKCHAN_MODEL 0
+#endif
+#if __has_include("wake/HeyM5V3Model.hpp")
+#include "wake/HeyM5V3Model.hpp"
+#define STACKCHAN_HAS_MWW_M5_MODEL 1
+#else
+#define STACKCHAN_HAS_MWW_M5_MODEL 0
+#endif
+#include "wake/MicroWakeWordProbe.hpp"
+#define STACKCHAN_HAS_MWW_WAKE_PROBE 1
+#else
+#define STACKCHAN_HAS_MWW_HI_STACKCHAN_MODEL 0
+#define STACKCHAN_HAS_MWW_M5_MODEL 0
+#define STACKCHAN_HAS_MWW_WAKE_PROBE 0
+#endif
+#else
+#define STACKCHAN_HAS_MWW_HI_STACKCHAN_MODEL 0
+#define STACKCHAN_HAS_MWW_M5_MODEL 0
+#define STACKCHAN_HAS_MWW_WAKE_PROBE 0
+#endif
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
@@ -34,6 +557,8 @@
 #include "motion/ActuationEngine.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/StateMatrix.hpp"
+#include "power/PowerCoordinator.hpp"
+#include "power/PowerForensics.hpp"
 
 #if __has_include("FirmwareVoiceAssets.hpp")
 #include "FirmwareVoiceAssets.hpp"
@@ -86,18 +611,325 @@ uint16_t gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
 #if defined(ARDUINO_ARCH_ESP32)
 BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
 BridgeWiFiProvisioningPreferencesStore gBridgeWiFiStoreBackend;
-WiFiServer gBridgeDebugServer(8789);
+WiFiServer gBridgeDebugServer(STACKCHAN_BRIDGE_DEBUG_PORT);
 bool gBridgeDebugServerStarted = false;
+RTC_DATA_ATTR uint32_t gRtcBootCount = 0;
+esp_reset_reason_t gBootResetReason = ESP_RST_UNKNOWN;
+bool gChipTemperatureValid = false;
+float gChipTemperatureC = 0.0f;
+float gChipTemperatureMaxC = 0.0f;
+uint32_t gChipTemperatureSamples = 0;
+uint32_t gChipTemperatureReadFailures = 0;
+uint32_t gChipTemperatureLastReadMs = 0;
+bool gPowerTelemetryValid = false;
+bool gPowerVbusValid = false;
+int16_t gPowerVbusMv = -1;
+int16_t gPowerVbusMinMv = 0;
+int16_t gPowerVbusMaxMv = 0;
+uint32_t gPowerVbusRejectedSamples = 0;
+int16_t gPowerVbusLastRejectedMv = -1;
+bool gPowerPmicVbusPresentValid = false;
+bool gPowerPmicVbusPresent = false;
+uint32_t gPowerPmicVbusPresentSamples = 0;
+uint32_t gPowerPmicVbusAbsentSamples = 0;
+uint32_t gPowerPmicVbusTransitions = 0;
+uint32_t gPowerPmicVbusLossEntries = 0;
+uint32_t gPowerPmicVbusLastTransitionMs = 0;
+bool gPowerPmicBatteryPresentValid = false;
+bool gPowerPmicBatteryPresent = false;
+bool gPowerPmicTemperatureValid = false;
+float gPowerPmicTemperatureC = 0.0f;
+float gPowerPmicTemperatureMaxC = 0.0f;
+bool gPowerBatteryValid = false;
+int16_t gPowerBatteryMv = -1;
+int16_t gPowerBatteryMinMv = 0;
+int16_t gPowerBatteryMaxMv = 0;
+uint32_t gPowerBatteryRejectedSamples = 0;
+int16_t gPowerBatteryLastRejectedMv = -1;
+int32_t gPowerBatteryLevel = -1;
+int32_t gPowerChargingState = -1;
+uint32_t gPowerTelemetrySamples = 0;
+uint32_t gPowerTelemetryReadFailures = 0;
+uint32_t gPowerTelemetryLastReadMs = 0;
+bool gBaseInputModeConfigured = false;
+bool gBatteryChargeConfigured = false;
+bool gExternalOutputEnabled = false;
+uint16_t gAppliedChargeCurrentMa = 0;
+uint32_t gChargeCurrentTransitions = 0;
+uint32_t gChargeCurrentLastChangeMs = 0;
+#if STACKCHAN_ENABLE_BODY_POWER_MONITOR && STACKCHAN_HAS_INA226_MONITOR
+m5::INA226_Class* gBodyPowerMonitor = nullptr;
+#endif
+bool gBodyPowerMonitorReady = false;
+bool gBodyPowerTelemetryValid = false;
+float gBodyPowerBusV = 0.0f;
+float gBodyPowerBusMinV = 0.0f;
+float gBodyPowerBusMaxV = 0.0f;
+float gBodyPowerCurrentMa = 0.0f;
+float gBodyPowerCurrentMinMa = 0.0f;
+float gBodyPowerCurrentMaxMa = 0.0f;
+float gBodyPowerMw = 0.0f;
+uint32_t gBodyPowerTelemetrySamples = 0;
+uint32_t gBodyPowerTelemetryReadFailures = 0;
+uint32_t gBodyPowerTelemetryLastReadMs = 0;
+bool gMotionThermalSuppressed = false;
+uint32_t gMotionThermalSuppressEntries = 0;
+bool gMotionPowerSuppressed = false;
+uint32_t gMotionPowerSuppressEntries = 0;
+uint32_t gMotionPowerSuppressedAtMs = 0;
+bool gMotionPowerChargeBacked = false;
+uint32_t gMotionPowerChargeBackedSamples = 0;
 #else
 BridgeEndpointMemoryStore gBridgeEndpointStoreBackend;
 BridgeWiFiProvisioningMemoryStore gBridgeWiFiStoreBackend;
 #endif
+
+struct BridgeRecoveryTelemetry {
+  bool recoveryRequested = false;
+  bool rebootRequested = false;
+  uint32_t wifiOfflineSinceMs = 0;
+  uint32_t bridgeOfflineSinceMs = 0;
+  uint32_t lastRecoveryMs = 0;
+  uint32_t scheduledRecoveryMs = 0;
+  uint32_t scheduledRebootMs = 0;
+  uint32_t wifiRestarts = 0;
+  uint32_t bridgeRestarts = 0;
+  uint32_t rebootRequests = 0;
+  const char* lastReason = "";
+};
+
+BridgeRecoveryTelemetry gBridgeRecovery;
+PowerCoordinator gPowerCoordinator;
+PowerFloorTracker gPowerFloorTracker;
+#if STACKCHAN_ENABLE_POWER_FORENSICS
+PmicPowerForensics gPmicPowerForensics;
+#endif
+volatile bool gMotionRequested = STACKCHAN_MOTION_ENABLED_AT_BOOT != 0;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
 TaskHandle_t gMotionTaskHandle = nullptr;
 TaskHandle_t gFaceTaskHandle = nullptr;
 TaskHandle_t gIntentTaskHandle = nullptr;
+TaskHandle_t gWakeSrTaskHandle = nullptr;
+TaskHandle_t gWakeSrFeedTaskHandle = nullptr;
+
+struct WakeSrProbeTelemetry {
+  bool enabled = (STACKCHAN_ENABLE_SR_WAKE_PROBE != 0) || (STACKCHAN_ENABLE_SR_WAKE_DIRECT != 0) ||
+                 (STACKCHAN_ENABLE_SR_WAKE_AFE_LITE != 0) || (STACKCHAN_ENABLE_MWW_WAKE_PROBE != 0);
+  bool wrapperEnabled = STACKCHAN_ENABLE_SR_WAKE_PROBE != 0;
+  bool directEnabled = STACKCHAN_ENABLE_SR_WAKE_DIRECT != 0;
+  bool afeLiteEnabled = STACKCHAN_ENABLE_SR_WAKE_AFE_LITE != 0;
+  bool mwwEnabled = STACKCHAN_ENABLE_MWW_WAKE_PROBE != 0;
+  bool compiled = (STACKCHAN_HAS_SR_WAKE_PROBE != 0) || (STACKCHAN_HAS_SR_WAKE_DIRECT != 0) ||
+                  (STACKCHAN_HAS_SR_WAKE_AFE_LITE != 0) || (STACKCHAN_HAS_MWW_WAKE_PROBE != 0);
+  bool directCompiled = STACKCHAN_HAS_SR_WAKE_DIRECT != 0;
+  bool afeLiteCompiled = STACKCHAN_HAS_SR_WAKE_AFE_LITE != 0;
+  bool mwwCompiled = STACKCHAN_HAS_MWW_WAKE_PROBE != 0;
+  bool taskStarted = false;
+  bool micReady = false;
+  bool srReady = false;
+  uint32_t beginAttempts = 0;
+  uint32_t beginFailures = 0;
+  uint32_t recordOk = 0;
+  uint32_t recordDrops = 0;
+  uint32_t samplesFed = 0;
+  uint32_t detectCalls = 0;
+  uint32_t detectNonzero = 0;
+  uint32_t detectChannelVerified = 0;
+  int32_t lastDetectResult = 0;
+  uint32_t chunkSamples = 0;
+  uint32_t recordSamples = 0;
+  uint32_t audioChannels = 1;
+  uint32_t sampleRate = 0;
+  uint32_t detectMode = 0;
+  uint32_t micMagnification = STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION;
+  uint32_t monoChannel = STACKCHAN_SR_WAKE_DIRECT_MONO_CHANNEL;
+  bool micInputStereo = STACKCHAN_SR_WAKE_DIRECT_MIC_INPUT_STEREO != 0;
+  int32_t micTaskCore = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+  uint32_t micTaskPriority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  uint32_t micNoiseFilterLevel = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  bool stereo = STACKCHAN_SR_WAKE_DIRECT_STEREO != 0;
+  uint32_t detectAvgUs = 0;
+  uint32_t detectMaxUs = 0;
+  uint32_t audioGainQ8 = STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8;
+  uint32_t audioPeak = 0;
+  uint32_t audioPeakMax = 0;
+  uint32_t audioPeakWindowMax = 0;
+  uint32_t audioMeanAbs = 0;
+  uint32_t audioMeanAbsMax = 0;
+  uint32_t audioMeanAbsWindowMax = 0;
+  uint32_t audioWindowStartMs = 0;
+  uint32_t audioWindowMs = 0;
+  uint32_t audioPeakLeft = 0;
+  uint32_t audioPeakRight = 0;
+  uint32_t audioMeanAbsLeft = 0;
+  uint32_t audioMeanAbsRight = 0;
+  uint32_t audioClips = 0;
+  uint32_t mwwFeatures = 0;
+  uint32_t mwwInferences = 0;
+  uint32_t mwwDetections = 0;
+  uint32_t mwwInvokeErrors = 0;
+  uint32_t mwwFeatureErrors = 0;
+  uint32_t mwwLastProbability = 0;
+  uint32_t mwwMaxProbability = 0;
+  uint32_t mwwAverageProbability = 0;
+  uint32_t mwwMaxAverageProbability = 0;
+  uint32_t mwwProbabilityCutoff = 0;
+  uint32_t mwwSlidingWindowSize = 0;
+  uint32_t mwwLastDetectionProbability = 0;
+  uint32_t mwwLastDetectionAverageProbability = 0;
+  uint32_t mwwMaxDetectionAverageProbability = 0;
+  int32_t mwwLastFeatureMin = 0;
+  int32_t mwwLastFeatureMax = 0;
+  int32_t mwwMinFeatureSeen = 0;
+  int32_t mwwMaxFeatureSeen = 0;
+  uint32_t mwwLastInferenceUs = 0;
+  uint32_t mwwMaxInferenceUs = 0;
+  uint32_t mwwArenaUsedBytes = 0;
+  uint32_t mwwModelStride = 0;
+  uint32_t wakeDetections = 0;
+  uint32_t wakeEventsApplied = 0;
+  uint32_t lastRecordMs = 0;
+  uint32_t lastWakeMs = 0;
+  bool audioPauseRequested = false;
+  bool audioPaused = false;
+  uint32_t audioPauseRequests = 0;
+  uint32_t audioPauseEnters = 0;
+  uint32_t audioResumeRequests = 0;
+  uint32_t audioResumes = 0;
+  uint32_t audioPauseFailures = 0;
+  uint32_t audioLastPauseMs = 0;
+  uint32_t audioLastResumeMs = 0;
+  char modelName[64] = {};
+  char wakeWord[64] = {};
+  char lastError[48] = {};
+};
+
+WakeSrProbeTelemetry gWakeSrProbe;
+
+#if STACKCHAN_HAS_SR_WAKE_PROBE
+portMUX_TYPE gWakeSrMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t gWakeSrPendingDetections = 0;
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_DIRECT
+portMUX_TYPE gWakeSrDirectMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t gWakeSrDirectPendingDetections = 0;
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_AFE_LITE
+portMUX_TYPE gWakeSrAfeLiteMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t gWakeSrAfeLitePendingDetections = 0;
+
+struct WakeSrAfeLiteRuntime {
+  const esp_afe_sr_iface_t* afeHandle = nullptr;
+  esp_afe_sr_data_t* afeData = nullptr;
+  srmodel_list_t* models = nullptr;
+  int feedChunkSamples = 0;
+  int feedChannels = 0;
+  int sampleRate = 16000;
+};
+
+WakeSrAfeLiteRuntime gWakeSrAfeLiteRuntime;
+#endif
+
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+portMUX_TYPE gWakeMwwMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t gWakeMwwPendingDetections = 0;
+MicroWakeWordProbe gMicroWakeWordProbe;
+constexpr size_t kWakeMwwPcmRingSamples = 24000;
+int16_t* gWakeMwwPcmRing = nullptr;
+volatile uint32_t gWakeMwwPcmWriteIndex = 0;
+volatile uint32_t gWakeMwwPcmAvailable = 0;
+volatile uint32_t gWakeMwwPcmSequence = 0;
+volatile uint32_t gWakeMwwSuppressUntilMs = 0;
+volatile bool gWakeMwwResetRequested = false;
+volatile bool gWakeMwwInteractionLatched = false;
+volatile uint32_t gWakeMwwInteractionLatchedAtMs = 0;
+volatile bool gWakeMwwAudioPauseRequested = false;
+volatile bool gWakeMwwAudioPaused = false;
+#if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
+struct WakeMwwUplinkChunk {
+  uint32_t capturedAtMs = 0;
+  uint16_t sampleCount = 0;
+  int16_t samples[STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES] {};
+};
+
+WakeMwwUplinkChunk gWakeMwwUplinkPending;
+volatile bool gWakeMwwUplinkPendingReady = false;
+volatile uint32_t gWakeMwwUplinkQueued = 0;
+volatile uint32_t gWakeMwwUplinkDropped = 0;
+volatile uint32_t gWakeMwwUplinkSubmitted = 0;
+volatile uint32_t gWakeMwwUplinkSubmitFailed = 0;
+volatile uint32_t gWakeMwwUplinkReset = 0;
+#endif
+bool ensureWakeMwwUplinkQueue();
+void resetWakeMwwUplinkQueue();
+void queueWakeMwwUplinkAudio(const int16_t* samples, size_t sampleCount, uint32_t capturedAtMs);
+void drainWakeMwwUplinkQueue(uint32_t nowMs);
+#endif
+bool requestWakeMwwAudioPause(uint32_t nowMs, uint32_t timeoutMs);
+void releaseWakeMwwAudioPause(uint32_t nowMs);
+
+bool gWakeSrStartAttempted = false;
+bool gWakeSrStartOk = true;
+
+bool requestWakeMwwAudioPause(uint32_t nowMs, uint32_t timeoutMs) {
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  if (!gWakeSrProbe.mwwEnabled) {
+    return true;
+  }
+  if (!gWakeMwwAudioPauseRequested) {
+    gWakeSrProbe.audioPauseRequests++;
+  }
+  gWakeMwwAudioPauseRequested = true;
+  gWakeSrProbe.audioPauseRequested = true;
+  if (!gWakeSrProbe.taskStarted || gWakeMwwAudioPaused) {
+    return true;
+  }
+
+  const uint32_t startMs = nowMs != 0 ? nowMs : millis();
+  while (!gWakeMwwAudioPaused) {
+    const uint32_t currentMs = millis();
+    if (timeoutMs == 0 || currentMs - startMs >= timeoutMs) {
+      gWakeMwwAudioPauseRequested = false;
+      gWakeSrProbe.audioPauseRequested = false;
+      gWakeSrProbe.audioPauseFailures++;
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  return true;
+#else
+  (void)nowMs;
+  (void)timeoutMs;
+  return true;
+#endif
+}
+
+void releaseWakeMwwAudioPause(uint32_t nowMs) {
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  (void)nowMs;
+  if (!gWakeSrProbe.mwwEnabled) {
+    return;
+  }
+  if (gWakeMwwAudioPauseRequested || gWakeMwwAudioPaused) {
+    gWakeSrProbe.audioResumeRequests++;
+  }
+  gWakeMwwAudioPauseRequested = false;
+  gWakeSrProbe.audioPauseRequested = false;
+#else
+  (void)nowMs;
+#endif
+}
+
+void applyWakeEventFromLocalSource(
+    const RobotEvent& event,
+    CharacterMode mode,
+    const __FlashStringHelper* source,
+    uint32_t count,
+    uint32_t nowMs);
 
 struct FaceSpeechInput {
   bool clear = false;
@@ -120,31 +952,15 @@ struct MotionControlInput {
 class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlinkSink {
  public:
   bool begin() override {
-    auto speakerConfig = M5.Speaker.config();
-    speakerConfig.magnification = 16;
-    M5.Speaker.config(speakerConfig);
-    if (!M5.Speaker.begin()) {
+    if (!startSpeakerHardware()) {
       ready_ = false;
       return false;
     }
-    if (streamQueue_ == nullptr) {
-      streamQueue_ = xQueueCreate(kStreamQueueDepth, sizeof(StreamQueueItem));
-    }
-    if (streamQueue_ == nullptr) {
-      ready_ = false;
-      return false;
-    }
-    if (streamTaskHandle_ == nullptr) {
-      BaseType_t ok = xTaskCreatePinnedToCore(
-          StreamPlaybackTask, "StreamAudio", 6144, this, 4, &streamTaskHandle_, 1);
-      if (ok != pdPASS) {
-        ready_ = false;
-        return false;
-      }
-    }
-    M5.Speaker.setVolume(150);
-    M5.Speaker.setChannelVolume(kChannel, 255);
+    M5.Speaker.setVolume(kVoiceMasterVolume);
+    M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
+    renderMicCue(false);
     ready_ = true;
+    powerDownSpeakerHardware();
     return true;
   }
 
@@ -154,6 +970,12 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     if (!ready_) {
       return false;
     }
+    const uint32_t nowMs = millis();
+    if (!prepareSpeakerPlayback(nowMs)) {
+      return false;
+    }
+    M5.Speaker.setVolume(kVoiceMasterVolume);
+    M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
     M5.Speaker.stop(kChannel);
     active_ = true;
     phase_ = 0;
@@ -163,7 +985,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     const firmware_voice::FirmwareVoiceAsset* asset = firmware_voice::find(request.wavPath);
     if (asset != nullptr) {
       wavActive_ = M5.Speaker.playWav(asset->data, asset->size, 1, kChannel, true);
-      M5.Speaker.setChannelVolume(kChannel, 255);
+      M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
     } else {
       wavActive_ = false;
     }
@@ -183,70 +1005,126 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     }
 
     if (wavActive_) {
-      M5.Speaker.setChannelVolume(kChannel, frame.ducked ? 84 : 255);
+      M5.Speaker.setChannelVolume(
+          kChannel,
+          frame.ducked ? kVoiceDuckedChannelVolume : kVoiceChannelVolume);
       return true;
     }
 
     renderFrame(frame);
-    return M5.Speaker.playRaw(samples_, kSamplesPerFrame, kSampleRate, false, 1, kChannel, false);
+    const bool ok = M5.Speaker.playRaw(samples_, kSamplesPerFrame, kSampleRate, false, 1, kChannel, false);
+    if (!ok) {
+      stop();
+    }
+    return ok;
   }
 
   bool start(const BridgeAudioStream& stream, uint32_t nowMs) override {
-    (void)nowMs;
     if (!ready_) {
       return false;
     }
-    M5.Speaker.stop(kChannel);
-    if (streamQueue_ != nullptr) {
-      xQueueReset(streamQueue_);
+#if !STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
+    const uint32_t requestedBytes =
+        stream.audioBytes > 0 ? stream.audioBytes : STACKCHAN_BRIDGE_AUDIO_DOWNLINK_BUFFER_BYTES;
+    if (requestedBytes > STACKCHAN_BRIDGE_AUDIO_DOWNLINK_BUFFER_BYTES ||
+        !ensureDownlinkBuffer(requestedBytes)) {
+      return false;
     }
+#endif
+    if (!prepareSpeakerPlayback(nowMs)) {
+      return false;
+    }
+    M5.Speaker.setVolume(kVoiceMasterVolume);
+    M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
+    M5.Speaker.stop(kChannel);
     active_ = false;
     wavActive_ = false;
     downlinkActive_ = true;
     downlinkSampleRate_ = stream.sampleRate >= 8000 && stream.sampleRate <= 48000 ? stream.sampleRate : kSampleRate;
-    M5.Speaker.setChannelVolume(kChannel, 255);
+    downlinkBufferedBytes_ = 0;
+    downlinkBufferedChunks_ = 0;
+    downlinkExpectedBytes_ = stream.audioBytes;
+    downlinkExpectedChunks_ = stream.chunks;
+    downlinkStartedAtMs_ = nowMs;
+    downlinkFirstChunkQueuedAtMs_ = 0;
+    downlinkQueuedAudioMs_ = 0;
+    downlinkNextStreamingBuffer_ = 0;
+    M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
     return true;
   }
 
   bool writeChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs) override {
-    (void)nowMs;
     if (!ready_ || !downlinkActive_ || chunk.payload == nullptr || chunk.payloadBytes < 2) {
       return false;
     }
 
-    if (streamQueue_ == nullptr) {
+#if STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
+    if ((chunk.payloadBytes & 1u) != 0 || chunk.payloadBytes > kBridgeAudioStreamChunkPayloadMax ||
+        downlinkSampleRate_ == 0) {
       return false;
     }
-    queueItem_.sampleRate = downlinkSampleRate_;
-    queueItem_.bytes = min(static_cast<uint16_t>(chunk.payloadBytes), static_cast<uint16_t>(kBridgeAudioStreamChunkPayloadMax));
-    memcpy(queueItem_.payload, chunk.payload, queueItem_.bytes);
-    return xQueueSend(streamQueue_, &queueItem_, 0) == pdTRUE;
-  }
 
-  void runStreamPlaybackTask() {
-    while (true) {
-      if (streamQueue_ == nullptr ||
-          xQueueReceive(streamQueue_, &streamTaskItem_, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        continue;
-      }
-      const size_t sampleCount = min(static_cast<size_t>(streamTaskItem_.bytes / 2u), kMaxStreamSamples);
-      int16_t* streamSamples = streamSamples_[downlinkBufferIndex_];
-      downlinkBufferIndex_ = (downlinkBufferIndex_ + 1u) % kStreamBufferCount;
-      for (size_t i = 0; i < sampleCount; ++i) {
-        const uint8_t lo = streamTaskItem_.payload[i * 2u];
-        const uint8_t hi = streamTaskItem_.payload[i * 2u + 1u];
-        streamSamples[i] = static_cast<int16_t>(static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8));
-      }
-      streamTaskChunks_++;
-      streamTaskBytes_ += streamTaskItem_.bytes;
-      streamLastSampleCount_ = static_cast<uint32_t>(sampleCount);
-      streamLastSampleRate_ = streamTaskItem_.sampleRate;
-      if (M5.Speaker.playRaw(streamSamples, sampleCount, streamTaskItem_.sampleRate, false, 1, kChannel, false)) {
-        streamPlayRawOk_++;
-      } else {
-        streamPlayRawFailed_++;
-      }
+    const uint32_t copyBytes = chunk.payloadBytes;
+    const size_t sampleCount = static_cast<size_t>(copyBytes / 2u);
+    int16_t* buffer = downlinkStreamingBuffers_[downlinkNextStreamingBuffer_];
+    memcpy(buffer, chunk.payload, copyBytes);
+
+    const uint32_t queueStartedUs = micros();
+    const bool ok = M5.Speaker.playRaw(
+        buffer,
+        sampleCount,
+        downlinkSampleRate_,
+        false,
+        1,
+        kChannel,
+        false);
+    const uint32_t queueWaitUs = micros() - queueStartedUs;
+    if (queueWaitUs > streamQueueWaitMaxUs_) {
+      streamQueueWaitMaxUs_ = queueWaitUs;
     }
+    if (!ok) {
+      streamPlayRawFailed_++;
+      return false;
+    }
+
+    const uint32_t queuedAtMs = millis();
+    if (downlinkBufferedChunks_ == 0) {
+      downlinkFirstChunkQueuedAtMs_ = queuedAtMs;
+      streamLastFirstChunkDelayMs_ = queuedAtMs - downlinkStartedAtMs_;
+    }
+    const uint32_t durationMs = static_cast<uint32_t>(
+        (static_cast<uint64_t>(sampleCount) * 1000ull + downlinkSampleRate_ - 1u) /
+        downlinkSampleRate_);
+    if (UINT32_MAX - downlinkQueuedAudioMs_ < durationMs) {
+      downlinkQueuedAudioMs_ = UINT32_MAX;
+    } else {
+      downlinkQueuedAudioMs_ += durationMs;
+    }
+    downlinkNextStreamingBuffer_ =
+        (downlinkNextStreamingBuffer_ + 1u) % STACKCHAN_BRIDGE_AUDIO_STREAMING_BUFFER_COUNT;
+    downlinkBufferedBytes_ += copyBytes;
+    downlinkBufferedChunks_++;
+    streamTaskChunks_++;
+    streamTaskBytes_ += copyBytes;
+    streamPlayRawOk_++;
+    streamLastSampleCount_ = static_cast<uint32_t>(sampleCount);
+    streamLastSampleRate_ = downlinkSampleRate_;
+    return true;
+#else
+    (void)nowMs;
+    if (downlinkBuffer_ == nullptr || downlinkBufferedBytes_ > downlinkBufferCapacity_ ||
+        chunk.payloadBytes > downlinkBufferCapacity_ - downlinkBufferedBytes_) {
+      return false;
+    }
+
+    const uint32_t copyBytes = min(chunk.payloadBytes, static_cast<uint32_t>(kBridgeAudioStreamChunkPayloadMax));
+    memcpy(downlinkBuffer_ + downlinkBufferedBytes_, chunk.payload, copyBytes);
+    downlinkBufferedBytes_ += copyBytes;
+    downlinkBufferedChunks_++;
+    streamTaskChunks_++;
+    streamTaskBytes_ += copyBytes;
+    return true;
+#endif
   }
 
   void stop() override {
@@ -254,17 +1132,61 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       return;
     }
     M5.Speaker.stop(kChannel);
-    if (streamQueue_ != nullptr) {
-      xQueueReset(streamQueue_);
-    }
     active_ = false;
     wavActive_ = false;
     downlinkActive_ = false;
+    releaseAudioHardware(millis());
+  }
+
+  bool finish(uint32_t nowMs) override {
+    if (!ready_) {
+      return false;
+    }
+    if (!downlinkActive_) {
+      return true;
+    }
+#if STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
+    const bool ok = finishStreamingDownlink(nowMs);
+#else
+    const bool ok = playBufferedDownlink(nowMs);
+#endif
+    downlinkActive_ = false;
+    downlinkBufferedBytes_ = 0;
+    downlinkBufferedChunks_ = 0;
+    return ok;
   }
 
   void stop(uint32_t nowMs) override {
-    (void)nowMs;
+    if (!ready_) {
+      return;
+    }
+    M5.Speaker.stop(kChannel);
     downlinkActive_ = false;
+    releaseAudioHardware(nowMs);
+  }
+
+  void service(uint32_t nowMs) {
+    if (micCueRestoreAtMs_ != 0 && static_cast<int32_t>(nowMs - micCueRestoreAtMs_) >= 0) {
+      M5.Speaker.setVolume(kVoiceMasterVolume);
+      M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
+      micCueRestoreAtMs_ = 0;
+    }
+    if (audioPauseHeld_ && audioPauseReleaseAtMs_ != 0 &&
+        static_cast<int32_t>(nowMs - audioPauseReleaseAtMs_) >= 0) {
+      if (M5.Speaker.isPlaying(kChannel) != 0) {
+#if STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
+        if (audioPauseForceReleaseAtMs_ == 0 ||
+            static_cast<int32_t>(nowMs - audioPauseForceReleaseAtMs_) < 0) {
+          streamReleaseDeferrals_++;
+          audioPauseReleaseAtMs_ = nowMs + kStreamingDrainPollMs;
+          return;
+        }
+        streamForcedStops_++;
+#endif
+        M5.Speaker.stop(kChannel);
+      }
+      releaseAudioHardware(nowMs);
+    }
   }
 
   bool isReady() const override {
@@ -276,14 +1198,87 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       diagnosticToneFailed_++;
       return false;
     }
+    const uint32_t nowMs = millis();
+    if (!prepareSpeakerPlayback(nowMs)) {
+      diagnosticToneFailed_++;
+      return false;
+    }
     M5.Speaker.stop(kChannel);
-    M5.Speaker.setVolume(150);
-    M5.Speaker.setChannelVolume(kChannel, 255);
+    M5.Speaker.setVolume(kVoiceMasterVolume);
+    M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
     const bool ok = M5.Speaker.tone(static_cast<float>(frequency), durationMs, kChannel, true);
     if (ok) {
       diagnosticToneOk_++;
+      scheduleAudioHardwareRelease(millis(), durationMs + kMicPauseReleaseSlackMs);
     } else {
       diagnosticToneFailed_++;
+      releaseAudioHardware(nowMs);
+    }
+    return ok;
+  }
+
+  bool playMicActivationTone() {
+    return playMicActivationPcmCue(false);
+  }
+
+  bool playMicActivationTap() {
+    return playMicActivationPcmCue(true);
+  }
+
+  bool playLegacyMicActivationTone() {
+    if (!ready_) {
+      diagnosticToneFailed_++;
+      return false;
+    }
+    const uint32_t nowMs = millis();
+    if (!prepareSpeakerPlayback(nowMs)) {
+      diagnosticToneFailed_++;
+      return false;
+    }
+    M5.Speaker.stop(kChannel);
+    M5.Speaker.setVolume(kLegacyMicCueMasterVolume);
+    M5.Speaker.setChannelVolume(kChannel, kLegacyMicCueChannelVolume);
+    const bool ok = M5.Speaker.tone(kLegacyMicCueFrequencyHz, kLegacyMicCueDurationMs, kChannel, true);
+    if (ok) {
+      diagnosticToneOk_++;
+      micCueRestoreAtMs_ = millis() + kLegacyMicCueDurationMs + kMicCueRestoreDelayMs;
+      scheduleAudioHardwareRelease(millis(), kLegacyMicCueDurationMs + kMicPauseReleaseSlackMs);
+    } else {
+      diagnosticToneFailed_++;
+      releaseAudioHardware(nowMs);
+    }
+    return ok;
+  }
+
+  bool playMicActivationPcmCue(bool tap) {
+    if (!ready_) {
+      diagnosticToneFailed_++;
+      return false;
+    }
+    renderMicCue(tap);
+    if (micCueSamplesWritten_ == 0) {
+      diagnosticToneFailed_++;
+      return false;
+    }
+    const uint32_t nowMs = millis();
+    if (!prepareSpeakerPlayback(nowMs)) {
+      diagnosticToneFailed_++;
+      return false;
+    }
+    const uint8_t masterVolume = tap ? kTapMicCueMasterVolume : kSoftMicCueMasterVolume;
+    const uint8_t channelVolume = tap ? kTapMicCueChannelVolume : kSoftMicCueChannelVolume;
+    M5.Speaker.stop(kChannel);
+    M5.Speaker.setVolume(masterVolume);
+    M5.Speaker.setChannelVolume(kChannel, channelVolume);
+    const bool ok = M5.Speaker.playRaw(
+        micCueSamples_, micCueSamplesWritten_, kMicCueSampleRate, false, 1, kChannel, true);
+    if (ok) {
+      diagnosticToneOk_++;
+      micCueRestoreAtMs_ = millis() + micCueDurationMs_ + kMicCueRestoreDelayMs;
+      scheduleAudioHardwareRelease(millis(), micCueDurationMs_ + kMicPauseReleaseSlackMs);
+    } else {
+      diagnosticToneFailed_++;
+      releaseAudioHardware(nowMs);
     }
     return ok;
   }
@@ -312,12 +1307,52 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     return streamLastSampleRate_;
   }
 
+  uint32_t streamPlaybackChunked() const {
+    return STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK ? 1u : 0u;
+  }
+
+  uint32_t streamLastFirstChunkDelayMs() const {
+    return streamLastFirstChunkDelayMs_;
+  }
+
+  uint32_t streamLastQueuedAudioMs() const {
+    return streamLastQueuedAudioMs_;
+  }
+
+  uint32_t streamQueueWaitMaxUs() const {
+    return streamQueueWaitMaxUs_;
+  }
+
+  uint32_t streamReleaseDeferrals() const {
+    return streamReleaseDeferrals_;
+  }
+
+  uint32_t streamForcedStops() const {
+    return streamForcedStops_;
+  }
+
   uint8_t speakerVolume() const {
     return ready_ ? M5.Speaker.getVolume() : 0;
   }
 
   uint32_t speakerEnabled() const {
     return M5.Speaker.isEnabled() ? 1u : 0u;
+  }
+
+  uint32_t speakerRunning() const {
+    return M5.Speaker.isRunning() ? 1u : 0u;
+  }
+
+  uint32_t speakerPowerActive() const {
+    return speakerPowerActive_ ? 1u : 0u;
+  }
+
+  uint32_t speakerPowerUpEntries() const {
+    return speakerPowerUpEntries_;
+  }
+
+  uint32_t speakerPowerDownEntries() const {
+    return speakerPowerDownEntries_;
   }
 
   uint32_t speakerChannelState() const {
@@ -356,19 +1391,34 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   static constexpr int kChannel = 0;
   static constexpr uint32_t kSampleRate = 22050;
   static constexpr size_t kSamplesPerFrame = 441;
-  static constexpr size_t kMaxStreamSamples = kBridgeAudioStreamChunkPayloadMax / 2u;
-  static constexpr size_t kStreamBufferCount = 3;
-  static constexpr UBaseType_t kStreamQueueDepth = 16;
+  static constexpr uint8_t kVoiceMasterVolume = STACKCHAN_VOICE_MASTER_VOLUME;
+  static constexpr uint8_t kVoiceChannelVolume = STACKCHAN_VOICE_CHANNEL_VOLUME;
+  static constexpr uint8_t kVoiceDuckedChannelVolume = STACKCHAN_VOICE_DUCKED_CHANNEL_VOLUME;
+  static constexpr uint8_t kSoftMicCueMasterVolume = 96;
+  static constexpr uint8_t kSoftMicCueChannelVolume = 190;
+  static constexpr uint8_t kTapMicCueMasterVolume = 82;
+  static constexpr uint8_t kTapMicCueChannelVolume = 165;
+  static constexpr uint8_t kLegacyMicCueMasterVolume = 70;
+  static constexpr uint8_t kLegacyMicCueChannelVolume = 120;
+  static constexpr float kLegacyMicCueFrequencyHz = 330.0f;
+  static constexpr uint32_t kLegacyMicCueDurationMs = 90;
+  static constexpr uint32_t kMicCueSampleRate = 48000;
+  static constexpr uint32_t kMicCueMaxDurationMs = 180;
+  static constexpr size_t kMicCueMaxSamples = (kMicCueSampleRate * kMicCueMaxDurationMs) / 1000u;
+  static constexpr float kTwoPi = 6.28318530718f;
+  static constexpr uint32_t kMicCueRestoreDelayMs = 60;
+  static constexpr uint32_t kMicPauseAcquireTimeoutMs = 350;
+  static constexpr uint32_t kMicPauseReleaseSlackMs = 80;
+  static constexpr uint32_t kSpeakerReclaimSettleMs = 12;
+  static constexpr uint32_t kDownlinkReleaseSlackMs = 180;
+  static constexpr uint32_t kStreamingDrainPollMs = 25;
+  static constexpr uint32_t kStreamingForceReleaseSlackMs = 5000;
+  static constexpr size_t kStreamingSamplesPerBuffer = kBridgeAudioStreamChunkPayloadMax / 2u;
+  static constexpr uint8_t kCoreS3Aw9523Address = 0x58;
+  static constexpr uint32_t kCoreS3AudioI2cFrequency = 400000;
 
-  struct StreamQueueItem {
-    uint32_t sampleRate = kSampleRate;
-    uint16_t bytes = 0;
-    uint8_t payload[kBridgeAudioStreamChunkPayloadMax] {};
-  };
-
-  static void StreamPlaybackTask(void* pv) {
-    static_cast<M5SpeakerAudioSink*>(pv)->runStreamPlaybackTask();
-  }
+  static_assert(STACKCHAN_BRIDGE_AUDIO_STREAMING_BUFFER_COUNT >= 3,
+                "Streaming speaker playback requires at least three stable PCM buffers");
 
   static uint32_t frequencyForViseme(AudioOutViseme viseme) {
     switch (viseme) {
@@ -382,6 +1432,244 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
         return 115;
     }
     return 160;
+  }
+
+  bool startSpeakerHardware() {
+    resetCoreS3SpeakerAmp();
+    auto speakerConfig = M5.Speaker.config();
+    speakerConfig.magnification = STACKCHAN_SPEAKER_MAGNIFICATION;
+    M5.Speaker.config(speakerConfig);
+    const bool ok = M5.Speaker.begin();
+    speakerPowerActive_ = ok;
+    if (ok) {
+      ++speakerPowerUpEntries_;
+    }
+    return ok;
+  }
+
+  void powerDownSpeakerHardware() {
+    if (!speakerPowerActive_ && !M5.Speaker.isEnabled()) {
+      return;
+    }
+    M5.Speaker.stop(kChannel);
+    M5.Speaker.end();
+    speakerPowerActive_ = false;
+    ++speakerPowerDownEntries_;
+  }
+
+  bool resetCoreS3SpeakerAmp() {
+    bool ok = true;
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x02, 0b00000111, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x03, 0b10001111, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x04, 0b00011000, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x05, 0b00001100, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x11, 0b00010000, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x12, 0b11111111, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x13, 0b11111111, kCoreS3AudioI2cFrequency);
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x02, 0b00000011, kCoreS3AudioI2cFrequency);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    ok &= M5.In_I2C.writeRegister8(kCoreS3Aw9523Address, 0x02, 0b00000111, kCoreS3AudioI2cFrequency);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    speakerAmpResetAttempts_++;
+    if (ok) {
+      speakerAmpResetOk_++;
+    } else {
+      speakerAmpResetFailed_++;
+    }
+    return ok;
+  }
+
+  bool reclaimSpeakerHardware() {
+    if (speakerPowerActive_ || M5.Speaker.isEnabled()) {
+      powerDownSpeakerHardware();
+      vTaskDelay(pdMS_TO_TICKS(kSpeakerReclaimSettleMs));
+    }
+    if (!startSpeakerHardware()) {
+      ready_ = false;
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(kSpeakerReclaimSettleMs));
+    return true;
+  }
+
+  static uint8_t* allocateDownlinkBuffer(size_t bytes) {
+#if defined(ARDUINO_ARCH_ESP32)
+    uint8_t* buffer = static_cast<uint8_t*>(
+        heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (buffer == nullptr) {
+      buffer = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_8BIT));
+    }
+    return buffer;
+#else
+    return static_cast<uint8_t*>(malloc(bytes));
+#endif
+  }
+
+  static void freeDownlinkBuffer(uint8_t* buffer) {
+    if (buffer == nullptr) {
+      return;
+    }
+#if defined(ARDUINO_ARCH_ESP32)
+    heap_caps_free(buffer);
+#else
+    free(buffer);
+#endif
+  }
+
+  bool ensureDownlinkBuffer(uint32_t bytes) {
+    if (bytes == 0 || bytes > STACKCHAN_BRIDGE_AUDIO_DOWNLINK_BUFFER_BYTES) {
+      return false;
+    }
+    if (downlinkBuffer_ != nullptr && downlinkBufferCapacity_ >= bytes) {
+      return true;
+    }
+    freeDownlinkBuffer(downlinkBuffer_);
+    downlinkBuffer_ = allocateDownlinkBuffer(bytes);
+    downlinkBufferCapacity_ = downlinkBuffer_ != nullptr ? bytes : 0;
+    return downlinkBuffer_ != nullptr;
+  }
+
+  bool finishStreamingDownlink(uint32_t nowMs) {
+    if (downlinkBufferedChunks_ == 0 || downlinkQueuedAudioMs_ == 0) {
+      releaseAudioHardware(nowMs);
+      return false;
+    }
+
+    streamLastQueuedAudioMs_ = downlinkQueuedAudioMs_;
+    const uint32_t elapsedMs = nowMs - downlinkFirstChunkQueuedAtMs_;
+    const uint32_t remainingMs =
+        elapsedMs < downlinkQueuedAudioMs_ ? downlinkQueuedAudioMs_ - elapsedMs : 0;
+    scheduleAudioHardwareRelease(nowMs, remainingMs + kDownlinkReleaseSlackMs);
+    return true;
+  }
+
+  bool playBufferedDownlink(uint32_t nowMs) {
+    if (downlinkBuffer_ == nullptr || downlinkBufferedBytes_ < 2) {
+      releaseAudioHardware(nowMs);
+      return false;
+    }
+    const uint32_t playableBytes = downlinkBufferedBytes_ & ~1u;
+    const size_t sampleCount = static_cast<size_t>(playableBytes / 2u);
+    if (sampleCount == 0 || downlinkSampleRate_ == 0) {
+      releaseAudioHardware(nowMs);
+      return false;
+    }
+
+    M5.Speaker.stop(kChannel);
+    M5.Speaker.setVolume(kVoiceMasterVolume);
+    M5.Speaker.setChannelVolume(kChannel, kVoiceChannelVolume);
+    streamLastSampleCount_ = static_cast<uint32_t>(sampleCount);
+    streamLastSampleRate_ = downlinkSampleRate_;
+    const bool ok = M5.Speaker.playRaw(
+        reinterpret_cast<const int16_t*>(downlinkBuffer_),
+        sampleCount,
+        downlinkSampleRate_,
+        false,
+        1,
+        kChannel,
+        true);
+    if (ok) {
+      streamPlayRawOk_++;
+      const uint32_t durationMs =
+          static_cast<uint32_t>((static_cast<uint64_t>(sampleCount) * 1000ull) / downlinkSampleRate_);
+      scheduleAudioHardwareRelease(nowMs, durationMs + kDownlinkReleaseSlackMs);
+      return true;
+    }
+
+    streamPlayRawFailed_++;
+    releaseAudioHardware(nowMs);
+    return false;
+  }
+
+  static float micCueEnvelope(uint32_t index, uint32_t total, uint32_t fadeSamples) {
+    if (total == 0 || fadeSamples == 0) {
+      return 1.0f;
+    }
+    const uint32_t remaining = total - index;
+    const uint32_t edge = index < remaining ? index : remaining;
+    if (edge >= fadeSamples) {
+      return 1.0f;
+    }
+    return static_cast<float>(edge) / static_cast<float>(fadeSamples);
+  }
+
+  bool acquireAudioHardware(uint32_t nowMs) {
+    if (audioPauseHeld_) {
+      audioPauseReleaseAtMs_ = 0;
+      audioPauseForceReleaseAtMs_ = 0;
+      return true;
+    }
+    if (!requestWakeMwwAudioPause(nowMs, kMicPauseAcquireTimeoutMs)) {
+      return false;
+    }
+    audioPauseHeld_ = true;
+    audioPauseReleaseAtMs_ = 0;
+    audioPauseForceReleaseAtMs_ = 0;
+    return true;
+  }
+
+  bool prepareSpeakerPlayback(uint32_t nowMs) {
+    if (!acquireAudioHardware(nowMs)) {
+      return false;
+    }
+    if (!reclaimSpeakerHardware()) {
+      releaseAudioHardware(nowMs);
+      return false;
+    }
+    return true;
+  }
+
+  void scheduleAudioHardwareRelease(uint32_t nowMs, uint32_t holdMs) {
+    if (!audioPauseHeld_) {
+      return;
+    }
+    audioPauseReleaseAtMs_ = nowMs + holdMs;
+    audioPauseForceReleaseAtMs_ = audioPauseReleaseAtMs_ + kStreamingForceReleaseSlackMs;
+  }
+
+  void releaseAudioHardware(uint32_t nowMs) {
+    powerDownSpeakerHardware();
+    if (!audioPauseHeld_) {
+      return;
+    }
+    releaseWakeMwwAudioPause(nowMs);
+    audioPauseHeld_ = false;
+    audioPauseReleaseAtMs_ = 0;
+    audioPauseForceReleaseAtMs_ = 0;
+  }
+
+  size_t appendMicCueTone(size_t offset,
+                          float frequencyHz,
+                          uint32_t durationMs,
+                          uint32_t gapMs,
+                          float amplitude,
+                          uint32_t fadeMs) {
+    const uint32_t toneSamples = (kMicCueSampleRate * durationMs) / 1000u;
+    const uint32_t fadeSamples = (kMicCueSampleRate * fadeMs) / 1000u;
+    const float phaseStep = kTwoPi * frequencyHz / static_cast<float>(kMicCueSampleRate);
+    for (uint32_t i = 0; i < toneSamples && offset < kMicCueMaxSamples; ++i) {
+      const float envelope = micCueEnvelope(i, toneSamples, fadeSamples);
+      const float sample = sinf(phaseStep * static_cast<float>(i)) * envelope * amplitude;
+      micCueSamples_[offset++] = static_cast<int16_t>(sample);
+    }
+    const uint32_t gapSamples = (kMicCueSampleRate * gapMs) / 1000u;
+    for (uint32_t i = 0; i < gapSamples && offset < kMicCueMaxSamples; ++i) {
+      micCueSamples_[offset++] = 0;
+    }
+    return offset;
+  }
+
+  void renderMicCue(bool tap) {
+    size_t offset = 0;
+    memset(micCueSamples_, 0, sizeof(micCueSamples_));
+    if (tap) {
+      offset = appendMicCueTone(offset, 820.0f, 56, 0, 7000.0f, 10);
+    } else {
+      offset = appendMicCueTone(offset, 620.0f, 82, 12, 9000.0f, 14);
+      offset = appendMicCueTone(offset, 930.0f, 72, 0, 7600.0f, 12);
+    }
+    micCueSamplesWritten_ = offset;
+    micCueDurationMs_ = static_cast<uint32_t>((offset * 1000u) / kMicCueSampleRate);
   }
 
   void renderFrame(const AudioOutHardwareFrame& frame) {
@@ -421,26 +1709,52 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   bool active_ = false;
   bool wavActive_ = false;
   bool downlinkActive_ = false;
-  size_t downlinkBufferIndex_ = 0;
+  uint8_t* downlinkBuffer_ = nullptr;
+  uint32_t downlinkBufferCapacity_ = 0;
+  uint32_t downlinkBufferedBytes_ = 0;
+  uint32_t downlinkBufferedChunks_ = 0;
+  uint32_t downlinkExpectedBytes_ = 0;
+  uint32_t downlinkExpectedChunks_ = 0;
   uint32_t downlinkSampleRate_ = kSampleRate;
+  uint32_t downlinkStartedAtMs_ = 0;
+  uint32_t downlinkFirstChunkQueuedAtMs_ = 0;
+  uint32_t downlinkQueuedAudioMs_ = 0;
+  uint32_t downlinkNextStreamingBuffer_ = 0;
   uint32_t streamTaskChunks_ = 0;
   uint32_t streamTaskBytes_ = 0;
   uint32_t streamPlayRawOk_ = 0;
   uint32_t streamPlayRawFailed_ = 0;
   uint32_t streamLastSampleCount_ = 0;
   uint32_t streamLastSampleRate_ = 0;
+  uint32_t streamLastFirstChunkDelayMs_ = 0;
+  uint32_t streamLastQueuedAudioMs_ = 0;
+  uint32_t streamQueueWaitMaxUs_ = 0;
+  uint32_t streamReleaseDeferrals_ = 0;
+  uint32_t streamForcedStops_ = 0;
   uint32_t diagnosticToneOk_ = 0;
   uint32_t diagnosticToneFailed_ = 0;
-  QueueHandle_t streamQueue_ = nullptr;
-  TaskHandle_t streamTaskHandle_ = nullptr;
+  uint32_t speakerAmpResetAttempts_ = 0;
+  uint32_t speakerAmpResetOk_ = 0;
+  uint32_t speakerAmpResetFailed_ = 0;
+  bool speakerPowerActive_ = false;
+  uint32_t speakerPowerUpEntries_ = 0;
+  uint32_t speakerPowerDownEntries_ = 0;
+  uint32_t micCueRestoreAtMs_ = 0;
+  size_t micCueSamplesWritten_ = 0;
+  uint32_t micCueDurationMs_ = 0;
+  bool audioPauseHeld_ = false;
+  uint32_t audioPauseReleaseAtMs_ = 0;
+  uint32_t audioPauseForceReleaseAtMs_ = 0;
   uint32_t phase_ = 0;
   uint32_t phaseFifth_ = 0;
   uint32_t noise_ = 0x1234abcd;
   int32_t heldNoise_ = 0;
+#if STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
+  int16_t downlinkStreamingBuffers_[STACKCHAN_BRIDGE_AUDIO_STREAMING_BUFFER_COUNT]
+                                    [kStreamingSamplesPerBuffer] {};
+#endif
   int16_t samples_[kSamplesPerFrame] {};
-  int16_t streamSamples_[kStreamBufferCount][kMaxStreamSamples] {};
-  StreamQueueItem queueItem_ {};
-  StreamQueueItem streamTaskItem_ {};
+  int16_t micCueSamples_[kMicCueMaxSamples] {};
 };
 
 M5SpeakerAudioSink gSpeakerSink;
@@ -452,7 +1766,7 @@ bool gBridgeResponseHadAudioStream = false;
 uint32_t gBridgeLocalSpeechSuppressedUntilMs = 0;
 
 const __FlashStringHelper* firmwareMode() {
-#if STACKCHAN_ENABLE_SERVOS
+#if STACKCHAN_SERVO_HARDWARE_ENABLE
   return F("servo_calibration");
 #else
   return F("display_only");
@@ -784,8 +2098,460 @@ SpeechEarcon earconForIntent(SpeechIntent intent) {
 void printBootMarker() {
   Serial.print(F("[boot] stackchan_alive mode="));
   Serial.print(firmwareMode());
+#if defined(ARDUINO_ARCH_ESP32)
+  Serial.print(F(" reset_reason="));
+  Serial.print(static_cast<int>(gBootResetReason));
+  Serial.print(F(" boot_count="));
+  Serial.print(gRtcBootCount);
+#endif
   Serial.println(F(" serial=v1"));
 }
+
+#if defined(ARDUINO_ARCH_ESP32)
+const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "poweron";
+    case ESP_RST_EXT:
+      return "external";
+    case ESP_RST_SW:
+      return "software";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "interrupt_watchdog";
+    case ESP_RST_TASK_WDT:
+      return "task_watchdog";
+    case ESP_RST_WDT:
+      return "watchdog";
+    case ESP_RST_DEEPSLEEP:
+      return "deepsleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    case ESP_RST_UNKNOWN:
+    default:
+      return "unknown";
+  }
+}
+
+bool sampleChipTemperature(uint32_t nowMs, bool force) {
+  if (!force && gChipTemperatureLastReadMs != 0 &&
+      nowMs - gChipTemperatureLastReadMs < STACKCHAN_CHIP_TEMP_TELEMETRY_PERIOD_MS) {
+    return gChipTemperatureValid;
+  }
+  gChipTemperatureLastReadMs = nowMs;
+  const float value = temperatureRead();
+  if (value > -40.0f && value < 125.0f) {
+    gChipTemperatureC = value;
+    if (!gChipTemperatureValid || value > gChipTemperatureMaxC) {
+      gChipTemperatureMaxC = value;
+    }
+    gChipTemperatureValid = true;
+    ++gChipTemperatureSamples;
+    return true;
+  }
+  ++gChipTemperatureReadFailures;
+  return false;
+}
+
+#if STACKCHAN_ENABLE_POWER_FORENSICS && defined(CONFIG_IDF_TARGET_ESP32S3)
+bool readPmicPowerEventMask(uint32_t* eventMask) {
+  if (eventMask == nullptr) {
+    return false;
+  }
+  uint8_t raw[3] = {};
+  if (!M5.In_I2C.readRegister(0x34, 0x48, raw, sizeof(raw), 400000)) {
+    return false;
+  }
+  *eventMask = static_cast<uint32_t>(raw[0]) |
+               (static_cast<uint32_t>(raw[1]) << 8u) |
+               (static_cast<uint32_t>(raw[2]) << 16u);
+  return true;
+}
+
+bool clearPmicPowerEventMask() {
+  const uint8_t clear[3] = {0xFF, 0xFF, 0xFF};
+  return M5.In_I2C.writeRegister(0x34, 0x48, clear, sizeof(clear), 400000);
+}
+
+bool configurePmicPowerForensicsIrqs() {
+  const uint8_t desired[3] = {
+      static_cast<uint8_t>(kPmicForensicsIrqEnableMask & 0xFFu),
+      static_cast<uint8_t>((kPmicForensicsIrqEnableMask >> 8u) & 0xFFu),
+      static_cast<uint8_t>((kPmicForensicsIrqEnableMask >> 16u) & 0xFFu),
+  };
+  if (!M5.In_I2C.writeRegister(0x34, 0x40, desired, sizeof(desired), 400000)) {
+    return false;
+  }
+  uint8_t readback[3] = {};
+  return M5.In_I2C.readRegister(0x34, 0x40, readback, sizeof(readback), 400000) &&
+         memcmp(desired, readback, sizeof(desired)) == 0;
+}
+
+PmicPowerEventContext currentPmicPowerEventContext() {
+  const ServoPowerTelemetry servoPower = gServo.powerTelemetry();
+  PmicPowerEventContext context;
+  context.vbusMv = gPowerVbusMv;
+  context.batteryMv = gPowerBatteryMv;
+  context.chipTemperatureDeciC = static_cast<int16_t>(gChipTemperatureC * 10.0f);
+  context.pmicTemperatureDeciC = static_cast<int16_t>(gPowerPmicTemperatureC * 10.0f);
+  context.bodyBusMv = static_cast<int16_t>(gBodyPowerBusV * 1000.0f);
+  context.bodyCurrentMa = static_cast<int16_t>(gBodyPowerCurrentMa);
+  context.heapFree = ESP.getFreeHeap();
+  context.vbusValid = gPowerVbusValid;
+  context.batteryValid = gPowerBatteryValid;
+  context.chipTemperatureValid = gChipTemperatureValid;
+  context.pmicTemperatureValid = gPowerPmicTemperatureValid;
+  context.bodyPowerValid = gBodyPowerTelemetryValid;
+  context.pmicVbusPresent = gPowerPmicVbusPresent;
+  context.pmicBatteryPresent = gPowerPmicBatteryPresent;
+  context.motionRequested = gMotionRequested;
+  context.servoRailEnabled = servoPower.railEnabled;
+  context.servoTorqueEnabled = servoPower.torqueEnabled;
+  context.speakerPowerActive = gSpeakerSink.speakerPowerActive() != 0;
+  return context;
+}
+
+void initializePmicPowerForensics() {
+  uint32_t bootEventMask = 0;
+  const bool bootStatusValid = readPmicPowerEventMask(&bootEventMask);
+  gPmicPowerForensics.begin(bootStatusValid, bootEventMask);
+  if (!bootStatusValid) {
+    gPmicPowerForensics.noteReadFailure();
+  } else if (!clearPmicPowerEventMask()) {
+    gPmicPowerForensics.noteClearFailure();
+  }
+
+  const bool enabled = configurePmicPowerForensicsIrqs();
+  gPmicPowerForensics.setIrqEnableResult(true, enabled);
+
+  Serial.print(F("[power-forensics] boot_valid="));
+  Serial.print(bootStatusValid ? 1 : 0);
+  Serial.print(F(" boot_mask=0x"));
+  Serial.print(bootEventMask, HEX);
+  Serial.print(F(" boot_event="));
+  Serial.print(pmicPowerEventName(bootEventMask));
+  Serial.print(F(" irq_enable="));
+  Serial.println(enabled ? 1 : 0);
+}
+
+void pollPmicPowerForensics(uint32_t nowMs) {
+  uint32_t eventMask = 0;
+  if (!readPmicPowerEventMask(&eventMask)) {
+    gPmicPowerForensics.noteReadFailure();
+    return;
+  }
+  if (eventMask == 0) {
+    return;
+  }
+
+  const uint32_t selectedEventMask = eventMask & kPmicForensicsIrqEnableMask;
+  const uint32_t ignoredEventMask = eventMask & ~kPmicForensicsIrqEnableMask;
+  if (ignoredEventMask != 0) {
+    gPmicPowerForensics.recordIgnoredRuntimeEvent(ignoredEventMask);
+  }
+  if (!clearPmicPowerEventMask()) {
+    gPmicPowerForensics.noteClearFailure();
+  }
+  if (selectedEventMask == 0) {
+    return;
+  }
+
+  const PmicPowerEventContext context = currentPmicPowerEventContext();
+  gPmicPowerForensics.recordRuntimeEvent(selectedEventMask, nowMs, context);
+
+  Serial.print(F("[power-forensics] runtime_mask=0x"));
+  Serial.print(selectedEventMask, HEX);
+  Serial.print(F(" event="));
+  Serial.print(pmicPowerEventName(selectedEventMask));
+  Serial.print(F(" vbus_mv="));
+  Serial.print(context.vbusValid ? context.vbusMv : -1);
+  Serial.print(F(" battery_mv="));
+  Serial.print(context.batteryValid ? context.batteryMv : -1);
+  Serial.print(F(" motion="));
+  Serial.print(context.motionRequested ? 1 : 0);
+  Serial.print(F(" rail="));
+  Serial.print(context.servoRailEnabled ? 1 : 0);
+  Serial.print(F(" speaker="));
+  Serial.println(context.speakerPowerActive ? 1 : 0);
+}
+#endif
+
+void initializeManagedPowerHardware(uint32_t nowMs) {
+#if defined(ARDUINO_ARCH_ESP32)
+  if (STACKCHAN_BASE_USB_POWER_INPUT) {
+    M5.Power.setExtOutput(false);
+    gExternalOutputEnabled = M5.Power.getExtOutput();
+    gBaseInputModeConfigured = !gExternalOutputEnabled;
+  } else {
+    gExternalOutputEnabled = M5.Power.getExtOutput();
+    gBaseInputModeConfigured = false;
+  }
+
+  if (STACKCHAN_CHARGE_CURRENT_MA > 0) {
+    M5.Power.setBatteryCharge(true);
+    M5.Power.setChargeCurrent(STACKCHAN_CHARGE_CURRENT_MA);
+    gBatteryChargeConfigured = true;
+    gAppliedChargeCurrentMa = STACKCHAN_CHARGE_CURRENT_MA;
+  }
+
+  gPowerCoordinator.begin(gBaseInputModeConfigured,
+                          STACKCHAN_CHARGE_CURRENT_MA,
+                          nowMs,
+                          STACKCHAN_LOW_INPUT_CHARGE_CURRENT_MA);
+  gPowerFloorTracker.begin(STACKCHAN_MOTION_POWER_HARD_FLOOR_MV);
+
+#if STACKCHAN_ENABLE_BODY_POWER_MONITOR && STACKCHAN_HAS_INA226_MONITOR
+  static m5::INA226_Class bodyPowerMonitor(0x41, 100000, &M5.In_I2C);
+  gBodyPowerMonitor = &bodyPowerMonitor;
+  if (M5.In_I2C.isEnabled() && gBodyPowerMonitor->begin()) {
+    m5::INA226_Class::config_t monitorConfig;
+    monitorConfig.shunt_res = 0.01f;
+    monitorConfig.max_expected_current = 3.2f;
+    monitorConfig.sampling_rate = m5::INA226_Class::Sampling::Rate16;
+    monitorConfig.shunt_conversion_time = m5::INA226_Class::ConversionTime::US_1100;
+    monitorConfig.bus_conversion_time = m5::INA226_Class::ConversionTime::US_1100;
+    monitorConfig.mode = m5::INA226_Class::Mode::ShuntAndBus;
+    gBodyPowerMonitor->config(monitorConfig);
+    gBodyPowerMonitorReady = true;
+  }
+#endif
+
+  Serial.print(F("[power] base_input_mode="));
+  Serial.print(gBaseInputModeConfigured ? 1 : 0);
+  Serial.print(F(" ext_output="));
+  Serial.print(gExternalOutputEnabled ? 1 : 0);
+  Serial.print(F(" charge_enabled="));
+  Serial.print(gBatteryChargeConfigured ? 1 : 0);
+  Serial.print(F(" charge_current_ma="));
+  Serial.print(STACKCHAN_CHARGE_CURRENT_MA);
+  Serial.print(F(" body_monitor="));
+  Serial.println(gBodyPowerMonitorReady ? 1 : 0);
+#else
+  (void)nowMs;
+  gPowerCoordinator.begin(false, 0, 0, 0);
+  gPowerFloorTracker.begin(0);
+#endif
+}
+
+void applyManagedChargeCurrent(uint32_t nowMs) {
+#if defined(ARDUINO_ARCH_ESP32)
+  if (!gBatteryChargeConfigured) {
+    return;
+  }
+  const uint16_t desiredMa = gPowerCoordinator.telemetry().chargeCurrentMa;
+  if (desiredMa == 0 || desiredMa == gAppliedChargeCurrentMa) {
+    return;
+  }
+  M5.Power.setChargeCurrent(desiredMa);
+  gAppliedChargeCurrentMa = desiredMa;
+  gChargeCurrentLastChangeMs = nowMs;
+  ++gChargeCurrentTransitions;
+  Serial.print(F("[power] charge_current_ma="));
+  Serial.println(gAppliedChargeCurrentMa);
+#else
+  (void)nowMs;
+#endif
+}
+
+bool sampleBodyPowerTelemetry(uint32_t nowMs, bool force) {
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_ENABLE_BODY_POWER_MONITOR && STACKCHAN_HAS_INA226_MONITOR
+  if (!gBodyPowerMonitorReady || gBodyPowerMonitor == nullptr) {
+    return false;
+  }
+  if (!force && gBodyPowerTelemetryLastReadMs != 0 &&
+      nowMs - gBodyPowerTelemetryLastReadMs < STACKCHAN_BODY_POWER_TELEMETRY_PERIOD_MS) {
+    return gBodyPowerTelemetryValid;
+  }
+
+  gBodyPowerTelemetryLastReadMs = nowMs;
+  const float busV = gBodyPowerMonitor->getBusVoltage();
+  const float currentMa = gBodyPowerMonitor->getShuntCurrent() * 1000.0f;
+  const float powerMw = gBodyPowerMonitor->getPower() * 1000.0f;
+  const bool valid = isfinite(busV) && isfinite(currentMa) && isfinite(powerMw) && busV >= 2.5f &&
+                     busV <= 6.5f && fabsf(currentMa) <= 5000.0f && fabsf(powerMw) <= 30000.0f;
+  if (!valid) {
+    ++gBodyPowerTelemetryReadFailures;
+    return gBodyPowerTelemetryValid;
+  }
+
+  const bool first = !gBodyPowerTelemetryValid;
+  gBodyPowerBusV = busV;
+  gBodyPowerCurrentMa = currentMa;
+  gBodyPowerMw = powerMw;
+  if (first || busV < gBodyPowerBusMinV) {
+    gBodyPowerBusMinV = busV;
+  }
+  if (first || busV > gBodyPowerBusMaxV) {
+    gBodyPowerBusMaxV = busV;
+  }
+  if (first || currentMa < gBodyPowerCurrentMinMa) {
+    gBodyPowerCurrentMinMa = currentMa;
+  }
+  if (first || currentMa > gBodyPowerCurrentMaxMa) {
+    gBodyPowerCurrentMaxMa = currentMa;
+  }
+  gBodyPowerTelemetryValid = true;
+  ++gBodyPowerTelemetrySamples;
+  return true;
+#else
+  (void)nowMs;
+  (void)force;
+  return false;
+#endif
+}
+
+bool samplePowerTelemetry(uint32_t nowMs, bool force) {
+  sampleBodyPowerTelemetry(nowMs, force);
+  if (!force && gPowerTelemetryLastReadMs != 0 &&
+      nowMs - gPowerTelemetryLastReadMs < STACKCHAN_POWER_TELEMETRY_PERIOD_MS) {
+    return gPowerTelemetryValid;
+  }
+
+  gPowerTelemetryLastReadMs = nowMs;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  const bool pmicVbusPresent = M5.Power.Axp2101.isVBUS();
+  const bool pmicBatteryPresent = M5.Power.Axp2101.getBatState();
+  const float pmicTemperatureC = M5.Power.Axp2101.getInternalTemperature();
+  if (!gPowerPmicVbusPresentValid) {
+    gPowerPmicVbusPresentValid = true;
+    gPowerPmicVbusPresent = pmicVbusPresent;
+  } else if (pmicVbusPresent != gPowerPmicVbusPresent) {
+    gPowerPmicVbusPresent = pmicVbusPresent;
+    ++gPowerPmicVbusTransitions;
+    if (!pmicVbusPresent) {
+      ++gPowerPmicVbusLossEntries;
+    }
+    gPowerPmicVbusLastTransitionMs = nowMs;
+  }
+  if (pmicVbusPresent) {
+    ++gPowerPmicVbusPresentSamples;
+  } else {
+    ++gPowerPmicVbusAbsentSamples;
+  }
+  gPowerPmicBatteryPresentValid = true;
+  gPowerPmicBatteryPresent = pmicBatteryPresent;
+  if (isfinite(pmicTemperatureC) && pmicTemperatureC > -40.0f && pmicTemperatureC < 125.0f) {
+    gPowerPmicTemperatureC = pmicTemperatureC;
+    if (!gPowerPmicTemperatureValid || pmicTemperatureC > gPowerPmicTemperatureMaxC) {
+      gPowerPmicTemperatureMaxC = pmicTemperatureC;
+    }
+    gPowerPmicTemperatureValid = true;
+  }
+#endif
+  const int16_t vbusMv = M5.Power.getVBUSVoltage();
+  const int16_t batteryMv = M5.Power.getBatteryVoltage();
+  const int32_t batteryLevel = M5.Power.getBatteryLevel();
+  const int32_t chargingState = static_cast<int32_t>(M5.Power.isCharging());
+  const bool vbusValid = vbusMv >= 2500 && vbusMv <= 6000;
+  const bool batteryValid = batteryMv >= 2500 && batteryMv <= 5000;
+  int16_t confirmVbusMv = -1;
+  int16_t confirmBatteryMv = -1;
+  bool confirmVbusValid = false;
+  bool confirmBatteryValid = false;
+  if (vbusValid && STACKCHAN_MOTION_POWER_HARD_FLOOR_MV > 0 &&
+      vbusMv < STACKCHAN_MOTION_POWER_HARD_FLOOR_MV) {
+    confirmVbusMv = M5.Power.getVBUSVoltage();
+    confirmBatteryMv = M5.Power.getBatteryVoltage();
+    confirmVbusValid = confirmVbusMv >= 2500 && confirmVbusMv <= 6000;
+    confirmBatteryValid = confirmBatteryMv >= 2500 && confirmBatteryMv <= 5000;
+  }
+  const bool batteryLevelValid = batteryLevel >= 0 && batteryLevel <= 100;
+  const bool chargingStateValid = chargingState >= 0 && chargingState <= 2;
+  const bool valid = vbusValid || batteryValid || batteryLevelValid || chargingStateValid;
+  if (!valid) {
+    ++gPowerTelemetryReadFailures;
+#if STACKCHAN_ENABLE_POWER_FORENSICS && defined(CONFIG_IDF_TARGET_ESP32S3)
+    pollPmicPowerForensics(nowMs);
+#endif
+    return gPowerTelemetryValid;
+  }
+
+  gPowerVbusValid = vbusValid;
+  if (vbusValid) {
+    gPowerVbusMv = vbusMv;
+    if (gPowerVbusMinMv == 0 || vbusMv < gPowerVbusMinMv) {
+      gPowerVbusMinMv = vbusMv;
+    }
+    if (vbusMv > gPowerVbusMaxMv) {
+      gPowerVbusMaxMv = vbusMv;
+    }
+  } else {
+    gPowerVbusMv = -1;
+    gPowerVbusLastRejectedMv = vbusMv;
+    ++gPowerVbusRejectedSamples;
+  }
+
+  gPowerBatteryValid = batteryValid;
+  if (batteryValid) {
+    gPowerBatteryMv = batteryMv;
+    if (gPowerBatteryMinMv == 0 || batteryMv < gPowerBatteryMinMv) {
+      gPowerBatteryMinMv = batteryMv;
+    }
+    if (batteryMv > gPowerBatteryMaxMv) {
+      gPowerBatteryMaxMv = batteryMv;
+    }
+  } else {
+    gPowerBatteryMv = -1;
+    gPowerBatteryLastRejectedMv = batteryMv;
+    ++gPowerBatteryRejectedSamples;
+  }
+  gPowerBatteryLevel = batteryLevelValid ? batteryLevel : -1;
+  gPowerChargingState = chargingStateValid ? chargingState : 2;
+
+  const ServoPowerTelemetry servoPower = gServo.powerTelemetry();
+  PowerFloorSample floorSample;
+  floorSample.vbusValid = vbusValid;
+  floorSample.vbusMv = vbusMv;
+  floorSample.confirmVbusValid = confirmVbusValid;
+  floorSample.confirmVbusMv = confirmVbusMv;
+  floorSample.batteryValid = batteryValid;
+  floorSample.batteryMv = batteryMv;
+  floorSample.confirmBatteryValid = confirmBatteryValid;
+  floorSample.confirmBatteryMv = confirmBatteryMv;
+  floorSample.bodyPowerValid = gBodyPowerTelemetryValid;
+  floorSample.bodyBusV = gBodyPowerBusV;
+  floorSample.bodyCurrentMa = gBodyPowerCurrentMa;
+  floorSample.motionRequested = gMotionRequested;
+  floorSample.servoRailEnabled = servoPower.railEnabled;
+  floorSample.servoTorqueEnabled = servoPower.torqueEnabled;
+  floorSample.speakerPowerActive = gSpeakerSink.speakerPowerActive() != 0;
+  if (gPowerFloorTracker.update(floorSample, nowMs)) {
+    Serial.print(F("[power] hard_floor_entry=1 vbus_mv="));
+    Serial.print(vbusMv);
+    Serial.print(F(" confirm_vbus_mv="));
+    Serial.print(confirmVbusValid ? confirmVbusMv : -1);
+    Serial.print(F(" body_bus_v="));
+    Serial.print(gBodyPowerTelemetryValid ? gBodyPowerBusV : -1.0f, 3);
+    Serial.print(F(" body_current_ma="));
+    Serial.println(gBodyPowerTelemetryValid ? gBodyPowerCurrentMa : 0.0f, 1);
+  }
+  gPowerTelemetryValid = true;
+  ++gPowerTelemetrySamples;
+#if STACKCHAN_ENABLE_POWER_FORENSICS && defined(CONFIG_IDF_TARGET_ESP32S3)
+  pollPmicPowerForensics(nowMs);
+#endif
+  return true;
+}
+
+void formatChipTemperatureJson(char* buffer, size_t bufferSize) {
+  if (buffer == nullptr || bufferSize == 0) {
+    return;
+  }
+  if (gChipTemperatureValid) {
+    snprintf(
+        buffer,
+        bufferSize,
+        ",\"chip_temp_c\":%.1f,\"chip_temp_max_c\":%.1f",
+        static_cast<double>(gChipTemperatureC),
+        static_cast<double>(gChipTemperatureMaxC));
+  } else {
+    snprintf(buffer, bufferSize, ",\"chip_temp_c\":null,\"chip_temp_max_c\":null");
+  }
+}
+#endif
 
 void printHeartbeat() {
   Serial.print(F("[heartbeat] stackchan_alive mode="));
@@ -798,7 +2564,2289 @@ UBaseType_t stackHighWater(TaskHandle_t handle) {
   return handle == nullptr ? 0 : uxTaskGetStackHighWaterMark(handle);
 }
 
+void copyWakeSrError(const char* reason) {
+  if (reason == nullptr) {
+    gWakeSrProbe.lastError[0] = '\0';
+    return;
+  }
+  const size_t len = strlen(reason);
+  const size_t copyLen = len < (sizeof(gWakeSrProbe.lastError) - 1u)
+                             ? len
+                             : (sizeof(gWakeSrProbe.lastError) - 1u);
+  memcpy(gWakeSrProbe.lastError, reason, copyLen);
+  gWakeSrProbe.lastError[copyLen] = '\0';
+}
+
+void copyWakeSrString(char* destination, size_t destinationSize, const char* value) {
+  if (destination == nullptr || destinationSize == 0) {
+    return;
+  }
+  if (value == nullptr) {
+    destination[0] = '\0';
+    return;
+  }
+  const size_t len = strlen(value);
+  const size_t copyLen = len < (destinationSize - 1u) ? len : (destinationSize - 1u);
+  memcpy(destination, value, copyLen);
+  destination[copyLen] = '\0';
+}
+
+#if STACKCHAN_HAS_SR_WAKE_PROBE || STACKCHAN_HAS_SR_WAKE_DIRECT || STACKCHAN_HAS_SR_WAKE_AFE_LITE || \
+    STACKCHAN_HAS_MWW_WAKE_PROBE
+void conditionWakeSrDirectAudio(int16_t* audioBuf, int sampleCount, int channelCount);
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_PROBE
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+const sr_cmd_t kWakeCommandPhrases[] = {
+    {1, "hey stack chan", "hd STaK paN"},
+    {1, "hey stack chahn", "hd STaK pnN"},
+    {1, "hey stack chawn", "hd STaK peN"},
+    {1, "hey stack chun", "hd STaK pcN"},
+    {1, "hey stackchan", "hd STaKaN"},
+    {1, "hi stack chan", "hi STaK paN"},
+    {1, "hi stack chahn", "hi STaK pnN"},
+    {1, "hi stack chawn", "hi STaK peN"},
+    {1, "hi stackchan", "hi STaKaN"},
+    {1, "stack chan", "STaK paN"},
+    {1, "stack chahn", "STaK pnN"},
+    {1, "stack chawn", "STaK peN"},
+};
+constexpr size_t kWakeCommandPhraseCount =
+    sizeof(kWakeCommandPhrases) / sizeof(kWakeCommandPhrases[0]);
+#endif
+
+void onWakeSrProbeEvent(sr_event_t event, int commandId, int phraseId) {
+  (void)phraseId;
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+  if (event == SR_EVENT_TIMEOUT) {
+    ESP_SR_M5.setMode(SR_MODE_COMMAND);
+    return;
+  }
+  const bool isWakeEvent =
+      event == SR_EVENT_WAKEWORD || (event == SR_EVENT_COMMAND && commandId == 1);
+#else
+  (void)commandId;
+  const bool isWakeEvent = event == SR_EVENT_WAKEWORD;
+#endif
+  if (!isWakeEvent) {
+    return;
+  }
+
+  const uint32_t nowMs = millis();
+  portENTER_CRITICAL(&gWakeSrMux);
+  gWakeSrPendingDetections = gWakeSrPendingDetections + 1;
+  gWakeSrProbe.wakeDetections++;
+  gWakeSrProbe.lastWakeMs = nowMs;
+  portEXIT_CRITICAL(&gWakeSrMux);
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+  ESP_SR_M5.setMode(SR_MODE_COMMAND);
+#else
+  ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
+#endif
+}
+
+uint32_t takeWakeSrPendingDetections() {
+  portENTER_CRITICAL(&gWakeSrMux);
+  const uint32_t pending = gWakeSrPendingDetections;
+  gWakeSrPendingDetections = 0;
+  portEXIT_CRITICAL(&gWakeSrMux);
+  return pending;
+}
+
+void WakeSrProbeTask(void* pv) {
+  (void)pv;
+  constexpr size_t kWakeSrProbeFrameSamples = STACKCHAN_SR_WAKE_DIRECT_STEREO ? 1024 : 512;
+  constexpr size_t kWakeSrProbeAudioChannels = STACKCHAN_SR_WAKE_DIRECT_STEREO ? 2 : 1;
+  constexpr size_t kWakeSrProbeRecordSamples = kWakeSrProbeFrameSamples * kWakeSrProbeAudioChannels;
+  static int16_t audioBuf[kWakeSrProbeRecordSamples];
+
+  gWakeSrProbe.beginAttempts++;
+  auto micConfig = M5.Mic.config();
+  micConfig.sample_rate = 16000;
+#if !STACKCHAN_SR_WAKE_PROBE_USE_M5_MIC_DEFAULTS
+  micConfig.magnification = STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION;
+  micConfig.noise_filter_level = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  micConfig.task_priority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  micConfig.task_pinned_core = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+#if STACKCHAN_SR_WAKE_DIRECT_STEREO || STACKCHAN_SR_WAKE_DIRECT_MIC_INPUT_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+#else
+  micConfig.stereo = false;
+#endif
+#endif
+  M5.Mic.config(micConfig);
+  if (!M5.Mic.begin()) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_wake_mic_begin_failed");
+    Serial.println(F("[sr_wake] ready=0 error=mic_begin_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+  gWakeSrProbe.micReady = true;
+
+  ESP_SR_M5.onEvent(onWakeSrProbeEvent);
+  Serial.println(F("[sr_wake] begin_sr=1"));
+  const bool srBeginOk = ESP_SR_M5.begin(
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+      kWakeCommandPhrases,
+      kWakeCommandPhraseCount,
+      SR_MODE_COMMAND,
+#else
+      nullptr,
+      0,
+      SR_MODE_WAKEWORD,
+#endif
+      STACKCHAN_SR_WAKE_DIRECT_STEREO ? SR_CHANNELS_STEREO : SR_CHANNELS_MONO);
+  Serial.print(F("[sr_wake] begin_sr_done=1 ok="));
+  Serial.println(srBeginOk ? 1 : 0);
+  if (!srBeginOk) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_wake_begin_failed");
+    Serial.println(F("[sr_wake] ready=0 error=sr_begin_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gWakeSrProbe.srReady = true;
+  gWakeSrProbe.taskStarted = true;
+  gWakeSrProbe.chunkSamples = kWakeSrProbeFrameSamples;
+  gWakeSrProbe.recordSamples = kWakeSrProbeRecordSamples;
+  gWakeSrProbe.audioChannels = kWakeSrProbeAudioChannels;
+  gWakeSrProbe.sampleRate = 16000;
+  const auto appliedMicConfig = M5.Mic.config();
+  gWakeSrProbe.micMagnification = appliedMicConfig.magnification;
+  gWakeSrProbe.monoChannel = appliedMicConfig.input_channel == m5::input_channel_t::input_only_left ? 1 : 0;
+  gWakeSrProbe.micInputStereo =
+      appliedMicConfig.input_channel == m5::input_channel_t::input_stereo;
+  gWakeSrProbe.micTaskCore = appliedMicConfig.task_pinned_core;
+  gWakeSrProbe.micTaskPriority = appliedMicConfig.task_priority;
+  gWakeSrProbe.micNoiseFilterLevel = appliedMicConfig.noise_filter_level;
+  gWakeSrProbe.stereo = appliedMicConfig.stereo;
+  gWakeSrProbe.audioGainQ8 = STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8;
+  copyWakeSrString(
+      gWakeSrProbe.modelName,
+      sizeof(gWakeSrProbe.modelName),
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+      "ESP_SR_M5Unified_CommandWake"
+#else
+      "ESP_SR_M5Unified"
+#endif
+  );
+  copyWakeSrString(
+      gWakeSrProbe.wakeWord,
+      sizeof(gWakeSrProbe.wakeWord),
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+      "Hey Stack Chan"
+#else
+      "Hi,Stack Chan"
+#endif
+  );
+  copyWakeSrError("");
+#if STACKCHAN_SR_WAKE_PROBE_COMMAND_WAKE
+  Serial.println(F("[sr_wake] ready=1 phrase=\"Hey Stack Chan\" mode=command_wake task_core=0"));
+#else
+  Serial.println(F("[sr_wake] ready=1 phrase=\"Hi Stack Chan\" mode=wake_only task_core=0"));
+#endif
+  vTaskPrioritySet(nullptr, STACKCHAN_SR_WAKE_PROBE_RUN_TASK_PRIORITY);
+
+  bool srPaused = false;
+  uint32_t listenStartMs = millis();
+  uint32_t restStartMs = 0;
+
+  while (true) {
+#if STACKCHAN_SR_WAKE_PROBE_LISTEN_MS > 0 && STACKCHAN_SR_WAKE_PROBE_REST_MS > 0
+    const uint32_t nowMs = millis();
+    if (!srPaused && nowMs - listenStartMs >= STACKCHAN_SR_WAKE_PROBE_LISTEN_MS) {
+      ESP_SR_M5.pause();
+      srPaused = true;
+      restStartMs = nowMs;
+    }
+    if (srPaused) {
+      if (nowMs - restStartMs < STACKCHAN_SR_WAKE_PROBE_REST_MS) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+        continue;
+      }
+      ESP_SR_M5.resume();
+      ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
+      srPaused = false;
+      listenStartMs = nowMs;
+    }
+#endif
+    if (M5.Mic.record(
+            audioBuf,
+            kWakeSrProbeRecordSamples,
+            16000,
+            kWakeSrProbeAudioChannels > 1)) {
+      conditionWakeSrDirectAudio(
+          audioBuf, kWakeSrProbeRecordSamples, static_cast<int>(kWakeSrProbeAudioChannels));
+      ESP_SR_M5.feedAudio(audioBuf, kWakeSrProbeRecordSamples);
+      gWakeSrProbe.recordOk++;
+      gWakeSrProbe.samplesFed += kWakeSrProbeRecordSamples;
+      gWakeSrProbe.lastRecordMs = millis();
+    } else {
+      gWakeSrProbe.recordDrops++;
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+  }
+}
+
+void pollWakeSrProbe(uint32_t nowMs) {
+  const uint32_t pending = takeWakeSrPendingDetections();
+  for (uint32_t i = 0; i < pending; ++i) {
+    RobotEvent event;
+    event.type = EventType::WakeWord;
+    event.timestampMs = nowMs;
+    event.strength = 1.0f;
+    applyWakeEventFromLocalSource(
+        event, CharacterMode::Listen, F("sr_wake_probe"), gWakeSrProbe.wakeDetections, nowMs);
+    gWakeSrProbe.wakeEventsApplied++;
+    Serial.print(F("[sr_wake] event=wake_word applied=1 detections="));
+    Serial.print(gWakeSrProbe.wakeDetections);
+    Serial.print(F(" applied_total="));
+    Serial.print(gWakeSrProbe.wakeEventsApplied);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+  }
+}
+
+bool startWakeSrProbe() {
+  const BaseType_t ok = xTaskCreatePinnedToCore(
+      WakeSrProbeTask,
+      "WakeSrProbe",
+      STACKCHAN_SR_WAKE_PROBE_TASK_STACK_WORDS,
+      nullptr,
+      STACKCHAN_SR_WAKE_PROBE_INIT_TASK_PRIORITY,
+      &gWakeSrTaskHandle,
+      0);
+  if (ok != pdPASS) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_wake_task_create_failed");
+    Serial.println(F("[sr_wake] ready=0 error=task_create_failed"));
+    return false;
+  }
+  return true;
+}
+#else
+void pollWakeSrProbe(uint32_t nowMs) {
+  (void)nowMs;
+}
+
+bool startWakeSrProbe() {
+#if STACKCHAN_ENABLE_SR_WAKE_PROBE
+  gWakeSrProbe.beginFailures++;
+  copyWakeSrError("sr_wake_not_compiled");
+  Serial.println(F("[sr_wake] ready=0 error=not_compiled"));
+  return false;
+#else
+  return true;
+#endif
+}
+#endif
+
+void suppressWakeMwwDetections(uint32_t nowMs, uint32_t durationMs) {
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  gWakeMwwSuppressUntilMs = nowMs + durationMs;
+#else
+  (void)nowMs;
+  (void)durationMs;
+#endif
+}
+
+bool wakeMwwDetectionsSuppressed(uint32_t nowMs) {
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  const uint32_t untilMs = gWakeMwwSuppressUntilMs;
+  return untilMs != 0 && static_cast<int32_t>(untilMs - nowMs) > 0;
+#else
+  (void)nowMs;
+  return false;
+#endif
+}
+
+bool wakeMwwInteractionReadyForWake(uint32_t nowMs) {
+  (void)nowMs;
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  const BridgeClientTelemetry& bridge = gBridge.telemetry();
+  const bool bridgeBusy =
+      bridge.state == BridgeClientState::Listening ||
+      bridge.state == BridgeClientState::Thinking ||
+      bridge.state == BridgeClientState::Responding ||
+      gBridge.hasPendingOutput();
+  return network.state == BridgeNetworkSessionState::Connected && !bridgeBusy &&
+         !wakeGate.turnActive && !uplink.active;
+#else
+  return false;
+#endif
+}
+
+void refreshWakeMwwInteractionLatch(uint32_t nowMs) {
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  if (!gWakeMwwInteractionLatched) {
+    return;
+  }
+  if (wakeMwwInteractionReadyForWake(nowMs) &&
+      nowMs - gWakeMwwInteractionLatchedAtMs >= 500u) {
+    gWakeMwwInteractionLatched = false;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.print(F("[mww_wake] interaction_latch=0 reason=ready at_ms="));
+    Serial.println(nowMs);
+#endif
+    return;
+  }
+  if (nowMs - gWakeMwwInteractionLatchedAtMs >= (kBridgeWakeGateMaxTurnMs + 3000u)) {
+    gWakeMwwInteractionLatched = false;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.print(F("[mww_wake] interaction_latch=0 reason=timeout at_ms="));
+    Serial.println(nowMs);
+#endif
+  }
+#else
+  (void)nowMs;
+#endif
+}
+
+void playLocalWakeToneIfNeeded(const __FlashStringHelper* source) {
+#if STACKCHAN_ENABLE_SPEAKER && !STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK
+  const uint32_t nowMs = millis();
+  suppressWakeMwwDetections(nowMs, 900);
+  const bool accepted = gSpeakerSink.playMicActivationTone();
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mic] activation_tone=1 source="));
+  Serial.print(source);
+  Serial.print(F(" accepted="));
+  Serial.print(accepted ? 1 : 0);
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
+#else
+  (void)accepted;
+#endif
+#else
+  (void)source;
+#endif
+}
+
+void applyWakeEventFromLocalSource(
+    const RobotEvent& event,
+    CharacterMode mode,
+    const __FlashStringHelper* source,
+    uint32_t count,
+    uint32_t nowMs) {
+  gIntent.applyEvent(event, mode);
+#if STACKCHAN_ENABLE_WIFI_BRIDGE
+  gBridgeNetworkSession.update(nowMs);
+#endif
+  gBridgeWakeGate.applyEvent(event, nowMs);
+#if STACKCHAN_ENABLE_WIFI_BRIDGE
+  gBridgeNetworkSession.update(nowMs);
+#endif
+  playLocalWakeToneIfNeeded(source);
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[wake] source="));
+  Serial.print(source);
+  Serial.print(F(" event=wake_word applied=1 count="));
+  Serial.print(count);
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
+#else
+  (void)source;
+  (void)count;
+#endif
+}
+
+#if STACKCHAN_HAS_SR_WAKE_DIRECT || STACKCHAN_HAS_SR_WAKE_AFE_LITE
+char* chooseWakeSrModel(srmodel_list_t* models) {
+  char* modelName = esp_srmodel_filter(models, ESP_WN_PREFIX, "stackchan");
+  if (modelName != nullptr) {
+    return modelName;
+  }
+  modelName = esp_srmodel_filter(models, ESP_WN_PREFIX, "histackchan");
+  if (modelName != nullptr) {
+    return modelName;
+  }
+  return esp_srmodel_filter(models, ESP_WN_PREFIX, nullptr);
+}
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_PROBE || STACKCHAN_HAS_SR_WAKE_DIRECT || STACKCHAN_HAS_SR_WAKE_AFE_LITE || \
+    STACKCHAN_HAS_MWW_WAKE_PROBE
+void updateWakeSrAudioWindow(uint32_t peak, uint32_t meanAbs, uint32_t nowMs) {
+  constexpr uint32_t kWindowMs = 5000;
+  if (gWakeSrProbe.audioWindowStartMs == 0 ||
+      nowMs - gWakeSrProbe.audioWindowStartMs >= kWindowMs) {
+    gWakeSrProbe.audioWindowStartMs = nowMs;
+    gWakeSrProbe.audioWindowMs = 0;
+    gWakeSrProbe.audioPeakWindowMax = peak;
+    gWakeSrProbe.audioMeanAbsWindowMax = meanAbs;
+    return;
+  }
+  gWakeSrProbe.audioWindowMs = nowMs - gWakeSrProbe.audioWindowStartMs;
+  if (peak > gWakeSrProbe.audioPeakWindowMax) {
+    gWakeSrProbe.audioPeakWindowMax = peak;
+  }
+  if (meanAbs > gWakeSrProbe.audioMeanAbsWindowMax) {
+    gWakeSrProbe.audioMeanAbsWindowMax = meanAbs;
+  }
+}
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_DIRECT
+uint32_t takeWakeSrDirectPendingDetections() {
+  portENTER_CRITICAL(&gWakeSrDirectMux);
+  const uint32_t pending = gWakeSrDirectPendingDetections;
+  gWakeSrDirectPendingDetections = 0;
+  portEXIT_CRITICAL(&gWakeSrDirectMux);
+  return pending;
+}
+
+void queueWakeSrDirectDetection(uint32_t nowMs) {
+  portENTER_CRITICAL(&gWakeSrDirectMux);
+  gWakeSrDirectPendingDetections = gWakeSrDirectPendingDetections + 1;
+  gWakeSrProbe.wakeDetections++;
+  gWakeSrProbe.lastWakeMs = nowMs;
+  portEXIT_CRITICAL(&gWakeSrDirectMux);
+}
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_PROBE || STACKCHAN_HAS_SR_WAKE_DIRECT || STACKCHAN_HAS_SR_WAKE_AFE_LITE || \
+    STACKCHAN_HAS_MWW_WAKE_PROBE
+int16_t clampWakeSrSample(int32_t sample) {
+  if (sample > 32767) {
+    return 32767;
+  }
+  if (sample < -32768) {
+    return -32768;
+  }
+  return static_cast<int16_t>(sample);
+}
+
+void highPassWakeMwwAudio(int16_t* audioBuf, size_t sampleCount, int32_t& previousInput, int32_t& previousOutput) {
+#if STACKCHAN_MWW_WAKE_HIGHPASS_Q15 > 0
+  constexpr int32_t kAlphaQ15 = STACKCHAN_MWW_WAKE_HIGHPASS_Q15;
+  for (size_t i = 0; i < sampleCount; ++i) {
+    const int32_t input = audioBuf[i];
+    const int32_t output = (kAlphaQ15 * (previousOutput + input - previousInput)) / 32768;
+    previousInput = input;
+    previousOutput = output;
+    audioBuf[i] = clampWakeSrSample(output);
+  }
+#else
+  (void)audioBuf;
+  (void)sampleCount;
+  (void)previousInput;
+  (void)previousOutput;
+#endif
+}
+
+bool recordWakeMwwAudioBlocking(int16_t* audioBuf, size_t sampleCount, uint32_t sampleRate, bool stereo) {
+  if (!M5.Mic.record(audioBuf, sampleCount, sampleRate, stereo)) {
+    return false;
+  }
+  while (M5.Mic.isRecording() != 0) {
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  return true;
+}
+
+void conditionWakeSrDirectAudio(int16_t* audioBuf, int sampleCount, int channelCount) {
+  uint32_t peak = 0;
+  uint32_t meanAbs = 0;
+  uint32_t channelPeak[2] = {0, 0};
+  uint32_t channelMeanAbs[2] = {0, 0};
+  uint32_t channelSamples[2] = {0, 0};
+  uint32_t clips = 0;
+  constexpr int32_t kGainQ8 = STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8;
+  for (int i = 0; i < sampleCount; ++i) {
+    int32_t sample = audioBuf[i];
+    if (kGainQ8 != 256) {
+      sample = (sample * kGainQ8) / 256;
+      if (sample > 32767 || sample < -32768) {
+        clips++;
+      }
+      audioBuf[i] = clampWakeSrSample(sample);
+      sample = audioBuf[i];
+    }
+    const uint32_t absSample = sample < 0 ? static_cast<uint32_t>(-sample) : static_cast<uint32_t>(sample);
+    if (absSample > peak) {
+      peak = absSample;
+    }
+    meanAbs += absSample;
+    if (channelCount >= 2) {
+      const int channel = i & 1;
+      if (absSample > channelPeak[channel]) {
+        channelPeak[channel] = absSample;
+      }
+      channelMeanAbs[channel] += absSample;
+      channelSamples[channel]++;
+    } else {
+      if (absSample > channelPeak[0]) {
+        channelPeak[0] = absSample;
+      }
+      channelMeanAbs[0] += absSample;
+      channelSamples[0]++;
+    }
+  }
+  gWakeSrProbe.audioPeak = peak;
+  if (peak > gWakeSrProbe.audioPeakMax) {
+    gWakeSrProbe.audioPeakMax = peak;
+  }
+  gWakeSrProbe.audioMeanAbs = sampleCount > 0 ? meanAbs / static_cast<uint32_t>(sampleCount) : 0;
+  if (gWakeSrProbe.audioMeanAbs > gWakeSrProbe.audioMeanAbsMax) {
+    gWakeSrProbe.audioMeanAbsMax = gWakeSrProbe.audioMeanAbs;
+  }
+  updateWakeSrAudioWindow(peak, gWakeSrProbe.audioMeanAbs, millis());
+  gWakeSrProbe.audioPeakLeft = channelPeak[0];
+  gWakeSrProbe.audioMeanAbsLeft =
+      channelSamples[0] > 0 ? channelMeanAbs[0] / channelSamples[0] : 0;
+  gWakeSrProbe.audioPeakRight = channelPeak[1];
+  gWakeSrProbe.audioMeanAbsRight =
+      channelSamples[1] > 0 ? channelMeanAbs[1] / channelSamples[1] : 0;
+  gWakeSrProbe.audioClips += clips;
+}
+
+void applyWakeMwwEs7210GainOverride() {
+#if STACKCHAN_MWW_WAKE_ES7210_GAIN_REG >= 0
+  constexpr uint8_t kEs7210Address = 0x40;
+  constexpr uint8_t kGainRegisterValue = static_cast<uint8_t>(STACKCHAN_MWW_WAKE_ES7210_GAIN_REG);
+  const bool mic1Ok = M5.In_I2C.writeRegister8(kEs7210Address, 0x43, kGainRegisterValue, 400000);
+  const bool mic2Ok = M5.In_I2C.writeRegister8(kEs7210Address, 0x44, kGainRegisterValue, 400000);
+  const uint8_t mic1 = M5.In_I2C.readRegister8(kEs7210Address, 0x43, 400000);
+  const uint8_t mic2 = M5.In_I2C.readRegister8(kEs7210Address, 0x44, 400000);
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mww_wake] es7210_gain_override=1 value=0x"));
+  Serial.print(kGainRegisterValue, HEX);
+  Serial.print(F(" mic1_ok="));
+  Serial.print(mic1Ok ? 1 : 0);
+  Serial.print(F(" mic2_ok="));
+  Serial.print(mic2Ok ? 1 : 0);
+  Serial.print(F(" mic1=0x"));
+  Serial.print(mic1, HEX);
+  Serial.print(F(" mic2=0x"));
+  Serial.println(mic2, HEX);
+#else
+  (void)mic1Ok;
+  (void)mic2Ok;
+  (void)mic1;
+  (void)mic2;
+#endif
+#endif
+}
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_DIRECT
+void WakeSrDirectTask(void* pv) {
+  (void)pv;
+  gWakeSrProbe.beginAttempts++;
+  Serial.println(F("[sr_wake_direct] task_enter=1"));
+
+  auto micConfig = M5.Mic.config();
+  micConfig.sample_rate = 16000;
+  micConfig.magnification = STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION;
+  micConfig.noise_filter_level = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  micConfig.task_priority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  micConfig.task_pinned_core = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+#if STACKCHAN_SR_WAKE_DIRECT_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+#elif STACKCHAN_SR_WAKE_DIRECT_MIC_INPUT_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+#elif STACKCHAN_SR_WAKE_DIRECT_MONO_CHANNEL
+  micConfig.input_channel = m5::input_channel_t::input_only_left;
+  micConfig.stereo = false;
+#else
+  micConfig.input_channel = m5::input_channel_t::input_only_right;
+  micConfig.stereo = false;
+#endif
+  M5.Mic.config(micConfig);
+  if (!M5.Mic.begin()) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_mic_begin_failed");
+    Serial.println(F("[sr_wake_direct] ready=0 error=mic_begin_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+  gWakeSrProbe.micReady = true;
+
+  srmodel_list_t* models = esp_srmodel_init("model");
+  if (models == nullptr || models->num <= 0) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_model_init_failed");
+    Serial.println(F("[sr_wake_direct] ready=0 error=model_init_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  char* modelName = chooseWakeSrModel(models);
+  if (modelName == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_model_not_found");
+    Serial.println(F("[sr_wake_direct] ready=0 error=model_not_found"));
+    esp_srmodel_deinit(models);
+    vTaskDelete(nullptr);
+    return;
+  }
+  copyWakeSrString(gWakeSrProbe.modelName, sizeof(gWakeSrProbe.modelName), modelName);
+
+  const esp_wn_iface_t* wakeNet = esp_wn_handle_from_name(modelName);
+  if (wakeNet == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_iface_not_found");
+    Serial.println(F("[sr_wake_direct] ready=0 error=iface_not_found"));
+    esp_srmodel_deinit(models);
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  model_iface_data_t* wakeData = wakeNet->create(modelName, STACKCHAN_SR_WAKE_DIRECT_DET_MODE);
+  if (wakeData == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_create_failed");
+    Serial.println(F("[sr_wake_direct] ready=0 error=create_failed"));
+    esp_srmodel_deinit(models);
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  const int chunkSamples = wakeNet->get_samp_chunksize(wakeData);
+  int channelCount = wakeNet->get_channel_num(wakeData);
+  if (channelCount <= 0) {
+    channelCount = STACKCHAN_SR_WAKE_DIRECT_STEREO ? 2 : 1;
+  }
+  const int sampleRate = wakeNet->get_samp_rate(wakeData);
+  if (chunkSamples <= 0 || channelCount <= 0 || sampleRate <= 0) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_bad_model_shape");
+    Serial.println(F("[sr_wake_direct] ready=0 error=bad_model_shape"));
+    wakeNet->destroy(wakeData);
+    esp_srmodel_deinit(models);
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  const size_t totalSamples = static_cast<size_t>(chunkSamples) * static_cast<size_t>(channelCount);
+  size_t recordSamples = totalSamples;
+#if STACKCHAN_SR_WAKE_DIRECT_RECORD_SAMPLES > 0
+  if (static_cast<size_t>(STACKCHAN_SR_WAKE_DIRECT_RECORD_SAMPLES) < totalSamples) {
+    recordSamples = static_cast<size_t>(STACKCHAN_SR_WAKE_DIRECT_RECORD_SAMPLES);
+  }
+#endif
+  int16_t* audioBuf = static_cast<int16_t*>(
+      heap_caps_malloc(totalSamples * sizeof(int16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (audioBuf == nullptr) {
+    audioBuf = static_cast<int16_t*>(
+        heap_caps_malloc(totalSamples * sizeof(int16_t), MALLOC_CAP_8BIT));
+  }
+  if (audioBuf == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_audio_alloc_failed");
+    Serial.println(F("[sr_wake_direct] ready=0 error=audio_alloc_failed"));
+    wakeNet->destroy(wakeData);
+    esp_srmodel_deinit(models);
+    vTaskDelete(nullptr);
+    return;
+  }
+  int16_t* recordBuf = audioBuf;
+  if (recordSamples < totalSamples) {
+    recordBuf = static_cast<int16_t*>(
+        heap_caps_malloc(recordSamples * sizeof(int16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (recordBuf == nullptr) {
+      recordBuf = static_cast<int16_t*>(
+          heap_caps_malloc(recordSamples * sizeof(int16_t), MALLOC_CAP_8BIT));
+    }
+    if (recordBuf == nullptr) {
+      recordSamples = totalSamples;
+      recordBuf = audioBuf;
+    }
+  }
+
+  char* wakeWord = esp_srmodel_get_wake_words(models, modelName);
+  copyWakeSrString(gWakeSrProbe.wakeWord, sizeof(gWakeSrProbe.wakeWord), wakeWord);
+  gWakeSrProbe.chunkSamples = static_cast<uint32_t>(chunkSamples);
+  gWakeSrProbe.recordSamples = static_cast<uint32_t>(recordSamples);
+  gWakeSrProbe.audioChannels = static_cast<uint32_t>(channelCount);
+  gWakeSrProbe.sampleRate = static_cast<uint32_t>(sampleRate);
+  gWakeSrProbe.detectMode = static_cast<uint32_t>(STACKCHAN_SR_WAKE_DIRECT_DET_MODE);
+  gWakeSrProbe.micMagnification = STACKCHAN_SR_WAKE_DIRECT_MIC_MAGNIFICATION;
+  gWakeSrProbe.monoChannel = STACKCHAN_SR_WAKE_DIRECT_MONO_CHANNEL;
+  gWakeSrProbe.micInputStereo = STACKCHAN_SR_WAKE_DIRECT_MIC_INPUT_STEREO != 0;
+  gWakeSrProbe.micTaskCore = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+  gWakeSrProbe.micTaskPriority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  gWakeSrProbe.micNoiseFilterLevel = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  gWakeSrProbe.stereo = STACKCHAN_SR_WAKE_DIRECT_STEREO != 0;
+  gWakeSrProbe.audioGainQ8 = STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8;
+  gWakeSrProbe.srReady = true;
+  gWakeSrProbe.taskStarted = true;
+  copyWakeSrError("");
+  Serial.print(F("[sr_wake_direct] ready=1 model="));
+  Serial.print(gWakeSrProbe.modelName);
+  Serial.print(F(" wake_word=\""));
+  Serial.print(gWakeSrProbe.wakeWord);
+  Serial.print(F("\" chunk_samples="));
+  Serial.print(gWakeSrProbe.chunkSamples);
+  Serial.print(F(" record_samples="));
+  Serial.print(gWakeSrProbe.recordSamples);
+  Serial.print(F(" channels="));
+  Serial.print(gWakeSrProbe.audioChannels);
+  Serial.print(F(" sample_rate="));
+  Serial.print(gWakeSrProbe.sampleRate);
+  Serial.print(F(" det_mode="));
+  Serial.print(gWakeSrProbe.detectMode);
+  Serial.print(F(" mic_mag="));
+  Serial.print(gWakeSrProbe.micMagnification);
+  Serial.print(F(" mono_channel="));
+  Serial.print(gWakeSrProbe.monoChannel);
+  Serial.print(F(" mic_input_stereo="));
+  Serial.print(gWakeSrProbe.micInputStereo ? 1 : 0);
+  Serial.print(F(" stereo="));
+  Serial.print(gWakeSrProbe.stereo ? 1 : 0);
+  Serial.print(F(" gain_q8="));
+  Serial.print(gWakeSrProbe.audioGainQ8);
+  Serial.print(F(" task_core="));
+  Serial.print(STACKCHAN_SR_WAKE_DIRECT_TASK_CORE);
+  Serial.print(F(" priority="));
+  Serial.print(STACKCHAN_SR_WAKE_DIRECT_TASK_PRIORITY);
+  Serial.print(F(" mic_task_core="));
+  Serial.print(STACKCHAN_SR_WAKE_MIC_TASK_CORE);
+  Serial.print(F(" mic_task_priority="));
+  Serial.print(STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY);
+  Serial.print(F(" mic_noise_filter="));
+  Serial.println(STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL);
+
+  uint32_t lastDetectionMs = 0;
+  size_t bufferedSamples = 0;
+  auto runWakeDetect = [&]() {
+    const uint32_t detectStartUs = micros();
+    const int32_t rawResult = static_cast<int32_t>(wakeNet->detect(wakeData, audioBuf));
+    const uint32_t detectUs = micros() - detectStartUs;
+    gWakeSrProbe.lastDetectResult = rawResult;
+    gWakeSrProbe.detectCalls++;
+    gWakeSrProbe.detectAvgUs =
+        gWakeSrProbe.detectCalls == 1 ? detectUs : ((gWakeSrProbe.detectAvgUs * 7u) + detectUs) / 8u;
+    if (detectUs > gWakeSrProbe.detectMaxUs) {
+      gWakeSrProbe.detectMaxUs = detectUs;
+    }
+
+    if (rawResult != static_cast<int32_t>(WAKENET_NO_DETECT)) {
+      const uint32_t nowMs = millis();
+      gWakeSrProbe.detectNonzero++;
+      Serial.print(F("[sr_wake_direct] result="));
+      Serial.print(rawResult);
+      Serial.print(F(" peak="));
+      Serial.print(gWakeSrProbe.audioPeak);
+      Serial.print(F(" peak_l="));
+      Serial.print(gWakeSrProbe.audioPeakLeft);
+      Serial.print(F(" peak_r="));
+      Serial.print(gWakeSrProbe.audioPeakRight);
+      Serial.print(F(" at_ms="));
+      Serial.println(nowMs);
+      if (rawResult == static_cast<int32_t>(WAKENET_CHANNEL_VERIFIED)) {
+        gWakeSrProbe.detectChannelVerified++;
+      }
+      if (rawResult > 0 &&
+          (lastDetectionMs == 0 || nowMs - lastDetectionMs >= STACKCHAN_SR_WAKE_DIRECT_COOLDOWN_MS)) {
+        lastDetectionMs = nowMs;
+        queueWakeSrDirectDetection(nowMs);
+        wakeNet->clean(wakeData);
+      }
+    }
+  };
+
+  while (true) {
+    if (!M5.Mic.record(
+            recordBuf,
+            recordSamples,
+            static_cast<uint32_t>(sampleRate),
+            STACKCHAN_SR_WAKE_DIRECT_STEREO != 0)) {
+      gWakeSrProbe.recordDrops++;
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    conditionWakeSrDirectAudio(recordBuf, static_cast<int>(recordSamples), channelCount);
+    gWakeSrProbe.recordOk++;
+    gWakeSrProbe.samplesFed += static_cast<uint32_t>(recordSamples);
+    gWakeSrProbe.lastRecordMs = millis();
+
+    if (recordBuf == audioBuf) {
+      runWakeDetect();
+    } else {
+      size_t copiedSamples = 0;
+      while (copiedSamples < recordSamples) {
+        const size_t remainingBufferSamples = totalSamples - bufferedSamples;
+        const size_t remainingRecordSamples = recordSamples - copiedSamples;
+        const size_t copySamples =
+            remainingRecordSamples < remainingBufferSamples ? remainingRecordSamples : remainingBufferSamples;
+        memcpy(
+            audioBuf + bufferedSamples,
+            recordBuf + copiedSamples,
+            copySamples * sizeof(int16_t));
+        bufferedSamples += copySamples;
+        copiedSamples += copySamples;
+        if (bufferedSamples >= totalSamples) {
+          runWakeDetect();
+          bufferedSamples = 0;
+        }
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
+void pollWakeSrDirect(uint32_t nowMs) {
+  const uint32_t pending = takeWakeSrDirectPendingDetections();
+  for (uint32_t i = 0; i < pending; ++i) {
+    RobotEvent event;
+    event.type = EventType::WakeWord;
+    event.timestampMs = nowMs;
+    event.strength = 1.0f;
+    applyWakeEventFromLocalSource(
+        event,
+        CharacterMode::Listen,
+        F("sr_wake_direct"),
+        gWakeSrProbe.wakeDetections,
+        nowMs);
+    gWakeSrProbe.wakeEventsApplied++;
+    Serial.print(F("[sr_wake_direct] event=wake_word applied=1 detections="));
+    Serial.print(gWakeSrProbe.wakeDetections);
+    Serial.print(F(" applied_total="));
+    Serial.print(gWakeSrProbe.wakeEventsApplied);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+  }
+}
+
+bool startWakeSrDirect() {
+  Serial.print(F("[sr_wake_direct] start_request=1 core="));
+  Serial.print(STACKCHAN_SR_WAKE_DIRECT_TASK_CORE);
+  Serial.print(F(" priority="));
+  Serial.println(STACKCHAN_SR_WAKE_DIRECT_TASK_PRIORITY);
+  const BaseType_t ok = xTaskCreatePinnedToCore(
+      WakeSrDirectTask,
+      "WakeSrDirect",
+      8192,
+      nullptr,
+      STACKCHAN_SR_WAKE_DIRECT_TASK_PRIORITY,
+      &gWakeSrTaskHandle,
+      STACKCHAN_SR_WAKE_DIRECT_TASK_CORE);
+  if (ok != pdPASS) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_direct_task_create_failed");
+    Serial.println(F("[sr_wake_direct] ready=0 error=task_create_failed"));
+    return false;
+  }
+  Serial.println(F("[sr_wake_direct] task_created=1"));
+  return true;
+}
+#else
+void pollWakeSrDirect(uint32_t nowMs) {
+  (void)nowMs;
+}
+
+bool startWakeSrDirect() {
+#if STACKCHAN_ENABLE_SR_WAKE_DIRECT
+  gWakeSrProbe.beginFailures++;
+  copyWakeSrError("sr_direct_not_compiled");
+  Serial.println(F("[sr_wake_direct] ready=0 error=not_compiled"));
+  return false;
+#else
+  return true;
+#endif
+}
+#endif
+
+#if STACKCHAN_HAS_SR_WAKE_AFE_LITE
+uint32_t takeWakeSrAfeLitePendingDetections() {
+  portENTER_CRITICAL(&gWakeSrAfeLiteMux);
+  const uint32_t pending = gWakeSrAfeLitePendingDetections;
+  gWakeSrAfeLitePendingDetections = 0;
+  portEXIT_CRITICAL(&gWakeSrAfeLiteMux);
+  return pending;
+}
+
+void queueWakeSrAfeLiteDetection(uint32_t nowMs) {
+  portENTER_CRITICAL(&gWakeSrAfeLiteMux);
+  gWakeSrAfeLitePendingDetections = gWakeSrAfeLitePendingDetections + 1;
+  gWakeSrProbe.wakeDetections++;
+  gWakeSrProbe.lastWakeMs = nowMs;
+  portEXIT_CRITICAL(&gWakeSrAfeLiteMux);
+}
+
+int16_t clampWakeSrAfeLiteSample(int32_t sample) {
+  if (sample > 32767) {
+    return 32767;
+  }
+  if (sample < -32768) {
+    return -32768;
+  }
+  return static_cast<int16_t>(sample);
+}
+
+void conditionWakeSrAfeLiteAudio(int16_t* audioBuf, int sampleCount, int channelCount) {
+  uint32_t peak = 0;
+  uint32_t meanAbs = 0;
+  uint32_t channelPeak[2] = {0, 0};
+  uint32_t channelMeanAbs[2] = {0, 0};
+  uint32_t channelSamples[2] = {0, 0};
+  uint32_t clips = 0;
+  constexpr int32_t kGainQ8 = STACKCHAN_SR_WAKE_AFE_LITE_GAIN_Q8;
+  for (int i = 0; i < sampleCount; ++i) {
+    int32_t sample = audioBuf[i];
+    if (kGainQ8 != 256) {
+      sample = (sample * kGainQ8) / 256;
+      if (sample > 32767 || sample < -32768) {
+        clips++;
+      }
+      audioBuf[i] = clampWakeSrAfeLiteSample(sample);
+      sample = audioBuf[i];
+    }
+    const uint32_t absSample = sample < 0 ? static_cast<uint32_t>(-sample) : static_cast<uint32_t>(sample);
+    if (absSample > peak) {
+      peak = absSample;
+    }
+    meanAbs += absSample;
+    const int channel = channelCount >= 2 ? (i & 1) : 0;
+    if (absSample > channelPeak[channel]) {
+      channelPeak[channel] = absSample;
+    }
+    channelMeanAbs[channel] += absSample;
+    channelSamples[channel]++;
+  }
+  gWakeSrProbe.audioPeak = peak;
+  if (peak > gWakeSrProbe.audioPeakMax) {
+    gWakeSrProbe.audioPeakMax = peak;
+  }
+  gWakeSrProbe.audioMeanAbs = sampleCount > 0 ? meanAbs / static_cast<uint32_t>(sampleCount) : 0;
+  if (gWakeSrProbe.audioMeanAbs > gWakeSrProbe.audioMeanAbsMax) {
+    gWakeSrProbe.audioMeanAbsMax = gWakeSrProbe.audioMeanAbs;
+  }
+  updateWakeSrAudioWindow(peak, gWakeSrProbe.audioMeanAbs, millis());
+  gWakeSrProbe.audioPeakLeft = channelPeak[0];
+  gWakeSrProbe.audioMeanAbsLeft =
+      channelSamples[0] > 0 ? channelMeanAbs[0] / channelSamples[0] : 0;
+  gWakeSrProbe.audioPeakRight = channelPeak[1];
+  gWakeSrProbe.audioMeanAbsRight =
+      channelSamples[1] > 0 ? channelMeanAbs[1] / channelSamples[1] : 0;
+  gWakeSrProbe.audioClips += clips;
+}
+
+void WakeSrAfeLiteFeedTask(void* pv) {
+  auto* runtime = static_cast<WakeSrAfeLiteRuntime*>(pv);
+  if (runtime == nullptr || runtime->afeHandle == nullptr || runtime->afeData == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_feed_bad_runtime");
+    Serial.println(F("[sr_wake_afe] feed_ready=0 error=bad_runtime"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  const size_t totalSamples =
+      static_cast<size_t>(runtime->feedChunkSamples) * static_cast<size_t>(runtime->feedChannels);
+  int16_t* audioBuf = static_cast<int16_t*>(
+      heap_caps_malloc(totalSamples * sizeof(int16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (audioBuf == nullptr) {
+    audioBuf = static_cast<int16_t*>(
+        heap_caps_malloc(totalSamples * sizeof(int16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (audioBuf == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_audio_alloc_failed");
+    Serial.println(F("[sr_wake_afe] feed_ready=0 error=audio_alloc_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  Serial.print(F("[sr_wake_afe] feed_ready=1 total_samples="));
+  Serial.print(static_cast<uint32_t>(totalSamples));
+  Serial.print(F(" channels="));
+  Serial.print(runtime->feedChannels);
+  Serial.print(F(" core="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_CORE);
+  Serial.print(F(" priority="));
+  Serial.println(STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_PRIORITY);
+
+  while (true) {
+    const size_t recordSamples =
+        STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES > 0 &&
+                STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES < totalSamples
+            ? static_cast<size_t>(STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES)
+            : totalSamples;
+    if (recordSamples < totalSamples) {
+      memset(audioBuf, 0, totalSamples * sizeof(int16_t));
+    }
+    if (!M5.Mic.record(
+            audioBuf,
+            recordSamples,
+            static_cast<uint32_t>(runtime->sampleRate),
+            runtime->feedChannels > 1)) {
+      gWakeSrProbe.recordDrops++;
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    conditionWakeSrAfeLiteAudio(audioBuf, static_cast<int>(totalSamples), runtime->feedChannels);
+    runtime->afeHandle->feed(runtime->afeData, audioBuf);
+    gWakeSrProbe.recordOk++;
+    gWakeSrProbe.samplesFed += static_cast<uint32_t>(totalSamples);
+    gWakeSrProbe.lastRecordMs = millis();
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
+void WakeSrAfeLiteFetchTask(void* pv) {
+  (void)pv;
+  gWakeSrProbe.beginAttempts++;
+  Serial.println(F("[sr_wake_afe] task_enter=1"));
+
+  auto micConfig = M5.Mic.config();
+  micConfig.sample_rate = 16000;
+  micConfig.magnification = STACKCHAN_SR_WAKE_AFE_LITE_MIC_MAGNIFICATION;
+  micConfig.noise_filter_level = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  micConfig.task_priority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  micConfig.task_pinned_core = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+#if STACKCHAN_SR_WAKE_AFE_LITE_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+  const char* inputFormat = "MM";
+#elif STACKCHAN_SR_WAKE_AFE_LITE_MIC_INPUT_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+  const char* inputFormat = "M";
+#elif STACKCHAN_SR_WAKE_AFE_LITE_MONO_CHANNEL
+  micConfig.input_channel = m5::input_channel_t::input_only_left;
+  micConfig.stereo = false;
+  const char* inputFormat = "M";
+#else
+  micConfig.input_channel = m5::input_channel_t::input_only_right;
+  micConfig.stereo = false;
+  const char* inputFormat = "M";
+#endif
+  M5.Mic.config(micConfig);
+  if (!M5.Mic.begin()) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_mic_begin_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=mic_begin_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+  gWakeSrProbe.micReady = true;
+
+  gWakeSrAfeLiteRuntime.models = esp_srmodel_init("model");
+  if (gWakeSrAfeLiteRuntime.models == nullptr || gWakeSrAfeLiteRuntime.models->num <= 0) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_model_init_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=model_init_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  char* modelName = chooseWakeSrModel(gWakeSrAfeLiteRuntime.models);
+  if (modelName == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_model_not_found");
+    Serial.println(F("[sr_wake_afe] ready=0 error=model_not_found"));
+    vTaskDelete(nullptr);
+    return;
+  }
+  copyWakeSrString(gWakeSrProbe.modelName, sizeof(gWakeSrProbe.modelName), modelName);
+  char* wakeWord = esp_srmodel_get_wake_words(gWakeSrAfeLiteRuntime.models, modelName);
+  copyWakeSrString(gWakeSrProbe.wakeWord, sizeof(gWakeSrProbe.wakeWord), wakeWord);
+
+  afe_config_t* afeConfig = afe_config_init(
+      inputFormat,
+      gWakeSrAfeLiteRuntime.models,
+      AFE_TYPE_SR,
+      STACKCHAN_SR_WAKE_AFE_LITE_HIGH_PERF ? AFE_MODE_HIGH_PERF : AFE_MODE_LOW_COST);
+  if (afeConfig == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_config_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=config_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  afeConfig->wakenet_init = true;
+  afeConfig->wakenet_model_name = modelName;
+  afeConfig->wakenet_model_name_2 = nullptr;
+  afeConfig->wakenet_mode = STACKCHAN_SR_WAKE_AFE_LITE_DET_MODE;
+#if STACKCHAN_SR_WAKE_AFE_LITE_DISABLE_EXTRA_ALGOS
+  afeConfig->aec_init = false;
+  afeConfig->se_init = false;
+  afeConfig->ns_init = false;
+  afeConfig->vad_init = false;
+  afeConfig->agc_init = true;
+  afeConfig->agc_mode = AFE_AGC_MODE_WAKENET;
+#endif
+  afeConfig->afe_perferred_core = STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_CORE;
+  afeConfig->afe_perferred_priority = STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_PRIORITY;
+  afeConfig->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
+
+  gWakeSrAfeLiteRuntime.afeHandle = esp_afe_handle_from_config(afeConfig);
+  if (gWakeSrAfeLiteRuntime.afeHandle == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_handle_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=handle_failed"));
+    afe_config_free(afeConfig);
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gWakeSrAfeLiteRuntime.afeData = gWakeSrAfeLiteRuntime.afeHandle->create_from_config(afeConfig);
+  afe_config_free(afeConfig);
+  if (gWakeSrAfeLiteRuntime.afeData == nullptr) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_create_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=create_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gWakeSrAfeLiteRuntime.feedChunkSamples =
+      gWakeSrAfeLiteRuntime.afeHandle->get_feed_chunksize(gWakeSrAfeLiteRuntime.afeData);
+  gWakeSrAfeLiteRuntime.feedChannels =
+      gWakeSrAfeLiteRuntime.afeHandle->get_feed_channel_num(gWakeSrAfeLiteRuntime.afeData);
+  gWakeSrAfeLiteRuntime.sampleRate =
+      gWakeSrAfeLiteRuntime.afeHandle->get_samp_rate(gWakeSrAfeLiteRuntime.afeData);
+  const int fetchChunkSamples =
+      gWakeSrAfeLiteRuntime.afeHandle->get_fetch_chunksize(gWakeSrAfeLiteRuntime.afeData);
+  if (gWakeSrAfeLiteRuntime.feedChunkSamples <= 0 || gWakeSrAfeLiteRuntime.feedChannels <= 0 ||
+      gWakeSrAfeLiteRuntime.sampleRate <= 0 || fetchChunkSamples <= 0) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_bad_shape");
+    Serial.println(F("[sr_wake_afe] ready=0 error=bad_shape"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gWakeSrProbe.chunkSamples = static_cast<uint32_t>(gWakeSrAfeLiteRuntime.feedChunkSamples);
+  gWakeSrProbe.recordSamples =
+      STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES > 0 &&
+              STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES < gWakeSrAfeLiteRuntime.feedChunkSamples
+          ? static_cast<uint32_t>(STACKCHAN_SR_WAKE_AFE_LITE_RECORD_SAMPLES)
+          : static_cast<uint32_t>(gWakeSrAfeLiteRuntime.feedChunkSamples);
+  gWakeSrProbe.audioChannels = static_cast<uint32_t>(gWakeSrAfeLiteRuntime.feedChannels);
+  gWakeSrProbe.sampleRate = static_cast<uint32_t>(gWakeSrAfeLiteRuntime.sampleRate);
+  gWakeSrProbe.detectMode = static_cast<uint32_t>(STACKCHAN_SR_WAKE_AFE_LITE_DET_MODE);
+  gWakeSrProbe.micMagnification = STACKCHAN_SR_WAKE_AFE_LITE_MIC_MAGNIFICATION;
+  gWakeSrProbe.monoChannel = STACKCHAN_SR_WAKE_AFE_LITE_MONO_CHANNEL;
+  gWakeSrProbe.micInputStereo = STACKCHAN_SR_WAKE_AFE_LITE_MIC_INPUT_STEREO != 0;
+  gWakeSrProbe.stereo = STACKCHAN_SR_WAKE_AFE_LITE_STEREO != 0;
+  gWakeSrProbe.audioGainQ8 = STACKCHAN_SR_WAKE_AFE_LITE_GAIN_Q8;
+
+  const BaseType_t feedOk = xTaskCreatePinnedToCore(
+      WakeSrAfeLiteFeedTask,
+      "WakeSrAfeFeed",
+      4096,
+      &gWakeSrAfeLiteRuntime,
+      STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_PRIORITY,
+      &gWakeSrFeedTaskHandle,
+      STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_CORE);
+  if (feedOk != pdPASS) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_feed_task_create_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=feed_task_create_failed"));
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gWakeSrProbe.srReady = true;
+  gWakeSrProbe.taskStarted = true;
+  copyWakeSrError("");
+  Serial.print(F("[sr_wake_afe] ready=1 model="));
+  Serial.print(gWakeSrProbe.modelName);
+  Serial.print(F(" wake_word=\""));
+  Serial.print(gWakeSrProbe.wakeWord);
+  Serial.print(F("\" input_format="));
+  Serial.print(inputFormat);
+  Serial.print(F(" feed_chunk="));
+  Serial.print(gWakeSrProbe.chunkSamples);
+  Serial.print(F(" fetch_chunk="));
+  Serial.print(fetchChunkSamples);
+  Serial.print(F(" channels="));
+  Serial.print(gWakeSrProbe.audioChannels);
+  Serial.print(F(" sample_rate="));
+  Serial.print(gWakeSrProbe.sampleRate);
+  Serial.print(F(" det_mode="));
+  Serial.print(gWakeSrProbe.detectMode);
+  Serial.print(F(" mic_mag="));
+  Serial.print(gWakeSrProbe.micMagnification);
+  Serial.print(F(" mono_channel="));
+  Serial.print(gWakeSrProbe.monoChannel);
+  Serial.print(F(" mic_input_stereo="));
+  Serial.print(gWakeSrProbe.micInputStereo ? 1 : 0);
+  Serial.print(F(" stereo="));
+  Serial.print(gWakeSrProbe.stereo ? 1 : 0);
+  Serial.print(F(" afe_core="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_CORE);
+  Serial.print(F(" afe_priority="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_AFE_TASK_PRIORITY);
+  Serial.print(F(" fetch_core="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_CORE);
+  Serial.print(F(" fetch_priority="));
+  Serial.println(STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_PRIORITY);
+
+  uint32_t lastDetectionMs = 0;
+  uint32_t fetchFailCount = 0;
+  while (true) {
+    const uint32_t fetchStartUs = micros();
+    afe_fetch_result_t* result = gWakeSrAfeLiteRuntime.afeHandle->fetch(gWakeSrAfeLiteRuntime.afeData);
+    const uint32_t fetchUs = micros() - fetchStartUs;
+    if (result == nullptr || result->ret_value == ESP_FAIL) {
+      fetchFailCount++;
+      gWakeSrProbe.recordDrops++;
+      if ((fetchFailCount % 100u) == 1u) {
+        Serial.print(F("[sr_wake_afe] fetch_failed count="));
+        Serial.println(fetchFailCount);
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    const wakenet_state_t wakeState = result->wakeup_state;
+    gWakeSrProbe.lastDetectResult = static_cast<int32_t>(wakeState);
+    gWakeSrProbe.detectCalls++;
+    gWakeSrProbe.detectAvgUs =
+        gWakeSrProbe.detectCalls == 1 ? fetchUs : ((gWakeSrProbe.detectAvgUs * 7u) + fetchUs) / 8u;
+    if (fetchUs > gWakeSrProbe.detectMaxUs) {
+      gWakeSrProbe.detectMaxUs = fetchUs;
+    }
+
+    if (wakeState != WAKENET_NO_DETECT) {
+      const uint32_t nowMs = millis();
+      gWakeSrProbe.detectNonzero++;
+      if (wakeState == WAKENET_CHANNEL_VERIFIED) {
+        gWakeSrProbe.detectChannelVerified++;
+      }
+      Serial.print(F("[sr_wake_afe] result="));
+      Serial.print(static_cast<int32_t>(wakeState));
+      Serial.print(F(" wake_index="));
+      Serial.print(result->wake_word_index);
+      Serial.print(F(" channel="));
+      Serial.print(result->trigger_channel_id);
+      Serial.print(F(" volume_db="));
+      Serial.print(result->data_volume, 2);
+      Serial.print(F(" peak="));
+      Serial.print(gWakeSrProbe.audioPeak);
+      Serial.print(F(" ring_free="));
+      Serial.print(result->ringbuff_free_pct, 2);
+      Serial.print(F(" at_ms="));
+      Serial.println(nowMs);
+
+      const bool isWake = wakeState == WAKENET_DETECTED || wakeState == WAKENET_CHANNEL_VERIFIED;
+      if (isWake && (lastDetectionMs == 0 || nowMs - lastDetectionMs >= STACKCHAN_SR_WAKE_AFE_LITE_COOLDOWN_MS)) {
+        lastDetectionMs = nowMs;
+        queueWakeSrAfeLiteDetection(nowMs);
+        if (gWakeSrAfeLiteRuntime.afeHandle->reset_buffer != nullptr) {
+          gWakeSrAfeLiteRuntime.afeHandle->reset_buffer(gWakeSrAfeLiteRuntime.afeData);
+        }
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
+void pollWakeSrAfeLite(uint32_t nowMs) {
+  const uint32_t pending = takeWakeSrAfeLitePendingDetections();
+  for (uint32_t i = 0; i < pending; ++i) {
+    RobotEvent event;
+    event.type = EventType::WakeWord;
+    event.timestampMs = nowMs;
+    event.strength = 1.0f;
+    applyWakeEventFromLocalSource(
+        event,
+        CharacterMode::Listen,
+        F("sr_wake_afe"),
+        gWakeSrProbe.wakeDetections,
+        nowMs);
+    gWakeSrProbe.wakeEventsApplied++;
+    Serial.print(F("[sr_wake_afe] event=wake_word applied=1 detections="));
+    Serial.print(gWakeSrProbe.wakeDetections);
+    Serial.print(F(" applied_total="));
+    Serial.print(gWakeSrProbe.wakeEventsApplied);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+  }
+}
+
+bool startWakeSrAfeLite() {
+  Serial.print(F("[sr_wake_afe] start_request=1 feed_core="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_CORE);
+  Serial.print(F(" feed_priority="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_FEED_TASK_PRIORITY);
+  Serial.print(F(" fetch_core="));
+  Serial.print(STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_CORE);
+  Serial.print(F(" fetch_priority="));
+  Serial.println(STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_PRIORITY);
+  const BaseType_t ok = xTaskCreatePinnedToCore(
+      WakeSrAfeLiteFetchTask,
+      "WakeSrAfeFetch",
+      8192,
+      nullptr,
+      STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_PRIORITY,
+      &gWakeSrTaskHandle,
+      STACKCHAN_SR_WAKE_AFE_LITE_FETCH_TASK_CORE);
+  if (ok != pdPASS) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("sr_afe_task_create_failed");
+    Serial.println(F("[sr_wake_afe] ready=0 error=task_create_failed"));
+    return false;
+  }
+  Serial.println(F("[sr_wake_afe] task_created=1"));
+  return true;
+}
+#else
+void pollWakeSrAfeLite(uint32_t nowMs) {
+  (void)nowMs;
+}
+
+bool startWakeSrAfeLite() {
+#if STACKCHAN_ENABLE_SR_WAKE_AFE_LITE
+  gWakeSrProbe.beginFailures++;
+  copyWakeSrError("sr_afe_not_compiled");
+  Serial.println(F("[sr_wake_afe] ready=0 error=not_compiled"));
+  return false;
+#else
+  return true;
+#endif
+}
+#endif
+
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+uint32_t takeWakeMwwPendingDetections() {
+  portENTER_CRITICAL(&gWakeMwwMux);
+  const uint32_t pending = gWakeMwwPendingDetections;
+  gWakeMwwPendingDetections = 0;
+  portEXIT_CRITICAL(&gWakeMwwMux);
+  return pending;
+}
+
+void queueWakeMwwDetection(uint32_t nowMs) {
+  portENTER_CRITICAL(&gWakeMwwMux);
+  gWakeMwwPendingDetections = gWakeMwwPendingDetections + 1;
+  gWakeSrProbe.wakeDetections++;
+  gWakeSrProbe.lastWakeMs = nowMs;
+  portEXIT_CRITICAL(&gWakeMwwMux);
+}
+
+void resetWakeMwwValidationCounters() {
+#if STACKCHAN_MWW_WAKE_RESET_MODEL_ON_VALIDATION
+  gMicroWakeWordProbe.reset();
+#endif
+  gMicroWakeWordProbe.clearTelemetry();
+  const uint32_t nowMs = millis();
+  portENTER_CRITICAL(&gWakeMwwMux);
+  gWakeMwwPendingDetections = 0;
+  gWakeSrProbe.mwwFeatures = 0;
+  gWakeSrProbe.mwwInferences = 0;
+  gWakeSrProbe.mwwDetections = 0;
+  gWakeSrProbe.mwwInvokeErrors = 0;
+  gWakeSrProbe.mwwFeatureErrors = 0;
+    gWakeSrProbe.mwwLastProbability = 0;
+    gWakeSrProbe.mwwMaxProbability = 0;
+    gWakeSrProbe.mwwAverageProbability = 0;
+    gWakeSrProbe.mwwMaxAverageProbability = 0;
+    gWakeSrProbe.mwwLastDetectionProbability = 0;
+    gWakeSrProbe.mwwLastDetectionAverageProbability = 0;
+    gWakeSrProbe.mwwMaxDetectionAverageProbability = 0;
+  gWakeSrProbe.mwwLastFeatureMin = 0;
+  gWakeSrProbe.mwwLastFeatureMax = 0;
+  gWakeSrProbe.mwwMinFeatureSeen = 0;
+  gWakeSrProbe.mwwMaxFeatureSeen = 0;
+  gWakeSrProbe.mwwLastInferenceUs = 0;
+  gWakeSrProbe.mwwMaxInferenceUs = 0;
+  gWakeSrProbe.wakeDetections = 0;
+  gWakeSrProbe.wakeEventsApplied = 0;
+  gWakeSrProbe.lastWakeMs = 0;
+  gWakeSrProbe.audioPeak = 0;
+  gWakeSrProbe.audioPeakMax = 0;
+  gWakeSrProbe.audioPeakWindowMax = 0;
+  gWakeSrProbe.audioMeanAbs = 0;
+  gWakeSrProbe.audioMeanAbsMax = 0;
+  gWakeSrProbe.audioMeanAbsWindowMax = 0;
+  gWakeSrProbe.audioWindowStartMs = nowMs;
+  gWakeSrProbe.audioWindowMs = 0;
+  gWakeSrProbe.audioClips = 0;
+  gWakeMwwInteractionLatched = false;
+  gWakeMwwInteractionLatchedAtMs = 0;
+  portEXIT_CRITICAL(&gWakeMwwMux);
+#if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
+  resetWakeMwwUplinkQueue();
+  gWakeMwwUplinkQueued = 0;
+  gWakeMwwUplinkDropped = 0;
+  gWakeMwwUplinkSubmitted = 0;
+  gWakeMwwUplinkSubmitFailed = 0;
+#endif
+}
+
+bool ensureWakeMwwPcmRing() {
+  if (gWakeMwwPcmRing != nullptr) {
+    return true;
+  }
+  gWakeMwwPcmRing = static_cast<int16_t*>(
+      heap_caps_malloc(kWakeMwwPcmRingSamples * sizeof(int16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (gWakeMwwPcmRing == nullptr) {
+    return false;
+  }
+  memset(gWakeMwwPcmRing, 0, kWakeMwwPcmRingSamples * sizeof(int16_t));
+  gWakeMwwPcmWriteIndex = 0;
+  gWakeMwwPcmAvailable = 0;
+  gWakeMwwPcmSequence = 0;
+  return true;
+}
+
+void storeWakeMwwPcm(const int16_t* samples, size_t sampleCount) {
+  if (gWakeMwwPcmRing == nullptr || samples == nullptr || sampleCount == 0) {
+    return;
+  }
+  uint32_t writeIndex = gWakeMwwPcmWriteIndex;
+  uint32_t available = gWakeMwwPcmAvailable;
+  for (size_t i = 0; i < sampleCount; ++i) {
+    gWakeMwwPcmRing[writeIndex] = samples[i];
+    writeIndex = (writeIndex + 1u) % kWakeMwwPcmRingSamples;
+    if (available < kWakeMwwPcmRingSamples) {
+      available++;
+    }
+  }
+  gWakeMwwPcmWriteIndex = writeIndex;
+  gWakeMwwPcmAvailable = available;
+  gWakeMwwPcmSequence = gWakeMwwPcmSequence + 1u;
+}
+
+#if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
+bool ensureWakeMwwUplinkQueue() {
+  gWakeMwwUplinkPendingReady = false;
+  gWakeMwwUplinkPending = WakeMwwUplinkChunk {};
+  return true;
+}
+
+void resetWakeMwwUplinkQueue() {
+  gWakeMwwUplinkPendingReady = false;
+  gWakeMwwUplinkPending = WakeMwwUplinkChunk {};
+  gWakeMwwUplinkReset = gWakeMwwUplinkReset + 1u;
+}
+
+void queueWakeMwwUplinkAudio(const int16_t* samples, size_t sampleCount, uint32_t capturedAtMs) {
+  static WakeMwwUplinkChunk pending;
+  static uint16_t pendingSamples = 0;
+
+  if (samples == nullptr || sampleCount == 0 || !gBridgeAudioUplink.telemetry().active) {
+    pendingSamples = 0;
+    return;
+  }
+  if (gWakeMwwUplinkPendingReady) {
+    gWakeMwwUplinkDropped = gWakeMwwUplinkDropped + 1u;
+    return;
+  }
+
+  size_t copied = 0;
+  while (copied < sampleCount) {
+    const size_t freeSamples = STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES - pendingSamples;
+    const size_t remaining = sampleCount - copied;
+    const size_t copySamples = remaining < freeSamples ? remaining : freeSamples;
+    if (pendingSamples == 0) {
+      pending.capturedAtMs = capturedAtMs;
+    }
+    memcpy(pending.samples + pendingSamples, samples + copied, copySamples * sizeof(int16_t));
+    pendingSamples += static_cast<uint16_t>(copySamples);
+    copied += copySamples;
+
+    if (pendingSamples >= STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES) {
+      pending.sampleCount = pendingSamples;
+      if (gWakeMwwUplinkPendingReady) {
+        gWakeMwwUplinkDropped = gWakeMwwUplinkDropped + 1u;
+      } else {
+        gWakeMwwUplinkPending = pending;
+        gWakeMwwUplinkPendingReady = true;
+        gWakeMwwUplinkQueued = gWakeMwwUplinkQueued + 1u;
+      }
+      pending = WakeMwwUplinkChunk {};
+      pendingSamples = 0;
+    }
+  }
+}
+
+void drainWakeMwwUplinkQueue(uint32_t nowMs) {
+  if (!gBridgeAudioUplink.telemetry().active) {
+    if (gWakeMwwUplinkPendingReady) {
+      resetWakeMwwUplinkQueue();
+    }
+    return;
+  }
+
+  if (!gWakeMwwUplinkPendingReady) {
+    return;
+  }
+  if (gWakeMwwUplinkPending.sampleCount == 0) {
+    gWakeMwwUplinkPendingReady = false;
+    return;
+  }
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  if (gBridgeAudioUplink.submitPcmChunk(
+          uplink.lastSeq,
+          gWakeMwwUplinkPending.samples,
+          gWakeMwwUplinkPending.sampleCount,
+          nowMs)) {
+    gWakeMwwUplinkPendingReady = false;
+    gWakeMwwUplinkSubmitted = gWakeMwwUplinkSubmitted + 1u;
+  } else {
+    gWakeMwwUplinkSubmitFailed = gWakeMwwUplinkSubmitFailed + 1u;
+  }
+}
+#else
+bool ensureWakeMwwUplinkQueue() {
+  return true;
+}
+
+void resetWakeMwwUplinkQueue() {}
+
+void queueWakeMwwUplinkAudio(const int16_t* samples, size_t sampleCount, uint32_t capturedAtMs) {
+  (void)samples;
+  (void)sampleCount;
+  (void)capturedAtMs;
+}
+
+void drainWakeMwwUplinkQueue(uint32_t nowMs) {
+  (void)nowMs;
+}
+#endif
+
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+bool submitDedicatedWakeCaptureChunk(uint32_t seq,
+                                     const int16_t* samples,
+                                     uint16_t sampleCount,
+                                     uint32_t nowMs) {
+  constexpr uint16_t kSubmitAttempts =
+      STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS > 0
+          ? STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS
+          : 1;
+  constexpr uint16_t kSubmitDelayMs = STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_DELAY_MS;
+
+  for (uint16_t attempt = 0; attempt < kSubmitAttempts; ++attempt) {
+    const uint32_t attemptMs = millis();
+    gBridgeNetworkSession.update(attemptMs);
+    const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
+    if (!writer.frameBuffered && !writer.binaryFrameQueued &&
+        gBridgeAudioUplink.submitPcmChunk(seq, samples, sampleCount, attemptMs)) {
+      gBridgeNetworkSession.update(millis());
+      return true;
+    }
+    gBridgeNetworkSession.update(millis());
+    if (kSubmitDelayMs > 0) {
+      vTaskDelay(pdMS_TO_TICKS(kSubmitDelayMs));
+    } else {
+      taskYIELD();
+    }
+  }
+  return false;
+}
+
+void finishDedicatedWakeCaptureTurn(uint32_t seq, uint32_t nowMs) {
+  RobotEvent endEvent;
+  endEvent.type = EventType::SpeechEnded;
+  endEvent.timestampMs = nowMs;
+  endEvent.strength = 1.0f;
+  gBridgeWakeGate.applyEvent(endEvent, nowMs);
+  if (gBridgeAudioUplink.telemetry().active) {
+    gBridgeAudioUplink.endTurn(seq, nowMs);
+  }
+  for (uint8_t i = 0; i < 12; ++i) {
+    gBridgeNetworkSession.update(millis());
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+}
+
+bool runDedicatedWakeCaptureTurn(const RobotEvent& wakeEvent, uint32_t nowMs) {
+  if (gBridgeNetworkSession.telemetry().state != BridgeNetworkSessionState::Connected) {
+    return false;
+  }
+  if (!requestWakeMwwAudioPause(nowMs, 700)) {
+    return false;
+  }
+
+  auto micConfig = M5.Mic.config();
+  micConfig.sample_rate = STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE;
+  micConfig.magnification = STACKCHAN_MWW_WAKE_MIC_MAGNIFICATION;
+  micConfig.noise_filter_level = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  micConfig.task_priority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  micConfig.task_pinned_core = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+#if STACKCHAN_MWW_WAKE_RECORD_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+#elif STACKCHAN_MWW_WAKE_MONO_CHANNEL
+  micConfig.input_channel = m5::input_channel_t::input_only_left;
+  micConfig.stereo = false;
+#else
+  micConfig.input_channel = m5::input_channel_t::input_only_right;
+  micConfig.stereo = false;
+#endif
+  M5.Mic.config(micConfig);
+  if (!M5.Mic.begin()) {
+    gWakeSrProbe.audioPauseFailures++;
+    releaseWakeMwwAudioPause(millis());
+    return false;
+  }
+  applyWakeMwwEs7210GainOverride();
+
+  gIntent.applyEvent(wakeEvent, CharacterMode::Listen);
+  gBridgeNetworkSession.update(nowMs);
+  gBridgeWakeGate.applyEvent(wakeEvent, nowMs);
+  gBridgeNetworkSession.update(nowMs);
+
+  const BridgeAudioUplinkTelemetry& started = gBridgeAudioUplink.telemetry();
+  if (!started.active) {
+    M5.Mic.end();
+    releaseWakeMwwAudioPause(millis());
+    return false;
+  }
+  const uint32_t seq = started.lastSeq;
+
+  constexpr bool kRecordStereo = STACKCHAN_MWW_WAKE_RECORD_STEREO != 0;
+  constexpr uint32_t kSampleRate = STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE;
+  constexpr size_t kMonoSamples = STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES;
+  constexpr size_t kRecordChannels = kRecordStereo ? 2u : 1u;
+  constexpr size_t kRecordSamples = kMonoSamples * kRecordChannels;
+  constexpr uint8_t kCaptureChunks = 96;
+  static int16_t recordBuf[kRecordSamples];
+  static int16_t monoBuf[kMonoSamples];
+
+  uint8_t submitted = 0;
+  for (uint8_t chunk = 0; chunk < kCaptureChunks; ++chunk) {
+    if (!recordWakeMwwAudioBlocking(recordBuf, kRecordSamples, kSampleRate, kRecordStereo)) {
+      gWakeSrProbe.recordDrops++;
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    if constexpr (kRecordStereo) {
+      constexpr size_t selectedChannel = STACKCHAN_MWW_WAKE_STEREO_MONO_CHANNEL ? 1u : 0u;
+      for (size_t i = 0; i < kMonoSamples; ++i) {
+        monoBuf[i] = recordBuf[(i * kRecordChannels) + selectedChannel];
+      }
+    } else {
+      memcpy(monoBuf, recordBuf, sizeof(monoBuf));
+    }
+    conditionWakeSrDirectAudio(monoBuf, static_cast<int>(kMonoSamples), 1);
+    storeWakeMwwPcm(monoBuf, kMonoSamples);
+    gWakeSrProbe.recordOk++;
+    gWakeSrProbe.samplesFed += kMonoSamples;
+    gWakeSrProbe.lastRecordMs = millis();
+
+    if (submitDedicatedWakeCaptureChunk(seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs)) {
+      submitted++;
+    } else {
+      gWakeMwwUplinkSubmitFailed = gWakeMwwUplinkSubmitFailed + 1u;
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+
+  finishDedicatedWakeCaptureTurn(seq, millis());
+  M5.Mic.end();
+  releaseWakeMwwAudioPause(millis());
+  suppressWakeMwwDetections(millis(), 900);
+  return submitted > 0;
+}
+#endif
+
+void writeWakeWavLe16(uint8_t* dst, uint16_t value) {
+  dst[0] = static_cast<uint8_t>(value & 0xFFu);
+  dst[1] = static_cast<uint8_t>((value >> 8) & 0xFFu);
+}
+
+void writeWakeWavLe32(uint8_t* dst, uint32_t value) {
+  dst[0] = static_cast<uint8_t>(value & 0xFFu);
+  dst[1] = static_cast<uint8_t>((value >> 8) & 0xFFu);
+  dst[2] = static_cast<uint8_t>((value >> 16) & 0xFFu);
+  dst[3] = static_cast<uint8_t>((value >> 24) & 0xFFu);
+}
+
+void serveWakeMwwPcmWav(WiFiClient& client) {
+  const uint32_t available = gWakeMwwPcmRing != nullptr ? gWakeMwwPcmAvailable : 0;
+  const uint32_t writeIndex = gWakeMwwPcmWriteIndex;
+  const uint32_t sampleCount =
+      available < kWakeMwwPcmRingSamples ? available : static_cast<uint32_t>(kWakeMwwPcmRingSamples);
+  const uint32_t dataBytes = sampleCount * sizeof(int16_t);
+  const uint32_t contentLength = 44u + dataBytes;
+
+  uint8_t header[44] = {};
+  memcpy(header + 0, "RIFF", 4);
+  writeWakeWavLe32(header + 4, contentLength - 8u);
+  memcpy(header + 8, "WAVE", 4);
+  memcpy(header + 12, "fmt ", 4);
+  writeWakeWavLe32(header + 16, 16u);
+  writeWakeWavLe16(header + 20, 1u);
+  writeWakeWavLe16(header + 22, 1u);
+  writeWakeWavLe32(header + 24, 16000u);
+  writeWakeWavLe32(header + 28, 16000u * sizeof(int16_t));
+  writeWakeWavLe16(header + 32, sizeof(int16_t));
+  writeWakeWavLe16(header + 34, 16u);
+  memcpy(header + 36, "data", 4);
+  writeWakeWavLe32(header + 40, dataBytes);
+
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: audio/wav"));
+  client.print(F("Content-Length: "));
+  client.println(contentLength);
+  client.println(F("Connection: close"));
+  client.println();
+  client.write(header, sizeof(header));
+
+  if (sampleCount == 0 || gWakeMwwPcmRing == nullptr) {
+    return;
+  }
+
+  const uint32_t start = (writeIndex + kWakeMwwPcmRingSamples - sampleCount) % kWakeMwwPcmRingSamples;
+  const uint32_t firstCount =
+      start + sampleCount <= kWakeMwwPcmRingSamples ? sampleCount : kWakeMwwPcmRingSamples - start;
+  client.write(
+      reinterpret_cast<const uint8_t*>(gWakeMwwPcmRing + start),
+      firstCount * sizeof(int16_t));
+  const uint32_t remaining = sampleCount - firstCount;
+  if (remaining > 0) {
+    client.write(reinterpret_cast<const uint8_t*>(gWakeMwwPcmRing), remaining * sizeof(int16_t));
+  }
+}
+
+void WakeMwwProbeTask(void* pv) {
+  (void)pv;
+  gWakeSrProbe.beginAttempts++;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.println(F("[mww_wake] task_enter=1"));
+#endif
+
+  constexpr uint32_t kModelSampleRate = 16000;
+  constexpr uint32_t kCaptureSampleRate = STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE;
+  static_assert(kCaptureSampleRate >= kModelSampleRate, "MWW capture rate must be at least 16 kHz");
+  static_assert((kCaptureSampleRate % kModelSampleRate) == 0, "MWW capture rate must be divisible by 16 kHz");
+  constexpr size_t kDecimationFactor = kCaptureSampleRate / kModelSampleRate;
+
+  auto micConfig = M5.Mic.config();
+  micConfig.sample_rate = kCaptureSampleRate;
+  micConfig.magnification = STACKCHAN_MWW_WAKE_MIC_MAGNIFICATION;
+  micConfig.noise_filter_level = STACKCHAN_SR_WAKE_MIC_NOISE_FILTER_LEVEL;
+  micConfig.task_priority = STACKCHAN_SR_WAKE_MIC_TASK_PRIORITY;
+  micConfig.task_pinned_core = STACKCHAN_SR_WAKE_MIC_TASK_CORE;
+#if STACKCHAN_MWW_WAKE_MIC_INPUT_STEREO
+  micConfig.input_channel = m5::input_channel_t::input_stereo;
+  micConfig.stereo = true;
+#elif STACKCHAN_MWW_WAKE_MONO_CHANNEL
+  micConfig.input_channel = m5::input_channel_t::input_only_left;
+  micConfig.stereo = false;
+#else
+  micConfig.input_channel = m5::input_channel_t::input_only_right;
+  micConfig.stereo = false;
+#endif
+  M5.Mic.config(micConfig);
+  if (!M5.Mic.begin()) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("mww_mic_begin_failed");
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.println(F("[mww_wake] ready=0 error=mic_begin_failed"));
+#endif
+    vTaskDelete(nullptr);
+    return;
+  }
+  gWakeSrProbe.micReady = true;
+  applyWakeMwwEs7210GainOverride();
+  const bool pcmCaptureReady = ensureWakeMwwPcmRing();
+  const bool uplinkQueueReady = ensureWakeMwwUplinkQueue();
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mww_wake] pcm_capture_ready="));
+  Serial.print(pcmCaptureReady ? 1 : 0);
+  Serial.print(F(" samples="));
+  Serial.println(pcmCaptureReady ? kWakeMwwPcmRingSamples : 0);
+  Serial.print(F("[mww_wake] uplink_buffer_ready="));
+  Serial.print(uplinkQueueReady ? 1 : 0);
+  Serial.print(F(" chunk_samples="));
+  Serial.print(STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES);
+  Serial.println(F(" slots=1"));
+#else
+  (void)pcmCaptureReady;
+  (void)uplinkQueueReady;
+#endif
+
+  MicroWakeWordProbeConfig config;
+#if STACKCHAN_MWW_WAKE_USE_HI_STACKCHAN_MODEL && STACKCHAN_HAS_MWW_HI_STACKCHAN_MODEL
+  const char* modelId = "hi_stackchan";
+  const char* modelName = "microWakeWord:hi_stackchan";
+  const char* wakeWord = "Hi StackChan";
+  config.modelData = wake_models::kHiStackchanTflite;
+  config.modelSize = wake_models::kHiStackchanTfliteSize;
+#elif STACKCHAN_MWW_WAKE_USE_M5_MODEL && STACKCHAN_HAS_MWW_M5_MODEL
+  const char* modelId = "hey_m5_v3";
+  const char* modelName = "microWakeWord:hey_m5_v3";
+  const char* wakeWord = "Hey M5";
+  config.modelData = wake_models::kHeyM5V3Tflite;
+  config.modelSize = wake_models::kHeyM5V3TfliteSize;
+#else
+  const char* modelId = "hey_stackchan_v1";
+  const char* modelName = "microWakeWord:hey_stackchan_v1";
+  const char* wakeWord = "Hey Stack Chan";
+  config.modelData = wake_models::kHeyStackchanV1Tflite;
+  config.modelSize = wake_models::kHeyStackchanV1TfliteSize;
+#endif
+  config.probabilityCutoff = STACKCHAN_MWW_WAKE_PROBABILITY_CUTOFF;
+  config.slidingWindowSize = 5;
+  config.featureStepMs = 10;
+  config.warmupWindows = 100;
+  config.tensorArenaSize = 65536;
+  config.variableArenaSize = 1024;
+  if (!gMicroWakeWordProbe.begin(config)) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError(gMicroWakeWordProbe.telemetry().error);
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.print(F("[mww_wake] ready=0 error="));
+    Serial.println(gMicroWakeWordProbe.telemetry().error);
+#endif
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  constexpr bool kRecordStereo = STACKCHAN_MWW_WAKE_RECORD_STEREO != 0;
+  constexpr bool kDcCorrect = STACKCHAN_MWW_WAKE_DC_CORRECT != 0;
+  constexpr size_t kMonoRecordSamples = STACKCHAN_MWW_WAKE_RECORD_SAMPLES;
+  constexpr size_t kCaptureFrames = kMonoRecordSamples * kDecimationFactor;
+  constexpr size_t kRecordChannels = kRecordStereo ? 2u : 1u;
+  constexpr size_t kRecordSamples = kCaptureFrames * kRecordChannels;
+  static int16_t audioBuf[kRecordSamples];
+  static int16_t monoBuf[kMonoRecordSamples];
+  const auto appliedMicConfig = M5.Mic.config();
+  gWakeSrProbe.taskStarted = true;
+  gWakeSrProbe.srReady = true;
+  gWakeSrProbe.chunkSamples = kMonoRecordSamples;
+  gWakeSrProbe.recordSamples = kRecordSamples;
+  gWakeSrProbe.audioChannels = kRecordStereo ? 2 : 1;
+  gWakeSrProbe.sampleRate = kCaptureSampleRate;
+  gWakeSrProbe.detectMode = STACKCHAN_MWW_WAKE_PROBABILITY_CUTOFF;
+  gWakeSrProbe.micMagnification = appliedMicConfig.magnification;
+  gWakeSrProbe.monoChannel =
+      kRecordStereo ? (STACKCHAN_MWW_WAKE_STEREO_MONO_CHANNEL ? 1 : 0)
+                    : (appliedMicConfig.input_channel == m5::input_channel_t::input_only_left ? 1 : 0);
+  gWakeSrProbe.micInputStereo = appliedMicConfig.input_channel == m5::input_channel_t::input_stereo;
+  gWakeSrProbe.micTaskCore = appliedMicConfig.task_pinned_core;
+  gWakeSrProbe.micTaskPriority = appliedMicConfig.task_priority;
+  gWakeSrProbe.micNoiseFilterLevel = appliedMicConfig.noise_filter_level;
+  gWakeSrProbe.stereo = kRecordStereo;
+  gWakeSrProbe.audioGainQ8 = STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8;
+  gWakeSrProbe.mwwArenaUsedBytes = gMicroWakeWordProbe.telemetry().arenaUsedBytes;
+  gWakeSrProbe.mwwModelStride = gMicroWakeWordProbe.telemetry().modelStride;
+  copyWakeSrString(gWakeSrProbe.modelName, sizeof(gWakeSrProbe.modelName), modelName);
+  copyWakeSrString(gWakeSrProbe.wakeWord, sizeof(gWakeSrProbe.wakeWord), wakeWord);
+  copyWakeSrError("");
+
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mww_wake] ready=1 model="));
+  Serial.print(modelId);
+  Serial.print(F(" wake_word=\""));
+  Serial.print(wakeWord);
+  Serial.print(F("\" cutoff="));
+  Serial.print(STACKCHAN_MWW_WAKE_PROBABILITY_CUTOFF);
+  Serial.print(F(" record_samples="));
+  Serial.print(kRecordSamples);
+  Serial.print(F(" record_stereo="));
+  Serial.print(kRecordStereo ? 1 : 0);
+  Serial.print(F(" capture_hz="));
+  Serial.print(kCaptureSampleRate);
+  Serial.print(F(" decimate="));
+  Serial.print(kDecimationFactor);
+  Serial.print(F(" dc_correct="));
+  Serial.print(kDcCorrect ? 1 : 0);
+  Serial.print(F(" stride="));
+  Serial.print(gMicroWakeWordProbe.telemetry().modelStride);
+  Serial.print(F(" arena_used="));
+  Serial.print(gMicroWakeWordProbe.telemetry().arenaUsedBytes);
+  Serial.print(F(" mic_mag="));
+  Serial.print(gWakeSrProbe.micMagnification);
+  Serial.print(F(" task_core="));
+  Serial.print(STACKCHAN_MWW_WAKE_TASK_CORE);
+  Serial.print(F(" priority="));
+  Serial.println(STACKCHAN_MWW_WAKE_TASK_PRIORITY);
+#else
+  (void)modelId;
+#endif
+
+#if STACKCHAN_MWW_WAKE_STARTUP_SUPPRESSION_MS > 0
+  const uint32_t startupSuppressMs = millis();
+  suppressWakeMwwDetections(startupSuppressMs, STACKCHAN_MWW_WAKE_STARTUP_SUPPRESSION_MS);
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mww_wake] startup_suppression_ms="));
+  Serial.print(STACKCHAN_MWW_WAKE_STARTUP_SUPPRESSION_MS);
+  Serial.print(F(" at_ms="));
+  Serial.println(startupSuppressMs);
+#endif
+#endif
+
+  uint32_t lastDetectionMs = 0;
+#if STACKCHAN_MWW_WAKE_DIAG_INTERVAL > 0
+  uint32_t lastDiagInference = 0;
+#endif
+  int32_t highPassPreviousInput = 0;
+  int32_t highPassPreviousOutput = 0;
+  bool wasSuppressed = false;
+  while (true) {
+    if (gWakeMwwResetRequested) {
+      gWakeMwwResetRequested = false;
+      resetWakeMwwValidationCounters();
+      highPassPreviousInput = 0;
+      highPassPreviousOutput = 0;
+      wasSuppressed = false;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+      Serial.print(F("[mww_wake] validation_reset=1 at_ms="));
+      Serial.println(millis());
+#endif
+    }
+
+    if (gWakeMwwAudioPauseRequested) {
+      if (!gWakeMwwAudioPaused) {
+        M5.Mic.end();
+        gWakeMwwAudioPaused = true;
+        gWakeSrProbe.micReady = false;
+        gWakeSrProbe.audioPauseRequested = true;
+        gWakeSrProbe.audioPaused = true;
+        gWakeSrProbe.audioPauseEnters++;
+        gWakeSrProbe.audioLastPauseMs = millis();
+        gMicroWakeWordProbe.reset();
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+        Serial.print(F("[mww_wake] audio_pause=1 at_ms="));
+        Serial.println(gWakeSrProbe.audioLastPauseMs);
+#endif
+      }
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+
+    if (gWakeMwwAudioPaused) {
+      const uint32_t resumeMs = millis();
+      M5.Mic.config(micConfig);
+      if (!M5.Mic.begin()) {
+        gWakeSrProbe.recordDrops++;
+        gWakeSrProbe.audioPauseFailures++;
+        copyWakeSrError("mww_mic_resume_failed");
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+        Serial.print(F("[mww_wake] audio_resume=0 error=mic_begin_failed at_ms="));
+        Serial.println(resumeMs);
+#endif
+        vTaskDelay(pdMS_TO_TICKS(50));
+        continue;
+      }
+      applyWakeMwwEs7210GainOverride();
+      gWakeMwwAudioPaused = false;
+      gWakeSrProbe.micReady = true;
+      gWakeSrProbe.audioPauseRequested = false;
+      gWakeSrProbe.audioPaused = false;
+      gWakeSrProbe.audioResumes++;
+      gWakeSrProbe.audioLastResumeMs = resumeMs;
+      gMicroWakeWordProbe.reset();
+      highPassPreviousInput = 0;
+      highPassPreviousOutput = 0;
+      wasSuppressed = true;
+      suppressWakeMwwDetections(resumeMs, 600);
+      copyWakeSrError("");
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+      Serial.print(F("[mww_wake] audio_resume=1 at_ms="));
+      Serial.println(resumeMs);
+#endif
+    }
+
+    if (!recordWakeMwwAudioBlocking(audioBuf, kRecordSamples, kCaptureSampleRate, kRecordStereo)) {
+      gWakeSrProbe.recordDrops++;
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    int16_t* modelAudio = monoBuf;
+    size_t modelSamples = kMonoRecordSamples;
+    if constexpr (kDecimationFactor == 1 && !kRecordStereo && !kDcCorrect) {
+      modelAudio = audioBuf;
+    } else {
+      constexpr size_t selectedChannel = STACKCHAN_MWW_WAKE_STEREO_MONO_CHANNEL ? 1u : 0u;
+      for (size_t i = 0; i < kMonoRecordSamples; ++i) {
+        int32_t sum = 0;
+        for (size_t j = 0; j < kDecimationFactor; ++j) {
+          const size_t frameIndex = (i * kDecimationFactor) + j;
+          const size_t sampleIndex = (frameIndex * kRecordChannels) + (kRecordStereo ? selectedChannel : 0u);
+          sum += audioBuf[sampleIndex];
+        }
+        monoBuf[i] = clampWakeSrSample(sum / static_cast<int32_t>(kDecimationFactor));
+      }
+    }
+    if constexpr (kDcCorrect) {
+      int32_t mean = 0;
+      for (size_t i = 0; i < kMonoRecordSamples; ++i) {
+        mean += modelAudio[i];
+      }
+      mean /= static_cast<int32_t>(kMonoRecordSamples);
+      for (size_t i = 0; i < kMonoRecordSamples; ++i) {
+        modelAudio[i] = clampWakeSrSample(static_cast<int32_t>(modelAudio[i]) - mean);
+      }
+    }
+    highPassWakeMwwAudio(modelAudio, modelSamples, highPassPreviousInput, highPassPreviousOutput);
+    conditionWakeSrDirectAudio(modelAudio, static_cast<int>(modelSamples), 1);
+    storeWakeMwwPcm(modelAudio, modelSamples);
+    gWakeSrProbe.recordOk++;
+    gWakeSrProbe.samplesFed += modelSamples;
+    gWakeSrProbe.lastRecordMs = millis();
+    const uint32_t recordMs = gWakeSrProbe.lastRecordMs;
+    queueWakeMwwUplinkAudio(modelAudio, modelSamples, recordMs);
+    const bool suppressed = wakeMwwDetectionsSuppressed(recordMs) || gWakeMwwInteractionLatched;
+    if (suppressed) {
+      if (!wasSuppressed) {
+        gMicroWakeWordProbe.reset();
+        wasSuppressed = true;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+        Serial.print(F("[mww_wake] local_audio_suppression=1 until_ms="));
+        Serial.println(gWakeMwwSuppressUntilMs);
+#endif
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+    if (wasSuppressed) {
+      gMicroWakeWordProbe.reset();
+      wasSuppressed = false;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+      Serial.print(F("[mww_wake] local_audio_suppression=0 at_ms="));
+      Serial.println(recordMs);
+#endif
+    }
+    const bool detected = gMicroWakeWordProbe.feed(modelAudio, modelSamples);
+    const MicroWakeWordProbeTelemetry& mww = gMicroWakeWordProbe.telemetry();
+    const bool peakDetected =
+        (STACKCHAN_MWW_WAKE_PEAK_PROBABILITY_CUTOFF > 0) &&
+        (mww.lastProbability >= STACKCHAN_MWW_WAKE_PEAK_PROBABILITY_CUTOFF);
+    gWakeSrProbe.detectCalls = mww.inferences;
+    gWakeSrProbe.detectNonzero = mww.maxProbability > 0 ? mww.inferences : 0;
+    gWakeSrProbe.lastDetectResult = static_cast<int32_t>(mww.lastProbability);
+    gWakeSrProbe.detectAvgUs = mww.averageProbability;
+    gWakeSrProbe.detectMaxUs = mww.maxInferenceUs;
+    gWakeSrProbe.mwwFeatures = mww.features;
+    gWakeSrProbe.mwwInferences = mww.inferences;
+    gWakeSrProbe.mwwDetections = mww.detections;
+    gWakeSrProbe.mwwInvokeErrors = mww.invokeErrors;
+    gWakeSrProbe.mwwFeatureErrors = mww.featureErrors;
+    gWakeSrProbe.mwwLastProbability = mww.lastProbability;
+    gWakeSrProbe.mwwMaxProbability = mww.maxProbability;
+    gWakeSrProbe.mwwAverageProbability = mww.averageProbability;
+    gWakeSrProbe.mwwMaxAverageProbability = mww.maxAverageProbability;
+    gWakeSrProbe.mwwProbabilityCutoff = mww.probabilityCutoff;
+    gWakeSrProbe.mwwSlidingWindowSize = mww.slidingWindowSize;
+    gWakeSrProbe.mwwLastDetectionProbability = mww.lastDetectionProbability;
+    gWakeSrProbe.mwwLastDetectionAverageProbability = mww.lastDetectionAverageProbability;
+    gWakeSrProbe.mwwMaxDetectionAverageProbability = mww.maxDetectionAverageProbability;
+    gWakeSrProbe.mwwLastFeatureMin = mww.lastFeatureMin;
+    gWakeSrProbe.mwwLastFeatureMax = mww.lastFeatureMax;
+    gWakeSrProbe.mwwMinFeatureSeen = mww.minFeatureSeen;
+    gWakeSrProbe.mwwMaxFeatureSeen = mww.maxFeatureSeen;
+    gWakeSrProbe.mwwLastInferenceUs = mww.lastInferenceUs;
+    gWakeSrProbe.mwwMaxInferenceUs = mww.maxInferenceUs;
+#if STACKCHAN_MWW_WAKE_DIAG_INTERVAL > 0
+    if (mww.inferences > 0 && mww.inferences != lastDiagInference &&
+        (mww.inferences % static_cast<uint32_t>(STACKCHAN_MWW_WAKE_DIAG_INTERVAL)) == 0u) {
+      lastDiagInference = mww.inferences;
+      Serial.print(F("[mww_wake] diag inferences="));
+      Serial.print(mww.inferences);
+      Serial.print(F(" last_prob="));
+      Serial.print(mww.lastProbability);
+      Serial.print(F(" max_prob="));
+      Serial.print(mww.maxProbability);
+      Serial.print(F(" avg_prob="));
+      Serial.print(mww.averageProbability);
+      Serial.print(F(" feature_min="));
+      Serial.print(mww.lastFeatureMin);
+      Serial.print(F(" feature_max="));
+      Serial.print(mww.lastFeatureMax);
+      Serial.print(F(" feature_min_seen="));
+      Serial.print(mww.minFeatureSeen);
+      Serial.print(F(" feature_max_seen="));
+      Serial.print(mww.maxFeatureSeen);
+      Serial.print(F(" peak="));
+      Serial.print(gWakeSrProbe.audioPeak);
+      Serial.print(F(" mean_abs="));
+      Serial.println(gWakeSrProbe.audioMeanAbs);
+    }
+#endif
+    if (detected || peakDetected) {
+      const uint32_t nowMs = millis();
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+      Serial.print(F("[mww_wake] detection=1 probability="));
+      Serial.print(mww.lastProbability);
+      Serial.print(F(" avg_probability="));
+      Serial.print(mww.averageProbability);
+      Serial.print(F(" peak_gate="));
+      Serial.print(peakDetected ? 1 : 0);
+      Serial.print(F(" peak="));
+      Serial.print(gWakeSrProbe.audioPeak);
+      Serial.print(F(" at_ms="));
+      Serial.println(nowMs);
+#endif
+      if (lastDetectionMs == 0 || nowMs - lastDetectionMs >= STACKCHAN_MWW_WAKE_COOLDOWN_MS) {
+        lastDetectionMs = nowMs;
+        queueWakeMwwDetection(nowMs);
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
+void pollWakeMwwProbe(uint32_t nowMs) {
+  refreshWakeMwwInteractionLatch(nowMs);
+  const uint32_t pending = takeWakeMwwPendingDetections();
+  for (uint32_t i = 0; i < pending; ++i) {
+    if (gWakeMwwInteractionLatched || !wakeMwwInteractionReadyForWake(nowMs)) {
+      suppressWakeMwwDetections(nowMs, 900);
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+      Serial.print(F("[mww_wake] event=wake_word suppressed=1 reason=interaction_busy detections="));
+      Serial.print(gWakeSrProbe.wakeDetections);
+      Serial.print(F(" at_ms="));
+      Serial.println(nowMs);
+#endif
+      continue;
+    }
+    RobotEvent event;
+    event.type = EventType::WakeWord;
+    event.timestampMs = nowMs;
+    event.strength = 1.0f;
+    gWakeMwwInteractionLatched = true;
+    gWakeMwwInteractionLatchedAtMs = nowMs;
+    suppressWakeMwwDetections(nowMs, 900);
+#if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+    const bool applied = runDedicatedWakeCaptureTurn(event, nowMs);
+    if (applied) {
+      gWakeSrProbe.wakeEventsApplied++;
+    }
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.print(F("[mww_wake] event=wake_word dedicated_capture="));
+    Serial.print(applied ? 1 : 0);
+    Serial.print(F(" detections="));
+    Serial.print(gWakeSrProbe.wakeDetections);
+    Serial.print(F(" applied_total="));
+    Serial.print(gWakeSrProbe.wakeEventsApplied);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+#endif
+#else
+    applyWakeEventFromLocalSource(
+        event, CharacterMode::Listen, F("mww_wake_probe"), gWakeSrProbe.wakeDetections, nowMs);
+    gWakeSrProbe.wakeEventsApplied++;
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.print(F("[mww_wake] event=wake_word applied=1 detections="));
+    Serial.print(gWakeSrProbe.wakeDetections);
+    Serial.print(F(" applied_total="));
+    Serial.print(gWakeSrProbe.wakeEventsApplied);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+#endif
+#endif
+  }
+}
+
+bool startWakeMwwProbe() {
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mww_wake] start_request=1 core="));
+  Serial.print(STACKCHAN_MWW_WAKE_TASK_CORE);
+  Serial.print(F(" priority="));
+  Serial.println(STACKCHAN_MWW_WAKE_TASK_PRIORITY);
+#endif
+  const BaseType_t ok = xTaskCreatePinnedToCore(
+      WakeMwwProbeTask,
+      "WakeMww",
+      STACKCHAN_MWW_WAKE_TASK_STACK_WORDS,
+      nullptr,
+      STACKCHAN_MWW_WAKE_TASK_PRIORITY,
+      &gWakeSrTaskHandle,
+      STACKCHAN_MWW_WAKE_TASK_CORE);
+  if (ok != pdPASS) {
+    gWakeSrProbe.beginFailures++;
+    copyWakeSrError("mww_task_create_failed");
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+    Serial.println(F("[mww_wake] ready=0 error=task_create_failed"));
+#endif
+    return false;
+  }
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.println(F("[mww_wake] task_created=1"));
+#endif
+  return true;
+}
+#else
+bool ensureWakeMwwUplinkQueue() {
+  return true;
+}
+
+void resetWakeMwwUplinkQueue() {}
+
+void queueWakeMwwUplinkAudio(const int16_t* samples, size_t sampleCount, uint32_t capturedAtMs) {
+  (void)samples;
+  (void)sampleCount;
+  (void)capturedAtMs;
+}
+
+void drainWakeMwwUplinkQueue(uint32_t nowMs) {
+  (void)nowMs;
+}
+
+void pollWakeMwwProbe(uint32_t nowMs) {
+  (void)nowMs;
+}
+
+bool startWakeMwwProbe() {
+#if STACKCHAN_ENABLE_MWW_WAKE_PROBE
+  gWakeSrProbe.beginFailures++;
+  copyWakeSrError("mww_not_compiled");
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.println(F("[mww_wake] ready=0 error=not_compiled"));
+#endif
+  return false;
+#else
+  return true;
+#endif
+}
+#endif
+
+void ensureWakeSrStarted(uint32_t nowMs) {
+  if (gWakeSrStartAttempted || !gWakeSrProbe.enabled || nowMs < 2500) {
+    return;
+  }
+  gWakeSrStartAttempted = true;
+  const uint8_t enabledImplCount =
+      (STACKCHAN_ENABLE_SR_WAKE_PROBE ? 1 : 0) + (STACKCHAN_ENABLE_SR_WAKE_DIRECT ? 1 : 0) +
+      (STACKCHAN_ENABLE_SR_WAKE_AFE_LITE ? 1 : 0) + (STACKCHAN_ENABLE_MWW_WAKE_PROBE ? 1 : 0);
+  if (enabledImplCount > 1) {
+  gWakeSrStartOk = false;
+  gWakeSrProbe.beginFailures++;
+  copyWakeSrError("sr_wake_multiple_impls_enabled");
+  Serial.println(F("[sr_wake] startup_complete=1 ok=0 error=multiple_impls_enabled"));
+  } else {
+  Serial.println(F("[sr_wake] startup_begin=1"));
+  const bool wakeSrProbeOk = startWakeSrProbe();
+  const bool wakeSrDirectOk = startWakeSrDirect();
+  const bool wakeSrAfeLiteOk = startWakeSrAfeLite();
+  const bool wakeMwwOk = startWakeMwwProbe();
+  gWakeSrStartOk = wakeSrProbeOk && wakeSrDirectOk && wakeSrAfeLiteOk && wakeMwwOk;
+  Serial.print(F("[sr_wake] startup_complete=1 ok="));
+  Serial.print(gWakeSrStartOk ? 1 : 0);
+  Serial.print(F(" probe_ok="));
+  Serial.print(wakeSrProbeOk ? 1 : 0);
+  Serial.print(F(" direct_ok="));
+  Serial.print(wakeSrDirectOk ? 1 : 0);
+  Serial.print(F(" afe_ok="));
+  Serial.print(wakeSrAfeLiteOk ? 1 : 0);
+  Serial.print(F(" mww_ok="));
+  Serial.print(wakeMwwOk ? 1 : 0);
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
+  }
+}
+
 void printSystemTelemetry() {
+#if defined(ARDUINO_ARCH_ESP32)
+  sampleChipTemperature(millis(), false);
+#endif
   Serial.print(F("[system] heap_free="));
   Serial.print(ESP.getFreeHeap());
   Serial.print(F(" heap_min="));
@@ -810,7 +4858,44 @@ void printSystemTelemetry() {
   Serial.print(F(" stack_face_hwm="));
   Serial.print(stackHighWater(gFaceTaskHandle));
   Serial.print(F(" stack_intent_hwm="));
-  Serial.println(stackHighWater(gIntentTaskHandle));
+  Serial.print(stackHighWater(gIntentTaskHandle));
+  Serial.print(F(" stack_wake_sr_hwm="));
+  Serial.print(stackHighWater(gWakeSrTaskHandle));
+  Serial.print(F(" stack_wake_sr_feed_hwm="));
+  Serial.print(stackHighWater(gWakeSrFeedTaskHandle));
+#if defined(ARDUINO_ARCH_ESP32)
+  Serial.print(F(" chip_temp_c="));
+  if (gChipTemperatureValid) {
+    Serial.print(gChipTemperatureC, 1);
+  } else {
+    Serial.print(F("null"));
+  }
+  Serial.print(F(" chip_temp_max_c="));
+  if (gChipTemperatureValid) {
+    Serial.print(gChipTemperatureMaxC, 1);
+  } else {
+    Serial.print(F("null"));
+  }
+  Serial.print(F(" chip_temp_samples="));
+  Serial.print(gChipTemperatureSamples);
+  Serial.print(F(" chip_temp_read_failures="));
+  Serial.print(gChipTemperatureReadFailures);
+  Serial.print(F(" power_vbus_mv="));
+  Serial.print(gPowerTelemetryValid ? gPowerVbusMv : -1);
+  Serial.print(F(" power_vbus_min_mv="));
+  Serial.print(gPowerTelemetryValid ? gPowerVbusMinMv : -1);
+  Serial.print(F(" power_battery_mv="));
+  Serial.print(gPowerTelemetryValid ? gPowerBatteryMv : -1);
+  Serial.print(F(" power_battery_level="));
+  Serial.print(gPowerTelemetryValid ? gPowerBatteryLevel : -1);
+  Serial.print(F(" power_charging_state="));
+  Serial.print(gPowerTelemetryValid ? gPowerChargingState : -1);
+  Serial.print(F(" power_samples="));
+  Serial.print(gPowerTelemetrySamples);
+  Serial.print(F(" power_read_failures="));
+  Serial.print(gPowerTelemetryReadFailures);
+#endif
+  Serial.println();
 }
 
 void printRuntimeStatus() {
@@ -857,6 +4942,136 @@ void printRuntimeStatus() {
   Serial.print(capture.lastLevel, 3);
   Serial.print(F(" audio_capture_zcr="));
   Serial.print(capture.lastZeroCrossingRate, 3);
+  Serial.print(F(" sr_wake_enabled="));
+  Serial.print(gWakeSrProbe.enabled ? 1 : 0);
+  Serial.print(F(" sr_wake_compiled="));
+  Serial.print(gWakeSrProbe.compiled ? 1 : 0);
+  Serial.print(F(" sr_wake_wrapper_enabled="));
+  Serial.print(gWakeSrProbe.wrapperEnabled ? 1 : 0);
+  Serial.print(F(" sr_wake_direct_enabled="));
+  Serial.print(gWakeSrProbe.directEnabled ? 1 : 0);
+  Serial.print(F(" sr_wake_afe_lite_enabled="));
+  Serial.print(gWakeSrProbe.afeLiteEnabled ? 1 : 0);
+  Serial.print(F(" sr_wake_mww_enabled="));
+  Serial.print(gWakeSrProbe.mwwEnabled ? 1 : 0);
+  Serial.print(F(" sr_wake_direct_compiled="));
+  Serial.print(gWakeSrProbe.directCompiled ? 1 : 0);
+  Serial.print(F(" sr_wake_afe_lite_compiled="));
+  Serial.print(gWakeSrProbe.afeLiteCompiled ? 1 : 0);
+  Serial.print(F(" sr_wake_mww_compiled="));
+  Serial.print(gWakeSrProbe.mwwCompiled ? 1 : 0);
+  Serial.print(F(" sr_wake_task_started="));
+  Serial.print(gWakeSrProbe.taskStarted ? 1 : 0);
+  Serial.print(F(" sr_wake_mic_ready="));
+  Serial.print(gWakeSrProbe.micReady ? 1 : 0);
+  Serial.print(F(" sr_wake_audio_pause_requested="));
+  Serial.print(gWakeSrProbe.audioPauseRequested ? 1 : 0);
+  Serial.print(F(" sr_wake_audio_paused="));
+  Serial.print(gWakeSrProbe.audioPaused ? 1 : 0);
+  Serial.print(F(" sr_wake_audio_pause_requests="));
+  Serial.print(gWakeSrProbe.audioPauseRequests);
+  Serial.print(F(" sr_wake_audio_pause_enters="));
+  Serial.print(gWakeSrProbe.audioPauseEnters);
+  Serial.print(F(" sr_wake_audio_resume_requests="));
+  Serial.print(gWakeSrProbe.audioResumeRequests);
+  Serial.print(F(" sr_wake_audio_resumes="));
+  Serial.print(gWakeSrProbe.audioResumes);
+  Serial.print(F(" sr_wake_audio_pause_failures="));
+  Serial.print(gWakeSrProbe.audioPauseFailures);
+  Serial.print(F(" sr_wake_sr_ready="));
+  Serial.print(gWakeSrProbe.srReady ? 1 : 0);
+  Serial.print(F(" sr_wake_begin_attempts="));
+  Serial.print(gWakeSrProbe.beginAttempts);
+  Serial.print(F(" sr_wake_begin_failures="));
+  Serial.print(gWakeSrProbe.beginFailures);
+  Serial.print(F(" sr_wake_start_attempted="));
+  Serial.print(gWakeSrStartAttempted ? 1 : 0);
+  Serial.print(F(" sr_wake_start_ok="));
+  Serial.print(gWakeSrStartOk ? 1 : 0);
+  Serial.print(F(" sr_wake_record_ok="));
+  Serial.print(gWakeSrProbe.recordOk);
+  Serial.print(F(" sr_wake_record_drops="));
+  Serial.print(gWakeSrProbe.recordDrops);
+  Serial.print(F(" sr_wake_samples="));
+  Serial.print(gWakeSrProbe.samplesFed);
+  Serial.print(F(" sr_wake_detect_calls="));
+  Serial.print(gWakeSrProbe.detectCalls);
+  Serial.print(F(" sr_wake_detect_nonzero="));
+  Serial.print(gWakeSrProbe.detectNonzero);
+  Serial.print(F(" sr_wake_detect_channel_verified="));
+  Serial.print(gWakeSrProbe.detectChannelVerified);
+  Serial.print(F(" sr_wake_last_detect_result="));
+  Serial.print(gWakeSrProbe.lastDetectResult);
+  Serial.print(F(" sr_wake_detect_mode="));
+  Serial.print(gWakeSrProbe.detectMode);
+  Serial.print(F(" sr_wake_detect_avg_us="));
+  Serial.print(gWakeSrProbe.detectAvgUs);
+  Serial.print(F(" sr_wake_detect_max_us="));
+  Serial.print(gWakeSrProbe.detectMaxUs);
+  Serial.print(F(" sr_wake_audio_gain_q8="));
+  Serial.print(gWakeSrProbe.audioGainQ8);
+  Serial.print(F(" sr_wake_audio_peak="));
+  Serial.print(gWakeSrProbe.audioPeak);
+  Serial.print(F(" sr_wake_audio_peak_max="));
+  Serial.print(gWakeSrProbe.audioPeakMax);
+  Serial.print(F(" sr_wake_audio_peak_window_max="));
+  Serial.print(gWakeSrProbe.audioPeakWindowMax);
+  Serial.print(F(" sr_wake_audio_mean_abs="));
+  Serial.print(gWakeSrProbe.audioMeanAbs);
+  Serial.print(F(" sr_wake_audio_mean_abs_max="));
+  Serial.print(gWakeSrProbe.audioMeanAbsMax);
+  Serial.print(F(" sr_wake_audio_mean_abs_window_max="));
+  Serial.print(gWakeSrProbe.audioMeanAbsWindowMax);
+  Serial.print(F(" sr_wake_audio_window_ms="));
+  Serial.print(gWakeSrProbe.audioWindowMs);
+  Serial.print(F(" sr_wake_audio_peak_l="));
+  Serial.print(gWakeSrProbe.audioPeakLeft);
+  Serial.print(F(" sr_wake_audio_mean_abs_l="));
+  Serial.print(gWakeSrProbe.audioMeanAbsLeft);
+  Serial.print(F(" sr_wake_audio_peak_r="));
+  Serial.print(gWakeSrProbe.audioPeakRight);
+  Serial.print(F(" sr_wake_audio_mean_abs_r="));
+  Serial.print(gWakeSrProbe.audioMeanAbsRight);
+  Serial.print(F(" sr_wake_audio_clips="));
+  Serial.print(gWakeSrProbe.audioClips);
+  Serial.print(F(" sr_wake_chunk_samples="));
+  Serial.print(gWakeSrProbe.chunkSamples);
+  Serial.print(F(" sr_wake_record_samples="));
+  Serial.print(gWakeSrProbe.recordSamples);
+  Serial.print(F(" sr_wake_audio_channels="));
+  Serial.print(gWakeSrProbe.audioChannels);
+  Serial.print(F(" sr_wake_sample_rate="));
+  Serial.print(gWakeSrProbe.sampleRate);
+  Serial.print(F(" sr_wake_mic_magnification="));
+  Serial.print(gWakeSrProbe.micMagnification);
+  Serial.print(F(" sr_wake_mono_channel="));
+  Serial.print(gWakeSrProbe.monoChannel);
+  Serial.print(F(" sr_wake_mic_input_stereo="));
+  Serial.print(gWakeSrProbe.micInputStereo ? 1 : 0);
+  Serial.print(F(" sr_wake_mic_task_core="));
+  Serial.print(gWakeSrProbe.micTaskCore);
+  Serial.print(F(" sr_wake_mic_task_priority="));
+  Serial.print(gWakeSrProbe.micTaskPriority);
+  Serial.print(F(" sr_wake_mic_noise_filter="));
+  Serial.print(gWakeSrProbe.micNoiseFilterLevel);
+  Serial.print(F(" sr_wake_stereo="));
+  Serial.print(gWakeSrProbe.stereo ? 1 : 0);
+  Serial.print(F(" sr_wake_detections="));
+  Serial.print(gWakeSrProbe.wakeDetections);
+  Serial.print(F(" sr_wake_events_applied="));
+  Serial.print(gWakeSrProbe.wakeEventsApplied);
+  Serial.print(F(" sr_wake_last_record_ms="));
+  Serial.print(gWakeSrProbe.lastRecordMs);
+  Serial.print(F(" sr_wake_last_wake_ms="));
+  Serial.print(gWakeSrProbe.lastWakeMs);
+  Serial.print(F(" sr_wake_model=\""));
+  Serial.print(gWakeSrProbe.modelName);
+  Serial.print(F("\" sr_wake_word=\""));
+  Serial.print(gWakeSrProbe.wakeWord);
+  Serial.print(F("\""));
+  Serial.print(F(" sr_wake_error=\""));
+  Serial.print(gWakeSrProbe.lastError);
+  Serial.print(F("\""));
   Serial.print(F(" speech_cues="));
   Serial.print(speechOut.cuesQueued);
   Serial.print(F(" speech_earcons="));
@@ -885,6 +5100,10 @@ void printRuntimeStatus() {
   Serial.print(gSpeakerSink.speakerVolume());
   Serial.print(F(" speaker_enabled="));
   Serial.print(gSpeakerSink.speakerEnabled());
+  Serial.print(F(" speaker_running="));
+  Serial.print(gSpeakerSink.speakerRunning());
+  Serial.print(F(" speaker_power_active="));
+  Serial.print(gSpeakerSink.speakerPowerActive());
   Serial.print(F(" speaker_channel_state="));
   Serial.print(gSpeakerSink.speakerChannelState());
   Serial.print(F(" speaker_pin_data_out="));
@@ -905,6 +5124,18 @@ void printRuntimeStatus() {
   Serial.print(gSpeakerSink.streamPlayRawOk());
   Serial.print(F(" speaker_stream_play_raw_failed="));
   Serial.print(gSpeakerSink.streamPlayRawFailed());
+  Serial.print(F(" speaker_stream_chunked="));
+  Serial.print(gSpeakerSink.streamPlaybackChunked());
+  Serial.print(F(" speaker_stream_first_chunk_delay_ms="));
+  Serial.print(gSpeakerSink.streamLastFirstChunkDelayMs());
+  Serial.print(F(" speaker_stream_queued_audio_ms="));
+  Serial.print(gSpeakerSink.streamLastQueuedAudioMs());
+  Serial.print(F(" speaker_stream_queue_wait_max_us="));
+  Serial.print(gSpeakerSink.streamQueueWaitMaxUs());
+  Serial.print(F(" speaker_stream_release_deferrals="));
+  Serial.print(gSpeakerSink.streamReleaseDeferrals());
+  Serial.print(F(" speaker_stream_forced_stops="));
+  Serial.print(gSpeakerSink.streamForcedStops());
   Serial.print(F(" speaker_tone_ok="));
   Serial.print(gSpeakerSink.diagnosticToneOk());
   Serial.print(F(" speaker_tone_failed="));
@@ -947,6 +5178,14 @@ void printRuntimeStatus() {
   Serial.print(wifi.connectFailures);
   Serial.print(F(" bridge_wifi_status="));
   Serial.print(wifi.status);
+#if defined(ARDUINO_ARCH_ESP32)
+  Serial.print(F(" bridge_wifi_local_ip="));
+  Serial.print(WiFi.localIP());
+  Serial.print(F(" bridge_wifi_gateway="));
+  Serial.print(WiFi.gatewayIP());
+  Serial.print(F(" bridge_wifi_rssi="));
+  Serial.print(WiFi.RSSI());
+#endif
   const BridgeWiFiProvisioningStoreTelemetry& wifiStore = gBridgeWiFiStore.telemetry();
   Serial.print(F(" bridge_wifi_store_ready="));
   Serial.print(wifiStore.ready ? 1 : 0);
@@ -1059,6 +5298,8 @@ void printRuntimeStatus() {
   Serial.print(downlink.errors);
   Serial.print(F(" bridge_downlink_playback_ready="));
   Serial.print(downlink.playbackReady ? 1 : 0);
+  Serial.print(F(" bridge_downlink_playback_enabled="));
+  Serial.print(downlink.playbackEnabled ? 1 : 0);
   Serial.print(F(" bridge_downlink_playback_active="));
   Serial.print(downlink.playbackActive ? 1 : 0);
   Serial.print(F(" bridge_downlink_playback_starts="));
@@ -1098,9 +5339,25 @@ void printRuntimeStatus() {
   Serial.print(uplink.queueFailures);
   Serial.print(F(" bridge_uplink_last_seq="));
   Serial.print(uplink.lastSeq);
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
+  Serial.print(F(" mww_uplink_pending="));
+  Serial.print(gWakeMwwUplinkPendingReady ? 1 : 0);
+  Serial.print(F(" mww_uplink_queued="));
+  Serial.print(gWakeMwwUplinkQueued);
+  Serial.print(F(" mww_uplink_dropped="));
+  Serial.print(gWakeMwwUplinkDropped);
+  Serial.print(F(" mww_uplink_submitted="));
+  Serial.print(gWakeMwwUplinkSubmitted);
+  Serial.print(F(" mww_uplink_submit_failed="));
+  Serial.print(gWakeMwwUplinkSubmitFailed);
+  Serial.print(F(" mww_uplink_reset="));
+  Serial.print(gWakeMwwUplinkReset);
+#endif
   const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
   Serial.print(F(" bridge_wake_gate_ready="));
   Serial.print(wakeGate.ready ? 1 : 0);
+  Serial.print(F(" bridge_wake_gate_speech_start="));
+  Serial.print(wakeGate.speechStartsTurn ? 1 : 0);
   Serial.print(F(" bridge_wake_gate_open="));
   Serial.print(wakeGate.gateOpen ? 1 : 0);
   Serial.print(F(" bridge_wake_gate_turn_active="));
@@ -1280,6 +5537,9 @@ void printBenchControl(const BenchControl& control) {
   if (control.hasSpeakerTest) {
     Serial.print(F(" speaker_test=1"));
   }
+  if (control.hasMicCueTest) {
+    Serial.print(F(" mic_cue_test=1"));
+  }
   if (control.hasPairingControl) {
     Serial.print(F(" pairing_action="));
     Serial.print(control.pairing.clear ? F("clear") : F("set"));
@@ -1458,6 +5718,140 @@ BridgeWiFiProvisioningConfig runtimeBridgeWiFiConfig() {
   config.bridgePort = gRuntimeBridgePort;
   config.bridgePath = gRuntimeBridgePath;
   return config;
+}
+
+BridgeWiFiProvisioningConfig activeBridgeWiFiConfig() {
+  if (gRuntimeWiFiSsid[0] != '\0' || gRuntimeBridgeHost[0] != '\0') {
+    return runtimeBridgeWiFiConfig();
+  }
+  return BridgeWiFiProvisioningConfig {};
+}
+
+void restartBridgeNetworkSession(uint32_t nowMs) {
+  gBridgeNetworkSession.stop(nowMs);
+  gBridgeNetworkSession.begin(gBridge, gBridgeSocket, gBridgeWiFi.networkSessionConfig(), nowMs);
+  gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
+}
+
+void noteBridgeRecovery(const char* reason, uint32_t nowMs) {
+  gBridgeRecovery.lastRecoveryMs = nowMs;
+  gBridgeRecovery.lastReason = reason != nullptr ? reason : "";
+  gBridgeRecovery.wifiOfflineSinceMs = 0;
+  gBridgeRecovery.bridgeOfflineSinceMs = 0;
+  gBridgeRecovery.scheduledRecoveryMs = 0;
+  Serial.print(F("[recovery] action=bridge_recover reason="));
+  Serial.print(gBridgeRecovery.lastReason);
+  Serial.print(F(" wifi_restarts="));
+  Serial.print(gBridgeRecovery.wifiRestarts);
+  Serial.print(F(" bridge_restarts="));
+  Serial.print(gBridgeRecovery.bridgeRestarts);
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
+}
+
+void recoverBridgeWiFi(const char* reason, uint32_t nowMs) {
+  gBridgeRecovery.wifiRestarts++;
+  restartBridgeWiFi(activeBridgeWiFiConfig(), nowMs);
+  noteBridgeRecovery(reason, nowMs);
+}
+
+void recoverBridgeNetwork(const char* reason, uint32_t nowMs) {
+  gBridgeRecovery.bridgeRestarts++;
+  restartBridgeNetworkSession(nowMs);
+  noteBridgeRecovery(reason, nowMs);
+}
+
+void requestBridgeReboot(const char* reason, uint32_t nowMs) {
+#if defined(ARDUINO_ARCH_ESP32)
+  if (gBridgeRecovery.scheduledRebootMs == 0) {
+    gBridgeRecovery.rebootRequests++;
+    gBridgeRecovery.scheduledRebootMs = nowMs + STACKCHAN_REMOTE_REBOOT_DELAY_MS;
+    gBridgeRecovery.lastReason = reason != nullptr ? reason : "";
+    Serial.print(F("[recovery] action=reboot_scheduled reason="));
+    Serial.print(gBridgeRecovery.lastReason);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+  }
+#else
+  (void)reason;
+  (void)nowMs;
+#endif
+}
+
+void serviceBridgeRecovery(uint32_t nowMs) {
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0
+  if (gBridgeRecovery.scheduledRebootMs != 0 &&
+      static_cast<int32_t>(nowMs - gBridgeRecovery.scheduledRebootMs) >= 0) {
+    Serial.print(F("[recovery] action=reboot_now reason="));
+    Serial.print(gBridgeRecovery.lastReason);
+    Serial.print(F(" at_ms="));
+    Serial.println(nowMs);
+    delay(20);
+    ESP.restart();
+    return;
+  }
+
+  if (gBridgeRecovery.scheduledRecoveryMs != 0 &&
+      static_cast<int32_t>(nowMs - gBridgeRecovery.scheduledRecoveryMs) >= 0) {
+    gBridgeRecovery.recoveryRequested = false;
+    recoverBridgeWiFi("remote_recover", nowMs);
+    return;
+  }
+
+  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  if (!wifi.ready || !wifi.configured) {
+    gBridgeRecovery.recoveryRequested = false;
+    gBridgeRecovery.scheduledRecoveryMs = 0;
+    gBridgeRecovery.wifiOfflineSinceMs = 0;
+    gBridgeRecovery.bridgeOfflineSinceMs = 0;
+    return;
+  }
+
+  const bool cooldownElapsed = gBridgeRecovery.lastRecoveryMs == 0 ||
+                               nowMs - gBridgeRecovery.lastRecoveryMs >= STACKCHAN_RECOVERY_RESTART_COOLDOWN_MS;
+  if (gBridgeRecovery.recoveryRequested) {
+    if (gBridgeRecovery.scheduledRecoveryMs == 0) {
+      gBridgeRecovery.scheduledRecoveryMs = nowMs + STACKCHAN_REMOTE_RECOVERY_DELAY_MS;
+    }
+  }
+
+  if (!wifi.connected) {
+    if (gBridgeRecovery.wifiOfflineSinceMs == 0) {
+      gBridgeRecovery.wifiOfflineSinceMs = nowMs;
+    }
+    gBridgeRecovery.bridgeOfflineSinceMs = 0;
+    const uint32_t offlineMs = nowMs - gBridgeRecovery.wifiOfflineSinceMs;
+    if (offlineMs >= STACKCHAN_RECOVERY_REBOOT_MS) {
+      requestBridgeReboot("wifi_offline_timeout", nowMs);
+      return;
+    }
+    if (offlineMs >= STACKCHAN_RECOVERY_WIFI_RESTART_MS && cooldownElapsed) {
+      recoverBridgeWiFi("wifi_offline_timeout", nowMs);
+    }
+    return;
+  }
+
+  gBridgeRecovery.wifiOfflineSinceMs = 0;
+  if (network.state != BridgeNetworkSessionState::Connected) {
+    if (gBridgeRecovery.bridgeOfflineSinceMs == 0) {
+      gBridgeRecovery.bridgeOfflineSinceMs = nowMs;
+    }
+    const uint32_t offlineMs = nowMs - gBridgeRecovery.bridgeOfflineSinceMs;
+    if (offlineMs >= STACKCHAN_RECOVERY_REBOOT_MS) {
+      requestBridgeReboot("bridge_offline_timeout", nowMs);
+      return;
+    }
+    if (offlineMs >= STACKCHAN_RECOVERY_BRIDGE_RESTART_MS && cooldownElapsed) {
+      recoverBridgeNetwork("bridge_offline_timeout", nowMs);
+    }
+    return;
+  }
+
+  gBridgeRecovery.bridgeOfflineSinceMs = 0;
+#else
+  (void)nowMs;
+#endif
 }
 
 BridgeWiFiProvisioningRecord runtimeBridgeWiFiRecord() {
@@ -1643,7 +6037,36 @@ void submitCapturedAudioWindowToBridgeUplink(uint32_t nowMs) {
   gBridgeAudioUplink.submitPcmChunk(uplink.lastSeq, samples, sampleCount, nowMs);
 }
 
+void playMicActivationCueIfNeeded() {
+#if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK
+  static uint32_t sLastUplinkTurnsStarted = 0;
+  const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
+  if (wakeGate.turnsStarted == sLastUplinkTurnsStarted) {
+    return;
+  }
+  sLastUplinkTurnsStarted = wakeGate.turnsStarted;
+#if STACKCHAN_ENABLE_MIC_ACTIVATION_CUE
+  const bool accepted = gSpeakerSink.playMicActivationTone();
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[mic] activation_tone=1 accepted="));
+  Serial.print(accepted ? 1 : 0);
+  Serial.print(F(" turns="));
+  Serial.print(wakeGate.turnsStarted);
+  Serial.print(F(" at_ms="));
+  Serial.println(millis());
+#else
+  (void)accepted;
+#endif
+#endif
+#endif
+}
+
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
+#if !STACKCHAN_ENABLE_BRIDGE_SERIAL_LOGS
+  (void)output;
+  (void)nowMs;
+  return;
+#else
   Serial.print(F("[bridge] type="));
   Serial.print(bridgeOutputTypeName(output.type));
   Serial.print(F(" state="));
@@ -1719,6 +6142,7 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
     Serial.print(output.error);
   }
   Serial.println();
+#endif
 }
 
 const __FlashStringHelper* endpointControlResultName(BridgeEndpointControlResult result) {
@@ -1849,15 +6273,16 @@ void publishFaceControl(const BenchControl& control) {
   xQueueOverwrite(gFaceControlQueue, &input);
 }
 
-void publishMotionControl(const BenchControl& control) {
+bool publishMotionControl(const BenchControl& control) {
   if (gMotionControlQueue == nullptr || !control.hasMotionEnable) {
-    return;
+    return false;
   }
 
   MotionControlInput input;
   input.hasMotionEnable = true;
   input.motionEnabled = control.motionEnabled;
   xQueueOverwrite(gMotionControlQueue, &input);
+  return true;
 }
 
 void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
@@ -1981,6 +6406,20 @@ void printWiFiBridgeStatus(const char* source, uint32_t nowMs) {
 }
 
 void updateBridgeNetwork(uint32_t nowMs) {
+  struct BridgeNetworkUpdateGuard {
+    explicit BridgeNetworkUpdateGuard(bool& activeFlag) : active(activeFlag) {
+      active = true;
+    }
+    ~BridgeNetworkUpdateGuard() {
+      active = false;
+    }
+    bool& active;
+  };
+  static bool updateActive = false;
+  if (updateActive) {
+    return;
+  }
+  BridgeNetworkUpdateGuard updateGuard(updateActive);
   static bool lastReady = false;
   static bool lastConfigured = false;
   static bool lastConnected = false;
@@ -1990,18 +6429,22 @@ void updateBridgeNetwork(uint32_t nowMs) {
   static int lastStatus = -1;
   static uint32_t lastReportMs = 0;
   static uint32_t lastHeartbeatMs = 0;
-  static uint32_t heartbeatPendingSinceMs = 0;
-  static uint32_t heartbeatBytesRead = 0;
-  static bool heartbeatPending = false;
-  constexpr uint32_t kBridgeHeartbeatTimeoutMs = 120000;
+  constexpr uint32_t kBridgeHeartbeatIntervalMs = 5000;
 
   gBridgeWiFi.update(nowMs);
+  serviceBridgeRecovery(nowMs);
   const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
   const bool changed = wifi.ready != lastReady || wifi.configured != lastConfigured ||
                        wifi.connected != lastConnected || wifi.connecting != lastConnecting ||
                        wifi.beginAttempts != lastAttempts || wifi.connectFailures != lastFailures ||
                        wifi.status != lastStatus;
-  if (changed || lastReportMs == 0 || nowMs - lastReportMs >= 10000) {
+  const bool periodicReportDue =
+#if STACKCHAN_ENABLE_PERIODIC_SERIAL_TELEMETRY
+      (lastReportMs == 0 || nowMs - lastReportMs >= 10000);
+#else
+      false;
+#endif
+  if (changed || periodicReportDue) {
     printWiFiBridgeStatus("update", nowMs);
     lastReady = wifi.ready;
     lastConfigured = wifi.configured;
@@ -2013,12 +6456,12 @@ void updateBridgeNetwork(uint32_t nowMs) {
     lastReportMs = nowMs;
   }
   if (!wifi.ready || !wifi.configured) {
-    heartbeatPending = false;
+    lastHeartbeatMs = 0;
     return;
   }
 
   if (!gBridgeWiFi.isConnected()) {
-    heartbeatPending = false;
+    lastHeartbeatMs = 0;
     const BridgeNetworkSessionState state = gBridgeNetworkSession.telemetry().state;
     if (state == BridgeNetworkSessionState::Connecting ||
         state == BridgeNetworkSessionState::Handshaking ||
@@ -2032,32 +6475,597 @@ void updateBridgeNetwork(uint32_t nowMs) {
 
   const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
   if (network.state != BridgeNetworkSessionState::Connected) {
-    heartbeatPending = false;
-    return;
-  }
-
-  if (heartbeatPending && network.bytesRead != heartbeatBytesRead) {
-    heartbeatPending = false;
-  }
-
-  if (heartbeatPending && nowMs - heartbeatPendingSinceMs >= kBridgeHeartbeatTimeoutMs) {
-    heartbeatPending = false;
     lastHeartbeatMs = 0;
-    gBridgeNetworkSession.stop(nowMs);
-    printWiFiBridgeStatus("heartbeat_timeout", nowMs);
     return;
   }
 
   const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
-  if (!heartbeatPending && !writer.textFrameQueued &&
-      (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 5000)) {
-    if (gBridgeNetworkSession.queueTextFrame("{\"type\":\"heartbeat\"}")) {
+  if (!writer.frameBuffered && !writer.textFrameQueued && !writer.binaryFrameQueued &&
+      (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= kBridgeHeartbeatIntervalMs)) {
+    char heartbeat[512] = {};
+    char chipTempJson[96] = {};
+#if defined(ARDUINO_ARCH_ESP32)
+    sampleChipTemperature(nowMs, false);
+    formatChipTemperatureJson(chipTempJson, sizeof(chipTempJson));
+#endif
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+    snprintf(
+        heartbeat,
+        sizeof(heartbeat),
+        "{\"type\":\"heartbeat\",\"wake_task\":%d,\"wake_mic\":%d,"
+        "\"wake_record_ok\":%lu,\"wake_detections\":%lu,\"wake_events\":%lu,"
+        "\"wake_peak\":%lu,\"wake_mean\":%lu,\"wake_peak_max\":%lu,"
+        "\"mww_last\":%lu,\"mww_max\":%lu,\"mww_avg\":%lu,\"mww_max_avg\":%lu,"
+        "\"mww_cutoff\":%lu,\"mww_inferences\":%lu,\"mww_features\":%lu%s}",
+        gWakeSrProbe.taskStarted ? 1 : 0,
+        gWakeSrProbe.micReady ? 1 : 0,
+        static_cast<unsigned long>(gWakeSrProbe.recordOk),
+        static_cast<unsigned long>(gWakeSrProbe.wakeDetections),
+        static_cast<unsigned long>(gWakeSrProbe.wakeEventsApplied),
+        static_cast<unsigned long>(gWakeSrProbe.audioPeak),
+        static_cast<unsigned long>(gWakeSrProbe.audioMeanAbs),
+        static_cast<unsigned long>(gWakeSrProbe.audioPeakMax),
+        static_cast<unsigned long>(gWakeSrProbe.mwwLastProbability),
+        static_cast<unsigned long>(gWakeSrProbe.mwwMaxProbability),
+        static_cast<unsigned long>(gWakeSrProbe.mwwAverageProbability),
+        static_cast<unsigned long>(gWakeSrProbe.mwwMaxAverageProbability),
+        static_cast<unsigned long>(gWakeSrProbe.mwwProbabilityCutoff),
+        static_cast<unsigned long>(gWakeSrProbe.mwwInferences),
+        static_cast<unsigned long>(gWakeSrProbe.mwwFeatures),
+        chipTempJson);
+#else
+    snprintf(heartbeat, sizeof(heartbeat), "{\"type\":\"heartbeat\"%s}", chipTempJson);
+#endif
+    if (gBridgeNetworkSession.queueTextFrame(heartbeat)) {
       lastHeartbeatMs = nowMs;
-      heartbeatPendingSinceMs = nowMs;
-      heartbeatBytesRead = network.bytesRead;
-      heartbeatPending = true;
+      gBridgeNetworkSession.update(nowMs);
     }
   }
+}
+
+void serveBridgeLeanStatusJson(WiFiClient& client,
+                               const char* schema,
+                               const char* requestTarget,
+                               bool speakerToneRequest,
+                               bool micToneRequest,
+                               bool wakeResetRequest,
+                               bool motionControlRequest,
+                               bool motionControlTargetEnabled,
+                               bool motionControlRequestAccepted,
+                               bool toneRequestAccepted) {
+  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+  const BridgeClientTelemetry& bridge = gBridge.telemetry();
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  const DisplayTelemetry& display = gDisplay.telemetry();
+  const ActuationTelemetry motion = gActuation.telemetry();
+  const PowerCoordinatorTelemetry powerCoordinator = gPowerCoordinator.telemetry();
+  const PowerFloorTelemetry powerFloor = gPowerFloorTracker.telemetry();
+  const ServoPowerTelemetry servoPower = gServo.powerTelemetry();
+#if STACKCHAN_ENABLE_POWER_FORENSICS
+  const PmicPowerForensicsTelemetry pmicForensics = gPmicPowerForensics.telemetry();
+#endif
+#if defined(ARDUINO_ARCH_ESP32)
+  sampleChipTemperature(millis(), false);
+  samplePowerTelemetry(millis(), true);
+#endif
+  const bool recoveryRequest =
+      strcmp(requestTarget, "/recover") == 0 || strcmp(requestTarget, "/bridge-recover") == 0 ||
+      strcmp(requestTarget, "/wifi-recover") == 0;
+  const bool rebootRequest =
+      strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
+      strcmp(requestTarget, "/reset") == 0;
+
+  static char body[12288];
+  size_t len = 0;
+  auto append = [&](const char* format, ...) {
+    if (len >= sizeof(body) - 1u) {
+      return;
+    }
+    va_list args;
+    va_start(args, format);
+    const int written = vsnprintf(body + len, sizeof(body) - len, format, args);
+    va_end(args);
+    if (written <= 0) {
+      return;
+    }
+    const size_t remaining = sizeof(body) - len;
+    const size_t used = static_cast<size_t>(written);
+    len += used < remaining ? used : remaining - 1u;
+  };
+
+  append("{\"schema\":\"%s\"", schema);
+  append(",\"wifi_connected\":%s", wifi.connected ? "true" : "false");
+  append(",\"debug_request\":\"%s\"", requestTarget);
+  append(",\"debug_port\":%lu", static_cast<unsigned long>(STACKCHAN_BRIDGE_DEBUG_PORT));
+#if defined(ARDUINO_ARCH_ESP32)
+  append(",\"uptime_ms\":%lu", static_cast<unsigned long>(millis()));
+  append(",\"boot_count\":%lu", static_cast<unsigned long>(gRtcBootCount));
+  append(",\"reset_reason\":\"%s\"", resetReasonName(gBootResetReason));
+  append(",\"reset_reason_code\":%d", static_cast<int>(gBootResetReason));
+#if STACKCHAN_ENABLE_POWER_FORENSICS
+  append(",\"power_forensics_schema\":\"axp2101-v1\"");
+  append(",\"power_forensics_enabled\":%s", pmicForensics.enabled ? "true" : "false");
+  append(",\"power_forensics_irq_enable_mask\":%lu",
+         static_cast<unsigned long>(kPmicForensicsIrqEnableMask));
+  append(",\"power_forensics_irq_enable_succeeded\":%s",
+         pmicForensics.irqEnableSucceeded ? "true" : "false");
+  append(",\"power_forensics_boot_status_valid\":%s",
+         pmicForensics.bootStatusValid ? "true" : "false");
+  append(",\"power_forensics_boot_event_mask\":%lu",
+         static_cast<unsigned long>(pmicForensics.bootEventMask));
+  append(",\"power_forensics_boot_irq0\":%u",
+         static_cast<unsigned>(pmicForensics.bootEventMask & 0xFFu));
+  append(",\"power_forensics_boot_irq1\":%u",
+         static_cast<unsigned>((pmicForensics.bootEventMask >> 8u) & 0xFFu));
+  append(",\"power_forensics_boot_irq2\":%u",
+         static_cast<unsigned>((pmicForensics.bootEventMask >> 16u) & 0xFFu));
+  append(",\"power_forensics_boot_event\":\"%s\"",
+         pmicPowerEventName(pmicForensics.bootEventMask));
+  append(",\"power_forensics_boot_protective\":%s",
+         pmicPowerEventIsProtective(pmicForensics.bootEventMask) ? "true" : "false");
+  append(",\"power_forensics_runtime_event_polls\":%lu",
+         static_cast<unsigned long>(pmicForensics.runtimeEventPolls));
+  append(",\"power_forensics_runtime_protective_event_polls\":%lu",
+         static_cast<unsigned long>(pmicForensics.runtimeProtectiveEventPolls));
+  append(",\"power_forensics_ignored_event_polls\":%lu",
+         static_cast<unsigned long>(pmicForensics.ignoredEventPolls));
+  append(",\"power_forensics_last_ignored_event_mask\":%lu",
+         static_cast<unsigned long>(pmicForensics.lastIgnoredEventMask));
+  append(",\"power_forensics_last_ignored_event\":\"%s\"",
+         pmicPowerEventName(pmicForensics.lastIgnoredEventMask));
+  append(",\"power_forensics_read_failures\":%lu",
+         static_cast<unsigned long>(pmicForensics.readFailures));
+  append(",\"power_forensics_clear_failures\":%lu",
+         static_cast<unsigned long>(pmicForensics.clearFailures));
+  append(",\"power_forensics_last_event_mask\":%lu",
+         static_cast<unsigned long>(pmicForensics.lastEventMask));
+  append(",\"power_forensics_last_event\":\"%s\"",
+         pmicPowerEventName(pmicForensics.lastEventMask));
+  append(",\"power_forensics_last_event_at_ms\":%lu",
+         static_cast<unsigned long>(pmicForensics.lastEventAtMs));
+  append(",\"power_forensics_vbus_remove_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.vbusRemoveEvents));
+  append(",\"power_forensics_battery_remove_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.batteryRemoveEvents));
+  append(",\"power_forensics_warning_level1_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.warningLevel1Events));
+  append(",\"power_forensics_warning_level2_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.warningLevel2Events));
+  append(",\"power_forensics_battery_temperature_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.batteryTemperatureEvents));
+  append(",\"power_forensics_charge_temperature_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.chargeTemperatureEvents));
+  append(",\"power_forensics_gauge_watchdog_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.gaugeWatchdogEvents));
+  append(",\"power_forensics_battery_overvoltage_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.batteryOverVoltageEvents));
+  append(",\"power_forensics_charger_timer_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.chargerTimerEvents));
+  append(",\"power_forensics_die_overtemperature_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.dieOverTemperatureEvents));
+  append(",\"power_forensics_batfet_overcurrent_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.batfetOverCurrentEvents));
+  append(",\"power_forensics_ldo_overcurrent_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.ldoOverCurrentEvents));
+  append(",\"power_forensics_watchdog_expire_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.watchdogExpireEvents));
+  append(",\"power_forensics_power_key_long_press_events\":%lu",
+         static_cast<unsigned long>(pmicForensics.powerKeyLongPressEvents));
+  if (pmicForensics.lastEventMask != 0) {
+    const PmicPowerEventContext& context = pmicForensics.lastContext;
+    append(",\"power_forensics_last_vbus_valid\":%s", context.vbusValid ? "true" : "false");
+    append(",\"power_forensics_last_vbus_mv\":%d", context.vbusMv);
+    append(",\"power_forensics_last_battery_valid\":%s",
+           context.batteryValid ? "true" : "false");
+    append(",\"power_forensics_last_battery_mv\":%d", context.batteryMv);
+    append(",\"power_forensics_last_chip_temp_valid\":%s",
+           context.chipTemperatureValid ? "true" : "false");
+    append(",\"power_forensics_last_pmic_temp_valid\":%s",
+           context.pmicTemperatureValid ? "true" : "false");
+    append(",\"power_forensics_last_body_power_valid\":%s",
+           context.bodyPowerValid ? "true" : "false");
+    append(",\"power_forensics_last_pmic_vbus_present\":%s",
+           context.pmicVbusPresent ? "true" : "false");
+    append(",\"power_forensics_last_pmic_battery_present\":%s",
+           context.pmicBatteryPresent ? "true" : "false");
+    append(",\"power_forensics_last_motion_requested\":%s",
+           context.motionRequested ? "true" : "false");
+    append(",\"power_forensics_last_servo_rail_enabled\":%s",
+           context.servoRailEnabled ? "true" : "false");
+    append(",\"power_forensics_last_servo_torque_enabled\":%s",
+           context.servoTorqueEnabled ? "true" : "false");
+    append(",\"power_forensics_last_speaker_power_active\":%s",
+           context.speakerPowerActive ? "true" : "false");
+    append(",\"power_forensics_last_chip_temp_c\":%.1f",
+           static_cast<double>(context.chipTemperatureDeciC) / 10.0);
+    append(",\"power_forensics_last_pmic_temp_c\":%.1f",
+           static_cast<double>(context.pmicTemperatureDeciC) / 10.0);
+    append(",\"power_forensics_last_body_bus_mv\":%d", context.bodyBusMv);
+    append(",\"power_forensics_last_body_current_ma\":%d", context.bodyCurrentMa);
+    append(",\"power_forensics_last_heap_free\":%lu",
+           static_cast<unsigned long>(context.heapFree));
+  }
+#endif
+  append(",\"heap_free\":%lu", static_cast<unsigned long>(ESP.getFreeHeap()));
+  append(",\"heap_min_free\":%lu", static_cast<unsigned long>(ESP.getMinFreeHeap()));
+  if (gChipTemperatureValid) {
+    append(",\"chip_temp_c\":%.1f", static_cast<double>(gChipTemperatureC));
+    append(",\"chip_temp_max_c\":%.1f", static_cast<double>(gChipTemperatureMaxC));
+  } else {
+    append(",\"chip_temp_c\":null");
+    append(",\"chip_temp_max_c\":null");
+  }
+  append(",\"chip_temp_samples\":%lu", static_cast<unsigned long>(gChipTemperatureSamples));
+  append(",\"chip_temp_read_failures\":%lu", static_cast<unsigned long>(gChipTemperatureReadFailures));
+  append(",\"power_telemetry_valid\":%s", gPowerTelemetryValid ? "true" : "false");
+  append(",\"power_vbus_valid\":%s", gPowerVbusValid ? "true" : "false");
+  if (gPowerVbusValid) {
+    append(",\"power_vbus_mv\":%d", gPowerVbusMv);
+    append(",\"power_vbus_min_mv\":%d", gPowerVbusMinMv);
+    append(",\"power_vbus_max_mv\":%d", gPowerVbusMaxMv);
+  } else {
+    append(",\"power_vbus_mv\":null");
+    append(",\"power_vbus_min_mv\":null");
+    append(",\"power_vbus_max_mv\":null");
+  }
+  append(",\"power_vbus_rejected_samples\":%lu",
+         static_cast<unsigned long>(gPowerVbusRejectedSamples));
+  append(",\"power_vbus_last_rejected_mv\":%d", gPowerVbusLastRejectedMv);
+  append(",\"power_pmic_vbus_present_valid\":%s", gPowerPmicVbusPresentValid ? "true" : "false");
+  if (gPowerPmicVbusPresentValid) {
+    append(",\"power_pmic_vbus_present\":%s", gPowerPmicVbusPresent ? "true" : "false");
+  } else {
+    append(",\"power_pmic_vbus_present\":null");
+  }
+  append(",\"power_pmic_vbus_present_samples\":%lu",
+         static_cast<unsigned long>(gPowerPmicVbusPresentSamples));
+  append(",\"power_pmic_vbus_absent_samples\":%lu",
+         static_cast<unsigned long>(gPowerPmicVbusAbsentSamples));
+  append(",\"power_pmic_vbus_transitions\":%lu",
+         static_cast<unsigned long>(gPowerPmicVbusTransitions));
+  append(",\"power_pmic_vbus_loss_entries\":%lu",
+         static_cast<unsigned long>(gPowerPmicVbusLossEntries));
+  append(",\"power_pmic_vbus_last_transition_ms\":%lu",
+         static_cast<unsigned long>(gPowerPmicVbusLastTransitionMs));
+  if (gPowerPmicBatteryPresentValid) {
+    append(",\"power_pmic_battery_present\":%s", gPowerPmicBatteryPresent ? "true" : "false");
+  } else {
+    append(",\"power_pmic_battery_present\":null");
+  }
+  if (gPowerPmicTemperatureValid) {
+    append(",\"power_pmic_temp_c\":%.1f", static_cast<double>(gPowerPmicTemperatureC));
+    append(",\"power_pmic_temp_max_c\":%.1f", static_cast<double>(gPowerPmicTemperatureMaxC));
+  } else {
+    append(",\"power_pmic_temp_c\":null");
+    append(",\"power_pmic_temp_max_c\":null");
+  }
+  append(",\"power_battery_valid\":%s", gPowerBatteryValid ? "true" : "false");
+  if (gPowerBatteryValid) {
+    append(",\"power_battery_mv\":%d", gPowerBatteryMv);
+    append(",\"power_battery_min_mv\":%d", gPowerBatteryMinMv);
+    append(",\"power_battery_max_mv\":%d", gPowerBatteryMaxMv);
+  } else {
+    append(",\"power_battery_mv\":null");
+    append(",\"power_battery_min_mv\":null");
+    append(",\"power_battery_max_mv\":null");
+  }
+  append(",\"power_battery_rejected_samples\":%lu",
+         static_cast<unsigned long>(gPowerBatteryRejectedSamples));
+  append(",\"power_battery_last_rejected_mv\":%d", gPowerBatteryLastRejectedMv);
+  if (gPowerBatteryLevel >= 0) {
+    append(",\"power_battery_level\":%ld", static_cast<long>(gPowerBatteryLevel));
+  } else {
+    append(",\"power_battery_level\":null");
+  }
+  if (gPowerChargingState >= 0 && gPowerChargingState <= 2) {
+    append(",\"power_charging_state\":%ld", static_cast<long>(gPowerChargingState));
+  } else {
+    append(",\"power_charging_state\":null");
+  }
+  append(",\"power_samples\":%lu", static_cast<unsigned long>(gPowerTelemetrySamples));
+  append(",\"power_read_failures\":%lu", static_cast<unsigned long>(gPowerTelemetryReadFailures));
+  append(",\"power_vbus_hard_floor_mv\":%u", static_cast<unsigned>(powerFloor.hardFloorMv));
+  append(",\"power_vbus_floor_valid_samples\":%lu",
+         static_cast<unsigned long>(powerFloor.validSamples));
+  append(",\"power_vbus_floor_min_mv\":%d", powerFloor.minVbusMv);
+  append(",\"power_vbus_hard_floor_samples\":%lu",
+         static_cast<unsigned long>(powerFloor.hardFloorSamples));
+  append(",\"power_vbus_hard_floor_confirmed_samples\":%lu",
+         static_cast<unsigned long>(powerFloor.hardFloorConfirmedSamples));
+  append(",\"power_vbus_hard_floor_unconfirmed_samples\":%lu",
+         static_cast<unsigned long>(powerFloor.hardFloorUnconfirmedSamples));
+  append(",\"power_vbus_hard_floor_entries\":%lu",
+         static_cast<unsigned long>(powerFloor.hardFloorEntries));
+  append(",\"power_vbus_hard_floor_consecutive_samples\":%lu",
+         static_cast<unsigned long>(powerFloor.consecutiveHardFloorSamples));
+  append(",\"power_vbus_hard_floor_max_consecutive_samples\":%lu",
+         static_cast<unsigned long>(powerFloor.maxConsecutiveHardFloorSamples));
+  append(",\"power_vbus_hard_floor_last_at_ms\":%lu",
+         static_cast<unsigned long>(powerFloor.lastHardFloorAtMs));
+  append(",\"power_vbus_hard_floor_last_mv\":%d", powerFloor.lastHardFloorVbusMv);
+  append(",\"power_vbus_hard_floor_last_confirm_mv\":%d",
+         powerFloor.lastHardFloorConfirmVbusMv);
+  append(",\"power_vbus_hard_floor_last_battery_mv\":%d",
+         powerFloor.lastHardFloorBatteryMv);
+  append(",\"power_vbus_hard_floor_last_confirm_battery_mv\":%d",
+         powerFloor.lastHardFloorConfirmBatteryMv);
+  append(",\"power_vbus_hard_floor_last_body_power_valid\":%s",
+         powerFloor.lastHardFloorBodyPowerValid ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_body_bus_v\":%.3f",
+         static_cast<double>(powerFloor.lastHardFloorBodyBusV));
+  append(",\"power_vbus_hard_floor_last_body_current_ma\":%.1f",
+         static_cast<double>(powerFloor.lastHardFloorBodyCurrentMa));
+  append(",\"power_vbus_hard_floor_last_motion_requested\":%s",
+         powerFloor.lastHardFloorMotionRequested ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_servo_rail_enabled\":%s",
+         powerFloor.lastHardFloorServoRailEnabled ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_servo_torque_enabled\":%s",
+         powerFloor.lastHardFloorServoTorqueEnabled ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_speaker_power_active\":%s",
+         powerFloor.lastHardFloorSpeakerPowerActive ? "true" : "false");
+  append(",\"power_base_input_mode\":%s", gBaseInputModeConfigured ? "true" : "false");
+  append(",\"power_external_output_enabled\":%s", gExternalOutputEnabled ? "true" : "false");
+  append(",\"power_charge_configured\":%s", gBatteryChargeConfigured ? "true" : "false");
+  append(",\"power_charge_current_ma\":%u", static_cast<unsigned>(gAppliedChargeCurrentMa));
+  append(",\"power_charge_current_max_ma\":%u", static_cast<unsigned>(STACKCHAN_CHARGE_CURRENT_MA));
+  append(",\"power_charge_current_low_input_ma\":%u",
+         static_cast<unsigned>(STACKCHAN_LOW_INPUT_CHARGE_CURRENT_MA));
+  append(",\"power_charge_current_transitions\":%lu",
+         static_cast<unsigned long>(gChargeCurrentTransitions));
+  append(",\"power_charge_current_last_change_ms\":%lu",
+         static_cast<unsigned long>(gChargeCurrentLastChangeMs));
+  append(",\"body_power_monitor_ready\":%s", gBodyPowerMonitorReady ? "true" : "false");
+  append(",\"body_power_telemetry_valid\":%s", gBodyPowerTelemetryValid ? "true" : "false");
+  if (gBodyPowerTelemetryValid) {
+    append(",\"body_power_bus_v\":%.3f", static_cast<double>(gBodyPowerBusV));
+    append(",\"body_power_bus_min_v\":%.3f", static_cast<double>(gBodyPowerBusMinV));
+    append(",\"body_power_bus_max_v\":%.3f", static_cast<double>(gBodyPowerBusMaxV));
+    append(",\"body_power_current_ma\":%.1f", static_cast<double>(gBodyPowerCurrentMa));
+    append(",\"body_power_current_min_ma\":%.1f", static_cast<double>(gBodyPowerCurrentMinMa));
+    append(",\"body_power_current_max_ma\":%.1f", static_cast<double>(gBodyPowerCurrentMaxMa));
+    append(",\"body_power_mw\":%.1f", static_cast<double>(gBodyPowerMw));
+    append(",\"body_battery_current_ma\":%.1f", static_cast<double>(gBodyPowerCurrentMa));
+    append(",\"body_battery_current_positive_means\":\"battery_to_system\"");
+    append(",\"body_battery_power_flow\":\"%s\"",
+           gBodyPowerCurrentMa > 15.0f
+               ? "battery_to_system"
+               : (gBodyPowerCurrentMa < -15.0f ? "system_to_battery" : "idle"));
+  } else {
+    append(",\"body_power_bus_v\":null");
+    append(",\"body_power_bus_min_v\":null");
+    append(",\"body_power_bus_max_v\":null");
+    append(",\"body_power_current_ma\":null");
+    append(",\"body_power_current_min_ma\":null");
+    append(",\"body_power_current_max_ma\":null");
+    append(",\"body_power_mw\":null");
+    append(",\"body_battery_current_ma\":null");
+    append(",\"body_battery_current_positive_means\":\"battery_to_system\"");
+    append(",\"body_battery_power_flow\":\"unknown\"");
+  }
+  append(",\"body_power_samples\":%lu", static_cast<unsigned long>(gBodyPowerTelemetrySamples));
+  append(",\"body_power_read_failures\":%lu", static_cast<unsigned long>(gBodyPowerTelemetryReadFailures));
+#endif
+  append(",\"power_mode\":\"%s\"", powerOperatingModeName(powerCoordinator.mode));
+  append(",\"power_reason\":\"%s\"", powerCoordinator.reason != nullptr ? powerCoordinator.reason : "");
+  append(",\"power_motion_requested\":%s", powerCoordinator.motionRequested ? "true" : "false");
+  append(",\"power_motion_allowed\":%s", powerCoordinator.motionAllowed ? "true" : "false");
+  append(",\"power_servo_rail_allowed\":%s", powerCoordinator.servoRailAllowed ? "true" : "false");
+  append(",\"power_charge_current_desired_ma\":%u",
+         static_cast<unsigned>(powerCoordinator.chargeCurrentMa));
+  append(",\"power_charge_derated\":%s", powerCoordinator.chargeDerated ? "true" : "false");
+  append(",\"power_charge_derate_reason\":\"%s\"",
+         powerCoordinator.chargeDerateReason != nullptr ? powerCoordinator.chargeDerateReason : "");
+  append(",\"power_charge_derate_hold_active\":%s",
+         powerCoordinator.chargeDerateHoldActive ? "true" : "false");
+  append(",\"power_charge_derate_hold_ms\":%lu",
+         static_cast<unsigned long>(powerCoordinator.chargeDerateHoldMs));
+  append(",\"power_charge_derate_hold_remaining_ms\":%lu",
+         static_cast<unsigned long>(powerCoordinator.chargeDerateHoldRemainingMs));
+  append(",\"power_charge_derate_last_load_ms\":%lu",
+         static_cast<unsigned long>(powerCoordinator.chargeDerateLastLoadMs));
+  append(",\"power_charge_derate_entries\":%lu",
+         static_cast<unsigned long>(powerCoordinator.chargeDerateEntries));
+  append(",\"power_transitions\":%lu", static_cast<unsigned long>(powerCoordinator.transitions));
+  append(",\"power_motion_grants\":%lu", static_cast<unsigned long>(powerCoordinator.motionGrantEntries));
+  append(",\"power_motion_blocks\":%lu", static_cast<unsigned long>(powerCoordinator.motionBlockEntries));
+  append(",\"power_last_transition_ms\":%lu", static_cast<unsigned long>(powerCoordinator.lastTransitionMs));
+  append(",\"compiled_enable_servos\":%d", STACKCHAN_SERVO_HARDWARE_ENABLE ? 1 : 0);
+  append(",\"motion_requested\":%s", gMotionRequested ? "true" : "false");
+  append(",\"motion_enabled\":%s", gActuation.isEnabled() ? "true" : "false");
+  append(",\"servo_power_allowed\":%s", servoPower.powerAllowed ? "true" : "false");
+  append(",\"servo_rail_enabled\":%s", servoPower.railEnabled ? "true" : "false");
+  append(",\"servo_torque_enabled\":%s", servoPower.torqueEnabled ? "true" : "false");
+  append(",\"servo_rail_enable_entries\":%lu", static_cast<unsigned long>(servoPower.railEnableEntries));
+  append(",\"servo_rail_disable_entries\":%lu", static_cast<unsigned long>(servoPower.railDisableEntries));
+  append(",\"servo_rail_write_failures\":%lu", static_cast<unsigned long>(servoPower.railWriteFailures));
+  append(",\"servo_power_denied_writes\":%lu", static_cast<unsigned long>(servoPower.powerDeniedWrites));
+  append(",\"servo_attach_attempts\":%lu", static_cast<unsigned long>(servoPower.attachAttempts));
+  append(",\"servo_attach_failures\":%lu", static_cast<unsigned long>(servoPower.attachFailures));
+  append(",\"servo_ping_attempts\":%lu", static_cast<unsigned long>(servoPower.pingAttempts));
+  append(",\"servo_ping_failures\":%lu", static_cast<unsigned long>(servoPower.pingFailures));
+  append(",\"servo_last_ping_yaw\":%d", servoPower.lastPingYaw);
+  append(",\"servo_last_ping_pitch\":%d", servoPower.lastPingPitch);
+  append(",\"servo_last_error\":\"%s\"",
+         servoPower.lastError != nullptr ? servoPower.lastError : "");
+  append(",\"servo_power_on_settle_ms\":%lu",
+         static_cast<unsigned long>(STACKCHAN_SERVO_POWER_ON_SETTLE_MS));
+  append(",\"motion_actuator_ready\":%s", motion.actuatorReady ? "true" : "false");
+  append(",\"motion_last_reason\":\"%s\"", motion.lastReason != nullptr ? motion.lastReason : "");
+  append(",\"motion_enabled_at_ms\":%lu", static_cast<unsigned long>(motion.enabledAtMs));
+  append(",\"motion_last_update_ms\":%lu", static_cast<unsigned long>(motion.lastUpdateMs));
+  append(",\"motion_last_write_ms\":%lu", static_cast<unsigned long>(motion.lastActuatorWriteMs));
+  append(",\"motion_enable_requests\":%lu", static_cast<unsigned long>(motion.enableRequests));
+  append(",\"motion_disable_requests\":%lu", static_cast<unsigned long>(motion.disableRequests));
+  append(",\"motion_enable_failures\":%lu", static_cast<unsigned long>(motion.enableFailures));
+  append(",\"motion_session_refreshes\":%lu", static_cast<unsigned long>(motion.sessionRefreshes));
+  append(",\"motion_session_refreshed_at_ms\":%lu",
+         static_cast<unsigned long>(motion.sessionRefreshedAtMs));
+  append(",\"motion_session_timeouts\":%lu", static_cast<unsigned long>(motion.sessionTimeouts));
+  append(",\"motion_stop_calls\":%lu", static_cast<unsigned long>(motion.stopCalls));
+  append(",\"motion_session_timeout_ms\":%lu", static_cast<unsigned long>(STACKCHAN_MOTION_SESSION_TIMEOUT_MS));
+  append(",\"motion_duty_active_ms\":%lu", static_cast<unsigned long>(STACKCHAN_MOTION_DUTY_ACTIVE_MS));
+  append(",\"motion_duty_rest_ms\":%lu", static_cast<unsigned long>(STACKCHAN_MOTION_DUTY_REST_MS));
+  append(",\"motion_duty_resting\":%s", motion.dutyResting ? "true" : "false");
+  append(",\"motion_duty_cycle_start_ms\":%lu", static_cast<unsigned long>(motion.dutyCycleStartMs));
+  append(",\"motion_duty_rest_entries\":%lu", static_cast<unsigned long>(motion.dutyRestEntries));
+  append(",\"motion_duty_rest_total_ms\":%lu", static_cast<unsigned long>(motion.dutyRestMs));
+  append(",\"motion_output_suppressed\":%s", motion.outputSuppressed ? "true" : "false");
+  append(",\"motion_output_suppress_entries\":%lu",
+         static_cast<unsigned long>(motion.outputSuppressEntries));
+  append(",\"motion_output_suppress_total_ms\":%lu",
+         static_cast<unsigned long>(motion.outputSuppressMs));
+  append(",\"motion_audio_load_shed_cooldown_ms\":%lu",
+         static_cast<unsigned long>(STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS));
+#if defined(ARDUINO_ARCH_ESP32)
+  append(",\"motion_thermal_suppressed\":%s", gMotionThermalSuppressed ? "true" : "false");
+  append(",\"motion_thermal_suppress_entries\":%lu",
+         static_cast<unsigned long>(gMotionThermalSuppressEntries));
+  append(",\"motion_thermal_load_shed_c\":%d", STACKCHAN_MOTION_THERMAL_LOAD_SHED_C);
+  append(",\"motion_thermal_resume_c\":%d", STACKCHAN_MOTION_THERMAL_RESUME_C);
+  append(",\"motion_power_suppressed\":%s", gMotionPowerSuppressed ? "true" : "false");
+  append(",\"motion_power_suppress_entries\":%lu",
+         static_cast<unsigned long>(gMotionPowerSuppressEntries));
+  append(",\"motion_power_suppressed_at_ms\":%lu",
+         static_cast<unsigned long>(gMotionPowerSuppressedAtMs));
+  append(",\"motion_power_load_shed_mv\":%d", STACKCHAN_MOTION_POWER_LOAD_SHED_MV);
+  append(",\"motion_power_resume_mv\":%d", STACKCHAN_MOTION_POWER_RESUME_MV);
+  append(",\"motion_power_hard_floor_mv\":%d", STACKCHAN_MOTION_POWER_HARD_FLOOR_MV);
+  append(",\"motion_power_charge_backed_current_ma\":%d",
+         STACKCHAN_MOTION_POWER_CHARGE_BACKED_CURRENT_MA);
+  append(",\"motion_power_charge_backed\":%s", gMotionPowerChargeBacked ? "true" : "false");
+  append(",\"motion_power_charge_backed_samples\":%lu",
+         static_cast<unsigned long>(gMotionPowerChargeBackedSamples));
+  append(",\"motion_power_min_suppress_ms\":%lu",
+         static_cast<unsigned long>(STACKCHAN_MOTION_POWER_MIN_SUPPRESS_MS));
+#endif
+  append(",\"motion_enabled_at_boot\":%d", STACKCHAN_MOTION_ENABLED_AT_BOOT ? 1 : 0);
+  append(",\"debug_tone_request\":%s", (speakerToneRequest || micToneRequest) ? "true" : "false");
+  append(",\"debug_tone_accepted\":%s", toneRequestAccepted ? "true" : "false");
+  append(",\"debug_wake_reset_request\":%s", wakeResetRequest ? "true" : "false");
+  append(",\"debug_motion_request\":%s", motionControlRequest ? "true" : "false");
+  append(",\"debug_motion_target_enabled\":%s", motionControlTargetEnabled ? "true" : "false");
+  append(",\"debug_motion_accepted\":%s", motionControlRequestAccepted ? "true" : "false");
+  append(",\"debug_recovery_request\":%s", recoveryRequest ? "true" : "false");
+  append(",\"debug_recovery_accepted\":%s",
+         (recoveryRequest && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0) ? "true" : "false");
+  append(",\"debug_reboot_request\":%s", rebootRequest ? "true" : "false");
+  append(",\"debug_reboot_accepted\":%s",
+         (rebootRequest && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0) ? "true" : "false");
+  append(",\"recovery_enabled\":%d", STACKCHAN_REMOTE_RECOVERY_ENABLE ? 1 : 0);
+  append(",\"recovery_requested\":%s", gBridgeRecovery.recoveryRequested ? "true" : "false");
+  append(",\"recovery_reboot_requested\":%s", gBridgeRecovery.rebootRequested ? "true" : "false");
+  append(",\"recovery_wifi_offline_since_ms\":%lu",
+         static_cast<unsigned long>(gBridgeRecovery.wifiOfflineSinceMs));
+  append(",\"recovery_bridge_offline_since_ms\":%lu",
+         static_cast<unsigned long>(gBridgeRecovery.bridgeOfflineSinceMs));
+  append(",\"recovery_last_recovery_ms\":%lu", static_cast<unsigned long>(gBridgeRecovery.lastRecoveryMs));
+  append(",\"recovery_scheduled_recovery_ms\":%lu",
+         static_cast<unsigned long>(gBridgeRecovery.scheduledRecoveryMs));
+  append(",\"recovery_scheduled_reboot_ms\":%lu",
+         static_cast<unsigned long>(gBridgeRecovery.scheduledRebootMs));
+  append(",\"recovery_wifi_restarts\":%lu", static_cast<unsigned long>(gBridgeRecovery.wifiRestarts));
+  append(",\"recovery_bridge_restarts\":%lu", static_cast<unsigned long>(gBridgeRecovery.bridgeRestarts));
+  append(",\"recovery_reboot_requests\":%lu", static_cast<unsigned long>(gBridgeRecovery.rebootRequests));
+  append(",\"recovery_last_reason\":\"%s\"", gBridgeRecovery.lastReason);
+  append(",\"compiled_enable_speaker\":%d", STACKCHAN_ENABLE_SPEAKER ? 1 : 0);
+  append(",\"compiled_enable_mic_capture\":%d", STACKCHAN_ENABLE_MIC_CAPTURE ? 1 : 0);
+  append(",\"compiled_enable_bridge_audio_uplink\":%d", STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK ? 1 : 0);
+  append(",\"network_state\":\"%s\"", bridgeNetworkStateName(network.state));
+  append(",\"network_error\":\"%s\"", network.lastError);
+  append(",\"bridge_state\":\"%s\"", bridgeStateName(bridge.state));
+  append(",\"bridge_uplink_ready\":%s", uplink.ready ? "true" : "false");
+  append(",\"bridge_uplink_enabled\":%s", uplink.enabled ? "true" : "false");
+  append(",\"bridge_uplink_active\":%s", uplink.active ? "true" : "false");
+  append(",\"bridge_uplink_turns\":%lu", static_cast<unsigned long>(uplink.turnsStarted));
+  append(",\"bridge_uplink_chunks\":%lu", static_cast<unsigned long>(uplink.chunksQueued));
+  append(",\"bridge_uplink_bytes\":%lu", static_cast<unsigned long>(uplink.bytesQueued));
+  append(",\"bridge_uplink_errors\":%lu", static_cast<unsigned long>(uplink.errors));
+  append(",\"bridge_uplink_queue_failures\":%lu", static_cast<unsigned long>(uplink.queueFailures));
+  append(",\"bridge_uplink_last_error\":\"%s\"", uplink.lastError);
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
+  append(",\"mww_uplink_pending\":%s", gWakeMwwUplinkPendingReady ? "true" : "false");
+  append(",\"mww_uplink_queued\":%lu", static_cast<unsigned long>(gWakeMwwUplinkQueued));
+  append(",\"mww_uplink_dropped\":%lu", static_cast<unsigned long>(gWakeMwwUplinkDropped));
+  append(",\"mww_uplink_submitted\":%lu", static_cast<unsigned long>(gWakeMwwUplinkSubmitted));
+  append(",\"mww_uplink_submit_failed\":%lu", static_cast<unsigned long>(gWakeMwwUplinkSubmitFailed));
+#endif
+  append(",\"audio_stream_active\":%s", bridge.audioStreamActive ? "true" : "false");
+  append(",\"bridge_downlink_playback_starts\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackStarts));
+  append(",\"bridge_downlink_playback_chunks\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackChunks));
+  append(",\"bridge_downlink_playback_bytes\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackBytes));
+  append(",\"bridge_downlink_playback_stops\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackStops));
+  append(",\"bridge_downlink_playback_errors\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackErrors));
+  append(",\"speaker_volume\":%lu", static_cast<unsigned long>(gSpeakerSink.speakerVolume()));
+  append(",\"speaker_enabled\":%s", gSpeakerSink.speakerEnabled() ? "true" : "false");
+  append(",\"speaker_running\":%s", gSpeakerSink.speakerRunning() ? "true" : "false");
+  append(",\"speaker_power_active\":%s",
+         gSpeakerSink.speakerPowerActive() ? "true" : "false");
+  append(",\"speaker_channel_state\":%lu",
+         static_cast<unsigned long>(gSpeakerSink.speakerChannelState()));
+  append(",\"speaker_power_up_entries\":%lu",
+         static_cast<unsigned long>(gSpeakerSink.speakerPowerUpEntries()));
+  append(",\"speaker_power_down_entries\":%lu",
+         static_cast<unsigned long>(gSpeakerSink.speakerPowerDownEntries()));
+  append(",\"speaker_stream_play_raw_ok\":%lu", static_cast<unsigned long>(gSpeakerSink.streamPlayRawOk()));
+  append(",\"speaker_stream_play_raw_failed\":%lu", static_cast<unsigned long>(gSpeakerSink.streamPlayRawFailed()));
+  append(",\"speaker_stream_chunked\":%lu", static_cast<unsigned long>(gSpeakerSink.streamPlaybackChunked()));
+  append(",\"speaker_stream_first_chunk_delay_ms\":%lu", static_cast<unsigned long>(gSpeakerSink.streamLastFirstChunkDelayMs()));
+  append(",\"speaker_stream_queued_audio_ms\":%lu", static_cast<unsigned long>(gSpeakerSink.streamLastQueuedAudioMs()));
+  append(",\"speaker_stream_queue_wait_max_us\":%lu", static_cast<unsigned long>(gSpeakerSink.streamQueueWaitMaxUs()));
+  append(",\"speaker_stream_release_deferrals\":%lu", static_cast<unsigned long>(gSpeakerSink.streamReleaseDeferrals()));
+  append(",\"speaker_stream_forced_stops\":%lu", static_cast<unsigned long>(gSpeakerSink.streamForcedStops()));
+  append(",\"speaker_tone_ok\":%lu", static_cast<unsigned long>(gSpeakerSink.diagnosticToneOk()));
+  append(",\"speaker_tone_failed\":%lu", static_cast<unsigned long>(gSpeakerSink.diagnosticToneFailed()));
+  append(",\"display_window_max_frame_us\":%lu", static_cast<unsigned long>(display.windowMaxFrameUs));
+  append(",\"display_window_slow_frames\":%lu", static_cast<unsigned long>(display.windowSlowFrames));
+  append(",\"display_window_fps\":%.2f", static_cast<double>(display.windowFps));
+  append(",\"sr_wake_enabled\":%s", gWakeSrProbe.enabled ? "true" : "false");
+  append(",\"sr_wake_compiled\":%s", gWakeSrProbe.compiled ? "true" : "false");
+  append(",\"sr_wake_mww_enabled\":%s", gWakeSrProbe.mwwEnabled ? "true" : "false");
+  append(",\"sr_wake_mww_compiled\":%s", gWakeSrProbe.mwwCompiled ? "true" : "false");
+  append(",\"sr_wake_task_started\":%s", gWakeSrProbe.taskStarted ? "true" : "false");
+  append(",\"sr_wake_mic_ready\":%s", gWakeSrProbe.micReady ? "true" : "false");
+  append(",\"sr_wake_audio_pause_requested\":%s", gWakeSrProbe.audioPauseRequested ? "true" : "false");
+  append(",\"sr_wake_audio_paused\":%s", gWakeSrProbe.audioPaused ? "true" : "false");
+  append(",\"sr_wake_audio_pause_requests\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioPauseRequests));
+  append(",\"sr_wake_audio_pause_enters\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioPauseEnters));
+  append(",\"sr_wake_audio_resume_requests\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioResumeRequests));
+  append(",\"sr_wake_audio_resumes\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioResumes));
+  append(",\"sr_wake_audio_pause_failures\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioPauseFailures));
+  append(",\"sr_wake_sr_ready\":%s", gWakeSrProbe.srReady ? "true" : "false");
+  append(",\"sr_wake_record_ok\":%lu", static_cast<unsigned long>(gWakeSrProbe.recordOk));
+  append(",\"sr_wake_record_drops\":%lu", static_cast<unsigned long>(gWakeSrProbe.recordDrops));
+  append(",\"sr_wake_audio_peak\":%d", gWakeSrProbe.audioPeak);
+  append(",\"sr_wake_audio_mean_abs\":%d", gWakeSrProbe.audioMeanAbs);
+  append(",\"sr_wake_audio_clips\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioClips));
+  append(",\"sr_wake_mww_detections\":%lu", static_cast<unsigned long>(gWakeSrProbe.mwwDetections));
+  append(",\"sr_wake_mww_last_probability\":%d", gWakeSrProbe.mwwLastProbability);
+  append(",\"sr_wake_mww_max_probability\":%d", gWakeSrProbe.mwwMaxProbability);
+  append(",\"sr_wake_mww_average_probability\":%d", gWakeSrProbe.mwwAverageProbability);
+  append(",\"sr_wake_mww_max_average_probability\":%d", gWakeSrProbe.mwwMaxAverageProbability);
+  append(",\"sr_wake_mww_probability_cutoff\":%d", gWakeSrProbe.mwwProbabilityCutoff);
+  append(",\"sr_wake_mww_sliding_window\":%d", gWakeSrProbe.mwwSlidingWindowSize);
+  append(",\"sr_wake_mww_last_detection_probability\":%d", gWakeSrProbe.mwwLastDetectionProbability);
+  append(",\"sr_wake_mww_last_detection_average_probability\":%d", gWakeSrProbe.mwwLastDetectionAverageProbability);
+  append(",\"sr_wake_mww_max_detection_average_probability\":%d", gWakeSrProbe.mwwMaxDetectionAverageProbability);
+  append(",\"sr_wake_detections\":%lu", static_cast<unsigned long>(gWakeSrProbe.wakeDetections));
+  append(",\"sr_wake_events_applied\":%lu", static_cast<unsigned long>(gWakeSrProbe.wakeEventsApplied));
+  append(",\"sr_wake_model\":\"%s\"", gWakeSrProbe.modelName);
+  append(",\"sr_wake_error\":\"%s\"}\r\n", gWakeSrProbe.lastError);
+
+  char header[128] = {};
+  const int headerLen = snprintf(
+      header,
+      sizeof(header),
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %u\r\nConnection: close\r\n\r\n",
+      static_cast<unsigned>(len));
+  if (headerLen > 0) {
+    client.write(reinterpret_cast<const uint8_t*>(header), static_cast<size_t>(headerLen));
+  }
+  client.write(reinterpret_cast<const uint8_t*>(body), len);
+  delay(1);
+  client.stop();
 }
 
 void pollBridgeDebugServer(uint32_t nowMs) {
@@ -2077,10 +7085,19 @@ void pollBridgeDebugServer(uint32_t nowMs) {
   }
   client.setTimeout(100);
   uint32_t requestStartMs = millis();
-  while (client.connected() && requestStartMs != 0 && millis() - requestStartMs < 150) {
+  char requestLine[96] = {};
+  size_t requestLineLen = 0;
+  bool firstLineComplete = false;
+  while (client.connected() && requestStartMs != 0 &&
+         millis() - requestStartMs < STACKCHAN_BRIDGE_DEBUG_REQUEST_TIMEOUT_MS) {
     while (client.available() > 0) {
       const char ch = static_cast<char>(client.read());
+      if (!firstLineComplete && ch != '\r' && ch != '\n' && requestLineLen < sizeof(requestLine) - 1u) {
+        requestLine[requestLineLen++] = ch;
+        requestLine[requestLineLen] = '\0';
+      }
       if (ch == '\n') {
+        firstLineComplete = true;
         requestStartMs = 0;
       }
     }
@@ -2089,136 +7106,111 @@ void pollBridgeDebugServer(uint32_t nowMs) {
     }
   }
 
-  const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
-  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
-  const BridgeWiFiProvisioningStoreTelemetry& store = gBridgeWiFiStore.telemetry();
-  const BridgeClientTelemetry& bridge = gBridge.telemetry();
-  const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
-  client.println(F("HTTP/1.1 200 OK"));
-  client.println(F("Content-Type: application/json"));
-  client.println(F("Connection: close"));
-  client.println();
-  client.print(F("{\"schema\":\"stackchan.bridge-debug.v1\""));
-  client.print(F(",\"wifi_connected\":"));
-  client.print(wifi.connected ? F("true") : F("false"));
-  client.print(F(",\"board\":"));
-  client.print(static_cast<int>(M5.getBoard()));
-  client.print(F(",\"local_ip\":\""));
-  client.print(WiFi.localIP());
-  client.print(F("\",\"gateway\":\""));
-  client.print(WiFi.gatewayIP());
-  client.print(F("\",\"compiled_bridge_host\":\""));
-  client.print(STACKCHAN_BRIDGE_HOST);
-  client.print(F("\",\"compiled_bridge_port\":"));
-  client.print(STACKCHAN_BRIDGE_PORT);
-  client.print(F(",\"store_has_record\":"));
-  client.print(store.hasRecord ? F("true") : F("false"));
-  client.print(F(",\"network_state\":\""));
-  client.print(bridgeNetworkStateName(network.state));
-  client.print(F("\",\"connect_attempts\":"));
-  client.print(network.connectAttempts);
-  client.print(F(",\"connect_failures\":"));
-  client.print(network.connectFailures);
-  client.print(F(",\"handshakes_sent\":"));
-  client.print(network.handshakesSent);
-  client.print(F(",\"handshakes\":"));
-  client.print(network.handshakesAccepted);
-  client.print(F(",\"handshakes_failed\":"));
-  client.print(network.handshakesFailed);
-  client.print(F(",\"network_error\":\""));
-  client.print(network.lastError);
-  client.print(F("\",\"bytes_in\":"));
-  client.print(network.bytesRead);
-  client.print(F(",\"bytes_out\":"));
-  client.print(network.bytesWritten);
-  client.print(F(",\"bridge_state\":\""));
-  client.print(bridgeStateName(bridge.state));
-  client.print(F("\",\"bridge_messages\":"));
-  client.print(bridge.inboundMessages);
-  client.print(F(",\"bridge_outputs\":"));
-  client.print(bridge.outputsQueued);
-  client.print(F(",\"bridge_outputs_dropped\":"));
-  client.print(bridge.outputsDropped);
-  client.print(F(",\"bridge_parse_errors\":"));
-  client.print(bridge.parseErrors);
-  client.print(F(",\"bridge_timeouts\":"));
-  client.print(bridge.timeouts);
-  client.print(F(",\"bridge_last_seq\":"));
-  client.print(bridge.lastSeq);
-  client.print(F(",\"audio_streams_started\":"));
-  client.print(bridge.audioStreamsStarted);
-  client.print(F(",\"audio_streams_ended\":"));
-  client.print(bridge.audioStreamsEnded);
-  client.print(F(",\"audio_stream_errors\":"));
-  client.print(bridge.audioStreamErrors);
-  client.print(F(",\"audio_stream_active\":"));
-  client.print(bridge.audioStreamActive ? F("true") : F("false"));
-  client.print(F(",\"audio_stream_bytes_expected\":"));
-  client.print(bridge.audioStreamBytes);
-  client.print(F(",\"audio_stream_chunks_expected\":"));
-  client.print(bridge.audioStreamChunksExpected);
-  client.print(F(",\"audio_stream_bytes_received\":"));
-  client.print(bridge.audioStreamBytesReceived);
-  client.print(F(",\"audio_stream_chunks_received\":"));
-  client.print(bridge.audioStreamChunksReceived);
-  client.print(F(",\"bridge_downlink_streams\":"));
-  client.print(downlink.streamsStarted);
-  client.print(F(",\"bridge_downlink_completed\":"));
-  client.print(downlink.streamsCompleted);
-  client.print(F(",\"bridge_downlink_chunks\":"));
-  client.print(downlink.chunksAccepted);
-  client.print(F(",\"bridge_downlink_bytes\":"));
-  client.print(downlink.bytesAccepted);
-  client.print(F(",\"bridge_downlink_errors\":"));
-  client.print(downlink.errors);
-  client.print(F(",\"bridge_downlink_playback_ready\":"));
-  client.print(downlink.playbackReady ? F("true") : F("false"));
-  client.print(F(",\"bridge_downlink_playback_starts\":"));
-  client.print(downlink.playbackStarts);
-  client.print(F(",\"bridge_downlink_playback_chunks\":"));
-  client.print(downlink.playbackChunks);
-  client.print(F(",\"bridge_downlink_playback_bytes\":"));
-  client.print(downlink.playbackBytes);
-  client.print(F(",\"bridge_downlink_playback_unsupported\":"));
-  client.print(downlink.playbackUnsupported);
-  client.print(F(",\"bridge_downlink_playback_errors\":"));
-  client.print(downlink.playbackErrors);
-  client.print(F(",\"speaker_volume\":"));
-  client.print(gSpeakerSink.speakerVolume());
-  client.print(F(",\"speaker_enabled\":"));
-  client.print(gSpeakerSink.speakerEnabled());
-  client.print(F(",\"speaker_channel_state\":"));
-  client.print(gSpeakerSink.speakerChannelState());
-  client.print(F(",\"speaker_pin_data_out\":"));
-  client.print(gSpeakerSink.speakerPinDataOut());
-  client.print(F(",\"speaker_pin_bck\":"));
-  client.print(gSpeakerSink.speakerPinBck());
-  client.print(F(",\"speaker_pin_ws\":"));
-  client.print(gSpeakerSink.speakerPinWs());
-  client.print(F(",\"speaker_magnification\":"));
-  client.print(gSpeakerSink.speakerMagnification());
-  client.print(F(",\"speaker_sample_rate\":"));
-  client.print(gSpeakerSink.speakerSampleRate());
-  client.print(F(",\"speaker_stream_task_chunks\":"));
-  client.print(gSpeakerSink.streamTaskChunks());
-  client.print(F(",\"speaker_stream_task_bytes\":"));
-  client.print(gSpeakerSink.streamTaskBytes());
-  client.print(F(",\"speaker_stream_play_raw_ok\":"));
-  client.print(gSpeakerSink.streamPlayRawOk());
-  client.print(F(",\"speaker_stream_play_raw_failed\":"));
-  client.print(gSpeakerSink.streamPlayRawFailed());
-  client.print(F(",\"speaker_tone_ok\":"));
-  client.print(gSpeakerSink.diagnosticToneOk());
-  client.print(F(",\"speaker_tone_failed\":"));
-  client.print(gSpeakerSink.diagnosticToneFailed());
-  client.print(F(",\"speaker_stream_last_sample_count\":"));
-  client.print(gSpeakerSink.streamLastSampleCount());
-  client.print(F(",\"speaker_stream_last_sample_rate\":"));
-  client.print(gSpeakerSink.streamLastSampleRate());
-  client.println(F("}"));
-  client.flush();
-  delay(10);
-  client.stop();
+  char requestTarget[32] = "/";
+  const char* firstSpace = strchr(requestLine, ' ');
+  if (firstSpace != nullptr) {
+    const char* targetStart = firstSpace + 1;
+    const char* secondSpace = strchr(targetStart, ' ');
+    const size_t targetLen =
+        secondSpace != nullptr ? static_cast<size_t>(secondSpace - targetStart) : strlen(targetStart);
+    const size_t copyLen = targetLen < sizeof(requestTarget) - 1u ? targetLen : sizeof(requestTarget) - 1u;
+    memcpy(requestTarget, targetStart, copyLen);
+    requestTarget[copyLen] = '\0';
+  }
+  const bool speakerToneRequest =
+      strcmp(requestTarget, "/tone") == 0 || strcmp(requestTarget, "/speaker-test") == 0;
+  const bool micToneSoftRequest =
+      strcmp(requestTarget, "/mic-tone") == 0 || strcmp(requestTarget, "/mic-tone-soft") == 0;
+  const bool micToneTapRequest = strcmp(requestTarget, "/mic-tone-tap") == 0;
+  const bool micToneOldRequest = strcmp(requestTarget, "/mic-tone-old") == 0;
+  const bool micToneRequest = micToneSoftRequest || micToneTapRequest || micToneOldRequest;
+  const bool wakeResetRequest = strcmp(requestTarget, "/wake-reset") == 0;
+  const bool motionEnableRequest =
+      strcmp(requestTarget, "/motion-resume") == 0 || strcmp(requestTarget, "/motion-on") == 0 ||
+      strcmp(requestTarget, "/servos-on") == 0;
+  const bool motionDisableRequest =
+      strcmp(requestTarget, "/motion-stop") == 0 || strcmp(requestTarget, "/motion-off") == 0 ||
+      strcmp(requestTarget, "/servos-off") == 0;
+  const bool motionControlRequest = motionEnableRequest || motionDisableRequest;
+  const bool recoveryRequest =
+      strcmp(requestTarget, "/recover") == 0 || strcmp(requestTarget, "/bridge-recover") == 0 ||
+      strcmp(requestTarget, "/wifi-recover") == 0;
+  const bool rebootRequest =
+      strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
+      strcmp(requestTarget, "/reset") == 0;
+  bool toneRequestAccepted = false;
+  bool motionControlRequestAccepted = false;
+  if (speakerToneRequest) {
+    suppressWakeMwwDetections(millis(), 900);
+    toneRequestAccepted = gSpeakerSink.playDiagnosticTone();
+  } else if (micToneSoftRequest) {
+    suppressWakeMwwDetections(millis(), 900);
+    toneRequestAccepted = gSpeakerSink.playMicActivationTone();
+  } else if (micToneTapRequest) {
+    suppressWakeMwwDetections(millis(), 900);
+    toneRequestAccepted = gSpeakerSink.playMicActivationTap();
+  } else if (micToneOldRequest) {
+    suppressWakeMwwDetections(millis(), 900);
+    toneRequestAccepted = gSpeakerSink.playLegacyMicActivationTone();
+  }
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  if (wakeResetRequest) {
+    gWakeMwwResetRequested = true;
+  }
+#endif
+  if (motionControlRequest) {
+    BenchControl control;
+    control.hasMotionEnable = true;
+    control.motionEnabled = motionEnableRequest;
+    motionControlRequestAccepted = publishMotionControl(control);
+  }
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0
+  if (recoveryRequest) {
+    gBridgeRecovery.recoveryRequested = true;
+    gBridgeRecovery.scheduledRecoveryMs = millis() + STACKCHAN_REMOTE_RECOVERY_DELAY_MS;
+    gBridgeRecovery.lastReason = "remote_recover";
+  }
+  if (rebootRequest) {
+    gBridgeRecovery.rebootRequested = true;
+    requestBridgeReboot("remote_reboot", millis());
+  }
+#endif
+#if STACKCHAN_HAS_MWW_WAKE_PROBE
+  if (strcmp(requestTarget, "/wake.wav") == 0 || strcmp(requestTarget, "/wake-pcm.wav") == 0) {
+    serveWakeMwwPcmWav(client);
+    client.flush();
+    delay(1);
+    client.stop();
+    return;
+  }
+#endif
+  if (strcmp(requestTarget, "/debug") == 0) {
+    serveBridgeLeanStatusJson(
+        client,
+        "stackchan.bridge-debug.v1",
+        requestTarget,
+        speakerToneRequest,
+        micToneRequest,
+        wakeResetRequest,
+        motionControlRequest,
+        motionEnableRequest,
+        motionControlRequestAccepted,
+        toneRequestAccepted);
+    return;
+  }
+
+  serveBridgeLeanStatusJson(
+      client,
+      "stackchan.bridge-status.v1",
+      requestTarget,
+      speakerToneRequest,
+      micToneRequest,
+      wakeResetRequest,
+      motionControlRequest,
+      motionEnableRequest,
+      motionControlRequestAccepted,
+      toneRequestAccepted);
+  return;
 #endif
 }
 
@@ -2275,11 +7267,145 @@ void applyMotionControlInput() {
   MotionControlInput input;
   while (gMotionControlQueue != nullptr && xQueueReceive(gMotionControlQueue, &input, 0) == pdTRUE) {
     if (input.hasMotionEnable) {
-      gActuation.setEnabled(input.motionEnabled);
-      Serial.print(F("[motion] enabled="));
-      Serial.println(input.motionEnabled ? 1 : 0);
+      const bool renewActiveSession = input.motionEnabled && gMotionRequested && gActuation.isEnabled();
+      gMotionRequested = input.motionEnabled;
+      if (renewActiveSession) {
+        const bool refreshed = gActuation.refreshSession();
+        Serial.print(F("[motion] session_refreshed="));
+        Serial.println(refreshed ? 1 : 0);
+      }
+      Serial.print(F("[motion] requested="));
+      Serial.println(gMotionRequested ? 1 : 0);
     }
   }
+}
+
+bool shouldSuppressMotionForAudio(uint32_t nowMs) {
+#if STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS > 0
+  static uint32_t sLastAudioLoadMs = 0;
+  const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
+  const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
+  const BridgeClientTelemetry& bridge = gBridge.telemetry();
+  const AudioOutTelemetry& audioOut = gAudioOut.telemetry();
+  const bool bridgeBusy =
+      bridge.state == BridgeClientState::Listening ||
+      bridge.state == BridgeClientState::Thinking ||
+      bridge.state == BridgeClientState::Responding ||
+      gBridge.hasPendingOutput();
+  const bool audioLoadActive =
+      uplink.active ||
+      wakeGate.turnActive ||
+      downlink.active ||
+      downlink.playbackActive ||
+      bridge.audioStreamActive ||
+      audioOut.playbackActive ||
+      bridgeBusy;
+  if (audioLoadActive) {
+    sLastAudioLoadMs = nowMs;
+  }
+  return sLastAudioLoadMs != 0 &&
+         nowMs - sLastAudioLoadMs < STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS;
+#else
+  (void)nowMs;
+  return false;
+#endif
+}
+
+bool shouldSuppressMotionForThermal(uint32_t nowMs) {
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_MOTION_THERMAL_LOAD_SHED_C > 0
+  sampleChipTemperature(nowMs, false);
+  const float loadShedC = static_cast<float>(STACKCHAN_MOTION_THERMAL_LOAD_SHED_C);
+  const float resumeC = STACKCHAN_MOTION_THERMAL_RESUME_C > 0
+                            ? static_cast<float>(STACKCHAN_MOTION_THERMAL_RESUME_C)
+                            : loadShedC - 5.0f;
+  if (!gChipTemperatureValid) {
+    return gMotionThermalSuppressed;
+  }
+  if (gMotionThermalSuppressed) {
+    if (gChipTemperatureC <= resumeC) {
+      gMotionThermalSuppressed = false;
+      Serial.println(F("[motion] thermal_load_shed=0"));
+    }
+    return gMotionThermalSuppressed;
+  }
+  if (gChipTemperatureC >= loadShedC) {
+    gMotionThermalSuppressed = true;
+    ++gMotionThermalSuppressEntries;
+    Serial.print(F("[motion] thermal_load_shed=1 chip_temp_c="));
+    Serial.println(gChipTemperatureC, 1);
+  }
+  return gMotionThermalSuppressed;
+#else
+  (void)nowMs;
+  return false;
+#endif
+}
+
+bool shouldSuppressMotionForPower(uint32_t nowMs) {
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_MOTION_POWER_LOAD_SHED_MV > 0
+  samplePowerTelemetry(nowMs, false);
+  const int32_t loadShedMv = STACKCHAN_MOTION_POWER_LOAD_SHED_MV;
+  const int32_t resumeMv = STACKCHAN_MOTION_POWER_RESUME_MV > 0
+                               ? STACKCHAN_MOTION_POWER_RESUME_MV
+                               : loadShedMv + 100;
+  const int32_t hardFloorMv = STACKCHAN_MOTION_POWER_HARD_FLOOR_MV > 0
+                                  ? STACKCHAN_MOTION_POWER_HARD_FLOOR_MV
+                                  : loadShedMv;
+  const uint32_t minSuppressMs = STACKCHAN_MOTION_POWER_MIN_SUPPRESS_MS;
+  const uint32_t bodySampleMaxAgeMs =
+      STACKCHAN_BODY_POWER_TELEMETRY_PERIOD_MS > 0
+          ? static_cast<uint32_t>(STACKCHAN_BODY_POWER_TELEMETRY_PERIOD_MS) * 4u
+          : 1000u;
+  const bool bodySampleFresh =
+      gBodyPowerTelemetryValid && gBodyPowerTelemetryLastReadMs != 0 &&
+      nowMs - gBodyPowerTelemetryLastReadMs <= bodySampleMaxAgeMs;
+  const bool chargeBacked =
+      STACKCHAN_MOTION_POWER_CHARGE_BACKED_CURRENT_MA > 0 && bodySampleFresh &&
+      gBodyPowerCurrentMa <= -static_cast<float>(STACKCHAN_MOTION_POWER_CHARGE_BACKED_CURRENT_MA);
+  gMotionPowerChargeBacked = chargeBacked;
+  if (chargeBacked) {
+    ++gMotionPowerChargeBackedSamples;
+  }
+  if (!gPowerVbusValid || gPowerVbusMv < 0) {
+    if (!gMotionPowerSuppressed) {
+      gMotionPowerSuppressed = true;
+      gMotionPowerSuppressedAtMs = nowMs;
+      ++gMotionPowerSuppressEntries;
+      Serial.println(F("[motion] power_load_shed=1 reason=vbus_invalid"));
+    }
+    return true;
+  }
+  const int32_t effectiveLoadShedMv = chargeBacked ? hardFloorMv : loadShedMv;
+  const int32_t effectiveResumeMv = chargeBacked ? loadShedMv : resumeMv;
+  if (gMotionPowerSuppressed) {
+    const bool heldLongEnough =
+        gMotionPowerSuppressedAtMs == 0 || nowMs - gMotionPowerSuppressedAtMs >= minSuppressMs;
+    if (heldLongEnough && static_cast<int32_t>(gPowerVbusMv) >= effectiveResumeMv) {
+      gMotionPowerSuppressed = false;
+      Serial.print(F("[motion] power_load_shed=0 vbus_mv="));
+      Serial.print(gPowerVbusMv);
+      Serial.print(F(" charge_backed="));
+      Serial.println(chargeBacked ? 1 : 0);
+    }
+    return gMotionPowerSuppressed;
+  }
+  if (static_cast<int32_t>(gPowerVbusMv) <= effectiveLoadShedMv) {
+    gMotionPowerSuppressed = true;
+    gMotionPowerSuppressedAtMs = nowMs;
+    ++gMotionPowerSuppressEntries;
+    Serial.print(F("[motion] power_load_shed=1 vbus_mv="));
+    Serial.print(gPowerVbusMv);
+    Serial.print(F(" effective_floor_mv="));
+    Serial.print(effectiveLoadShedMv);
+    Serial.print(F(" charge_backed="));
+    Serial.println(chargeBacked ? 1 : 0);
+  }
+  return gMotionPowerSuppressed;
+#else
+  (void)nowMs;
+  return false;
+#endif
 }
 
 void MotionTask(void* pv) {
@@ -2290,7 +7416,47 @@ void MotionTask(void* pv) {
   while (true) {
     target = readLatestFrame(target);
     applyMotionControlInput();
+    const uint32_t nowMs = millis();
+    const bool thermalSuppressed = shouldSuppressMotionForThermal(nowMs);
+    const bool powerSuppressed = shouldSuppressMotionForPower(nowMs);
+    const bool audioSuppressed = shouldSuppressMotionForAudio(nowMs);
+
+    PowerCoordinatorInput powerInput;
+    powerInput.motionRequested = gMotionRequested;
+    powerInput.audioBusy = audioSuppressed;
+    powerInput.thermalBlocked = thermalSuppressed;
+    powerInput.supplyBlocked = powerSuppressed;
+    const PowerCoordinatorDecision powerDecision = gPowerCoordinator.update(powerInput, nowMs);
+
+    if (!gMotionRequested) {
+      if (gActuation.isEnabled()) {
+        gActuation.setEnabled(false);
+      }
+      gServo.setPowerAllowed(false);
+    } else if (powerDecision.motionAllowed) {
+      gServo.setPowerAllowed(true);
+      if (!gActuation.isEnabled()) {
+        gActuation.setEnabled(true);
+      }
+      if (gActuation.isEnabled()) {
+        gActuation.setOutputSuppressed(false, powerDecision.reason);
+      } else {
+        gMotionRequested = false;
+        gServo.setPowerAllowed(false);
+      }
+    } else {
+      if (gActuation.isEnabled()) {
+        gActuation.setOutputSuppressed(true, powerDecision.reason);
+      }
+      gServo.setPowerAllowed(false);
+    }
+
+    const bool enabledBeforeUpdate = gActuation.isEnabled();
     gActuation.update(target, micros());
+    if (enabledBeforeUpdate && !gActuation.isEnabled()) {
+      gMotionRequested = false;
+      gServo.setPowerAllowed(false);
+    }
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.motionPeriodMs));
   }
 }
@@ -2321,8 +7487,16 @@ void IntentTask(void* pv) {
   while (true) {
     const uint32_t loopMs = millis();
     gBridgeEndpointControl.update(loopMs);
+    drainWakeMwwUplinkQueue(loopMs);
     gBridgeWakeGate.update(loopMs);
     updateBridgeNetwork(loopMs);
+    pollBridgeOutputs(loopMs);
+    pollBridgeDebugServer(loopMs);
+    ensureWakeSrStarted(loopMs);
+    pollWakeSrProbe(loopMs);
+    pollWakeSrDirect(loopMs);
+    pollWakeSrAfeLite(loopMs);
+    pollWakeMwwProbe(loopMs);
 
     AudioReflexEvent audioEvents[3];
     const uint32_t audioWindowsBefore = gAudioCapture.telemetry().windowsCaptured;
@@ -2417,7 +7591,19 @@ void IntentTask(void* pv) {
         Serial.print(F(" at_ms="));
         Serial.println(millis());
       }
-      pollBridgeDebugServer(millis());
+      if (control.hasMicCueTest) {
+        const uint32_t cueMs = millis();
+        suppressWakeMwwDetections(cueMs, 900);
+        const bool cueOk = gSpeakerSink.playMicActivationTone();
+        Serial.print(F("[speaker] mic_cue=1 accepted="));
+        Serial.print(cueOk ? 1 : 0);
+        Serial.print(F(" volume="));
+        Serial.print(gSpeakerSink.speakerVolume());
+        Serial.print(F(" channel_state="));
+        Serial.print(gSpeakerSink.speakerChannelState());
+        Serial.print(F(" at_ms="));
+        Serial.println(cueMs);
+      }
       publishSpeechInput(control);
       if (control.speech.clear || (control.hasDemoEnable && !control.demoEnabled)) {
         gAudioOut.cancel();
@@ -2428,7 +7614,8 @@ void IntentTask(void* pv) {
       printBenchControl(control);
     }
     pollBridgeOutputs(millis());
-    pollBridgeDebugServer(millis());
+    playMicActivationCueIfNeeded();
+    gSpeakerSink.service(millis());
 
     RobotFrame frame = gIntent.update(millis());
     for (uint8_t i = 0; i < pendingAudioEventCount; ++i) {
@@ -2462,12 +7649,31 @@ void IntentTask(void* pv) {
 
 #if !defined(PIO_UNIT_TESTING) && !defined(UNIT_TEST)
 void setup() {
+#if defined(ARDUINO_ARCH_ESP32)
+  gBootResetReason = esp_reset_reason();
+  ++gRtcBootCount;
+#endif
   auto cfg = M5.config();
   cfg.serial_baudrate = 115200;
+  if (STACKCHAN_BASE_USB_POWER_INPUT) {
+    cfg.output_power = false;
+  }
+#if STACKCHAN_ENABLE_POWER_FORENSICS
+  // The candidate owns AXP2101 IRQ polling so M5.update() cannot clear power-key evidence first.
+  cfg.pmic_button = false;
+#endif
   M5.begin(cfg);
+#if STACKCHAN_ENABLE_POWER_FORENSICS && defined(CONFIG_IDF_TARGET_ESP32S3)
+  initializePmicPowerForensics();
+#endif
   M5.Log.setLogLevel(m5::log_target_serial, ESP_LOG_INFO);
   M5.Log.setEnableColor(m5::log_target_serial, false);
   delay(200);
+#if defined(ARDUINO_ARCH_ESP32)
+  initializeManagedPowerHardware(millis());
+  sampleChipTemperature(millis(), true);
+  samplePowerTelemetry(millis(), true);
+#endif
   printBootMarker();
   randomSeed(esp_random());
 
@@ -2483,7 +7689,9 @@ void setup() {
   gSensors.begin();
   gCamera.begin();
   gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
-  gBridgeAudioDownlink.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
+  const bool bridgeAudioPlaybackEnabled =
+      (STACKCHAN_ENABLE_SPEAKER != 0) && (STACKCHAN_ENABLE_BRIDGE_AUDIO_DOWNLINK_PLAYBACK != 0);
+  gBridgeAudioDownlink.begin(bridgeAudioPlaybackEnabled, bridgeAudioPlaybackEnabled ? &gSpeakerSink : nullptr);
   gSpeechAdapter.begin(false, &gAudioOut);
   BridgeClientConfig bridgeConfig;
   bridgeConfig.responseTimeoutMs = 120000;
@@ -2503,6 +7711,7 @@ void setup() {
   gBridgeNetworkSession.attachEndpointControl(&gBridgeEndpointControl);
   gBridgeAudioUplink.begin(BridgeAudioUplinkConfig {}, &gBridgeNetworkSession);
   gBridgeWakeGate.begin(BridgeWakeGateConfig {}, &gBridgeAudioUplink);
+  gServo.setPowerAllowed(STACKCHAN_MOTION_ENABLED_AT_BOOT != 0);
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
@@ -2513,9 +7722,12 @@ void setup() {
 
   publishFrame(makeNeutralFrame());
 
-  const BaseType_t intentOk = xTaskCreatePinnedToCore(IntentTask, "IntentTask", 8192, nullptr, 3, &gIntentTaskHandle, 1);
-  const BaseType_t motionOk = xTaskCreatePinnedToCore(MotionTask, "MotionTask", 4096, nullptr, 3, &gMotionTaskHandle, 1);
-  const BaseType_t faceOk = xTaskCreatePinnedToCore(FaceTask, "FaceTask", 4096, nullptr, 2, &gFaceTaskHandle, 1);
+  const BaseType_t intentOk = xTaskCreatePinnedToCore(
+      IntentTask, "IntentTask", 8192, nullptr, STACKCHAN_INTENT_TASK_PRIORITY, &gIntentTaskHandle, 1);
+  const BaseType_t motionOk = xTaskCreatePinnedToCore(
+      MotionTask, "MotionTask", 4096, nullptr, STACKCHAN_MOTION_TASK_PRIORITY, &gMotionTaskHandle, 1);
+  const BaseType_t faceOk = xTaskCreatePinnedToCore(
+      FaceTask, "FaceTask", 4096, nullptr, STACKCHAN_FACE_TASK_PRIORITY, &gFaceTaskHandle, 1);
 
   if (motionOk != pdPASS || faceOk != pdPASS || intentOk != pdPASS) {
     Serial.println(F("[fatal] task creation failed"));
@@ -2532,12 +7744,24 @@ void setup() {
 void loop() {
   static uint32_t lastHeartbeatMs = 0;
   const uint32_t nowMs = millis();
+#if defined(ARDUINO_ARCH_ESP32)
+  samplePowerTelemetry(nowMs, false);
+  applyManagedChargeCurrent(nowMs);
+#endif
+  updateBridgeNetwork(nowMs);
+  pollBridgeOutputs(nowMs);
+  pollBridgeDebugServer(nowMs);
+  ensureWakeSrStarted(nowMs);
+#if STACKCHAN_ENABLE_PERIODIC_SERIAL_TELEMETRY
   if (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 10000) {
     lastHeartbeatMs = nowMs;
     printHeartbeat();
     printSystemTelemetry();
     printRuntimeStatus();
   }
+#else
+  (void)lastHeartbeatMs;
+#endif
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
 #endif

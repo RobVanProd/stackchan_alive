@@ -136,6 +136,11 @@ $requiredFiles = @(
   "docs/JOHNNY_ALIVE_PATHWAY.md",
   "docs/PERSONA_PACKS.md",
   "docs/HARDWARE_SIMULATION.md",
+  "docs/HARDWARE_FEATURE_ROADMAP.md",
+  "docs/LOCAL_RESEARCH_TOOLING.md",
+  "docs/POWER_BLACKOUT_FORENSICS.md",
+  "docs/SPEAKER_AUDIO_RESEARCH.md",
+  "docs/VOICE_V2_DIRECTML.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
   "docs/PRIVACY.md",
@@ -168,15 +173,28 @@ $requiredFiles = @(
   "bridge/test_litert_lm_contract_smoke.py",
   "bridge/model_benchmark.py",
   "bridge/test_model_benchmark.py",
+  "bridge/stt_normalization.py",
   "bridge/stt_adapter.py",
+  "bridge/windows_speech_stt.py",
+  "bridge/whisper_cpp_stt.py",
   "bridge/test_stt_adapter.py",
   "bridge/tts_adapter.py",
   "bridge/test_tts_adapter.py",
   "bridge/lan_service.py",
   "bridge/test_lan_service.py",
   "bridge/ollama_stackchan_runner.py",
+  "bridge/test_ollama_stackchan_runner.py",
   "bridge/pc_brain_probe.py",
   "bridge/selected_voice_tts.py",
+  "bridge/windows_speech_tts.py",
+  "bridge/rvc_tts.py",
+  "bridge/rvc_tts_client.py",
+  "bridge/rvc_worker_service.py",
+  "bridge/rvc_directml_tts_client.py",
+  "bridge/rvc_directml_worker_service.py",
+  "bridge/voice_v2_directml_runtime.py",
+  "bridge/voice_v2_directml_benchmark.py",
+  "bridge/voice_v2_wire_benchmark.py",
   "bridge/lan_smoke.py",
   "bridge/test_lan_smoke.py",
   "bridge/android_companion_probe.py",
@@ -275,18 +293,9 @@ $requiredFiles = @(
   "media/voice/VOICE_AUDITION.html",
   "media/voice/rvc/README.md",
   "media/voice/rvc/RVC_AUDITION.html",
-  "media/voice/rvc/RVC_AUDITIONS.md",
-  "media/voice/rvc/RVC_AUDITIONS.json",
-  "media/voice/rvc/stackchan_rvc_neutral.wav",
-  "media/voice/rvc/stackchan_rvc_warm_slow.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
-  "media/voice/rvc/stackchan_rvc_spark_boops.wav",
-  "media/voice/rvc/stackchan_rvc_high_character.wav",
-  "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
-  "media/voice/rvc/stackchan_rvc_safety_neutral.wav",
+  "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
+  "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
+  "media/voice/rvc/stackchan_rvc_safety_neutral.mp3",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
   "tools/provision_stackchan_wifi.cmd",
@@ -341,6 +350,8 @@ $requiredFiles = @(
   "tools/check_android_wifi_evidence.ps1",
   "tools/test_android_wifi_evidence_contract.cmd",
   "tools/test_android_wifi_evidence_contract.ps1",
+  "tools/check_voice_source_readiness.ps1",
+  "tools/test_voice_source_readiness_contract.ps1",
   "tools/check_android_screen_off_soak_evidence.cmd",
   "tools/check_android_screen_off_soak_evidence.ps1",
   "tools/test_android_screen_off_soak_evidence_contract.cmd",
@@ -440,8 +451,21 @@ $requiredFiles = @(
   "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
+  "tools/setup_whisper_cpp.cmd",
+  "tools/setup_whisper_cpp.ps1",
   "tools/start_pc_brain.cmd",
   "tools/start_pc_brain.ps1",
+  "tools/start_rvc_worker.ps1",
+  "tools/setup_voice_v2_directml.ps1",
+  "tools/voice_v2_directml_constraints.txt",
+  "tools/start_voice_v2_directml_worker.ps1",
+  "tools/run_voice_v2_directml_benchmark.ps1",
+  "tools/run_voice_v2_wire_benchmark.ps1",
+  "tools/start_voice_v2_supervised_validation.ps1",
+  "tools/check_voice_v2_supervised_evidence.ps1",
+  "tools/complete_voice_v2_supervised_validation.ps1",
+  "tools/restore_voice_v2_production.ps1",
+  "tools/test_voice_v2_supervised_evidence_contract.ps1",
   "tools/run_pc_brain_probe.cmd",
   "tools/collect_pc_brain_deploy_evidence.cmd",
   "tools/collect_pc_brain_deploy_evidence.ps1",
@@ -509,6 +533,7 @@ $requiredFiles = @(
   "tools/verify_share_release.ps1",
   "provenance/firmware.yml",
   "provenance/platformio.ini",
+  "provenance/partitions_esp_sr_16.csv",
   "provenance/src/main.cpp",
   "provenance/src/io/CameraAdapter.hpp",
   "provenance/src/io/CameraAdapter.cpp",
@@ -565,12 +590,26 @@ $requiredFiles = @(
   "provenance/protocol-fixtures/invalid/wrong_protocol.json",
   "provenance/bridge/model_benchmark.py",
   "provenance/bridge/test_model_benchmark.py",
+  "provenance/bridge/stt_normalization.py",
   "provenance/bridge/stt_adapter.py",
+  "provenance/bridge/windows_speech_stt.py",
+  "provenance/bridge/whisper_cpp_stt.py",
   "provenance/bridge/test_stt_adapter.py",
   "provenance/bridge/tts_adapter.py",
   "provenance/bridge/test_tts_adapter.py",
   "provenance/bridge/lan_service.py",
   "provenance/bridge/test_lan_service.py",
+  "provenance/bridge/ollama_stackchan_runner.py",
+  "provenance/bridge/test_ollama_stackchan_runner.py",
+  "provenance/bridge/windows_speech_tts.py",
+  "provenance/bridge/rvc_tts.py",
+  "provenance/bridge/rvc_tts_client.py",
+  "provenance/bridge/rvc_worker_service.py",
+  "provenance/bridge/rvc_directml_tts_client.py",
+  "provenance/bridge/rvc_directml_worker_service.py",
+  "provenance/bridge/voice_v2_directml_runtime.py",
+  "provenance/bridge/voice_v2_directml_benchmark.py",
+  "provenance/bridge/voice_v2_wire_benchmark.py",
   "provenance/bridge/lan_smoke.py",
   "provenance/bridge/test_lan_smoke.py",
   "provenance/bridge/android_companion_probe.py",
@@ -626,7 +665,12 @@ foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]
 }
 
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
+$retiredRvcSharePatterns = @(
+  "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav",
+  "stackchan_rvc_bright_robot_less_static.wav", "RVC_AUDITIONS.md"
+)
 foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Next Action", "rolloutNextAction", "rolloutNextCommand", "ActionsStatusPath", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speech envelope mouth demo", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/README.md", "RVC MP3 Readme", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
+  if ($retiredRvcSharePatterns -contains $pattern) { continue }
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
@@ -731,7 +775,7 @@ foreach ($pattern in @("verify_hardware_evidence.ps1", "AndroidProbeEvidenceCont
 }
 
 $androidDashboardMediaGateTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_android_dashboard_media_gate.py") -Raw
-foreach ($pattern in @("AndroidDashboardMediaGateTest", "check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "test_android_probe_requires_dashboard_media_notes", "test_matching_dashboard_media_notes_clear_android_dashboard_finding", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "media_manifest.json is missing the connected-dashboard", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state")) {
+foreach ($pattern in @("AndroidDashboardMediaGateTest", "check_hardware_evidence_progress.ps1", "BENCH_STATUS.json", "test_android_probe_requires_dashboard_media_notes", "test_matching_dashboard_media_notes_clear_android_dashboard_finding", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "media_manifest.json is missing the connected-dashboard", "Android dashboard connected state; robot identity; firmware/version signal;", "last bridge frame; active brain owner; foreground service state")) {
   if ($androidDashboardMediaGateTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_android_dashboard_media_gate.py missing dashboard media gate coverage: $pattern"
   }
@@ -839,7 +883,7 @@ foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntr
 }
 
 $releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 36", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 21", "ExpectedCount 24", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
   if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
   }
@@ -1028,7 +1072,7 @@ foreach ($pattern in @("BridgeWakeGateConfig", "BridgeWakeGateTelemetry", "gateO
 }
 
 $bridgeClientText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeClient.cpp") -Raw
-foreach ($pattern in @("BridgeClient::begin", "BridgeClient::update", "BridgeClient::submitControlLine", "BridgeClient::submitBinaryFrame", "BridgeClient::poll", "BridgeClientState::Thinking", "BridgeClientOutputType::ResponseStart", "BridgeClientOutputType::AudioFrame", "BridgeClientOutputType::AudioStreamChunk", "stackchan.bridge.v1", "failAudioStream", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "audio_stream_chunk_too_large", "kBridgeAudioStreamChunkPayloadMax", "streamChunkPayload_", "payloadBytes", "std::memcpy", "failTimeout", "bridge_timeout", "parseErrors", "timeouts", "heartbeats")) {
+foreach ($pattern in @("BridgeClient::begin", "BridgeClient::update", "BridgeClient::submitControlLine", "BridgeClient::submitBinaryFrame", "BridgeClient::poll", "BridgeClientState::Thinking", "BridgeClientOutputType::ResponseStart", "BridgeClientOutputType::AudioFrame", "BridgeClientOutputType::AudioStreamChunk", "stackchan.bridge.v1", "failAudioStream", "binary_without_audio_stream", "audio_stream_payload_bytes_mismatch", "audio_stream_chunk_too_large", "kBridgeAudioStreamChunkPayloadMax", "outputPayloads_", "payloadBytes", "std::memcpy", "failTimeout", "bridge_timeout", "parseErrors", "timeouts", "heartbeats")) {
   if ($bridgeClientText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeClient.cpp missing P7 bridge-client support: $pattern"
   }
@@ -1147,7 +1191,7 @@ foreach ($pattern in @("SpeechAdapter::begin", "SpeechAdapter::handleCue", "Spee
 }
 
 $mainText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/main.cpp") -Raw
-foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeAudioUplink", "BridgeWakeGate", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeAudioUplink", "gBridgeWakeGate", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeAudioUplink.begin", "gBridgeWakeGate.begin", "gBridgeWakeGate.update", "gBridgeWakeGate.applyEvent", "gBridgeNetworkSession.update", "handleEndpointControlLine", "handleBridgeUplinkBench", "printBridgeUplinkResult", "submitPcmBytes", "beginTurn", "endTurn", "bench_audio_uplink_abort", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_network_writer_text_frames=", "bridge_network_writer_binary_frames=", "bridge_network_text_queued=", "bridge_network_text_dropped=", "bridge_network_binary_queued=", "bridge_network_binary_dropped=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_uplink_ready=", "bridge_uplink_enabled=", "bridge_uplink_active=", "bridge_uplink_wake_gate_required=", "bridge_uplink_turns=", "bridge_uplink_completed=", "bridge_uplink_chunks=", "bridge_uplink_bytes=", "bridge_uplink_errors=", "bridge_uplink_gate_blocks=", "bridge_uplink_queue_failures=", "bridge_wake_gate_ready=", "bridge_wake_gate_open=", "bridge_wake_gate_turn_active=", "bridge_wake_gate_opens=", "bridge_wake_gate_completed=", "bridge_timeouts=", "[bridge]", "[bridge_uplink]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] enabled=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
+foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlInput", "MotionControlInput", "publishFaceControl", "publishMotionControl", "applyFaceControlInput", "applyMotionControlInput", "publishAudioOutSpeechFrame", "publishBridgeSpeechFrame", "handleBridgeOutput", "pollBridgeOutputs", "BridgeClient", "BridgeAudioDownlink", "BridgeAudioDownlinkSink", "BridgeAudioUplink", "BridgeWakeGate", "BridgeEndpointRegistry", "BridgeEndpointControl", "BridgeEndpointStore", "BridgeWiFiProvisioner", "BridgeNetworkSession", "BridgeWiFiClientSocket", "updateBridgeNetwork", "gBridge", "gBridgeAudioDownlink", "gBridgeAudioUplink", "gBridgeWakeGate", "gBridgeEndpointRegistry", "gBridgeEndpointControl", "gBridgeEndpointStore", "gBridgeWiFi", "gBridgeNetworkSession", "gBridge.update", "gBridgeEndpointStore.load", "gBridgeEndpointControl.attachStore", "gBridgeEndpointControl.update", "gBridgeWiFi.begin", "gBridgeNetworkSession.begin", "gBridgeAudioUplink.begin", "gBridgeWakeGate.begin", "gBridgeWakeGate.update", "gBridgeWakeGate.applyEvent", "gBridgeNetworkSession.update", "handleEndpointControlLine", "handleBridgeUplinkBench", "printBridgeUplinkResult", "submitPcmBytes", "beginTurn", "endTurn", "bench_audio_uplink_abort", "bridge_ready=", "bridge_state=", "bridge_messages=", "bridge_outputs=", "bridge_parse_errors=", "bridge_audio_stream_bytes_received=", "bridge_audio_stream_chunks=", "bridge_audio_stream_errors=", "bridge_endpoint_registry_ready=", "bridge_endpoint_count=", "bridge_endpoint_active=", "bridge_endpoint_restores=", "bridge_endpoint_control_ready=", "bridge_endpoint_messages=", "bridge_endpoint_rejected=", "bridge_endpoint_persistence_saves=", "bridge_endpoint_persistence_errors=", "bridge_endpoint_store_ready=", "bridge_endpoint_store_loads=", "bridge_endpoint_store_saves=", "bridge_endpoint_store_loaded=", "bridge_endpoint_store_saved=", "bridge_endpoint_store_parse_errors=", "bridge_endpoint_store_write_errors=", "bridge_wifi_ready=", "bridge_wifi_configured=", "bridge_wifi_connected=", "bridge_network_state=", "bridge_network_writer_frames=", "bridge_network_writer_text_frames=", "bridge_network_writer_binary_frames=", "bridge_network_text_queued=", "bridge_network_text_dropped=", "bridge_network_binary_queued=", "bridge_network_binary_dropped=", "bridge_downlink_ready=", "bridge_downlink_active=", "bridge_downlink_streams=", "bridge_downlink_completed=", "bridge_downlink_chunks=", "bridge_downlink_bytes=", "bridge_downlink_errors=", "bridge_downlink_playback_ready=", "bridge_downlink_playback_active=", "bridge_downlink_playback_starts=", "bridge_downlink_playback_chunks=", "bridge_downlink_playback_bytes=", "bridge_downlink_playback_unsupported=", "bridge_downlink_playback_errors=", "bridge_uplink_ready=", "bridge_uplink_enabled=", "bridge_uplink_active=", "bridge_uplink_wake_gate_required=", "bridge_uplink_turns=", "bridge_uplink_completed=", "bridge_uplink_chunks=", "bridge_uplink_bytes=", "bridge_uplink_errors=", "bridge_uplink_gate_blocks=", "bridge_uplink_queue_failures=", "bridge_wake_gate_ready=", "bridge_wake_gate_open=", "bridge_wake_gate_turn_active=", "bridge_wake_gate_opens=", "bridge_wake_gate_completed=", "bridge_timeouts=", "[bridge]", "[bridge_uplink]", "[endpoint]", "audio_stream_chunk", "chunk_index=", "chunk_bytes=", "payload_bytes=", "received_bytes=", "M5SpeakerAudioSink", "FirmwareVoiceAssets.hpp", "firmware_voice::find", "M5.Speaker.playWav", "M5.Speaker.playRaw", "STACKCHAN_ENABLE_SPEAKER", "gAudioOut.pollSpeechFrame", "gAudioOut.duck", "gFace.setReducedMotion", "gIntent.setReducedMotion", "gIntent.queueSpeechCue", "gIntent.applyAmbient", "gIntent.applyCircadian", "gActuation.setEnabled", "gIntent.setDemoEnabled", "gActuation.isEnabled", "gIntent.isDemoEnabled", "gFace.isReducedMotion", "gFace.speechTelemetry", "gCamera", "gCamera.poll", "gAudioOut", "gSpeechAdapter", "gSpeechAdapter.handleCue", "printSpeechPlayback", "printAudioOutPlayback", "[speech_audio]", "[audio_out]", "prompt_wav=", "prompt_sidecar=", "audio_out_ready=", "audio_out_hw_ready=", "audio_out_requests=", "audio_out_playing=", "audio_out_frames=", "audio_out_hw_frames=", "audio_out_hw_drops=", "sidecar_frames=", "playback_ms=", "hw_ready=", "hw_playing=", "hw_starts=", "earcon_checksum=", "speech_adapter_ready=", "speech_adapter_hw=", "speech_cues=", "speech_earcons=", "printVisionTelemetry", "[vision] event=", "camera_ready=", "camera_hw=", "camera_active=", "camera_events=", "payload_x=", "payload_y=", "payload_z=", "cue_intent=", "cue_earcon=", "picked_up", "shaken", "put_down", "tilted", "sound_direction", "loud_noise", "printAudioTelemetry", "[audio] event=", "detect_ms=", "frame_ms=", "latency_ms=", "azimuth_deg=", "reduced_motion=", "motion_enabled=", "demo_enabled", "ambient_lux=", "circadian_hour=", "hour=", "speech_active=", "[runtime]", "[motion] requested=", "wantsStatus", "printHeartbeat", "printSystemTelemetry", "printRuntimeStatus")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
@@ -1716,7 +1760,7 @@ foreach ($pattern in @("LiteRtLmContractSmokeTests", "test_build_report_exercise
 }
 
 $localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
-foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
   if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_local_runner.py missing local runner test coverage: $pattern"
   }
@@ -1751,16 +1795,37 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
 }
 
 $ollamaRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "--format", "json", "validate_response")) {
+foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "--format", "json", "validate_response")) {
   if ($ollamaRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/ollama_stackchan_runner.py missing PC brain runner support: $pattern"
+  }
+}
+
+$ollamaRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_ollama_stackchan_runner.py") -Raw
+foreach ($pattern in @("OllamaStackchanRunnerTests", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
+  if ($ollamaRunnerTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_ollama_stackchan_runner.py missing warm Ollama API coverage: $pattern"
+  }
+}
+
+$directMlClientText = Get-Content -LiteralPath (Join-PackagePath "bridge/rvc_directml_tts_client.py") -Raw
+foreach ($pattern in @("STACKCHAN_RVC_DIRECTML_WORKER_URL", "STACKCHAN_RVC_DIRECTML_TIMEOUT_SECONDS", "/convert", "stackchan.tts-metadata.v1", "audio_b64")) {
+  if ($directMlClientText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/rvc_directml_tts_client.py missing Voice V2 client support: $pattern"
+  }
+}
+
+$directMlWorkerText = Get-Content -LiteralPath (Join-PackagePath "bridge/rvc_directml_worker_service.py") -Raw
+foreach ($pattern in @("DirectMlRvcRuntime", "ThreadingHTTPServer", "/health", "/convert")) {
+  if ($directMlWorkerText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/rvc_directml_worker_service.py missing Voice V2 worker support: $pattern"
   }
 }
 
@@ -1779,9 +1844,23 @@ foreach ($pattern in @("stackchan.pc-brain-probe.v1", "endpoint_hello", "claim_b
 }
 
 $startPcBrainText = Get-Content -LiteralPath (Join-PackagePath "tools/start_pc_brain.ps1") -Raw
-foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "selected_voice_tts.py", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")) {
+foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")) {
   if ($startPcBrainText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_pc_brain.ps1 missing PC brain launch support: $pattern"
+  }
+}
+
+$voiceV2StartText = Get-Content -LiteralPath (Join-PackagePath "tools/start_voice_v2_supervised_validation.ps1") -Raw
+foreach ($pattern in @("stackchan.voice-v2-supervised-session.v1", "speaker_stream_chunked", "STACKCHAN_RVC_DIRECTML_WORKER_URL", "StreamTtsPhrases", "OperatorPresent", "ConfirmSpeakerTest", "max_first_audio_ms")) {
+  if ($voiceV2StartText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_voice_v2_supervised_validation.ps1 missing guarded Voice V2 support: $pattern"
+  }
+}
+
+$voiceV2CheckText = Get-Content -LiteralPath (Join-PackagePath "tools/check_voice_v2_supervised_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.voice-v2-supervised-check.v1", "voice-v2-supervised-ready", "host-robot-byte-match", "host-zero-truncation", "operator-clean-audio", "operator-complete-reply")) {
+  if ($voiceV2CheckText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_voice_v2_supervised_evidence.ps1 missing Voice V2 evidence gates: $pattern"
   }
 }
 
@@ -1849,7 +1928,7 @@ foreach ($pattern in @("stackchan.desktop-python-runtime.v1", "stackchan.desktop
 }
 
 $desktopPythonRuntimeContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_python_runtime_payload_contract.ps1") -Raw
-foreach ($pattern in @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, and runtimeSha256", "Desktop Python runtime payload contract tests passed")) {
+foreach ($pattern in @("placeholder sha256 is rejected", "placeholder runtime source is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, runtimeSha256, and runtimeSource", "Desktop Python runtime payload contract tests passed")) {
   if ($desktopPythonRuntimeContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_python_runtime_payload_contract.ps1 missing managed runtime payload contract coverage: $pattern"
   }
@@ -1912,9 +1991,23 @@ foreach ($pattern in @("STACKCHAN_AUDIO_SAMPLE_RATE", "STACKCHAN_AUDIO_FORMAT", 
 }
 
 $sttAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_stt_adapter.py") -Raw
-foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_an_execution_error")) {
+foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_an_execution_error", "test_whisper_adapter_runs_fake_whisper_cli_and_normalizes")) {
   if ($sttAdapterTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_stt_adapter.py missing STT adapter test coverage: $pattern"
+  }
+}
+
+$whisperCppSttText = Get-Content -LiteralPath (Join-PackagePath "bridge/whisper_cpp_stt.py") -Raw
+foreach ($pattern in @("STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_MODEL", "whisper.cpp", "transcribe_pcm_with_whisper_cpp", "whisper-cli.exe")) {
+  if ($whisperCppSttText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/whisper_cpp_stt.py missing whisper.cpp adapter support: $pattern"
+  }
+}
+
+$setupWhisperText = Get-Content -LiteralPath (Join-PackagePath "tools/setup_whisper_cpp.ps1") -Raw
+foreach ($pattern in @("stackchan.whisper-cpp-setup.v1", "whisper-bin-x64.zip", 'ggml-$Model.bin', "STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_MODEL")) {
+  if ($setupWhisperText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/setup_whisper_cpp.ps1 missing whisper.cpp setup support: $pattern"
   }
 }
 
@@ -2088,20 +2181,8 @@ Assert-File "media/voice/VOICE_SAMPLES.md" 100
 Assert-File "media/voice/VOICE_AUDITION.html" 1000
 Assert-File "media/voice/rvc/README.md" 400
 Assert-File "media/voice/rvc/RVC_AUDITION.html" 1000
-Assert-File "media/voice/rvc/RVC_AUDITIONS.md" 500
-Assert-File "media/voice/rvc/RVC_AUDITIONS.json" 500
-Assert-File "media/voice/rvc/stackchan_rvc_neutral.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_warm_slow.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_bright_robot.wav" 100000
 Assert-Mp3File "media/voice/rvc/stackchan_rvc_bright_robot.mp3"
-Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_spark_boops.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_high_character.wav" 100000
-Assert-File "media/voice/rvc/stackchan_rvc_thinking_neutral.wav" 100000
 Assert-Mp3File "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"
-Assert-File "media/voice/rvc/stackchan_rvc_safety_neutral.wav" 100000
 Assert-Mp3File "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
@@ -2130,19 +2211,7 @@ Assert-Bytes "media/voice/stackchan_spark_thinking.wav" ([byte[]](0x52, 0x49, 0x
 Assert-Bytes "media/voice/stackchan_spark_safety.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_warm_slow_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
 Assert-Bytes "media/voice/stackchan_spark_audition_bright_robot_greeting.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_warm_slow.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_spark_boops.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_high_character.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_thinking_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-Assert-Bytes "media/voice/rvc/stackchan_rvc_safety_neutral.wav" ([byte[]](0x52, 0x49, 0x46, 0x46))
-
 & (Join-PackagePath "tools/verify_voice_samples.ps1") -VoiceRoot (Join-PackagePath "media/voice")
-& (Join-PackagePath "tools/verify_rvc_auditions.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 & (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 foreach ($asset in @($personaPromptAssets.assets)) {
   & (Join-PackagePath "tools/verify_speech_envelope_sidecar.ps1") -Path (Join-PackagePath ([string]$asset.sidecar_path))
@@ -2463,20 +2532,8 @@ $expectedMediaArtifacts = @(
   "media/voice/VOICE_AUDITION.html",
   "media/voice/rvc/README.md",
   "media/voice/rvc/RVC_AUDITION.html",
-  "media/voice/rvc/RVC_AUDITIONS.md",
-  "media/voice/rvc/RVC_AUDITIONS.json",
-  "media/voice/rvc/stackchan_rvc_neutral.wav",
-  "media/voice/rvc/stackchan_rvc_warm_slow.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot.wav",
   "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
-  "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
-  "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
-  "media/voice/rvc/stackchan_rvc_spark_boops.wav",
-  "media/voice/rvc/stackchan_rvc_high_character.wav",
-  "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
   "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
-  "media/voice/rvc/stackchan_rvc_safety_neutral.wav",
   "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
 )
 $actualMediaArtifacts = @($manifest.mediaArtifacts)

@@ -4,6 +4,22 @@
 
 namespace stackchan {
 
+#ifndef STACKCHAN_AUDIO_SPEECH_ZCR_MIN
+#define STACKCHAN_AUDIO_SPEECH_ZCR_MIN 0.035f
+#endif
+
+#ifndef STACKCHAN_AUDIO_SPEECH_ZCR_MAX
+#define STACKCHAN_AUDIO_SPEECH_ZCR_MAX 0.32f
+#endif
+
+#ifndef STACKCHAN_AUDIO_SPEECH_NOISE_MULT
+#define STACKCHAN_AUDIO_SPEECH_NOISE_MULT 2.6f
+#endif
+
+#ifndef STACKCHAN_AUDIO_SPEECH_MIN_LEVEL
+#define STACKCHAN_AUDIO_SPEECH_MIN_LEVEL 0.045f
+#endif
+
 namespace {
 float rmsEnergy(const int16_t* samples, uint16_t count) {
   if (samples == nullptr || count == 0) {
@@ -66,8 +82,11 @@ AudioSaliencyResult AudioSaliency::process(const AudioSaliencySample& sample) {
   const float level = (left + right) * 0.5f;
   const float zcr = clamp01(sample.zeroCrossingRate);
 
-  const bool speechBand = zcr >= 0.035f && zcr <= 0.32f;
-  const bool speechActive = speechBand && level > noiseFloor_ * 2.6f && level > 0.045f;
+  const bool speechBand = zcr >= STACKCHAN_AUDIO_SPEECH_ZCR_MIN &&
+                          zcr <= STACKCHAN_AUDIO_SPEECH_ZCR_MAX;
+  const bool speechActive = speechBand &&
+                            level > noiseFloor_ * STACKCHAN_AUDIO_SPEECH_NOISE_MULT &&
+                            level > STACKCHAN_AUDIO_SPEECH_MIN_LEVEL;
   const bool loudNoise = level > max(0.70f, noiseFloor_ * 8.0f);
   const bool salient = speechActive || loudNoise;
 

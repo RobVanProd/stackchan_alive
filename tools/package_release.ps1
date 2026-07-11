@@ -6,6 +6,44 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (
+  $env:OS -eq "Windows_NT" -and
+  -not $env:STACKCHAN_RELEASE_SHORT_PATH_ACTIVE -and
+  $physicalRepoRoot.Length -gt 60
+) {
+  $shortDrive = @("R:", "Q:", "P:", "O:") |
+    Where-Object { -not (Test-Path $_) } |
+    Select-Object -First 1
+  if (-not $shortDrive) {
+    throw "Release packaging needs a free temporary drive letter (R:, Q:, P:, or O:) for this deeply nested checkout."
+  }
+
+  $driveName = $shortDrive.TrimEnd("\")
+  & subst.exe $driveName $physicalRepoRoot
+  if ($LASTEXITCODE -ne 0) { throw "Could not create temporary release path $driveName" }
+
+  $childExit = 1
+  try {
+    $env:STACKCHAN_RELEASE_SHORT_PATH_ACTIVE = "1"
+    $childArgs = @(
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", "$driveName\tools\package_release.ps1"
+    )
+    if ($Version) { $childArgs += @("-Version", $Version) }
+    if ($SkipBuild) { $childArgs += "-SkipBuild" }
+    if ($AllowDirty) { $childArgs += "-AllowDirty" }
+    & powershell.exe @childArgs
+    $childExit = $LASTEXITCODE
+  } finally {
+    Remove-Item Env:\STACKCHAN_RELEASE_SHORT_PATH_ACTIVE -ErrorAction SilentlyContinue
+    Set-Location $env:TEMP
+    & subst.exe $driveName /D | Out-Null
+  }
+  exit $childExit
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
@@ -85,8 +123,17 @@ function Copy-SourceTree {
     [string[]]$ExcludedDirectoryNames = @()
   )
 
+  function ConvertTo-ExtendedPath {
+    param([string]$Path)
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if ($env:OS -eq "Windows_NT" -and -not $fullPath.StartsWith("\\?\")) {
+      return "\\?\$fullPath"
+    }
+    return $fullPath
+  }
+
   $sourcePath = (Resolve-Path $SourceRoot).Path
-  New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+  [void][System.IO.Directory]::CreateDirectory((ConvertTo-ExtendedPath $DestinationRoot))
   $excluded = @{}
   foreach ($name in $ExcludedDirectoryNames) {
     $excluded[$name] = $true
@@ -98,9 +145,14 @@ function Copy-SourceTree {
       [string]$CurrentDestination
     )
 
-    New-Item -ItemType Directory -Force -Path $CurrentDestination | Out-Null
+    [void][System.IO.Directory]::CreateDirectory((ConvertTo-ExtendedPath $CurrentDestination))
     Get-ChildItem -LiteralPath $CurrentSource -File -Force | ForEach-Object {
-      Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $CurrentDestination $_.Name)
+      $destinationFile = Join-Path $CurrentDestination $_.Name
+      [System.IO.File]::Copy(
+        (ConvertTo-ExtendedPath $_.FullName),
+        (ConvertTo-ExtendedPath $destinationFile),
+        $true
+      )
     }
     Get-ChildItem -LiteralPath $CurrentSource -Directory -Force | ForEach-Object {
       if ($excluded.ContainsKey($_.Name)) {
@@ -252,29 +304,18 @@ foreach ($file in $voiceMediaFiles) {
   Copy-Item -LiteralPath $file -Destination $voiceMediaDir
 }
 
-& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "render_rvc_audition_mp3s.ps1") `
-  -VoiceRoot "output/voice_auditions/rvc_base/final"
+& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify_tracked_rvc_assets.ps1") `
+  -VoiceRoot "media/voice/rvc"
 if ($LASTEXITCODE -ne 0) {
-  throw "RVC audition MP3 export failed."
+  throw "Tracked RVC audition asset verification failed."
 }
 
 $voiceRvcFiles = @(
-  "output/voice_auditions/rvc_base/final/RVC_AUDITION.html",
-  "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.md",
-  "output/voice_auditions/rvc_base/final/RVC_AUDITIONS.json",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_neutral.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_warm_slow.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot.mp3",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot_less_static.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot_sweet_vocoder.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot_soft_boops.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_spark_boops.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_high_character.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_thinking_neutral.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_thinking_neutral.mp3",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.wav",
-  "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.mp3"
+  "media/voice/rvc/README.md",
+  "media/voice/rvc/RVC_AUDITION.html",
+  "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
+  "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
+  "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
 )
 
 foreach ($file in $voiceRvcFiles) {
@@ -283,7 +324,6 @@ foreach ($file in $voiceRvcFiles) {
   }
   Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
 }
-Copy-Item -LiteralPath "media/voice/rvc/README.md" -Destination $voiceRvcMediaDir
 
 Copy-Item -LiteralPath "README.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
@@ -300,6 +340,11 @@ Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PERSONA_PACKS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/HARDWARE_SIMULATION.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/HARDWARE_FEATURE_ROADMAP.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/LOCAL_RESEARCH_TOOLING.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/POWER_BLACKOUT_FORENSICS.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/SPEAKER_AUDIO_RESEARCH.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/VOICE_V2_DIRECTML.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PRIVACY.md" -Destination $docsDir
@@ -339,15 +384,28 @@ $bridgePackageFiles = @(
   "test_engine_probe.py",
   "model_benchmark.py",
   "test_model_benchmark.py",
+  "stt_normalization.py",
   "stt_adapter.py",
+  "windows_speech_stt.py",
+  "whisper_cpp_stt.py",
   "test_stt_adapter.py",
   "tts_adapter.py",
   "test_tts_adapter.py",
   "lan_service.py",
   "test_lan_service.py",
   "ollama_stackchan_runner.py",
+  "test_ollama_stackchan_runner.py",
   "pc_brain_probe.py",
   "selected_voice_tts.py",
+  "windows_speech_tts.py",
+  "rvc_tts.py",
+  "rvc_tts_client.py",
+  "rvc_worker_service.py",
+  "rvc_directml_tts_client.py",
+  "rvc_directml_worker_service.py",
+  "voice_v2_directml_runtime.py",
+  "voice_v2_directml_benchmark.py",
+  "voice_v2_wire_benchmark.py",
   "lan_smoke.py",
   "test_lan_smoke.py",
   "android_companion_probe.py",
@@ -555,8 +613,21 @@ $releaseTools = @(
   "tools/run_litert_lm_smoke.ps1",
   "tools/run_lan_smoke.cmd",
   "tools/run_lan_smoke.ps1",
+  "tools/setup_whisper_cpp.cmd",
+  "tools/setup_whisper_cpp.ps1",
   "tools/start_pc_brain.cmd",
   "tools/start_pc_brain.ps1",
+  "tools/start_rvc_worker.ps1",
+  "tools/setup_voice_v2_directml.ps1",
+  "tools/voice_v2_directml_constraints.txt",
+  "tools/start_voice_v2_directml_worker.ps1",
+  "tools/run_voice_v2_directml_benchmark.ps1",
+  "tools/run_voice_v2_wire_benchmark.ps1",
+  "tools/start_voice_v2_supervised_validation.ps1",
+  "tools/check_voice_v2_supervised_evidence.ps1",
+  "tools/complete_voice_v2_supervised_validation.ps1",
+  "tools/restore_voice_v2_production.ps1",
+  "tools/test_voice_v2_supervised_evidence_contract.ps1",
   "tools/run_pc_brain_probe.cmd",
   "tools/collect_pc_brain_deploy_evidence.cmd",
   "tools/collect_pc_brain_deploy_evidence.ps1",
@@ -621,7 +692,35 @@ $releaseTools = @(
   "tools/verify_release_package.cmd",
   "tools/verify_release_package.ps1",
   "tools/verify_share_release.cmd",
-  "tools/verify_share_release.ps1"
+  "tools/verify_share_release.ps1",
+  "tools/provision_stackchan_wifi.cmd",
+  "tools/provision_stackchan_wifi.ps1",
+  "tools/check_android_controls_evidence.cmd",
+  "tools/check_android_controls_evidence.ps1",
+  "tools/check_android_gemma_evidence.cmd",
+  "tools/check_android_gemma_evidence.ps1",
+  "tools/check_android_pairing_evidence.cmd",
+  "tools/check_android_pairing_evidence.ps1",
+  "tools/check_android_screen_off_soak_evidence.cmd",
+  "tools/check_android_screen_off_soak_evidence.ps1",
+  "tools/check_android_speech_evidence.cmd",
+  "tools/check_android_speech_evidence.ps1",
+  "tools/check_android_wifi_evidence.cmd",
+  "tools/check_android_wifi_evidence.ps1",
+  "tools/test_android_controls_evidence_contract.cmd",
+  "tools/test_android_controls_evidence_contract.ps1",
+  "tools/test_android_diagnostics_export_evidence_contract.cmd",
+  "tools/test_android_diagnostics_export_evidence_contract.ps1",
+  "tools/test_android_pairing_evidence_contract.cmd",
+  "tools/test_android_pairing_evidence_contract.ps1",
+  "tools/test_android_screen_off_soak_evidence_contract.cmd",
+  "tools/test_android_screen_off_soak_evidence_contract.ps1",
+  "tools/test_android_speech_evidence_contract.cmd",
+  "tools/test_android_speech_evidence_contract.ps1",
+  "tools/test_android_wifi_evidence_contract.cmd",
+  "tools/test_android_wifi_evidence_contract.ps1",
+  "tools/check_voice_source_readiness.ps1",
+  "tools/test_voice_source_readiness_contract.ps1"
 )
 
 foreach ($file in $releaseTools) {
@@ -632,6 +731,7 @@ foreach ($file in $releaseTools) {
 }
 
 Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
+Copy-Item -LiteralPath "partitions_esp_sr_16.csv" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
@@ -934,6 +1034,9 @@ $manifest = [ordered]@{
   johnnyAlivePathway = "docs/JOHNNY_ALIVE_PATHWAY.md"
   personaPacksGuide = "docs/PERSONA_PACKS.md"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
+  voiceV2Guide = "docs/VOICE_V2_DIRECTML.md"
+  hardwareFeatureRoadmap = "docs/HARDWARE_FEATURE_ROADMAP.md"
+  localResearchTooling = "docs/LOCAL_RESEARCH_TOOLING.md"
   includedPersonaPacks = @("spark", "glow")
   activePersona = "spark"
   activePersonaPack = "personas/spark"
@@ -1001,20 +1104,8 @@ $manifest = [ordered]@{
     "media/voice/VOICE_AUDITION.html",
     "media/voice/rvc/README.md",
     "media/voice/rvc/RVC_AUDITION.html",
-    "media/voice/rvc/RVC_AUDITIONS.md",
-    "media/voice/rvc/RVC_AUDITIONS.json",
-    "media/voice/rvc/stackchan_rvc_neutral.wav",
-    "media/voice/rvc/stackchan_rvc_warm_slow.wav",
-    "media/voice/rvc/stackchan_rvc_bright_robot.wav",
     "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
-    "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav",
-    "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav",
-    "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav",
-    "media/voice/rvc/stackchan_rvc_spark_boops.wav",
-    "media/voice/rvc/stackchan_rvc_high_character.wav",
-    "media/voice/rvc/stackchan_rvc_thinking_neutral.wav",
     "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
-    "media/voice/rvc/stackchan_rvc_safety_neutral.wav",
     "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
   )
   includedTools = @(
@@ -1133,6 +1224,17 @@ $manifest = [ordered]@{
     "tools/run_lan_smoke.ps1",
     "tools/start_pc_brain.cmd",
     "tools/start_pc_brain.ps1",
+    "tools/start_rvc_worker.ps1",
+    "tools/setup_voice_v2_directml.ps1",
+    "tools/voice_v2_directml_constraints.txt",
+    "tools/start_voice_v2_directml_worker.ps1",
+    "tools/run_voice_v2_directml_benchmark.ps1",
+    "tools/run_voice_v2_wire_benchmark.ps1",
+    "tools/start_voice_v2_supervised_validation.ps1",
+    "tools/check_voice_v2_supervised_evidence.ps1",
+    "tools/complete_voice_v2_supervised_validation.ps1",
+    "tools/restore_voice_v2_production.ps1",
+    "tools/test_voice_v2_supervised_evidence_contract.ps1",
     "tools/run_pc_brain_probe.cmd",
     "tools/collect_pc_brain_deploy_evidence.cmd",
     "tools/collect_pc_brain_deploy_evidence.ps1",
@@ -1199,10 +1301,56 @@ $manifest = [ordered]@{
     "tools/verify_release_package.cmd",
     "tools/verify_release_package.ps1",
     "tools/verify_share_release.cmd",
-    "tools/verify_share_release.ps1"
+    "tools/verify_share_release.ps1",
+    "tools/provision_stackchan_wifi.cmd",
+    "tools/provision_stackchan_wifi.ps1",
+    "tools/check_android_controls_evidence.cmd",
+    "tools/check_android_controls_evidence.ps1",
+    "tools/check_android_gemma_evidence.cmd",
+    "tools/check_android_gemma_evidence.ps1",
+    "tools/check_android_pairing_evidence.cmd",
+    "tools/check_android_pairing_evidence.ps1",
+    "tools/check_android_screen_off_soak_evidence.cmd",
+    "tools/check_android_screen_off_soak_evidence.ps1",
+    "tools/check_android_speech_evidence.cmd",
+    "tools/check_android_speech_evidence.ps1",
+    "tools/check_android_wifi_evidence.cmd",
+    "tools/check_android_wifi_evidence.ps1",
+    "tools/test_android_controls_evidence_contract.cmd",
+    "tools/test_android_controls_evidence_contract.ps1",
+    "tools/test_android_diagnostics_export_evidence_contract.cmd",
+    "tools/test_android_diagnostics_export_evidence_contract.ps1",
+    "tools/test_android_pairing_evidence_contract.cmd",
+    "tools/test_android_pairing_evidence_contract.ps1",
+    "tools/test_android_screen_off_soak_evidence_contract.cmd",
+    "tools/test_android_screen_off_soak_evidence_contract.ps1",
+    "tools/test_android_speech_evidence_contract.cmd",
+    "tools/test_android_speech_evidence_contract.ps1",
+    "tools/test_android_wifi_evidence_contract.cmd",
+    "tools/test_android_wifi_evidence_contract.ps1",
+    "tools/check_voice_source_readiness.ps1",
+    "tools/test_voice_source_readiness_contract.ps1",
+    "tools/compare_hardware_sim_baseline.cmd",
+    "tools/compare_hardware_sim_baseline.ps1",
+    "tools/create_persona_pack.cmd",
+    "tools/create_persona_pack.ps1",
+    "tools/create_persona_pack.py",
+    "tools/export_persona_prompt_assets.py",
+    "tools/render_voice_samples.cmd",
+    "tools/render_voice_samples.ps1",
+    "tools/setup_voice_tools.cmd",
+    "tools/setup_voice_tools.ps1",
+    "tools/setup_whisper_cpp.cmd",
+    "tools/setup_whisper_cpp.ps1",
+    "tools/verify_persona_pack.cmd",
+    "tools/verify_persona_pack.ps1",
+    "tools/verify_persona_pack.py",
+    "tools/verify_voice_samples.cmd",
+    "tools/verify_voice_samples.ps1"
   )
   provenanceFiles = @(
     "provenance/platformio.ini",
+    "provenance/partitions_esp_sr_16.csv",
     "provenance/requirements-preview.txt",
     "provenance/bridge/README.md",
     "provenance/bridge/export_protocol_fixtures.py",
@@ -1223,12 +1371,26 @@ $manifest = [ordered]@{
     "provenance/bridge/test_engine_probe.py",
     "provenance/bridge/model_benchmark.py",
     "provenance/bridge/test_model_benchmark.py",
+    "provenance/bridge/stt_normalization.py",
     "provenance/bridge/stt_adapter.py",
+    "provenance/bridge/windows_speech_stt.py",
+    "provenance/bridge/whisper_cpp_stt.py",
     "provenance/bridge/test_stt_adapter.py",
     "provenance/bridge/tts_adapter.py",
     "provenance/bridge/test_tts_adapter.py",
     "provenance/bridge/lan_service.py",
     "provenance/bridge/test_lan_service.py",
+    "provenance/bridge/ollama_stackchan_runner.py",
+    "provenance/bridge/test_ollama_stackchan_runner.py",
+    "provenance/bridge/windows_speech_tts.py",
+    "provenance/bridge/rvc_tts.py",
+    "provenance/bridge/rvc_tts_client.py",
+    "provenance/bridge/rvc_worker_service.py",
+    "provenance/bridge/rvc_directml_tts_client.py",
+    "provenance/bridge/rvc_directml_worker_service.py",
+    "provenance/bridge/voice_v2_directml_runtime.py",
+    "provenance/bridge/voice_v2_directml_benchmark.py",
+    "provenance/bridge/voice_v2_wire_benchmark.py",
     "provenance/bridge/lan_smoke.py",
     "provenance/bridge/test_lan_smoke.py",
     "provenance/bridge/hardware_simulator.py",
@@ -1605,7 +1767,10 @@ $hashLines | Set-Content -Path (Join-Path $outDir "SHA256SUMS.txt") -Encoding AS
 if (Test-Path -LiteralPath $zipPath) {
   Remove-Item -LiteralPath $zipPath -Force
 }
-Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath
+& tar.exe -a -cf $zipPath -C $outDir .
+if ($LASTEXITCODE -ne 0) {
+  throw "Release ZIP creation failed with exit code $LASTEXITCODE"
+}
 $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
 "$zipHash  $(Split-Path -Leaf $zipPath)" | Set-Content -Path $zipSidecarPath -Encoding ASCII
 

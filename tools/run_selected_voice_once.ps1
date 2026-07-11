@@ -2,8 +2,8 @@ param(
   [string]$Text = "Stackchan, selected voice check. Please say hello once.",
   [int]$SelectedVoiceMaxAudioBytes = 65536,
   [int]$SelectedVoiceStartBytes = 0,
-  [double]$SelectedVoiceGain = 0.30,
-  [int]$DownlinkBinaryFrameDelayMs = 70,
+  [double]$SelectedVoiceGain = 0.40,
+  [int]$DownlinkBinaryFrameDelayMs = 20,
   [int]$DownlinkTextFrameDelayMs = 40,
   [int]$WaitSeconds = 60,
   [switch]$LeaveBrainRunning

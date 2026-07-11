@@ -204,13 +204,16 @@ def run_runner_profile(
     require_runner: bool = False,
     timeout_ms: int = 60000,
     persona_id: str = DEFAULT_PERSONA_ID,
+    user_text: str = "",
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
         raise ValueError(f"unknown runner profile '{profile_id}'; expected one of: {known}")
 
     persona = load_and_validate_persona_pack(persona_id)
-    case = prompt_case_by_name(case_name)
+    case = dict(prompt_case_by_name(case_name))
+    if user_text.strip():
+        case["user"] = user_text.strip()
     prompt = build_prompt(case, persona)
     resolved_command, command_source = resolve_command(profile_id, command)
     configured_runner = resolved_command is not None

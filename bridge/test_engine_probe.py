@@ -63,6 +63,7 @@ class EngineProbeTests(unittest.TestCase):
                         "import sys",
                         "payload = sys.stdin.buffer.read()",
                         "assert os.environ['STACKCHAN_AUDIO_BYTES'] == str(len(payload))",
+                        "assert os.environ['STACKCHAN_AUDIO_SAMPLE_RATE'] == '22050'",
                         "print(json.dumps({'transcript': 'hello stackchan'}))",
                     ]
                 ),
@@ -98,6 +99,9 @@ class EngineProbeTests(unittest.TestCase):
                     profiles=["gemma4-e2b-gguf"],
                     run_model_smoke=True,
                     stt_command=f'"{sys.executable}" "{stt_script}"',
+                    stt_pcm=b"\x11\x00\x22\x00",
+                    stt_sample_rate=22050,
+                    stt_audio_source="fixture.raw",
                     tts_command=f'"{sys.executable}" "{tts_script}"',
                     tts_voice="probe-voice",
                 )
@@ -107,6 +111,9 @@ class EngineProbeTests(unittest.TestCase):
         self.assertTrue(report["model_profiles"][0]["smoke"]["ok"])
         self.assertEqual("pass", report["stt"]["status"])
         self.assertEqual("hello stackchan", report["stt"]["transcript"])
+        self.assertEqual("fixture.raw", report["stt"]["audio_source"])
+        self.assertEqual(22050, report["stt"]["sample_rate"])
+        self.assertEqual(4, report["stt"]["audio_bytes"])
         self.assertEqual("pass", report["tts"]["status"])
         self.assertEqual(1, report["tts"]["beats"])
         self.assertEqual("probe-voice", report["tts"]["voice"])

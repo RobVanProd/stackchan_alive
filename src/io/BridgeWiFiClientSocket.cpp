@@ -3,8 +3,8 @@
 namespace stackchan {
 
 namespace {
-constexpr int32_t kBridgeTcpConnectTimeoutMs = 750;
-constexpr uint32_t kBridgeTcpIoTimeoutMs = 250;
+constexpr int32_t kBridgeTcpConnectTimeoutMs = 5000;
+constexpr uint32_t kBridgeTcpIoTimeoutMs = 1000;
 }
 
 bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
@@ -13,6 +13,8 @@ bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
     return false;
   }
   client_.stop();
+  delay(20);
+  client_ = WiFiClient {};
   client_.setTimeout(kBridgeTcpIoTimeoutMs);
   IPAddress address;
   if (address.fromString(host)) {
@@ -21,6 +23,9 @@ bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
     Serial.print(F(" port="));
     Serial.println(port);
     const bool ok = client_.connect(address, port, kBridgeTcpConnectTimeoutMs);
+    if (ok) {
+      client_.setNoDelay(true);
+    }
     Serial.print(F("[wifi-socket] result="));
     Serial.println(ok ? F("connected") : F("failed"));
     return ok;
@@ -30,6 +35,9 @@ bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
   Serial.print(F(" port="));
   Serial.println(port);
   const bool ok = client_.connect(host, port, kBridgeTcpConnectTimeoutMs);
+  if (ok) {
+    client_.setNoDelay(true);
+  }
   Serial.print(F("[wifi-socket] result="));
   Serial.println(ok ? F("connected") : F("failed"));
   return ok;
@@ -85,6 +93,7 @@ size_t BridgeWiFiClientSocket::write(const uint8_t* data, size_t length) {
 void BridgeWiFiClientSocket::stop() {
 #if defined(ARDUINO_ARCH_ESP32)
   client_.stop();
+  client_ = WiFiClient {};
 #endif
 }
 

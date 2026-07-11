@@ -182,6 +182,7 @@ void BridgeNetworkSession::readHandshake(uint32_t nowMs) {
     if (handshakeComplete()) {
       if (transport_.acceptHandshakeResponse(handshakeResponse_, nowMs)) {
         telemetry_.handshakesAccepted++;
+        copyError(nullptr);
         setState(BridgeNetworkSessionState::Connected, nowMs);
       } else {
         telemetry_.handshakesFailed++;
@@ -224,18 +225,26 @@ void BridgeNetworkSession::readConnected(uint32_t nowMs) {
 }
 
 void BridgeNetworkSession::drainWriter(uint32_t nowMs) {
-  const uint32_t beforeFrames = writer_.telemetry().framesWritten;
-  const uint32_t beforeTextFrames = writer_.telemetry().textFramesWritten;
-  const uint32_t beforeBinaryFrames = writer_.telemetry().binaryFramesWritten;
-  const uint32_t beforeBytes = writer_.telemetry().bytesWritten;
-  const BridgeSocketWriterDrainResult result = writer_.drainPendingFrame(nowMs);
-  telemetry_.writerFrames += writer_.telemetry().framesWritten - beforeFrames;
-  telemetry_.writerTextFrames += writer_.telemetry().textFramesWritten - beforeTextFrames;
-  telemetry_.writerBinaryFrames += writer_.telemetry().binaryFramesWritten - beforeBinaryFrames;
-  telemetry_.bytesWritten += writer_.telemetry().bytesWritten - beforeBytes;
-  if (result == BridgeSocketWriterDrainResult::NotConnected ||
-      result == BridgeSocketWriterDrainResult::WriteFailed) {
-    scheduleReconnect(writer_.telemetry().lastError, nowMs);
+  for (uint8_t attempt = 0; attempt < 4; ++attempt) {
+    const uint32_t beforeFrames = writer_.telemetry().framesWritten;
+    const uint32_t beforeTextFrames = writer_.telemetry().textFramesWritten;
+    const uint32_t beforeBinaryFrames = writer_.telemetry().binaryFramesWritten;
+    const uint32_t beforeBytes = writer_.telemetry().bytesWritten;
+    const BridgeSocketWriterDrainResult result = writer_.drainPendingFrame(nowMs);
+    telemetry_.writerFrames += writer_.telemetry().framesWritten - beforeFrames;
+    telemetry_.writerTextFrames += writer_.telemetry().textFramesWritten - beforeTextFrames;
+    telemetry_.writerBinaryFrames += writer_.telemetry().binaryFramesWritten - beforeBinaryFrames;
+    telemetry_.bytesWritten += writer_.telemetry().bytesWritten - beforeBytes;
+    if (result == BridgeSocketWriterDrainResult::NotConnected ||
+        result == BridgeSocketWriterDrainResult::WriteFailed) {
+      scheduleReconnect(writer_.telemetry().lastError, nowMs);
+      return;
+    }
+    if (result == BridgeSocketWriterDrainResult::NoPending ||
+        result == BridgeSocketWriterDrainResult::NotReady ||
+        result == BridgeSocketWriterDrainResult::EncodeFailed) {
+      return;
+    }
   }
 }
 

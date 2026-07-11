@@ -195,6 +195,13 @@ if (-not [string]::IsNullOrWhiteSpace($rootPath)) {
           Add-Check "manifest-sha256-format" "fail" "Manifest sha256 must be a 64-character hex digest, not a placeholder."
         }
       }
+      if ($null -ne $manifest.source -and -not [string]::IsNullOrWhiteSpace([string]$manifest.source)) {
+        if ([string]$manifest.source -match "<|>|pending|TBD") {
+          Add-Check "manifest-source-value" "fail" "Manifest source must identify the managed runtime build or source, not a placeholder."
+        } else {
+          Add-Check "manifest-source-value" "pass" "Manifest source identifies the managed runtime build or source."
+        }
+      }
       if ($null -ne $manifest.pythonVersion -and -not [string]::IsNullOrWhiteSpace([string]$manifest.pythonVersion)) {
         $manifestVersion = Convert-ToManifestVersion ([string]$manifest.pythonVersion)
         Add-Check "manifest-python-version-parse" ($(if ($manifestVersion.ok) { "pass" } else { "fail" })) $manifestVersion.detail

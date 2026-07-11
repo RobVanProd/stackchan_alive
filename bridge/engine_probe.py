@@ -91,16 +91,24 @@ def probe_model_profiles(
     return rows
 
 
-def probe_stt(command: str = "", timeout_ms: int = DEFAULT_STT_TIMEOUT_MS) -> dict[str, Any]:
+def probe_stt(
+    command: str = "",
+    timeout_ms: int = DEFAULT_STT_TIMEOUT_MS,
+    *,
+    pcm: bytes = DEFAULT_STT_PCM,
+    sample_rate: int = DEFAULT_STT_SAMPLE_RATE,
+    audio_source: str = "default-silence",
+) -> dict[str, Any]:
     row: dict[str, Any] = {
         "status": "unconfigured",
         "ok": False,
         "command_source": "unconfigured",
-        "sample_rate": DEFAULT_STT_SAMPLE_RATE,
-        "audio_bytes": len(DEFAULT_STT_PCM),
+        "sample_rate": sample_rate,
+        "audio_bytes": len(pcm),
+        "audio_source": audio_source,
     }
     try:
-        result = transcribe_pcm(DEFAULT_STT_PCM, DEFAULT_STT_SAMPLE_RATE, command=command, timeout_ms=timeout_ms)
+        result = transcribe_pcm(pcm, sample_rate, command=command, timeout_ms=timeout_ms)
     except SttConfigurationError as exc:
         row["error"] = str(exc)
         return row
@@ -184,6 +192,9 @@ def run_probe(
     profiles: list[str] | None = None,
     run_model_smoke: bool = False,
     stt_command: str = "",
+    stt_pcm: bytes = DEFAULT_STT_PCM,
+    stt_sample_rate: int = DEFAULT_STT_SAMPLE_RATE,
+    stt_audio_source: str = "default-silence",
     tts_command: str = "",
     tts_voice: str = DEFAULT_TTS_VOICE,
     timeout_ms: int = 60000,
@@ -194,7 +205,13 @@ def run_probe(
         "run_model_smoke": run_model_smoke,
         "tool_candidates": probe_tools(),
         "model_profiles": probe_model_profiles(profiles, run_smoke=run_model_smoke, timeout_ms=timeout_ms),
-        "stt": probe_stt(stt_command, timeout_ms=min(timeout_ms, DEFAULT_STT_TIMEOUT_MS)),
+        "stt": probe_stt(
+            stt_command,
+            timeout_ms=min(timeout_ms, DEFAULT_STT_TIMEOUT_MS),
+            pcm=stt_pcm,
+            sample_rate=stt_sample_rate,
+            audio_source=stt_audio_source,
+        ),
         "tts": probe_tts(tts_command, voice=tts_voice, timeout_ms=min(timeout_ms, DEFAULT_TTS_TIMEOUT_MS)),
     }
     report["summary"] = summarize(report)
@@ -239,6 +256,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             "",
             f"- STT status: `{report['stt'].get('status')}`",
             f"- STT command source: `{report['stt'].get('command_source')}`",
+            f"- STT audio source: `{report['stt'].get('audio_source')}`",
             f"- TTS status: `{report['tts'].get('status')}`",
             f"- TTS command source: `{report['tts'].get('command_source')}`",
             f"- TTS voice: `{report['tts'].get('voice')}`",
@@ -284,6 +302,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", action="append", choices=sorted(RUNNER_PROFILES), help="Model profile to inspect. Repeatable.")
     parser.add_argument("--run-model-smoke", action="store_true", help="Run one real model smoke case for configured profiles.")
     parser.add_argument("--stt-command", default="", help="Override STT command for this probe.")
+    parser.add_argument("--stt-pcm-file", type=Path, help="Raw s16le mono PCM sample for STT. Defaults to short silence.")
+    parser.add_argument("--stt-sample-rate", type=int, default=DEFAULT_STT_SAMPLE_RATE)
     parser.add_argument("--tts-command", default="", help="Override TTS command for this probe.")
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
     parser.add_argument("--timeout-ms", type=int, default=60000)
@@ -294,10 +314,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    stt_pcm = args.stt_pcm_file.read_bytes() if args.stt_pcm_file else DEFAULT_STT_PCM
+    stt_audio_source = str(args.stt_pcm_file) if args.stt_pcm_file else "default-silence"
     report = run_probe(
         profiles=args.profile,
         run_model_smoke=args.run_model_smoke,
         stt_command=args.stt_command,
+        stt_pcm=stt_pcm,
+        stt_sample_rate=args.stt_sample_rate,
+        stt_audio_source=stt_audio_source,
         tts_command=args.tts_command,
         tts_voice=args.tts_voice,
         timeout_ms=args.timeout_ms,

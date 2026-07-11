@@ -11,6 +11,18 @@ namespace stackchan {
 #define STACKCHAN_ENABLE_MIC_CAPTURE 0
 #endif
 
+#ifndef STACKCHAN_AUDIO_CAPTURE_MIN_POLL_INTERVAL_MS
+#define STACKCHAN_AUDIO_CAPTURE_MIN_POLL_INTERVAL_MS 10
+#endif
+
+#ifndef STACKCHAN_AUDIO_CAPTURE_NOISE_FLOOR
+#define STACKCHAN_AUDIO_CAPTURE_NOISE_FLOOR 0.02f
+#endif
+
+#ifndef STACKCHAN_MIC_CAPTURE_MAGNIFICATION
+#define STACKCHAN_MIC_CAPTURE_MAGNIFICATION 0
+#endif
+
 constexpr uint32_t kAudioCaptureSampleRate = 16000;
 constexpr uint16_t kAudioCaptureWindowSamples = 200;
 constexpr size_t kAudioCaptureErrorMax = 48;
@@ -19,8 +31,8 @@ struct AudioCaptureConfig {
   bool enabled = STACKCHAN_ENABLE_MIC_CAPTURE != 0;
   uint32_t sampleRate = kAudioCaptureSampleRate;
   uint16_t windowSamples = kAudioCaptureWindowSamples;
-  uint32_t minPollIntervalMs = 10;
-  float noiseFloor = 0.02f;
+  uint32_t minPollIntervalMs = STACKCHAN_AUDIO_CAPTURE_MIN_POLL_INTERVAL_MS;
+  float noiseFloor = STACKCHAN_AUDIO_CAPTURE_NOISE_FLOOR;
 };
 
 struct AudioCaptureTelemetry {

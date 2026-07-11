@@ -142,6 +142,8 @@ STT/model/TTS work runs; the final response suppresses the duplicate `thinking` 
 ```powershell
 $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
 python bridge/lan_service.py --stt-command "python path\to\local_stt.py"
+.\tools\setup_whisper_cpp.cmd
+python bridge/lan_service.py --stt-command "python bridge\whisper_cpp_stt.py"
 ```
 
 The STT command receives raw signed 16-bit mono PCM on stdin with
@@ -238,6 +240,10 @@ Example:
 - Timeout: if a connecting/listening/thinking/responding session stops producing bridge
   traffic for the firmware timeout window, firmware aborts any open audio stream and emits
   the same recoverable `Error` path with `bridge_timeout`.
+
+The LAN service sends `hello` immediately after the WebSocket `101 Switching Protocols`
+response. Firmware uses that first server frame to move from `connecting` to `ready`, so
+host bridges must not wait for the first user turn before sending session acceptance.
 
 Example response:
 

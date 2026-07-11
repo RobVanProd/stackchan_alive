@@ -12,6 +12,14 @@ constexpr uint32_t kPupil = 0x111827;
 constexpr uint32_t kAccent = 0x61E4D7;
 constexpr uint32_t kMouth = 0xFF6B8A;
 constexpr uint32_t kFrameBudgetUs = 33333;
+constexpr uint32_t kDisplayKeepAliveMs = 5000;
+constexpr uint8_t kDisplayBrightness = 180;
+constexpr int32_t kScreenW = 320;
+constexpr int32_t kScreenH = 240;
+constexpr int32_t kStaticTextX = 160;
+constexpr int32_t kStaticTextY = 220;
+constexpr int32_t kStaticTextTop = 206;
+constexpr int32_t kStaticTextHeight = 28;
 constexpr int kOpenMouthSegments = 12;
 constexpr float kSmilePow06[] = {
   0.000000f, 0.189465f, 0.287175f, 0.366270f, 0.435275f, 0.497634f,
@@ -35,6 +43,73 @@ float smileCurveGain(float smileMagnitude) {
   return kSmilePow06[index] + (kSmilePow06[index + 1] - kSmilePow06[index]) * frac;
 }
 
+stackchan::DisplayRect makeRect(int32_t x, int32_t y, int32_t w, int32_t h) {
+  int32_t x0 = constrain(x, 0, kScreenW);
+  int32_t y0 = constrain(y, 0, kScreenH);
+  int32_t x1 = constrain(x + w, 0, kScreenW);
+  int32_t y1 = constrain(y + h, 0, kScreenH);
+  if (x1 <= x0 || y1 <= y0) {
+    return {};
+  }
+  stackchan::DisplayRect rect;
+  rect.x = static_cast<int16_t>(x0);
+  rect.y = static_cast<int16_t>(y0);
+  rect.w = static_cast<int16_t>(x1 - x0);
+  rect.h = static_cast<int16_t>(y1 - y0);
+  rect.valid = true;
+  return rect;
+}
+
+stackchan::DisplayRect unionRect(const stackchan::DisplayRect& a, const stackchan::DisplayRect& b) {
+  if (!a.valid) {
+    return b;
+  }
+  if (!b.valid) {
+    return a;
+  }
+  const int32_t x0 = min<int32_t>(a.x, b.x);
+  const int32_t y0 = min<int32_t>(a.y, b.y);
+  const int32_t x1 = max<int32_t>(a.x + a.w, b.x + b.w);
+  const int32_t y1 = max<int32_t>(a.y + a.h, b.y + b.h);
+  return makeRect(x0, y0, x1 - x0, y1 - y0);
+}
+
+bool rectTouchesStaticText(const stackchan::DisplayRect& rect) {
+  return rect.valid && rect.y + rect.h >= kStaticTextTop;
+}
+
+stackchan::DisplayRect eyeBounds(const stackchan::EyeGeometry& eye) {
+  const int32_t x = roundToInt(eye.cx - eye.width * 0.5f);
+  const int32_t y = roundToInt(eye.cy - eye.height * 0.5f);
+  const int32_t w = max<int32_t>(8, roundToInt(eye.width));
+  const int32_t h = max<int32_t>(4, roundToInt(eye.height));
+  const int32_t browHalf = max<int32_t>(16, w / 4);
+  const int32_t browY = roundToInt(eye.cy - eye.height * 0.72f);
+  const int32_t browX = roundToInt(eye.cx - browHalf);
+  const int32_t x0 = min<int32_t>(x, browX) - 8;
+  const int32_t y0 = min<int32_t>(y, browY - 12) - 6;
+  const int32_t x1 = max<int32_t>(x + w, roundToInt(eye.cx + browHalf)) + 8;
+  const int32_t y1 = y + h + 10;
+  return makeRect(x0, y0, x1 - x0, y1 - y0);
+}
+
+stackchan::DisplayRect mouthBounds(const stackchan::MouthGeometry& mouth) {
+  const int32_t cx = roundToInt(mouth.cx);
+  const int32_t cy = roundToInt(mouth.cy);
+  const int32_t half = roundToInt(mouth.width * 0.5f);
+  const float smileMagnitude = smileCurveGain(fabsf(mouth.smile));
+  const float smileSign = mouth.smile < 0.0f ? -1.0f : 1.0f;
+  const int32_t curve = roundToInt(smileSign * smileMagnitude * 22.0f);
+  const int32_t open = roundToInt(mouth.open * 18.0f);
+  const int32_t leftY = cy + roundToInt(mouth.cornerL);
+  const int32_t rightY = cy + roundToInt(mouth.cornerR);
+  const int32_t topCtrlY = cy - max<int32_t>(2, open / 3);
+  const int32_t bottomCtrlY = cy + curve + open;
+  const int32_t y0 = min<int32_t>(min<int32_t>(leftY, rightY), min<int32_t>(topCtrlY, cy + curve)) - 10;
+  const int32_t y1 = max<int32_t>(max<int32_t>(leftY, rightY), max<int32_t>(bottomCtrlY + open / 2, cy + curve)) + 12;
+  return makeRect(cx - half - 12, y0, (half * 2) + 24, y1 - y0);
+}
+
 }  // namespace
 
 namespace stackchan {
@@ -52,9 +127,46 @@ DisplayAdapter::~DisplayAdapter() {
   delete canvas_;
 }
 
+void DisplayAdapter::markDirty(const DisplayRect& rect) {
+  dirty_ = unionRect(dirty_, rect);
+}
+
+void DisplayAdapter::clearCanvasRect(const DisplayRect& rect) {
+  if (!rect.valid || canvas_ == nullptr) {
+    return;
+  }
+  canvas_->fillRect(rect.x, rect.y, rect.w, rect.h, kBg);
+}
+
+void DisplayAdapter::drawStaticText() {
+  if (canvas_ == nullptr) {
+    return;
+  }
+  canvas_->setTextColor(kAccent, kBg);
+  canvas_->setTextDatum(middle_center);
+  canvas_->drawString("Stackchan: Alive", kStaticTextX, kStaticTextY);
+}
+
+void DisplayAdapter::pushDirtyStrip() {
+  if (!dirty_.valid || canvas_ == nullptr) {
+    return;
+  }
+  uint16_t* buffer = static_cast<uint16_t*>(canvas_->getBuffer());
+  if (buffer == nullptr) {
+    canvas_->pushSprite(0, 0);
+    return;
+  }
+
+  const int32_t y = dirty_.y;
+  const int32_t h = dirty_.h;
+  M5.Display.pushImage(0, y, kScreenW, h, buffer + (y * kScreenW));
+}
+
 bool DisplayAdapter::begin() {
   M5.Display.setRotation(1);
-  M5.Display.setBrightness(180);
+  M5.Display.powerSaveOff();
+  M5.Display.wakeup();
+  M5.Display.setBrightness(kDisplayBrightness);
   M5.Display.fillScreen(kBg);
   M5.Display.setTextColor(kAccent, kBg);
   M5.Display.setTextDatum(middle_center);
@@ -75,12 +187,31 @@ bool DisplayAdapter::begin() {
   canvas_->setTextColor(kAccent, kBg);
   canvas_->setTextDatum(middle_center);
   canvas_->fillSprite(kBg);
+  drawStaticText();
   canvas_->pushSprite(0, 0);
 
   begun_ = true;
+  dirty_ = {};
+  previousLeftEye_ = {};
+  previousRightEye_ = {};
+  previousMouth_ = {};
+  fullRefreshPending_ = false;
+  telemetry_ = DisplayTelemetry {};
+  telemetry_.ready = true;
   lastTelemetryMs_ = millis();
-  Serial.println(F("[display] M5 display renderer ready canvas=double-buffered"));
+  lastDisplayKeepAliveMs_ = lastTelemetryMs_;
+  Serial.println(F("[display] M5 display renderer ready canvas=double-buffered refresh=dirty-strip"));
   return true;
+}
+
+void DisplayAdapter::keepDisplayAwake(uint32_t nowMs) {
+  if (!begun_ || (lastDisplayKeepAliveMs_ != 0 && nowMs - lastDisplayKeepAliveMs_ < kDisplayKeepAliveMs)) {
+    return;
+  }
+  lastDisplayKeepAliveMs_ = nowMs;
+  M5.Display.powerSaveOff();
+  M5.Display.wakeup();
+  M5.Display.setBrightness(kDisplayBrightness);
 }
 
 void DisplayAdapter::clear() {
@@ -88,13 +219,24 @@ void DisplayAdapter::clear() {
     return;
   }
   frameStartUs_ = micros();
-  canvas_->fillSprite(kBg);
+  dirty_ = {};
+  if (fullRefreshPending_) {
+    canvas_->fillSprite(kBg);
+    drawStaticText();
+    markDirty(makeRect(0, 0, kScreenW, kScreenH));
+  }
 }
 
 void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
   if (!begun_) {
     return;
   }
+
+  const DisplayRect currentBounds = eyeBounds(eye);
+  DisplayRect& previousBounds = rightEye ? previousRightEye_ : previousLeftEye_;
+  const DisplayRect eraseBounds = unionRect(previousBounds, currentBounds);
+  clearCanvasRect(eraseBounds);
+  markDirty(eraseBounds);
 
   const int32_t x = roundToInt(eye.cx - eye.width * 0.5f);
   const int32_t y = roundToInt(eye.cy - eye.height * 0.5f);
@@ -166,12 +308,19 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
     canvas_->drawLine(x1, y1, x2, y2, kEye);
     canvas_->drawLine(x1, y1 + 1, x2, y2 + 1, kEye);
   }
+
+  previousBounds = currentBounds;
 }
 
 void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
   if (!begun_) {
     return;
   }
+
+  const DisplayRect currentBounds = mouthBounds(mouth);
+  const DisplayRect eraseBounds = unionRect(previousMouth_, currentBounds);
+  clearCanvasRect(eraseBounds);
+  markDirty(eraseBounds);
 
   const int32_t cx = roundToInt(mouth.cx);
   const int32_t cy = roundToInt(mouth.cy);
@@ -203,27 +352,37 @@ void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {
       prevBottomX = bottomX;
       prevBottomY = bottomY;
     }
+    previousMouth_ = currentBounds;
     return;
   }
 
   canvas_->drawBezier(cx - half, leftY, cx, cy + curve, cx + half, rightY, kMouth);
   canvas_->drawBezier(cx - half, leftY + 1, cx, cy + curve + 1, cx + half, rightY + 1, kMouth);
+  previousMouth_ = currentBounds;
 }
 
 void DisplayAdapter::flush() {
   if (!begun_) {
     return;
   }
-  canvas_->setTextColor(kAccent, kBg);
-  canvas_->setTextDatum(middle_center);
-  canvas_->drawString("Stackchan: Alive", 160, 220);
-  canvas_->pushSprite(0, 0);
+  const uint32_t nowMs = millis();
+  keepDisplayAwake(nowMs);
+
+  if (rectTouchesStaticText(dirty_)) {
+    drawStaticText();
+    markDirty(makeRect(0, kStaticTextTop, kScreenW, kStaticTextHeight));
+  }
+  pushDirtyStrip();
+  fullRefreshPending_ = false;
   M5.Display.waitDisplay();
   frameCount_++;
   windowFrameCount_++;
 
   const uint32_t frameUs = micros() - frameStartUs_;
   avgFrameUs_ = frameCount_ == 1 ? static_cast<float>(frameUs) : (avgFrameUs_ * 0.90f + static_cast<float>(frameUs) * 0.10f);
+  telemetry_.frameCount = frameCount_;
+  telemetry_.lastFrameUs = frameUs;
+  telemetry_.avgFrameUs = static_cast<uint32_t>(avgFrameUs_);
   if (frameUs > maxFrameUs_) {
     maxFrameUs_ = frameUs;
   }
@@ -231,13 +390,17 @@ void DisplayAdapter::flush() {
     slowFrameCount_++;
   }
 
-  const uint32_t nowMs = millis();
   if (nowMs - lastTelemetryMs_ >= 5000) {
     const uint32_t telemetryElapsedMs = nowMs - lastTelemetryMs_;
     lastTelemetryMs_ = nowMs;
     const float avgMs = avgFrameUs_ / 1000.0f;
     const float maxMs = static_cast<float>(maxFrameUs_) / 1000.0f;
     const float fpsWindow = telemetryElapsedMs > 0 ? (static_cast<float>(windowFrameCount_) * 1000.0f) / telemetryElapsedMs : 0.0f;
+    telemetry_.windowFrameCount = windowFrameCount_;
+    telemetry_.windowMaxFrameUs = maxFrameUs_;
+    telemetry_.windowSlowFrames = slowFrameCount_;
+    telemetry_.windowMs = telemetryElapsedMs;
+    telemetry_.windowFps = fpsWindow;
     Serial.print(F("[display] frame_ms_avg="));
     Serial.print(avgMs, 2);
     Serial.print(F(" frame_ms_max="));

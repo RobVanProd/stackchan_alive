@@ -45,6 +45,9 @@ Capture companion release evidence after APK or desktop package artifacts exist:
 .\tools\export_companion_release_evidence.cmd
 ```
 
+This writes `COMPANION_RELEASE_EVIDENCE.json` and `COMPANION_RELEASE_EVIDENCE.md` with the
+artifact hashes, source commit, and companion toolchain provenance used by the release gate.
+
 Before a signed C8 distribution is promoted, rerun it with `-RequireArtifacts` so missing
 APK or desktop package hashes block the release evidence.
 
@@ -443,8 +446,8 @@ calibration, soak, or strict hardware evidence verification.
 Import photos, videos, and speaker recordings through the packet helper so the files are validated and hashed:
 
 ```powershell
-.\RUN_ADD_MEDIA.cmd -Type Photo C:\path\stackchan-face.jpg
-.\RUN_ADD_MEDIA.cmd -Type Audio C:\path\stackchan-speaker.wav
+.\RUN_ADD_MEDIA.cmd -Type Photo -Notes "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state" C:\path\stackchan-face.jpg
+.\RUN_ADD_MEDIA.cmd -Type Audio -Notes "Clean Stackchan speaker reply" C:\path\stackchan-speaker.wav
 ```
 
 Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` recordings land under `audio\` instead of `photos\`.

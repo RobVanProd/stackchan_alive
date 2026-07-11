@@ -4,6 +4,15 @@
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
+
+namespace {
+
+void disconnectWiFiStation() {
+  WiFi.disconnect(false, false);
+  delay(500);
+}
+
+}  // namespace
 #endif
 
 namespace stackchan {
@@ -15,10 +24,16 @@ bool BridgeWiFiProvisioner::begin(const BridgeWiFiProvisioningConfig& config, ui
   telemetry_.configured = isConfigured();
   attemptStartMs_ = 0;
   if (!config_.enabled) {
+#if defined(ARDUINO_ARCH_ESP32)
+    disconnectWiFiStation();
+#endif
     copyError("wifi_bridge_disabled");
     return true;
   }
   if (!telemetry_.configured) {
+#if defined(ARDUINO_ARCH_ESP32)
+    disconnectWiFiStation();
+#endif
     copyError("wifi_bridge_not_configured");
     return false;
   }
@@ -87,7 +102,9 @@ void BridgeWiFiProvisioner::startAttempt(uint32_t nowMs) {
   telemetry_.lastError[0] = '\0';
 
 #if defined(ARDUINO_ARCH_ESP32)
+  disconnectWiFiStation();
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.begin(config_.ssid, config_.password != nullptr ? config_.password : "");
   telemetry_.status = WiFi.status();
 #else
@@ -102,7 +119,7 @@ void BridgeWiFiProvisioner::scheduleRetry(const char* reason, uint32_t nowMs) {
   telemetry_.reconnectsScheduled++;
   copyError(reason);
 #if defined(ARDUINO_ARCH_ESP32)
-  WiFi.disconnect(false);
+  disconnectWiFiStation();
 #endif
 }
 

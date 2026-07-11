@@ -34,6 +34,12 @@ Latency targets from the roadmap remain active:
 | P7 Brain bridge | Firmware bridge parser, native-tested WebSocket frame adapter, native-tested endpoint-control response framing, native-tested socket-writer drain path for queued endpoint responses, native-tested LAN session loop, ESP32 `WiFiClient` socket adapter, boot-wired compile-time Wi-Fi bridge provisioning hook, native-tested trusted-endpoint owner registry, native-tested endpoint-control adapter, native-tested trusted-endpoint persistence store, boot-time endpoint-store load/attach, runtime endpoint telemetry, serial-bench endpoint-control responses, deterministic host bridge, memory store, privacy model, model guide, character harness, character red-team dry-run harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, LAN bridge smoke report, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal, and combined pre-arrival simulation check exist. | Add real configured Wi-Fi credentials/bridge host and live PC/mobile handoff evidence; run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, run the red-team suite with a configured real runner, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
+The post-stability peripheral sequence, including the confirmed body touch/RGB hardware,
+IMU pickup/orientation behavior, camera face tracking, active-speaker orientation, and
+opt-in face recognition, is defined in
+[HARDWARE_FEATURE_ROADMAP.md](HARDWARE_FEATURE_ROADMAP.md). It begins only after the current
+full-system firmware passes and is archived as the stable lead.
+
 ## Current P7 Sequence
 
 P7 is the active software track because it can advance without waiting on device hardware.

@@ -25,6 +25,10 @@ uint32_t updateAudioStreamChecksum(uint32_t checksum, const uint8_t* payload, si
   }
   return result;
 }
+
+bool isFatalRemoteError(const char* code) {
+  return code != nullptr && std::strcmp(code, "bridge_closed") == 0;
+}
 }
 
 bool BridgeClient::begin(const BridgeClientConfig& config) {
@@ -253,11 +257,11 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
   }
 
   if (std::strcmp(type, "error") == 0) {
-    telemetry_.state = BridgeClientState::Error;
     clearAudioStream();
     output.type = BridgeClientOutputType::Error;
     output.event.type = EventType::Error;
     readStringField(jsonLine, "code", output.error, sizeof(output.error));
+    telemetry_.state = isFatalRemoteError(output.error) ? BridgeClientState::Error : BridgeClientState::Ready;
     queueOutput(output);
     return true;
   }

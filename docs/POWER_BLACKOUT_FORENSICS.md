@@ -1,0 +1,136 @@
+# Stackchan Power Blackout Forensics
+
+Status: flashed diagnostic lead; short wall/no-motion/servo qualification passed; untouched failure capture pending.
+
+## What The Evidence Says
+
+The intermittent shutdown is a release blocker, but the current evidence does not identify one
+root cause.
+
+- Real outages have occurred with motion enabled and disabled.
+- Motion-enabled runs have also passed for 52 and 60 minutes, so servo load alone is not a
+  sufficient explanation.
+- Failure times do not cluster at one board uptime and do not match the ESP32 `micros()` wrap.
+- The application does not call the M5Unified power-off, shutdown, or deep-sleep APIs.
+- At least one first boot after a physical recovery reported ESP reset reason `poweron`. That
+  distinguishes a full power-domain restart from an ordinary software restart, but it does not
+  identify why the power domain went away.
+- The corrected two-hour no-motion baseline passed despite three isolated four-second `/debug`
+  timeouts with the bridge socket still established. A short HTTP timeout is therefore not, by
+  itself, evidence that the robot shut down.
+- On 2026-07-10 the accepted firmware was still live after about 8.3 hours with motion, servo
+  rail, and torque off; the bridge was ready, VBUS was 5.025 V, no PMIC VBUS-loss or hard-floor
+  event had occurred, and the face window was about 29.4 ms.
+
+The correct statement is: there are confirmed historical full-off events plus separate transient
+HTTP latency events. Neither the motors, the PC USB source, the wall source, heat, nor firmware
+task starvation has enough evidence to be named the universal cause.
+
+## Instrumented Candidate
+
+Environment: `stackchan_release_forensics`
+
+This extends the opt-in Voice V2 streaming build and is currently flashed for diagnosis. The
+accepted rollback `stackchan_wake_mww_uplink_servos_m5_voiceout` remains unchanged and archived.
+
+The candidate captures AXP2101 IRQ status immediately after `M5.begin()` and before the normal
+runtime can clear it. It then clears the baseline, writes the selected IRQ-enable registers
+directly, reads them back, and owns runtime IRQ polling. Direct register verification is used
+because the bundled M5Unified 0.2.17 AXP2101 helper combines successful boolean writes and then
+tests for zero, which reverses its reported result.
+
+Runtime classification uses `raw_status & selected_enable_mask`. Disabled informational raw bits,
+including routine fuel-gauge SOC updates, are still cleared but are tracked in separate ignored
+counters. They cannot fail the strict PMIC-event gate.
+
+Captured causes include:
+
+- VBUS removal or insertion
+- battery removal or insertion
+- power-key long/short press and edges
+- low-SOC warning levels
+- battery and charging temperature faults
+- battery overvoltage and charger timer expiry
+- AXP2101 die overtemperature
+- BATFET or LDO overcurrent
+- fuel-gauge or PMIC watchdog expiry
+
+Every runtime event snapshots VBUS, battery voltage, PMIC presence, chip/PMIC temperature, body
+bus/current, heap, motion request, servo rail/torque, and speaker-power state. `/debug` exposes the
+boot mask, decoded primary event, counters, read/clear failures, and last-event context.
+
+Build verification:
+
+- native logic: `198/198`
+- unchanged production: 144,964 RAM bytes; 2,656,923 flash bytes
+- forensics candidate: 157,364 RAM bytes; 2,674,911 flash bytes
+- both embedded builds: pass
+- direct flash: all four regions hash-verified by esptool
+- restorable archive: `output\firmware-candidates\forensics-validated-20260710-204449.zip`
+- archive SHA256: `48FF8AFB40906E4CD14E2A8373486FD81DE115656B46AA5A96A50657A0D203BD`
+- candidate firmware SHA256: `32472084CABBFDA57A72B0A9B81D0709F3B3D37EF4410C20756DA6C45607AF24`
+- bundled accepted rollback SHA256: `3C40D5A0F006B67D175ED963133E90F889AE600D5C1F0F419E06FE7B99786C10`
+
+Physical qualification on the dedicated 5 V / 3 A BASE supply passed a 120-second motion-off run,
+a 60-second servo run, and a six-minute servo/session-refresh run. The six-minute run recorded
+71/71 successful polls, a 4.846 V floor, 59.5 C maximum chip temperature, 45.216 ms maximum face
+frame, zero new hard-floor/PMIC/protective events, zero motion timeouts, and verified actuator
+shutdown. The formal checker passed 42/42. This proves the instrumentation can coexist with the
+current stack over a short supervised window; it does not establish the historical blackout cause.
+
+Hardware references: [M5Stack CoreS3](https://docs.m5stack.com/en/core/CoreS3),
+[M5Stack StackChan guide](https://docs.m5stack.com/en/guide/hobby_kit/stackchan), and
+[M5Unified AXP2101 interface](https://github.com/m5stack/M5Unified/blob/0.2.17/src/utility/power/AXP2101_Class.hpp).
+
+## Interpretation
+
+Use the first post-return `/debug`, not a later sample.
+
+| ESP reset reason | PMIC boot event | Supported conclusion |
+| --- | --- | --- |
+| `poweron` | `batfet_overcurrent` / `ldo_overcurrent` | PMIC protection directly observed; correlate the saved load context and power path. |
+| `poweron` | `die_overtemperature` | PMIC thermal protection directly observed. |
+| `poweron` | `pmic_watchdog_expire` | PMIC watchdog event directly observed. |
+| `poweron` | `vbus_remove` | Input-source removal was latched; this supports a source/contact interruption but does not prove why it occurred. |
+| `poweron` | `battery_remove` | Battery-presence interruption was latched. |
+| `poweron` | `power_key_long_press` | A long power-key event was latched; inspect physical/button conditions before attributing a firmware fault. |
+| `brownout`, `panic`, or watchdog | any | Use the ESP reason plus PMIC mask; do not relabel it as a generic power failure. |
+| `poweron` | `none` | No selected PMIC event was retained. Root cause remains unknown; this is not proof that power was healthy. |
+| no reboot, bridge socket present | none | Treat as service latency or task/network investigation, not a confirmed shutdown. |
+
+The first boot after flashing is only a baseline because its status bits may predate the candidate.
+The next untouched blackout and recovery is the evidentiary boot.
+
+The actual first post-flash baseline contained an undated `batfet_overcurrent` bit. After clearing
+the baseline and reflashing, the same flash procedure did not reproduce it. Treat that as a clue,
+not as attribution to a specific blackout or proof that flashing caused the event.
+
+## Physical Protocol
+
+1. Connect USB for flashing, keep the body clear, and run:
+
+   ```powershell
+   .\tools\flash_device.ps1 -Environment stackchan_release_forensics -Port COM4 -ConfirmServoRisk
+   ```
+
+2. Confirm `/debug` reports `power_forensics_enabled=true`,
+   `power_forensics_irq_enable_succeeded=true`, and
+   `power_forensics_boot_status_valid=true`. Motion, servo rail, and torque must be off.
+3. Move to the known 5 V / 3 A BASE supply. Record the resulting VBUS event as setup activity;
+   the soak runner baselines counters after this transition.
+4. Run a short motion-off validation first. Then run the supervised servo soak with
+   `-RequirePowerForensics` in addition to the existing operator/body/risk gates.
+5. If the robot goes fully off, do not unplug or swap the power cable. Start the listener:
+
+   ```powershell
+   .\tools\capture_first_post_return_power_forensics.ps1 `
+     -EvidenceRoot output\pc-brain\power-forensics-next-blackout
+   ```
+
+6. Recover with the side button once. The listener saves the first `/debug` before any other
+   command. If motion unexpectedly returns enabled, it calls `/motion-stop` and preserves both
+   pre-stop and post-stop snapshots.
+
+The strict runner stores the PMIC fields in every poll, aborts on a new runtime event or PMIC I/O
+failure, and the formal checker accepts `-RequirePowerForensics`. Do not launch another blind
+overnight soak without this candidate armed.

@@ -9,6 +9,7 @@ bool BridgeWakeGate::begin(const BridgeWakeGateConfig& config, BridgeAudioUplink
   uplink_ = uplink;
   telemetry_ = BridgeWakeGateTelemetry {};
   telemetry_.enabled = config_.enabled;
+  telemetry_.speechStartsTurn = config_.speechStartsTurn;
   telemetry_.ready = true;
   nextSeq_ = config_.firstSeq == 0 ? 1 : config_.firstSeq;
 
@@ -34,6 +35,7 @@ bool BridgeWakeGate::begin(const BridgeWakeGateConfig& config, BridgeAudioUplink
 void BridgeWakeGate::reset() {
   telemetry_ = BridgeWakeGateTelemetry {};
   telemetry_.enabled = config_.enabled;
+  telemetry_.speechStartsTurn = config_.speechStartsTurn;
   telemetry_.ready = config_.enabled ? uplink_ != nullptr : true;
   nextSeq_ = config_.firstSeq == 0 ? 1 : config_.firstSeq;
   if (!config_.enabled) {
@@ -54,7 +56,10 @@ void BridgeWakeGate::applyEvent(const RobotEvent& event, uint32_t nowMs) {
       startTurnIfPossible(nowMs);
       break;
     case EventType::UserSpeaking:
-      if (isGateOpen(nowMs)) {
+      if (!isGateOpen(nowMs) && config_.speechStartsTurn) {
+        openGate(nowMs);
+        startTurnIfPossible(nowMs);
+      } else if (isGateOpen(nowMs)) {
         renewGate(nowMs);
       }
       break;

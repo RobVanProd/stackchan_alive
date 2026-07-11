@@ -90,6 +90,7 @@ struct BenchControl {
   bool hasPairingTicket = false;
   bool hasWiFiProvisioning = false;
   bool hasSpeakerTest = false;
+  bool hasMicCueTest = false;
   bool reducedMotion = false;
   bool motionEnabled = true;
   bool demoEnabled = true;

@@ -120,6 +120,44 @@ function Test-TextEvidence {
   }
 }
 
+function Test-AggregateTextEvidence {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [string[]]$RelativePaths,
+    [string[]]$Patterns
+  )
+
+  $missingFiles = @()
+  $combinedText = ""
+  foreach ($relativePath in $RelativePaths) {
+    $path = Join-RootPath $relativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+      $missingFiles += $relativePath
+      continue
+    }
+    $combinedText += [Environment]::NewLine + (Get-Content -LiteralPath $path -Raw)
+  }
+
+  if ($missingFiles.Count -gt 0) {
+    Add-Check $Id $Name "fail" ($RelativePaths -join ", ") ("Missing files: " + ($missingFiles -join ", "))
+    return
+  }
+
+  $missingPatterns = @()
+  foreach ($pattern in $Patterns) {
+    if ($combinedText -notmatch [regex]::Escape($pattern)) {
+      $missingPatterns += $pattern
+    }
+  }
+
+  if ($missingPatterns.Count -gt 0) {
+    Add-Check $Id $Name "fail" ($RelativePaths -join ", ") ("Missing required text: " + ($missingPatterns -join ", "))
+  } else {
+    Add-Check $Id $Name "pass" ($RelativePaths -join ", ") "Required implementation and validation evidence is present."
+  }
+}
+
 function Test-RequiredFiles {
   param(
     [string]$Id,
@@ -572,7 +610,7 @@ Test-TextEvidence `
   -Id "desktop-python-runtime-payload-contract-test" `
   -Name "Desktop managed Python runtime payload contract test" `
   -RelativePaths @("tools/test_desktop_python_runtime_payload_contract.ps1") `
-  -Patterns @("placeholder sha256 is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, and runtimeSha256", "Desktop Python runtime payload contract tests passed")
+  -Patterns @("placeholder sha256 is rejected", "placeholder runtime source is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, runtimeSha256, and runtimeSource", "Desktop Python runtime payload contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
@@ -668,7 +706,13 @@ Test-TextEvidence `
   -Id "pc-brain-runner-and-selected-voice" `
   -Name "PC Brain Ollama runner and selected voice TTS" `
   -RelativePaths @("bridge/ollama_stackchan_runner.py", "bridge/selected_voice_tts.py") `
-  -Patterns @("Ollama-backed Stackchan runner", "STACKCHAN_OLLAMA_MODEL", "validate_response")
+  -Patterns @("Ollama-backed Stackchan runner", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "keep_alive", "run_api", "run_cli", "validate_response")
+
+Test-AggregateTextEvidence `
+  -Id "pc-brain-voice-v2-streaming" `
+  -Name "PC Brain Voice V2 streaming, mouth, and supervised validation" `
+  -RelativePaths @("bridge/lan_service.py", "bridge/rvc_directml_tts_client.py", "bridge/rvc_directml_worker_service.py", "bridge/voice_v2_directml_runtime.py", "tools/start_voice_v2_supervised_validation.ps1", "tools/check_voice_v2_supervised_evidence.ps1", "docs/VOICE_V2_DIRECTML.md") `
+  -Patterns @("mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "STACKCHAN_RVC_DIRECTML_WORKER_URL", "DirectMlRvcRuntime", "speaker_stream_chunked", "voice-v2-supervised-ready", "host-robot-byte-match", "Speech-mouth evidence")
 
 Test-TextEvidence `
   -Id "pc-brain-selected-voice-tts" `

@@ -41,6 +41,10 @@ class BridgeAudioDownlinkSink {
   virtual bool begin() = 0;
   virtual bool start(const BridgeAudioStream& stream, uint32_t nowMs) = 0;
   virtual bool writeChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs) = 0;
+  virtual bool finish(uint32_t nowMs) {
+    stop(nowMs);
+    return true;
+  }
   virtual void stop(uint32_t nowMs) = 0;
   virtual bool isReady() const = 0;
 };
@@ -63,6 +67,7 @@ class BridgeAudioDownlink {
   bool fail(uint32_t code);
   bool startPlayback(const BridgeAudioStream& stream, uint32_t nowMs);
   void submitPlaybackChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs);
+  void finishPlayback(uint32_t nowMs);
   void stopPlayback(uint32_t nowMs);
   void clearActive();
 

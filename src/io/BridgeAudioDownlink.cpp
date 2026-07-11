@@ -17,6 +17,7 @@ constexpr uint32_t kErrorEndMismatch = 9;
 constexpr uint32_t kErrorPlaybackNotReady = 10;
 constexpr uint32_t kErrorPlaybackStart = 11;
 constexpr uint32_t kErrorPlaybackChunk = 12;
+constexpr uint32_t kErrorPlaybackFinish = 13;
 }  // namespace
 
 bool BridgeAudioDownlink::begin(bool playbackEnabled, BridgeAudioDownlinkSink* sink) {
@@ -110,7 +111,7 @@ bool BridgeAudioDownlink::end(const BridgeAudioStream& stream, uint32_t nowMs) {
   }
 
   telemetry_.streamsCompleted++;
-  stopPlayback(nowMs);
+  finishPlayback(nowMs);
   clearActive();
   return true;
 }
@@ -186,6 +187,18 @@ void BridgeAudioDownlink::submitPlaybackChunk(const BridgeAudioStreamChunk& chun
   telemetry_.playbackErrors++;
   telemetry_.lastErrorCode = kErrorPlaybackChunk;
   stopPlayback(nowMs);
+}
+
+void BridgeAudioDownlink::finishPlayback(uint32_t nowMs) {
+  if (!telemetry_.playbackActive) {
+    return;
+  }
+  if (sink_ != nullptr && !sink_->finish(nowMs)) {
+    telemetry_.playbackErrors++;
+    telemetry_.lastErrorCode = kErrorPlaybackFinish;
+  }
+  telemetry_.playbackActive = false;
+  telemetry_.playbackStops++;
 }
 
 void BridgeAudioDownlink::stopPlayback(uint32_t nowMs) {

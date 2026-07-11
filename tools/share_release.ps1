@@ -799,20 +799,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_AUDITION.html"); Name = "voice/VOICE_AUDITION.html" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/README.md"); Name = "voice/rvc/README.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITION.html"); Name = "voice/rvc/RVC_AUDITION.html" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.md"); Name = "voice/rvc/RVC_AUDITIONS.md" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json"); Name = "voice/rvc/RVC_AUDITIONS.json" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_neutral.wav"); Name = "voice/rvc/stackchan_rvc_neutral.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_warm_slow.wav"); Name = "voice/rvc/stackchan_rvc_warm_slow.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3"); Name = "voice/rvc/stackchan_rvc_bright_robot.mp3" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_less_static.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_less_static.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav"); Name = "voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_spark_boops.wav"); Name = "voice/rvc/stackchan_rvc_spark_boops.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_high_character.wav"); Name = "voice/rvc/stackchan_rvc_high_character.wav" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.wav"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.mp3" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.wav"); Name = "voice/rvc/stackchan_rvc_safety_neutral.wav" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"); Name = "voice/rvc/stackchan_rvc_safety_neutral.mp3" },
   @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
@@ -855,7 +843,6 @@ $readiness = Get-Content -LiteralPath (Join-Path $packageRoot "readiness_report.
 $dependencyLock = Get-Content -LiteralPath (Join-Path $packageRoot "dependency_lock.json") -Raw | ConvertFrom-Json
 $voiceSourceStatus = Get-Content -LiteralPath (Join-Path $packageRoot "voice_source_status.json") -Raw | ConvertFrom-Json
 $rvcBaseStatus = Get-Content -LiteralPath (Join-Path $packageRoot "rvc_voice_base_status.json") -Raw | ConvertFrom-Json
-$rvcAuditions = Get-Content -LiteralPath (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITIONS.json") -Raw | ConvertFrom-Json
 
 $preflightRoot = Join-Path $repoRoot "output/preflight/$Version"
 $preflightReportMarkdown = Join-Path $preflightRoot "preflight_report.md"
@@ -948,20 +935,16 @@ $rvcBaseArchiveText = if ([bool]$rvcBaseStatus.localArchive.present) { "local ar
 $rvcBaseArchiveText = [System.Net.WebUtility]::HtmlEncode($rvcBaseArchiveText)
 $rvcBaseExpectedSha = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.expectedArchive.sha256)
 $rvcBaseExpectedBytes = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.expectedArchive.bytes)
-$rvcLead = $rvcAuditions.leadAudition
-if ($null -eq $rvcLead) {
-  throw "RVC_AUDITIONS.json is missing leadAudition metadata."
-}
-$rvcLeadTitle = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.title)
-$rvcLeadFile = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.file)
-$rvcLeadTranscript = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.transcript)
-$rvcLeadRating = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.userRating)
-$rvcLeadPurpose = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.perceptualPurpose)
-$rvcLeadPitch = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.pitch)
-$rvcLeadIndex = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.index_rate)
-$rvcLeadRms = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.rms_mix_rate)
-$rvcLeadProtect = [System.Net.WebUtility]::HtmlEncode([string]$rvcLead.protect)
-$rvcLeadPath = "voice/rvc/$($rvcLead.file)"
+$rvcLeadTitle = "RVC Bright Robot"
+$rvcLeadFile = "stackchan_rvc_bright_robot.mp3"
+$rvcLeadTranscript = "Hello. I am Stackchan, and I am awake."
+$rvcLeadRating = "Accepted Stackchan voice direction"
+$rvcLeadPurpose = "Bright synthetic robot character tuned for the CoreS3 speaker."
+$rvcLeadPitch = "2"
+$rvcLeadIndex = "0.62"
+$rvcLeadRms = "0.72"
+$rvcLeadProtect = "0.28"
+$rvcLeadPath = "voice/rvc/$rvcLeadFile"
 $rvcLeadPathHtml = [System.Net.WebUtility]::HtmlEncode($rvcLeadPath)
 $declaredDependencyCount = @($dependencyLock.declaredLibDeps).Count
 $directGitMissingRefCount = @($dependencyLock.dependencyAudit.directGitDepsMissingRef).Count
@@ -1130,74 +1113,16 @@ $promotionGateItems
   </div>
   <div class="grid">
     <div class="item">
-      <strong>RVC Neutral</strong>
-      <audio src="voice/rvc/stackchan_rvc_neutral.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Closest to the raw RVC base with only a light Stackchan edge.</p>
-      <p><a href="voice/rvc/stackchan_rvc_neutral.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Warm Slow</strong>
-      <audio src="voice/rvc/stackchan_rvc_warm_slow.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Warmer, slower, softer consonants for small-speaker intelligibility.</p>
-      <p><a href="voice/rvc/stackchan_rvc_warm_slow.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Bright Robot</strong>
-      <audio src="voice/rvc/stackchan_rvc_bright_robot.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Brighter robot pass with light vocoder and subtle phrase earcons.</p>
-      <p><a href="voice/rvc/stackchan_rvc_bright_robot.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Bright Robot Less Static</strong>
-      <audio src="voice/rvc/stackchan_rvc_bright_robot_less_static.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Near-final pass: same pitch 2 / index 0.62 / RMS mix 0.72 / protect 0.28 settings, with roughly 8% less static edge.</p>
-      <p><a href="voice/rvc/stackchan_rvc_bright_robot_less_static.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Bright Robot Sweet Vocoder</strong>
-      <audio src="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Near-final pass: same winning RVC settings with a slightly more pleasant fourth/fifth vocoder blend.</p>
-      <p><a href="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Bright Robot Soft Boops</strong>
-      <audio src="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Near-final pass: same winning RVC settings with the beeps and boops tucked lower under the voice.</p>
-      <p><a href="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Spark Boops</strong>
-      <audio src="voice/rvc/stackchan_rvc_spark_boops.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Friendly candidate with slightly more musical beeps and boops.</p>
-      <p><a href="voice/rvc/stackchan_rvc_spark_boops.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC High Character</strong>
-      <audio src="voice/rvc/stackchan_rvc_high_character.wav" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Hello. I am Stackchan, and I am awake.</p>
-      <p>Most synthetic and animated; useful as an upper bound.</p>
-      <p><a href="voice/rvc/stackchan_rvc_high_character.wav">Download WAV</a></p>
-    </div>
-    <div class="item">
       <strong>RVC Thinking</strong>
-      <audio src="voice/rvc/stackchan_rvc_thinking_neutral.wav" controls preload="metadata"></audio>
+      <audio src="voice/rvc/stackchan_rvc_thinking_neutral.mp3" controls preload="metadata"></audio>
       <p class="transcript"><strong>Transcript:</strong> Input received. I am thinking now. Curiosity level rising.</p>
-      <p>Neutral RVC settings on the thinking line.</p>
-      <p><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">Download WAV</a></p>
+      <p><a href="voice/rvc/stackchan_rvc_thinking_neutral.mp3">Download MP3</a></p>
     </div>
     <div class="item">
       <strong>RVC Safety</strong>
-      <audio src="voice/rvc/stackchan_rvc_safety_neutral.wav" controls preload="metadata"></audio>
+      <audio src="voice/rvc/stackchan_rvc_safety_neutral.mp3" controls preload="metadata"></audio>
       <p class="transcript"><strong>Transcript:</strong> Small problem found. I can help fix it. Safety first.</p>
-      <p>Neutral RVC settings on the safety line.</p>
-      <p><a href="voice/rvc/stackchan_rvc_safety_neutral.wav">Download WAV</a></p>
+      <p><a href="voice/rvc/stackchan_rvc_safety_neutral.mp3">Download MP3</a></p>
     </div>
   </div>
 
@@ -1261,20 +1186,8 @@ $promotionGateItems
     <div class="item"><a href="voice/stackchan_spark_thinking.mp3">Thinking MP3</a></div>
     <div class="item"><a href="voice/rvc/README.md">RVC MP3 Readme</a></div>
     <div class="item"><a href="voice/rvc/RVC_AUDITION.html">RVC Local Audition Page</a></div>
-    <div class="item"><a href="voice/rvc/RVC_AUDITIONS.md">RVC Audition Notes</a></div>
-    <div class="item"><a href="voice/rvc/RVC_AUDITIONS.json">RVC Audition JSON</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_neutral.wav">RVC Neutral WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_warm_slow.wav">RVC Warm Slow WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.wav">RVC Bright Robot WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.mp3">RVC Bright Robot MP3</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_less_static.wav">RVC Bright Robot Less Static WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_sweet_vocoder.wav">RVC Bright Robot Sweet Vocoder WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot_soft_boops.wav">RVC Bright Robot Soft Boops WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_spark_boops.wav">RVC Spark Boops WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_high_character.wav">RVC High Character WAV</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.wav">RVC Thinking WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.mp3">RVC Thinking MP3</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.wav">RVC Safety WAV</a></div>
     <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.mp3">RVC Safety MP3</a></div>
     <div class="item"><a href="VOICE_SOURCE_STATUS.md">Voice Source Status</a></div>
     <div class="item"><a href="voice_source_status.json">Voice Source Status JSON</a></div>

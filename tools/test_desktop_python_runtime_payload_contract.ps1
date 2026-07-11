@@ -61,14 +61,15 @@ function Write-Manifest {
     [string]$RuntimeRoot,
     [string]$PythonVersion,
     [string]$Platform,
-    [string]$Sha256
+    [string]$Sha256,
+    [string]$Source = "contract-test-runtime"
   )
 
   [ordered]@{
     schema = "stackchan.desktop-python-runtime.v1"
     pythonVersion = $PythonVersion
     platform = $Platform
-    source = "contract-test-runtime"
+    source = $Source
     sha256 = $Sha256
     license = "Python Software Foundation License Version 2 or approved equivalent"
     builtAt = "2026-07-06T00:00:00Z"
@@ -113,12 +114,13 @@ function New-Case {
     [object]$Python,
     [string]$PythonVersion,
     [string]$Platform,
-    [string]$Sha256
+    [string]$Sha256,
+    [string]$Source = "contract-test-runtime"
   )
 
   $root = New-RuntimeRoot
   Copy-PythonExecutable -RuntimeRoot $root -PythonPath $Python.path
-  Write-Manifest -RuntimeRoot $root -PythonVersion $PythonVersion -Platform $Platform -Sha256 $Sha256
+  Write-Manifest -RuntimeRoot $root -PythonVersion $PythonVersion -Platform $Platform -Sha256 $Sha256 -Source $Source
   return $root
 }
 
@@ -136,6 +138,14 @@ try {
   }
   Assert-CheckStatus -Report $placeholderHash.report -Id "manifest-sha256-format" -Status "fail"
   Write-Host "[ok] placeholder sha256 is rejected"
+
+  $placeholderSourceRoot = New-Case -Python $python -PythonVersion $python.version -Platform $expectedPlatform -Sha256 $validSha -Source "<managed-runtime-build-name-or-url>"
+  $placeholderSource = Invoke-RuntimeCheck -RuntimeRoot $placeholderSourceRoot
+  if ([int]$placeholderSource.exitCode -eq 0) {
+    throw "Expected placeholder runtime source payload to fail."
+  }
+  Assert-CheckStatus -Report $placeholderSource.report -Id "manifest-source-value" -Status "fail"
+  Write-Host "[ok] placeholder runtime source is rejected"
 
   $platformMismatchRoot = New-Case -Python $python -PythonVersion $python.version -Platform $otherPlatform -Sha256 $validSha
   $platformMismatch = Invoke-RuntimeCheck -RuntimeRoot $platformMismatchRoot
@@ -161,10 +171,10 @@ try {
   if ($valid.report.status -ne "ready") {
     throw "Expected valid runtime payload status ready, got $($valid.report.status)."
   }
-  if ($valid.report.platform -ne $expectedPlatform -or $valid.report.runtimeSha256 -ne $validSha -or [string]::IsNullOrWhiteSpace([string]$valid.report.pythonVersion) -or [string]::IsNullOrWhiteSpace([string]$valid.report.probedPythonVersion)) {
-    throw "Expected valid runtime payload report to emit platform, pythonVersion, probedPythonVersion, and runtimeSha256."
+  if ($valid.report.platform -ne $expectedPlatform -or $valid.report.runtimeSha256 -ne $validSha -or [string]$valid.report.runtimeSource -ne "contract-test-runtime" -or [string]::IsNullOrWhiteSpace([string]$valid.report.pythonVersion) -or [string]::IsNullOrWhiteSpace([string]$valid.report.probedPythonVersion)) {
+    throw "Expected valid runtime payload report to emit platform, pythonVersion, probedPythonVersion, runtimeSha256, and runtimeSource."
   }
-  foreach ($id in @("manifest-platform-match", "manifest-sha256-format", "manifest-python-version-match", "python-version")) {
+  foreach ($id in @("manifest-platform-match", "manifest-sha256-format", "manifest-source-value", "manifest-python-version-match", "python-version")) {
     Assert-CheckStatus -Report $valid.report -Id $id -Status "pass"
   }
   Write-Host "[ok] valid desktop runtime payload is accepted"

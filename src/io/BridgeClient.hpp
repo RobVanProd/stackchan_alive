@@ -15,7 +15,10 @@ constexpr size_t kBridgeTextMax = 160;
 constexpr size_t kBridgeErrorMax = 64;
 constexpr size_t kBridgeAudioFormatMax = 16;
 constexpr size_t kBridgeAudioStreamChunkPayloadMax = 4096;
-constexpr size_t kBridgeClientOutputQueueDepth = 8;
+#ifndef STACKCHAN_BRIDGE_CLIENT_OUTPUT_QUEUE_DEPTH
+#define STACKCHAN_BRIDGE_CLIENT_OUTPUT_QUEUE_DEPTH 8
+#endif
+constexpr size_t kBridgeClientOutputQueueDepth = STACKCHAN_BRIDGE_CLIENT_OUTPUT_QUEUE_DEPTH;
 
 enum class BridgeClientState : uint8_t {
   Offline,

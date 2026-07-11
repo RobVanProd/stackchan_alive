@@ -38,12 +38,27 @@ T max(T left, T right) {
   return std::max(left, right);
 }
 
+inline uint32_t& fakeArduinoMillis() {
+  static uint32_t value = 0;
+  return value;
+}
+
+inline uint32_t& fakeArduinoMicros() {
+  static uint32_t value = 0;
+  return value;
+}
+
+inline void setFakeArduinoTime(uint32_t millisValue, uint32_t microsValue) {
+  fakeArduinoMillis() = millisValue;
+  fakeArduinoMicros() = microsValue;
+}
+
 inline uint32_t millis() {
-  return 0;
+  return fakeArduinoMillis();
 }
 
 inline uint32_t micros() {
-  return 0;
+  return fakeArduinoMicros();
 }
 
 inline long random(long max) {

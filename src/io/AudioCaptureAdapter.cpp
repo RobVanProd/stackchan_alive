@@ -103,6 +103,11 @@ bool M5MicAudioCaptureSource::begin(uint32_t sampleRate, uint16_t windowSamples)
   (void)sampleRate;
   (void)windowSamples;
 #if STACKCHAN_HAS_M5_MIC_CAPTURE
+#if STACKCHAN_MIC_CAPTURE_MAGNIFICATION > 0
+  auto micConfig = M5.Mic.config();
+  micConfig.magnification = STACKCHAN_MIC_CAPTURE_MAGNIFICATION;
+  M5.Mic.config(micConfig);
+#endif
   return M5.Mic.begin();
 #else
   return false;
@@ -122,7 +127,13 @@ bool M5MicAudioCaptureSource::record(int16_t* out, uint16_t sampleCount, uint32_
     return false;
   }
 #if STACKCHAN_HAS_M5_MIC_CAPTURE
-  return M5.Mic.record(out, sampleCount, sampleRate);
+  if (!M5.Mic.record(out, sampleCount, sampleRate)) {
+    return false;
+  }
+  while (M5.Mic.isRecording() != 0) {
+    delay(1);
+  }
+  return true;
 #else
   (void)out;
   (void)sampleCount;

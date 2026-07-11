@@ -8,11 +8,16 @@ import base64
 import copy
 import hashlib
 import json
+import queue
+import re
 import socket
+import threading
 import time
+import wave
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from reference_bridge import (
@@ -25,7 +30,14 @@ from reference_bridge import (
     turn_from_character_response,
 )
 from stt_adapter import DEFAULT_STT_TIMEOUT_MS, SttConfigurationError, SttExecutionError, transcribe_pcm
-from tts_adapter import DEFAULT_TTS_TIMEOUT_MS, DEFAULT_TTS_VOICE, TtsConfigurationError, TtsExecutionError, synthesize_speech
+from tts_adapter import (
+    DEFAULT_TTS_TIMEOUT_MS,
+    DEFAULT_TTS_VOICE,
+    TtsConfigurationError,
+    TtsExecutionError,
+    split_spoken_phrases,
+    synthesize_speech,
+)
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -34,8 +46,18 @@ DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS = 180
 DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS = 40
+DEFAULT_CLIENT_IDLE_TIMEOUT_S = 120.0
+DEFAULT_TTS_PHRASE_MAX_CHARS = 96
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_TRUSTED_ENDPOINTS = 8
+STACKCHAN_WAKE_PHRASE = re.compile(
+    r"\bstack[\s-]*(?:chan|chin|chain|can|chad|shan|shen|shed)\b",
+    flags=re.IGNORECASE,
+)
+IDENTITY_QUESTION = re.compile(
+    r"\b(?:what(?:'s| is)\s+(?:your|ur)\s+name|who\s+(?:are|r)\s+you|your\s+name)\b",
+    flags=re.IGNORECASE,
+)
 
 
 class WebSocketProtocolError(RuntimeError):
@@ -44,6 +66,48 @@ class WebSocketProtocolError(RuntimeError):
 
 def now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def mouth_frame_for_audio_window(
+    beats: tuple[object, ...],
+    start_ms: float,
+    duration_ms: float,
+) -> dict[str, object]:
+    window_start = max(0.0, float(start_ms))
+    window_duration = max(1.0, float(duration_ms))
+    window_end = window_start + window_duration
+    cursor = 0.0
+    weighted_env = 0.0
+    overlap_total = 0.0
+    strongest_env = -1.0
+    strongest_viseme = "neutral"
+    for beat in beats:
+        beat_duration = max(1.0, float(getattr(beat, "duration_ms", 20)))
+        beat_end = cursor + beat_duration
+        overlap = max(0.0, min(window_end, beat_end) - max(window_start, cursor))
+        if overlap > 0.0:
+            env = max(0.0, min(1.0, float(getattr(beat, "env", 0.0))))
+            weighted_env += env * overlap
+            overlap_total += overlap
+            if env > strongest_env:
+                strongest_env = env
+                strongest_viseme = str(getattr(beat, "viseme", "neutral"))
+        cursor = beat_end
+        if cursor >= window_end:
+            break
+    envelope = weighted_env / overlap_total if overlap_total > 0.0 else 0.0
+    if envelope < 0.02:
+        strongest_viseme = "neutral"
+    return {
+        "env": round(envelope, 3),
+        "viseme": strongest_viseme,
+        "duration_ms": max(10, min(200, int(round(window_duration)))),
+        "final": False,
+    }
 
 
 def normalize_text(value: object, default: str = "", max_len: int = 64) -> str:
@@ -323,7 +387,9 @@ class BridgeControlState:
             "audio": {
                 "sample_rate": DEFAULT_SAMPLE_RATE,
                 "downlink_chunk_bytes": config.downlink_audio_chunk_bytes,
+                "downlink_enabled": not config.disable_audio_downlink,
                 "max_upload_bytes": config.max_audio_bytes,
+                "evidence_dir": str(config.audio_evidence_dir or ""),
             },
         }
 
@@ -339,14 +405,21 @@ class LanBridgeConfig:
     runner_timeout_ms: int = 60000
     stt_command: str = ""
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
+    require_audio_wake_phrase: bool = False
     tts_command: str = ""
     tts_voice: str = DEFAULT_TTS_VOICE
     tts_timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS
+    stream_tts_phrases: bool = False
+    tts_phrase_max_chars: int = DEFAULT_TTS_PHRASE_MAX_CHARS
     downlink_audio_chunk_bytes: int = DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES
     downlink_binary_frame_delay_ms: int = DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS
     downlink_text_frame_delay_ms: int = DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS
+    client_idle_timeout_s: float = DEFAULT_CLIENT_IDLE_TIMEOUT_S
+    disable_audio_downlink: bool = False
     max_audio_bytes: int = DEFAULT_MAX_AUDIO_BYTES
+    audio_evidence_dir: Path | None = None
     memory_file: Path | None = None
+    turn_log_file: Path | None = None
     auto_turn_text: str = ""
     once: bool = False
 
@@ -548,6 +621,41 @@ def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
     return default_case
 
 
+def is_identity_question(text: str) -> bool:
+    return bool(IDENTITY_QUESTION.search(" ".join(str(text or "").split())))
+
+
+def identity_character_response() -> str:
+    return json.dumps(
+        {
+            "spoken_text": "I am Stackchan.",
+            "mode": "happy",
+            "earcon": "confirm",
+            "emotion": {"arousal": 0.15, "valence": 0.35},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def contains_stackchan_wake_phrase(text: str) -> bool:
+    return bool(STACKCHAN_WAKE_PHRASE.search(" ".join(str(text or "").split())))
+
+
+def write_pcm_wav(path: Path, pcm: bytes, sample_rate: int) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sample_rate = max(8000, min(48000, int(sample_rate or DEFAULT_SAMPLE_RATE)))
+    pcm = pcm[: len(pcm) - (len(pcm) % 2)]
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm)
+    return path
+
+
 class LanBridgeSession:
     def __init__(
         self,
@@ -567,7 +675,109 @@ class LanBridgeSession:
         if self.config.memory_file:
             save_bridge_memory(self.config.memory_file, self.memory)
 
-    def handle_text(self, text: str, *, suppress_thinking: bool = False) -> list[dict[str, object] | bytes]:
+    def _append_turn_log(self, record: dict[str, object]) -> None:
+        if not self.config.turn_log_file:
+            return
+        self.config.turn_log_file.parent.mkdir(parents=True, exist_ok=True)
+        with self.config.turn_log_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, separators=(",", ":"), ensure_ascii=True) + "\n")
+
+    def _write_audio_evidence(
+        self,
+        *,
+        seq: int,
+        pcm: bytes,
+        audio_summary: dict[str, object],
+    ) -> dict[str, object]:
+        if not self.config.audio_evidence_dir or not pcm:
+            return {}
+        timestamp = utc_timestamp().replace(":", "").replace("-", "")
+        sample_rate = int(audio_summary.get("audio_sample_rate", DEFAULT_SAMPLE_RATE))
+        path = self.config.audio_evidence_dir / f"utterance_{timestamp}_seq{seq:04d}.wav"
+        try:
+            written = write_pcm_wav(path, pcm, sample_rate)
+        except (OSError, ValueError, wave.Error) as exc:
+            return {"audio_evidence_error": str(exc)[:160]}
+        return {"audio_evidence_file": str(written)}
+
+    def _append_audio_error_log(
+        self,
+        *,
+        seq: int,
+        audio_summary: dict[str, object],
+        code: str,
+        detail: str,
+        transcript: str = "",
+    ) -> None:
+        record: dict[str, object] = {
+            "schema": "stackchan.lan-turn-summary.v1",
+            "generated_at": utc_timestamp(),
+            "seq": seq,
+            "session": self.session,
+            "source": "audio",
+            "audio_bytes": int(audio_summary.get("audio_bytes", 0)),
+            "audio_chunks": int(audio_summary.get("audio_chunks", 0)),
+            "audio_sample_rate": int(audio_summary.get("audio_sample_rate", DEFAULT_SAMPLE_RATE)),
+            "transcript": transcript,
+            "rejected": True,
+            "reject_code": code,
+            "stt_error": detail[:500],
+        }
+        for key in ("audio_evidence_file", "audio_evidence_error"):
+            if key in audio_summary:
+                record[key] = str(audio_summary[key])
+        self._append_turn_log(record)
+
+    def _append_completed_turn_log(
+        self,
+        *,
+        seq: int,
+        has_audio: bool,
+        audio_summary: dict[str, object],
+        user_text: str,
+        runner_case: str,
+        turn,
+        validation_issues: list[str],
+        stt_log: dict[str, object],
+        runner_summary: dict[str, object],
+        tts_summary: dict[str, object],
+        tts_error: str,
+        audio_evidence_log: dict[str, object],
+        turn_started: float,
+    ) -> None:
+        record: dict[str, object] = {
+            "schema": "stackchan.lan-turn-summary.v1",
+            "generated_at": utc_timestamp(),
+            "seq": seq,
+            "session": self.session,
+            "source": "audio" if has_audio else "text",
+            "audio_bytes": int(audio_summary.get("audio_bytes", 0)),
+            "audio_chunks": int(audio_summary.get("audio_chunks", 0)),
+            "audio_sample_rate": int(audio_summary.get("audio_sample_rate", DEFAULT_SAMPLE_RATE)),
+            "transcript": user_text,
+            "runner_profile": self.config.runner_profile,
+            "runner_case": runner_case,
+            "response_text": turn.text,
+            "response_intent": turn.intent,
+            "tts_voice": str(tts_summary.get("tts_voice", "")),
+            "tts_audio_payload_bytes": int(tts_summary.get("tts_audio_payload_bytes", 0)),
+            "tts_error": tts_error,
+            "validation_issues": list(validation_issues),
+        }
+        record.update(stt_log)
+        record.update(runner_summary)
+        record.update(tts_summary)
+        record.update(audio_evidence_log)
+        record["turn_elapsed_ms"] = round((time.perf_counter() - turn_started) * 1000.0, 2)
+        self._append_turn_log(record)
+
+    def handle_text(
+        self,
+        text: str,
+        *,
+        suppress_thinking: bool = False,
+        frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+    ) -> list[dict[str, object] | bytes]:
         try:
             message = json.loads(text)
         except json.JSONDecodeError:
@@ -625,7 +835,11 @@ class LanBridgeSession:
             owner_error = self._owner_gate(message)
             if owner_error is not None:
                 return [owner_error]
-            return self._handle_utterance_end(message, suppress_thinking=suppress_thinking)
+            return self._handle_utterance_end(
+                message,
+                suppress_thinking=suppress_thinking,
+                frame_sink=frame_sink,
+            )
         return [error_frame("unsupported_message", message_type)]
 
     def _owner_gate(self, message: dict[str, Any]) -> dict[str, object] | None:
@@ -692,15 +906,209 @@ class LanBridgeSession:
             return [error_frame("audio_payload_invalid", "pcm_b64 is not valid base64")]
         return self.handle_binary(payload)
 
+    def _stream_tts_turn(
+        self,
+        turn,
+        *,
+        turn_started: float,
+        validation_issues: list[str],
+        frame_sink: Callable[[dict[str, object] | bytes], None] | None,
+    ) -> tuple[list[dict[str, object] | bytes], dict[str, object], str]:
+        emitted: list[dict[str, object] | bytes] = []
+
+        def emit(frame: dict[str, object] | bytes) -> None:
+            if frame_sink is None:
+                emitted.append(frame)
+            else:
+                frame_sink(frame)
+
+        if validation_issues:
+            emit(error_frame("character_validation", ",".join(validation_issues)))
+        emit(
+            {
+                "type": "response_start",
+                "seq": turn.seq,
+                "intent": turn.intent,
+                "arousal": round(max(0.0, min(1.0, turn.arousal)), 2),
+                "valence": round(max(0.0, min(1.0, turn.valence)), 2),
+                "text": turn.text,
+                "tts_streaming": True,
+            }
+        )
+
+        phrases = split_spoken_phrases(turn.text, self.config.tts_phrase_max_chars)
+        total_bytes = 0
+        total_chunks = 0
+        total_tts_ms = 0.0
+        total_duration_ms = 0
+        first_audio_ms = 0.0
+        first_audio_after_text_ms = 0.0
+        tts_started = time.perf_counter()
+        stream_started = False
+        stream_format = ""
+        stream_rate = 0
+        command_source = ""
+        voice = self.config.tts_voice
+        phrase_elapsed_ms: list[float] = []
+        mouth_frames = 0
+        tts_error = ""
+        rendered: queue.Queue[tuple[str, object]] = queue.Queue()
+
+        def render_phrases() -> None:
+            for phrase in phrases:
+                try:
+                    result = synthesize_speech(
+                        phrase,
+                        command=self.config.tts_command,
+                        voice=self.config.tts_voice,
+                        timeout_ms=self.config.tts_timeout_ms,
+                    )
+                    if bool(result.diagnostics.get("audio_truncated", False)):
+                        raise TtsExecutionError("streaming TTS refused a truncated phrase")
+                    if not result.audio_data:
+                        raise TtsExecutionError("streaming TTS phrase produced no audio")
+                except Exception as exc:
+                    rendered.put(("error", exc))
+                    return
+                rendered.put(("result", result))
+            rendered.put(("done", None))
+
+        producer = threading.Thread(target=render_phrases, name="stackchan-tts-producer", daemon=True)
+        producer.start()
+        try:
+            while True:
+                item_type, item = rendered.get()
+                if item_type == "done":
+                    break
+                if item_type == "error":
+                    raise TtsExecutionError(str(item))
+                result = item
+                if not stream_started:
+                    stream_format = result.audio_format or "pcm16"
+                    stream_rate = result.sample_rate
+                    command_source = result.command_source
+                    voice = result.voice
+                    emit(
+                        {
+                            "type": "audio_stream_start",
+                            "seq": turn.seq,
+                            "format": stream_format,
+                            "sample_rate": stream_rate,
+                            "audio_bytes": 0,
+                            "chunk_bytes": max(
+                                1,
+                                min(
+                                    MAX_DOWNLINK_AUDIO_CHUNK_BYTES,
+                                    int(self.config.downlink_audio_chunk_bytes),
+                                ),
+                            ),
+                            "chunks": 0,
+                            "streaming": True,
+                        }
+                    )
+                    stream_started = True
+                elif result.audio_format != stream_format or result.sample_rate != stream_rate:
+                    raise TtsExecutionError("streaming TTS phrase format changed within one response")
+
+                safe_chunk_bytes = max(
+                    1,
+                    min(MAX_DOWNLINK_AUDIO_CHUNK_BYTES, int(self.config.downlink_audio_chunk_bytes)),
+                )
+                phrase_audio_offset_ms = 0.0
+                for offset in range(0, len(result.audio_data), safe_chunk_bytes):
+                    chunk = result.audio_data[offset : offset + safe_chunk_bytes]
+                    chunk_duration_ms = (
+                        (len(chunk) / 2.0) / max(1, result.sample_rate) * 1000.0
+                    )
+                    if first_audio_ms == 0.0:
+                        now = time.perf_counter()
+                        first_audio_ms = (now - turn_started) * 1000.0
+                        first_audio_after_text_ms = (now - tts_started) * 1000.0
+                    mouth = mouth_frame_for_audio_window(
+                        getattr(result, "beats", ()),
+                        phrase_audio_offset_ms,
+                        chunk_duration_ms,
+                    )
+                    emit({"type": "audio", "seq": turn.seq, **mouth})
+                    mouth_frames += 1
+                    emit(chunk)
+                    total_bytes += len(chunk)
+                    total_chunks += 1
+                    phrase_audio_offset_ms += chunk_duration_ms
+                total_tts_ms += result.elapsed_ms
+                total_duration_ms += result.duration_ms
+                phrase_elapsed_ms.append(round(result.elapsed_ms, 2))
+        except (TtsConfigurationError, TtsExecutionError, ValueError) as exc:
+            tts_error = str(exc)
+
+        stream_complete = not tts_error and len(phrase_elapsed_ms) == len(phrases)
+        stream_partial = stream_started and not stream_complete
+
+        if stream_started:
+            emit(
+                {
+                    "type": "audio_stream_end",
+                    "seq": turn.seq,
+                    "audio_bytes": total_bytes,
+                    "chunks": total_chunks,
+                    "streaming": True,
+                }
+            )
+        if tts_error:
+            emit(error_frame("tts_error", tts_error))
+        emit(
+            {
+                "type": "audio",
+                "seq": turn.seq,
+                "env": 0.0,
+                "viseme": "neutral",
+                "duration_ms": 20,
+                "final": True,
+            }
+        )
+        emit({"type": "response_end", "seq": turn.seq})
+
+        summary: dict[str, object] = {
+            "tts_streaming": True,
+            "tts_phrases": len(phrases),
+            "tts_phrases_completed": len(phrase_elapsed_ms),
+            "tts_phrase_elapsed_ms": phrase_elapsed_ms,
+            "tts_elapsed_ms": round(total_tts_ms, 2),
+            "tts_first_audio_ms": round(first_audio_ms, 2),
+            "tts_first_audio_after_text_ms": round(first_audio_after_text_ms, 2),
+            "tts_command_source": command_source,
+            "tts_voice": voice,
+            "tts_duration_ms": total_duration_ms,
+            "tts_audio_format": stream_format,
+            "tts_sample_rate": stream_rate,
+            "tts_audio_bytes": total_bytes,
+            "tts_audio_payload_bytes": total_bytes,
+            "tts_audio_chunks": total_chunks,
+            "tts_mouth_frames": mouth_frames,
+            "tts_audio_truncated": stream_partial,
+            "tts_stream_complete": stream_complete,
+        }
+        return emitted, summary, tts_error
+
     def _handle_utterance_end(
-        self, message: dict[str, Any], *, suppress_thinking: bool = False
+        self,
+        message: dict[str, Any],
+        *,
+        suppress_thinking: bool = False,
+        frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
     ) -> list[dict[str, object] | bytes]:
+        turn_started = time.perf_counter()
         seq = int(message.get("seq") or self.next_seq)
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
         pcm = bytes(self.audio.buffer)
         audio_summary = self.audio.finish_and_clear()
         has_audio = int(audio_summary["audio_bytes"]) > 0
+        audio_evidence_log = self._write_audio_evidence(seq=seq, pcm=pcm, audio_summary=audio_summary) if has_audio else {}
+        audio_summary.update(audio_evidence_log)
+        stt_log: dict[str, object] = {}
+        if not has_audio and not user_text:
+            return [error_frame("empty_utterance", "utterance_end had no audio or transcript") | audio_summary]
         if has_audio and not user_text:
             try:
                 stt = transcribe_pcm(
@@ -710,40 +1118,122 @@ class LanBridgeSession:
                     timeout_ms=self.config.stt_timeout_ms,
                 )
             except SttConfigurationError:
+                detail = f"received {audio_summary['audio_bytes']} PCM bytes; configure STT or provide transcript"
+                self._append_audio_error_log(
+                    seq=seq,
+                    audio_summary=audio_summary,
+                    code="stt_not_implemented",
+                    detail=detail,
+                )
                 return [
                     error_frame(
                         "stt_not_implemented",
-                        f"received {audio_summary['audio_bytes']} PCM bytes; configure STT or provide transcript",
+                        detail,
                     )
                     | audio_summary
                 ]
             except (SttExecutionError, ValueError) as exc:
+                self._append_audio_error_log(
+                    seq=seq,
+                    audio_summary=audio_summary,
+                    code="stt_error",
+                    detail=str(exc),
+                )
                 return [error_frame("stt_error", str(exc)) | audio_summary]
             user_text = stt.transcript
             audio_summary["stt_elapsed_ms"] = round(stt.elapsed_ms, 2)
             audio_summary["stt_command_source"] = stt.command_source
+            stt_log = {
+                "stt_transcript": stt.transcript,
+                "stt_elapsed_ms": round(stt.elapsed_ms, 2),
+                "stt_command_source": stt.command_source,
+            }
+            if stt.raw_transcript and stt.raw_transcript != stt.transcript:
+                stt_log["stt_raw_transcript"] = stt.raw_transcript
+            if stt.transcript_normalized:
+                stt_log["stt_transcript_normalized"] = True
+        if has_audio and self.config.require_audio_wake_phrase and not contains_stackchan_wake_phrase(user_text):
+            rejected_log: dict[str, object] = {
+                "schema": "stackchan.lan-turn-summary.v1",
+                "generated_at": utc_timestamp(),
+                "seq": seq,
+                "session": self.session,
+                "source": "audio",
+                "audio_bytes": int(audio_summary.get("audio_bytes", 0)),
+                "audio_chunks": int(audio_summary.get("audio_chunks", 0)),
+                "audio_sample_rate": int(audio_summary.get("audio_sample_rate", DEFAULT_SAMPLE_RATE)),
+                "transcript": user_text,
+                "rejected": True,
+                "reject_code": "wake_phrase_required",
+            }
+            rejected_log.update(stt_log)
+            rejected_log.update(audio_evidence_log)
+            self._append_turn_log(rejected_log)
+            return [error_frame("wake_phrase_required", "audio transcript did not contain Stackchan") | audio_summary]
         if user_text:
             self.memory = self.memory.remember_user_text(user_text)
 
         requested_case = str(message.get("runner_case", "")).strip()
-        runner_case = prompt_case_for_text(user_text, requested_case, self.config.runner_case)
-        try:
-            runner = run_runner_profile(
-                self.config.runner_profile,
-                case_name=runner_case,
-                command=self.config.runner_command,
-                require_runner=self.config.require_runner,
-                timeout_ms=self.config.runner_timeout_ms,
-            )
-        except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-            return [error_frame("runner_error", str(exc))]
+        runner_summary: dict[str, object] = {}
+        if not requested_case and is_identity_question(user_text):
+            runner_case = "identity"
+            raw_response = identity_character_response()
+            runner_summary["runner_command_source"] = "local_identity"
+            runner_summary["runner_elapsed_ms"] = 0.0
+        else:
+            runner_case = prompt_case_for_text(user_text, requested_case, self.config.runner_case)
+            try:
+                runner = run_runner_profile(
+                    self.config.runner_profile,
+                    case_name=runner_case,
+                    command=self.config.runner_command,
+                    require_runner=self.config.require_runner,
+                    timeout_ms=self.config.runner_timeout_ms,
+                    user_text=user_text,
+                )
+            except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
+                return [error_frame("runner_error", str(exc))]
+            raw_response = runner.raw_response
+            runner_summary["runner_command_source"] = runner.command_source
+            if runner.elapsed_ms is not None:
+                runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
+            if runner.approx_tokens_per_sec is not None:
+                runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
 
         turn, self.memory, validation = turn_from_character_response(
-            runner.raw_response,
+            raw_response,
             self.memory,
             session=self.session,
             seq=seq,
         )
+        if (
+            self.config.stream_tts_phrases
+            and self.config.tts_command
+            and not self.config.disable_audio_downlink
+        ):
+            frames, tts_summary, tts_error = self._stream_tts_turn(
+                turn,
+                turn_started=turn_started,
+                validation_issues=list(validation.issues),
+                frame_sink=frame_sink,
+            )
+            self._save_memory()
+            self._append_completed_turn_log(
+                seq=seq,
+                has_audio=has_audio,
+                audio_summary=audio_summary,
+                user_text=user_text,
+                runner_case=runner_case,
+                turn=turn,
+                validation_issues=list(validation.issues),
+                stt_log=stt_log,
+                runner_summary=runner_summary,
+                tts_summary=tts_summary,
+                tts_error=tts_error,
+                audio_evidence_log=audio_evidence_log,
+                turn_started=turn_started,
+            )
+            return frames
         tts_summary: dict[str, object] = {}
         downlink_frames: list[dict[str, object] | bytes] = []
         tts_error = ""
@@ -773,9 +1263,14 @@ class LanBridgeSession:
                 tts_summary["tts_sample_rate"] = tts.sample_rate
             if tts.audio_bytes:
                 tts_summary["tts_audio_bytes"] = tts.audio_bytes
+            for key, value in tts.diagnostics.items():
+                tts_summary[f"tts_{key}"] = value
             if tts.audio_data:
                 tts_summary["tts_audio_payload_bytes"] = len(tts.audio_data)
-                downlink_frames = audio_downlink_frames(seq, tts, self.config.downlink_audio_chunk_bytes)
+                if self.config.disable_audio_downlink:
+                    tts_summary["tts_audio_downlink_disabled"] = True
+                else:
+                    downlink_frames = audio_downlink_frames(seq, tts, self.config.downlink_audio_chunk_bytes)
         except TtsConfigurationError:
             pass
         except (TtsExecutionError, ValueError) as exc:
@@ -813,6 +1308,21 @@ class LanBridgeSession:
             prefix_errors.append(error_frame("character_validation", ",".join(validation.issues)))
         if tts_error:
             prefix_errors.append(error_frame("tts_error", tts_error))
+        self._append_completed_turn_log(
+            seq=seq,
+            has_audio=has_audio,
+            audio_summary=audio_summary,
+            user_text=user_text,
+            runner_case=runner_case,
+            turn=turn,
+            validation_issues=list(validation.issues),
+            stt_log=stt_log,
+            runner_summary=runner_summary,
+            tts_summary=tts_summary,
+            tts_error=tts_error,
+            audio_evidence_log=audio_evidence_log,
+            turn_started=turn_started,
+        )
         return prefix_errors + frames
 
 
@@ -828,6 +1338,26 @@ def read_http_request(conn: socket.socket) -> bytes:
     return bytes(data)
 
 
+def send_connection_frame(
+    conn: socket.socket,
+    config: LanBridgeConfig,
+    frame: dict[str, object] | bytes,
+    *,
+    final_binary_chunk: bool = True,
+) -> None:
+    if isinstance(frame, bytes):
+        conn.sendall(encode_ws_frame(frame, opcode=0x2))
+        delay_ms = config.downlink_binary_frame_delay_ms
+        if final_binary_chunk and len(frame) < config.downlink_audio_chunk_bytes:
+            delay_ms = max(delay_ms, 250)
+        if delay_ms > 0:
+            time.sleep(delay_ms / 1000.0)
+        return
+    conn.sendall(encode_ws_text(frame_to_text(frame)))
+    if config.downlink_text_frame_delay_ms > 0:
+        time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
+
+
 def handle_connection(
     conn: socket.socket,
     config: LanBridgeConfig,
@@ -838,14 +1368,47 @@ def handle_connection(
     request = read_http_request(conn)
     print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)
     conn.sendall(build_handshake_response(request))
-    conn.settimeout(30.0)
+    if config.stream_tts_phrases:
+        try:
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+    conn.settimeout(config.client_idle_timeout_s)
     print("[bridge-lan] handshake_accepted=1", flush=True)
+    conn.sendall(encode_ws_text(frame_to_text({"type": "hello", "protocol": PROTOCOL, "session": session.session})))
+    print("[bridge-lan] session_hello=1", flush=True)
+
+    pending_short_chunk: bytes | None = None
+
+    def send_live(frame: dict[str, object] | bytes) -> None:
+        nonlocal pending_short_chunk
+        if pending_short_chunk is not None:
+            send_connection_frame(
+                conn,
+                config,
+                pending_short_chunk,
+                final_binary_chunk=not isinstance(frame, bytes),
+            )
+            pending_short_chunk = None
+        if (
+            config.stream_tts_phrases
+            and isinstance(frame, bytes)
+            and len(frame) < config.downlink_audio_chunk_bytes
+        ):
+            pending_short_chunk = frame
+            return
+        send_connection_frame(conn, config, frame)
+
     if config.auto_turn_text:
         seq = now_ms() % 1000000
         auto_turn = {"type": "utterance_end", "seq": seq, "text": config.auto_turn_text}
         print(f"[bridge-lan] auto_turn_start seq={seq}", flush=True)
         conn.sendall(encode_ws_text(frame_to_text({"type": "thinking", "seq": seq})))
-        frames = session.handle_text(json.dumps(auto_turn), suppress_thinking=True)
+        frames = session.handle_text(
+            json.dumps(auto_turn),
+            suppress_thinking=True,
+            frame_sink=send_live if config.stream_tts_phrases else None,
+        )
         text_frames = 0
         binary_frames = 0
         binary_bytes = 0
@@ -854,20 +1417,12 @@ def handle_connection(
             if isinstance(frame, bytes):
                 binary_frames += 1
                 binary_bytes += len(frame)
-                conn.sendall(encode_ws_frame(frame, opcode=0x2))
-                delay_ms = config.downlink_binary_frame_delay_ms
-                if len(frame) < config.downlink_audio_chunk_bytes:
-                    delay_ms = max(delay_ms, 250)
-                if delay_ms > 0:
-                    time.sleep(delay_ms / 1000.0)
             else:
                 text_frames += 1
                 frame_type = str(frame.get("type", ""))
                 if frame_type and len(text_types) < 12:
                     text_types.append(frame_type)
-                conn.sendall(encode_ws_text(frame_to_text(frame)))
-                if config.downlink_text_frame_delay_ms > 0:
-                    time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
+            send_live(frame)
         print(
             f"[bridge-lan] auto_turn_sent seq={seq} frames={len(frames)} "
             f"text_frames={text_frames} binary_frames={binary_frames} "
@@ -884,26 +1439,52 @@ def handle_connection(
             continue
         if opcode == 0x1:
             text = payload.decode("utf-8")
+            text_message_type = ""
+            try:
+                parsed_text = json.loads(text)
+                if isinstance(parsed_text, dict):
+                    text_message_type = str(parsed_text.get("type", "")).strip().lower()
+            except json.JSONDecodeError:
+                text_message_type = ""
+            if '"type":"heartbeat"' in text or '"type": "heartbeat"' in text:
+                if '"mww_' in text or '"wake_' in text:
+                    print(f"[bridge-lan] heartbeat {text}", flush=True)
+                else:
+                    print("[bridge-lan] heartbeat", flush=True)
+            elif '"type":"utterance_start"' in text or '"type": "utterance_start"' in text:
+                print("[bridge-lan] utterance_start", flush=True)
+            elif '"type":"utterance_end"' in text or '"type": "utterance_end"' in text:
+                print("[bridge-lan] utterance_end", flush=True)
             early_frame = session.early_thinking_frame(text)
             if early_frame is not None:
                 conn.sendall(encode_ws_text(frame_to_text(early_frame)))
-            frames = session.handle_text(text, suppress_thinking=early_frame is not None)
+            frames = session.handle_text(
+                text,
+                suppress_thinking=early_frame is not None,
+                frame_sink=(
+                    send_live
+                    if config.stream_tts_phrases and text_message_type == "utterance_end"
+                    else None
+                ),
+            )
+            if text_message_type == "heartbeat":
+                frames = []
         elif opcode == 0x2:
+            before_chunks = session.audio.chunks
             frames = session.handle_binary(payload)
+            if session.audio.chunks != before_chunks and (
+                session.audio.chunks == 1 or session.audio.chunks % 20 == 0
+            ):
+                print(
+                    f"[bridge-lan] utterance_audio chunks={session.audio.chunks} "
+                    f"bytes={session.audio.bytes_received}",
+                    flush=True,
+                )
+            frames = []
         else:
             frames = [error_frame("unsupported_websocket_opcode", str(opcode))]
         for frame in frames:
-            if isinstance(frame, bytes):
-                conn.sendall(encode_ws_frame(frame, opcode=0x2))
-                delay_ms = config.downlink_binary_frame_delay_ms
-                if len(frame) < config.downlink_audio_chunk_bytes:
-                    delay_ms = max(delay_ms, 250)
-                if delay_ms > 0:
-                    time.sleep(delay_ms / 1000.0)
-            else:
-                conn.sendall(encode_ws_text(frame_to_text(frame)))
-                if config.downlink_text_frame_delay_ms > 0:
-                    time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
+            send_live(frame)
     return session.memory
 
 
@@ -940,14 +1521,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
     parser.add_argument("--stt-command", default="")
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
+    parser.add_argument("--require-audio-wake-phrase", action="store_true")
     parser.add_argument("--tts-command", default="")
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
     parser.add_argument("--tts-timeout-ms", type=int, default=DEFAULT_TTS_TIMEOUT_MS)
+    parser.add_argument("--stream-tts-phrases", action="store_true")
+    parser.add_argument("--tts-phrase-max-chars", type=int, default=DEFAULT_TTS_PHRASE_MAX_CHARS)
     parser.add_argument("--downlink-audio-chunk-bytes", type=int, default=DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES)
     parser.add_argument("--downlink-binary-frame-delay-ms", type=int, default=DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS)
     parser.add_argument("--downlink-text-frame-delay-ms", type=int, default=DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS)
+    parser.add_argument("--client-idle-timeout-s", type=float, default=DEFAULT_CLIENT_IDLE_TIMEOUT_S)
+    parser.add_argument("--disable-audio-downlink", action="store_true")
     parser.add_argument("--max-audio-bytes", type=int, default=DEFAULT_MAX_AUDIO_BYTES)
+    parser.add_argument("--audio-evidence-dir", type=Path)
     parser.add_argument("--memory-file", type=Path)
+    parser.add_argument("--turn-log-file", type=Path)
     parser.add_argument("--auto-turn-text", default="")
     parser.add_argument("--reset-memory", action="store_true")
     return parser
@@ -968,14 +1556,21 @@ def main() -> int:
         runner_timeout_ms=args.runner_timeout_ms,
         stt_command=args.stt_command,
         stt_timeout_ms=args.stt_timeout_ms,
+        require_audio_wake_phrase=args.require_audio_wake_phrase,
         tts_command=args.tts_command,
         tts_voice=args.tts_voice,
         tts_timeout_ms=args.tts_timeout_ms,
+        stream_tts_phrases=args.stream_tts_phrases,
+        tts_phrase_max_chars=max(24, min(240, args.tts_phrase_max_chars)),
         downlink_audio_chunk_bytes=args.downlink_audio_chunk_bytes,
         downlink_binary_frame_delay_ms=max(0, args.downlink_binary_frame_delay_ms),
         downlink_text_frame_delay_ms=max(0, args.downlink_text_frame_delay_ms),
+        client_idle_timeout_s=max(1.0, args.client_idle_timeout_s),
+        disable_audio_downlink=args.disable_audio_downlink,
         max_audio_bytes=args.max_audio_bytes,
+        audio_evidence_dir=args.audio_evidence_dir,
         memory_file=args.memory_file,
+        turn_log_file=args.turn_log_file,
         auto_turn_text=args.auto_turn_text,
     )
     serve(config)

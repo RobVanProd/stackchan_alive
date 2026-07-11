@@ -79,6 +79,13 @@ $env:STACKCHAN_GEMMA4_E2B_GGUF_COMMAND = "ollama run hf.co/google/gemma-4-E2B-it
 python bridge/local_runner.py --profile gemma4-e2b-gguf --case greeting --require-runner --json
 ```
 
+The bundled `bridge/ollama_stackchan_runner.py` uses Ollama's warm loopback HTTP API by
+default. It keeps the model resident, requests bounded JSON output with thinking disabled,
+and falls back to the Ollama CLI if the API cannot be reached. The LAN bridge passes the
+actual STT transcript through `local_runner.py`; prompt cases supply structure and fallback
+examples, not replacement user text. On the validated host this reduced the same prompt from
+about 13.7 seconds through the CLI to about 1.0-1.2 seconds through the warm API.
+
 Probe local engine readiness before a benchmark:
 
 ```powershell
@@ -140,6 +147,18 @@ $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python path\to\local_stt.py"
 ```
 
+For the PC brain, prefer the repo-local whisper.cpp adapter. Install the local binary/model
+once, then use the adapter behind the same bridge contract:
+
+```powershell
+.\tools\setup_whisper_cpp.cmd
+python bridge/whisper_cpp_stt.py --sample-rate 16000 --json < utterance.s16le
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python bridge\whisper_cpp_stt.py"
+```
+
+Windows System.Speech remains available as a fallback adapter at `bridge/windows_speech_stt.py`,
+but it should not be treated as the production listener.
+
 The command receives raw signed 16-bit mono PCM on stdin and these environment variables:
 `STACKCHAN_AUDIO_SAMPLE_RATE`, `STACKCHAN_AUDIO_FORMAT=s16le_mono`, and
 `STACKCHAN_AUDIO_BYTES`. It must print either plain transcript text or JSON with
@@ -153,6 +172,46 @@ Response mouth timing can use a local TTS command:
 $env:STACKCHAN_TTS_COMMAND = "python path\to\local_tts.py"
 python bridge/lan_service.py --host 127.0.0.1 --port 8765 --tts-command "python path\to\local_tts.py" --tts-voice rvc-bright
 ```
+
+The current fast live RVC path is `bridge/rvc_tts_client.py` plus the persistent
+`bridge/rvc_worker_service.py`. The client renders bridge response text to a base Windows
+System.Speech WAV, sends that WAV to the warm local RVC worker, normalizes the worker output
+to capped 16 kHz PCM16, and returns the standard `stackchan.tts-metadata.v1` JSON with
+`audio_b64` for robot downlink. The older `bridge/selected_voice_tts.py` adapter is only a
+selected sample replay path; it is useful for speaker/downlink smoke checks, but it does not
+generate arbitrary speech.
+
+Example warm ROCm RVC bridge start:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_rvc_worker.ps1 -StopExisting -Background -Device cuda:0 -Method pm -Port 5055
+$env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
+$env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
+$env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "65536"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_pc_brain.ps1 -StopExisting -Background -EnableAudioDownlink -TtsCommand "python bridge\rvc_tts_client.py" -TtsVoice "stackchan-rvc-warm-rocm" -DownlinkBinaryFrameDelayMs 80
+```
+
+The physically validated Windows DirectML path is documented in
+[`docs/VOICE_V2_DIRECTML.md`](../docs/VOICE_V2_DIRECTML.md). The bridge can opt into phrase
+streaming with `-StreamTtsPhrases -TtsPhraseMaxChars 96`. In phrase mode, stream totals are
+unknown at `audio_stream_start` and exact at `audio_stream_end`, allowing the first completed
+phrase to play without truncating the rest of the response. Each PCM chunk is preceded by one
+mouth envelope/viseme frame aggregated from the matching TTS/RVC beat window, so the original
+speech-driven mouth behavior remains active during streamed playback.
+
+Long phrase-streaming replies require firmware that reports `speaker_stream_chunked=1`. The
+validated `stackchan_release_forensics` build includes that transport and queues each
+`4096`-byte PCM chunk through three stable speaker buffers. Supervised physical validation
+reconciled `567040` host bytes with `567040` robot bytes over four turns with zero truncation,
+playback errors, or forced stops; the separate mouth run reconciled `97920` bytes in 25 chunks
+and the operator visually confirmed mouth movement. Do not switch the live bridge during an
+active stability soak.
+
+The validated model cache is under `output\voice_sources\stackchan_rvc_base\model\`.
+The fallback one-shot CPU adapter remains `bridge/rvc_tts.py` with `.venv-rvc`, device
+`cpu:0`, and f0 `harvest`. One-shot ROCm works but is slow for short responses; the warm
+worker on `C:\stackchan_rocm_venv` with PyTorch `2.9.1+rocm7.2.1` and device `cuda:0`
+is the accelerated path.
 
 The command receives response text on stdin and these environment variables:
 `STACKCHAN_TTS_TEXT_BYTES`, `STACKCHAN_TTS_VOICE`, and

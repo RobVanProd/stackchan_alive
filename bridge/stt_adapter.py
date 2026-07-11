@@ -31,15 +31,22 @@ class SttResult:
     command_source: str
     sample_rate: int
     audio_bytes: int
+    raw_transcript: str = ""
+    transcript_normalized: bool = False
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "transcript": self.transcript,
             "elapsed_ms": round(self.elapsed_ms, 2),
             "command_source": self.command_source,
             "sample_rate": self.sample_rate,
             "audio_bytes": self.audio_bytes,
         }
+        if self.raw_transcript and self.raw_transcript != self.transcript:
+            payload["raw_transcript"] = self.raw_transcript
+        if self.transcript_normalized:
+            payload["transcript_normalized"] = True
+        return payload
 
 
 def resolve_stt_command(override: str = "") -> tuple[str | None, str]:
@@ -50,25 +57,35 @@ def resolve_stt_command(override: str = "") -> tuple[str | None, str]:
     return None, "unconfigured"
 
 
-def normalize_transcript_output(raw_output: bytes) -> str:
+def parse_transcript_output(raw_output: bytes) -> tuple[str, dict[str, object]]:
     text = raw_output.decode("utf-8", errors="replace").strip()
     if not text:
-        return ""
+        return "", {}
     try:
         parsed: Any = json.loads(text)
     except json.JSONDecodeError:
-        return " ".join(text.split())[:500]
+        return " ".join(text.split())[:500], {}
     if isinstance(parsed, dict):
         for key in ("transcript", "text", "spoken_text"):
             value = str(parsed.get(key, "")).strip()
             if value:
-                return " ".join(value.split())[:500]
+                metadata: dict[str, object] = {}
+                raw_transcript = str(parsed.get("raw_transcript", "")).strip()
+                if raw_transcript:
+                    metadata["raw_transcript"] = " ".join(raw_transcript.split())[:500]
+                if bool(parsed.get("transcript_normalized", False)):
+                    metadata["transcript_normalized"] = True
+                return " ".join(value.split())[:500], metadata
     if isinstance(parsed, str):
-        return " ".join(parsed.split())[:500]
-    return ""
+        return " ".join(parsed.split())[:500], {}
+    return "", {}
 
 
-def run_stt_command(command: str, pcm: bytes, sample_rate: int, timeout_ms: int) -> tuple[str, float]:
+def normalize_transcript_output(raw_output: bytes) -> str:
+    return parse_transcript_output(raw_output)[0]
+
+
+def run_stt_command(command: str, pcm: bytes, sample_rate: int, timeout_ms: int) -> tuple[str, float, dict[str, object]]:
     env = os.environ.copy()
     env["STACKCHAN_AUDIO_SAMPLE_RATE"] = str(sample_rate)
     env["STACKCHAN_AUDIO_FORMAT"] = "s16le_mono"
@@ -90,7 +107,8 @@ def run_stt_command(command: str, pcm: bytes, sample_rate: int, timeout_ms: int)
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace").strip()
         raise SttExecutionError(f"stt command failed with exit {completed.returncode}: {stderr}")
-    return normalize_transcript_output(completed.stdout), elapsed_ms
+    transcript, metadata = parse_transcript_output(completed.stdout)
+    return transcript, elapsed_ms, metadata
 
 
 def transcribe_pcm(
@@ -104,7 +122,7 @@ def transcribe_pcm(
     if not resolved_command:
         raise SttConfigurationError(f"no STT command configured; set {STT_COMMAND_ENV} or pass --stt-command")
     safe_rate = max(8000, min(48000, int(sample_rate or 16000)))
-    transcript, elapsed_ms = run_stt_command(resolved_command, pcm, safe_rate, timeout_ms)
+    transcript, elapsed_ms, metadata = run_stt_command(resolved_command, pcm, safe_rate, timeout_ms)
     if not transcript:
         raise SttExecutionError("stt command produced an empty transcript")
     return SttResult(
@@ -113,6 +131,8 @@ def transcribe_pcm(
         command_source=command_source,
         sample_rate=safe_rate,
         audio_bytes=len(pcm),
+        raw_transcript=str(metadata.get("raw_transcript", "")),
+        transcript_normalized=bool(metadata.get("transcript_normalized", False)),
     )
 
 

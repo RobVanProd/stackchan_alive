@@ -41,11 +41,18 @@
 #include "persona/IdleLife.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/SpeechPlanner.hpp"
+#include "power/PowerCoordinator.hpp"
+#include "power/PowerForensics.hpp"
 
 using namespace stackchan;
 
-extern "C" void setUp() {}
-extern "C" void tearDown() {}
+extern "C" void setUp() {
+  setFakeArduinoTime(0, 0);
+}
+
+extern "C" void tearDown() {
+  setFakeArduinoTime(0, 0);
+}
 
 class FakeActuator final : public IActuator {
  public:
@@ -1902,6 +1909,281 @@ void test_sensor_adapter_parses_safe_resume_command() {
   TEST_ASSERT_EQUAL_STRING("safe_resume", control.command);
 }
 
+void test_sensor_adapter_parses_soft_mic_cue_command() {
+  BenchControl control;
+  TEST_ASSERT_TRUE(parseBenchControlLine("mic cue", 5600, &control));
+  TEST_ASSERT_TRUE(control.hasMicCueTest);
+  TEST_ASSERT_FALSE(control.hasSpeakerTest);
+  TEST_ASSERT_EQUAL_STRING("mic_cue_test", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("speaker cue", 5601, &control));
+  TEST_ASSERT_TRUE(control.hasMicCueTest);
+  TEST_ASSERT_FALSE(control.hasSpeakerTest);
+  TEST_ASSERT_EQUAL_STRING("mic_cue_test", control.command);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("speaker test", 5602, &control));
+  TEST_ASSERT_TRUE(control.hasSpeakerTest);
+  TEST_ASSERT_FALSE(control.hasMicCueTest);
+  TEST_ASSERT_EQUAL_STRING("speaker_test", control.command);
+}
+
+void test_power_coordinator_keeps_idle_servo_rail_off() {
+  PowerCoordinator coordinator;
+  coordinator.begin(true, 700, 10, 300);
+
+  PowerCoordinatorInput input;
+  const PowerCoordinatorDecision decision = coordinator.update(input, 20);
+  const PowerCoordinatorTelemetry telemetry = coordinator.telemetry();
+
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PowerOperatingMode::Idle), static_cast<int>(decision.mode));
+  TEST_ASSERT_FALSE(decision.motionAllowed);
+  TEST_ASSERT_FALSE(decision.servoRailAllowed);
+  TEST_ASSERT_TRUE(decision.wifiSleepAllowed);
+  TEST_ASSERT_TRUE(telemetry.baseInputMode);
+  TEST_ASSERT_EQUAL_UINT16(700, telemetry.chargeCurrentMa);
+  TEST_ASSERT_FALSE(telemetry.chargeDerated);
+}
+
+void test_power_coordinator_grants_only_healthy_motion() {
+  PowerCoordinator coordinator;
+  coordinator.begin(true, 700, 0, 125, 30000);
+
+  PowerCoordinatorInput input;
+  input.motionRequested = true;
+  PowerCoordinatorDecision decision = coordinator.update(input, 100);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PowerOperatingMode::Motion), static_cast<int>(decision.mode));
+  TEST_ASSERT_TRUE(decision.motionAllowed);
+  TEST_ASSERT_TRUE(decision.servoRailAllowed);
+  TEST_ASSERT_TRUE(decision.chargeDerated);
+  TEST_ASSERT_EQUAL_UINT16(125, decision.chargeCurrentMa);
+  TEST_ASSERT_EQUAL_STRING("motion_session", decision.chargeDerateReason);
+
+  input.audioBusy = true;
+  decision = coordinator.update(input, 120);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PowerOperatingMode::AudioPriority), static_cast<int>(decision.mode));
+  TEST_ASSERT_FALSE(decision.motionAllowed);
+  TEST_ASSERT_FALSE(decision.servoRailAllowed);
+  TEST_ASSERT_EQUAL_STRING("audio_priority", decision.reason);
+  TEST_ASSERT_EQUAL_STRING("audio_active", decision.chargeDerateReason);
+
+  const uint32_t transitions = coordinator.telemetry().transitions;
+  coordinator.update(input, 140);
+  TEST_ASSERT_EQUAL_UINT32(transitions, coordinator.telemetry().transitions);
+}
+
+void test_power_coordinator_protection_preempts_audio_and_motion() {
+  PowerCoordinator coordinator;
+  coordinator.begin(true, 700, 0, 300);
+
+  PowerCoordinatorInput input;
+  input.motionRequested = true;
+  input.audioBusy = true;
+  input.supplyBlocked = true;
+  PowerCoordinatorDecision decision = coordinator.update(input, 100);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PowerOperatingMode::Protected), static_cast<int>(decision.mode));
+  TEST_ASSERT_EQUAL_STRING("power_load_shed", decision.reason);
+  TEST_ASSERT_FALSE(decision.servoRailAllowed);
+  TEST_ASSERT_TRUE(decision.chargeDerated);
+  TEST_ASSERT_EQUAL_UINT16(300, decision.chargeCurrentMa);
+  TEST_ASSERT_EQUAL_UINT32(1, coordinator.telemetry().chargeDerateEntries);
+
+  input.thermalBlocked = true;
+  decision = coordinator.update(input, 200);
+  TEST_ASSERT_EQUAL_STRING("thermal_load_shed", decision.reason);
+  TEST_ASSERT_EQUAL_UINT32(1, coordinator.telemetry().motionBlockEntries);
+
+  input.supplyBlocked = false;
+  decision = coordinator.update(input, 300);
+  TEST_ASSERT_TRUE(decision.chargeDerated);
+  TEST_ASSERT_EQUAL_STRING("thermal_protection", decision.chargeDerateReason);
+}
+
+void test_power_coordinator_holds_derated_charge_after_load() {
+  PowerCoordinator coordinator;
+  coordinator.begin(true, 700, 0, 125, 30000);
+
+  PowerCoordinatorInput input;
+  input.motionRequested = true;
+  PowerCoordinatorDecision decision = coordinator.update(input, 100);
+  TEST_ASSERT_TRUE(decision.chargeDerated);
+  TEST_ASSERT_TRUE(decision.chargeDerateHoldActive);
+  TEST_ASSERT_EQUAL_UINT32(30000, decision.chargeDerateHoldRemainingMs);
+
+  input.motionRequested = false;
+  decision = coordinator.update(input, 200);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PowerOperatingMode::Idle), static_cast<int>(decision.mode));
+  TEST_ASSERT_TRUE(decision.chargeDerated);
+  TEST_ASSERT_TRUE(decision.chargeDerateHoldActive);
+  TEST_ASSERT_EQUAL_UINT16(125, decision.chargeCurrentMa);
+  TEST_ASSERT_EQUAL_STRING("post_load_hold", decision.chargeDerateReason);
+  TEST_ASSERT_EQUAL_UINT32(29900, decision.chargeDerateHoldRemainingMs);
+
+  decision = coordinator.update(input, 30099);
+  TEST_ASSERT_TRUE(decision.chargeDerated);
+  TEST_ASSERT_EQUAL_UINT32(1, decision.chargeDerateHoldRemainingMs);
+
+  decision = coordinator.update(input, 30100);
+  TEST_ASSERT_FALSE(decision.chargeDerated);
+  TEST_ASSERT_FALSE(decision.chargeDerateHoldActive);
+  TEST_ASSERT_EQUAL_UINT16(700, decision.chargeCurrentMa);
+  TEST_ASSERT_EQUAL_STRING("none", decision.chargeDerateReason);
+}
+
+void test_power_floor_tracker_records_confirmed_event_context() {
+  PowerFloorTracker tracker;
+  tracker.begin(4400);
+
+  PowerFloorSample healthy;
+  healthy.vbusValid = true;
+  healthy.vbusMv = 4950;
+  TEST_ASSERT_FALSE(tracker.update(healthy, 100));
+  TEST_ASSERT_EQUAL_INT16(4950, tracker.telemetry().minVbusMv);
+
+  PowerFloorSample low;
+  low.vbusValid = true;
+  low.vbusMv = 4398;
+  low.confirmVbusValid = true;
+  low.confirmVbusMv = 4389;
+  low.batteryValid = true;
+  low.batteryMv = 3687;
+  low.confirmBatteryValid = true;
+  low.confirmBatteryMv = 3691;
+  low.bodyPowerValid = true;
+  low.bodyBusV = 4.02f;
+  low.bodyCurrentMa = -124.2f;
+  low.motionRequested = true;
+  low.servoRailEnabled = false;
+  low.servoTorqueEnabled = false;
+  low.speakerPowerActive = false;
+  TEST_ASSERT_TRUE(tracker.update(low, 200));
+
+  PowerFloorTelemetry telemetry = tracker.telemetry();
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.hardFloorEntries);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.hardFloorSamples);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.hardFloorConfirmedSamples);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.hardFloorUnconfirmedSamples);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.consecutiveHardFloorSamples);
+  TEST_ASSERT_EQUAL_INT16(4398, telemetry.lastHardFloorVbusMv);
+  TEST_ASSERT_EQUAL_INT16(4389, telemetry.lastHardFloorConfirmVbusMv);
+  TEST_ASSERT_EQUAL_INT16(3687, telemetry.lastHardFloorBatteryMv);
+  TEST_ASSERT_TRUE(telemetry.lastHardFloorBodyPowerValid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 4.02f, telemetry.lastHardFloorBodyBusV);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, -124.2f, telemetry.lastHardFloorBodyCurrentMa);
+  TEST_ASSERT_TRUE(telemetry.lastHardFloorMotionRequested);
+  TEST_ASSERT_FALSE(telemetry.lastHardFloorServoRailEnabled);
+  TEST_ASSERT_FALSE(telemetry.lastHardFloorServoTorqueEnabled);
+}
+
+void test_power_floor_tracker_counts_entries_not_every_low_sample() {
+  PowerFloorTracker tracker;
+  tracker.begin(4400);
+
+  PowerFloorSample low;
+  low.vbusValid = true;
+  low.vbusMv = 4399;
+  low.confirmVbusValid = true;
+  low.confirmVbusMv = 4500;
+  TEST_ASSERT_TRUE(tracker.update(low, 100));
+  TEST_ASSERT_FALSE(tracker.update(low, 200));
+
+  PowerFloorSample recovered;
+  recovered.vbusValid = true;
+  recovered.vbusMv = 4700;
+  TEST_ASSERT_FALSE(tracker.update(recovered, 300));
+  TEST_ASSERT_TRUE(tracker.update(low, 400));
+
+  const PowerFloorTelemetry telemetry = tracker.telemetry();
+  TEST_ASSERT_EQUAL_UINT32(2, telemetry.hardFloorEntries);
+  TEST_ASSERT_EQUAL_UINT32(3, telemetry.hardFloorSamples);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.hardFloorConfirmedSamples);
+  TEST_ASSERT_EQUAL_UINT32(3, telemetry.hardFloorUnconfirmedSamples);
+  TEST_ASSERT_EQUAL_UINT32(2, telemetry.maxConsecutiveHardFloorSamples);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.consecutiveHardFloorSamples);
+}
+
+void test_power_forensics_preserves_boot_mask_and_prioritizes_protection() {
+  PmicPowerForensics forensics;
+  const uint32_t bootMask =
+      kPmicIrqVbusRemove | kPmicIrqPowerKeyPositiveEdge | kPmicIrqBatfetOverCurrent;
+  forensics.begin(true, bootMask);
+  forensics.setIrqEnableResult(true, true);
+
+  const PmicPowerForensicsTelemetry telemetry = forensics.telemetry();
+  TEST_ASSERT_TRUE(telemetry.enabled);
+  TEST_ASSERT_TRUE(telemetry.bootStatusValid);
+  TEST_ASSERT_EQUAL_UINT32(bootMask, telemetry.bootEventMask);
+  TEST_ASSERT_TRUE(telemetry.irqEnableSucceeded);
+  TEST_ASSERT_TRUE(pmicPowerEventIsProtective(telemetry.bootEventMask));
+  TEST_ASSERT_EQUAL_STRING("batfet_overcurrent", pmicPowerEventName(telemetry.bootEventMask));
+}
+
+void test_power_forensics_records_runtime_event_context_and_each_cause() {
+  PmicPowerForensics forensics;
+  forensics.begin(true, 0);
+
+  PmicPowerEventContext context;
+  context.vbusValid = true;
+  context.vbusMv = 4495;
+  context.batteryValid = true;
+  context.batteryMv = 3680;
+  context.pmicVbusPresent = false;
+  context.pmicBatteryPresent = true;
+  context.motionRequested = true;
+  context.servoRailEnabled = false;
+  context.speakerPowerActive = true;
+  context.heapFree = 112000;
+
+  const uint32_t eventMask =
+      kPmicIrqVbusRemove | kPmicIrqWarningLevel2 | kPmicIrqLdoOverCurrent;
+  TEST_ASSERT_TRUE(forensics.recordRuntimeEvent(eventMask, 1234, context));
+
+  const PmicPowerForensicsTelemetry telemetry = forensics.telemetry();
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.runtimeEventPolls);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.runtimeProtectiveEventPolls);
+  TEST_ASSERT_EQUAL_UINT32(eventMask, telemetry.lastEventMask);
+  TEST_ASSERT_EQUAL_UINT32(1234, telemetry.lastEventAtMs);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.vbusRemoveEvents);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.warningLevel2Events);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.ldoOverCurrentEvents);
+  TEST_ASSERT_EQUAL_INT16(4495, telemetry.lastContext.vbusMv);
+  TEST_ASSERT_TRUE(telemetry.lastContext.motionRequested);
+  TEST_ASSERT_FALSE(telemetry.lastContext.servoRailEnabled);
+  TEST_ASSERT_TRUE(telemetry.lastContext.speakerPowerActive);
+}
+
+void test_power_forensics_ignores_empty_polls_and_counts_read_failures() {
+  PmicPowerForensics forensics;
+  forensics.begin(false, kPmicIrqWatchdogExpire);
+  forensics.noteReadFailure();
+  forensics.noteClearFailure();
+  PmicPowerEventContext context;
+  TEST_ASSERT_FALSE(forensics.recordRuntimeEvent(0, 99, context));
+
+  const PmicPowerForensicsTelemetry telemetry = forensics.telemetry();
+  TEST_ASSERT_FALSE(telemetry.bootStatusValid);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.bootEventMask);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.runtimeEventPolls);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.readFailures);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.clearFailures);
+  TEST_ASSERT_EQUAL_STRING("power_key_long_press",
+                           pmicPowerEventName(kPmicIrqPowerKeyLongPress));
+  TEST_ASSERT_FALSE(pmicPowerEventIsProtective(kPmicIrqVbusRemove));
+}
+
+void test_power_forensics_tracks_filtered_informational_events_separately() {
+  PmicPowerForensics forensics;
+  forensics.begin(true, 0);
+  forensics.recordIgnoredRuntimeEvent(kPmicIrqGaugeNewSoc);
+  PmicPowerEventContext context;
+  TEST_ASSERT_FALSE(forensics.recordRuntimeEvent(0, 100, context));
+
+  const PmicPowerForensicsTelemetry telemetry = forensics.telemetry();
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.ignoredEventPolls);
+  TEST_ASSERT_EQUAL_UINT32(kPmicIrqGaugeNewSoc, telemetry.lastIgnoredEventMask);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.runtimeEventPolls);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.runtimeProtectiveEventPolls);
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -1958,6 +2240,89 @@ void test_actuation_disable_stops_and_suppresses_writes_until_resumed() {
   engine.update(target, 20000);
   TEST_ASSERT_GREATER_THAN(0, actuator.pitchWrites);
   TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);
+}
+
+void test_actuation_output_suppression_releases_actuator_without_disabling_motion() {
+  RobotConfig config;
+  FakeActuator actuator;
+  ActuationEngine engine(config);
+  engine.begin(&actuator);
+  TEST_ASSERT_TRUE(engine.isEnabled());
+
+  RobotFrame target = makeNeutralFrame();
+  target.motion.yawMode = YawMode::Angle;
+  target.motion.pitchDeg = 5.0f;
+  target.motion.yawDeg = 7.0f;
+
+  setFakeArduinoTime(100, 10000);
+  engine.setOutputSuppressed(true, "audio_load_shed");
+  TEST_ASSERT_TRUE(engine.isEnabled());
+  TEST_ASSERT_TRUE(engine.outputSuppressed());
+  TEST_ASSERT_TRUE(actuator.stopped);
+  engine.update(target, 20000);
+  TEST_ASSERT_EQUAL(0, actuator.pitchWrites);
+  TEST_ASSERT_EQUAL(0, actuator.yawAngleWrites);
+  TEST_ASSERT_EQUAL_UINT32(1, engine.telemetry().outputSuppressEntries);
+  TEST_ASSERT_EQUAL_STRING("audio_load_shed", engine.telemetry().lastReason);
+
+  setFakeArduinoTime(250, 25000);
+  engine.setOutputSuppressed(false);
+  TEST_ASSERT_TRUE(engine.isEnabled());
+  TEST_ASSERT_FALSE(engine.outputSuppressed());
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(150, engine.telemetry().outputSuppressMs);
+  engine.update(target, 40000);
+  TEST_ASSERT_GREATER_THAN(0, actuator.pitchWrites);
+  TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);
+}
+
+void test_actuation_session_timeout_uses_millis_across_micros_wrap() {
+  RobotConfig config;
+  FakeActuator actuator;
+  setFakeArduinoTime(4300000U, 1000U);
+  ActuationEngine engine(config);
+  engine.begin(&actuator);
+  TEST_ASSERT_TRUE(engine.isEnabled());
+
+  RobotFrame target = makeNeutralFrame();
+  target.emotion.focus = 1.0f;
+  target.emotion.arousal = 0.0f;
+  target.motion.yawMode = YawMode::Angle;
+  target.motion.pitchDeg = 4.0f;
+  target.motion.yawDeg = -6.0f;
+
+  setFakeArduinoTime(4300010U, 2000U);
+  engine.update(target, 2000U);
+
+  TEST_ASSERT_TRUE(engine.isEnabled());
+  TEST_ASSERT_EQUAL_UINT32(0, engine.telemetry().sessionTimeouts);
+  TEST_ASSERT_GREATER_THAN(0, actuator.pitchWrites);
+  TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);
+}
+
+void test_actuation_session_refresh_extends_timeout_without_disabling_failsafe() {
+  RobotConfig config;
+  FakeActuator actuator;
+  setFakeArduinoTime(1000U, 1000U);
+  ActuationEngine engine(config);
+  engine.begin(&actuator);
+  TEST_ASSERT_TRUE(engine.isEnabled());
+
+  setFakeArduinoTime(25000U, 2000U);
+  TEST_ASSERT_TRUE(engine.refreshSession());
+  TEST_ASSERT_EQUAL_UINT32(1, engine.telemetry().sessionRefreshes);
+  TEST_ASSERT_EQUAL_UINT32(25000U, engine.telemetry().sessionRefreshedAtMs);
+  TEST_ASSERT_EQUAL_UINT32(25000U, engine.telemetry().enabledAtMs);
+
+  RobotFrame target = makeNeutralFrame();
+  setFakeArduinoTime(31001U, 3000U);
+  engine.update(target, 3000U);
+  TEST_ASSERT_TRUE(engine.isEnabled());
+  TEST_ASSERT_EQUAL_UINT32(0, engine.telemetry().sessionTimeouts);
+
+  setFakeArduinoTime(55001U, 4000U);
+  engine.update(target, 4000U);
+  TEST_ASSERT_FALSE(engine.isEnabled());
+  TEST_ASSERT_EQUAL_UINT32(1, engine.telemetry().sessionTimeouts);
 }
 
 void test_stackchan_servo_stop_returns_tracked_axes_to_neutral() {
@@ -2756,6 +3121,42 @@ void test_bridge_client_rejects_binary_without_audio_stream() {
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().parseErrors);
   TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().audioStreamErrors);
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
+}
+
+void test_bridge_client_treats_wake_phrase_rejection_as_recoverable() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"hello\",\"session\":\"recoverable\"}", 580));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"error\",\"seq\":4,\"code\":\"wake_phrase_required\"}", 590));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("wake_phrase_required", output.error);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+}
+
+void test_bridge_client_treats_nonfatal_remote_error_as_recoverable() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"hello\",\"session\":\"recoverable-error\"}", 592));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::SessionReady), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"error\",\"seq\":5,\"code\":\"audio_without_utterance\"}", 596));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("audio_without_utterance", output.error);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
 }
 
 void test_bridge_client_rejects_truncated_audio_stream() {
@@ -4464,6 +4865,41 @@ void test_bridge_wake_gate_starts_and_completes_uplink_turn() {
   TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"seq\":41"));
 }
 
+void test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 1160);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+
+  BridgeWakeGateConfig gateConfig;
+  gateConfig.speechStartsTurn = true;
+  gateConfig.firstSeq = 52;
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(gateConfig, &uplink));
+
+  RobotEvent speaking;
+  speaking.type = EventType::UserSpeaking;
+  gate.applyEvent(speaking, 1170);
+
+  TEST_ASSERT_TRUE(gate.telemetry().speechStartsTurn);
+  TEST_ASSERT_TRUE(gate.telemetry().gateOpen);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  TEST_ASSERT_TRUE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(52, gate.telemetry().lastSeq);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsStarted);
+
+  session.update(1175);
+  char decodedStart[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedStart, sizeof(decodedStart)));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"type\":\"utterance_start\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"seq\":52"));
+}
+
 void test_bridge_wake_gate_renews_on_speech_and_expires() {
   BridgeClient bridge;
   FakeBridgeNetworkSocket socket;
@@ -4530,6 +4966,39 @@ void test_bridge_network_session_reconnects_after_socket_disconnect() {
   TEST_ASSERT_EQUAL_UINT32(2, socket.connectAttempts);
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Handshaking),
                     static_cast<int>(session.telemetry().state));
+}
+
+void test_bridge_network_session_clears_stale_error_after_reconnect_handshake() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  BridgeNetworkSessionConfig config = makeBridgeNetworkSessionConfig();
+  config.handshakeTimeoutMs = 50;
+  config.reconnectDelayMs = 10;
+  TEST_ASSERT_TRUE(session.begin(bridge, socket, config, 1300));
+  TEST_ASSERT_TRUE(session.start(1305));
+
+  session.update(1360);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Backoff),
+                    static_cast<int>(session.telemetry().state));
+  TEST_ASSERT_EQUAL_STRING("handshake_timeout", session.telemetry().lastError);
+
+  session.update(1375);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Handshaking),
+                    static_cast<int>(session.telemetry().state));
+  socket.pushIncoming(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n");
+  session.update(1380);
+
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Connected),
+                    static_cast<int>(session.telemetry().state));
+  TEST_ASSERT_EQUAL_UINT32(1, session.telemetry().handshakesAccepted);
+  TEST_ASSERT_EQUAL_STRING("", session.telemetry().lastError);
 }
 
 void test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured() {
@@ -5381,8 +5850,22 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_demo_enable_commands);
   RUN_TEST(test_sensor_adapter_parses_safe_stop_command);
   RUN_TEST(test_sensor_adapter_parses_safe_resume_command);
+  RUN_TEST(test_sensor_adapter_parses_soft_mic_cue_command);
+  RUN_TEST(test_power_coordinator_keeps_idle_servo_rail_off);
+  RUN_TEST(test_power_coordinator_grants_only_healthy_motion);
+  RUN_TEST(test_power_coordinator_protection_preempts_audio_and_motion);
+  RUN_TEST(test_power_coordinator_holds_derated_charge_after_load);
+  RUN_TEST(test_power_floor_tracker_records_confirmed_event_context);
+  RUN_TEST(test_power_floor_tracker_counts_entries_not_every_low_sample);
+  RUN_TEST(test_power_forensics_preserves_boot_mask_and_prioritizes_protection);
+  RUN_TEST(test_power_forensics_records_runtime_event_context_and_each_cause);
+  RUN_TEST(test_power_forensics_ignores_empty_polls_and_counts_read_failures);
+  RUN_TEST(test_power_forensics_tracks_filtered_informational_events_separately);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
+  RUN_TEST(test_actuation_output_suppression_releases_actuator_without_disabling_motion);
+  RUN_TEST(test_actuation_session_timeout_uses_millis_across_micros_wrap);
+  RUN_TEST(test_actuation_session_refresh_extends_timeout_without_disabling_failsafe);
   RUN_TEST(test_stackchan_servo_stop_returns_tracked_axes_to_neutral);
   RUN_TEST(test_actuation_clamps_yaw_velocity);
   RUN_TEST(test_disabled_yaw_commands_zero_velocity);
@@ -5411,6 +5894,8 @@ int main() {
   RUN_TEST(test_bridge_client_parses_audio_stream_metadata);
   RUN_TEST(test_bridge_client_queues_stream_outputs_until_polled);
   RUN_TEST(test_bridge_client_rejects_binary_without_audio_stream);
+  RUN_TEST(test_bridge_client_treats_wake_phrase_rejection_as_recoverable);
+  RUN_TEST(test_bridge_client_treats_nonfatal_remote_error_as_recoverable);
   RUN_TEST(test_bridge_client_rejects_truncated_audio_stream);
   RUN_TEST(test_bridge_client_rejects_oversized_audio_stream_chunk);
   RUN_TEST(test_bridge_audio_downlink_consumes_bridge_payload_output);
@@ -5452,8 +5937,10 @@ int main() {
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
   RUN_TEST(test_bridge_wake_gate_suppresses_turn_when_uplink_disabled);
   RUN_TEST(test_bridge_wake_gate_starts_and_completes_uplink_turn);
+  RUN_TEST(test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled);
   RUN_TEST(test_bridge_wake_gate_renews_on_speech_and_expires);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
+  RUN_TEST(test_bridge_network_session_clears_stale_error_after_reconnect_handshake);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);
   RUN_TEST(test_bridge_wifi_provisioner_schedules_retry_after_timeout);

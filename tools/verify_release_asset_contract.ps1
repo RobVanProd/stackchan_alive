@@ -124,8 +124,8 @@ function Assert-StagedFirmwareMatchesPackage {
 $baseEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 $finalEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 
-Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 33 -Label "Base"
-Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 36 -Label "Final"
+Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 21 -Label "Base"
+Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 24 -Label "Final"
 
 $manifestPath = Join-Path $packageRootPath "release_manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath)) {

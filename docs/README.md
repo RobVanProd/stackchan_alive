@@ -6,6 +6,11 @@
 - `COMPANION_CROSS_PLATFORM_PLAN.md`: Android/desktop companion build, distribution, and C0-C8 gate plan.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
 - `GAP_ANALYSIS.md`: current implementation audit, ranked hardware/transport gaps, and recommended bottom-half order.
+- `HARDWARE_FEATURE_ROADMAP.md`: post-stability IMU, body touch/RGB, camera, active-speaker tracking, and opt-in face-recognition integration plan.
+- `LOCAL_RESEARCH_TOOLING.md`: local-first SearXNG plus restricted fetch/Playwright tool-broker architecture for cited web research.
+- `POWER_BLACKOUT_FORENSICS.md`: evidence-first PMIC/reset capture and historical blackout interpretation rules.
+- `SPEAKER_AUDIO_RESEARCH.md`: CoreS3 speaker path findings, audio-quality constraints, and validated playback direction.
+- `VOICE_V2_DIRECTML.md`: accelerated RVC setup, chunked speaker transport, supervised evidence gates, and speech-mouth validation.
 - `JOHNNY_ALIVE_PATHWAY.md`: current roadmap status and next implementation path from the Johnny Alive source plan.
 - `PERSONA_PACKS.md`: swappable Character OS persona-pack format, foundation/persona split, and migration plan.
 - `PRODUCTION_READINESS.md`: current proof level and consumer rollout gates.

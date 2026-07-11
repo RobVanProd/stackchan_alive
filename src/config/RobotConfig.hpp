@@ -8,6 +8,10 @@ namespace stackchan {
 #define STACKCHAN_REDUCED_MOTION 0
 #endif
 
+#ifndef STACKCHAN_FACE_PERIOD_MS
+#define STACKCHAN_FACE_PERIOD_MS 33
+#endif
+
 struct ServoLimits {
   float pitchMinDeg = -20.0f;
   float pitchMaxDeg = 20.0f;
@@ -18,7 +22,7 @@ struct ServoLimits {
 
 struct TimingConfig {
   uint32_t motionPeriodMs = 10;
-  uint32_t facePeriodMs = 33;
+  uint32_t facePeriodMs = STACKCHAN_FACE_PERIOD_MS;
   uint32_t intentPeriodMs = 20;
 };
 

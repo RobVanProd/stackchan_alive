@@ -9,10 +9,11 @@ import binascii
 import io
 import json
 import os
+import re
 import subprocess
 import time
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ MAX_TTS_BEATS = 800
 MAX_TTS_AUDIO_BYTES = 2 * 1024 * 1024
 PLAYABLE_AUDIO_FORMATS = {"pcm16", "s16le", "raw16", "pcm_s16le"}
 WAV_AUDIO_FORMATS = {"wav", "wave", "audio/wav", "audio/x-wav"}
+SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
 
 
 class TtsConfigurationError(RuntimeError):
@@ -62,6 +64,7 @@ class TtsResult:
     audio_bytes: int = 0
     audio_path: str = ""
     audio_data: bytes = b""
+    diagnostics: dict[str, object] = field(default_factory=dict)
 
     @property
     def duration_ms(self) -> int:
@@ -80,7 +83,33 @@ class TtsResult:
             "audio_path": self.audio_path,
             "audio_payload_bytes": len(self.audio_data),
             "duration_ms": self.duration_ms,
+            "diagnostics": dict(self.diagnostics),
         }
+
+
+def split_spoken_phrases(text: str, max_chars: int = 96) -> tuple[str, ...]:
+    """Split spoken text at natural boundaries without dropping any words."""
+    clean = " ".join(str(text or "").split())
+    if not clean:
+        return ()
+    limit = max(24, min(240, int(max_chars)))
+    phrases: list[str] = []
+    for sentence in SENTENCE_BOUNDARY.split(clean):
+        remaining = sentence.strip()
+        while len(remaining) > limit:
+            window = remaining[: limit + 1]
+            split_at = max(window.rfind(", "), window.rfind("; "), window.rfind(": "))
+            if split_at < limit // 2:
+                split_at = window.rfind(" ")
+            if split_at <= 0:
+                split_at = limit
+            else:
+                split_at += 1
+            phrases.append(remaining[:split_at].strip())
+            remaining = remaining[split_at:].strip()
+        if remaining:
+            phrases.append(remaining)
+    return tuple(phrases)
 
 
 def resolve_tts_command(override: str = "") -> tuple[str | None, str]:
@@ -199,6 +228,19 @@ def normalize_tts_output(raw_output: bytes) -> tuple[tuple[TtsBeat, ...], dict[s
         "audio_path": str(parsed.get("audio_path") or parsed.get("sourceWav") or parsed.get("path") or "").strip()[:260],
         "audio_data": audio_data,
     }
+    for key in (
+        "audio_truncated",
+        "base_tts_elapsed_ms",
+        "rvc_elapsed_ms",
+        "rvc_worker_elapsed_ms",
+        "rvc_queue_wait_ms",
+        "rvc_infer_elapsed_ms",
+        "rvc_adapter_elapsed_ms",
+        "rvc_device",
+        "rvc_f0_method",
+    ):
+        if key in parsed:
+            metadata[key] = parsed[key]
     return beats, metadata
 
 
@@ -339,6 +381,11 @@ def synthesize_speech(
         audio_bytes=int(metadata["audio_bytes"]),
         audio_path=str(metadata["audio_path"]),
         audio_data=bytes(metadata["audio_data"]),
+        diagnostics={
+            key: value
+            for key, value in metadata.items()
+            if key not in {"audio_format", "sample_rate", "audio_bytes", "audio_path", "audio_data"}
+        },
     )
 
 

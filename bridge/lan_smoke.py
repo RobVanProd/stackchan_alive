@@ -325,6 +325,12 @@ def require_order(result: ScenarioResult, ordered: tuple[str, ...]) -> None:
         cursor = next_index
 
 
+def receive_session_hello(result: ScenarioResult, client: SmokeClient) -> None:
+    append_received(result, client.read())
+    if not result.frames or result.frames[-1].get("type") != "hello":
+        result.fail("missing_initial_session_hello")
+
+
 def run_text_turn(host: str, config: LanBridgeConfig) -> ScenarioResult:
     result = ScenarioResult(scenario="text-turn")
     start = time.perf_counter()
@@ -332,8 +338,7 @@ def run_text_turn(host: str, config: LanBridgeConfig) -> ScenarioResult:
         port = server.port()
         with SmokeClient(host, port) as client:
             result.handshake_status = "accepted"
-            client.send_text({"type": "hello", "device_id": "stackchan-smoke"})
-            append_received(result, client.read())
+            receive_session_hello(result, client)
             client.send_text({"type": "utterance_start", "seq": 11, "sample_rate": 16000})
             append_received(result, client.read())
             client.send_text({"type": "utterance_end", "seq": 11, "text": "Hello Stackchan."})
@@ -362,14 +367,11 @@ def run_audio_loop(host: str, base_config: LanBridgeConfig, temp_dir: Path) -> S
         port = server.port()
         with SmokeClient(host, port) as client:
             result.handshake_status = "accepted"
-            client.send_text({"type": "hello", "device_id": "stackchan-smoke"})
-            append_received(result, client.read())
+            receive_session_hello(result, client)
             client.send_text({"type": "utterance_start", "seq": 12, "sample_rate": 16000})
             append_received(result, client.read())
             client.send_binary((b"\x01\x00\x02\x00" * 800)[:3200])
-            append_received(result, client.read())
             client.send_binary((b"\x03\x00\x04\x00" * 800)[:3200])
-            append_received(result, client.read())
             client.send_text({"type": "utterance_end", "seq": 12})
             for frame in client.read_many({"response_end"}):
                 append_received(result, frame)
@@ -395,8 +397,7 @@ def run_thinking_latency(host: str, base_config: LanBridgeConfig, temp_dir: Path
         port = server.port()
         with SmokeClient(host, port) as client:
             result.handshake_status = "accepted"
-            client.send_text({"type": "hello", "device_id": "stackchan-smoke"})
-            append_received(result, client.read())
+            receive_session_hello(result, client)
             client.send_text({"type": "utterance_start", "seq": 13, "sample_rate": 16000})
             append_received(result, client.read())
             result.frame_timings.clear()
@@ -418,6 +419,7 @@ def run_endpoint_controls(host: str, config: LanBridgeConfig) -> ScenarioResult:
         port = server.port()
         with SmokeClient(host, port) as client:
             result.handshake_status = "accepted"
+            receive_session_hello(result, client)
             client.send_text(
                 {
                     "type": "endpoint_hello",

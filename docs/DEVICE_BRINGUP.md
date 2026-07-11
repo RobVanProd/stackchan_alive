@@ -266,7 +266,7 @@ These runtime command lines count as display bench-control telemetry in the evid
 
 If the device needs to be calmed quickly, send `safe stop` or `panic`. This combined command stops motion writes, disables random demo events, enables reduced motion, and clears the speech-mouth envelope in one serial line. Send `safe resume` or `restore` after the bench is clear to resume motion, resume demo events, clear reduced motion, and clear any held speech-mouth envelope.
 
-During supervised servo tests, send `motion stop`, `servo off`, or `halt` to call the actuator stop hook and suppress further motion writes. Send `motion resume` or `servos on` only after the body is clear and you are ready to continue. The firmware logs `[motion] enabled=0` or `[motion] enabled=1` when the motion task applies the command.
+During supervised servo tests, send `motion stop`, `servo off`, or `halt` to call the actuator stop hook and suppress further motion writes. Send `motion resume` or `servos on` only after the body is clear and you are ready to continue. The firmware logs `[motion] enabled=0` or `[motion] enabled=1` when the motion task applies the command. The current guarded servo bring-up firmware also auto-disables motion after a short supervised session timeout, so a forgotten test command cannot leave the body moving indefinitely.
 
 ## Servo Enable Gate
 
@@ -299,7 +299,13 @@ The servo-calibration firmware keeps `STACKCHAN_ENABLE_SPEAKER=0` so calibration
 
 For development builds from source, use `tools/flash_device.cmd`; for release evidence, use `tools/flash_release_firmware.cmd` so the tested device matches the verified package. Use `tools\flash_device.cmd -Environment stackchan_wifi` only for source-side lab bring-up where the robot must host the Wi-Fi bridge runtime code before release-package evidence exists; credentials still enter through serial provisioning, not build flags.
 
-The initial hardware mapping assumes CoreS3 M5 SCS servos on pins `1` and `2`, matching the upstream `stackchan-arduino` default for CoreS3. If the hardware behaves differently, stop and update `StackChanServoAdapter` before further testing.
+For the physical M5StackChan body used in the first live bring-up, the proven M5 SCS servo UART mapping is CoreS3 host `RX=GPIO7`, `TX=GPIO6`. Do not change this back to the generic CoreS3 `GPIO1/GPIO2` assumption; that mapping failed attach discovery on this body. The guarded source-side lead environment is currently `stackchan_wake_mww_uplink_servos_m5_voiceout`, with servo hardware compiled in, motion disabled at boot, actuator writes rate-limited, speaker downlink enabled, recovery/debug endpoints on port `8789`, and session auto-stop enabled.
+
+For full-system servo soaks on this lead, do not refresh `/motion-resume` every few seconds. The motion session timeout is 900000 ms, and the 2026-07-08 passing reduced-refresh soak used `-MotionRefreshSeconds 300 -MotionRefreshInitialDelaySeconds 150`, which kept the face under `50000` us max frame time while proving motion refreshes still work.
+
+The reset-instrumented 2026-07-08 lead also reports `uptime_ms`, `boot_count`, `reset_reason`, and `reset_reason_code` in `/debug`. Capture those fields after any reboot, black-screen recovery, ping/debug dropout, or physical side-button reset so long soaks can distinguish brownout/watchdog/panic/reset causes from bridge-only failures.
+
+For this board, flash staged source firmware with DIO flash mode. The known-good live flash used direct `esptool.py`/PlatformIO esptool output with `--flash-mode dio`, `--flash-freq 80m`, and the built `stackchan_wake_mww_uplink_servos` images. If a flash produces boot resets, a frozen face, or black screen behavior, stop and verify the image info shows DIO before trying another runtime change.
 
 Save serial logs, photos, and calibration notes into the evidence packet created during preflight.
 When using the generated `RUN_*.cmd` files, display, servo, and soak serial output is written directly under the packet's `logs/` folder.
@@ -309,11 +315,13 @@ If the packet is handed to someone else, send `BENCH_STATUS.md`, `NEXT_STEPS.md`
 ## First Hardware Tests
 
 1. Watch serial output for boot, display, and servo messages.
-2. Confirm pitch moves gently around center.
-3. Confirm yaw behavior before trusting absolute yaw.
-4. If yaw rotates continuously or hunts, set yaw mode to disabled in the motion target path and continue with display plus pitch only.
-5. If motion looks unsafe, send `motion stop` or `halt` immediately before touching the device.
-6. Run for 10 minutes and watch for resets, task stalls, jitter, heat, repeated nonzero `slow_frames` in display telemetry, a flat `[face]` line that never increments `blink_count` or `saccade_count`, or steadily falling `heap_min` / stack high-water margins.
+2. Confirm the servo attach log reports `ping_x=1 ping_y=2`.
+3. Confirm pitch moves gently around center.
+4. Confirm yaw behavior before trusting absolute yaw.
+5. If yaw rotates continuously or hunts, set yaw mode to disabled in the motion target path and continue with display plus pitch only.
+6. If motion looks unsafe, send `motion stop` or `halt` immediately before touching the device.
+7. After the session auto-stop, confirm serial status reports `motion_enabled=0`.
+8. Run for 10 minutes and watch for resets, task stalls, jitter, heat, repeated nonzero `slow_frames` in display telemetry, a flat `[face]` line that never increments `blink_count` or `saccade_count`, or steadily falling `heap_min` / stack high-water margins.
 
 ## Rollout Criteria
 

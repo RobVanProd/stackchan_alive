@@ -3,11 +3,8 @@ import os
 Import("env")
 
 
-def required(name):
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise RuntimeError(f"{name} is required for the stackchan_wifi environment")
-    return value
+def optional(name):
+    return os.environ.get(name, "").strip()
 
 
 def escaped_define_string(name, value):
@@ -15,21 +12,29 @@ def escaped_define_string(name, value):
     return f'-D{name}=\\"{escaped}\\"'
 
 
-bridge_port = required("STACKCHAN_BRIDGE_PORT")
-try:
-    bridge_port_int = int(bridge_port)
-except ValueError as exc:
-    raise RuntimeError("STACKCHAN_BRIDGE_PORT must be an integer") from exc
+cpp_defines = [
+    ("STACKCHAN_ENABLE_WIFI_BRIDGE", 1),
+]
+cc_flags = []
+
+bridge_port = optional("STACKCHAN_BRIDGE_PORT")
+if bridge_port:
+    try:
+        cpp_defines.append(("STACKCHAN_BRIDGE_PORT", int(bridge_port)))
+    except ValueError as exc:
+        raise RuntimeError("STACKCHAN_BRIDGE_PORT must be an integer") from exc
+
+for name in (
+    "STACKCHAN_WIFI_SSID",
+    "STACKCHAN_WIFI_PASSWORD",
+    "STACKCHAN_BRIDGE_HOST",
+    "STACKCHAN_BRIDGE_PATH",
+):
+    value = optional(name)
+    if value:
+        cc_flags.append(escaped_define_string(name, value))
 
 env.Append(
-    CPPDEFINES=[
-        ("STACKCHAN_ENABLE_WIFI_BRIDGE", 1),
-        ("STACKCHAN_BRIDGE_PORT", bridge_port_int),
-    ],
-    CCFLAGS=[
-        escaped_define_string("STACKCHAN_WIFI_SSID", required("STACKCHAN_WIFI_SSID")),
-        escaped_define_string("STACKCHAN_WIFI_PASSWORD", required("STACKCHAN_WIFI_PASSWORD")),
-        escaped_define_string("STACKCHAN_BRIDGE_HOST", required("STACKCHAN_BRIDGE_HOST")),
-        escaped_define_string("STACKCHAN_BRIDGE_PATH", required("STACKCHAN_BRIDGE_PATH")),
-    ],
+    CPPDEFINES=cpp_defines,
+    CCFLAGS=cc_flags,
 )

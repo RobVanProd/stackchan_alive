@@ -7,12 +7,17 @@
 
 namespace stackchan {
 
+#ifndef STACKCHAN_BRIDGE_WAKE_ON_SPEECH
+#define STACKCHAN_BRIDGE_WAKE_ON_SPEECH 0
+#endif
+
 constexpr uint32_t kBridgeWakeGateOpenMs = 6000;
 constexpr uint32_t kBridgeWakeGateMaxTurnMs = 12000;
 constexpr size_t kBridgeWakeGateErrorMax = kBridgeErrorMax;
 
 struct BridgeWakeGateConfig {
   bool enabled = true;
+  bool speechStartsTurn = STACKCHAN_BRIDGE_WAKE_ON_SPEECH != 0;
   uint32_t gateOpenMs = kBridgeWakeGateOpenMs;    // Wake gate hold: lets speech start after wake.
   uint32_t maxTurnMs = kBridgeWakeGateMaxTurnMs;  // Privacy guard: never stream forever.
   uint32_t firstSeq = 1;
@@ -21,6 +26,7 @@ struct BridgeWakeGateConfig {
 struct BridgeWakeGateTelemetry {
   bool ready = false;
   bool enabled = false;
+  bool speechStartsTurn = false;
   bool gateOpen = false;
   bool turnActive = false;
   uint32_t gatesOpened = 0;

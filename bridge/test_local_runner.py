@@ -91,6 +91,17 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertTrue(result.validation.ok, result.validation.issues)
         self.assertEqual("think", result.validation.normalized["mode"])
 
+    def test_user_text_replaces_the_canned_case_example_in_the_prompt(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="greeting",
+                user_text="Tell me whether the power monitor is healthy.",
+            )
+
+        self.assertIn("User/context: Tell me whether the power monitor is healthy.", result.prompt)
+        self.assertNotIn("Rob walks into the room and says hello.", result.prompt)
+
     def test_reference_bridge_can_render_runner_fallback_to_bench(self):
         script = Path(__file__).with_name("reference_bridge.py")
         env = {**os.environ, **RUNNER_ENV}

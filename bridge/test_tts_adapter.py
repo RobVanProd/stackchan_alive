@@ -14,6 +14,7 @@ from tts_adapter import (
     TtsConfigurationError,
     TtsExecutionError,
     normalize_tts_output,
+    split_spoken_phrases,
     synthesize_speech,
 )
 
@@ -29,6 +30,19 @@ def make_pcm16_wav(samples: list[int], sample_rate: int = 22050) -> bytes:
 
 
 class TtsAdapterTests(unittest.TestCase):
+    def test_spoken_phrase_split_preserves_text_and_bounds_long_clauses(self):
+        phrases = split_spoken_phrases(
+            "First phrase. This second phrase is deliberately long, so it should split at a natural boundary.",
+            max_chars=48,
+        )
+
+        self.assertGreaterEqual(len(phrases), 3)
+        self.assertEqual(
+            "First phrase. This second phrase is deliberately long, so it should split at a natural boundary.",
+            " ".join(phrases),
+        )
+        self.assertTrue(all(len(phrase) <= 48 for phrase in phrases))
+
     def test_unconfigured_tts_raises_clear_error(self):
         with patch.dict(os.environ, {TTS_COMMAND_ENV: ""}, clear=False):
             with self.assertRaises(TtsConfigurationError):
@@ -41,6 +55,9 @@ class TtsAdapterTests(unittest.TestCase):
                     "audio_format": "wav",
                     "sample_rate": 22050,
                     "audio_bytes": 1234,
+                    "audio_truncated": True,
+                    "rvc_queue_wait_ms": 12.5,
+                    "rvc_infer_elapsed_ms": 345.6,
                     "beats": [
                         {"env": 0.25, "viseme": "ah", "duration_ms": 30},
                         {"envelope": 2.0, "viseme": "ee", "durationMs": 40},
@@ -61,6 +78,9 @@ class TtsAdapterTests(unittest.TestCase):
         self.assertEqual("wav", metadata["audio_format"])
         self.assertEqual(22050, metadata["sample_rate"])
         self.assertEqual(1234, metadata["audio_bytes"])
+        self.assertTrue(metadata["audio_truncated"])
+        self.assertEqual(12.5, metadata["rvc_queue_wait_ms"])
+        self.assertEqual(345.6, metadata["rvc_infer_elapsed_ms"])
 
     def test_sidecar_frame_output_uses_frame_timing(self):
         beats, metadata = normalize_tts_output(
@@ -161,7 +181,7 @@ class TtsAdapterTests(unittest.TestCase):
                         "assert os.environ['STACKCHAN_TTS_TEXT_BYTES'] == str(len(text.encode('utf-8')))",
                         "assert os.environ['STACKCHAN_TTS_VOICE'] == 'rvc-bright'",
                         "assert os.environ['STACKCHAN_TTS_OUTPUT'] == 'stackchan.tts-metadata.v1'",
-                        "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_bytes':99,'beats':[{'env':0.4,'viseme':'ah','duration_ms':25}]}))",
+                        "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_bytes':99,'audio_truncated':False,'rvc_infer_elapsed_ms':321.0,'beats':[{'env':0.4,'viseme':'ah','duration_ms':25}]}))",
                     ]
                 ),
                 encoding="utf-8",
@@ -175,6 +195,8 @@ class TtsAdapterTests(unittest.TestCase):
         self.assertEqual(1, len(result.beats))
         self.assertEqual(25, result.duration_ms)
         self.assertEqual(99, result.audio_bytes)
+        self.assertFalse(result.diagnostics["audio_truncated"])
+        self.assertEqual(321.0, result.diagnostics["rvc_infer_elapsed_ms"])
         self.assertGreater(result.elapsed_ms, 0.0)
 
     def test_empty_tts_output_is_an_execution_error(self):

@@ -3,18 +3,27 @@ param(
   [int]$Port = 8765,
   [string]$Model = "gemma4:e2b-it-qat",
   [string]$RunnerCommand = "python bridge\ollama_stackchan_runner.py",
+  [string]$SttCommand = "python bridge\whisper_cpp_stt.py",
   [string]$TtsCommand = "python bridge\selected_voice_tts.py",
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
+  [switch]$StreamTtsPhrases,
+  [int]$TtsPhraseMaxChars = 96,
   [int]$SelectedVoiceMaxAudioBytes = 65536,
-  [int]$SelectedVoiceStartBytes = 0,
+  [int]$SelectedVoiceStartBytes = 65536,
   [double]$SelectedVoiceGain = 0.30,
   [int]$DownlinkAudioChunkBytes = 4096,
-  [int]$DownlinkBinaryFrameDelayMs = 70,
+  [int]$DownlinkBinaryFrameDelayMs = 80,
   [int]$DownlinkTextFrameDelayMs = 40,
+  [int]$ClientIdleTimeoutSeconds = 120,
   [string]$LogDir = "output\pc-brain\latest",
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
+  [string]$TurnLogFile = "output\pc-brain\latest\turns.jsonl",
+  [string]$AudioEvidenceDir = "output\pc-brain\latest\audio-evidence",
   [string]$AutoTurnText = "",
+  [switch]$RequireAudioWakePhrase,
+  [switch]$AllowAudioWithoutWakePhrase,
   [switch]$DeterministicRunner,
+  [switch]$EnableAudioDownlink,
   [switch]$Once,
   [switch]$Background,
   [switch]$StopExisting
@@ -46,6 +55,7 @@ if (-not $FfmpegExe) {
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $MemoryFile) | Out-Null
+New-Item -ItemType Directory -Force -Path $AudioEvidenceDir | Out-Null
 
 if ($StopExisting) {
   $Connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
@@ -80,14 +90,32 @@ $ArgsList = @(
   "--port", "$Port",
   "--runner-profile", "gemma4-e2b-gguf",
   "--runner-timeout-ms", "120000",
+  "--stt-command", $SttCommand,
+  "--stt-timeout-ms", "15000",
   "--tts-command", $TtsCommand,
   "--tts-voice", $TtsVoice,
   "--tts-timeout-ms", "120000",
+  "--tts-phrase-max-chars", "$TtsPhraseMaxChars",
   "--downlink-audio-chunk-bytes", "$DownlinkAudioChunkBytes",
   "--downlink-binary-frame-delay-ms", "$DownlinkBinaryFrameDelayMs",
   "--downlink-text-frame-delay-ms", "$DownlinkTextFrameDelayMs",
-  "--memory-file", $MemoryFile
+  "--client-idle-timeout-s", "$ClientIdleTimeoutSeconds",
+  "--memory-file", $MemoryFile,
+  "--turn-log-file", $TurnLogFile,
+  "--audio-evidence-dir", $AudioEvidenceDir
 )
+
+if ($StreamTtsPhrases) {
+  $ArgsList += "--stream-tts-phrases"
+}
+
+if ($RequireAudioWakePhrase -and -not $AllowAudioWithoutWakePhrase) {
+  $ArgsList += @("--require-audio-wake-phrase")
+}
+
+if (-not $EnableAudioDownlink) {
+  $ArgsList += @("--disable-audio-downlink")
+}
 
 if ($Once) {
   $ArgsList += @("--once")
@@ -124,6 +152,8 @@ if ($Background) {
   Write-Host "URL: ws://$HostName`:$Port/bridge"
   Write-Host "Logs: $OutLog ; $ErrLog"
   Write-Host "Memory: $MemoryFile"
+  Write-Host "Turn log: $TurnLogFile"
+  Write-Host "Audio evidence: $AudioEvidenceDir"
   exit 0
 }
 

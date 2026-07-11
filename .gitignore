@@ -40,7 +40,13 @@ out/
 __pycache__/
 .pytest_cache/
 .venv/
+.venv-rvc*/
 venv/
+
+# Local Codex/session scratch data
+.codex-remote-attachments/
+tmp/
+*.orig
 
 # Logs
 *.log

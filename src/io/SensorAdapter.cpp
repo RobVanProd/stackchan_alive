@@ -1627,6 +1627,14 @@ bool fillSpeakerTest(BenchControl* controlOut) {
   return true;
 }
 
+bool fillMicCueTest(BenchControl* controlOut) {
+  BenchControl parsed;
+  parsed.hasMicCueTest = true;
+  parsed.command = "mic_cue_test";
+  *controlOut = parsed;
+  return true;
+}
+
 bool fillFromMode(const char* token, uint32_t nowMs, float strength, BenchControl* controlOut) {
   for (const ModeCommand& command : kModeCommands) {
     if (strcmp(token, command.name) != 0) {
@@ -1887,6 +1895,19 @@ bool parseBenchControlLine(const char* line, uint32_t nowMs, BenchControl* contr
   }
   if ((strcmp(first, "speaker") == 0 || strcmp(first, "audio") == 0) &&
       second != nullptr &&
+      (strcmp(second, "cue") == 0 || strcmp(second, "soft") == 0 || strcmp(second, "mic") == 0)) {
+    return fillMicCueTest(controlOut);
+  }
+  if ((strcmp(first, "mic") == 0 || strcmp(first, "microphone") == 0) &&
+      second != nullptr &&
+      (strcmp(second, "cue") == 0 || strcmp(second, "tone") == 0 || strcmp(second, "test") == 0)) {
+    return fillMicCueTest(controlOut);
+  }
+  if (strcmp(first, "cue") == 0 && (second == nullptr || strcmp(second, "soft") == 0)) {
+    return fillMicCueTest(controlOut);
+  }
+  if ((strcmp(first, "speaker") == 0 || strcmp(first, "audio") == 0) &&
+      second != nullptr &&
       (strcmp(second, "test") == 0 || strcmp(second, "beep") == 0 || strcmp(second, "tone") == 0)) {
     return fillSpeakerTest(controlOut);
   }
@@ -1955,7 +1976,7 @@ void SensorAdapter::printHelp() const {
   Serial.println(F("[control] help: reduced on|off; motion reduced on|off"));
   Serial.println(F("[control] help: motion stop|resume; servos off|on"));
   Serial.println(F("[control] help: demo off|on"));
-  Serial.println(F("[control] help: speaker test|beep"));
+  Serial.println(F("[control] help: mic cue; speaker cue; speaker test|beep"));
   Serial.println(F("[control] help: safe stop|panic; safe resume|restore"));
   Serial.println(F("[control] help: CoreS3 inputs: tap=react hold=listen BtnA=listen BtnB=think BtnC=speak"));
 #endif

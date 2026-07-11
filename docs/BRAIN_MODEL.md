@@ -241,12 +241,39 @@ can downlink optional TTS audio bytes as binary WebSocket chunks. It clears raw 
 ```powershell
 $env:STACKCHAN_STT_COMMAND = "python path\to\local_stt.py"
 python bridge/lan_service.py --stt-command "python path\to\local_stt.py"
+.\tools\setup_whisper_cpp.cmd
+python bridge/lan_service.py --stt-command "python bridge\whisper_cpp_stt.py"
 $env:STACKCHAN_TTS_COMMAND = "python path\to\local_tts.py"
 python bridge/lan_service.py --tts-command "python path\to\local_tts.py" --tts-voice rvc-bright
 ```
 
+As of the 2026-07-08 physical lead, the fast real voice path is PC-side warm RVC:
+
+```powershell
+python bridge\rvc_tts_client.py
+```
+
+`bridge\rvc_tts_client.py` keeps RVC off the CoreS3 and talks to
+`bridge\rvc_worker_service.py`, a persistent local worker that keeps the Stackchan RVC model
+loaded on the PC. The PC renders response text to a base Windows System.Speech WAV, converts
+that WAV through the warm RVC worker, then normalizes the generated voice to bounded 16 kHz
+PCM16 for the existing bridge downlink. The robot firmware remains responsible for real-time
+face, wake gate, servo guardrails, and speaker playback only. The validated fallback is the
+one-shot CPU adapter `bridge\rvc_tts.py`; the accelerated lead is the warm ROCm worker on the
+AMD Radeon RX 7800 XT.
+
+The next voice candidate is the isolated Windows DirectML path documented in
+[`VOICE_V2_DIRECTML.md`](VOICE_V2_DIRECTML.md). Its fixed-corpus `pm` benchmark passed the
+sub-three-second first-audio, faster-than-real-time, and zero-truncation gates. An opt-in bridge
+mode can split response text into bounded spoken phrases and downlink each phrase as soon as it
+is converted. This mode is disabled by default and does not replace the production ROCm worker
+until supervised robot playback confirms audio quality, complete replies, and unchanged face
+and bridge stability.
+
 The STT command must return transcript text or JSON containing `transcript`, `text`, or
-`spoken_text`. The TTS command must return metadata JSON containing compact `beats` or
+`spoken_text`; `bridge/whisper_cpp_stt.py` is the preferred local adapter, and
+`bridge/windows_speech_stt.py` remains a Windows System.Speech fallback.
+The TTS command must return metadata JSON containing compact `beats` or
 speech-envelope-sidecar-style `frames`; it may also include `audio_b64`. The LAN service uses
 the metadata for existing `audio` mouth frames. If `audio_b64` is present, the TTS adapter
 uses `audio_format` / `format` to canonicalize `pcm16`, `s16le`, `raw16`, and `pcm_s16le`
