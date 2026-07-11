@@ -10,6 +10,17 @@ Use this when the physical Stackchan device arrives. Keep this release as a devi
 - Have a camera ready for display, speaker, and motion evidence.
 - Know the serial port, for example `COM3`.
 
+### Optional 64 GB microSD
+
+The installed 64 GB card is optional and exceeds M5Stack's documented 16 GB CoreS3 limit.
+Do not make boot, wake, face, memory, or safety behavior depend on it. During the next explicit
+computer-connected session, first identify the card and report its detected type and capacity
+without writing to it. Only proceed if the operator then enters the exact runtime phrase
+`FORMAT STACKCHAN 64GB ERASE MOVIES` and the isolated formatter was built with
+`STACKCHAN_SD_FORMAT_BUILD_TOKEN=ERASE_STACKCHAN_64GB_MOVIES`. After the write/read smoke test,
+restore production firmware before any other device validation. Full rationale and recovery
+steps are in `docs/HARDWARE_FEATURE_ROADMAP.md` under **Optional 64 GB microSD**.
+
 ## 1. Create The Evidence Packet
 
 From the extracted release folder:

@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-11 00:37 America/New_York
+Status timestamp: 2026-07-11 01:20 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -15,7 +15,7 @@ support compiled with motion disabled at boot.
 - Firmware debug endpoint: `http://192.168.1.238:8789/debug`
 - Final pre-launch integration remains an unflashed candidate. Production and camera diagnostic
   images both compile: production 50.7% RAM / 41.2% flash; camera 54.1% RAM / 42.2% flash.
-  Native logic passes 218/218, bridge discovery passes 179/179, the host OpenCV worker passes
+  Native logic passes 218/218, bridge discovery passes 194/194, the host OpenCV worker passes
   4/4 tests, and its cascade loads on the isolated Python 3.12 runtime. The paired camera path
   serves ephemeral 160x120 grayscale frames locally and returns bounded face boxes to the
   active-speaker tracker. No physical camera, RGB/touch/IMU, or combined soak result is claimed.
@@ -54,6 +54,13 @@ support compiled with motion disabled at boot.
   healthy. Robot `/debug` remained network/bridge ready with motion, rail, and torque off,
   display maximum `29139 us`, VBUS `5024 mV`, and chip temperature `60.5 C`.
 - Gemma's live runner now uses Ollama's warm loopback HTTP API with JSON output, thinking disabled, bounded context/output, and an indefinite model keep-alive; the CLI remains a fallback. The same 352-token prompt dropped from about `13.69 s` through `ollama run` to about `1.02 s` through the API, roughly 112 generated tokens/s. The bridge now passes the actual STT transcript into `local_runner.py`; prompt cases no longer replace what the user said.
+- The production Character Lock now has a deterministic final-output guard for hierarchy terms,
+  sensitive-memory requests, contractions, assistant-speak, and stacked exclamation marks. The
+  exact Ollama production wrapper passed all `25/25` live-model adversarial cases at
+  `output\character-red-team\release-cc4346a1` at source commit `cc4346a1`. The five-case conversational
+  benchmark also passed `5/5` with median model-call latency `1125.77 ms` and median approximate
+  output speed `8.96 tokens/s`; evidence is
+  `output\model-benchmark\release-cc4346a1`.
 - Streamed speech mouth movement is restored. `bridge\lan_service.py` aggregates the existing TTS/RVC beat envelope over each PCM chunk and emits one mouth frame immediately before that chunk. The supervised mouth run at `output\pc-brain\voice-v2-mouth-supervised-20260710-210803` passed `22/22`, reconciled `97920` bytes in 25 chunks, had zero playback errors or forced stops, reached first audio in `3531.68 ms` conversation / `1079.51 ms` post-text, and received the operator's visual confirmation that the mouth moved while Stackchan spoke.
 - The corrected wall-powered no-motion debug-latency baseline passed for `7203 s` at `output\pc-brain\wall-nomotion-debug-latency-4s-locksafe-2hr-20260710-120614`: `3376/3379` successful four-second probes, three isolated curl `28` timeouts at 607.6, 3323.7, and 4962.3 seconds, failure ratio `0.000888`, maximum streak one, and the established bridge socket present in all 3379 records. Motion, servo rail, and torque stayed off; live VBUS was `5014-5054 mV`, no hard-floor event occurred, maximum temperature was `58.5 C`, maximum face frame was `44707 us`, and minimum free heap was `113456`. Verified motion-stop cleanup passed, and the corrected formal no-motion checker passed `37/37`. Comparison evidence is `probe-comparison.json` in that root. This supports transient `/debug` HTTP service latency independent of servo motion; it does not identify the internal cause of each delayed response or explain the historical blackouts.
 - Blackout diagnosis status: motor overload is not an established universal cause. Confirmed outages occurred with and without motion, motion-enabled runs also passed for 52 and 60 minutes, and failure times do not cluster at a common board uptime or the ESP32 `micros()` wrap. The application contains no deliberate power-off/deep-sleep call. At 15:43 on 2026-07-10, the accepted production firmware was live after about 8.3 hours with motion/rail/torque off, bridge ready, VBUS `5025 mV`, no PMIC VBUS-loss or hard-floor event, and face frame max `29377 us`. Historical full-off events and isolated HTTP latency events must remain separate findings.
