@@ -10,9 +10,10 @@ The release-forensics/Voice V2 diagnostic build subsequently passed short motion
 complete streamed-audio, five-second conversation, and audio-driven mouth tests. The next
 candidate now compiles body RGB/touch and IMU into the release profile, with bounded telemetry,
 power-aware RGB, servo-self-motion filtering, and pickup/shake safety holds. Native firmware
-logic is 214/214, the release image builds at 48.8% RAM and 41.0% flash, and the camera-capture
-probe builds at 52.2% RAM and 41.9% flash. These are build results, not physical acceptance.
-Camera capture, face detection, active-speaker tracking, touch-zone orientation, IMU thresholds,
+logic is 218/218, the release image builds at 50.7% RAM and 41.2% flash, and the camera-capture
+probe builds at 54.1% RAM and 42.2% flash. The host OpenCV worker passes 4/4 tests and its
+cascade loads on the isolated Windows runtime. These are software results, not physical acceptance.
+Camera capture, real-face detection, active-speaker tracking, touch-zone orientation, IMU thresholds,
 and all combined behavior remain unproven until the supervised sequence below passes.
 
 ## Confirmed Hardware
@@ -122,9 +123,10 @@ protected-mode brightness at 14/255. Physical zone mapping and power evidence ar
 
 Implementation status: the isolated camera profile configures the GC0308 at QVGA RGB565 with
 one PSRAM frame buffer and reuses the managed internal SCCB bus without releasing PMIC/audio
-devices. The profile compiles, but physical initialization and capture timing are pending. The
-current Arduino toolchain does not bundle a face detector; ESP-DL detector integration remains
-separate from the production release until it passes its own load, heap, frame, and power gates.
+devices. A paired diagnostic endpoint downsamples one frame to 160x120 grayscale. The local
+Windows worker detects up to four faces with OpenCV and returns only normalized boxes to the
+native-tested active-speaker tracker. Frames are not persisted. Physical initialization,
+real-face behavior, capture timing, and combined load remain pending. See `LOCAL_VISION.md`.
 
 - Begin at low resolution and a conservative 5-10 FPS with fixed PSRAM frame buffers.
 - Detect face boxes locally and publish only bounded `x`, `y`, `size`, `confidence`, and
@@ -215,15 +217,18 @@ until the exact phrase is received.
    not create IMU handling events.
 7. Run voice, mouth, mood, RGB, touch, and motion together; enforce the existing 50 ms display,
    68 C temperature, VBUS/PMIC, bridge, timeout, and reset gates.
-8. Only after that candidate passes, flash the camera probe for capture-only evidence. Do not
-   promote camera capture or tracking into the release image from compile evidence alone.
+8. Only after that candidate passes, flash the camera probe, set a temporary six-digit pairing
+   code, and run the local vision worker. Prove capture with motion off before a separately
+   authorized active-speaker motion check. Do not promote the diagnostic image directly.
 
 The production soak must pass `-RequireFinalIntegration`. That profile requires PMIC schema
 `axp2101-v2`, valid untruncated `/debug` JSON, RGB/touch/IMU compiled and ready for every good
 poll, calibrated IMU, advancing RGB/touch/IMU counters, zero new peripheral I/O failures, zero
 unexpected IMU events, and camera disabled in the production image. The separate capture image
 must pass `-RequireCameraCapture`; it requires the camera ready/active, advancing real frame
-captures, zero new capture failures, and maximum capture time at or below 250 ms.
+captures, zero new capture failures, and maximum capture time at or below 250 ms. The actual
+host loop additionally passes `-RequireCameraHostVision`, requiring paired frame requests and
+target updates to advance with zero new host-frame or authentication failures.
 
 ## Evidence Required Per Phase
 

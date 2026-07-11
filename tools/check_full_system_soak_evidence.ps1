@@ -14,6 +14,7 @@ param(
   [switch]$RequirePowerForensics,
   [switch]$RequireFinalIntegration,
   [switch]$RequireCameraCapture,
+  [switch]$RequireCameraHostVision,
   [switch]$RequireReady,
   [switch]$Json
 )
@@ -267,8 +268,9 @@ if ($summary) {
     }
     $productionCameraDisabled = $null -ne $latestIntegration -and
       [int]$latestIntegration.compiled_enable_camera -eq 0 -and
+      [int]$latestIntegration.compiled_enable_camera_host_vision -eq 0 -and
       -not [bool]$latestIntegration.camera_active
-    Add-Check "production-camera-disabled" ($(if ($productionCameraDisabled) { "pass" } else { "fail" })) "compiled=$($latestIntegration.compiled_enable_camera) active=$($latestIntegration.camera_active)"
+    Add-Check "production-camera-disabled" ($(if ($productionCameraDisabled) { "pass" } else { "fail" })) "camera=$($latestIntegration.compiled_enable_camera) hostVision=$($latestIntegration.compiled_enable_camera_host_vision) active=$($latestIntegration.camera_active)"
   }
 
   $summaryRequiresCameraCapture = Has-StrictFlag $summary "requireCameraCapture"
@@ -285,6 +287,23 @@ if ($summary) {
     $maxCaptureUs = Get-IntValue $summary "maxCameraCaptureUsObserved" -1
     $captureLimitUs = Get-StrictIntValue $summary "maxCameraCaptureUs" 250000
     Add-Check "camera-capture-time" ($(if ($maxCaptureUs -gt 0 -and $maxCaptureUs -le $captureLimitUs) { "pass" } else { "fail" })) "maxCameraCaptureUsObserved=$maxCaptureUs max=$captureLimitUs"
+  }
+
+  $summaryRequiresCameraHostVision = Has-StrictFlag $summary "requireCameraHostVision"
+  if ($RequireCameraHostVision) {
+    Add-Check "strict-requireCameraHostVision" ($(if ($summaryRequiresCameraHostVision) { "pass" } else { "fail" })) "requireCameraHostVision=$summaryRequiresCameraHostVision"
+  }
+  if ($RequireCameraHostVision -or $summaryRequiresCameraHostVision) {
+    $readySamples = Get-IntValue $summary "cameraHostVisionReadySamples" 0
+    Add-Check "camera-host-vision-ready" ($(if ($okPolls -gt 0 -and $readySamples -eq $okPolls) { "pass" } else { "fail" })) "readySamples=$readySamples okPolls=$okPolls"
+    $requestDelta = Get-IntValue $summary "cameraHostFrameRequestDelta" -1
+    Add-Check "camera-host-frame-requests" ($(if ($requestDelta -gt 0) { "pass" } else { "fail" })) "cameraHostFrameRequestDelta=$requestDelta expected>0"
+    $targetDelta = Get-IntValue $summary "cameraHostTargetUpdateDelta" -1
+    Add-Check "camera-host-target-updates" ($(if ($targetDelta -gt 0) { "pass" } else { "fail" })) "cameraHostTargetUpdateDelta=$targetDelta expected>0"
+    $frameFailures = Get-IntValue $summary "newCameraHostFrameFailures" -1
+    Add-Check "camera-host-frame-failures" ($(if ($frameFailures -eq 0) { "pass" } else { "fail" })) "newCameraHostFrameFailures=$frameFailures expected=0"
+    $authFailures = Get-IntValue $summary "newCameraHostAuthFailures" -1
+    Add-Check "camera-host-auth-failures" ($(if ($authFailures -eq 0) { "pass" } else { "fail" })) "newCameraHostAuthFailures=$authFailures expected=0"
   }
 
   $maxObservedFrameUs = Get-IntValue $summary "maxFrameUs" 0
@@ -315,7 +334,7 @@ $status = if ($failed.Count -gt 0) {
 
 $result = [ordered]@{
   schema = "stackchan.full-system-soak-evidence-check.v1"
-  profile = $(if ($RequireCameraCapture) { "camera-capture" } elseif ($RequireFinalIntegration) { "final-integration" } elseif ($NoMotionProfile) { "no-motion" } else { "full-system" })
+  profile = $(if ($RequireCameraHostVision) { "camera-host-vision" } elseif ($RequireCameraCapture) { "camera-capture" } elseif ($RequireFinalIntegration) { "final-integration" } elseif ($NoMotionProfile) { "no-motion" } else { "full-system" })
   status = $status
   summaryJsonPath = $SummaryJsonPath
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count

@@ -1116,7 +1116,8 @@ After completion, formally verify the same profile:
 ```
 
 Only after the production candidate is restored and stopped cleanly may the isolated camera probe
-be flashed. Run it without motion refresh and require actual frame progress:
+be flashed. Configure a temporary six-digit pairing code over serial, start the local worker from
+`docs\LOCAL_VISION.md`, run without motion refresh, and require both sensor and host-loop progress:
 
 ```powershell
 .\tools\run_full_system_soak_http_motion.ps1 `
@@ -1124,13 +1125,17 @@ be flashed. Run it without motion refresh and require actual frame progress:
   -DurationSeconds 120 -PollSeconds 5 -MotionRefreshSeconds 0 -NoSerial `
   -RequireBridgeSocket -RequireWakeReady -RequireMicReady -RequireSpeakerReady `
   -RequirePowerCoordinator -RequirePowerForensics -RequirePmicVbusStable `
-  -RequireNoNewHardFloorEvents -RequireCameraCapture -MaxCameraCaptureUs 250000 `
+  -RequireNoNewHardFloorEvents -RequireCameraCapture -RequireCameraHostVision `
+  -MaxCameraCaptureUs 250000 `
   -MaxAllowedChipTempC 68 -MinPowerVbusMv 4400 -MinPowerVbusReportedMv 4400 `
   -MaxDisplayFrameUs 50000 -FailFastOnStrictBreach
 ```
 
-Verify that probe with `-NoMotionProfile -RequireCameraCapture`. Reflash the production candidate
-afterward; the camera probe is diagnostic firmware and cannot be promoted directly.
+Verify that probe with `-NoMotionProfile -RequireCameraCapture -RequireCameraHostVision`.
+Visible human-face acquire/loss/reacquire and sound-aware speaker selection remain required;
+counters cannot substitute for operator observation. Clear the temporary pairing code and reflash
+the production candidate afterward; the camera probe is diagnostic firmware and cannot be
+promoted directly.
 
 If Stackchan fully turns off, do not unplug or swap the cable. Start:
 

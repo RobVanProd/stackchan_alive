@@ -238,6 +238,19 @@ or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
 stream chunks, `audio` mouth frames, and `response_end` frames back to the client.
 
+Run the optional local camera detector only with the isolated camera diagnostic firmware:
+
+```powershell
+py -3.12 -m venv C:\stackchan_vision_venv
+C:\stackchan_vision_venv\Scripts\python.exe -m pip install -r bridge\requirements-vision.txt
+C:\stackchan_vision_venv\Scripts\python.exe bridge\vision_service.py --robot-url http://192.168.1.238:8789 --pairing-code 123456
+```
+
+The pairing code must match a temporary six-digit code configured on Stackchan. The worker
+accepts only a literal private/loopback robot address, processes one 160x120 grayscale frame
+in memory, and returns at most four normalized face boxes. It does not persist frames or add
+OpenCV to the production bridge runtime. See `docs/LOCAL_VISION.md` for the supervised gate.
+
 Run the no-hardware virtual Stackchan proxy:
 
 ```powershell

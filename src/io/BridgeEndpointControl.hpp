@@ -56,6 +56,9 @@ class BridgeEndpointControl {
   const char* requiredPairingCode() const {
     return requiredPairingCode_;
   }
+  bool authorizesPairedRequest(const char* value) const {
+    return pairingCodeRequired() && pairingCodeMatches(value);
+  }
 
   BridgeEndpointControlResult submitControlLine(const char* jsonLine,
                                                 char* responseOut,

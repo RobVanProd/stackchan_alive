@@ -201,6 +201,10 @@
 #define STACKCHAN_CAMERA_CAPTURE_PROBE_ONLY 0
 #endif
 
+#ifndef STACKCHAN_ENABLE_CAMERA_HOST_VISION
+#define STACKCHAN_ENABLE_CAMERA_HOST_VISION 0
+#endif
+
 #ifndef STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
 #define STACKCHAN_ENABLE_WAKE_SERIAL_LOGS 1
 #endif
@@ -555,6 +559,7 @@
 #include "io/BridgeWiFiProvisioningStore.hpp"
 #include "io/BodyPeripheralAdapter.hpp"
 #include "io/CameraAdapter.hpp"
+#include "io/CameraHostProtocol.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/ImuAdapter.hpp"
 #include "io/SensorAdapter.hpp"
@@ -7049,6 +7054,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"compiled_enable_servos\":%d", STACKCHAN_SERVO_HARDWARE_ENABLE ? 1 : 0);
   const CameraAdapterTelemetry& camera = gCamera.telemetry();
   append(",\"compiled_enable_camera\":%d", STACKCHAN_ENABLE_CAMERA ? 1 : 0);
+  append(",\"compiled_enable_camera_host_vision\":%d",
+         STACKCHAN_ENABLE_CAMERA_HOST_VISION ? 1 : 0);
   append(",\"camera_ready\":%s", camera.ready ? "true" : "false");
   append(",\"camera_active\":%s", camera.active ? "true" : "false");
   append(",\"camera_capture_ready\":%s", camera.captureReady ? "true" : "false");
@@ -7064,6 +7071,14 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"camera_last_frame_height\":%u", camera.lastFrameHeight);
   append(",\"camera_last_frame_checksum\":%lu",
          static_cast<unsigned long>(camera.lastFrameChecksum));
+  append(",\"camera_host_frame_requests\":%lu",
+         static_cast<unsigned long>(camera.hostFrameRequests));
+  append(",\"camera_host_frame_failures\":%lu",
+         static_cast<unsigned long>(camera.hostFrameFailures));
+  append(",\"camera_host_target_updates\":%lu",
+         static_cast<unsigned long>(camera.hostTargetUpdates));
+  append(",\"camera_host_auth_failures\":%lu",
+         static_cast<unsigned long>(camera.hostAuthFailures));
   append(",\"camera_events\":%lu", static_cast<unsigned long>(camera.eventsPublished));
   append(",\"camera_face_batches\":%lu", static_cast<unsigned long>(camera.faceBatches));
   append(",\"camera_faces_observed\":%lu", static_cast<unsigned long>(camera.facesObserved));
@@ -7312,6 +7327,107 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   client.stop();
 }
 
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_ENABLE_CAMERA_HOST_VISION
+bool writeHttpBody(WiFiClient& client, const uint8_t* data, size_t length) {
+  size_t offset = 0;
+  const uint32_t deadlineMs = millis() + 3000;
+  while (offset < length && client.connected() &&
+         static_cast<int32_t>(deadlineMs - millis()) > 0) {
+    const size_t written = client.write(data + offset, length - offset);
+    if (written == 0) {
+      delay(1);
+      continue;
+    }
+    offset += written;
+    taskYIELD();
+  }
+  return offset == length;
+}
+
+void serveCameraHostText(WiFiClient& client, int statusCode, const char* statusText,
+                         const char* body) {
+  const size_t bodyLength = strlen(body);
+  client.printf("HTTP/1.1 %d %s\r\nContent-Type: application/json\r\n"
+                "Cache-Control: no-store\r\nContent-Length: %u\r\nConnection: close\r\n\r\n",
+                statusCode,
+                statusText,
+                static_cast<unsigned>(bodyLength));
+  writeHttpBody(client, reinterpret_cast<const uint8_t*>(body), bodyLength);
+  delay(1);
+  client.stop();
+}
+
+void serveCameraGrayFrame(WiFiClient& client, const char* requestTarget) {
+  char pairingCode[7] = {};
+  if (!parseCameraHostPairingCode(
+          requestTarget, "/camera-gray.pgm", pairingCode, sizeof(pairingCode)) ||
+      !gBridgeEndpointControl.authorizesPairedRequest(pairingCode)) {
+    gCamera.noteHostAuthFailure();
+    serveCameraHostText(client, 403, "Forbidden", "{\"ok\":false,\"error\":\"pairing_required\"}\n");
+    return;
+  }
+
+  constexpr size_t kGrayCapacity = 160u * 120u;
+  static uint8_t* gray = nullptr;
+  if (gray == nullptr) {
+    gray = static_cast<uint8_t*>(
+        heap_caps_malloc(kGrayCapacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  CameraGrayFrame frame;
+  if (gray == nullptr || !gCamera.captureGray160(gray, kGrayCapacity, &frame, millis())) {
+    serveCameraHostText(client, 503, "Service Unavailable",
+                        "{\"ok\":false,\"error\":\"camera_capture_failed\"}\n");
+    return;
+  }
+
+  char pgmHeader[32] = {};
+  const int pgmHeaderLength = snprintf(pgmHeader,
+                                       sizeof(pgmHeader),
+                                       "P5\n%u %u\n255\n",
+                                       static_cast<unsigned>(frame.width),
+                                       static_cast<unsigned>(frame.height));
+  if (pgmHeaderLength <= 0 || static_cast<size_t>(pgmHeaderLength) >= sizeof(pgmHeader)) {
+    serveCameraHostText(client, 500, "Internal Server Error",
+                        "{\"ok\":false,\"error\":\"pgm_header_failed\"}\n");
+    return;
+  }
+  const size_t contentLength = static_cast<size_t>(pgmHeaderLength) + frame.length;
+  client.printf("HTTP/1.1 200 OK\r\nContent-Type: image/x-portable-graymap\r\n"
+                "Cache-Control: no-store\r\nContent-Length: %u\r\nConnection: close\r\n\r\n",
+                static_cast<unsigned>(contentLength));
+  const bool headerWritten = writeHttpBody(client,
+                                           reinterpret_cast<const uint8_t*>(pgmHeader),
+                                           static_cast<size_t>(pgmHeaderLength));
+  const bool frameWritten = headerWritten && writeHttpBody(client, gray, frame.length);
+  if (!frameWritten) {
+    gCamera.noteHostFrameFailure();
+  }
+  delay(1);
+  client.stop();
+}
+
+void serveCameraVisionTarget(WiFiClient& client, const char* requestTarget) {
+  CameraHostVisionTarget target;
+  if (!parseCameraHostVisionTarget(requestTarget, &target)) {
+    serveCameraHostText(client, 400, "Bad Request",
+                        "{\"ok\":false,\"error\":\"invalid_target\"}\n");
+    return;
+  }
+  if (!gBridgeEndpointControl.authorizesPairedRequest(target.pairingCode)) {
+    gCamera.noteHostAuthFailure();
+    serveCameraHostText(client, 403, "Forbidden", "{\"ok\":false,\"error\":\"pairing_required\"}\n");
+    return;
+  }
+  gCamera.noteHostTargetUpdate();
+  if (target.faceCount == 0) {
+    gCamera.submitFaceLost(millis(), 1.0f);
+  } else {
+    gCamera.submitFaces(target.faces, target.faceCount, millis());
+  }
+  serveCameraHostText(client, 200, "OK", "{\"ok\":true}\n");
+}
+#endif
+
 void pollBridgeDebugServer(uint32_t nowMs) {
   (void)nowMs;
 #if defined(ARDUINO_ARCH_ESP32)
@@ -7329,7 +7445,7 @@ void pollBridgeDebugServer(uint32_t nowMs) {
   }
   client.setTimeout(100);
   uint32_t requestStartMs = millis();
-  char requestLine[96] = {};
+  char requestLine[256] = {};
   size_t requestLineLen = 0;
   bool firstLineComplete = false;
   while (client.connected() && requestStartMs != 0 &&
@@ -7350,7 +7466,7 @@ void pollBridgeDebugServer(uint32_t nowMs) {
     }
   }
 
-  char requestTarget[32] = "/";
+  char requestTarget[224] = "/";
   const char* firstSpace = strchr(requestLine, ' ');
   if (firstSpace != nullptr) {
     const char* targetStart = firstSpace + 1;
@@ -7359,8 +7475,18 @@ void pollBridgeDebugServer(uint32_t nowMs) {
         secondSpace != nullptr ? static_cast<size_t>(secondSpace - targetStart) : strlen(targetStart);
     const size_t copyLen = targetLen < sizeof(requestTarget) - 1u ? targetLen : sizeof(requestTarget) - 1u;
     memcpy(requestTarget, targetStart, copyLen);
-    requestTarget[copyLen] = '\0';
+  requestTarget[copyLen] = '\0';
   }
+#if STACKCHAN_ENABLE_CAMERA_HOST_VISION
+  if (strncmp(requestTarget, "/camera-gray.pgm?", 17) == 0) {
+    serveCameraGrayFrame(client, requestTarget);
+    return;
+  }
+  if (strncmp(requestTarget, "/vision-target?", 15) == 0) {
+    serveCameraVisionTarget(client, requestTarget);
+    return;
+  }
+#endif
   const bool speakerToneRequest =
       strcmp(requestTarget, "/tone") == 0 || strcmp(requestTarget, "/speaker-test") == 0;
   const bool micToneSoftRequest =

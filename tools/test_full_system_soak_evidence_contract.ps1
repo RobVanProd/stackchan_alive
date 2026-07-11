@@ -16,7 +16,9 @@ foreach ($requiredPattern in @(
     'RequireFinalIntegration',
     'final_integration_peripheral_not_ready',
     'RequireCameraCapture',
-    'camera_capture_probe_not_ready'
+    'camera_capture_probe_not_ready',
+    'RequireCameraHostVision',
+    'camera_host_frame_requests_not_advancing'
   )) {
   if ($runnerSource -notmatch $requiredPattern) {
     throw "Soak runner safety contract missing pattern: $requiredPattern"
@@ -35,9 +37,12 @@ function Invoke-Check {
     [switch]$NoMotionProfile,
     [switch]$RequirePowerForensics,
     [switch]$RequireFinalIntegration,
-    [switch]$RequireCameraCapture
+    [switch]$RequireCameraCapture,
+    [switch]$RequireCameraHostVision
   )
-  if ($RequireFinalIntegration) {
+  if ($RequireCameraHostVision) {
+    $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 60 -NoMotionProfile -RequireCameraCapture -RequireCameraHostVision -RequireReady:$RequireReady -Json
+  } elseif ($RequireFinalIntegration) {
     $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 28800 -RequireFinalIntegration -RequireReady:$RequireReady -Json
   } elseif ($RequireCameraCapture) {
     $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 60 -NoMotionProfile -RequireCameraCapture -RequireReady:$RequireReady -Json
@@ -201,6 +206,7 @@ try {
       imu_ready = $true
       imu_calibrated = $true
       compiled_enable_camera = 0
+      compiled_enable_camera_host_vision = 0
       camera_active = $false
     })
   Write-Json $finalIntegrationPath $finalIntegrationSummary
@@ -250,6 +256,35 @@ try {
     if (@($cameraReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
       throw "Expected camera capture check $id to pass."
     }
+  }
+
+  $cameraVisionPath = Join-Path $tempRoot "camera-host-vision-ready-summary.json"
+  $cameraVisionSummary = Get-Content -LiteralPath $cameraPath -Raw | ConvertFrom-Json
+  $cameraVisionSummary.strict | Add-Member -NotePropertyName requireCameraHostVision -NotePropertyValue $true
+  $cameraVisionSummary | Add-Member -NotePropertyName cameraHostVisionReadySamples -NotePropertyValue 959
+  $cameraVisionSummary | Add-Member -NotePropertyName cameraHostFrameRequestDelta -NotePropertyValue 58
+  $cameraVisionSummary | Add-Member -NotePropertyName cameraHostTargetUpdateDelta -NotePropertyValue 58
+  $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostFrameFailures -NotePropertyValue 0
+  $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostAuthFailures -NotePropertyValue 0
+  Write-Json $cameraVisionPath $cameraVisionSummary
+  $cameraVisionReady = Invoke-Check -SummaryPath $cameraVisionPath -RequireCameraHostVision -RequireReady
+  if ($cameraVisionReady.exitCode -ne 0 -or $cameraVisionReady.json.failed -ne 0 -or
+      $cameraVisionReady.json.profile -ne "camera-host-vision") {
+    throw "Expected camera host vision summary to pass: $($cameraVisionReady.output)"
+  }
+  foreach ($id in @("strict-requireCameraHostVision", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-frame-failures", "camera-host-auth-failures")) {
+    if (@($cameraVisionReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
+      throw "Expected camera host vision check $id to pass."
+    }
+  }
+
+  $cameraVisionFailurePath = Join-Path $tempRoot "camera-host-vision-failure-summary.json"
+  $cameraVisionSummary.newCameraHostAuthFailures = 1
+  Write-Json $cameraVisionFailurePath $cameraVisionSummary
+  $cameraVisionFailure = Invoke-Check -SummaryPath $cameraVisionFailurePath -RequireCameraHostVision
+  if ($cameraVisionFailure.exitCode -eq 0 -or
+      @($cameraVisionFailure.json.checks | Where-Object { $_.id -eq "camera-host-auth-failures" -and $_.status -eq "fail" }).Count -ne 1) {
+    throw "Expected camera host auth failure to fail formal checker."
   }
 
   $cameraFailurePath = Join-Path $tempRoot "camera-failure-summary.json"

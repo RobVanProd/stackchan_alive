@@ -36,6 +36,13 @@ If Wi-Fi or the bridge is unavailable, Stackchan must degrade offline. On-device
 
 Camera and microphone producers are local-processing by default. They may feed local reflexes, presence signals, status checks, or bridge state, but raw camera or microphone streams must not be sent to a remote service by firmware code.
 
+The isolated camera diagnostic is a documented host-side exception within the same local
+trust boundary. It serves one 160x120 grayscale frame at a time only to a paired private-LAN
+client, the worker keeps the frame in memory for one OpenCV detection step, and it returns at
+most four normalized face boxes. It does not store frames, forward them to the LLM or a cloud
+service, or perform identity recognition. The endpoints are compiled out of production
+firmware. See `LOCAL_VISION.md`.
+
 If a future bridge feature needs remote analysis, it must be implemented as an explicit host-side bridge feature with user configuration, release documentation, and evidence showing when data leaves the device.
 
 ## Bridge Ownership
@@ -61,6 +68,8 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - Serial counters for `bridge_messages`, `bridge_outputs`, `bridge_parse_errors`, `bridge_audio_streams`, `bridge_audio_stream_bytes`, `bridge_audio_stream_bytes_received`, `bridge_audio_stream_chunks`, `bridge_audio_stream_errors`, `bridge_uplink_enabled`, `bridge_uplink_active`, `bridge_uplink_gate_blocks`, `bridge_uplink_queue_failures`, `bridge_wake_gate_open`, `bridge_wake_gate_turn_active`, `bridge_wake_gate_opens`, `bridge_wake_gate_completed`, `bridge_downlink_streams`, `bridge_downlink_chunks`, `bridge_downlink_bytes`, `bridge_downlink_errors`, `bridge_downlink_playback_starts`, `bridge_downlink_playback_chunks`, `bridge_downlink_playback_bytes`, `bridge_downlink_playback_unsupported`, `bridge_downlink_playback_errors`, and `bridge_timeouts`.
 - Timeout recovery that clears `bridge_active` and returns the face to local behavior.
 - Voice-source status showing RVC review assets and production voice gates are still separated.
+- Camera evidence showing paired requests, zero authentication failures, no frame persistence,
+  bounded face-box output, and camera/host-vision endpoints absent from the production image.
 
 ## User Controls
 

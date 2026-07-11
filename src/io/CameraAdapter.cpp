@@ -106,6 +106,75 @@ bool CameraAdapter::captureFrame(CameraFrameView* frameOut) {
 #endif
 }
 
+bool CameraAdapter::captureGray160(uint8_t* destination,
+                                   size_t capacity,
+                                   CameraGrayFrame* frameOut,
+                                   uint32_t nowMs) {
+  ++telemetry_.hostFrameRequests;
+  if (destination == nullptr || frameOut == nullptr) {
+    ++telemetry_.hostFrameFailures;
+    return false;
+  }
+  const uint32_t startedUs = micros();
+  CameraFrameView source;
+  if (!captureFrame(&source)) {
+    ++telemetry_.hostFrameFailures;
+    return false;
+  }
+#if STACKCHAN_CAMERA_CAPTURE_AVAILABLE
+  const uint16_t outputWidth = source.width / 2;
+  const uint16_t outputHeight = source.height / 2;
+  const size_t outputLength = static_cast<size_t>(outputWidth) * outputHeight;
+  const size_t sourceLength = static_cast<size_t>(source.width) * source.height * 2;
+  if (source.format != static_cast<uint8_t>(PIXFORMAT_RGB565) || outputWidth == 0 ||
+      outputHeight == 0 || outputLength > capacity || source.length < sourceLength) {
+    releaseFrame(&source);
+    ++telemetry_.hostFrameFailures;
+    return false;
+  }
+
+  for (uint16_t y = 0; y < outputHeight; ++y) {
+    const size_t sourceRow = static_cast<size_t>(y * 2) * source.width * 2;
+    const size_t destinationRow = static_cast<size_t>(y) * outputWidth;
+    for (uint16_t x = 0; x < outputWidth; ++x) {
+      const size_t index = sourceRow + static_cast<size_t>(x * 2) * 2;
+      const uint16_t rgb565 =
+          (static_cast<uint16_t>(source.data[index]) << 8) | source.data[index + 1];
+      const uint16_t red = (rgb565 >> 11) & 0x1Fu;
+      const uint16_t green = (rgb565 >> 5) & 0x3Fu;
+      const uint16_t blue = rgb565 & 0x1Fu;
+      destination[destinationRow + x] = static_cast<uint8_t>(
+          (red * 77u * 255u / 31u + green * 150u * 255u / 63u +
+           blue * 29u * 255u / 31u) >>
+          8);
+    }
+  }
+
+  const uint32_t elapsedUs = micros() - startedUs;
+  telemetry_.lastCaptureMs = nowMs;
+  telemetry_.lastCaptureUs = elapsedUs;
+  telemetry_.maxCaptureUs = max(telemetry_.maxCaptureUs, elapsedUs);
+  telemetry_.lastFrameBytes = outputLength;
+  telemetry_.lastFrameWidth = outputWidth;
+  telemetry_.lastFrameHeight = outputHeight;
+  uint32_t checksum = 2166136261u;
+  const size_t stride = outputLength > 256 ? outputLength / 256 : 1;
+  for (size_t i = 0; i < outputLength; i += stride) {
+    checksum = (checksum ^ destination[i]) * 16777619u;
+  }
+  telemetry_.lastFrameChecksum = checksum;
+  frameOut->length = outputLength;
+  frameOut->width = outputWidth;
+  frameOut->height = outputHeight;
+  releaseFrame(&source);
+  return true;
+#else
+  releaseFrame(&source);
+  ++telemetry_.hostFrameFailures;
+  return false;
+#endif
+}
+
 void CameraAdapter::releaseFrame(CameraFrameView* frame) {
   if (frame == nullptr || frame->handle == nullptr) {
     return;
@@ -202,6 +271,18 @@ bool CameraAdapter::poll(RobotEvent* eventOut) {
   *eventOut = pending_;
   hasPending_ = false;
   return true;
+}
+
+void CameraAdapter::noteHostAuthFailure() {
+  ++telemetry_.hostAuthFailures;
+}
+
+void CameraAdapter::noteHostFrameFailure() {
+  ++telemetry_.hostFrameFailures;
+}
+
+void CameraAdapter::noteHostTargetUpdate() {
+  ++telemetry_.hostTargetUpdates;
 }
 
 void CameraAdapter::queueEvent(const RobotEvent& event) {

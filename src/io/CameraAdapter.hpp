@@ -28,6 +28,10 @@ struct CameraAdapterTelemetry {
   uint16_t lastFrameWidth = 0;
   uint16_t lastFrameHeight = 0;
   uint32_t lastFrameChecksum = 0;
+  uint32_t hostFrameRequests = 0;
+  uint32_t hostFrameFailures = 0;
+  uint32_t hostTargetUpdates = 0;
+  uint32_t hostAuthFailures = 0;
   uint32_t eventsPublished = 0;
   uint32_t lastEventMs = 0;
   uint32_t faceBatches = 0;
@@ -48,6 +52,12 @@ struct CameraFrameView {
   void* handle = nullptr;
 };
 
+struct CameraGrayFrame {
+  size_t length = 0;
+  uint16_t width = 0;
+  uint16_t height = 0;
+};
+
 class CameraAdapter {
  public:
   bool begin();
@@ -59,9 +69,16 @@ class CameraAdapter {
   void setRobotSpeaking(bool speaking, uint32_t nowMs);
   void submitFaceLost(uint32_t nowMs, float strength = 1.0f);
   bool captureFrame(CameraFrameView* frameOut);
+  bool captureGray160(uint8_t* destination,
+                      size_t capacity,
+                      CameraGrayFrame* frameOut,
+                      uint32_t nowMs);
   void releaseFrame(CameraFrameView* frame);
   bool serviceCaptureProbe(uint32_t nowMs);
   bool poll(RobotEvent* eventOut);
+  void noteHostAuthFailure();
+  void noteHostFrameFailure();
+  void noteHostTargetUpdate();
 
   const CameraAdapterTelemetry& telemetry() const {
     return telemetry_;

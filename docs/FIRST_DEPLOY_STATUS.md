@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-10 21:25 America/New_York
+Status timestamp: 2026-07-11 00:00 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -13,6 +13,16 @@ support compiled with motion disabled at boot.
 - PC bridge host: `192.168.1.240`
 - PC bridge port/path: `8765` / `/bridge`
 - Firmware debug endpoint: `http://192.168.1.238:8789/debug`
+- Final pre-launch integration remains an unflashed candidate. Production and camera diagnostic
+  images both compile: production 50.7% RAM / 41.2% flash; camera 54.1% RAM / 42.2% flash.
+  Native logic passes 218/218, bridge discovery passes 179/179, the host OpenCV worker passes
+  4/4 tests, and its cascade loads on the isolated Python 3.12 runtime. The paired camera path
+  serves ephemeral 160x120 grayscale frames locally and returns bounded face boxes to the
+  active-speaker tracker. No physical camera, RGB/touch/IMU, or combined soak result is claimed.
+- The installed 64 GB microSD is authorized for erasure at the next USB session, but exceeds
+  M5Stack's documented 16 GB maximum and is optional/experimental. The destructive formatter
+  remains separately build- and runtime-gated; card type/capacity must be shown before the exact
+  erase phrase is accepted, then production firmware must be restored.
 - Current flashed diagnostic environment: `stackchan_release_forensics`. The accepted rollback lead remains `stackchan_wake_mww_uplink_servos_m5_voiceout` with firmware SHA256 `3C40D5A0F006B67D175ED963133E90F889AE600D5C1F0F419E06FE7B99786C10`.
 - Firmware guardrails: motion disabled at boot; one Power Coordinator owns servo/speaker power policy; the servo rail is off outside a granted motion window; audio, thermal, and supply protection preempt motion; VBUS has a 4400 mV unconditional floor; 4400-4550 mV motion requires fresh INA226 evidence that the external source is charging the body battery by at least 50 mA; motion resumes at 4700 mV; motion/audio sessions preemptively reduce battery charging to 125 mA and retain that rate for 30 seconds after load removal; rejected PMIC samples never enter policy; PMIC VBUS presence/loss transitions are counted; speaker power is off while idle; the face task runs above motion bookkeeping on their shared core.
 - Current exact firmware lead directory: `output\firmware-leads\power-coordinator-priority2-accepted-60min-20260710-003026`

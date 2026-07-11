@@ -26,6 +26,7 @@
 #include "io/BridgeWiFiProvisioningStore.hpp"
 #include "io/BodyTouch.hpp"
 #include "io/CameraAdapter.hpp"
+#include "io/CameraHostProtocol.hpp"
 #include "io/ImuAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
@@ -1315,6 +1316,53 @@ void test_camera_adapter_publishes_audio_matched_active_speaker() {
   TEST_ASSERT_TRUE(camera.poll(&event));
   TEST_ASSERT_LESS_THAN_FLOAT(-0.40f, event.x);
   TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().audioMatchedSelections);
+}
+
+void test_camera_host_protocol_requires_exact_pairing_code_query() {
+  char pairingCode[7] = {};
+  TEST_ASSERT_TRUE(parseCameraHostPairingCode(
+      "/camera-gray.pgm?p=123456", "/camera-gray.pgm", pairingCode, sizeof(pairingCode)));
+  TEST_ASSERT_EQUAL_STRING("123456", pairingCode);
+  TEST_ASSERT_FALSE(parseCameraHostPairingCode(
+      "/camera-gray.pgm?p=12345", "/camera-gray.pgm", pairingCode, sizeof(pairingCode)));
+  TEST_ASSERT_FALSE(parseCameraHostPairingCode(
+      "/camera-gray.pgm?p=12345x", "/camera-gray.pgm", pairingCode, sizeof(pairingCode)));
+  TEST_ASSERT_FALSE(parseCameraHostPairingCode(
+      "/", "/camera-gray.pgm", pairingCode, sizeof(pairingCode)));
+}
+
+void test_camera_host_protocol_parses_bounded_face_candidates() {
+  CameraHostVisionTarget target;
+  TEST_ASSERT_TRUE(parseCameraHostVisionTarget(
+      "/vision-target?p=123456&f=-650,100,320,900;500,-200,250,750", &target));
+  TEST_ASSERT_EQUAL_STRING("123456", target.pairingCode);
+  TEST_ASSERT_EQUAL_UINT8(2, target.faceCount);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.65f, target.faces[0].x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.10f, target.faces[0].y);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.32f, target.faces[0].size);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.90f, target.faces[0].confidence);
+  TEST_ASSERT_TRUE(parseCameraHostVisionTarget(
+      "/vision-target?p=123456&f=", &target));
+  TEST_ASSERT_EQUAL_UINT8(0, target.faceCount);
+  TEST_ASSERT_FALSE(parseCameraHostVisionTarget(
+      "/vision-target?p=123456&f=1001,0,200,800", &target));
+  TEST_ASSERT_FALSE(parseCameraHostVisionTarget(
+      "/vision-target?p=123456&f=0,0,200,800;0,0,200,800;0,0,200,800;0,0,200,800;0,0,200,800",
+      &target));
+  TEST_ASSERT_FALSE(parseCameraHostVisionTarget("/v", &target));
+}
+
+void test_camera_host_pairing_authorization_requires_configured_match() {
+  BridgeEndpointRegistry registry;
+  registry.begin();
+  BridgeEndpointControl control;
+  BridgeEndpointControlConfig config;
+  TEST_ASSERT_TRUE(control.begin(registry, config));
+  TEST_ASSERT_FALSE(control.authorizesPairedRequest("123456"));
+  TEST_ASSERT_TRUE(control.setRequiredPairingCode("123456"));
+  TEST_ASSERT_TRUE(control.authorizesPairedRequest("123456"));
+  TEST_ASSERT_FALSE(control.authorizesPairedRequest("654321"));
+  TEST_ASSERT_FALSE(control.authorizesPairedRequest(""));
 }
 
 void test_intent_engine_uses_bridge_response_mood_for_face_and_motion() {
@@ -6158,6 +6206,9 @@ int main() {
   RUN_TEST(test_active_speaker_tracker_uses_audio_to_choose_among_faces);
   RUN_TEST(test_active_speaker_tracker_holds_target_while_robot_replies);
   RUN_TEST(test_camera_adapter_publishes_audio_matched_active_speaker);
+  RUN_TEST(test_camera_host_protocol_requires_exact_pairing_code_query);
+  RUN_TEST(test_camera_host_protocol_parses_bounded_face_candidates);
+  RUN_TEST(test_camera_host_pairing_authorization_requires_configured_match);
   RUN_TEST(test_command_map_maps_multinet_phrase_ids_to_existing_actions);
   RUN_TEST(test_command_map_accepts_bench_tokens_matching_yaml_keys);
   RUN_TEST(test_intent_engine_prioritizes_explicit_command_speech_cue);

@@ -38,6 +38,7 @@ param(
   [switch]$RequirePowerForensics,
   [switch]$RequireFinalIntegration,
   [switch]$RequireCameraCapture,
+  [switch]$RequireCameraHostVision,
   [int]$MaxCameraCaptureUs = 250000,
   [switch]$RequirePmicVbusStable,
   [switch]$RequireNoNewHardFloorEvents,
@@ -280,6 +281,9 @@ function Invoke-RvcWorkerHealth {
 if ($RequireFinalIntegration -and $RequireCameraCapture) {
   throw "RequireFinalIntegration and RequireCameraCapture are separate production/probe profiles."
 }
+if ($RequireCameraHostVision -and -not $RequireCameraCapture) {
+  throw "RequireCameraHostVision requires the camera capture probe profile."
+}
 
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $evidencePath = (Resolve-Path $EvidenceRoot).Path
@@ -315,6 +319,8 @@ $bodyTouchReadFailuresBaseline = $null
 $imuReadFailuresBaseline = $null
 $imuEventsBaseline = $null
 $cameraCaptureFailuresBaseline = $null
+$cameraHostFrameFailuresBaseline = $null
+$cameraHostAuthFailuresBaseline = $null
 $motionStopResult = $null
 
 try {
@@ -511,6 +517,7 @@ try {
           imu_read_failures = Get-ObjectProperty $j "imu_read_failures" $null
           imu_events = Get-ObjectProperty $j "imu_events" $null
           compiled_enable_camera = Get-ObjectProperty $j "compiled_enable_camera" $null
+          compiled_enable_camera_host_vision = Get-ObjectProperty $j "compiled_enable_camera_host_vision" $null
           camera_ready = Test-TrueValue (Get-ObjectProperty $j "camera_ready" $false)
           camera_active = Test-TrueValue (Get-ObjectProperty $j "camera_active" $false)
           camera_capture_ready = Test-TrueValue (Get-ObjectProperty $j "camera_capture_ready" $false)
@@ -518,6 +525,10 @@ try {
           camera_capture_failures = Get-ObjectProperty $j "camera_capture_failures" $null
           camera_last_capture_us = Get-ObjectProperty $j "camera_last_capture_us" $null
           camera_max_capture_us = Get-ObjectProperty $j "camera_max_capture_us" $null
+          camera_host_frame_requests = Get-ObjectProperty $j "camera_host_frame_requests" $null
+          camera_host_frame_failures = Get-ObjectProperty $j "camera_host_frame_failures" $null
+          camera_host_target_updates = Get-ObjectProperty $j "camera_host_target_updates" $null
+          camera_host_auth_failures = Get-ObjectProperty $j "camera_host_auth_failures" $null
           power_battery_mv = Get-ObjectProperty $j "power_battery_mv" $null
           power_battery_min_mv = Get-ObjectProperty $j "power_battery_min_mv" $null
           power_battery_max_mv = Get-ObjectProperty $j "power_battery_max_mv" $null
@@ -599,6 +610,8 @@ try {
         $imuReadFailuresBaseline = $records[$records.Count - 1].imu_read_failures
         $imuEventsBaseline = $records[$records.Count - 1].imu_events
         $cameraCaptureFailuresBaseline = $records[$records.Count - 1].camera_capture_failures
+        $cameraHostFrameFailuresBaseline = $records[$records.Count - 1].camera_host_frame_failures
+        $cameraHostAuthFailuresBaseline = $records[$records.Count - 1].camera_host_auth_failures
       }
 
       $progress = [ordered]@{
@@ -846,7 +859,9 @@ try {
               $abortReason = "final_integration_peripheral_not_ready"
               break
             }
-            if ([int]$latestRecord.compiled_enable_camera -ne 0 -or $latestRecord.camera_active) {
+            if ([int]$latestRecord.compiled_enable_camera -ne 0 -or
+                [int]$latestRecord.compiled_enable_camera_host_vision -ne 0 -or
+                $latestRecord.camera_active) {
               $abortReason = "production_camera_must_be_disabled"
               break
             }
@@ -887,6 +902,30 @@ try {
             if ($MaxCameraCaptureUs -gt 0 -and $null -ne $latestRecord.camera_max_capture_us -and
                 [int64]$latestRecord.camera_max_capture_us -gt $MaxCameraCaptureUs) {
               $abortReason = "camera_capture_time_limit_exceeded"
+              break
+            }
+          }
+        }
+        if ($RequireCameraHostVision -and $records.Count -gt 0) {
+          $latestRecord = $records[$records.Count - 1]
+          if ($latestRecord.ok) {
+            if ([int]$latestRecord.compiled_enable_camera_host_vision -ne 1) {
+              $abortReason = "camera_host_vision_not_compiled"
+              break
+            }
+            if ($null -eq $cameraHostFrameFailuresBaseline -or
+                $null -eq $cameraHostAuthFailuresBaseline -or
+                $null -eq $latestRecord.camera_host_frame_requests -or
+                $null -eq $latestRecord.camera_host_target_updates) {
+              $abortReason = "camera_host_vision_counter_missing"
+              break
+            }
+            if ([int64]$latestRecord.camera_host_frame_failures -gt [int64]$cameraHostFrameFailuresBaseline) {
+              $abortReason = "camera_host_frame_failure_observed"
+              break
+            }
+            if ([int64]$latestRecord.camera_host_auth_failures -gt [int64]$cameraHostAuthFailuresBaseline) {
+              $abortReason = "camera_host_auth_failure_observed"
               break
             }
           }
@@ -979,12 +1018,19 @@ $finalIntegrationReadySamples = @($okRecords | Where-Object {
     [int]$_.compiled_enable_body_rgb -eq 1 -and $_.body_rgb_ready -and
     [int]$_.compiled_enable_body_touch -eq 1 -and $_.body_touch_ready -and
     [int]$_.compiled_enable_imu -eq 1 -and $_.imu_ready -and $_.imu_calibrated -and
-    [int]$_.compiled_enable_camera -eq 0 -and -not $_.camera_active
+    [int]$_.compiled_enable_camera -eq 0 -and
+    [int]$_.compiled_enable_camera_host_vision -eq 0 -and -not $_.camera_active
   }).Count
 $cameraCaptureReadySamples = @($okRecords | Where-Object {
     -not $_.debug_response_truncated -and
     [int]$_.compiled_enable_camera -eq 1 -and $_.camera_ready -and
     $_.camera_active -and $_.camera_capture_ready
+  }).Count
+$cameraHostVisionReadySamples = @($okRecords | Where-Object {
+    -not $_.debug_response_truncated -and
+    [int]$_.compiled_enable_camera_host_vision -eq 1 -and
+    $null -ne $_.camera_host_frame_requests -and
+    $null -ne $_.camera_host_target_updates
   }).Count
 $bodyRgbFrameDelta = if ($firstOkRecord -and $latestOkRecord -and
     $null -ne $firstOkRecord.body_rgb_frames -and $null -ne $latestOkRecord.body_rgb_frames) {
@@ -1001,6 +1047,16 @@ $imuSampleDelta = if ($firstOkRecord -and $latestOkRecord -and
 $cameraFrameDelta = if ($firstOkRecord -and $latestOkRecord -and
     $null -ne $firstOkRecord.camera_frames_captured -and $null -ne $latestOkRecord.camera_frames_captured) {
   [int64]$latestOkRecord.camera_frames_captured - [int64]$firstOkRecord.camera_frames_captured
+} else { $null }
+$cameraHostFrameRequestDelta = if ($firstOkRecord -and $latestOkRecord -and
+    $null -ne $firstOkRecord.camera_host_frame_requests -and
+    $null -ne $latestOkRecord.camera_host_frame_requests) {
+  [int64]$latestOkRecord.camera_host_frame_requests - [int64]$firstOkRecord.camera_host_frame_requests
+} else { $null }
+$cameraHostTargetUpdateDelta = if ($firstOkRecord -and $latestOkRecord -and
+    $null -ne $firstOkRecord.camera_host_target_updates -and
+    $null -ne $latestOkRecord.camera_host_target_updates) {
+  [int64]$latestOkRecord.camera_host_target_updates - [int64]$firstOkRecord.camera_host_target_updates
 } else { $null }
 $newBodyRgbWriteFailures = if ($null -ne $bodyRgbWriteFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.body_rgb_write_failures) {
@@ -1021,6 +1077,14 @@ $newImuEvents = if ($null -ne $imuEventsBaseline -and $latestOkRecord -and
 $newCameraCaptureFailures = if ($null -ne $cameraCaptureFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.camera_capture_failures) {
   [int64]$latestOkRecord.camera_capture_failures - [int64]$cameraCaptureFailuresBaseline
+} else { $null }
+$newCameraHostFrameFailures = if ($null -ne $cameraHostFrameFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.camera_host_frame_failures) {
+  [int64]$latestOkRecord.camera_host_frame_failures - [int64]$cameraHostFrameFailuresBaseline
+} else { $null }
+$newCameraHostAuthFailures = if ($null -ne $cameraHostAuthFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.camera_host_auth_failures) {
+  [int64]$latestOkRecord.camera_host_auth_failures - [int64]$cameraHostAuthFailuresBaseline
 } else { $null }
 $maxCameraCaptureUsObserved = if (@($okRecords | Where-Object { $null -ne $_.camera_max_capture_us }).Count -gt 0) {
   (@($okRecords | Where-Object { $null -ne $_.camera_max_capture_us }) |
@@ -1364,6 +1428,23 @@ if ($RequireCameraCapture) {
     $issues.Add("camera_capture_time_limit_exceeded")
   }
 }
+if ($RequireCameraHostVision) {
+  if ($okRecords.Count -eq 0 -or $cameraHostVisionReadySamples -lt $okRecords.Count) {
+    $issues.Add("camera_host_vision_not_ready_for_all_ok_samples")
+  }
+  if ($null -eq $cameraHostFrameRequestDelta -or $cameraHostFrameRequestDelta -le 0) {
+    $issues.Add("camera_host_frame_requests_not_advancing")
+  }
+  if ($null -eq $cameraHostTargetUpdateDelta -or $cameraHostTargetUpdateDelta -le 0) {
+    $issues.Add("camera_host_target_updates_not_advancing")
+  }
+  if ($newCameraHostFrameFailures -ne 0) {
+    $issues.Add("camera_host_frame_failure_observed")
+  }
+  if ($newCameraHostAuthFailures -ne 0) {
+    $issues.Add("camera_host_auth_failure_observed")
+  }
+}
 if ($MaxAllowedChipTempC -gt 0 -and $maxChipTempC -ne $null -and [double]$maxChipTempC -gt $MaxAllowedChipTempC) {
   $issues.Add("chip_temp_limit_exceeded")
 }
@@ -1414,6 +1495,7 @@ $summary = [ordered]@{
     requirePowerForensics = [bool]$RequirePowerForensics
     requireFinalIntegration = [bool]$RequireFinalIntegration
     requireCameraCapture = [bool]$RequireCameraCapture
+    requireCameraHostVision = [bool]$RequireCameraHostVision
     maxCameraCaptureUs = $MaxCameraCaptureUs
     requirePmicVbusStable = [bool]$RequirePmicVbusStable
     requireNoNewHardFloorEvents = [bool]$RequireNoNewHardFloorEvents
@@ -1497,20 +1579,27 @@ $summary = [ordered]@{
   latestPowerForensics = $latestPowerForensicsRecord
   finalIntegrationReadySamples = $finalIntegrationReadySamples
   cameraCaptureReadySamples = $cameraCaptureReadySamples
+  cameraHostVisionReadySamples = $cameraHostVisionReadySamples
   bodyRgbFrameDelta = $bodyRgbFrameDelta
   bodyTouchSampleDelta = $bodyTouchSampleDelta
   imuSampleDelta = $imuSampleDelta
   cameraFrameDelta = $cameraFrameDelta
+  cameraHostFrameRequestDelta = $cameraHostFrameRequestDelta
+  cameraHostTargetUpdateDelta = $cameraHostTargetUpdateDelta
   bodyRgbWriteFailuresBaseline = $bodyRgbWriteFailuresBaseline
   bodyTouchReadFailuresBaseline = $bodyTouchReadFailuresBaseline
   imuReadFailuresBaseline = $imuReadFailuresBaseline
   imuEventsBaseline = $imuEventsBaseline
   cameraCaptureFailuresBaseline = $cameraCaptureFailuresBaseline
+  cameraHostFrameFailuresBaseline = $cameraHostFrameFailuresBaseline
+  cameraHostAuthFailuresBaseline = $cameraHostAuthFailuresBaseline
   newBodyRgbWriteFailures = $newBodyRgbWriteFailures
   newBodyTouchReadFailures = $newBodyTouchReadFailures
   newImuReadFailures = $newImuReadFailures
   newImuEvents = $newImuEvents
   newCameraCaptureFailures = $newCameraCaptureFailures
+  newCameraHostFrameFailures = $newCameraHostFrameFailures
+  newCameraHostAuthFailures = $newCameraHostAuthFailures
   maxCameraCaptureUsObserved = $maxCameraCaptureUsObserved
   latestFinalIntegration = $latestOkRecord
   powerCoordinatorTelemetrySamples = $powerCoordinatorTelemetrySamples
