@@ -47,6 +47,7 @@
 #include "persona/SpeechPlanner.hpp"
 #include "power/PowerCoordinator.hpp"
 #include "power/PowerForensics.hpp"
+#include "wake/WakeCueSequence.hpp"
 
 using namespace stackchan;
 
@@ -5232,6 +5233,90 @@ void test_bridge_wake_gate_starts_and_completes_uplink_turn() {
   TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"seq\":41"));
 }
 
+void test_wake_cue_sequence_requires_rgb_and_cue_completion_before_capture() {
+  WakeCueSequence sequence;
+  TEST_ASSERT_TRUE(sequence.begin(100));
+  TEST_ASSERT_EQUAL(static_cast<int>(WakeCueSequencePhase::AwaitingRgbCommit),
+                    static_cast<int>(sequence.phase()));
+  TEST_ASSERT_FALSE(sequence.readyForCapture());
+
+  TEST_ASSERT_TRUE(sequence.noteRgbCommitted(110));
+  TEST_ASSERT_TRUE(sequence.noteAudioPaused(120));
+  TEST_ASSERT_TRUE(sequence.noteCueStarted(130, 166, 120, true));
+  TEST_ASSERT_FALSE(sequence.updateCue(140, false));
+  TEST_ASSERT_FALSE(sequence.updateCue(150, true));
+  TEST_ASSERT_FALSE(sequence.readyForCapture());
+  TEST_ASSERT_TRUE(sequence.updateCue(300, false));
+  TEST_ASSERT_TRUE(sequence.readyForCapture());
+
+  TEST_ASSERT_TRUE(sequence.noteAudioPauseHandoff(301));
+  TEST_ASSERT_TRUE(sequence.noteCaptureStarted(302, 0));
+  sequence.finishCapture(5102, true);
+
+  const WakeCueSequenceTelemetry& telemetry = sequence.telemetry();
+  TEST_ASSERT_EQUAL(static_cast<int>(WakeCueSequencePhase::Idle),
+                    static_cast<int>(telemetry.phase));
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.detections);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.rgbCommits);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.cueStarts);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.cueCompletions);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.audioPauseHandoffs);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.capturesStarted);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.capturesCompleted);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.orderingViolations);
+  TEST_ASSERT_EQUAL_UINT32(100, telemetry.lastDetectionMs);
+  TEST_ASSERT_EQUAL_UINT32(130, telemetry.lastCueStartMs);
+  TEST_ASSERT_EQUAL_UINT32(300, telemetry.lastCueEndMs);
+  TEST_ASSERT_EQUAL_UINT32(302, telemetry.lastCaptureStartMs);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.lastPostCuePreRollSamples);
+}
+
+void test_wake_cue_sequence_bounds_missing_or_stuck_playback() {
+  WakeCueSequence sequence;
+  TEST_ASSERT_TRUE(sequence.begin(1000));
+  TEST_ASSERT_TRUE(sequence.noteRgbCommitted(1010));
+  TEST_ASSERT_TRUE(sequence.noteAudioPaused(1020));
+  TEST_ASSERT_TRUE(sequence.noteCueStarted(1030, 166, 120, true));
+
+  TEST_ASSERT_FALSE(sequence.updateCue(1315, true));
+  TEST_ASSERT_TRUE(sequence.updateCue(1316, true));
+  TEST_ASSERT_TRUE(sequence.readyForCapture());
+  TEST_ASSERT_EQUAL_UINT32(1, sequence.telemetry().cueTimeouts);
+  TEST_ASSERT_EQUAL_UINT32(1316, sequence.telemetry().lastCueEndMs);
+}
+
+void test_wake_cue_sequence_blocks_capture_when_cue_start_fails() {
+  WakeCueSequence sequence;
+  TEST_ASSERT_TRUE(sequence.begin(2000));
+  TEST_ASSERT_TRUE(sequence.noteRgbCommitted(2010));
+  TEST_ASSERT_TRUE(sequence.noteAudioPaused(2020));
+  TEST_ASSERT_TRUE(sequence.noteCueStarted(2030, 166, 120, false));
+  TEST_ASSERT_FALSE(sequence.readyForCapture());
+  TEST_ASSERT_EQUAL(static_cast<int>(WakeCueSequencePhase::CueFailed),
+                    static_cast<int>(sequence.phase()));
+  TEST_ASSERT_FALSE(sequence.noteCaptureStarted(2031, 0));
+  sequence.abort(2100);
+
+  const WakeCueSequenceTelemetry& telemetry = sequence.telemetry();
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.cueFailures);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.cueStarts);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.capturesStarted);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.orderingViolations);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.aborts);
+}
+
+void test_wake_cue_sequence_rejects_early_capture_and_duplicate_detection() {
+  WakeCueSequence sequence;
+  TEST_ASSERT_TRUE(sequence.begin(3000));
+  TEST_ASSERT_FALSE(sequence.begin(3001));
+  TEST_ASSERT_FALSE(sequence.noteCaptureStarted(3002, 0));
+  TEST_ASSERT_EQUAL_UINT32(1, sequence.telemetry().rejectedDetections);
+  TEST_ASSERT_EQUAL_UINT32(1, sequence.telemetry().orderingViolations);
+  sequence.abort(3003);
+  TEST_ASSERT_EQUAL(static_cast<int>(WakeCueSequencePhase::Idle),
+                    static_cast<int>(sequence.phase()));
+}
+
 void test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled() {
   BridgeClient bridge;
   FakeBridgeNetworkSocket socket;
@@ -6319,6 +6404,10 @@ int main() {
   RUN_TEST(test_bridge_network_session_writes_queued_binary_frame);
   RUN_TEST(test_bridge_network_session_writes_queued_text_frame);
   RUN_TEST(test_bridge_audio_uplink_disabled_default_blocks_turn);
+  RUN_TEST(test_wake_cue_sequence_requires_rgb_and_cue_completion_before_capture);
+  RUN_TEST(test_wake_cue_sequence_bounds_missing_or_stuck_playback);
+  RUN_TEST(test_wake_cue_sequence_blocks_capture_when_cue_start_fails);
+  RUN_TEST(test_wake_cue_sequence_rejects_early_capture_and_duplicate_detection);
   RUN_TEST(test_bridge_audio_uplink_requires_wake_gate_before_start);
   RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);

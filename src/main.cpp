@@ -571,6 +571,7 @@
 #include "persona/StateMatrix.hpp"
 #include "power/PowerCoordinator.hpp"
 #include "power/PowerForensics.hpp"
+#include "wake/WakeCueSequence.hpp"
 
 #if __has_include("FirmwareVoiceAssets.hpp")
 #include "FirmwareVoiceAssets.hpp"
@@ -864,6 +865,12 @@ volatile bool gWakeMwwInteractionLatched = false;
 volatile uint32_t gWakeMwwInteractionLatchedAtMs = 0;
 volatile bool gWakeMwwAudioPauseRequested = false;
 volatile bool gWakeMwwAudioPaused = false;
+#if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
+RobotEvent gWakeMwwPendingCaptureEvent {};
+bool gWakeMwwPendingCaptureEventReady = false;
+WakeCueSequence gWakeCueSequence;
+#endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
 struct WakeMwwUplinkChunk {
   uint32_t capturedAtMs = 0;
@@ -1233,11 +1240,15 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   }
 
   bool playMicActivationTone() {
-    return playMicActivationPcmCue(false);
+    return playMicActivationPcmCue(false, false);
+  }
+
+  bool playMicActivationToneForCapture() {
+    return playMicActivationPcmCue(false, true);
   }
 
   bool playMicActivationTap() {
-    return playMicActivationPcmCue(true);
+    return playMicActivationPcmCue(true, false);
   }
 
   bool playLegacyMicActivationTone() {
@@ -1265,7 +1276,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     return ok;
   }
 
-  bool playMicActivationPcmCue(bool tap) {
+  bool playMicActivationPcmCue(bool tap, bool retainWakeMicPause) {
     if (!ready_) {
       diagnosticToneFailed_++;
       return false;
@@ -1276,7 +1287,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       return false;
     }
     const uint32_t nowMs = millis();
-    if (!prepareSpeakerPlayback(nowMs)) {
+    if (!prepareSpeakerPlayback(nowMs, retainWakeMicPause)) {
       diagnosticToneFailed_++;
       return false;
     }
@@ -1290,12 +1301,32 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     if (ok) {
       diagnosticToneOk_++;
       micCueRestoreAtMs_ = millis() + micCueDurationMs_ + kMicCueRestoreDelayMs;
-      scheduleAudioHardwareRelease(millis(), micCueDurationMs_ + kMicPauseReleaseSlackMs);
+      if (!retainWakeMicPause) {
+        scheduleAudioHardwareRelease(millis(), micCueDurationMs_ + kMicPauseReleaseSlackMs);
+      }
     } else {
       diagnosticToneFailed_++;
-      releaseAudioHardware(nowMs);
+      releaseAudioHardware(nowMs, !retainWakeMicPause);
     }
     return ok;
+  }
+
+  uint32_t micActivationCueDurationMs() const {
+    return micCueDurationMs_;
+  }
+
+  void handoffMicActivationCueToCapture(uint32_t nowMs) {
+    if (M5.Speaker.isPlaying(kChannel) != 0) {
+      M5.Speaker.stop(kChannel);
+    }
+    powerDownSpeakerHardware();
+    micCueRestoreAtMs_ = 0;
+    if (audioPauseHeld_) {
+      audioPauseHeld_ = false;
+    }
+    audioPauseReleaseAtMs_ = 0;
+    audioPauseForceReleaseAtMs_ = 0;
+    (void)nowMs;
   }
 
   uint32_t streamTaskChunks() const {
@@ -1623,12 +1654,12 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     return true;
   }
 
-  bool prepareSpeakerPlayback(uint32_t nowMs) {
+  bool prepareSpeakerPlayback(uint32_t nowMs, bool retainWakeMicPauseOnFailure = false) {
     if (!acquireAudioHardware(nowMs)) {
       return false;
     }
     if (!reclaimSpeakerHardware()) {
-      releaseAudioHardware(nowMs);
+      releaseAudioHardware(nowMs, !retainWakeMicPauseOnFailure);
       return false;
     }
     return true;
@@ -1642,12 +1673,14 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     audioPauseForceReleaseAtMs_ = audioPauseReleaseAtMs_ + kStreamingForceReleaseSlackMs;
   }
 
-  void releaseAudioHardware(uint32_t nowMs) {
+  void releaseAudioHardware(uint32_t nowMs, bool resumeWakeMic = true) {
     powerDownSpeakerHardware();
     if (!audioPauseHeld_) {
       return;
     }
-    releaseWakeMwwAudioPause(nowMs);
+    if (resumeWakeMic) {
+      releaseWakeMwwAudioPause(nowMs);
+    }
     audioPauseHeld_ = false;
     audioPauseReleaseAtMs_ = 0;
     audioPauseForceReleaseAtMs_ = 0;
@@ -4189,11 +4222,9 @@ void finishDedicatedWakeCaptureTurn(uint32_t seq, uint32_t nowMs) {
   }
 }
 
-bool runDedicatedWakeCaptureTurn(const RobotEvent& wakeEvent, uint32_t nowMs) {
+bool runDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
   if (gBridgeNetworkSession.telemetry().state != BridgeNetworkSessionState::Connected) {
-    return false;
-  }
-  if (!requestWakeMwwAudioPause(nowMs, 700)) {
+    releaseWakeMwwAudioPause(millis());
     return false;
   }
 
@@ -4221,10 +4252,15 @@ bool runDedicatedWakeCaptureTurn(const RobotEvent& wakeEvent, uint32_t nowMs) {
   }
   applyWakeMwwEs7210GainOverride();
 
-  gIntent.applyEvent(wakeEvent, CharacterMode::Listen);
-  gBridgeNetworkSession.update(nowMs);
-  gBridgeWakeGate.applyEvent(wakeEvent, nowMs);
-  gBridgeNetworkSession.update(nowMs);
+  const uint32_t captureStartMs = millis();
+  if (!gWakeCueSequence.noteCaptureStarted(captureStartMs, 0)) {
+    M5.Mic.end();
+    releaseWakeMwwAudioPause(millis());
+    return false;
+  }
+  gBridgeNetworkSession.update(captureStartMs);
+  gBridgeWakeGate.applyEvent(wakeEvent, captureStartMs);
+  gBridgeNetworkSession.update(captureStartMs);
 
   const BridgeAudioUplinkTelemetry& started = gBridgeAudioUplink.telemetry();
   if (!started.active) {
@@ -4243,7 +4279,7 @@ bool runDedicatedWakeCaptureTurn(const RobotEvent& wakeEvent, uint32_t nowMs) {
   static int16_t recordBuf[kRecordSamples];
   static int16_t monoBuf[kMonoSamples];
 
-  uint8_t submitted = 0;
+  uint16_t submitted = 0;
   for (uint8_t chunk = 0; chunk < kCaptureChunks; ++chunk) {
     if (!recordWakeMwwAudioBlocking(recordBuf, kRecordSamples, kSampleRate, kRecordStereo)) {
       gWakeSrProbe.recordDrops++;
@@ -4279,6 +4315,80 @@ bool runDedicatedWakeCaptureTurn(const RobotEvent& wakeEvent, uint32_t nowMs) {
   releaseWakeMwwAudioPause(millis());
   suppressWakeMwwDetections(millis(), 900);
   return submitted > 0;
+}
+
+void serviceDedicatedWakeCapture(uint32_t nowMs) {
+  WakeCueSequencePhase phase = gWakeCueSequence.phase();
+  if (phase == WakeCueSequencePhase::AwaitingAudioPause) {
+    if (!requestWakeMwwAudioPause(nowMs, 700)) {
+      gWakeCueSequence.abort(millis());
+      gWakeMwwPendingCaptureEventReady = false;
+      return;
+    }
+    const uint32_t pausedAtMs = millis();
+    if (!gWakeCueSequence.noteAudioPaused(pausedAtMs)) {
+      releaseWakeMwwAudioPause(millis());
+      gWakeCueSequence.abort(millis());
+      gWakeMwwPendingCaptureEventReady = false;
+      return;
+    }
+    const bool cueAccepted = gSpeakerSink.playMicActivationToneForCapture();
+    const uint32_t cueStartMs = millis();
+    gWakeCueSequence.noteCueStarted(
+        cueStartMs,
+        gSpeakerSink.micActivationCueDurationMs(),
+        kWakeMwwCueCompletionTimeoutMs,
+        cueAccepted);
+    phase = gWakeCueSequence.phase();
+  }
+
+  if (phase == WakeCueSequencePhase::CueFailed) {
+    gSpeakerSink.handoffMicActivationCueToCapture(millis());
+    releaseWakeMwwAudioPause(millis());
+    gWakeCueSequence.abort(millis());
+    gWakeMwwPendingCaptureEventReady = false;
+    return;
+  }
+
+  if (phase == WakeCueSequencePhase::CuePlaying) {
+    if (!gWakeCueSequence.updateCue(millis(), gSpeakerSink.speakerChannelState() != 0)) {
+      return;
+    }
+    phase = gWakeCueSequence.phase();
+  }
+
+  if (phase == WakeCueSequencePhase::CueFailed) {
+    releaseWakeMwwAudioPause(millis());
+    gWakeCueSequence.abort(millis());
+    gWakeMwwPendingCaptureEventReady = false;
+    return;
+  }
+
+  if (phase != WakeCueSequencePhase::ReadyForCapture) {
+    return;
+  }
+
+  const uint32_t handoffMs = millis();
+  gSpeakerSink.handoffMicActivationCueToCapture(handoffMs);
+  if (!gWakeCueSequence.noteAudioPauseHandoff(handoffMs)) {
+    releaseWakeMwwAudioPause(millis());
+    gWakeCueSequence.abort(millis());
+    gWakeMwwPendingCaptureEventReady = false;
+    return;
+  }
+
+  const bool captured = gWakeMwwPendingCaptureEventReady &&
+                        runDedicatedWakeCaptureAfterCue(gWakeMwwPendingCaptureEvent);
+  const uint32_t captureEndMs = millis();
+  if (gWakeCueSequence.phase() == WakeCueSequencePhase::Capturing) {
+    gWakeCueSequence.finishCapture(captureEndMs, captured);
+  } else {
+    gWakeCueSequence.abort(captureEndMs);
+  }
+  gWakeMwwPendingCaptureEventReady = false;
+  if (captured) {
+    ++gWakeSrProbe.wakeEventsApplied;
+  }
 }
 #endif
 
@@ -4744,13 +4854,16 @@ void pollWakeMwwProbe(uint32_t nowMs) {
     gWakeMwwInteractionLatchedAtMs = nowMs;
     suppressWakeMwwDetections(nowMs, 900);
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
-    const bool applied = runDedicatedWakeCaptureTurn(event, nowMs);
-    if (applied) {
-      gWakeSrProbe.wakeEventsApplied++;
+    const bool scheduled = gWakeCueSequence.begin(nowMs);
+    if (scheduled) {
+      gWakeMwwPendingCaptureEvent = event;
+      gWakeMwwPendingCaptureEventReady = true;
+      gIntent.applyEvent(event, CharacterMode::Listen);
+      gBodyFeedback.notifyMicActivated(nowMs);
     }
 #if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
-    Serial.print(F("[mww_wake] event=wake_word dedicated_capture="));
-    Serial.print(applied ? 1 : 0);
+    Serial.print(F("[mww_wake] event=wake_word dedicated_capture_scheduled="));
+    Serial.print(scheduled ? 1 : 0);
     Serial.print(F(" detections="));
     Serial.print(gWakeSrProbe.wakeDetections);
     Serial.print(F(" applied_total="));
@@ -6109,6 +6222,10 @@ void submitCapturedAudioWindowToBridgeUplink(uint32_t nowMs) {
 }
 
 void playMicActivationCueIfNeeded() {
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+  // Dedicated wake capture owns cue ordering before it opens the uplink.
+  return;
+#endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK
   static uint32_t sLastUplinkTurnsStarted = 0;
   const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
@@ -6646,6 +6763,9 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   const BridgeClientTelemetry& bridge = gBridge.telemetry();
   const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
   const DisplayTelemetry& display = gDisplay.telemetry();
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+  const WakeCueSequenceTelemetry& wakeCue = gWakeCueSequence.telemetry();
+#endif
   const ActuationTelemetry motion = gActuation.telemetry();
   const PowerCoordinatorTelemetry powerCoordinator = gPowerCoordinator.telemetry();
   const PowerFloorTelemetry powerFloor = gPowerFloorTracker.telemetry();
@@ -7283,6 +7403,55 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"sr_wake_audio_resume_requests\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioResumeRequests));
   append(",\"sr_wake_audio_resumes\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioResumes));
   append(",\"sr_wake_audio_pause_failures\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioPauseFailures));
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+  append(",\"wake_cue_phase\":\"%s\"", wakeCueSequencePhaseName(wakeCue.phase));
+  append(",\"wake_cue_detections\":%lu", static_cast<unsigned long>(wakeCue.detections));
+  append(",\"wake_cue_rejected_detections\":%lu",
+         static_cast<unsigned long>(wakeCue.rejectedDetections));
+  append(",\"wake_cue_rgb_commits\":%lu", static_cast<unsigned long>(wakeCue.rgbCommits));
+  append(",\"wake_cue_starts\":%lu", static_cast<unsigned long>(wakeCue.cueStarts));
+  append(",\"wake_cue_completions\":%lu", static_cast<unsigned long>(wakeCue.cueCompletions));
+  append(",\"wake_cue_failures\":%lu", static_cast<unsigned long>(wakeCue.cueFailures));
+  append(",\"wake_cue_timeouts\":%lu", static_cast<unsigned long>(wakeCue.cueTimeouts));
+  append(",\"wake_cue_audio_pause_handoffs\":%lu",
+         static_cast<unsigned long>(wakeCue.audioPauseHandoffs));
+  append(",\"wake_cue_captures_started\":%lu",
+         static_cast<unsigned long>(wakeCue.capturesStarted));
+  append(",\"wake_cue_captures_completed\":%lu",
+         static_cast<unsigned long>(wakeCue.capturesCompleted));
+  append(",\"wake_cue_captures_failed\":%lu",
+         static_cast<unsigned long>(wakeCue.capturesFailed));
+  append(",\"wake_cue_aborts\":%lu", static_cast<unsigned long>(wakeCue.aborts));
+  append(",\"wake_cue_ordering_violations\":%lu",
+         static_cast<unsigned long>(wakeCue.orderingViolations));
+  append(",\"wake_cue_last_detection_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastDetectionMs));
+  append(",\"wake_cue_last_rgb_commit_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastRgbCommitMs));
+  append(",\"wake_cue_last_audio_paused_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastAudioPausedMs));
+  append(",\"wake_cue_last_start_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastCueStartMs));
+  append(",\"wake_cue_last_end_ms\":%lu", static_cast<unsigned long>(wakeCue.lastCueEndMs));
+  append(",\"wake_cue_last_capture_start_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastCaptureStartMs));
+  append(",\"wake_cue_last_capture_end_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastCaptureEndMs));
+  append(",\"wake_cue_last_detection_to_start_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastCueStartMs >= wakeCue.lastDetectionMs
+                                        ? wakeCue.lastCueStartMs - wakeCue.lastDetectionMs
+                                        : 0));
+  append(",\"wake_cue_last_playback_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastCueEndMs >= wakeCue.lastCueStartMs
+                                        ? wakeCue.lastCueEndMs - wakeCue.lastCueStartMs
+                                        : 0));
+  append(",\"wake_cue_last_end_to_capture_ms\":%lu",
+         static_cast<unsigned long>(wakeCue.lastCaptureStartMs >= wakeCue.lastCueEndMs
+                                        ? wakeCue.lastCaptureStartMs - wakeCue.lastCueEndMs
+                                        : 0));
+  append(",\"wake_cue_last_postcue_preroll_samples\":%lu",
+         static_cast<unsigned long>(wakeCue.lastPostCuePreRollSamples));
+#endif
   append(",\"sr_wake_sr_ready\":%s", gWakeSrProbe.srReady ? "true" : "false");
   append(",\"sr_wake_record_ok\":%lu", static_cast<unsigned long>(gWakeSrProbe.recordOk));
   append(",\"sr_wake_record_drops\":%lu", static_cast<unsigned long>(gWakeSrProbe.recordDrops));
@@ -8012,6 +8181,9 @@ void IntentTask(void* pv) {
     pollBridgeOutputs(millis());
     playMicActivationCueIfNeeded();
     gSpeakerSink.service(millis());
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+    serviceDedicatedWakeCapture(millis());
+#endif
 
     RobotFrame frame = gIntent.update(millis());
     gCamera.setRobotSpeaking(frame.mode == CharacterMode::Speak, frame.timestampMs);
@@ -8019,6 +8191,11 @@ void IntentTask(void* pv) {
     const BodyRgbFrame bodyRgb = gBodyFeedback.render(
         frame, faceSpeech.envelope, frame.timestampMs, bodyFeedbackPowerScale(), bodyFeedbackProtected());
     gBodyPeripheral.writeRgb(bodyRgb, frame.timestampMs);
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+    if (gWakeCueSequence.phase() == WakeCueSequencePhase::AwaitingRgbCommit) {
+      gWakeCueSequence.noteRgbCommitted(frame.timestampMs);
+    }
+#endif
     for (uint8_t i = 0; i < pendingAudioEventCount; ++i) {
       printAudioTelemetry(pendingAudioEvents[i], frame.timestampMs);
     }
