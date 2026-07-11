@@ -110,7 +110,8 @@ class ReferenceBridgeTests(unittest.TestCase):
             }
         )
 
-        turn, memory, result = turn_from_character_response(raw, BridgeMemory(), session="model", seq=33)
+        starting = BridgeMemory().remember_user_text("My name is Rob.")
+        turn, memory, result = turn_from_character_response(raw, starting, session="model", seq=33)
 
         self.assertTrue(result.ok, result.issues)
         self.assertEqual("model", turn.session)

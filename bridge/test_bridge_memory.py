@@ -29,7 +29,7 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         }
 
     def test_versioned_schema_separates_durable_facts_from_recent_context(self):
-        memory = BridgeMemory().apply_character_memory(
+        memory = BridgeMemory().remember_user_text("My name is Rob.").apply_character_memory(
             {
                 "memory_write": {
                     "user.name": "Rob",
@@ -44,7 +44,10 @@ class BridgeMemoryStoreTests(unittest.TestCase):
 
         self.assertEqual(MEMORY_SCHEMA, data["schema"])
         self.assertEqual(MEMORY_SCHEMA_VERSION, data["schema_version"])
-        self.assertEqual({"user.name", "project.note"}, {item["key"] for item in data["durable_facts"]})
+        self.assertEqual(
+            {"user.preferred_name", "project.note"},
+            {item["key"] for item in data["durable_facts"]},
+        )
         self.assertEqual(["robot.physical_context"], [item["key"] for item in data["recent_context"]])
         for item in (*data["durable_facts"], *data["recent_context"]):
             self.assertIn("created_at", item)
@@ -76,6 +79,39 @@ class BridgeMemoryStoreTests(unittest.TestCase):
             {"project.topic", "robot.physical_context"},
             {item["key"] for item in data["recent_context"]},
         )
+
+    def test_flat_schema_rejects_observed_corruption_shapes(self):
+        corrupted = {
+            "preferred_name": "happy",
+            "recent_topics": ["voice", ["bridge"]],
+            "physical_context": [["Greeting was successfully processed."], "['greeting']", "low_battery", "1"],
+            "turns_seen": 113,
+        }
+
+        memory = BridgeMemory.from_dict(corrupted)
+
+        self.assertEqual("", memory.preferred_name)
+        self.assertEqual(("voice",), memory.recent_topics)
+        self.assertEqual(("low_battery",), memory.physical_context)
+        self.assertNotIn("['", json.dumps(memory.to_dict()))
+
+    def test_only_explicit_user_language_establishes_preferred_name(self):
+        memory = BridgeMemory().remember_user_text("I'm happy you're my friend.")
+        memory = memory.apply_character_memory(
+            {"memory_write": {"user.name": "happy"}, "memory_forget": []}
+        )
+        self.assertEqual("", memory.preferred_name)
+
+        memory = memory.remember_user_text("You can call me Rob.")
+        memory = memory.apply_character_memory(
+            {"memory_write": {"user.name": "Rob"}, "memory_forget": []}
+        )
+        self.assertEqual("Rob", memory.preferred_name)
+
+        replaced = memory.apply_character_memory(
+            {"memory_write": {"user.name": "Alice"}, "memory_forget": []}
+        )
+        self.assertEqual("Rob", replaced.preferred_name)
 
     def test_expired_records_are_pruned_on_load(self):
         data = {
@@ -170,7 +206,7 @@ class BridgeMemoryStoreTests(unittest.TestCase):
             self.assertNotIn(forbidden, encoded)
 
     def test_forget_removes_matching_namespaces_and_wins_over_writes(self):
-        memory = BridgeMemory().apply_character_memory(
+        memory = BridgeMemory().remember_user_text("My name is Rob.").apply_character_memory(
             {
                 "memory_write": {
                     "user.name": "Rob",

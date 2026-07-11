@@ -284,7 +284,7 @@ def beats_from_pcm(pcm: bytes, sample_rate: int) -> list[dict[str, object]]:
             total += value * value
             count += 1
         peaks.append(math.sqrt(total / max(1, count)))
-    max_peak = max(peaks) if peaks else 1.0
+    max_peak = max(max(peaks), 1e-6) if peaks else 1.0
     visemes = ("ah", "oh", "ee", "neutral")
     beats: list[dict[str, object]] = []
     for index, peak in enumerate(peaks[:800]):

@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-11 00:00 America/New_York
+Status timestamp: 2026-07-11 00:37 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -30,8 +30,11 @@ support compiled with motion disabled at boot.
 - Current firmware SHA256: `3C40D5A0F006B67D175ED963133E90F889AE600D5C1F0F419E06FE7B99786C10`
 - The lead directory includes all flash images, the ELF, exact relevant source/configuration, hashes, the PC-vs-wall input comparison, the failed pre-priority timing attempt, the verified six-minute boundary pass, the complete 60-minute acceptance evidence, its formal check, and both post-stop charge-handoff results.
 - Current PC STT: `python bridge\whisper_cpp_stt.py`
-- Current PC TTS/RVC: `python bridge\rvc_tts_client.py`
-- Current warm RVC worker: `bridge\rvc_worker_service.py` at `http://127.0.0.1:5055`
+- Current PC TTS/RVC: `python bridge\rvc_production_tts_client.py`, phrase-streamed through
+  DirectML with a bounded clear local fallback.
+- Current production RVC worker: `bridge\rvc_directml_worker_service.py` at
+  `http://127.0.0.1:5059`. The unused warm ROCm worker on `5055` was stopped after promotion
+  to free GPU memory; its launcher remains the rollback path.
 - RVC runtime: `C:\stackchan_rocm_venv` with PyTorch `2.9.1+rocm7.2.1` and `rvc-python==0.1.5`
 - RVC model cache: `output\voice_sources\stackchan_rvc_base\model\model.pth`
 - RVC index cache: `output\voice_sources\stackchan_rvc_base\model\model.index`
@@ -39,6 +42,17 @@ support compiled with motion disabled at boot.
 - RVC output: `pcm16`, 16 kHz, max payload `65536` bytes
 - Current acceleration status: warm ROCm worker validated on AMD Radeon RX 7800 XT; first warm-up conversion was about 29 s, subsequent conversion was about 3 s
 - Voice V2 DirectML is physically validated. Lab conversion with the accepted `pm` method and full `0.62` index took `0.43-0.63 s`, median rendering realtime factor was `0.22`, and the complete TTS + RVC client took `1.01-1.18 s`. The physical warm-API run at `output\pc-brain\voice-v2-warm-api-supervised-20260710-205818` passed `22/22`: four turns, eight of eight phrases complete, `567040` host bytes exactly matched `567040` robot bytes in 142 chunks, zero truncation/playback errors/forced stops, worst conversation first audio `3492.31 ms`, and worst post-text voice first audio `1047.52 ms`. The production bridge and worker were restored afterward.
+- DirectML was promoted to the live bridge at
+  `output\pc-brain\directml-production-start-20260711-003533`. Runtime verification passed
+  30/30 with bridge PID `8292`, worker schema ready, phrase streaming enabled, speaker downlink
+  enabled, robot bridge/network ready, and motion/rail/torque off. A silent host-only production
+  synthesis completed in `1.33 s` for `3.94 s` of audio, used DirectML rather than fallback, and
+  reported zero truncation. The corrupted legacy memory was backed up and sanitized to bounded
+  v2 before promotion; no preferred name was retained because none came from explicit user
+  naming language.
+- After stopping the unused warm ROCm process, DirectML `5059` and bridge `8765` remained
+  healthy. Robot `/debug` remained network/bridge ready with motion, rail, and torque off,
+  display maximum `29139 us`, VBUS `5024 mV`, and chip temperature `60.5 C`.
 - Gemma's live runner now uses Ollama's warm loopback HTTP API with JSON output, thinking disabled, bounded context/output, and an indefinite model keep-alive; the CLI remains a fallback. The same 352-token prompt dropped from about `13.69 s` through `ollama run` to about `1.02 s` through the API, roughly 112 generated tokens/s. The bridge now passes the actual STT transcript into `local_runner.py`; prompt cases no longer replace what the user said.
 - Streamed speech mouth movement is restored. `bridge\lan_service.py` aggregates the existing TTS/RVC beat envelope over each PCM chunk and emits one mouth frame immediately before that chunk. The supervised mouth run at `output\pc-brain\voice-v2-mouth-supervised-20260710-210803` passed `22/22`, reconciled `97920` bytes in 25 chunks, had zero playback errors or forced stops, reached first audio in `3531.68 ms` conversation / `1079.51 ms` post-text, and received the operator's visual confirmation that the mouth moved while Stackchan spoke.
 - The corrected wall-powered no-motion debug-latency baseline passed for `7203 s` at `output\pc-brain\wall-nomotion-debug-latency-4s-locksafe-2hr-20260710-120614`: `3376/3379` successful four-second probes, three isolated curl `28` timeouts at 607.6, 3323.7, and 4962.3 seconds, failure ratio `0.000888`, maximum streak one, and the established bridge socket present in all 3379 records. Motion, servo rail, and torque stayed off; live VBUS was `5014-5054 mV`, no hard-floor event occurred, maximum temperature was `58.5 C`, maximum face frame was `44707 us`, and minimum free heap was `113456`. Verified motion-stop cleanup passed, and the corrected formal no-motion checker passed `37/37`. Comparison evidence is `probe-comparison.json` in that root. This supports transient `/debug` HTTP service latency independent of servo motion; it does not identify the internal cause of each delayed response or explain the historical blackouts.

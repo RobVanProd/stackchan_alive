@@ -156,6 +156,8 @@ def contains_any(text: str, patterns: Iterable[str]) -> str:
 
 
 def memory_value_is_allowed(value: object, denied_terms: Iterable[str] = SENSITIVE_MEMORY) -> bool:
+    if not isinstance(value, str):
+        return False
     text = str(value).lower()
     if contains_any(text, denied_terms):
         return False
@@ -182,6 +184,9 @@ def normalize_memory_write(
         if not key_text.startswith(prefixes):
             issues.append(f"memory_key_dropped:{key_text}")
             continue
+        if not isinstance(item, str):
+            issues.append(f"memory_value_not_string:{key_text}")
+            continue
         if not memory_value_is_allowed(item, denied_terms):
             issues.append(f"memory_value_dropped:{key_text}")
             continue
@@ -195,7 +200,15 @@ def normalize_memory_forget(value: object, issues: list[str]) -> list[str]:
     if not isinstance(value, list):
         issues.append("memory_forget_not_array")
         return []
-    return [str(item) for item in value if str(item).strip()]
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            issues.append("memory_forget_item_not_string")
+            continue
+        clean = item.strip()
+        if clean:
+            normalized.append(clean)
+    return normalized
 
 
 def validate_response(raw_response: str, persona: PersonaPack | None = None) -> HarnessResult:

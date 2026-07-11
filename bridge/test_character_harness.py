@@ -119,6 +119,31 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertEqual({"user.name": "Rob", "project.note": "servo bracket"}, result.normalized["memory_write"])
         self.assertIn("project.bracket_color", result.normalized["memory_forget"])
 
+    def test_memory_policy_rejects_container_values_instead_of_stringifying_them(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I will keep only the useful note.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {
+                    "robot.physical_context": ["greeting"],
+                    "project.note": {"value": "nested"},
+                    "project.topic": "voice",
+                },
+                "memory_forget": [{"project": "all"}, "robot.status"],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertFalse(result.ok)
+        self.assertEqual({"project.topic": "voice"}, result.normalized["memory_write"])
+        self.assertEqual(["robot.status"], result.normalized["memory_forget"])
+        self.assertIn("memory_value_not_string:robot.physical_context", result.issues)
+        self.assertIn("memory_value_not_string:project.note", result.issues)
+        self.assertIn("memory_forget_item_not_string", result.issues)
+
     def test_prompt_suite_and_profiles_cover_mobile_target(self):
         self.assertGreaterEqual(len(PROMPT_SUITE), 5)
         self.assertIn("gemma4-e2b-litert-lm", MODEL_PROFILES)

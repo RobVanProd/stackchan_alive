@@ -36,7 +36,7 @@ if (-not $good.machineReady) {
 if ($good.failed -ne 0) {
   throw "Expected good command line to have zero failed checks."
 }
-foreach ($id in @("stt-command", "audio-wake-phrase", "audio-downlink-disabled", "tts-command", "tts-voice", "runner-command", "require-runner", "binary-delay", "client-idle-timeout", "turn-log-file")) {
+foreach ($id in @("stt-command", "audio-wake-phrase", "audio-downlink-disabled", "stream-tts-phrases", "tts-command", "tts-voice", "runner-command", "require-runner", "binary-delay", "client-idle-timeout", "turn-log-file")) {
   $check = @($good.checks | Where-Object { $_.id -eq $id })[0]
   if ($null -eq $check -or $check.status -ne "pass") {
     throw "Expected $id to pass."
@@ -53,6 +53,21 @@ $enabledAudioCommand = $goodCommand -replace " --disable-audio-downlink", ""
 $enabledAudio = & "tools\check_pc_brain_runtime.ps1" -ProcessCommandLine $enabledAudioCommand -ExpectedDisableAudioDownlink $false -Json | ConvertFrom-Json
 if (-not $enabledAudio.machineReady -or $enabledAudio.failed -ne 0) {
   throw "Expected explicitly enabled audio-downlink command line to pass when requested."
+}
+
+$directMlCommand = $goodCommand `
+  -replace "bridge\\selected_voice_tts.py", "bridge\rvc_directml_tts_client.py" `
+  -replace "stackchan-rvc-bright-robot", "stackchan-rvc-directml-v2" `
+  -replace "--downlink-binary-frame-delay-ms 20", "--stream-tts-phrases --downlink-binary-frame-delay-ms 70" `
+  -replace " --disable-audio-downlink", ""
+$directMl = & "tools\check_pc_brain_runtime.ps1" -ProcessCommandLine $directMlCommand `
+  -ExpectedTtsCommand "bridge\rvc_directml_tts_client.py" `
+  -ExpectedTtsVoice "stackchan-rvc-directml-v2" `
+  -ExpectedDownlinkBinaryFrameDelayMs 70 `
+  -ExpectedDisableAudioDownlink $false `
+  -ExpectedStreamTtsPhrases $true -Json | ConvertFrom-Json
+if (-not $directMl.machineReady -or $directMl.failed -ne 0) {
+  throw "Expected DirectML phrase-streaming command line to pass."
 }
 
 $badCommand = $goodCommand -replace "--stt-command `"python bridge\\whisper_cpp_stt.py`" ", ""

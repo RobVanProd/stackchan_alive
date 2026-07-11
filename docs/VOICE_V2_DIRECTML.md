@@ -1,12 +1,26 @@
-# Voice V2 DirectML Candidate
+# Voice V2 DirectML Runtime
 
-Status: host, wire, firmware, physical speaker, and speech-mouth validation passed.
+Status: host, wire, firmware, physical speaker, and speech-mouth validation passed. DirectML is
+the preferred Windows production runtime; the older warm ROCm worker is retained only as a
+rollback until the final combined soak passes.
 
 The Voice V2 path keeps voice conversion on the Windows host, uses the official RVC runtime
 with `torch-directml`, and streams completed phrases to the robot instead of waiting for the
-entire response to be rendered. The supervised scripts temporarily use the isolated DirectML
-worker on port `5059`, then restore the normal worker on `5055` and bridge on `8765` after the
-evidence checker completes.
+entire response to be rendered. Production uses the DirectML worker on port `5059`, the bridge
+on `8765`, and a bounded clear local speech fallback if the worker is unavailable. The fallback
+is intentionally intelligible rather than voice-matched and is exposed in TTS telemetry; strict
+validation can set `STACKCHAN_VOICE_REQUIRE_DIRECTML=1` to reject fallback.
+
+Start or repair the production host path with:
+
+```powershell
+.\tools\start_pc_brain_directml.ps1 -RepairMemory -Json
+```
+
+The wrapper stops only a verified Stackchan bridge listener, backs up and sanitizes persistent
+memory, starts and health-checks DirectML, enables phrase streaming and speaker downlink, waits
+for the robot socket and `/debug`, and preserves a runtime evidence packet. It does not flash,
+reboot, enable motion, or format storage.
 
 ## Performance Gate
 
@@ -118,9 +132,10 @@ Speech-mouth evidence is preserved at
 for each of 25 streamed PCM chunks, the host and robot reconciled all `97920` bytes, all `22/22`
 checks passed, and the operator visually confirmed that Stackchan's mouth moved while speaking.
 
-## Opt-In Phrase Streaming
+## Phrase Streaming
 
-Phrase streaming is disabled by default. When enabled, the bridge sends
+Phrase streaming remains disabled in the generic bridge launcher and is explicitly enabled by
+the DirectML production wrapper. When enabled, the bridge sends
 `audio_stream_start` with unknown totals, emits each completed phrase as soon as conversion
 finishes, and sends the exact aggregate byte/chunk totals in `audio_stream_end`. Both firmware
 variants parse this protocol shape, but only `stackchan_voice_v2` can physically play a logical

@@ -25,6 +25,24 @@ PHYSICAL_CONTEXT_TTL = timedelta(hours=24)
 
 _ALLOWED_PREFIXES = ("user.", "project.", "robot.")
 _NAME_KEYS = {"user.name", "user.preferred_name", "user.greeting"}
+_PREFERRED_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,20}$")
+_RESERVED_NAME_WORDS = {
+    "angry",
+    "assistant",
+    "confused",
+    "cool",
+    "dude",
+    "friend",
+    "happy",
+    "helpful",
+    "human",
+    "person",
+    "ready",
+    "robot",
+    "sad",
+    "stackchan",
+    "tired",
+}
 _DENIED_MEMORY_TERMS = (
     "password",
     "passcode",
@@ -113,6 +131,22 @@ def _clean_key(value: object) -> str:
     return _clean_item(value, MAX_MEMORY_KEY_CHARS).lower()
 
 
+def _memory_scalar(value: object, max_len: int = MAX_MEMORY_VALUE_CHARS) -> str:
+    if not isinstance(value, str):
+        return ""
+    clean = _clean_item(value, max_len)
+    if not clean or clean.isnumeric() or clean[0] in "[{" or clean[-1:] in "]}":
+        return ""
+    return clean
+
+
+def _preferred_name(value: object) -> str:
+    clean = _memory_scalar(value, 32)
+    if not _PREFERRED_NAME_RE.fullmatch(clean) or clean.lower() in _RESERVED_NAME_WORDS:
+        return ""
+    return clean
+
+
 def _safe_value(key: str, value: str) -> bool:
     if not key.startswith(_ALLOWED_PREFIXES):
         return False
@@ -161,7 +195,7 @@ class MemoryRecord:
         now: str | None = None,
     ) -> "MemoryRecord | None":
         clean_key = _clean_key(key)
-        clean_value = _clean_item(value)
+        clean_value = _memory_scalar(value)
         if not clean_value or not _safe_value(clean_key, clean_value):
             return None
         timestamp = now or _utc_now()
@@ -205,7 +239,7 @@ class MemoryRecord:
 def _dedupe_tail(values: Iterable[object]) -> tuple[str, ...]:
     items: list[str] = []
     for value in values:
-        item = _clean_item(value)
+        item = _memory_scalar(value)
         if not item:
             continue
         if item in items:
@@ -274,7 +308,7 @@ class BridgeMemory:
     _recent_context: tuple[MemoryRecord, ...] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        preferred_name = _clean_item(self.preferred_name, 32)
+        preferred_name = _preferred_name(self.preferred_name)
         if preferred_name and not _safe_value("user.preferred_name", preferred_name):
             preferred_name = ""
         object.__setattr__(self, "preferred_name", preferred_name)
@@ -292,7 +326,11 @@ class BridgeMemory:
 
     @staticmethod
     def _safe_items(values: Iterable[object], key: str) -> tuple[str, ...]:
-        return _dedupe_tail(value for value in values if _safe_value(key, _clean_item(value)))
+        return _dedupe_tail(
+            value
+            for value in values
+            if _memory_scalar(value) and _safe_value(key, _memory_scalar(value))
+        )
 
     @staticmethod
     def _items(value: object) -> tuple[str, ...]:
@@ -306,15 +344,12 @@ class BridgeMemory:
             for record in self._durable_facts
             if _safe_value(record.key, record.value)
             and (not record.expires_at or _as_datetime(record.expires_at) > _as_datetime(now))
-            and not (record.key in _NAME_KEYS and record.value != self.preferred_name)
+            and record.key not in _NAME_KEYS
         )
         if self.preferred_name:
-            if not any(record.key in _NAME_KEYS and record.value == self.preferred_name for record in records):
-                records = _upsert_durable(
-                    records, "user.preferred_name", self.preferred_name, 0.9, now=now, refresh=False
-                )
-        else:
-            records = tuple(record for record in records if record.key not in _NAME_KEYS)
+            records = _upsert_durable(
+                records, "user.preferred_name", self.preferred_name, 0.9, now=now, refresh=False
+            )
         return _bounded_durable(records)
 
     def _canonical_recent(
@@ -420,7 +455,7 @@ class BridgeMemory:
         now = _utc_now()
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
-        clean_name = _clean_item(preferred_name, 32)
+        clean_name = _preferred_name(preferred_name)
         next_name = (
             clean_name
             if clean_name and _safe_value("user.preferred_name", clean_name)
@@ -458,17 +493,22 @@ class BridgeMemory:
         physical = list(self.physical_context)
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
+        forget_everything = False
 
         writes = normalized.get("memory_write", {})
         if isinstance(writes, dict):
             for raw_key, raw_value in writes.items():
                 key = _clean_key(raw_key)
-                value = _clean_item(raw_value)
+                value = _memory_scalar(raw_value)
                 if not value or not _safe_value(key, value):
                     continue
                 if key in _NAME_KEYS:
-                    preferred_name = value[:32]
-                    durable = _upsert_durable(durable, key, preferred_name, 0.9, now=now)
+                    # Identity is transcript-owned. The model may reinforce an explicitly
+                    # observed name, but it cannot invent or replace one.
+                    if preferred_name and value.casefold() == preferred_name.casefold():
+                        durable = _upsert_durable(
+                            durable, key, preferred_name, 0.9, now=now
+                        )
                 elif key.startswith("project.") or (key.startswith("user.") and "topic" in key):
                     topics.append(value)
                     durable = _upsert_durable(durable, key, value, 0.75, now=now)
@@ -482,6 +522,9 @@ class BridgeMemory:
         if isinstance(forgets, list):
             for raw_forget in forgets:
                 forget = str(raw_forget)
+                normalized_forget = forget.strip().lower()
+                if normalized_forget in ("", "*", "all"):
+                    forget_everything = True
                 if self._forget_matches(forget, "user"):
                     preferred_name = ""
                     durable = tuple(record for record in durable if not record.key.startswith("user."))
@@ -499,6 +542,7 @@ class BridgeMemory:
             preferred_name=preferred_name,
             recent_topics=_dedupe_tail(topics),
             physical_context=_dedupe_tail(physical),
+            turns_seen=0 if forget_everything else self.turns_seen,
             _durable_facts=_bounded_durable(durable),
             _recent_context=_bounded_recent(recent),
         )
@@ -511,11 +555,15 @@ class BridgeMemory:
         preferred_name = self.preferred_name
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
-        match = re.search(r"\b(?:my name is|call me)\s+([A-Za-z][A-Za-z0-9_-]{1,20})", text, re.IGNORECASE)
-        if match is None:
-            match = re.search(r"\b(?:I am|I'm|i am|i'm)\s+([A-Z][A-Za-z0-9_-]{1,20})", text)
-        if match and _safe_value("user.preferred_name", match.group(1)):
-            preferred_name = match.group(1)
+        match = re.search(
+            r"\b(?:my name is|call me|you can call me|i am called|i'm called)\s+"
+            r"([A-Za-z][A-Za-z0-9_-]{1,20})",
+            text,
+            re.IGNORECASE,
+        )
+        observed_name = _preferred_name(match.group(1)) if match else ""
+        if observed_name and _safe_value("user.preferred_name", observed_name):
+            preferred_name = observed_name
             durable = _upsert_durable(durable, "user.preferred_name", preferred_name, 0.9, now=now)
 
         topics = list(self.recent_topics)
@@ -576,7 +624,11 @@ class BridgeMemory:
 def load_bridge_memory(path: Path) -> BridgeMemory:
     if not path.exists():
         return BridgeMemory()
-    return BridgeMemory.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return BridgeMemory()
+    return BridgeMemory.from_dict(payload)
 
 
 def save_bridge_memory(path: Path, memory: BridgeMemory) -> None:

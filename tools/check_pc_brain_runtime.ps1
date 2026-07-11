@@ -5,6 +5,7 @@ param(
   [string]$ExpectedSttCommand = "bridge\whisper_cpp_stt.py",
   [string]$ExpectedTtsCommand = "bridge\selected_voice_tts.py",
   [string]$ExpectedTtsVoice = "stackchan-rvc-bright-robot",
+  [bool]$ExpectedStreamTtsPhrases = $false,
   [int]$ExpectedDownlinkAudioChunkBytes = 4096,
   [int]$ExpectedDownlinkBinaryFrameDelayMs = 20,
   [int]$ExpectedDownlinkTextFrameDelayMs = 40,
@@ -12,6 +13,9 @@ param(
   [string]$ExpectedTurnLogFile = "output\pc-brain\latest\turns.jsonl",
   [bool]$ExpectedRequireAudioWakePhrase = $false,
   [bool]$ExpectedDisableAudioDownlink = $true,
+  [bool]$ExpectedAudioPlaybackEnabled = $false,
+  [string]$VoiceWorkerUrl = "",
+  [string]$ExpectedVoiceWorkerSchema = "",
   [string]$LogDir = "output\pc-brain\latest",
   [string]$ReportDir = "",
   [string]$DeviceHost = "",
@@ -162,6 +166,24 @@ if (-not [string]::IsNullOrWhiteSpace($commandLine)) {
   } else {
     Test-CommandLineExcludes "audio-downlink-disabled" $normalizedCommandLine "--disable-audio-downlink" "Bridge audio downlink is explicitly enabled for supervised speaker validation."
   }
+  if ($ExpectedStreamTtsPhrases) {
+    Test-CommandLineContains "stream-tts-phrases" $normalizedCommandLine "--stream-tts-phrases" "Phrase streaming is enabled."
+  } else {
+    Test-CommandLineExcludes "stream-tts-phrases" $normalizedCommandLine "--stream-tts-phrases" "Phrase streaming is disabled for this profile."
+  }
+}
+
+$voiceWorkerHealth = $null
+if (-not [string]::IsNullOrWhiteSpace($VoiceWorkerUrl)) {
+  try {
+    $voiceWorkerHealth = Invoke-RestMethod -Uri ($VoiceWorkerUrl.TrimEnd("/") + "/health") -TimeoutSec 8
+    Add-Check "voice-worker-health" ($(if ([bool]$voiceWorkerHealth.ready) { "pass" } else { "fail" })) "url=$VoiceWorkerUrl ready=$($voiceWorkerHealth.ready)"
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedVoiceWorkerSchema)) {
+      Add-Check "voice-worker-schema" ($(if ([string]$voiceWorkerHealth.schema -eq $ExpectedVoiceWorkerSchema) { "pass" } else { "fail" })) "schema=$($voiceWorkerHealth.schema) expected=$ExpectedVoiceWorkerSchema"
+    }
+  } catch {
+    Add-Check "voice-worker-health" "fail" "$VoiceWorkerUrl :: $($_.Exception.Message)"
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($ProcessCommandLine)) {
@@ -207,7 +229,8 @@ if (-not [string]::IsNullOrWhiteSpace($DebugUrl)) {
     Add-Check "live-debug-volume-safe" ($(if ($speakerVolume -gt 0 -and $speakerVolume -le 180) { "pass" } else { "fail" })) "speaker_volume=$($liveDebug.speaker_volume)"
     Add-Check "live-debug-audio-idle" ($(if (-not [bool]$liveDebug.audio_stream_active) { "pass" } else { "fail" })) "audio_stream_active=$($liveDebug.audio_stream_active)"
     if ($liveDebug.PSObject.Properties.Name -contains "bridge_downlink_playback_enabled") {
-      Add-Check "live-debug-audio-playback-fenced" ($(if (-not [bool]$liveDebug.bridge_downlink_playback_enabled) { "pass" } else { "fail" })) "bridge_downlink_playback_enabled=$($liveDebug.bridge_downlink_playback_enabled)"
+      $playbackMatches = [bool]$liveDebug.bridge_downlink_playback_enabled -eq $ExpectedAudioPlaybackEnabled
+      Add-Check "live-debug-audio-playback-policy" ($(if ($playbackMatches) { "pass" } else { "fail" })) "bridge_downlink_playback_enabled=$($liveDebug.bridge_downlink_playback_enabled) expected=$ExpectedAudioPlaybackEnabled"
     }
   } catch {
     Add-Check "live-debug" "fail" "$DebugUrl :: $($_.Exception.Message)"
@@ -228,6 +251,8 @@ $result = [ordered]@{
   port = $Port
   commandLine = $commandLine
   debugUrl = $DebugUrl
+  voiceWorkerUrl = $VoiceWorkerUrl
+  voiceWorkerHealth = $voiceWorkerHealth
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count
   failed = $failed.Count
   pending = $pending.Count

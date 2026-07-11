@@ -97,6 +97,24 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - persona packs with packaged prompt audio must declare `pack.yaml` `provenance.voice_policy`; `tools/verify_persona_pack.cmd` rejects undocumented voice sources
 - hardware evidence should include at least one speaker/audio check before consumer promotion
 
+## Memory Trust Boundary
+
+Character memory is local and bounded. The user's preferred name is accepted only from explicit
+user language such as `my name is`, `call me`, or `I am called`; model output may reinforce that
+same observed name but cannot invent or replace it. Non-string values, serialized containers,
+numeric-only values, secrets, and denied key prefixes are discarded. A global forget request
+clears remembered facts, recent context, and the turn count.
+
+Before a production host restart, audit memory without revealing stored values:
+
+```powershell
+python bridge\memory_maintenance.py --memory-file output\pc-brain\latest\memory.json
+```
+
+Use `--apply` only while the old bridge is stopped. It creates a timestamped backup and writes
+the canonical v2 schema atomically. `tools\start_pc_brain_directml.ps1 -RepairMemory` performs
+that ordering automatically.
+
 Current firmware carries `SpeechCue speech` plus `speechSeq` on each `RobotFrame`. `IntentEngine` emits a cue on external/demo mode changes, holds it briefly for output adapters, and keeps the same sequence number during the hold window so host playback can dedupe without polling races.
 
 ## Acceptance Criteria
