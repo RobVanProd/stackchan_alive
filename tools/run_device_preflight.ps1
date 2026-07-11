@@ -1030,6 +1030,8 @@ function Write-SyntheticNextSteps {
     "",
     "## Run Order",
     "",
+    "Pairing setup accepts ``pair ticket <stackchan://pair?...>`` or the raw QR payload when Wi-Fi credentials already exist; the ticket must not contain or print a Wi-Fi password.",
+    "",
     "1. Run ``RUN_PACKAGE_VERIFY.cmd`` and confirm ``logs/package_verify.log`` ends with ``Release package verified:``.",
     "2. Run ``RUN_DISPLAY_ONLY.cmd`` and confirm the face is visible, flicker-free, and serial logs show display, face, and system telemetry.",
     "3. Run ``RUN_SPEECH_MOUTH_DEMO.cmd`` while display-only firmware is still connected to exercise speech-envelope mouth motion and capture ``logs/speech_mouth_demo_serial.log``.",
