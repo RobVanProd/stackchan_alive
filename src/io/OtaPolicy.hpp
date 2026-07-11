@@ -64,6 +64,18 @@ struct OtaHealthInput {
   bool heapSafe = false;
 };
 
+enum OtaHealthFailure : uint32_t {
+  OtaHealthFailureNone = 0,
+  OtaHealthFailureRuntime = 1u << 0,
+  OtaHealthFailureDisplay = 1u << 1,
+  OtaHealthFailureTasks = 1u << 2,
+  OtaHealthFailureWifi = 1u << 3,
+  OtaHealthFailurePower = 1u << 4,
+  OtaHealthFailureHeap = 1u << 5,
+};
+
+uint32_t otaHealthFailureMask(const OtaHealthInput& input);
+
 class OtaHealthPolicy {
  public:
   void begin(uint32_t nowMs);
@@ -82,8 +94,6 @@ class OtaHealthPolicy {
   }
 
  private:
-  static bool isHealthy(const OtaHealthInput& input);
-
   uint32_t startedAtMs_ = 0;
   uint32_t healthySinceMs_ = 0;
   bool started_ = false;

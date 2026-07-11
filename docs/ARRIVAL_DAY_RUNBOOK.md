@@ -1148,6 +1148,23 @@ counters cannot substitute for operator observation. Clear the temporary pairing
 the production candidate afterward; the camera probe is diagnostic firmware and cannot be
 promoted directly.
 
+### Confirmed LAN OTA Baseline (2026-07-11)
+
+Authenticated LAN OTA is installed and confirmed on both `app0` and `app1`; the exact image is
+SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
+The device reports bootloader rollback enabled and software-only rollback false. Each slot passed
+the 30-second runtime-health window with motion, servo rail, and torque off. Use
+`docs\LAN_OTA.md` and the private build token; never expose port 8790 outside the trusted LAN.
+
+On Windows, set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` for serial PlatformIO uploads. Without
+that setting, PlatformIO's output reader can fail on esptool's Unicode progress bar while the child
+writer remains alive. This is a host-output failure, not robot power or serial evidence.
+
+OTA boot health requires the runtime, face task, firmware tasks, Wi-Fi association, power, and heap.
+It intentionally does not require the external PC bridge session. Early boot masks may include
+display, task, and Wi-Fi warm-up; confirmation requires the last failure mask to remain zero for 30
+continuous seconds. The formal release soak still enforces the stricter 50 ms display gate.
+
 If Stackchan fully turns off, do not unplug or swap the cable. Start:
 
 ```powershell

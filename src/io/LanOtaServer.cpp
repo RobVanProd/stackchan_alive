@@ -13,6 +13,12 @@
 #include <strings.h>
 #endif
 
+#if defined(ARDUINO_ARCH_ESP32) && STACKCHAN_ENABLE_LAN_OTA
+extern "C" bool verifyRollbackLater() {
+  return true;
+}
+#endif
+
 namespace stackchan {
 
 const char* otaPersistentPhaseName(OtaPersistentPhase phase) {
@@ -43,6 +49,8 @@ constexpr const char* kPreviousKey = "previous";
 constexpr const char* kTargetKey = "target";
 constexpr const char* kSha256Key = "sha256";
 constexpr const char* kSizeKey = "size";
+constexpr const char* kHealthMaskKey = "healthmask";
+constexpr const char* kRollbackCodeKey = "rollcode";
 constexpr const char* kFirmwarePath = "/firmware";
 constexpr const char* kStatusPath = "/status";
 
@@ -172,6 +180,13 @@ void LanOtaServer::updateHealth(const OtaHealthInput& input, uint32_t nowMs) {
   if (!telemetry_.healthPending) {
     return;
   }
+  const uint32_t failureMask = otaHealthFailureMask(input);
+  telemetry_.healthSamples++;
+  telemetry_.healthLastFailureMask = failureMask;
+  telemetry_.healthFailureMaskSeen |= failureMask;
+  if (failureMask != OtaHealthFailureNone) {
+    telemetry_.healthUnhealthySamples++;
+  }
   const OtaHealthDecision decision = healthPolicy_.update(
       input, nowMs, config_.healthStableWindowMs, config_.healthTimeoutMs);
   telemetry_.healthStartedAtMs = healthPolicy_.startedAtMs();
@@ -194,6 +209,7 @@ void LanOtaServer::updateHealth(const OtaHealthInput& input, uint32_t nowMs) {
     telemetry_.healthConfirmations++;
     runningAppPendingVerify_ = false;
     record_.phase = OtaPersistentPhase::Confirmed;
+    record_.healthFailureMask = telemetry_.healthFailureMaskSeen;
     const bool stateSaved = !telemetry_.persistentRecordPresent || savePersistentRecord();
     copyRecordToTelemetry();
     setError(stateSaved ? "none" : "state_write_failed");
@@ -201,15 +217,23 @@ void LanOtaServer::updateHealth(const OtaHealthInput& input, uint32_t nowMs) {
   }
 
   telemetry_.rollbackRequests++;
+  telemetry_.healthPending = false;
   record_.phase = OtaPersistentPhase::RollbackRequested;
+  record_.healthFailureMask = telemetry_.healthFailureMaskSeen;
   savePersistentRecord();
   copyRecordToTelemetry();
   if (kBootloaderRollbackEnabled && runningAppPendingVerify_) {
     const esp_err_t result = esp_ota_mark_app_invalid_rollback_and_reboot();
-    if (result != ESP_OK) {
-      telemetry_.rollbackFailures++;
-      setError("bootloader_rollback_failed");
+    telemetry_.rollbackResultCode = static_cast<int32_t>(result);
+    record_.rollbackResultCode = telemetry_.rollbackResultCode;
+    savePersistentRecord();
+    telemetry_.rollbackFailures++;
+    setError(result == ESP_OK ? "bootloader_rollback_returned" : "bootloader_rollback_failed");
+    if (requestSoftwareRollback(nowMs)) {
+      return;
     }
+    telemetry_.rollbackFailures++;
+    setError("rollback_fallback_failed");
     return;
   }
   if (!requestSoftwareRollback(nowMs)) {
@@ -352,6 +376,8 @@ bool LanOtaServer::parseHeadersAndBeginBody(uint32_t nowMs) {
   copyBounded(record_.targetPartition, sizeof(record_.targetPartition), target->label);
   copyBounded(record_.expectedSha256, sizeof(record_.expectedSha256), expectedSha256);
   record_.imageSize = static_cast<uint32_t>(contentLength_);
+  record_.healthFailureMask = 0;
+  record_.rollbackResultCode = 0;
   record_.phase = OtaPersistentPhase::Staged;
   copyRecordToTelemetry();
   std::memset(header_, 0, sizeof(header_));
@@ -489,7 +515,7 @@ void LanOtaServer::sendJson(int statusCode, const char* statusText, const char* 
 }
 
 void LanOtaServer::sendStatus() {
-  char body[768] = {};
+  char body[1024] = {};
   std::snprintf(
       body,
       sizeof(body),
@@ -499,7 +525,9 @@ void LanOtaServer::sendStatus() {
       "\"phase\":\"%s\",\"running_partition\":\"%s\","
       "\"previous_partition\":\"%s\",\"target_partition\":\"%s\","
       "\"expected_sha256\":\"%s\",\"last_preflight\":\"%s\","
-      "\"last_error\":\"%s\"}\n",
+      "\"health_samples\":%lu,\"health_unhealthy_samples\":%lu,"
+      "\"health_last_failure_mask\":%lu,\"health_failure_mask_seen\":%lu,"
+      "\"rollback_result_code\":%ld,\"last_error\":\"%s\"}\n",
       telemetry_.enabled ? "true" : "false",
       telemetry_.uploadActive ? "true" : "false",
       telemetry_.healthPending ? "true" : "false",
@@ -512,6 +540,11 @@ void LanOtaServer::sendStatus() {
       telemetry_.targetPartition,
       telemetry_.expectedSha256,
       otaPreflightResultName(telemetry_.lastPreflight),
+      static_cast<unsigned long>(telemetry_.healthSamples),
+      static_cast<unsigned long>(telemetry_.healthUnhealthySamples),
+      static_cast<unsigned long>(telemetry_.healthLastFailureMask),
+      static_cast<unsigned long>(telemetry_.healthFailureMaskSeen),
+      static_cast<long>(telemetry_.rollbackResultCode),
       telemetry_.lastError);
   sendJson(200, "OK", body);
 }
@@ -564,6 +597,8 @@ bool LanOtaServer::loadPersistentRecord() {
                       ? static_cast<OtaPersistentPhase>(phase)
                       : OtaPersistentPhase::Failed;
   record_.imageSize = preferences_.getUInt(kSizeKey, 0);
+  record_.healthFailureMask = preferences_.getUInt(kHealthMaskKey, 0);
+  record_.rollbackResultCode = preferences_.getInt(kRollbackCodeKey, 0);
   preferences_.getString(kPreviousKey, "").toCharArray(
       record_.previousPartition, sizeof(record_.previousPartition));
   preferences_.getString(kTargetKey, "").toCharArray(
@@ -585,8 +620,12 @@ bool LanOtaServer::savePersistentRecord() {
     return false;
   }
   const bool ok = preferences_.putUChar(kPhaseKey, static_cast<uint8_t>(record_.phase)) == 1 &&
-                  preferences_.putUInt(kSizeKey, record_.imageSize) == sizeof(uint32_t) &&
-                  preferences_.putString(kPreviousKey, record_.previousPartition) > 0 &&
+                   preferences_.putUInt(kSizeKey, record_.imageSize) == sizeof(uint32_t) &&
+                   preferences_.putUInt(kHealthMaskKey, record_.healthFailureMask) ==
+                       sizeof(uint32_t) &&
+                   preferences_.putInt(kRollbackCodeKey, record_.rollbackResultCode) ==
+                       sizeof(int32_t) &&
+                   preferences_.putString(kPreviousKey, record_.previousPartition) > 0 &&
                   preferences_.putString(kTargetKey, record_.targetPartition) > 0 &&
                   preferences_.putString(kSha256Key, record_.expectedSha256) > 0;
   if (!ok) {
@@ -637,6 +676,8 @@ void LanOtaServer::reconcileBootState(uint32_t nowMs) {
 
 void LanOtaServer::copyRecordToTelemetry() {
   telemetry_.persistentPhase = record_.phase;
+  telemetry_.healthFailureMaskSeen |= record_.healthFailureMask;
+  telemetry_.rollbackResultCode = record_.rollbackResultCode;
   copyBounded(telemetry_.previousPartition,
               sizeof(telemetry_.previousPartition),
               record_.previousPartition);

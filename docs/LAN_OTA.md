@@ -62,7 +62,9 @@ No partition CSV is changed by this feature. In layouts such as `partitions_esp_
 
 ## Validation And Rollback
 
-Before activation, namespace `stack_ota` in NVS records the previous app partition, target app partition, expected SHA-256, image size, and phase. After reboot, the target must maintain runtime, display, task, Wi-Fi, power, and heap health continuously for 30 seconds. An unhealthy sample resets the stable window. Failure to establish health within 120 seconds requests rollback.
+Before activation, namespace `stack_ota` in NVS records the previous app partition, target app partition, expected SHA-256, image size, and phase. When OTA is enabled, Stackchan overrides Arduino's weak `verifyRollbackLater()` hook so the framework cannot auto-confirm the image before application health runs. After reboot, the target must maintain runtime, display, task, Wi-Fi, power, and heap health continuously for 30 seconds. An unhealthy sample resets the stable window. Failure to establish health within 120 seconds requests rollback exactly once.
+
+The OTA boot-health display gate proves that the face task is alive, not that a release has passed its visual performance soak: it requires at least 15 FPS and no frame longer than 120 ms during the current telemetry window. The stricter 50 ms release/soak gate remains separate. Wi-Fi association is a device-health gate; the external PC bridge session is not, because a host restart or backoff must not reject otherwise healthy robot firmware. Status exposes current and cumulative health-failure masks, and the cumulative rejection mask is persisted across rollback so the prior image can report why the candidate was rejected.
 
 The implementation checks `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` at compile time. Do not infer that setting from the framework version: `/status` reports `bootloader_rollback_enabled` and `software_rollback_only`, and the running firmware is the authority.
 

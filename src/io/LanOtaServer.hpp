@@ -74,6 +74,11 @@ struct LanOtaTelemetry {
   uint32_t lastActivityMs = 0;
   uint32_t healthStartedAtMs = 0;
   uint32_t healthySinceMs = 0;
+  uint32_t healthSamples = 0;
+  uint32_t healthUnhealthySamples = 0;
+  uint32_t healthLastFailureMask = 0;
+  uint32_t healthFailureMaskSeen = 0;
+  int32_t rollbackResultCode = 0;
   char runningPartition[17] = {};
   char previousPartition[17] = {};
   char targetPartition[17] = {};
@@ -109,6 +114,8 @@ class LanOtaServer {
   struct PersistentRecord {
     OtaPersistentPhase phase = OtaPersistentPhase::None;
     uint32_t imageSize = 0;
+    uint32_t healthFailureMask = 0;
+    int32_t rollbackResultCode = 0;
     char previousPartition[17] = {};
     char targetPartition[17] = {};
     char expectedSha256[65] = {};

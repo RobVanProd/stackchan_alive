@@ -118,6 +118,29 @@ bool constantTimeEqual(const uint8_t* left, const uint8_t* right, size_t length)
   return difference == 0;
 }
 
+uint32_t otaHealthFailureMask(const OtaHealthInput& input) {
+  uint32_t mask = OtaHealthFailureNone;
+  if (!input.runtimeReady) {
+    mask |= OtaHealthFailureRuntime;
+  }
+  if (!input.displayReady) {
+    mask |= OtaHealthFailureDisplay;
+  }
+  if (!input.tasksReady) {
+    mask |= OtaHealthFailureTasks;
+  }
+  if (!input.wifiReady) {
+    mask |= OtaHealthFailureWifi;
+  }
+  if (!input.powerSafe) {
+    mask |= OtaHealthFailurePower;
+  }
+  if (!input.heapSafe) {
+    mask |= OtaHealthFailureHeap;
+  }
+  return mask;
+}
+
 void OtaHealthPolicy::begin(uint32_t nowMs) {
   startedAtMs_ = nowMs;
   healthySinceMs_ = 0;
@@ -136,7 +159,7 @@ OtaHealthDecision OtaHealthPolicy::update(
   if (timeoutMs > 0 && nowMs - startedAtMs_ >= timeoutMs) {
     return OtaHealthDecision::Rollback;
   }
-  if (!isHealthy(input)) {
+  if (otaHealthFailureMask(input) != OtaHealthFailureNone) {
     healthySinceMs_ = 0;
     healthyWindowStarted_ = false;
     return OtaHealthDecision::Waiting;
@@ -149,11 +172,6 @@ OtaHealthDecision OtaHealthPolicy::update(
     return OtaHealthDecision::Confirm;
   }
   return OtaHealthDecision::Waiting;
-}
-
-bool OtaHealthPolicy::isHealthy(const OtaHealthInput& input) {
-  return input.runtimeReady && input.displayReady && input.tasksReady && input.wifiReady &&
-         input.powerSafe && input.heapSafe;
 }
 
 }  // namespace stackchan

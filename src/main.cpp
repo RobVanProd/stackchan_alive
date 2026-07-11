@@ -257,6 +257,10 @@
 #define STACKCHAN_OTA_HEALTH_MIN_VBUS_MV 4400
 #endif
 
+#ifndef STACKCHAN_OTA_HEALTH_MAX_FRAME_US
+#define STACKCHAN_OTA_HEALTH_MAX_FRAME_US 120000
+#endif
+
 #ifndef STACKCHAN_BASE_USB_POWER_INPUT
 #define STACKCHAN_BASE_USB_POWER_INPUT 0
 #endif
@@ -6327,17 +6331,15 @@ OtaPreflightInput collectLanOtaPreflight(void*) {
 
 void serviceLanOta(uint32_t nowMs) {
   const DisplayTelemetry& display = gDisplay.telemetry();
-  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
 
   OtaHealthInput health;
   health.runtimeReady = gFrameQueue != nullptr && gSpeechQueue != nullptr &&
                         gFaceControlQueue != nullptr && gMotionControlQueue != nullptr;
   health.displayReady = display.ready && display.windowFps >= 15.0f &&
-                        display.windowMaxFrameUs <= 50000u;
+                        display.windowMaxFrameUs <= STACKCHAN_OTA_HEALTH_MAX_FRAME_US;
   health.tasksReady = gIntentTaskHandle != nullptr && gMotionTaskHandle != nullptr &&
                       gFaceTaskHandle != nullptr;
-  health.wifiReady = gBridgeWiFi.isConnected() &&
-                     network.state == BridgeNetworkSessionState::Connected;
+  health.wifiReady = gBridgeWiFi.isConnected();
   health.powerSafe = gPowerTelemetryValid && gPowerVbusValid &&
                      gPowerPmicVbusPresentValid && gPowerPmicVbusPresent &&
                      gPowerVbusMv >= STACKCHAN_OTA_HEALTH_MIN_VBUS_MV;
@@ -7507,6 +7509,14 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"ota_health_confirmations\":%lu",
          static_cast<unsigned long>(ota.healthConfirmations));
   append(",\"ota_rollback_requests\":%lu", static_cast<unsigned long>(ota.rollbackRequests));
+  append(",\"ota_health_samples\":%lu", static_cast<unsigned long>(ota.healthSamples));
+  append(",\"ota_health_unhealthy_samples\":%lu",
+         static_cast<unsigned long>(ota.healthUnhealthySamples));
+  append(",\"ota_health_last_failure_mask\":%lu",
+         static_cast<unsigned long>(ota.healthLastFailureMask));
+  append(",\"ota_health_failure_mask_seen\":%lu",
+         static_cast<unsigned long>(ota.healthFailureMaskSeen));
+  append(",\"ota_rollback_result_code\":%ld", static_cast<long>(ota.rollbackResultCode));
   append(",\"ota_last_error\":\"%s\"", ota.lastError);
 #endif
   append(",\"sr_wake_enabled\":%s", gWakeSrProbe.enabled ? "true" : "false");

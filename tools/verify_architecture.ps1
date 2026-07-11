@@ -275,6 +275,7 @@ Assert-FileContains $otaServerPath "esp_ota_get_next_update_partition" "LAN OTA 
 Assert-FileContains $otaServerPath "ESP_PARTITION_SUBTYPE_APP_OTA_0" "LAN OTA must constrain targets to OTA app slots."
 Assert-FileContains $otaServerPath "Update\.begin\([^;]*U_FLASH" "LAN OTA must invoke Arduino Update in firmware mode."
 Assert-FileContains $otaServerPath "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE" "LAN OTA must report the compiled bootloader rollback capability."
+Assert-FileContains $otaServerPath "verifyRollbackLater" "LAN OTA must defer Arduino's automatic image confirmation until runtime health passes."
 Assert-FileContains $otaPolicyPath "CurrentAppUnconfirmed" "LAN OTA preflight must reject updates from an unconfirmed app."
 Assert-FileContains $otaPolicyPath "healthyWindowStarted_" "LAN OTA health confirmation must require a continuous stable window."
 Assert-FileNotContains $otaServerPath "U_SPIFFS|U_FATFS|U_LITTLEFS|ESP_PARTITION_TYPE_DATA|esp_partition_write" "LAN OTA must not write data, filesystem, or model partitions."

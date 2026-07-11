@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-11 01:20 America/New_York
+Status timestamp: 2026-07-11 11:54 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -13,21 +13,40 @@ support compiled with motion disabled at boot.
 - PC bridge host: `192.168.1.240`
 - PC bridge port/path: `8765` / `/bridge`
 - Firmware debug endpoint: `http://192.168.1.238:8789/debug`
-- Final pre-launch integration remains an unflashed candidate. Production and camera diagnostic
-  images both compile: production 50.7% RAM / 41.2% flash; camera 54.1% RAM / 42.2% flash.
-  Native logic passes 218/218, bridge discovery passes 194/194, the host OpenCV worker passes
-  4/4 tests, and its cascade loads on the isolated Python 3.12 runtime. The paired camera path
-  serves ephemeral 160x120 grayscale frames locally and returns bounded face boxes to the
-  active-speaker tracker. No physical camera, RGB/touch/IMU, or combined soak result is claimed.
+- The authenticated LAN OTA baseline is physically installed in both `app0` and `app1` with
+  firmware SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
+  Both slots independently completed a continuous 30-second runtime-health window and reached
+  `phase=confirmed`; bootloader rollback is enabled and software-only rollback is false. The
+  accepted image is 2,733,760 bytes with 608,576 bytes of OTA-slot headroom. Native logic passes
+  225/225 and architecture verification passes.
+- The first OTA trial intentionally exposed two integration defects before acceptance: Arduino's
+  weak startup hook auto-confirmed the image before application health, and the health gate treated
+  the external PC bridge session as device health. The corrected firmware defers confirmation with
+  `verifyRollbackLater()`, makes rollback one-shot, persists rejection masks, requires Wi-Fi but not
+  the host bridge, and keeps the stricter 50 ms visual gate in the release soak rather than the
+  boot-alive check. A rejected trial returned safely from `app1` to `app0`; the corrected image then
+  confirmed on both slots. Evidence is under
+  `output\hardware-evidence\final-integration\ota-app1-confirmation-20260711` and
+  `output\hardware-evidence\final-integration\ota-app0-confirmation-20260711`.
+- Bot-local wake acknowledgement now completes in the required order: detection, RGB commit,
+  microphone pause, tone, speaker-to-mic handoff, then capture. The physical check recorded 3/3
+  detections, tones, captures, and completed downlinks with zero ordering violations or truncation.
+  The last turn committed RGB in 1 ms, started the 176 ms cue after 218 ms, and began capture 9 ms
+  after cue completion.
+- Production and isolated camera diagnostic images compile; the paired camera path serves ephemeral
+  160x120 grayscale frames locally and returns bounded face boxes to the active-speaker tracker.
+  Physical camera and camera-guided servo tracking remain the next supervised hardware gate. No
+  camera pass or final combined soak is claimed yet.
 - The installed 64 GB microSD is authorized for erasure at the next USB session, but exceeds
   M5Stack's documented 16 GB maximum and is optional/experimental. The destructive formatter
   remains separately build- and runtime-gated; card type/capacity must be shown before the exact
   erase phrase is accepted, then production firmware must be restored.
-- Current flashed diagnostic environment: `stackchan_release_forensics`. The accepted rollback lead remains `stackchan_wake_mww_uplink_servos_m5_voiceout` with firmware SHA256 `3C40D5A0F006B67D175ED963133E90F889AE600D5C1F0F419E06FE7B99786C10`.
+- Current flashed diagnostic environment: `stackchan_release_forensics`; both OTA slots contain the
+  same confirmed image SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
 - Firmware guardrails: motion disabled at boot; one Power Coordinator owns servo/speaker power policy; the servo rail is off outside a granted motion window; audio, thermal, and supply protection preempt motion; VBUS has a 4400 mV unconditional floor; 4400-4550 mV motion requires fresh INA226 evidence that the external source is charging the body battery by at least 50 mA; motion resumes at 4700 mV; motion/audio sessions preemptively reduce battery charging to 125 mA and retain that rate for 30 seconds after load removal; rejected PMIC samples never enter policy; PMIC VBUS presence/loss transitions are counted; speaker power is off while idle; the face task runs above motion bookkeeping on their shared core.
 - Current exact firmware lead directory: `output\firmware-leads\power-coordinator-priority2-accepted-60min-20260710-003026`
 - Current accepted archive: `output\firmware-leads\power-coordinator-priority2-accepted-60min-20260710-003026.zip`, SHA256 `3C87F9EDE0B32FB6C0A6E92EE20BC7B5F64F6F4EA78254E5179A0AD203348C99`
-- Current firmware SHA256: `3C40D5A0F006B67D175ED963133E90F889AE600D5C1F0F419E06FE7B99786C10`
+- Current firmware SHA256: `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`
 - The lead directory includes all flash images, the ELF, exact relevant source/configuration, hashes, the PC-vs-wall input comparison, the failed pre-priority timing attempt, the verified six-minute boundary pass, the complete 60-minute acceptance evidence, its formal check, and both post-stop charge-handoff results.
 - Current PC STT: `python bridge\whisper_cpp_stt.py`
 - Current PC TTS/RVC: `python bridge\rvc_production_tts_client.py`, phrase-streamed through

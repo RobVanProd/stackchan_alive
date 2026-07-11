@@ -5346,6 +5346,13 @@ void test_ota_health_requires_continuous_window_and_rolls_back_on_timeout() {
   healthy.wifiReady = true;
   healthy.powerSafe = true;
   healthy.heapSafe = true;
+  TEST_ASSERT_EQUAL_UINT32(OtaHealthFailureNone, otaHealthFailureMask(healthy));
+  healthy.displayReady = false;
+  healthy.wifiReady = false;
+  TEST_ASSERT_EQUAL_UINT32(OtaHealthFailureDisplay | OtaHealthFailureWifi,
+                           otaHealthFailureMask(healthy));
+  healthy.displayReady = true;
+  healthy.wifiReady = true;
   policy.begin(1000);
   TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Waiting),
                     static_cast<int>(policy.update(healthy, 1000, 30000, 120000)));
