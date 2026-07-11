@@ -1092,6 +1092,46 @@ The first post-flash boot is a baseline. After switching to the 5 V / 3 A BASE s
 soak only after the setup VBUS transition has been sampled and baselined. Pass
 `-RequirePowerForensics` to `tools\start_warm_rocm_full_system_soak.ps1`.
 
+For the final integrated production candidate, also pass `-RequireFinalIntegration`. Start with a
+short supervised run before the long release soak:
+
+```powershell
+.\tools\start_warm_rocm_full_system_soak.ps1 `
+  -DurationSeconds 900 `
+  -PollSeconds 5 `
+  -RequirePowerForensics `
+  -RequireFinalIntegration `
+  -OperatorPresent -BodyClear -ConfirmServoRisk
+```
+
+After completion, formally verify the same profile:
+
+```powershell
+.\tools\check_full_system_soak_evidence.ps1 `
+  -SummaryJsonPath <evidence-root>\summary.json `
+  -MinDurationSeconds 900 `
+  -RequirePowerForensics `
+  -RequireFinalIntegration `
+  -RequireReady -Json
+```
+
+Only after the production candidate is restored and stopped cleanly may the isolated camera probe
+be flashed. Run it without motion refresh and require actual frame progress:
+
+```powershell
+.\tools\run_full_system_soak_http_motion.ps1 `
+  -EvidenceRoot output\pc-brain\camera-capture-probe-2min `
+  -DurationSeconds 120 -PollSeconds 5 -MotionRefreshSeconds 0 -NoSerial `
+  -RequireBridgeSocket -RequireWakeReady -RequireMicReady -RequireSpeakerReady `
+  -RequirePowerCoordinator -RequirePowerForensics -RequirePmicVbusStable `
+  -RequireNoNewHardFloorEvents -RequireCameraCapture -MaxCameraCaptureUs 250000 `
+  -MaxAllowedChipTempC 68 -MinPowerVbusMv 4400 -MinPowerVbusReportedMv 4400 `
+  -MaxDisplayFrameUs 50000 -FailFastOnStrictBreach
+```
+
+Verify that probe with `-NoMotionProfile -RequireCameraCapture`. Reflash the production candidate
+afterward; the camera probe is diagnostic firmware and cannot be promoted directly.
+
 If Stackchan fully turns off, do not unplug or swap the cable. Start:
 
 ```powershell

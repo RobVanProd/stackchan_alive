@@ -218,6 +218,13 @@ until the exact phrase is received.
 8. Only after that candidate passes, flash the camera probe for capture-only evidence. Do not
    promote camera capture or tracking into the release image from compile evidence alone.
 
+The production soak must pass `-RequireFinalIntegration`. That profile requires PMIC schema
+`axp2101-v2`, valid untruncated `/debug` JSON, RGB/touch/IMU compiled and ready for every good
+poll, calibrated IMU, advancing RGB/touch/IMU counters, zero new peripheral I/O failures, zero
+unexpected IMU events, and camera disabled in the production image. The separate capture image
+must pass `-RequireCameraCapture`; it requires the camera ready/active, advancing real frame
+captures, zero new capture failures, and maximum capture time at or below 250 ms.
+
 ## Evidence Required Per Phase
 
 Every phase must preserve:

@@ -12,7 +12,11 @@ foreach ($requiredPattern in @(
     'failed_poll_ratio_exceeded',
     'motion_stop_not_verified',
     'RequirePowerForensics',
-    'power_forensics_not_armed'
+    'power_forensics_not_armed',
+    'RequireFinalIntegration',
+    'final_integration_peripheral_not_ready',
+    'RequireCameraCapture',
+    'camera_capture_probe_not_ready'
   )) {
   if ($runnerSource -notmatch $requiredPattern) {
     throw "Soak runner safety contract missing pattern: $requiredPattern"
@@ -25,8 +29,19 @@ function Write-Json {
 }
 
 function Invoke-Check {
-  param([string]$SummaryPath, [switch]$RequireReady, [switch]$NoMotionProfile, [switch]$RequirePowerForensics)
-  if ($RequirePowerForensics) {
+  param(
+    [string]$SummaryPath,
+    [switch]$RequireReady,
+    [switch]$NoMotionProfile,
+    [switch]$RequirePowerForensics,
+    [switch]$RequireFinalIntegration,
+    [switch]$RequireCameraCapture
+  )
+  if ($RequireFinalIntegration) {
+    $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 28800 -RequireFinalIntegration -RequireReady:$RequireReady -Json
+  } elseif ($RequireCameraCapture) {
+    $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 60 -NoMotionProfile -RequireCameraCapture -RequireReady:$RequireReady -Json
+  } elseif ($RequirePowerForensics) {
     $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 28800 -RequirePowerForensics -RequireReady:$RequireReady -Json
   } elseif ($NoMotionProfile) {
     $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 600 -NoMotionProfile -RequireReady:$RequireReady -Json
@@ -162,6 +177,88 @@ try {
     if ($null -eq $check -or $check.status -ne "pass") {
       throw "Expected power-forensics check $id to pass."
     }
+  }
+
+  $finalIntegrationPath = Join-Path $tempRoot "final-integration-ready-summary.json"
+  $finalIntegrationSummary = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName requireFinalIntegration -NotePropertyValue $true
+  $finalIntegrationSummary | Add-Member -NotePropertyName finalIntegrationReadySamples -NotePropertyValue 959
+  $finalIntegrationSummary | Add-Member -NotePropertyName bodyRgbFrameDelta -NotePropertyValue 575000
+  $finalIntegrationSummary | Add-Member -NotePropertyName bodyTouchSampleDelta -NotePropertyValue 860000
+  $finalIntegrationSummary | Add-Member -NotePropertyName imuSampleDelta -NotePropertyValue 720000
+  $finalIntegrationSummary | Add-Member -NotePropertyName newBodyRgbWriteFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newBodyTouchReadFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newImuEvents -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName latestFinalIntegration -NotePropertyValue ([pscustomobject]@{
+      debug_response_truncated = $false
+      power_forensics_schema = "axp2101-v2"
+      compiled_enable_body_rgb = 1
+      body_rgb_ready = $true
+      compiled_enable_body_touch = 1
+      body_touch_ready = $true
+      compiled_enable_imu = 1
+      imu_ready = $true
+      imu_calibrated = $true
+      compiled_enable_camera = 0
+      camera_active = $false
+    })
+  Write-Json $finalIntegrationPath $finalIntegrationSummary
+  $finalIntegrationReady = Invoke-Check -SummaryPath $finalIntegrationPath -RequireFinalIntegration -RequireReady
+  if ($finalIntegrationReady.exitCode -ne 0 -or $finalIntegrationReady.json.failed -ne 0) {
+    throw "Expected final integration summary to pass: $($finalIntegrationReady.output)"
+  }
+  foreach ($id in @("strict-requireFinalIntegration", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-touch-read-failures", "imu-read-failures", "unexpected-imu-events", "production-camera-disabled")) {
+    if (@($finalIntegrationReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
+      throw "Expected final integration check $id to pass."
+    }
+  }
+
+  $finalIntegrationImuEventPath = Join-Path $tempRoot "final-integration-imu-event-summary.json"
+  $finalIntegrationSummary.newImuEvents = 1
+  Write-Json $finalIntegrationImuEventPath $finalIntegrationSummary
+  $finalIntegrationImuEvent = Invoke-Check -SummaryPath $finalIntegrationImuEventPath -RequireFinalIntegration
+  if ($finalIntegrationImuEvent.exitCode -eq 0 -or
+      @($finalIntegrationImuEvent.json.checks | Where-Object { $_.id -eq "unexpected-imu-events" -and $_.status -eq "fail" }).Count -ne 1) {
+    throw "Expected surprise IMU event to fail final integration checker."
+  }
+
+  $cameraPath = Join-Path $tempRoot "camera-ready-summary.json"
+  $cameraSummary = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
+  $cameraSummary.durationSeconds = 60
+  $cameraSummary.strict.requireMotion = $false
+  $cameraSummary.strict.requireNoMotionTimeouts = $false
+  $cameraSummary.strict.requireMotionTelemetry = $false
+  $cameraSummary.strict.minMotionUnsuppressedSampleRatio = 0
+  $cameraSummary.motionSamples = 0
+  $cameraSummary.motionSampleRatio = 0
+  $cameraSummary.motionUnsuppressedSamples = 0
+  $cameraSummary.motionUnsuppressedSampleRatio = 0
+  $cameraSummary.strict | Add-Member -NotePropertyName requireCameraCapture -NotePropertyValue $true
+  $cameraSummary.strict | Add-Member -NotePropertyName maxCameraCaptureUs -NotePropertyValue 250000
+  $cameraSummary | Add-Member -NotePropertyName cameraCaptureReadySamples -NotePropertyValue 959
+  $cameraSummary | Add-Member -NotePropertyName cameraFrameDelta -NotePropertyValue 58
+  $cameraSummary | Add-Member -NotePropertyName newCameraCaptureFailures -NotePropertyValue 0
+  $cameraSummary | Add-Member -NotePropertyName maxCameraCaptureUsObserved -NotePropertyValue 81000
+  Write-Json $cameraPath $cameraSummary
+  $cameraReady = Invoke-Check -SummaryPath $cameraPath -RequireCameraCapture -RequireReady
+  if ($cameraReady.exitCode -ne 0 -or $cameraReady.json.failed -ne 0 -or
+      $cameraReady.json.profile -ne "camera-capture") {
+    throw "Expected camera capture summary to pass: $($cameraReady.output)"
+  }
+  foreach ($id in @("strict-requireCameraCapture", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time")) {
+    if (@($cameraReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
+      throw "Expected camera capture check $id to pass."
+    }
+  }
+
+  $cameraFailurePath = Join-Path $tempRoot "camera-failure-summary.json"
+  $cameraSummary.newCameraCaptureFailures = 1
+  Write-Json $cameraFailurePath $cameraSummary
+  $cameraFailure = Invoke-Check -SummaryPath $cameraFailurePath -RequireCameraCapture
+  if ($cameraFailure.exitCode -eq 0 -or
+      @($cameraFailure.json.checks | Where-Object { $_.id -eq "camera-capture-failures" -and $_.status -eq "fail" }).Count -ne 1) {
+    throw "Expected camera capture failure to fail formal checker."
   }
 
   $forensicsEventPath = Join-Path $tempRoot "forensics-event-summary.json"

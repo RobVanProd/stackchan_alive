@@ -36,6 +36,9 @@ param(
   [switch]$RequireRvcWorker,
   [switch]$RequirePowerCoordinator,
   [switch]$RequirePowerForensics,
+  [switch]$RequireFinalIntegration,
+  [switch]$RequireCameraCapture,
+  [int]$MaxCameraCaptureUs = 250000,
   [switch]$RequirePmicVbusStable,
   [switch]$RequireNoNewHardFloorEvents,
   [switch]$RequireManagedChargePolicy,
@@ -274,6 +277,10 @@ function Invoke-RvcWorkerHealth {
   }
 }
 
+if ($RequireFinalIntegration -and $RequireCameraCapture) {
+  throw "RequireFinalIntegration and RequireCameraCapture are separate production/probe profiles."
+}
+
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $evidencePath = (Resolve-Path $EvidenceRoot).Path
 $pollPath = Join-Path $evidencePath "polls.json"
@@ -303,6 +310,11 @@ $powerForensicsRuntimeEventsBaseline = $null
 $powerForensicsProtectiveEventsBaseline = $null
 $powerForensicsReadFailuresBaseline = $null
 $powerForensicsClearFailuresBaseline = $null
+$bodyRgbWriteFailuresBaseline = $null
+$bodyTouchReadFailuresBaseline = $null
+$imuReadFailuresBaseline = $null
+$imuEventsBaseline = $null
+$cameraCaptureFailuresBaseline = $null
 $motionStopResult = $null
 
 try {
@@ -451,6 +463,7 @@ try {
           power_pmic_vbus_loss_entries = Get-ObjectProperty $j "power_pmic_vbus_loss_entries" $null
           power_pmic_temp_c = Get-ObjectProperty $j "power_pmic_temp_c" $null
           power_forensics_enabled = Test-TrueValue (Get-ObjectProperty $j "power_forensics_enabled" $false)
+          power_forensics_schema = [string](Get-ObjectProperty $j "power_forensics_schema" "")
           power_forensics_irq_enable_succeeded = Test-TrueValue (Get-ObjectProperty $j "power_forensics_irq_enable_succeeded" $false)
           power_forensics_boot_status_valid = Test-TrueValue (Get-ObjectProperty $j "power_forensics_boot_status_valid" $false)
           power_forensics_boot_event_mask = Get-ObjectProperty $j "power_forensics_boot_event_mask" $null
@@ -463,6 +476,10 @@ try {
           power_forensics_last_event_mask = Get-ObjectProperty $j "power_forensics_last_event_mask" $null
           power_forensics_last_event = Get-ObjectProperty $j "power_forensics_last_event" $null
           power_forensics_last_event_at_ms = Get-ObjectProperty $j "power_forensics_last_event_at_ms" $null
+          power_forensics_last_protective_event_mask = Get-ObjectProperty $j "power_forensics_last_protective_event_mask" $null
+          power_forensics_last_protective_event = Get-ObjectProperty $j "power_forensics_last_protective_event" $null
+          power_forensics_last_protective_event_at_ms = Get-ObjectProperty $j "power_forensics_last_protective_event_at_ms" $null
+          power_forensics_battery_overvoltage_last_at_ms = Get-ObjectProperty $j "power_forensics_battery_overvoltage_last_at_ms" $null
           power_forensics_vbus_remove_events = Get-ObjectProperty $j "power_forensics_vbus_remove_events" $null
           power_forensics_battery_remove_events = Get-ObjectProperty $j "power_forensics_battery_remove_events" $null
           power_forensics_warning_level2_events = Get-ObjectProperty $j "power_forensics_warning_level2_events" $null
@@ -477,6 +494,30 @@ try {
           power_forensics_last_servo_rail_enabled = Test-TrueValue (Get-ObjectProperty $j "power_forensics_last_servo_rail_enabled" $false)
           power_forensics_last_servo_torque_enabled = Test-TrueValue (Get-ObjectProperty $j "power_forensics_last_servo_torque_enabled" $false)
           power_forensics_last_speaker_power_active = Test-TrueValue (Get-ObjectProperty $j "power_forensics_last_speaker_power_active" $false)
+          debug_response_truncated = Test-TrueValue (Get-ObjectProperty $j "debug_response_truncated" $true)
+          compiled_enable_body_rgb = Get-ObjectProperty $j "compiled_enable_body_rgb" $null
+          body_rgb_ready = Test-TrueValue (Get-ObjectProperty $j "body_rgb_ready" $false)
+          body_rgb_frames = Get-ObjectProperty $j "body_rgb_frames" $null
+          body_rgb_write_failures = Get-ObjectProperty $j "body_rgb_write_failures" $null
+          compiled_enable_body_touch = Get-ObjectProperty $j "compiled_enable_body_touch" $null
+          body_touch_ready = Test-TrueValue (Get-ObjectProperty $j "body_touch_ready" $false)
+          body_touch_samples = Get-ObjectProperty $j "body_touch_samples" $null
+          body_touch_read_failures = Get-ObjectProperty $j "body_touch_read_failures" $null
+          body_touch_events = Get-ObjectProperty $j "body_touch_events" $null
+          compiled_enable_imu = Get-ObjectProperty $j "compiled_enable_imu" $null
+          imu_ready = Test-TrueValue (Get-ObjectProperty $j "imu_ready" $false)
+          imu_calibrated = Test-TrueValue (Get-ObjectProperty $j "imu_calibrated" $false)
+          imu_samples = Get-ObjectProperty $j "imu_samples" $null
+          imu_read_failures = Get-ObjectProperty $j "imu_read_failures" $null
+          imu_events = Get-ObjectProperty $j "imu_events" $null
+          compiled_enable_camera = Get-ObjectProperty $j "compiled_enable_camera" $null
+          camera_ready = Test-TrueValue (Get-ObjectProperty $j "camera_ready" $false)
+          camera_active = Test-TrueValue (Get-ObjectProperty $j "camera_active" $false)
+          camera_capture_ready = Test-TrueValue (Get-ObjectProperty $j "camera_capture_ready" $false)
+          camera_frames_captured = Get-ObjectProperty $j "camera_frames_captured" $null
+          camera_capture_failures = Get-ObjectProperty $j "camera_capture_failures" $null
+          camera_last_capture_us = Get-ObjectProperty $j "camera_last_capture_us" $null
+          camera_max_capture_us = Get-ObjectProperty $j "camera_max_capture_us" $null
           power_battery_mv = Get-ObjectProperty $j "power_battery_mv" $null
           power_battery_min_mv = Get-ObjectProperty $j "power_battery_min_mv" $null
           power_battery_max_mv = Get-ObjectProperty $j "power_battery_max_mv" $null
@@ -551,6 +592,14 @@ try {
         $powerForensicsReadFailuresBaseline = $records[$records.Count - 1].power_forensics_read_failures
         $powerForensicsClearFailuresBaseline = $records[$records.Count - 1].power_forensics_clear_failures
       }
+      if ($records.Count -gt 0 -and $records[$records.Count - 1].ok -and
+          $null -eq $bodyRgbWriteFailuresBaseline) {
+        $bodyRgbWriteFailuresBaseline = $records[$records.Count - 1].body_rgb_write_failures
+        $bodyTouchReadFailuresBaseline = $records[$records.Count - 1].body_touch_read_failures
+        $imuReadFailuresBaseline = $records[$records.Count - 1].imu_read_failures
+        $imuEventsBaseline = $records[$records.Count - 1].imu_events
+        $cameraCaptureFailuresBaseline = $records[$records.Count - 1].camera_capture_failures
+      }
 
       $progress = [ordered]@{
         schema = "stackchan.full-system-soak-progress.v1"
@@ -623,6 +672,10 @@ try {
         micReadyRequiredSamples = @($records | Where-Object { Test-MicReadyRequired $_ }).Count
         micReadyRequiredReadySamples = @($records | Where-Object { (Test-MicReadyRequired $_) -and $_.mic_ready }).Count
         speakerReadySamples = @($records | Where-Object { $_.ok -and $_.speaker_ready }).Count
+        bodyRgbReadySamples = @($records | Where-Object { $_.ok -and $_.body_rgb_ready }).Count
+        bodyTouchReadySamples = @($records | Where-Object { $_.ok -and $_.body_touch_ready }).Count
+        imuReadySamples = @($records | Where-Object { $_.ok -and $_.imu_ready -and $_.imu_calibrated }).Count
+        cameraCaptureReadySamples = @($records | Where-Object { $_.ok -and $_.camera_capture_ready }).Count
         motionRefreshes = $motionRefreshes
         motionRefreshFailures = $motionRefreshFailures
         rvcWorkerPolls = $rvcWorkerPolls
@@ -778,6 +831,66 @@ try {
             }
           }
         }
+        if ($RequireFinalIntegration -and $records.Count -gt 0) {
+          $latestRecord = $records[$records.Count - 1]
+          if ($latestRecord.ok) {
+            if ($latestRecord.debug_response_truncated -or
+                $latestRecord.power_forensics_schema -ne "axp2101-v2") {
+              $abortReason = "final_integration_debug_contract_failed"
+              break
+            }
+            if ([int]$latestRecord.compiled_enable_body_rgb -ne 1 -or -not $latestRecord.body_rgb_ready -or
+                [int]$latestRecord.compiled_enable_body_touch -ne 1 -or -not $latestRecord.body_touch_ready -or
+                [int]$latestRecord.compiled_enable_imu -ne 1 -or -not $latestRecord.imu_ready -or
+                -not $latestRecord.imu_calibrated) {
+              $abortReason = "final_integration_peripheral_not_ready"
+              break
+            }
+            if ([int]$latestRecord.compiled_enable_camera -ne 0 -or $latestRecord.camera_active) {
+              $abortReason = "production_camera_must_be_disabled"
+              break
+            }
+            if ($null -eq $bodyRgbWriteFailuresBaseline -or
+                $null -eq $bodyTouchReadFailuresBaseline -or
+                $null -eq $imuReadFailuresBaseline -or
+                $null -eq $imuEventsBaseline) {
+              $abortReason = "final_integration_counter_missing"
+              break
+            }
+            if ([int64]$latestRecord.body_rgb_write_failures -gt [int64]$bodyRgbWriteFailuresBaseline -or
+                [int64]$latestRecord.body_touch_read_failures -gt [int64]$bodyTouchReadFailuresBaseline -or
+                [int64]$latestRecord.imu_read_failures -gt [int64]$imuReadFailuresBaseline) {
+              $abortReason = "final_integration_io_failure_observed"
+              break
+            }
+            if ([int64]$latestRecord.imu_events -gt [int64]$imuEventsBaseline) {
+              $abortReason = "unexpected_imu_event_observed"
+              break
+            }
+          }
+        }
+        if ($RequireCameraCapture -and $records.Count -gt 0) {
+          $latestRecord = $records[$records.Count - 1]
+          if ($latestRecord.ok) {
+            if ($latestRecord.debug_response_truncated -or
+                [int]$latestRecord.compiled_enable_camera -ne 1 -or
+                -not $latestRecord.camera_ready -or -not $latestRecord.camera_active -or
+                -not $latestRecord.camera_capture_ready) {
+              $abortReason = "camera_capture_probe_not_ready"
+              break
+            }
+            if ($null -eq $cameraCaptureFailuresBaseline -or
+                [int64]$latestRecord.camera_capture_failures -gt [int64]$cameraCaptureFailuresBaseline) {
+              $abortReason = "camera_capture_failure_observed"
+              break
+            }
+            if ($MaxCameraCaptureUs -gt 0 -and $null -ne $latestRecord.camera_max_capture_us -and
+                [int64]$latestRecord.camera_max_capture_us -gt $MaxCameraCaptureUs) {
+              $abortReason = "camera_capture_time_limit_exceeded"
+              break
+            }
+          }
+        }
         if ($RequireNoNewHardFloorEvents -and $records.Count -gt 0) {
           $latestRecord = $records[$records.Count - 1]
           if ($latestRecord.ok) {
@@ -858,6 +971,61 @@ Write-JsonWithRetry -Path $pollPath -Value $records
 $serialLines | Set-Content -LiteralPath $serialPath -Encoding UTF8
 
 $okRecords = @($records | Where-Object { $_.ok })
+$firstOkRecord = $okRecords | Select-Object -First 1
+$latestOkRecord = $okRecords | Select-Object -Last 1
+$finalIntegrationReadySamples = @($okRecords | Where-Object {
+    -not $_.debug_response_truncated -and
+    $_.power_forensics_schema -eq "axp2101-v2" -and
+    [int]$_.compiled_enable_body_rgb -eq 1 -and $_.body_rgb_ready -and
+    [int]$_.compiled_enable_body_touch -eq 1 -and $_.body_touch_ready -and
+    [int]$_.compiled_enable_imu -eq 1 -and $_.imu_ready -and $_.imu_calibrated -and
+    [int]$_.compiled_enable_camera -eq 0 -and -not $_.camera_active
+  }).Count
+$cameraCaptureReadySamples = @($okRecords | Where-Object {
+    -not $_.debug_response_truncated -and
+    [int]$_.compiled_enable_camera -eq 1 -and $_.camera_ready -and
+    $_.camera_active -and $_.camera_capture_ready
+  }).Count
+$bodyRgbFrameDelta = if ($firstOkRecord -and $latestOkRecord -and
+    $null -ne $firstOkRecord.body_rgb_frames -and $null -ne $latestOkRecord.body_rgb_frames) {
+  [int64]$latestOkRecord.body_rgb_frames - [int64]$firstOkRecord.body_rgb_frames
+} else { $null }
+$bodyTouchSampleDelta = if ($firstOkRecord -and $latestOkRecord -and
+    $null -ne $firstOkRecord.body_touch_samples -and $null -ne $latestOkRecord.body_touch_samples) {
+  [int64]$latestOkRecord.body_touch_samples - [int64]$firstOkRecord.body_touch_samples
+} else { $null }
+$imuSampleDelta = if ($firstOkRecord -and $latestOkRecord -and
+    $null -ne $firstOkRecord.imu_samples -and $null -ne $latestOkRecord.imu_samples) {
+  [int64]$latestOkRecord.imu_samples - [int64]$firstOkRecord.imu_samples
+} else { $null }
+$cameraFrameDelta = if ($firstOkRecord -and $latestOkRecord -and
+    $null -ne $firstOkRecord.camera_frames_captured -and $null -ne $latestOkRecord.camera_frames_captured) {
+  [int64]$latestOkRecord.camera_frames_captured - [int64]$firstOkRecord.camera_frames_captured
+} else { $null }
+$newBodyRgbWriteFailures = if ($null -ne $bodyRgbWriteFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.body_rgb_write_failures) {
+  [int64]$latestOkRecord.body_rgb_write_failures - [int64]$bodyRgbWriteFailuresBaseline
+} else { $null }
+$newBodyTouchReadFailures = if ($null -ne $bodyTouchReadFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.body_touch_read_failures) {
+  [int64]$latestOkRecord.body_touch_read_failures - [int64]$bodyTouchReadFailuresBaseline
+} else { $null }
+$newImuReadFailures = if ($null -ne $imuReadFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_read_failures) {
+  [int64]$latestOkRecord.imu_read_failures - [int64]$imuReadFailuresBaseline
+} else { $null }
+$newImuEvents = if ($null -ne $imuEventsBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_events) {
+  [int64]$latestOkRecord.imu_events - [int64]$imuEventsBaseline
+} else { $null }
+$newCameraCaptureFailures = if ($null -ne $cameraCaptureFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.camera_capture_failures) {
+  [int64]$latestOkRecord.camera_capture_failures - [int64]$cameraCaptureFailuresBaseline
+} else { $null }
+$maxCameraCaptureUsObserved = if (@($okRecords | Where-Object { $null -ne $_.camera_max_capture_us }).Count -gt 0) {
+  (@($okRecords | Where-Object { $null -ne $_.camera_max_capture_us }) |
+    Measure-Object -Property camera_max_capture_us -Maximum).Maximum
+} else { $null }
 $motionSamples = @($okRecords | Where-Object { $_.motion }).Count
 $failedPolls = @($records | Where-Object { -not $_.ok }).Count
 $failedPollRatio = Get-FailedPollRatio -Records $records
@@ -1164,6 +1332,38 @@ if ($RequirePowerForensics) {
     $issues.Add("power_forensics_protective_event_observed")
   }
 }
+if ($RequireFinalIntegration) {
+  if ($okRecords.Count -eq 0 -or $finalIntegrationReadySamples -lt $okRecords.Count) {
+    $issues.Add("final_integration_not_ready_for_all_ok_samples")
+  }
+  if ($null -eq $bodyRgbFrameDelta -or $bodyRgbFrameDelta -le 0 -or
+      $null -eq $bodyTouchSampleDelta -or $bodyTouchSampleDelta -le 0 -or
+      $null -eq $imuSampleDelta -or $imuSampleDelta -le 0) {
+    $issues.Add("final_integration_counters_not_advancing")
+  }
+  if ($newBodyRgbWriteFailures -ne 0 -or $newBodyTouchReadFailures -ne 0 -or
+      $newImuReadFailures -ne 0) {
+    $issues.Add("final_integration_io_failure_observed")
+  }
+  if ($newImuEvents -ne 0) {
+    $issues.Add("unexpected_imu_event_observed")
+  }
+}
+if ($RequireCameraCapture) {
+  if ($okRecords.Count -eq 0 -or $cameraCaptureReadySamples -lt $okRecords.Count) {
+    $issues.Add("camera_capture_probe_not_ready_for_all_ok_samples")
+  }
+  if ($null -eq $cameraFrameDelta -or $cameraFrameDelta -le 0) {
+    $issues.Add("camera_capture_frames_not_advancing")
+  }
+  if ($newCameraCaptureFailures -ne 0) {
+    $issues.Add("camera_capture_failure_observed")
+  }
+  if ($MaxCameraCaptureUs -gt 0 -and $null -ne $maxCameraCaptureUsObserved -and
+      [int64]$maxCameraCaptureUsObserved -gt $MaxCameraCaptureUs) {
+    $issues.Add("camera_capture_time_limit_exceeded")
+  }
+}
 if ($MaxAllowedChipTempC -gt 0 -and $maxChipTempC -ne $null -and [double]$maxChipTempC -gt $MaxAllowedChipTempC) {
   $issues.Add("chip_temp_limit_exceeded")
 }
@@ -1212,6 +1412,9 @@ $summary = [ordered]@{
     requireRvcWorker = [bool]$RequireRvcWorker
     requirePowerCoordinator = [bool]$RequirePowerCoordinator
     requirePowerForensics = [bool]$RequirePowerForensics
+    requireFinalIntegration = [bool]$RequireFinalIntegration
+    requireCameraCapture = [bool]$RequireCameraCapture
+    maxCameraCaptureUs = $MaxCameraCaptureUs
     requirePmicVbusStable = [bool]$RequirePmicVbusStable
     requireNoNewHardFloorEvents = [bool]$RequireNoNewHardFloorEvents
     requireManagedChargePolicy = [bool]$RequireManagedChargePolicy
@@ -1292,6 +1495,24 @@ $summary = [ordered]@{
   latestPowerForensicsProtectiveEvents = $latestPowerForensicsProtectiveEvents
   newPowerForensicsProtectiveEvents = $newPowerForensicsProtectiveEvents
   latestPowerForensics = $latestPowerForensicsRecord
+  finalIntegrationReadySamples = $finalIntegrationReadySamples
+  cameraCaptureReadySamples = $cameraCaptureReadySamples
+  bodyRgbFrameDelta = $bodyRgbFrameDelta
+  bodyTouchSampleDelta = $bodyTouchSampleDelta
+  imuSampleDelta = $imuSampleDelta
+  cameraFrameDelta = $cameraFrameDelta
+  bodyRgbWriteFailuresBaseline = $bodyRgbWriteFailuresBaseline
+  bodyTouchReadFailuresBaseline = $bodyTouchReadFailuresBaseline
+  imuReadFailuresBaseline = $imuReadFailuresBaseline
+  imuEventsBaseline = $imuEventsBaseline
+  cameraCaptureFailuresBaseline = $cameraCaptureFailuresBaseline
+  newBodyRgbWriteFailures = $newBodyRgbWriteFailures
+  newBodyTouchReadFailures = $newBodyTouchReadFailures
+  newImuReadFailures = $newImuReadFailures
+  newImuEvents = $newImuEvents
+  newCameraCaptureFailures = $newCameraCaptureFailures
+  maxCameraCaptureUsObserved = $maxCameraCaptureUsObserved
+  latestFinalIntegration = $latestOkRecord
   powerCoordinatorTelemetrySamples = $powerCoordinatorTelemetrySamples
   servoRailSamples = $servoRailSamples
   servoTorqueSamples = $servoTorqueSamples

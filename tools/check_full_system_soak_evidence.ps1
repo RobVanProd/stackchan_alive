@@ -12,6 +12,8 @@ param(
   [int]$MaxSlowFrames = 120,
   [switch]$NoMotionProfile,
   [switch]$RequirePowerForensics,
+  [switch]$RequireFinalIntegration,
+  [switch]$RequireCameraCapture,
   [switch]$RequireReady,
   [switch]$Json
 )
@@ -234,6 +236,57 @@ if ($summary) {
     Add-Check "power-forensics-protective-events" ($(if ($newProtectiveEvents -eq 0) { "pass" } else { "fail" })) "newProtectiveEvents=$newProtectiveEvents expected=0"
   }
 
+  $summaryRequiresFinalIntegration = Has-StrictFlag $summary "requireFinalIntegration"
+  if ($RequireFinalIntegration) {
+    Add-Check "strict-requireFinalIntegration" ($(if ($summaryRequiresFinalIntegration) { "pass" } else { "fail" })) "requireFinalIntegration=$summaryRequiresFinalIntegration"
+  }
+  if ($RequireFinalIntegration -or $summaryRequiresFinalIntegration) {
+    $latestIntegration = $summary.latestFinalIntegration
+    $debugContractPassed = $null -ne $latestIntegration -and
+      -not [bool]$latestIntegration.debug_response_truncated -and
+      [string]$latestIntegration.power_forensics_schema -eq "axp2101-v2"
+    Add-Check "final-integration-debug-contract" ($(if ($debugContractPassed) { "pass" } else { "fail" })) "schema=$($latestIntegration.power_forensics_schema) truncated=$($latestIntegration.debug_response_truncated)"
+    $readySamples = Get-IntValue $summary "finalIntegrationReadySamples" 0
+    Add-Check "final-integration-ready" ($(if ($okPolls -gt 0 -and $readySamples -eq $okPolls) { "pass" } else { "fail" })) "readySamples=$readySamples okPolls=$okPolls"
+    foreach ($counter in @(
+        @{ id = "body-rgb-frames"; name = "bodyRgbFrameDelta" },
+        @{ id = "body-touch-samples"; name = "bodyTouchSampleDelta" },
+        @{ id = "imu-samples"; name = "imuSampleDelta" }
+      )) {
+      $delta = Get-IntValue $summary $counter.name -1
+      Add-Check $counter.id ($(if ($delta -gt 0) { "pass" } else { "fail" })) "$($counter.name)=$delta expected>0"
+    }
+    foreach ($counter in @(
+        @{ id = "body-rgb-write-failures"; name = "newBodyRgbWriteFailures" },
+        @{ id = "body-touch-read-failures"; name = "newBodyTouchReadFailures" },
+        @{ id = "imu-read-failures"; name = "newImuReadFailures" },
+        @{ id = "unexpected-imu-events"; name = "newImuEvents" }
+      )) {
+      $delta = Get-IntValue $summary $counter.name -1
+      Add-Check $counter.id ($(if ($delta -eq 0) { "pass" } else { "fail" })) "$($counter.name)=$delta expected=0"
+    }
+    $productionCameraDisabled = $null -ne $latestIntegration -and
+      [int]$latestIntegration.compiled_enable_camera -eq 0 -and
+      -not [bool]$latestIntegration.camera_active
+    Add-Check "production-camera-disabled" ($(if ($productionCameraDisabled) { "pass" } else { "fail" })) "compiled=$($latestIntegration.compiled_enable_camera) active=$($latestIntegration.camera_active)"
+  }
+
+  $summaryRequiresCameraCapture = Has-StrictFlag $summary "requireCameraCapture"
+  if ($RequireCameraCapture) {
+    Add-Check "strict-requireCameraCapture" ($(if ($summaryRequiresCameraCapture) { "pass" } else { "fail" })) "requireCameraCapture=$summaryRequiresCameraCapture"
+  }
+  if ($RequireCameraCapture -or $summaryRequiresCameraCapture) {
+    $readySamples = Get-IntValue $summary "cameraCaptureReadySamples" 0
+    Add-Check "camera-capture-ready" ($(if ($okPolls -gt 0 -and $readySamples -eq $okPolls) { "pass" } else { "fail" })) "readySamples=$readySamples okPolls=$okPolls"
+    $frameDelta = Get-IntValue $summary "cameraFrameDelta" -1
+    Add-Check "camera-frames" ($(if ($frameDelta -gt 0) { "pass" } else { "fail" })) "cameraFrameDelta=$frameDelta expected>0"
+    $captureFailures = Get-IntValue $summary "newCameraCaptureFailures" -1
+    Add-Check "camera-capture-failures" ($(if ($captureFailures -eq 0) { "pass" } else { "fail" })) "newCameraCaptureFailures=$captureFailures expected=0"
+    $maxCaptureUs = Get-IntValue $summary "maxCameraCaptureUsObserved" -1
+    $captureLimitUs = Get-StrictIntValue $summary "maxCameraCaptureUs" 250000
+    Add-Check "camera-capture-time" ($(if ($maxCaptureUs -gt 0 -and $maxCaptureUs -le $captureLimitUs) { "pass" } else { "fail" })) "maxCameraCaptureUsObserved=$maxCaptureUs max=$captureLimitUs"
+  }
+
   $maxObservedFrameUs = Get-IntValue $summary "maxFrameUs" 0
   Add-Check "display-frame-time" ($(if ($maxObservedFrameUs -gt 0 -and $maxObservedFrameUs -le $MaxFrameUs) { "pass" } else { "fail" })) "maxFrameUs=$maxObservedFrameUs max=$MaxFrameUs"
   $maxObservedSlowFrames = Get-IntValue $summary "maxSlowFrames" 0
@@ -262,7 +315,7 @@ $status = if ($failed.Count -gt 0) {
 
 $result = [ordered]@{
   schema = "stackchan.full-system-soak-evidence-check.v1"
-  profile = $(if ($NoMotionProfile) { "no-motion" } else { "full-system" })
+  profile = $(if ($RequireCameraCapture) { "camera-capture" } elseif ($RequireFinalIntegration) { "final-integration" } elseif ($NoMotionProfile) { "no-motion" } else { "full-system" })
   status = $status
   summaryJsonPath = $SummaryJsonPath
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count

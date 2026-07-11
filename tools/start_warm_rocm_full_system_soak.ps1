@@ -24,6 +24,7 @@ param(
   [switch]$BodyClear,
   [switch]$ConfirmServoRisk,
   [switch]$RequirePowerForensics,
+  [switch]$RequireFinalIntegration,
   [switch]$AllowLegacyMotionTelemetry
 )
 
@@ -199,6 +200,15 @@ $preflight = [ordered]@{
   powerForensicsArmed = [bool]$after.power_forensics_enabled -and
     [bool]$after.power_forensics_irq_enable_succeeded -and
     [bool]$after.power_forensics_boot_status_valid
+  finalIntegrationRequired = [bool]$RequireFinalIntegration
+  finalIntegrationReady = $after.power_forensics_schema -eq "axp2101-v2" -and
+    $null -ne $after.PSObject.Properties["debug_response_truncated"] -and
+    -not [bool]$after.debug_response_truncated -and
+    [int]$after.compiled_enable_body_rgb -eq 1 -and [bool]$after.body_rgb_ready -and
+    [int]$after.compiled_enable_body_touch -eq 1 -and [bool]$after.body_touch_ready -and
+    [int]$after.compiled_enable_imu -eq 1 -and [bool]$after.imu_ready -and
+    [bool]$after.imu_calibrated -and [int]$after.compiled_enable_camera -eq 0 -and
+    -not [bool]$after.camera_active
   bridgeSocketRemote = $socketRemote
 }
 $preflight | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $preflightPath -Encoding UTF8
@@ -216,6 +226,10 @@ if ($RequirePowerForensics -and
      -not [bool]$after.power_forensics_irq_enable_succeeded -or
      -not [bool]$after.power_forensics_boot_status_valid)) {
   throw "PMIC power forensics is not armed. Flash stackchan_release_forensics and verify /debug before starting this run. Evidence: $preflightPath."
+}
+
+if ($RequireFinalIntegration -and -not $preflight.finalIntegrationReady) {
+  throw "Final integration telemetry is not ready. Require PMIC v2, untruncated debug JSON, RGB/touch/IMU ready and calibrated, and production camera disabled. Evidence: $preflightPath."
 }
 
 $stdout = Join-Path $evidencePath "soak_stdout.log"
@@ -284,6 +298,9 @@ if (-not $AllowLegacyMotionTelemetry) {
 }
 if ($RequirePowerForensics) {
   $args += "-RequirePowerForensics"
+}
+if ($RequireFinalIntegration) {
+  $args += "-RequireFinalIntegration"
 }
 if ($NoSerial) {
   $args += "-NoSerial"
