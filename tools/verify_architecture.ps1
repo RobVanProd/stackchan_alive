@@ -143,6 +143,28 @@ function Assert-PlatformioFlag {
   }
 }
 
+$sdProvisionerPath = Expand-SourcePath "src/sd_provisioner.cpp"
+if (Test-Path -LiteralPath $sdProvisionerPath) {
+  Assert-FileContains `
+    -Path $sdProvisionerPath `
+    -Pattern "#if\s+defined\(STACKCHAN_SD_PROVISIONER\)\s+&&\s+STACKCHAN_SD_PROVISIONER" `
+    -Message "SD provisioner must remain compile-guarded."
+  Assert-FileContains `
+    -Path $sdProvisionerPath `
+    -Pattern 'FORMAT STACKCHAN 64GB ERASE MOVIES' `
+    -Message "SD provisioner must retain its exact destructive runtime confirmation phrase."
+  $platformioText = Get-Content -LiteralPath $platformioPath -Raw
+  $sdSection = [regex]::Match(
+    $platformioText,
+    '(?ms)^\[env:stackchan_sd_provisioner\]\s*(.*?)(?=^\[|\z)'
+  )
+  if (-not $sdSection.Success -or
+      $sdSection.Groups[1].Value -notmatch '(?m)^\s*\+<sd_provisioner\.cpp>\s*$' -or
+      $sdSection.Groups[1].Value -notmatch 'pre:tools/platformio_sd_format_gate\.py') {
+    throw "SD provisioner architecture exception requires an isolated source filter and build gate."
+  }
+}
+
 Assert-NoMatchesOutside `
   -Pattern "Stackchan_servo\.h|StackchanSERVO|ServoType::|servo_\.|\.moveX\(|\.moveY\(" `
   -AllowedRelativePaths @(
@@ -163,7 +185,12 @@ Assert-NoMatchesOutside `
   -Pattern "M5\.In_I2C|M5\.config|M5\.begin|M5\.update|M5\.Log|#include\s*<M5Unified\.h>" `
   -AllowedRelativePaths @(
     "src/main.cpp",
+    "src/sd_provisioner.cpp",
+    "src/io/AudioCaptureAdapter.cpp",
+    "src/io/BodyPeripheralAdapter.cpp",
+    "src/io/CameraAdapter.cpp",
     "src/io/DisplayAdapter.cpp",
+    "src/io/ImuAdapter.cpp",
     "src/io/SensorAdapter.cpp",
     "src/io/StackChanServoAdapter.hpp",
     "src/io/StackChanServoAdapter.cpp"
