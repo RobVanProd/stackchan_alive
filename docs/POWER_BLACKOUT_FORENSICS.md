@@ -21,6 +21,13 @@ root cause.
 - On 2026-07-10 the accepted firmware was still live after about 8.3 hours with motion, servo
   rail, and torque off; the bridge was ready, VBUS was 5.025 V, no PMIC VBUS-loss or hard-floor
   event had occurred, and the face window was about 29.4 ms.
+- A later live sample on 2026-07-10 observed one AXP2101 `battery_overvoltage` runtime IRQ. At
+  23:29 EDT the same boot remained online at 11,081,507 ms uptime with reset reason `software`,
+  bridge/network ready, motion/rail/torque off, VBUS 5.033 V, battery 4.099 V, and battery maximum
+  4.198 V. This proves the IRQ occurred during the boot; it does not prove it caused a blackout,
+  because the robot did not reset or go offline. The older v1 telemetry allowed a later
+  `vbus_insert` to overwrite the protective event's snapshot, so its exact event-time load and
+  voltage context is unavailable.
 
 The correct statement is: there are confirmed historical full-off events plus separate transient
 HTTP latency events. Neither the motors, the PC USB source, the wall source, heat, nor firmware
@@ -58,6 +65,11 @@ Captured causes include:
 Every runtime event snapshots VBUS, battery voltage, PMIC presence, chip/PMIC temperature, body
 bus/current, heap, motion request, servo rail/torque, and speaker-power state. `/debug` exposes the
 boot mask, decoded primary event, counters, read/clear failures, and last-event context.
+
+The next candidate upgrades this to the `axp2101-v2` schema and independently retains the latest
+general event, latest protective event, and latest battery-overvoltage event. A later insertion or
+removal event can no longer overwrite the protective snapshot. Native regression coverage proves
+the retained battery-overvoltage context survives a subsequent VBUS insertion.
 
 Build verification:
 

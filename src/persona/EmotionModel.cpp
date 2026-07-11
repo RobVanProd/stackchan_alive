@@ -57,7 +57,14 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
       emotion_.arousal += generated_persona::kCuriosityArousalDelta * s;
       break;
     case EventType::ResponseStarted:
-      emotion_.valence += (generated_persona::kHappyValenceDelta * 0.50f) * s;
+      if (event.hasPayload) {
+        const float targetArousal = constrain(event.x, 0.0f, 1.0f);
+        const float targetValence = constrain(event.y, -1.0f, 1.0f);
+        emotion_.arousal += (targetArousal - emotion_.arousal) * 0.82f * s;
+        emotion_.valence += (targetValence - emotion_.valence) * 0.88f * s;
+      } else {
+        emotion_.valence += (generated_persona::kHappyValenceDelta * 0.50f) * s;
+      }
       emotion_.focus += 0.15f * s;
       break;
     case EventType::IdleTimeout:

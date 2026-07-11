@@ -122,6 +122,9 @@ bool PmicPowerForensics::recordRuntimeEvent(uint32_t eventMask,
   ++telemetry_.runtimeEventPolls;
   if (pmicPowerEventIsProtective(eventMask)) {
     ++telemetry_.runtimeProtectiveEventPolls;
+    telemetry_.lastProtectiveEventMask = eventMask & kPmicProtectiveEventMask;
+    telemetry_.lastProtectiveEventAtMs = nowMs;
+    telemetry_.lastProtectiveContext = context;
   }
   telemetry_.lastEventMask = eventMask;
   telemetry_.lastEventAtMs = nowMs;
@@ -136,7 +139,11 @@ bool PmicPowerForensics::recordRuntimeEvent(uint32_t eventMask,
   telemetry_.chargeTemperatureEvents +=
       (eventMask & (kPmicIrqChargeUnderTemperature | kPmicIrqChargeOverTemperature)) != 0;
   telemetry_.gaugeWatchdogEvents += (eventMask & kPmicIrqGaugeWatchdog) != 0;
-  telemetry_.batteryOverVoltageEvents += (eventMask & kPmicIrqBatteryOverVoltage) != 0;
+  if ((eventMask & kPmicIrqBatteryOverVoltage) != 0) {
+    ++telemetry_.batteryOverVoltageEvents;
+    telemetry_.batteryOverVoltageLastAtMs = nowMs;
+    telemetry_.batteryOverVoltageLastContext = context;
+  }
   telemetry_.chargerTimerEvents += (eventMask & kPmicIrqChargerTimer) != 0;
   telemetry_.dieOverTemperatureEvents += (eventMask & kPmicIrqDieOverTemperature) != 0;
   telemetry_.batfetOverCurrentEvents += (eventMask & kPmicIrqBatfetOverCurrent) != 0;

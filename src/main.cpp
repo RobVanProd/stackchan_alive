@@ -197,6 +197,10 @@
 #define STACKCHAN_ENABLE_PERIODIC_SERIAL_TELEMETRY 1
 #endif
 
+#ifndef STACKCHAN_CAMERA_CAPTURE_PROBE_ONLY
+#define STACKCHAN_CAMERA_CAPTURE_PROBE_ONLY 0
+#endif
+
 #ifndef STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
 #define STACKCHAN_ENABLE_WAKE_SERIAL_LOGS 1
 #endif
@@ -549,13 +553,16 @@
 #include "io/BridgeWiFiClientSocket.hpp"
 #include "io/BridgeWiFiProvisioner.hpp"
 #include "io/BridgeWiFiProvisioningStore.hpp"
+#include "io/BodyPeripheralAdapter.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/DisplayAdapter.hpp"
+#include "io/ImuAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "persona/IntentEngine.hpp"
+#include "persona/BodyFeedback.hpp"
 #include "persona/StateMatrix.hpp"
 #include "power/PowerCoordinator.hpp"
 #include "power/PowerForensics.hpp"
@@ -588,6 +595,9 @@ StackChanServoAdapter gServo;
 DisplayAdapter gDisplay;
 SensorAdapter gSensors;
 CameraAdapter gCamera;
+ImuAdapter gImu;
+BodyPeripheralAdapter gBodyPeripheral;
+BodyFeedback gBodyFeedback;
 AudioCaptureAdapter gAudioCapture;
 M5MicAudioCaptureSource gAudioCaptureSource;
 AudioOut gAudioOut;
@@ -1848,6 +1858,20 @@ bool isAudioTelemetryEvent(EventType type) {
 
 CharacterMode visionModeForEvent(EventType type) {
   return type == EventType::FaceLost ? CharacterMode::Idle : CharacterMode::Attend;
+}
+
+CharacterMode imuModeForEvent(EventType type) {
+  switch (type) {
+    case EventType::Shaken:
+      return CharacterMode::Error;
+    case EventType::PutDown:
+      return CharacterMode::Attend;
+    case EventType::PickedUp:
+    case EventType::Tilted:
+      return CharacterMode::React;
+    default:
+      return CharacterMode::Idle;
+  }
 }
 
 CharacterMode bridgeModeForEvent(EventType type) {
@@ -4917,8 +4941,50 @@ void printRuntimeStatus() {
   Serial.print(camera.hardwareEnabled ? 1 : 0);
   Serial.print(F(" camera_active="));
   Serial.print(camera.active ? 1 : 0);
+  Serial.print(F(" camera_capture_ready="));
+  Serial.print(camera.captureReady ? 1 : 0);
+  Serial.print(F(" camera_init_failures="));
+  Serial.print(camera.initFailures);
+  Serial.print(F(" camera_frames="));
+  Serial.print(camera.framesCaptured);
+  Serial.print(F(" camera_capture_us="));
+  Serial.print(camera.lastCaptureUs);
+  Serial.print(F(" camera_capture_max_us="));
+  Serial.print(camera.maxCaptureUs);
+  Serial.print(F(" camera_frame_bytes="));
+  Serial.print(camera.lastFrameBytes);
   Serial.print(F(" camera_events="));
   Serial.print(camera.eventsPublished);
+  Serial.print(F(" camera_face_batches="));
+  Serial.print(camera.faceBatches);
+  Serial.print(F(" camera_audio_matches="));
+  Serial.print(camera.audioMatchedSelections);
+  Serial.print(F(" camera_reply_holds="));
+  Serial.print(camera.replyHeldSelections);
+  const ImuAdapterTelemetry& imu = gImu.telemetry();
+  Serial.print(F(" imu_ready="));
+  Serial.print(imu.ready ? 1 : 0);
+  Serial.print(F(" imu_calibrated="));
+  Serial.print(imu.calibrated ? 1 : 0);
+  Serial.print(F(" imu_samples="));
+  Serial.print(imu.samples);
+  Serial.print(F(" imu_events="));
+  Serial.print(imu.eventsPublished);
+  Serial.print(F(" imu_picked_up="));
+  Serial.print(imu.pickedUp ? 1 : 0);
+  const BodyPeripheralTelemetry& body = gBodyPeripheral.telemetry();
+  Serial.print(F(" body_rgb_ready="));
+  Serial.print(body.rgbReady ? 1 : 0);
+  Serial.print(F(" body_rgb_frames="));
+  Serial.print(body.rgbFrames);
+  Serial.print(F(" body_rgb_failures="));
+  Serial.print(body.rgbWriteFailures);
+  Serial.print(F(" body_touch_ready="));
+  Serial.print(body.touchReady ? 1 : 0);
+  Serial.print(F(" body_touch_samples="));
+  Serial.print(body.touchSamples);
+  Serial.print(F(" body_touch_events="));
+  Serial.print(body.touchEvents);
   const SpeechAdapterTelemetry& speechOut = gSpeechAdapter.telemetry();
   const AudioOutTelemetry& audioOut = gAudioOut.telemetry();
   Serial.print(F(" speech_adapter_ready="));
@@ -6045,7 +6111,10 @@ void playMicActivationCueIfNeeded() {
     return;
   }
   sLastUplinkTurnsStarted = wakeGate.turnsStarted;
+  const uint32_t cueMs = millis();
+  gBodyFeedback.notifyMicActivated(cueMs);
 #if STACKCHAN_ENABLE_MIC_ACTIVATION_CUE
+  suppressWakeMwwDetections(cueMs, 900);
   const bool accepted = gSpeakerSink.playMicActivationTone();
 #if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
   Serial.print(F("[mic] activation_tone=1 accepted="));
@@ -6053,12 +6122,31 @@ void playMicActivationCueIfNeeded() {
   Serial.print(F(" turns="));
   Serial.print(wakeGate.turnsStarted);
   Serial.print(F(" at_ms="));
-  Serial.println(millis());
+  Serial.println(cueMs);
 #else
   (void)accepted;
 #endif
 #endif
 #endif
+}
+
+float bodyFeedbackPowerScale() {
+#if defined(ARDUINO_ARCH_ESP32)
+  if (gMotionPowerSuppressed || (gPowerVbusValid && gPowerVbusMv > 0 && gPowerVbusMv < 4550) ||
+      (gChipTemperatureValid && gChipTemperatureC >= 68.0f)) {
+    return 0.25f;
+  }
+  if ((gPowerVbusValid && gPowerVbusMv > 0 && gPowerVbusMv < 4700) ||
+      (gChipTemperatureValid && gChipTemperatureC >= 64.0f)) {
+    return 0.55f;
+  }
+#endif
+  return 1.0f;
+}
+
+bool bodyFeedbackProtected() {
+  return gPowerCoordinator.decision().mode == PowerOperatingMode::Protected ||
+         bodyFeedbackPowerScale() <= 0.25f;
 }
 
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
@@ -6283,6 +6371,21 @@ bool publishMotionControl(const BenchControl& control) {
   input.motionEnabled = control.motionEnabled;
   xQueueOverwrite(gMotionControlQueue, &input);
   return true;
+}
+
+void requestMotionSafetyHold(const RobotEvent& event) {
+  if (gMotionControlQueue == nullptr ||
+      (event.type != EventType::PickedUp && event.type != EventType::Shaken)) {
+    return;
+  }
+  MotionControlInput input;
+  input.hasMotionEnable = true;
+  input.motionEnabled = false;
+  xQueueOverwrite(gMotionControlQueue, &input);
+  Serial.print(F("[imu] motion_safety_hold=1 event="));
+  Serial.print(eventTypeName(event.type));
+  Serial.print(F(" at_ms="));
+  Serial.println(event.timestampMs);
 }
 
 void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
@@ -6556,12 +6659,16 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
       strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
       strcmp(requestTarget, "/reset") == 0;
 
-  static char body[12288];
+  static char body[20480];
+  constexpr size_t kDebugJsonTailReserve = 96;
   size_t len = 0;
+  bool bodyTruncated = false;
   auto append = [&](const char* format, ...) {
-    if (len >= sizeof(body) - 1u) {
+    if (bodyTruncated || len >= sizeof(body) - kDebugJsonTailReserve) {
+      bodyTruncated = true;
       return;
     }
+    const size_t appendStart = len;
     va_list args;
     va_start(args, format);
     const int written = vsnprintf(body + len, sizeof(body) - len, format, args);
@@ -6571,7 +6678,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
     }
     const size_t remaining = sizeof(body) - len;
     const size_t used = static_cast<size_t>(written);
-    len += used < remaining ? used : remaining - 1u;
+    if (used >= remaining || used + kDebugJsonTailReserve >= remaining) {
+      body[appendStart] = '\0';
+      bodyTruncated = true;
+      return;
+    }
+    len += used;
   };
 
   append("{\"schema\":\"%s\"", schema);
@@ -6584,7 +6696,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"reset_reason\":\"%s\"", resetReasonName(gBootResetReason));
   append(",\"reset_reason_code\":%d", static_cast<int>(gBootResetReason));
 #if STACKCHAN_ENABLE_POWER_FORENSICS
-  append(",\"power_forensics_schema\":\"axp2101-v1\"");
+  append(",\"power_forensics_schema\":\"axp2101-v2\"");
   append(",\"power_forensics_enabled\":%s", pmicForensics.enabled ? "true" : "false");
   append(",\"power_forensics_irq_enable_mask\":%lu",
          static_cast<unsigned long>(kPmicForensicsIrqEnableMask));
@@ -6624,6 +6736,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          pmicPowerEventName(pmicForensics.lastEventMask));
   append(",\"power_forensics_last_event_at_ms\":%lu",
          static_cast<unsigned long>(pmicForensics.lastEventAtMs));
+  append(",\"power_forensics_last_protective_event_mask\":%lu",
+         static_cast<unsigned long>(pmicForensics.lastProtectiveEventMask));
+  append(",\"power_forensics_last_protective_event\":\"%s\"",
+         pmicPowerEventName(pmicForensics.lastProtectiveEventMask));
+  append(",\"power_forensics_last_protective_event_at_ms\":%lu",
+         static_cast<unsigned long>(pmicForensics.lastProtectiveEventAtMs));
   append(",\"power_forensics_vbus_remove_events\":%lu",
          static_cast<unsigned long>(pmicForensics.vbusRemoveEvents));
   append(",\"power_forensics_battery_remove_events\":%lu",
@@ -6640,6 +6758,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(pmicForensics.gaugeWatchdogEvents));
   append(",\"power_forensics_battery_overvoltage_events\":%lu",
          static_cast<unsigned long>(pmicForensics.batteryOverVoltageEvents));
+  append(",\"power_forensics_battery_overvoltage_last_at_ms\":%lu",
+         static_cast<unsigned long>(pmicForensics.batteryOverVoltageLastAtMs));
   append(",\"power_forensics_charger_timer_events\":%lu",
          static_cast<unsigned long>(pmicForensics.chargerTimerEvents));
   append(",\"power_forensics_die_overtemperature_events\":%lu",
@@ -6685,6 +6805,62 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
     append(",\"power_forensics_last_body_current_ma\":%d", context.bodyCurrentMa);
     append(",\"power_forensics_last_heap_free\":%lu",
            static_cast<unsigned long>(context.heapFree));
+  }
+  auto appendPowerForensicsContext = [&](const char* prefix,
+                                         const PmicPowerEventContext& context) {
+    append(",\"power_forensics_%s_vbus_valid\":%s",
+           prefix,
+           context.vbusValid ? "true" : "false");
+    append(",\"power_forensics_%s_vbus_mv\":%d", prefix, context.vbusMv);
+    append(",\"power_forensics_%s_battery_valid\":%s",
+           prefix,
+           context.batteryValid ? "true" : "false");
+    append(",\"power_forensics_%s_battery_mv\":%d", prefix, context.batteryMv);
+    append(",\"power_forensics_%s_chip_temp_valid\":%s",
+           prefix,
+           context.chipTemperatureValid ? "true" : "false");
+    append(",\"power_forensics_%s_pmic_temp_valid\":%s",
+           prefix,
+           context.pmicTemperatureValid ? "true" : "false");
+    append(",\"power_forensics_%s_body_power_valid\":%s",
+           prefix,
+           context.bodyPowerValid ? "true" : "false");
+    append(",\"power_forensics_%s_pmic_vbus_present\":%s",
+           prefix,
+           context.pmicVbusPresent ? "true" : "false");
+    append(",\"power_forensics_%s_pmic_battery_present\":%s",
+           prefix,
+           context.pmicBatteryPresent ? "true" : "false");
+    append(",\"power_forensics_%s_motion_requested\":%s",
+           prefix,
+           context.motionRequested ? "true" : "false");
+    append(",\"power_forensics_%s_servo_rail_enabled\":%s",
+           prefix,
+           context.servoRailEnabled ? "true" : "false");
+    append(",\"power_forensics_%s_servo_torque_enabled\":%s",
+           prefix,
+           context.servoTorqueEnabled ? "true" : "false");
+    append(",\"power_forensics_%s_speaker_power_active\":%s",
+           prefix,
+           context.speakerPowerActive ? "true" : "false");
+    append(",\"power_forensics_%s_chip_temp_c\":%.1f",
+           prefix,
+           static_cast<double>(context.chipTemperatureDeciC) / 10.0);
+    append(",\"power_forensics_%s_pmic_temp_c\":%.1f",
+           prefix,
+           static_cast<double>(context.pmicTemperatureDeciC) / 10.0);
+    append(",\"power_forensics_%s_body_bus_mv\":%d", prefix, context.bodyBusMv);
+    append(",\"power_forensics_%s_body_current_ma\":%d", prefix, context.bodyCurrentMa);
+    append(",\"power_forensics_%s_heap_free\":%lu",
+           prefix,
+           static_cast<unsigned long>(context.heapFree));
+  };
+  if (pmicForensics.lastProtectiveEventMask != 0) {
+    appendPowerForensicsContext("last_protective", pmicForensics.lastProtectiveContext);
+  }
+  if (pmicForensics.batteryOverVoltageEvents != 0) {
+    appendPowerForensicsContext("battery_overvoltage_last",
+                                pmicForensics.batteryOverVoltageLastContext);
   }
 #endif
   append(",\"heap_free\":%lu", static_cast<unsigned long>(ESP.getFreeHeap()));
@@ -6871,6 +7047,62 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"power_motion_blocks\":%lu", static_cast<unsigned long>(powerCoordinator.motionBlockEntries));
   append(",\"power_last_transition_ms\":%lu", static_cast<unsigned long>(powerCoordinator.lastTransitionMs));
   append(",\"compiled_enable_servos\":%d", STACKCHAN_SERVO_HARDWARE_ENABLE ? 1 : 0);
+  const CameraAdapterTelemetry& camera = gCamera.telemetry();
+  append(",\"compiled_enable_camera\":%d", STACKCHAN_ENABLE_CAMERA ? 1 : 0);
+  append(",\"camera_ready\":%s", camera.ready ? "true" : "false");
+  append(",\"camera_active\":%s", camera.active ? "true" : "false");
+  append(",\"camera_capture_ready\":%s", camera.captureReady ? "true" : "false");
+  append(",\"camera_init_attempts\":%lu", static_cast<unsigned long>(camera.initAttempts));
+  append(",\"camera_init_failures\":%lu", static_cast<unsigned long>(camera.initFailures));
+  append(",\"camera_last_init_error\":%ld", static_cast<long>(camera.lastInitError));
+  append(",\"camera_frames_captured\":%lu", static_cast<unsigned long>(camera.framesCaptured));
+  append(",\"camera_capture_failures\":%lu", static_cast<unsigned long>(camera.captureFailures));
+  append(",\"camera_last_capture_us\":%lu", static_cast<unsigned long>(camera.lastCaptureUs));
+  append(",\"camera_max_capture_us\":%lu", static_cast<unsigned long>(camera.maxCaptureUs));
+  append(",\"camera_last_frame_bytes\":%lu", static_cast<unsigned long>(camera.lastFrameBytes));
+  append(",\"camera_last_frame_width\":%u", camera.lastFrameWidth);
+  append(",\"camera_last_frame_height\":%u", camera.lastFrameHeight);
+  append(",\"camera_last_frame_checksum\":%lu",
+         static_cast<unsigned long>(camera.lastFrameChecksum));
+  append(",\"camera_events\":%lu", static_cast<unsigned long>(camera.eventsPublished));
+  append(",\"camera_face_batches\":%lu", static_cast<unsigned long>(camera.faceBatches));
+  append(",\"camera_faces_observed\":%lu", static_cast<unsigned long>(camera.facesObserved));
+  append(",\"camera_audio_matched_selections\":%lu",
+         static_cast<unsigned long>(camera.audioMatchedSelections));
+  append(",\"camera_reply_held_selections\":%lu",
+         static_cast<unsigned long>(camera.replyHeldSelections));
+  const ImuAdapterTelemetry& imu = gImu.telemetry();
+  append(",\"compiled_enable_imu\":%d", STACKCHAN_ENABLE_IMU ? 1 : 0);
+  append(",\"imu_ready\":%s", imu.ready ? "true" : "false");
+  append(",\"imu_calibrated\":%s", imu.calibrated ? "true" : "false");
+  append(",\"imu_picked_up\":%s", imu.pickedUp ? "true" : "false");
+  append(",\"imu_self_motion_filtered\":%s", imu.selfMotionFiltered ? "true" : "false");
+  append(",\"imu_samples\":%lu", static_cast<unsigned long>(imu.samples));
+  append(",\"imu_read_failures\":%lu", static_cast<unsigned long>(imu.readFailures));
+  append(",\"imu_events\":%lu", static_cast<unsigned long>(imu.eventsPublished));
+  append(",\"imu_self_motion_samples\":%lu", static_cast<unsigned long>(imu.selfMotionSamples));
+  append(",\"imu_pickup_events\":%lu", static_cast<unsigned long>(imu.pickupEvents));
+  append(",\"imu_putdown_events\":%lu", static_cast<unsigned long>(imu.putdownEvents));
+  append(",\"imu_shake_events\":%lu", static_cast<unsigned long>(imu.shakeEvents));
+  append(",\"imu_tilt_events\":%lu", static_cast<unsigned long>(imu.tiltEvents));
+  append(",\"imu_accel_norm\":%.3f", static_cast<double>(imu.accelNorm));
+  append(",\"imu_gyro_norm\":%.3f", static_cast<double>(imu.gyroNorm));
+  append(",\"imu_gravity_x\":%.3f", static_cast<double>(imu.gravityX));
+  append(",\"imu_gravity_y\":%.3f", static_cast<double>(imu.gravityY));
+  append(",\"imu_gravity_z\":%.3f", static_cast<double>(imu.gravityZ));
+  const BodyPeripheralTelemetry& bodyPeripheral = gBodyPeripheral.telemetry();
+  append(",\"compiled_enable_body_rgb\":%d", STACKCHAN_ENABLE_BODY_RGB ? 1 : 0);
+  append(",\"compiled_enable_body_touch\":%d", STACKCHAN_ENABLE_BODY_TOUCH ? 1 : 0);
+  append(",\"body_rgb_ready\":%s", bodyPeripheral.rgbReady ? "true" : "false");
+  append(",\"body_rgb_frames\":%lu", static_cast<unsigned long>(bodyPeripheral.rgbFrames));
+  append(",\"body_rgb_write_failures\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.rgbWriteFailures));
+  append(",\"body_touch_ready\":%s", bodyPeripheral.touchReady ? "true" : "false");
+  append(",\"body_touch_samples\":%lu", static_cast<unsigned long>(bodyPeripheral.touchSamples));
+  append(",\"body_touch_read_failures\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchReadFailures));
+  append(",\"body_touch_events\":%lu", static_cast<unsigned long>(bodyPeripheral.touchEvents));
+  append(",\"body_touch_last_raw\":%u", bodyPeripheral.lastTouchRaw);
   append(",\"motion_requested\":%s", gMotionRequested ? "true" : "false");
   append(",\"motion_enabled\":%s", gActuation.isEnabled() ? "true" : "false");
   append(",\"servo_power_allowed\":%s", servoPower.powerAllowed ? "true" : "false");
@@ -6911,6 +7143,9 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"motion_duty_rest_entries\":%lu", static_cast<unsigned long>(motion.dutyRestEntries));
   append(",\"motion_duty_rest_total_ms\":%lu", static_cast<unsigned long>(motion.dutyRestMs));
   append(",\"motion_output_suppressed\":%s", motion.outputSuppressed ? "true" : "false");
+  append(",\"motion_self_motion_active\":%s", motion.selfMotionActive ? "true" : "false");
+  append(",\"motion_self_motion_until_ms\":%lu",
+         static_cast<unsigned long>(motion.selfMotionUntilMs));
   append(",\"motion_output_suppress_entries\":%lu",
          static_cast<unsigned long>(motion.outputSuppressEntries));
   append(",\"motion_output_suppress_total_ms\":%lu",
@@ -7052,7 +7287,16 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"sr_wake_detections\":%lu", static_cast<unsigned long>(gWakeSrProbe.wakeDetections));
   append(",\"sr_wake_events_applied\":%lu", static_cast<unsigned long>(gWakeSrProbe.wakeEventsApplied));
   append(",\"sr_wake_model\":\"%s\"", gWakeSrProbe.modelName);
-  append(",\"sr_wake_error\":\"%s\"}\r\n", gWakeSrProbe.lastError);
+  append(",\"sr_wake_error\":\"%s\",\"debug_response_truncated\":false}\r\n",
+         gWakeSrProbe.lastError);
+  if (bodyTruncated) {
+    const int tailLen = snprintf(body + len,
+                                 sizeof(body) - len,
+                                 ",\"debug_response_truncated\":true}\r\n");
+    if (tailLen > 0 && static_cast<size_t>(tailLen) < sizeof(body) - len) {
+      len += static_cast<size_t>(tailLen);
+    }
+  }
 
   char header[128] = {};
   const int headerLen = snprintf(
@@ -7497,6 +7741,9 @@ void IntentTask(void* pv) {
     pollWakeSrDirect(loopMs);
     pollWakeSrAfeLite(loopMs);
     pollWakeMwwProbe(loopMs);
+#if STACKCHAN_CAMERA_CAPTURE_PROBE_ONLY
+    gCamera.serviceCaptureProbe(loopMs);
+#endif
 
     AudioReflexEvent audioEvents[3];
     const uint32_t audioWindowsBefore = gAudioCapture.telemetry().windowsCaptured;
@@ -7509,6 +7756,10 @@ void IntentTask(void* pv) {
         continue;
       }
       gIntent.applyEvent(audioEvents[i].event, audioEvents[i].mode);
+      if (audioEvents[i].event.type == EventType::SoundDirection && audioEvents[i].event.hasPayload) {
+        gCamera.submitSoundDirection(
+            audioEvents[i].event.x, audioEvents[i].event.strength, audioEvents[i].event.timestampMs);
+      }
       if (pendingAudioEventCount < 4) {
         pendingAudioEvents[pendingAudioEventCount++] = audioEvents[i].event;
       }
@@ -7524,10 +7775,21 @@ void IntentTask(void* pv) {
       printVisionTelemetry(cameraEvent, millis());
     }
 
+    const ActuationTelemetry motionTelemetry = gActuation.telemetry();
+    RobotEvent imuEvent;
+    if (gImu.poll(loopMs, motionTelemetry.selfMotionActive, &imuEvent)) {
+      gIntent.applyEvent(imuEvent, imuModeForEvent(imuEvent.type));
+      requestMotionSafetyHold(imuEvent);
+    }
+
     BenchControl control;
     while (gSensors.poll(&control)) {
       if (control.hasEvent) {
         gIntent.applyEvent(control.event, control.mode);
+        if (control.event.type == EventType::SoundDirection && control.event.hasPayload) {
+          gCamera.submitSoundDirection(
+              control.event.x, control.event.strength, control.event.timestampMs);
+        }
         gBridgeWakeGate.applyEvent(control.event, millis());
         if (isAudioTelemetryEvent(control.event.type)) {
           if (pendingAudioEventCount < 4) {
@@ -7613,11 +7875,24 @@ void IntentTask(void* pv) {
       pollBridgeOutputs(millis());
       printBenchControl(control);
     }
+
+    RobotEvent bodyTouchEvent;
+    BodyTouchInteraction bodyTouchInteraction;
+    if (gBodyPeripheral.pollTouch(loopMs, &bodyTouchEvent, &bodyTouchInteraction)) {
+      gIntent.applyEvent(bodyTouchEvent, CharacterMode::React);
+      gBodyFeedback.notifyTouch(
+          bodyTouchInteraction.zone, bodyTouchEvent.strength, bodyTouchEvent.timestampMs);
+    }
     pollBridgeOutputs(millis());
     playMicActivationCueIfNeeded();
     gSpeakerSink.service(millis());
 
     RobotFrame frame = gIntent.update(millis());
+    gCamera.setRobotSpeaking(frame.mode == CharacterMode::Speak, frame.timestampMs);
+    const FaceSpeechTelemetry& faceSpeech = gFace.speechTelemetry();
+    const BodyRgbFrame bodyRgb = gBodyFeedback.render(
+        frame, faceSpeech.envelope, frame.timestampMs, bodyFeedbackPowerScale(), bodyFeedbackProtected());
+    gBodyPeripheral.writeRgb(bodyRgb, frame.timestampMs);
     for (uint8_t i = 0; i < pendingAudioEventCount; ++i) {
       printAudioTelemetry(pendingAudioEvents[i], frame.timestampMs);
     }
@@ -7688,6 +7963,8 @@ void setup() {
 
   gSensors.begin();
   gCamera.begin();
+  gImu.begin(millis());
+  gBodyPeripheral.begin(millis());
   gAudioOut.begin(STACKCHAN_ENABLE_SPEAKER != 0, STACKCHAN_ENABLE_SPEAKER != 0 ? &gSpeakerSink : nullptr);
   const bool bridgeAudioPlaybackEnabled =
       (STACKCHAN_ENABLE_SPEAKER != 0) && (STACKCHAN_ENABLE_BRIDGE_AUDIO_DOWNLINK_PLAYBACK != 0);
@@ -7697,6 +7974,7 @@ void setup() {
   bridgeConfig.responseTimeoutMs = 120000;
   gBridge.begin(bridgeConfig);
   const uint32_t bootMs = millis();
+  gBodyFeedback.begin(bootMs);
   gBridgeEndpointRegistry.begin();
   gBridgeEndpointStore.begin(gBridgeEndpointStoreBackend);
   gBridgeEndpointStore.load(gBridgeEndpointRegistry, bootMs);

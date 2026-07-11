@@ -41,9 +41,12 @@ class IntentEngine {
   uint32_t lastSpeechCueMs_ = 0;
   uint32_t activeSpeechUntilMs_ = 0;
   uint32_t soundOrientUntilMs_ = 0;
+  uint32_t lastEventAtMs_ = 0;
   bool demoEnabled_ = true;
   bool reducedMotion_ = false;
   float soundAzimuthNorm_ = 0.0f;
+  float lastEventStrength_ = 0.0f;
+  EventType lastEventType_ = EventType::Boot;
   SpeechIntent lastSpeechIntent_ = SpeechIntent::None;
   SpeechCue activeSpeech_;
 

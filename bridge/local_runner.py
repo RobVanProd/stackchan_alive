@@ -205,6 +205,7 @@ def run_runner_profile(
     timeout_ms: int = 60000,
     persona_id: str = DEFAULT_PERSONA_ID,
     user_text: str = "",
+    research_tools_enabled: bool = False,
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
@@ -214,7 +215,7 @@ def run_runner_profile(
     case = dict(prompt_case_by_name(case_name))
     if user_text.strip():
         case["user"] = user_text.strip()
-    prompt = build_prompt(case, persona)
+    prompt = build_prompt(case, persona, research_tools_enabled=research_tools_enabled)
     resolved_command, command_source = resolve_command(profile_id, command)
     configured_runner = resolved_command is not None
     elapsed_ms: float | None = None

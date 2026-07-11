@@ -149,6 +149,10 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     readFloatField(jsonLine, "valence", &output.response.valence);
     output.response.arousal = clamp01(output.response.arousal);
     output.response.valence = constrain(output.response.valence, -1.0f, 1.0f);
+    output.event.hasPayload = true;
+    output.event.x = output.response.arousal;
+    output.event.y = output.response.valence;
+    output.event.z = 1.0f;
     queueOutput(output);
     return true;
   }

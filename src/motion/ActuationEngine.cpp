@@ -19,6 +19,8 @@ void ActuationEngine::begin(IActuator* actuator) {
   dutyCycleStartMs_ = enabled_ ? enabledAtMs_ : 0;
   dutyRestStartedMs_ = 0;
   dutyRestMs_ = 0;
+  selfMotionUntilMs_ = 0;
+  hasLastCommand_ = false;
   lastUpdateMs_ = millis();
   lastReason_ = enabled_ ? "boot_enabled" : "boot_disabled";
   actuatorReady_ = false;
@@ -208,20 +210,32 @@ void ActuationEngine::update(const RobotFrame& target, uint32_t nowUs) {
   }
   lastActuatorWriteMs_ = nowMs;
 
+  bool commandMoved = !hasLastCommand_ || fabsf(pitchCmd - lastPitchCommandDeg_) >= 0.60f;
   actuator_->writePitchDeg(pitchCmd);
+  lastPitchCommandDeg_ = pitchCmd;
 
   if (target.motion.yawMode == YawMode::Angle) {
     const float yawCmd = clampYawAngle(yaw_.step(yawTarget, dt), config_.servos);
+    commandMoved = commandMoved || !hasLastCommand_ || fabsf(yawCmd - lastYawCommandDeg_) >= 0.60f;
     actuator_->writeYawAngleDeg(yawCmd);
+    lastYawCommandDeg_ = yawCmd;
   } else if (target.motion.yawMode == YawMode::Velocity) {
-    actuator_->writeYawVelocity(clampYawVelocity(target.motion.yawVel, config_.servos));
+    const float yawVelocity = clampYawVelocity(target.motion.yawVel, config_.servos);
+    commandMoved = commandMoved || fabsf(yawVelocity) >= 0.03f;
+    actuator_->writeYawVelocity(yawVelocity);
   } else {
     actuator_->writeYawVelocity(0.0f);
+  }
+  hasLastCommand_ = true;
+  if (commandMoved) {
+    selfMotionUntilMs_ = nowMs + STACKCHAN_SERVO_OUTPUT_PERIOD_MS + 250u;
   }
 }
 
 void ActuationEngine::stopActuator(const char* reason) {
   lastReason_ = reason != nullptr ? reason : "stopped";
+  selfMotionUntilMs_ = 0;
+  hasLastCommand_ = false;
   if (actuator_ != nullptr && actuatorReady_) {
     stopCalls_++;
     actuator_->stop();
@@ -233,9 +247,12 @@ ActuationTelemetry ActuationEngine::telemetry() const {
   telemetry.enabled = enabled_;
   telemetry.actuatorReady = actuatorReady_;
   telemetry.outputSuppressed = outputSuppressed_;
+  telemetry.selfMotionActive = selfMotionUntilMs_ != 0 &&
+                               static_cast<int32_t>(selfMotionUntilMs_ - millis()) > 0;
   telemetry.enabledAtMs = enabledAtMs_;
   telemetry.lastUpdateMs = lastUpdateMs_;
   telemetry.lastActuatorWriteMs = lastActuatorWriteMs_;
+  telemetry.selfMotionUntilMs = selfMotionUntilMs_;
   telemetry.enableRequests = enableRequests_;
   telemetry.disableRequests = disableRequests_;
   telemetry.enableFailures = enableFailures_;

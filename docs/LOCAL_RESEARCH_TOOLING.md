@@ -1,6 +1,7 @@
 # Local Research Tooling
 
-Status: release architecture selected; implementation follows the integrated bridge release.
+Status: bounded bridge broker and one-round Gemma integration implemented; live local SearXNG
+deployment and voice/research soak remain pending.
 
 ## Decision
 
@@ -19,6 +20,11 @@ Both return structured evidence with title, canonical URL, excerpt, retrieval ti
 type. The bridge performs at most two tool rounds per turn, then asks Gemma for a cited final
 answer. Web text is untrusted context and cannot directly write long-term memory, alter persona,
 or invoke robot controls.
+
+The current release candidate implements one tool round per turn. Source URLs are attached to
+`response_start` as bounded citation metadata for companion clients and are not spoken aloud.
+The bridge forcibly clears `memory_write` and `memory_forget` from a research-derived final
+response so fetched claims cannot silently become durable memory.
 
 ## Why This Stack
 
@@ -96,6 +102,16 @@ The bridge validates the request, executes it, appends a compact evidence block 
 prompt, and reruns Gemma once. A second fetch may be permitted for one selected result. More tool
 rounds, navigation, downloads, login flows, purchases, posting, or form submission require an
 explicit future capability and owner confirmation.
+
+Start the PC bridge with research enabled only after a loopback SearXNG instance is ready:
+
+```powershell
+python bridge\lan_service.py --enable-research --searxng-url http://127.0.0.1:8080
+```
+
+`research_broker.py` requires SearXNG itself to resolve exclusively to loopback. Public page
+fetches require HTTPS and reject non-global DNS answers before each request and redirect. The
+broker has no shell, file, form, login, posting, purchase, or arbitrary MCP-code capability.
 
 ## Acceptance Gates
 

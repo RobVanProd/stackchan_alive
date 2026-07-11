@@ -74,6 +74,9 @@ struct PmicPowerForensicsTelemetry {
   uint32_t clearFailures = 0;
   uint32_t lastEventMask = 0;
   uint32_t lastEventAtMs = 0;
+  uint32_t lastProtectiveEventMask = 0;
+  uint32_t lastProtectiveEventAtMs = 0;
+  uint32_t batteryOverVoltageLastAtMs = 0;
   uint32_t vbusRemoveEvents = 0;
   uint32_t batteryRemoveEvents = 0;
   uint32_t warningLevel1Events = 0;
@@ -89,6 +92,8 @@ struct PmicPowerForensicsTelemetry {
   uint32_t watchdogExpireEvents = 0;
   uint32_t powerKeyLongPressEvents = 0;
   PmicPowerEventContext lastContext;
+  PmicPowerEventContext lastProtectiveContext;
+  PmicPowerEventContext batteryOverVoltageLastContext;
 };
 
 class PmicPowerForensics {

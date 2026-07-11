@@ -269,7 +269,12 @@ def validate_response(raw_response: str, persona: PersonaPack | None = None) -> 
     return HarnessResult(ok=not issues, normalized=normalized, issues=issues)
 
 
-def build_prompt(case: dict[str, str], persona: PersonaPack | None = None) -> str:
+def build_prompt(
+    case: dict[str, str],
+    persona: PersonaPack | None = None,
+    *,
+    research_tools_enabled: bool = False,
+) -> str:
     pack = persona or DEFAULT_PERSONA
     base = pack.render_prompt(memory_lines=("turns_seen: 0",), context_markers=(f"case: {case.get('name', 'ad-hoc')}",))
     schema = (
@@ -279,7 +284,18 @@ def build_prompt(case: dict[str, str], persona: PersonaPack | None = None) -> st
         '"emotion":{"arousal":0.0,"valence":0.0},"memory_write":{},"memory_forget":[]}. '
         "Do not use any other mode or earcon value. emotion must be an object with numeric arousal and valence."
     )
-    return f"{base}\n\n{schema}\nUser/context: {case['user']}\nAcceptance target: {case['expect']}\nReturn only one JSON object."
+    tool_schema = ""
+    if research_tools_enabled:
+        tool_schema = (
+            " If fresh public-web evidence is required, you may instead return exactly "
+            '{"tool_request":{"name":"web_search|web_fetch","arguments":{...}}}. '
+            "Use web_search with query/max_results or web_fetch with one HTTPS URL. "
+            "Do not place tool syntax in spoken_text and do not request any other tool."
+        )
+    return (
+        f"{base}\n\n{schema}{tool_schema}\nUser/context: {case['user']}\n"
+        f"Acceptance target: {case['expect']}\nReturn only one JSON object."
+    )
 
 
 def run_model_command(command: str, prompt: str) -> tuple[str, float, float]:

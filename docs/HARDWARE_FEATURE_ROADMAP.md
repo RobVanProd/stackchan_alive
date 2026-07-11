@@ -7,9 +7,13 @@ remain independently recoverable.
 
 Current status (2026-07-10): Gate 0 passed with the accepted power-coordinated 60-minute lead.
 The release-forensics/Voice V2 diagnostic build subsequently passed short motion-off, servo,
-complete streamed-audio, five-second conversation, and audio-driven mouth tests. The remaining
-firmware work begins at Phase 1 below; camera, IMU, touch, RGB, active-speaker tracking, and face
-recognition are intentionally not folded into the release candidate all at once.
+complete streamed-audio, five-second conversation, and audio-driven mouth tests. The next
+candidate now compiles body RGB/touch and IMU into the release profile, with bounded telemetry,
+power-aware RGB, servo-self-motion filtering, and pickup/shake safety holds. Native firmware
+logic is 214/214, the release image builds at 48.8% RAM and 41.0% flash, and the camera-capture
+probe builds at 52.2% RAM and 41.9% flash. These are build results, not physical acceptance.
+Camera capture, face detection, active-speaker tracking, touch-zone orientation, IMU thresholds,
+and all combined behavior remain unproven until the supervised sequence below passes.
 
 ## Confirmed Hardware
 
@@ -66,6 +70,9 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
 
 ### Phase 1: Passive Hardware Inventory
 
+Implementation status: telemetry is present for body RGB/touch, IMU, camera capture, bridge,
+display, audio, motion, power, heap, and reset state. Physical inventory is pending.
+
 - Add capability telemetry for the expected body and CoreS3 devices using the official
   StackChan BSP/M5Unified paths where compatible with this firmware.
 - Verify the base bus and expected Si12T touch, RGB control, and INA226 devices without
@@ -76,6 +83,12 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
   or temperature regression.
 
 ### Phase 2: IMU And Pickup Awareness
+
+Implementation status: a 25 Hz M5Unified IMU adapter now calibrates stationary gravity and
+publishes bounded pickup, putdown, tilt, and shake events. Recent meaningful servo commands
+activate a self-motion filter; ordinary servo motion cannot become a handling event, while an
+extreme impact can still request a safety hold. Threshold calibration and false-positive
+evidence are pending.
 
 - Sample the IMU in a low-priority, bounded sensor task and calibrate stationary bias.
 - Produce `pickup`, `putdown`, `tilt`, `shake`, and orientation events through the existing
@@ -89,6 +102,12 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
 
 ### Phase 3: Body Touch And RGB Feedback
 
+Implementation status: the candidate includes direct bounded drivers for the Si12T and body
+controller, front/middle/back tap, hold, release, and swipe interpretation, and a 12-LED
+foundation renderer for mode, mood, speech envelope, touch, and microphone acknowledgement.
+Writes are change-only and capped at 20 Hz; normal channel brightness is capped at 52/255 and
+protected-mode brightness at 14/255. Physical zone mapping and power evidence are pending.
+
 - Map the three physical touch zones to named events after observing the actual body
   orientation; do not guess left/right labels in code.
 - Support tap, hold, and release with debounce and stuck-touch recovery.
@@ -101,6 +120,12 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
 
 ### Phase 4: Camera Face Detection
 
+Implementation status: the isolated camera profile configures the GC0308 at QVGA RGB565 with
+one PSRAM frame buffer and reuses the managed internal SCCB bus without releasing PMIC/audio
+devices. The profile compiles, but physical initialization and capture timing are pending. The
+current Arduino toolchain does not bundle a face detector; ESP-DL detector integration remains
+separate from the production release until it passes its own load, heap, frame, and power gates.
+
 - Begin at low resolution and a conservative 5-10 FPS with fixed PSRAM frame buffers.
 - Detect face boxes locally and publish only bounded `x`, `y`, `size`, `confidence`, and
   timestamp data to the existing `CameraAdapter` and `GazeTracker` path.
@@ -112,6 +137,11 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
   frame over 50 ms, and a 60-minute camera-on soak.
 
 ### Phase 5: Look Toward The Speaker
+
+Implementation status: bounded multi-face selection, microphone-azimuth matching, smoothing,
+target-switch resistance, confidence decay, and reply-time target hold are implemented and
+native-tested. They receive real sound-direction events today, but need a real face-box producer
+before camera-guided physical tracking exists.
 
 - Estimate sound direction from the dual microphones on-device and publish a bounded
   azimuth/confidence event. Validate the actual microphone geometry before assigning
@@ -138,6 +168,55 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
   attention target with confidence and expiry. Identity never grants actuator authority.
 - Acceptance: enrolled/unknown distinction, delete-and-retest evidence, multi-person
   active-speaker tests, bridge-loss fallback, and an overnight combined soak.
+
+## Optional 64 GB microSD
+
+The installed 64 GB card is optional capacity, never a boot or safety dependency. Intended
+uses are bounded diagnostic bundles, explicitly requested camera enrollment assets, cached
+voice/model assets, and owner-triggered backups. The normal memory store remains host-side and
+must continue working when the card is absent.
+
+M5Stack documents a 16 GB maximum for the CoreS3 microSD slot. The installed 64 GB SDXC card is
+therefore outside the supported hardware envelope and remains optional/experimental even if the
+board can initialize it. The current ESP32-S3 FatFs build also has exFAT disabled, so an accepted
+card must be FAT32. Provisioning is destructive and must use a separate guarded formatter, not a
+normal runtime command:
+
+1. Probe the physical card without writing, print its card class, and require a reported capacity
+   in the 58-70 GB range.
+2. Print card type, sector count, capacity, and the exact erase confirmation phrase.
+3. Require an operator confirmation that the old movies may be erased.
+4. Invoke the board-local FatFs format path, remount, and verify a write/read/delete test.
+5. Reflash the validated release firmware and confirm it boots normally with and without the
+   card. Do not make wake, face, bridge, voice, memory, or safety behavior depend on this
+   unsupported-capacity card.
+
+Never store continuous raw audio, unattended camera history, credentials, Wi-Fi secrets, or
+unbounded conversation transcripts on the card. Face recognition, if enabled later, stores the
+minimum owner-approved enrollment representation and provides list/delete controls.
+
+The guarded build is `stackchan_sd_provisioner`. It refuses to build unless
+`STACKCHAN_SD_FORMAT_BUILD_TOKEN=ERASE_STACKCHAN_64GB_MOVIES` is explicitly set, then still
+refuses at runtime unless the card capacity is in range and the serial console receives
+`FORMAT STACKCHAN 64GB ERASE MOVIES` within 60 seconds. A successful run writes and reads
+`/STACKCHAN_SD_READY.txt`. This image must never be distributed as normal robot firmware.
+The initial card-class/capacity output is a non-destructive checkpoint; formatting is not attempted
+until the exact phrase is received.
+
+## Supervised Candidate Sequence
+
+1. Flash the release candidate with servos initially stopped and capture `/debug`.
+2. Confirm `body_rgb_ready`, `body_touch_ready`, `imu_ready`, and `imu_calibrated`, with camera
+   still disabled in the production image.
+3. Validate the two-tone wake cue and RGB microphone pulse without speaking or moving.
+4. Exercise front, middle, and back tap/hold/swipe while recording raw zone telemetry.
+5. With motion stopped, validate pickup, tilt, putdown, and shake safety hold.
+6. With body clear and servo risk confirmed, enable motion and prove ordinary animation does
+   not create IMU handling events.
+7. Run voice, mouth, mood, RGB, touch, and motion together; enforce the existing 50 ms display,
+   68 C temperature, VBUS/PMIC, bridge, timeout, and reset gates.
+8. Only after that candidate passes, flash the camera probe for capture-only evidence. Do not
+   promote camera capture or tracking into the release image from compile evidence alone.
 
 ## Evidence Required Per Phase
 

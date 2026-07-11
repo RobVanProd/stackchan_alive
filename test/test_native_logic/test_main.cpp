@@ -24,7 +24,9 @@
 #include "io/BridgeWebSocketTransport.hpp"
 #include "io/BridgeWiFiProvisioner.hpp"
 #include "io/BridgeWiFiProvisioningStore.hpp"
+#include "io/BodyTouch.hpp"
 #include "io/CameraAdapter.hpp"
+#include "io/ImuAdapter.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
@@ -34,6 +36,7 @@
 #include "PersonaExpressions.hpp"
 #include "PersonaPromptAssets.hpp"
 #include "persona/AudioSaliency.hpp"
+#include "persona/BodyFeedback.hpp"
 #include "persona/CommandMap.hpp"
 #include "persona/EarconSynth.hpp"
 #include "persona/EmotionModel.hpp"
@@ -1269,6 +1272,262 @@ void test_command_map_accepts_bench_tokens_matching_yaml_keys() {
                     static_cast<int>(CommandMap::fromToken("dance")));
 }
 
+void test_active_speaker_tracker_uses_audio_to_choose_among_faces() {
+  ActiveSpeakerTracker tracker;
+  tracker.reset(0);
+  tracker.updateSoundDirection(0.75f, 0.9f, 100);
+  const FaceCandidate faces[] = {
+      {-0.80f, 0.0f, 0.90f, 1.0f},
+      {0.60f, -0.10f, 0.40f, 1.0f},
+  };
+  const ActiveSpeakerTarget target = tracker.updateFaces(faces, 2, 180);
+  TEST_ASSERT_TRUE(target.valid);
+  TEST_ASSERT_TRUE(target.audioMatched);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.40f, target.x);
+}
+
+void test_active_speaker_tracker_holds_target_while_robot_replies() {
+  ActiveSpeakerTracker tracker;
+  tracker.reset(0);
+  tracker.updateSoundDirection(0.65f, 1.0f, 100);
+  const FaceCandidate initial[] = {{0.60f, 0.05f, 0.50f, 1.0f}};
+  const ActiveSpeakerTarget selected = tracker.updateFaces(initial, 1, 160);
+  tracker.setRobotSpeaking(true, 200);
+  const FaceCandidate distractor[] = {{-0.75f, 0.0f, 0.90f, 1.0f}};
+  const ActiveSpeakerTarget held = tracker.updateFaces(distractor, 1, 400);
+  TEST_ASSERT_TRUE(held.heldForReply);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, selected.x, held.x);
+  TEST_ASSERT_TRUE(tracker.target(5000).valid);
+  tracker.setRobotSpeaking(false, 5200);
+  TEST_ASSERT_FALSE(tracker.target(8000).valid);
+}
+
+void test_camera_adapter_publishes_audio_matched_active_speaker() {
+  CameraAdapter camera;
+  TEST_ASSERT_TRUE(camera.begin());
+  camera.submitSoundDirection(-0.65f, 0.9f, 100);
+  const FaceCandidate faces[] = {
+      {-0.60f, 0.10f, 0.35f, 0.95f},
+      {0.70f, 0.0f, 0.70f, 0.95f},
+  };
+  camera.submitFaces(faces, 2, 180);
+  RobotEvent event;
+  TEST_ASSERT_TRUE(camera.poll(&event));
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.40f, event.x);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().audioMatchedSelections);
+}
+
+void test_intent_engine_uses_bridge_response_mood_for_face_and_motion() {
+  IntentEngine warm;
+  warm.begin();
+  warm.setDemoEnabled(false, 0);
+  RobotEvent warmEvent;
+  warmEvent.type = EventType::ResponseStarted;
+  warmEvent.timestampMs = 100;
+  warmEvent.strength = 1.0f;
+  warmEvent.hasPayload = true;
+  warmEvent.x = 0.82f;
+  warmEvent.y = 0.78f;
+  warm.applyEvent(warmEvent, CharacterMode::Speak);
+  const RobotFrame warmFrame = warm.update(200);
+
+  IntentEngine concerned;
+  concerned.begin();
+  concerned.setDemoEnabled(false, 0);
+  RobotEvent concernEvent = warmEvent;
+  concernEvent.x = 0.34f;
+  concernEvent.y = -0.72f;
+  concerned.applyEvent(concernEvent, CharacterMode::Speak);
+  const RobotFrame concernFrame = concerned.update(200);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(concernFrame.emotion.arousal, warmFrame.emotion.arousal);
+  TEST_ASSERT_GREATER_THAN_FLOAT(concernFrame.emotion.valence + 0.50f, warmFrame.emotion.valence);
+  TEST_ASSERT_GREATER_THAN_FLOAT(concernFrame.face.mouthSmile + 0.30f, warmFrame.face.mouthSmile);
+  TEST_ASSERT_NOT_EQUAL(warmFrame.motion.yawDeg, concernFrame.motion.yawDeg);
+}
+
+void test_intent_engine_wake_acknowledgement_nod_settles() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  wake.timestampMs = 100;
+  wake.strength = 1.0f;
+  engine.applyEvent(wake, CharacterMode::Listen);
+  const RobotFrame nod = engine.update(500);
+  const RobotFrame settled = engine.update(1300);
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, fabsf(nod.motion.pitchDeg - settled.motion.pitchDeg));
+}
+
+void test_body_touch_raw_decodes_physical_front_middle_back_order() {
+  const BodyTouchReading reading = decodeBodyTouchRaw(0x39);
+  TEST_ASSERT_EQUAL_UINT8(3, reading.front);
+  TEST_ASSERT_EQUAL_UINT8(2, reading.middle);
+  TEST_ASSERT_EQUAL_UINT8(1, reading.back);
+}
+
+void test_body_touch_interpreter_emits_zone_tap_on_release() {
+  BodyTouchInterpreter interpreter;
+  interpreter.reset();
+  TEST_ASSERT_FALSE(interpreter.update({0, 2, 0}, 100).valid());
+  const BodyTouchInteraction tap = interpreter.update({}, 220);
+  TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchGesture::Tap), static_cast<int>(tap.gesture));
+  TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchZone::Middle), static_cast<int>(tap.zone));
+  TEST_ASSERT_EQUAL_UINT8(2, tap.intensity);
+}
+
+void test_body_touch_interpreter_detects_forward_and_backward_swipes() {
+  BodyTouchInterpreter forward;
+  forward.reset();
+  TEST_ASSERT_FALSE(forward.update({2, 0, 0}, 100).valid());
+  TEST_ASSERT_FALSE(forward.update({2, 2, 0}, 160).valid());
+  const BodyTouchInteraction forwardSwipe = forward.update({2, 2, 2}, 220);
+  TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchGesture::SwipeForward),
+                    static_cast<int>(forwardSwipe.gesture));
+
+  BodyTouchInterpreter backward;
+  backward.reset();
+  TEST_ASSERT_FALSE(backward.update({0, 0, 2}, 100).valid());
+  TEST_ASSERT_FALSE(backward.update({0, 2, 2}, 160).valid());
+  const BodyTouchInteraction backwardSwipe = backward.update({2, 2, 2}, 220);
+  TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchGesture::SwipeBackward),
+                    static_cast<int>(backwardSwipe.gesture));
+}
+
+void test_body_touch_interpreter_emits_one_hold_per_contact() {
+  BodyTouchInterpreter interpreter;
+  interpreter.reset();
+  TEST_ASSERT_FALSE(interpreter.update({3, 0, 0}, 100).valid());
+  const BodyTouchInteraction hold = interpreter.update({3, 0, 0}, 850);
+  TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchGesture::Hold), static_cast<int>(hold.gesture));
+  TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchZone::Front), static_cast<int>(hold.zone));
+  TEST_ASSERT_FALSE(interpreter.update({3, 0, 0}, 950).valid());
+}
+
+void calibrateImu(ImuGestureInterpreter* interpreter, uint32_t* nowMs) {
+  ImuSample stationary;
+  RobotEvent event;
+  for (int i = 0; i < 36; ++i) {
+    *nowMs += 40;
+    interpreter->update(stationary, false, *nowMs, &event);
+  }
+  TEST_ASSERT_TRUE(interpreter->calibrated());
+}
+
+void test_imu_interpreter_detects_pickup_then_putdown() {
+  ImuGestureInterpreter interpreter;
+  uint32_t nowMs = 0;
+  interpreter.reset(nowMs);
+  calibrateImu(&interpreter, &nowMs);
+
+  ImuSample moving;
+  moving.gyroY = 42.0f;
+  RobotEvent event;
+  bool sawPickup = false;
+  for (int i = 0; i < 12; ++i) {
+    nowMs += 40;
+    if (interpreter.update(moving, false, nowMs, &event) &&
+        event.type == EventType::PickedUp) {
+      sawPickup = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(sawPickup);
+  TEST_ASSERT_TRUE(interpreter.pickedUp());
+
+  ImuSample stationary;
+  bool sawPutdown = false;
+  for (int i = 0; i < 40; ++i) {
+    nowMs += 40;
+    if (interpreter.update(stationary, false, nowMs, &event) &&
+        event.type == EventType::PutDown) {
+      sawPutdown = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(sawPutdown);
+  TEST_ASSERT_FALSE(interpreter.pickedUp());
+}
+
+void test_imu_interpreter_filters_ordinary_servo_motion() {
+  ImuGestureInterpreter interpreter;
+  uint32_t nowMs = 0;
+  interpreter.reset(nowMs);
+  calibrateImu(&interpreter, &nowMs);
+
+  ImuSample servoMotion;
+  servoMotion.gyroY = 210.0f;
+  RobotEvent event;
+  for (int i = 0; i < 30; ++i) {
+    nowMs += 40;
+    TEST_ASSERT_FALSE(interpreter.update(servoMotion, true, nowMs, &event));
+  }
+  TEST_ASSERT_FALSE(interpreter.pickedUp());
+}
+
+void test_imu_interpreter_keeps_extreme_impact_safety_during_servo_motion() {
+  ImuGestureInterpreter interpreter;
+  uint32_t nowMs = 0;
+  interpreter.reset(nowMs);
+  calibrateImu(&interpreter, &nowMs);
+
+  ImuSample impact;
+  impact.gyroZ = 500.0f;
+  RobotEvent event;
+  nowMs += 40;
+  TEST_ASSERT_TRUE(interpreter.update(impact, true, nowMs, &event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::Shaken), static_cast<int>(event.type));
+}
+
+uint32_t bodyRgbEnergy(const BodyRgbFrame& frame) {
+  uint32_t total = 0;
+  for (const BodyRgbColor& led : frame.leds) {
+    total += led.r + led.g + led.b;
+  }
+  return total;
+}
+
+void test_body_feedback_caps_brightness_and_protected_mode_load_sheds() {
+  BodyFeedback feedback;
+  feedback.begin(0);
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Speak;
+  frame.emotion.arousal = 1.0f;
+  frame.emotion.valence = 0.8f;
+  const BodyRgbFrame normal = feedback.render(frame, 1.0f, 500, 1.0f, false);
+  const BodyRgbFrame protectedFrame = feedback.render(frame, 1.0f, 500, 1.0f, true);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT8(52, normal.peakChannel);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT8(14, protectedFrame.peakChannel);
+  TEST_ASSERT_GREATER_THAN_UINT32(bodyRgbEnergy(protectedFrame), bodyRgbEnergy(normal));
+}
+
+void test_body_feedback_mic_and_touch_events_create_visible_pulses() {
+  BodyFeedback feedback;
+  feedback.begin(0);
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Listen;
+  const BodyRgbFrame idle = feedback.render(frame, 0.0f, 100, 1.0f, false);
+  feedback.notifyMicActivated(100);
+  const BodyRgbFrame mic = feedback.render(frame, 0.0f, 300, 1.0f, false);
+  TEST_ASSERT_NOT_EQUAL(bodyRgbEnergy(idle), bodyRgbEnergy(mic));
+
+  feedback.notifyTouch(BodyTouchZone::Back, 1.0f, 300);
+  const BodyRgbFrame touched = feedback.render(frame, 0.0f, 350, 1.0f, false);
+  TEST_ASSERT_TRUE(touched.leds[4].r > touched.leds[0].r);
+  TEST_ASSERT_TRUE(touched.leds[10].r > touched.leds[6].r);
+}
+
+void test_body_feedback_speech_envelope_animates_speaking_light() {
+  BodyFeedback feedback;
+  feedback.begin(0);
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Speak;
+  const BodyRgbFrame closed = feedback.render(frame, 0.0f, 400, 1.0f, false);
+  const BodyRgbFrame open = feedback.render(frame, 1.0f, 400, 1.0f, false);
+  TEST_ASSERT_GREATER_THAN_UINT32(bodyRgbEnergy(closed), bodyRgbEnergy(open));
+}
+
 void test_intent_engine_prioritizes_explicit_command_speech_cue() {
   IntentEngine engine;
   engine.begin();
@@ -2184,6 +2443,44 @@ void test_power_forensics_tracks_filtered_informational_events_separately() {
   TEST_ASSERT_EQUAL_UINT32(0, telemetry.runtimeProtectiveEventPolls);
 }
 
+void test_power_forensics_preserves_protective_and_overvoltage_context() {
+  PmicPowerForensics forensics;
+  forensics.begin(true, 0);
+
+  PmicPowerEventContext protectiveContext;
+  protectiveContext.vbusValid = true;
+  protectiveContext.vbusMv = 4821;
+  protectiveContext.batteryValid = true;
+  protectiveContext.batteryMv = 4198;
+  protectiveContext.bodyCurrentMa = 188;
+  protectiveContext.motionRequested = true;
+  protectiveContext.servoRailEnabled = true;
+  protectiveContext.speakerPowerActive = true;
+  TEST_ASSERT_TRUE(forensics.recordRuntimeEvent(
+      kPmicIrqBatteryOverVoltage, 2000, protectiveContext));
+
+  PmicPowerEventContext laterSourceContext;
+  laterSourceContext.vbusValid = true;
+  laterSourceContext.vbusMv = 5015;
+  laterSourceContext.batteryMv = 4120;
+  TEST_ASSERT_TRUE(
+      forensics.recordRuntimeEvent(kPmicIrqVbusInsert, 3000, laterSourceContext));
+
+  const PmicPowerForensicsTelemetry telemetry = forensics.telemetry();
+  TEST_ASSERT_EQUAL_UINT32(kPmicIrqVbusInsert, telemetry.lastEventMask);
+  TEST_ASSERT_EQUAL_UINT32(3000, telemetry.lastEventAtMs);
+  TEST_ASSERT_EQUAL_INT16(5015, telemetry.lastContext.vbusMv);
+  TEST_ASSERT_EQUAL_UINT32(kPmicIrqBatteryOverVoltage,
+                           telemetry.lastProtectiveEventMask);
+  TEST_ASSERT_EQUAL_UINT32(2000, telemetry.lastProtectiveEventAtMs);
+  TEST_ASSERT_EQUAL_UINT32(2000, telemetry.batteryOverVoltageLastAtMs);
+  TEST_ASSERT_EQUAL_INT16(4821, telemetry.lastProtectiveContext.vbusMv);
+  TEST_ASSERT_EQUAL_INT16(4198, telemetry.batteryOverVoltageLastContext.batteryMv);
+  TEST_ASSERT_TRUE(telemetry.batteryOverVoltageLastContext.motionRequested);
+  TEST_ASSERT_TRUE(telemetry.batteryOverVoltageLastContext.servoRailEnabled);
+  TEST_ASSERT_TRUE(telemetry.batteryOverVoltageLastContext.speakerPowerActive);
+}
+
 void test_actuation_clamps_pitch_and_yaw_angle() {
   RobotConfig config;
   config.servos.pitchMinDeg = -12.0f;
@@ -2273,6 +2570,25 @@ void test_actuation_output_suppression_releases_actuator_without_disabling_motio
   engine.update(target, 40000);
   TEST_ASSERT_GREATER_THAN(0, actuator.pitchWrites);
   TEST_ASSERT_GREATER_THAN(0, actuator.yawAngleWrites);
+}
+
+void test_actuation_reports_only_meaningful_command_motion_to_imu_filter() {
+  RobotConfig config;
+  FakeActuator actuator;
+  setFakeArduinoTime(100, 100000);
+  ActuationEngine engine(config);
+  engine.begin(&actuator);
+
+  RobotFrame target = makeNeutralFrame();
+  target.emotion.focus = 1.0f;
+  target.motion.yawMode = YawMode::Angle;
+  target.motion.pitchDeg = 8.0f;
+  target.motion.yawDeg = 12.0f;
+  engine.update(target, 110000);
+  TEST_ASSERT_TRUE(engine.telemetry().selfMotionActive);
+
+  setFakeArduinoTime(1000, 1000000);
+  TEST_ASSERT_FALSE(engine.telemetry().selfMotionActive);
 }
 
 void test_actuation_session_timeout_uses_millis_across_micros_wrap() {
@@ -2901,6 +3217,9 @@ void test_bridge_client_maps_thinking_and_response_events() {
   TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Happy), static_cast<int>(output.response.intent));
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.62f, output.response.arousal);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.72f, output.response.valence);
+  TEST_ASSERT_TRUE(output.event.hasPayload);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.62f, output.event.x);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.72f, output.event.y);
   TEST_ASSERT_EQUAL_STRING("Hello. I am awake.", output.response.text);
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Responding), static_cast<int>(bridge.telemetry().state));
 
@@ -5818,12 +6137,27 @@ int main() {
   RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_intent_engine_applies_circadian_context);
   RUN_TEST(test_intent_engine_orients_toward_sound_event);
+  RUN_TEST(test_intent_engine_uses_bridge_response_mood_for_face_and_motion);
+  RUN_TEST(test_intent_engine_wake_acknowledgement_nod_settles);
+  RUN_TEST(test_body_touch_raw_decodes_physical_front_middle_back_order);
+  RUN_TEST(test_body_touch_interpreter_emits_zone_tap_on_release);
+  RUN_TEST(test_body_touch_interpreter_detects_forward_and_backward_swipes);
+  RUN_TEST(test_body_touch_interpreter_emits_one_hold_per_contact);
+  RUN_TEST(test_imu_interpreter_detects_pickup_then_putdown);
+  RUN_TEST(test_imu_interpreter_filters_ordinary_servo_motion);
+  RUN_TEST(test_imu_interpreter_keeps_extreme_impact_safety_during_servo_motion);
+  RUN_TEST(test_body_feedback_caps_brightness_and_protected_mode_load_sheds);
+  RUN_TEST(test_body_feedback_mic_and_touch_events_create_visible_pulses);
+  RUN_TEST(test_body_feedback_speech_envelope_animates_speaking_light);
   RUN_TEST(test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking);
   RUN_TEST(test_gaze_tracker_reduced_motion_dampens_face_tracking);
   RUN_TEST(test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction);
   RUN_TEST(test_intent_engine_tracks_face_position_payload);
   RUN_TEST(test_camera_adapter_publishes_clamped_face_detection);
   RUN_TEST(test_camera_adapter_publishes_face_lost_event);
+  RUN_TEST(test_active_speaker_tracker_uses_audio_to_choose_among_faces);
+  RUN_TEST(test_active_speaker_tracker_holds_target_while_robot_replies);
+  RUN_TEST(test_camera_adapter_publishes_audio_matched_active_speaker);
   RUN_TEST(test_command_map_maps_multinet_phrase_ids_to_existing_actions);
   RUN_TEST(test_command_map_accepts_bench_tokens_matching_yaml_keys);
   RUN_TEST(test_intent_engine_prioritizes_explicit_command_speech_cue);
@@ -5861,9 +6195,11 @@ int main() {
   RUN_TEST(test_power_forensics_records_runtime_event_context_and_each_cause);
   RUN_TEST(test_power_forensics_ignores_empty_polls_and_counts_read_failures);
   RUN_TEST(test_power_forensics_tracks_filtered_informational_events_separately);
+  RUN_TEST(test_power_forensics_preserves_protective_and_overvoltage_context);
   RUN_TEST(test_actuation_clamps_pitch_and_yaw_angle);
   RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
   RUN_TEST(test_actuation_output_suppression_releases_actuator_without_disabling_motion);
+  RUN_TEST(test_actuation_reports_only_meaningful_command_motion_to_imu_filter);
   RUN_TEST(test_actuation_session_timeout_uses_millis_across_micros_wrap);
   RUN_TEST(test_actuation_session_refresh_extends_timeout_without_disabling_failsafe);
   RUN_TEST(test_stackchan_servo_stop_returns_tracked_axes_to_neutral);

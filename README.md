@@ -23,7 +23,7 @@ What is working in the repository now:
 - Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
-- P7 reference bridge scaffold with deterministic bridge frames, local memory store, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
+- P7 reference bridge scaffold with deterministic bridge frames, a versioned bounded host memory store with durable/recent separation and privacy filtering, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
 - Spark and Glow persona packs under `personas/`, with bridge prompt loading, firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen, CI validation, and pack verification for the first swappable Character OS layer.
 - Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
 - Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
@@ -37,7 +37,7 @@ What is still gated:
 
 - Real hardware evidence for display, speaker, servo calibration, soak, power-cycle recovery, and target-speaker audio.
 - Real configured Wi-Fi credentials/bridge host plus PC/mobile owner failover evidence on the CoreS3.
-- Real camera, mic-enabled capture evidence, uplink evidence, touch, proximity, and IMU producer bring-up beyond the bench/event boundaries.
+- Physical acceptance for the candidate body RGB/touch and IMU producers; camera capture and a real face detector remain separately gated. Mic/wake/uplink are operational on the current hardware but still require final release-candidate regression evidence.
 - Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
 - Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.
 

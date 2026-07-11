@@ -117,8 +117,8 @@ class ReferenceBridgeTests(unittest.TestCase):
         self.assertEqual(33, turn.seq)
         self.assertEqual("attend", turn.intent)
         self.assertEqual("Looking at you now. Signal locked.", turn.text)
-        self.assertEqual(0.8, turn.arousal)
-        self.assertEqual(0.2, turn.valence)
+        self.assertAlmostEqual(0.82, turn.arousal)
+        self.assertAlmostEqual(0.32, turn.valence)
         self.assertEqual("Rob", memory.preferred_name)
         self.assertIn("voice tuning", memory.recent_topics)
         self.assertIn("room is dark", memory.physical_context)
@@ -143,6 +143,33 @@ class ReferenceBridgeTests(unittest.TestCase):
         self.assertEqual("", memory.preferred_name)
         self.assertEqual((), memory.recent_topics)
         self.assertEqual(("room is dark",), memory.physical_context)
+
+    def test_mode_baselines_make_happy_concern_and_safety_visibly_distinct(self):
+        def turn_for(mode: str):
+            raw = json.dumps(
+                {
+                    "spoken_text": "Short status line.",
+                    "mode": mode,
+                    "earcon": mode if mode in {"happy", "concern", "safety"} else "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            )
+            return turn_from_character_response(raw, BridgeMemory())[0]
+
+        happy = turn_for("happy")
+        concern = turn_for("concern")
+        safety = turn_for("safety")
+        self.assertGreater(happy.valence, 0.4)
+        self.assertLess(concern.valence, -0.2)
+        self.assertLess(safety.valence, concern.valence)
+        self.assertGreater(happy.arousal, concern.arousal)
+
+    def test_bridge_frames_preserve_negative_valence_for_firmware(self):
+        frames = list(bridge_frames(BridgeTurn(intent="safety", valence=-0.72)))
+        response = next(frame for frame in frames if frame["type"] == "response_start")
+        self.assertEqual(-0.72, response["valence"])
 
     def test_malformed_character_response_still_renders_fallback(self):
         turn, memory, result = turn_from_character_response("{not json", BridgeMemory(preferred_name="Rob"), seq=45)

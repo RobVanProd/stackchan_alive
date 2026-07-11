@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Iterator, Literal
 
+from bridge_memory import MAX_MEMORY_ITEMS, BridgeMemory, load_bridge_memory, reset_bridge_memory, save_bridge_memory
 from character_harness import HarnessResult, validate_response
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
@@ -19,7 +19,6 @@ PROTOCOL = "stackchan.bridge.v1"
 DEFAULT_SESSION = "bench"
 DEFAULT_TEXT = "Hello. I am Stackchan, and I am awake."
 DEFAULT_USER_TEXT = "Hello Stackchan."
-MAX_MEMORY_ITEMS = 4
 BRIDGE_INTENTS = {"boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
 
 DEFAULT_PERSONA = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
@@ -44,6 +43,7 @@ class BridgeTurn:
     text: str = DEFAULT_TEXT
     arousal: float = 0.55
     valence: float = 0.60
+    citations: tuple[str, ...] = ()
     beats: tuple[AudioBeat, ...] = (
         AudioBeat(0.18, "neutral", 60),
         AudioBeat(0.55, "ah", 80),
@@ -53,167 +53,29 @@ class BridgeTurn:
     )
 
 
-@dataclass(frozen=True)
-class BridgeMemory:
-    """Small deterministic memory surface for the future LAN bridge service."""
-
-    preferred_name: str = ""
-    recent_topics: tuple[str, ...] = ()
-    physical_context: tuple[str, ...] = ()
-    turns_seen: int = 0
-
-    @staticmethod
-    def _clean_item(value: object, max_len: int = 96) -> str:
-        return " ".join(str(value).strip().split())[:max_len]
-
-    @staticmethod
-    def _dedupe_tail(values: Iterable[str]) -> tuple[str, ...]:
-        items: list[str] = []
-        for value in values:
-            item = BridgeMemory._clean_item(value)
-            if not item:
-                continue
-            if item in items:
-                items.remove(item)
-            items.append(item)
-        return tuple(items[-MAX_MEMORY_ITEMS:])
-
-    @staticmethod
-    def _items(value: object) -> tuple[str, ...]:
-        if not isinstance(value, list):
-            return ()
-        return BridgeMemory._dedupe_tail(str(item) for item in value)
-
-    @classmethod
-    def from_dict(cls, data: object) -> "BridgeMemory":
-        if not isinstance(data, dict):
-            return cls()
-        return cls(
-            preferred_name=str(data.get("preferred_name", "")).strip()[:32],
-            recent_topics=cls._items(data.get("recent_topics", [])),
-            physical_context=cls._items(data.get("physical_context", [])),
-            turns_seen=max(0, int(data.get("turns_seen", 0) or 0)),
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "preferred_name": self.preferred_name,
-            "recent_topics": list(self.recent_topics),
-            "physical_context": list(self.physical_context),
-            "turns_seen": self.turns_seen,
-        }
-
-    def with_overrides(
-        self,
-        *,
-        preferred_name: str = "",
-        recent_topics: Iterable[str] = (),
-        physical_context: Iterable[str] = (),
-    ) -> "BridgeMemory":
-        return replace(
-            self,
-            preferred_name=preferred_name.strip()[:32] or self.preferred_name,
-            recent_topics=self._dedupe_tail((*self.recent_topics, *recent_topics)),
-            physical_context=self._dedupe_tail((*self.physical_context, *physical_context)),
-        )
-
-    @staticmethod
-    def _forget_matches(forget_key: str, namespace: str) -> bool:
-        key = forget_key.strip().lower().rstrip("*").rstrip(".")
-        return key == namespace or key.startswith(f"{namespace}.")
-
-    def apply_character_memory(self, normalized: dict[str, object]) -> "BridgeMemory":
-        preferred_name = self.preferred_name
-        topics = list(self.recent_topics)
-        physical = list(self.physical_context)
-
-        writes = normalized.get("memory_write", {})
-        if isinstance(writes, dict):
-            for raw_key, raw_value in writes.items():
-                key = str(raw_key).strip().lower()
-                value = self._clean_item(raw_value)
-                if not value:
-                    continue
-                if key in ("user.name", "user.preferred_name", "user.greeting"):
-                    preferred_name = value[:32]
-                elif key.startswith("project.") or (key.startswith("user.") and "topic" in key):
-                    topics.append(value)
-                elif key.startswith("robot."):
-                    physical.append(value)
-
-        forgets = normalized.get("memory_forget", [])
-        if isinstance(forgets, list):
-            for raw_forget in forgets:
-                forget = str(raw_forget)
-                if self._forget_matches(forget, "user"):
-                    preferred_name = ""
-                if self._forget_matches(forget, "project"):
-                    topics = []
-                if self._forget_matches(forget, "robot"):
-                    physical = []
-
-        return replace(
-            self,
-            preferred_name=preferred_name,
-            recent_topics=self._dedupe_tail(topics),
-            physical_context=self._dedupe_tail(physical),
-        )
-
-    def remember_user_text(self, user_text: str) -> "BridgeMemory":
-        text = " ".join(user_text.strip().split())
-        if not text:
-            return self
-
-        preferred_name = self.preferred_name
-        match = re.search(r"\b(?:my name is|i am|i'm)\s+([A-Za-z][A-Za-z0-9_-]{1,20})", text, re.IGNORECASE)
-        if match:
-            preferred_name = match.group(1)
-
-        topics = list(self.recent_topics)
-        lowered = text.lower()
-        for marker, topic in (
-            ("battery", "battery"),
-            ("servo", "servos"),
-            ("voice", "voice"),
-            ("face", "face"),
-            ("bridge", "bridge"),
-            ("sleep", "sleep"),
-        ):
-            if marker in lowered and topic not in topics:
-                topics.append(topic)
-
-        physical = list(self.physical_context)
-        for marker, context in (
-            ("picked you up", "user picked Stackchan up"),
-            ("pick you up", "user picked Stackchan up"),
-            ("shook you", "user shook Stackchan"),
-            ("touch", "user touched Stackchan"),
-            ("dark", "room is dark"),
-        ):
-            if marker in lowered and context not in physical:
-                physical.append(context)
-
-        return replace(
-            self,
-            preferred_name=preferred_name,
-            recent_topics=tuple(topics[-MAX_MEMORY_ITEMS:]),
-            physical_context=tuple(physical[-MAX_MEMORY_ITEMS:]),
-            turns_seen=self.turns_seen + 1,
-        )
-
-    def context_lines(self) -> list[str]:
-        lines = [f"turns_seen: {self.turns_seen}"]
-        if self.preferred_name:
-            lines.append(f"preferred_name: {self.preferred_name}")
-        if self.recent_topics:
-            lines.append("recent_topics: " + ", ".join(self.recent_topics))
-        if self.physical_context:
-            lines.append("physical_context: " + ", ".join(self.physical_context))
-        return lines
-
-
 def clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def clamp_signed(value: float) -> float:
+    return max(-1.0, min(1.0, float(value)))
+
+
+def emotion_baseline_for_mode(mode: str) -> tuple[float, float]:
+    return {
+        "boot": (0.45, 0.15),
+        "idle": (0.22, 0.20),
+        "attend": (0.52, 0.12),
+        "listen": (0.58, 0.12),
+        "think": (0.60, 0.10),
+        "speak": (0.50, 0.12),
+        "react": (0.68, 0.18),
+        "happy": (0.66, 0.48),
+        "concern": (0.38, -0.24),
+        "sleep": (0.10, 0.08),
+        "error": (0.56, -0.42),
+        "safety": (0.42, -0.48),
+    }.get(mode, (0.50, 0.10))
 
 
 def build_persona_prompt(memory: BridgeMemory, persona: PersonaPack | None = None) -> str:
@@ -228,23 +90,6 @@ def spoken_physical_context(context: str) -> str:
         "user touched Stackchan": "You touched my screen",
         "room is dark": "The room is dark",
     }.get(context, context)
-
-
-def load_bridge_memory(path: Path) -> BridgeMemory:
-    if not path.exists():
-        return BridgeMemory()
-    return BridgeMemory.from_dict(json.loads(path.read_text(encoding="utf-8")))
-
-
-def save_bridge_memory(path: Path, memory: BridgeMemory) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(memory.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def reset_bridge_memory(path: Path) -> BridgeMemory:
-    if path.exists():
-        path.unlink()
-    return BridgeMemory()
 
 
 def plan_turn_from_memory(memory: BridgeMemory, seq: int = 7) -> BridgeTurn:
@@ -290,12 +135,14 @@ def turn_from_character_response(
     emotion = normalized.get("emotion", {})
     if not isinstance(emotion, dict):
         emotion = {}
-    arousal = clamp01(0.5 + float(emotion.get("arousal", 0.0)))
-    valence = max(-1.0, min(1.0, float(emotion.get("valence", 0.0))))
+    mode = bridge_intent_from_mode(normalized.get("mode", "speak"))
+    base_arousal, base_valence = emotion_baseline_for_mode(mode)
+    arousal = clamp01(base_arousal + float(emotion.get("arousal", 0.0)))
+    valence = clamp_signed(base_valence + float(emotion.get("valence", 0.0)))
     turn = BridgeTurn(
         session=session,
         seq=max(1, int(seq)),
-        intent=bridge_intent_from_mode(normalized.get("mode", "speak")),
+        intent=mode,
         text=str(normalized.get("spoken_text", DEFAULT_TEXT)),
         arousal=arousal,
         valence=valence,
@@ -309,14 +156,17 @@ def bridge_frames(turn: BridgeTurn) -> Iterator[dict[str, object]]:
     yield {"type": "hello", "protocol": PROTOCOL, "session": turn.session}
     yield {"type": "listening"}
     yield {"type": "thinking", "seq": turn.seq}
-    yield {
+    response_start: dict[str, object] = {
         "type": "response_start",
         "seq": turn.seq,
         "intent": turn.intent,
         "arousal": round(clamp01(turn.arousal), 2),
-        "valence": round(clamp01(turn.valence), 2),
+        "valence": round(clamp_signed(turn.valence), 2),
         "text": turn.text,
     }
+    if turn.citations:
+        response_start["citations"] = list(turn.citations[:8])
+    yield response_start
     for beat in turn.beats:
         yield {
             "type": "audio",

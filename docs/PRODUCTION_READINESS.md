@@ -41,7 +41,8 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Servo pin mapping on the specific body revision.
 - Mechanical limits under load.
 - Long-running thermal and power behavior.
-- Camera, mic, touch, and proximity integration.
+- Physical acceptance of the compiled body RGB/touch and IMU candidate; camera capture and
+  face detection remain separate gated profiles. Proximity is not implemented.
 - Real LiteRT-LM/mobile runner speed and memory behavior.
 
 ## Consumer Rollout Gate

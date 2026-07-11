@@ -38,6 +38,14 @@ from tts_adapter import (
     split_spoken_phrases,
     synthesize_speech,
 )
+from research_broker import (
+    ResearchBroker,
+    ResearchBrokerConfig,
+    ResearchPolicyError,
+    ResearchTransportError,
+    evidence_prompt,
+    source_urls,
+)
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -384,6 +392,10 @@ class BridgeControlState:
                 "profile": config.runner_profile,
                 "require_runner": config.require_runner,
             },
+            "research": {
+                "enabled": config.research_enabled,
+                "tools": ["web_search", "web_fetch"] if config.research_enabled else [],
+            },
             "audio": {
                 "sample_rate": DEFAULT_SAMPLE_RATE,
                 "downlink_chunk_bytes": config.downlink_audio_chunk_bytes,
@@ -421,6 +433,8 @@ class LanBridgeConfig:
     memory_file: Path | None = None
     turn_log_file: Path | None = None
     auto_turn_text: str = ""
+    research_enabled: bool = False
+    searxng_url: str = "http://127.0.0.1:8080"
     once: bool = False
 
 
@@ -662,6 +676,7 @@ class LanBridgeSession:
         config: LanBridgeConfig,
         memory: BridgeMemory | None = None,
         control_state: BridgeControlState | None = None,
+        research_broker: ResearchBroker | None = None,
     ):
         self.config = config
         self.memory = memory if memory is not None else BridgeMemory()
@@ -670,6 +685,34 @@ class LanBridgeSession:
         self.endpoint_id = ""
         self.next_seq = 1
         self.audio = AudioUpload()
+        self.research_broker = research_broker
+        if self.research_broker is None and config.research_enabled:
+            self.research_broker = ResearchBroker(ResearchBrokerConfig(searxng_url=config.searxng_url))
+
+    @staticmethod
+    def _tool_request(raw_response: str) -> dict[str, object] | None:
+        try:
+            parsed = json.loads(raw_response)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(parsed, dict) or "tool_request" not in parsed:
+            return None
+        request = parsed.get("tool_request")
+        if not isinstance(request, dict):
+            raise ResearchPolicyError("tool_request_not_object")
+        return request
+
+    @staticmethod
+    def _clear_research_memory_writes(raw_response: str) -> str:
+        try:
+            parsed = json.loads(raw_response)
+        except json.JSONDecodeError:
+            return raw_response
+        if not isinstance(parsed, dict):
+            return raw_response
+        parsed["memory_write"] = {}
+        parsed["memory_forget"] = []
+        return json.dumps(parsed, separators=(",", ":"), ensure_ascii=True)
 
     def _save_memory(self) -> None:
         if self.config.memory_file:
@@ -1175,6 +1218,7 @@ class LanBridgeSession:
 
         requested_case = str(message.get("runner_case", "")).strip()
         runner_summary: dict[str, object] = {}
+        research_result: dict[str, object] | None = None
         if not requested_case and is_identity_question(user_text):
             runner_case = "identity"
             raw_response = identity_character_response()
@@ -1190,6 +1234,7 @@ class LanBridgeSession:
                     require_runner=self.config.require_runner,
                     timeout_ms=self.config.runner_timeout_ms,
                     user_text=user_text,
+                    research_tools_enabled=self.config.research_enabled,
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [error_frame("runner_error", str(exc))]
@@ -1200,12 +1245,58 @@ class LanBridgeSession:
             if runner.approx_tokens_per_sec is not None:
                 runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
 
+            if self.config.research_enabled:
+                try:
+                    tool_request = self._tool_request(raw_response)
+                except ResearchPolicyError as exc:
+                    tool_request = {"name": "invalid", "arguments": {}}
+                    runner_summary["research_error"] = str(exc)
+                if tool_request is not None:
+                    if self.research_broker is None:
+                        research_result = {
+                            "schema": "stackchan.research.v1",
+                            "tool": str(tool_request.get("name", "")),
+                            "error": "research_broker_unavailable",
+                            "results": [],
+                        }
+                    else:
+                        try:
+                            research_result = self.research_broker.execute(tool_request)
+                        except (ResearchPolicyError, ResearchTransportError, ValueError, TypeError) as exc:
+                            research_result = {
+                                "schema": "stackchan.research.v1",
+                                "tool": str(tool_request.get("name", "")),
+                                "error": str(exc)[:120],
+                                "results": [],
+                            }
+                    evidence_user_text = f"{user_text}\n\n{evidence_prompt(research_result)}"
+                    try:
+                        researched = run_runner_profile(
+                            self.config.runner_profile,
+                            case_name=runner_case,
+                            command=self.config.runner_command,
+                            require_runner=self.config.require_runner,
+                            timeout_ms=self.config.runner_timeout_ms,
+                            user_text=evidence_user_text,
+                            research_tools_enabled=False,
+                        )
+                    except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
+                        return [error_frame("runner_error", str(exc))]
+                    raw_response = self._clear_research_memory_writes(researched.raw_response)
+                    runner_summary["research_tool"] = str(research_result.get("tool", ""))
+                    runner_summary["research_source_urls"] = list(source_urls(research_result))
+                    runner_summary["research_error"] = str(research_result.get("error", ""))
+                    if researched.elapsed_ms is not None:
+                        runner_summary["research_runner_elapsed_ms"] = round(researched.elapsed_ms, 2)
+
         turn, self.memory, validation = turn_from_character_response(
             raw_response,
             self.memory,
             session=self.session,
             seq=seq,
         )
+        if research_result is not None:
+            turn = replace(turn, citations=source_urls(research_result))
         if (
             self.config.stream_tts_phrases
             and self.config.tts_command
@@ -1537,6 +1628,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--turn-log-file", type=Path)
     parser.add_argument("--auto-turn-text", default="")
+    parser.add_argument("--enable-research", action="store_true")
+    parser.add_argument("--searxng-url", default="http://127.0.0.1:8080")
     parser.add_argument("--reset-memory", action="store_true")
     return parser
 
@@ -1572,6 +1665,8 @@ def main() -> int:
         memory_file=args.memory_file,
         turn_log_file=args.turn_log_file,
         auto_turn_text=args.auto_turn_text,
+        research_enabled=args.enable_research,
+        searxng_url=args.searxng_url,
     )
     serve(config)
     return 0

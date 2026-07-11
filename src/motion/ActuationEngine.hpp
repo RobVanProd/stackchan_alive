@@ -44,9 +44,11 @@ struct ActuationTelemetry {
   bool enabled = false;
   bool actuatorReady = false;
   bool outputSuppressed = false;
+  bool selfMotionActive = false;
   uint32_t enabledAtMs = 0;
   uint32_t lastUpdateMs = 0;
   uint32_t lastActuatorWriteMs = 0;
+  uint32_t selfMotionUntilMs = 0;
   uint32_t enableRequests = 0;
   uint32_t disableRequests = 0;
   uint32_t enableFailures = 0;
@@ -105,6 +107,10 @@ class ActuationEngine {
   uint32_t dutyRestEntries_ = 0;
   uint32_t outputSuppressEntries_ = 0;
   uint32_t stopCalls_ = 0;
+  uint32_t selfMotionUntilMs_ = 0;
+  float lastPitchCommandDeg_ = 0.0f;
+  float lastYawCommandDeg_ = 0.0f;
+  bool hasLastCommand_ = false;
   const char* lastReason_ = "not_started";
   bool enabled_ = STACKCHAN_MOTION_ENABLED_AT_BOOT != 0;
   bool actuatorReady_ = false;

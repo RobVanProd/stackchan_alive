@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <math.h>
 
+#include "PersonaBehavior.hpp"
 #include "PersonaExpressions.hpp"
 
 namespace stackchan {
@@ -22,9 +23,12 @@ void IntentEngine::begin() {
   lastSpeechCueMs_ = 0;
   activeSpeechUntilMs_ = 0;
   soundOrientUntilMs_ = 0;
+  lastEventAtMs_ = lastUpdateMs_;
   demoEnabled_ = true;
   reducedMotion_ = false;
   soundAzimuthNorm_ = 0.0f;
+  lastEventStrength_ = 0.0f;
+  lastEventType_ = EventType::Boot;
   lastSpeechIntent_ = SpeechIntent::None;
   activeSpeech_ = SpeechCue {};
   idleLife_.reset(lastUpdateMs_);
@@ -34,6 +38,9 @@ void IntentEngine::begin() {
 
 void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   mode_ = mode;
+  lastEventType_ = event.type;
+  lastEventAtMs_ = event.timestampMs;
+  lastEventStrength_ = constrain(event.strength, 0.0f, 1.0f);
   emotion_.applyEvent(event);
   gaze_.applyEvent(event);
   if (event.type == EventType::SoundDirection && event.hasPayload) {
@@ -164,16 +171,37 @@ void IntentEngine::activateSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
 MotionTargets IntentEngine::motionForMode(uint32_t nowMs) const {
   MotionTargets motion;
   const float t = nowMs * 0.001f;
+  const EmotionalProfile& emotion = emotion_.profile();
+  const float motionScale = reducedMotion_ ? generated_persona::kReducedMotionScale : 1.0f;
+  const float energy = constrain(emotion.arousal, 0.0f, 1.0f);
+  const float focus = constrain(emotion.focus, 0.0f, 1.0f);
 
   motion.yawMode = YawMode::Angle;
-  motion.yawDeg = sinf(t * 0.27f) * 12.0f;
-  motion.pitchDeg = sinf(t * 0.19f) * 4.0f;
+  motion.yawDeg = sinf(t * 0.44f) * (3.0f + (1.0f - focus) * 5.0f) * motionScale;
+  motion.pitchDeg = sinf(t * 0.31f) * (0.8f + energy * 1.2f) * motionScale;
 
-  if (mode_ == CharacterMode::Listen) {
+  if (mode_ == CharacterMode::Attend || mode_ == CharacterMode::Listen) {
+    motion.yawDeg *= 0.45f;
     motion.pitchDeg += generated_persona::kListenPitchBiasDeg;
+    if (lastEventType_ == EventType::WakeWord && nowMs - lastEventAtMs_ < 900) {
+      const float progress = constrain((nowMs - lastEventAtMs_) / 900.0f, 0.0f, 1.0f);
+      motion.pitchDeg -= sinf(progress * 3.1415927f) * (2.8f + lastEventStrength_ * 1.8f) * motionScale;
+    }
   } else if (mode_ == CharacterMode::Think) {
-    motion.yawDeg += generated_persona::kThinkYawBiasDeg;
-    motion.pitchDeg += 2.0f;
+    motion.yawDeg = (generated_persona::kThinkYawBiasDeg + sinf(t * 0.72f) * 2.5f) * motionScale;
+    motion.pitchDeg += (1.4f + energy * 1.2f) * motionScale;
+  } else if (mode_ == CharacterMode::Speak) {
+    const float cadenceHz = 0.34f + energy * 0.24f;
+    const float cadence = sinf(t * 6.2831853f * cadenceHz);
+    motion.pitchDeg -= cadence * (0.8f + energy * 2.0f) * motionScale;
+    motion.yawDeg += cadence * emotion.valence * 2.2f * motionScale;
+  } else if (mode_ == CharacterMode::React && nowMs - lastEventAtMs_ < 1200) {
+    const float progress = constrain((nowMs - lastEventAtMs_) / 1200.0f, 0.0f, 1.0f);
+    const float bounce = sinf(progress * 3.1415927f * 2.0f) * (1.0f - progress);
+    motion.pitchDeg -= bounce * (3.0f + lastEventStrength_ * 2.5f) * motionScale;
+  } else if (mode_ == CharacterMode::Error) {
+    motion.yawDeg *= 0.20f;
+    motion.pitchDeg = 1.5f * motionScale;
   } else if (mode_ == CharacterMode::Sleep) {
     motion.pitchDeg += 10.0f;
     motion.yawMode = YawMode::Disabled;
