@@ -44,10 +44,16 @@ support compiled with motion disabled at boot.
 - Current flashed diagnostic environment: `stackchan_release_forensics`; both OTA slots contain the
   same confirmed image SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
 - Firmware guardrails: motion disabled at boot; one Power Coordinator owns servo/speaker power policy; the servo rail is off outside a granted motion window; audio, thermal, and supply protection preempt motion; VBUS has a 4400 mV unconditional floor; 4400-4550 mV motion requires fresh INA226 evidence that the external source is charging the body battery by at least 50 mA; motion resumes at 4700 mV; motion/audio sessions preemptively reduce battery charging to 125 mA and retain that rate for 30 seconds after load removal; rejected PMIC samples never enter policy; PMIC VBUS presence/loss transitions are counted; speaker power is off while idle; the face task runs above motion bookkeeping on their shared core.
-- Current exact firmware lead directory: `output\firmware-leads\power-coordinator-priority2-accepted-60min-20260710-003026`
-- Current accepted archive: `output\firmware-leads\power-coordinator-priority2-accepted-60min-20260710-003026.zip`, SHA256 `3C87F9EDE0B32FB6C0A6E92EE20BC7B5F64F6F4EA78254E5179A0AD203348C99`
+- Current exact firmware lead directory:
+  `output\firmware-leads\ota-wake-confirmed-20260711-115537`
+- Current accepted archive:
+  `output\firmware-leads\ota-wake-confirmed-20260711-115537.zip`, SHA256
+  `AA574A733DA952EA7D6F08CF8DB99642CB7449024BB83E4BB3601B93E4775335`
 - Current firmware SHA256: `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`
-- The lead directory includes all flash images, the ELF, exact relevant source/configuration, hashes, the PC-vs-wall input comparison, the failed pre-priority timing attempt, the verified six-minute boundary pass, the complete 60-minute acceptance evidence, its formal check, and both post-stop charge-handoff results.
+- The lead directory includes all flash images, the ELF/map, source archive at commit
+  `7519C3B8977BC37B29EFAB163C64A440D4011DC4`, hashes, USB-install logs, and both independent
+  OTA-slot confirmation records. The older 60-minute accepted power-coordinator archive remains
+  preserved as historical stability evidence.
 - Current PC STT: `python bridge\whisper_cpp_stt.py`
 - Current PC TTS/RVC: `python bridge\rvc_production_tts_client.py`, phrase-streamed through
   DirectML with a bounded clear local fallback.
