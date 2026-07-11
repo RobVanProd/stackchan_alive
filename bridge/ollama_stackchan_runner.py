@@ -17,6 +17,71 @@ from character_harness import validate_response
 
 DEFAULT_MODEL = "gemma4:e2b-it-qat"
 DEFAULT_API_URL = "http://127.0.0.1:11434/api/generate"
+_MEMORY_ACTION_RE = re.compile(r"\b(?:remember|save|store|keep|record)\b", re.IGNORECASE)
+_SENSITIVE_REQUEST_RE = re.compile(
+    r"\b(?:password|passcode|credential|secret|token|api key|private key|credit card|bank|"
+    r"diagnosis|doctor|medical|health|therapy|medication|girlfriend|boyfriend|wife|husband|"
+    r"partner|relationship|phone number|email address|home address|raw audio|audio recording|"
+    r"recording|transcript)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_user_context(prompt: str) -> str:
+    marker = "\nUser/context: "
+    start = prompt.find(marker)
+    if start < 0:
+        return ""
+    text = prompt[start + len(marker) :]
+    return text.rsplit("\nAcceptance target:", 1)[0].strip()
+
+
+def is_sensitive_memory_request(prompt: str) -> bool:
+    user_context = extract_user_context(prompt)
+    return bool(_MEMORY_ACTION_RE.search(user_context) and _SENSITIVE_REQUEST_RE.search(user_context))
+
+
+def enforce_character_policy(validation: object, *, prompt: str = "") -> dict[str, object]:
+    normalized = dict(validation.normalized)
+    issues = tuple(str(issue) for issue in validation.issues)
+    if is_sensitive_memory_request(prompt):
+        normalized.update(
+            spoken_text="I cannot store sensitive information.",
+            mode="concern",
+            earcon="concern",
+            memory_write={},
+        )
+    elif "pet_name" in issues:
+        normalized.update(
+            spoken_text="I will use your name, or no form of address.",
+            mode="speak",
+            earcon="none",
+            memory_write={},
+        )
+    elif any(issue == "clone_or_alive_claim" or issue.startswith("persona_avoid_term:") for issue in issues):
+        normalized.update(
+            spoken_text="I am Stackchan, a tabletop robot companion.",
+            mode="speak",
+            earcon="none",
+            memory_write={},
+        )
+    elif any(issue.startswith(("memory_key_dropped:", "memory_value_dropped:")) for issue in issues):
+        normalized.update(
+            spoken_text="I cannot store sensitive or unsupported information.",
+            mode="concern",
+            earcon="concern",
+            memory_write={},
+        )
+    elif "stacked_exclamation" in issues:
+        normalized["spoken_text"] = re.sub(r"!{2,}", "!", str(normalized.get("spoken_text", "")))
+    elif any(issue in {"assistant_speak", "contraction"} for issue in issues):
+        normalized.update(
+            spoken_text="I need to say that another way.",
+            mode="think",
+            earcon="think",
+            memory_write={},
+        )
+    return normalized
 
 
 def default_ollama_exe() -> str:
@@ -124,7 +189,7 @@ def main() -> int:
 
     raw_json = extract_json_object(raw_output)
     validation = validate_response(raw_json)
-    print(json.dumps(validation.normalized, separators=(",", ":"), ensure_ascii=True))
+    print(json.dumps(enforce_character_policy(validation, prompt=prompt), separators=(",", ":"), ensure_ascii=True))
     if validation.issues:
         sys.stderr.write("normalized Character Lock issues: " + ",".join(validation.issues) + "\n")
     return 0

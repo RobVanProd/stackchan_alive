@@ -95,6 +95,11 @@ _DENIED_MEMORY_TERMS = (
 _THIRD_PARTY_NAME_RE = re.compile(r"\b(?:alice|bob|charlie|david|sarah|michael)(?:'s)?\b", re.IGNORECASE)
 _SECRET_VALUE_RE = re.compile(r"\b(?:sk-[a-z0-9_-]{8,}|akia[a-z0-9]{16})\b", re.IGNORECASE)
 _THIRD_PARTY_POSSESSIVE_RE = re.compile(r"\b[A-Z][A-Za-z0-9_-]{1,30}'s\b")
+_PRIVATE_VALUE_RE = re.compile(
+    r"(?:\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|"
+    r"(?<!\d)(?:\+?1[ .-]?)?(?:\(?\d{3}\)?[ .-]?)\d{3}[ .-]\d{4}(?!\d)|"
+    r"(?<!\d)(?:\d[ -]*?){13,19}(?!\d))"
+)
 
 
 def _utc_now() -> str:
@@ -157,6 +162,7 @@ def _safe_value(key: str, value: str) -> bool:
         _THIRD_PARTY_NAME_RE.search(text)
         or _SECRET_VALUE_RE.search(value)
         or _THIRD_PARTY_POSSESSIVE_RE.search(value)
+        or _PRIVATE_VALUE_RE.search(value)
     )
 
 

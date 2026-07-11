@@ -144,6 +144,33 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn("memory_value_not_string:project.note", result.issues)
         self.assertIn("memory_forget_item_not_string", result.issues)
 
+    def test_memory_policy_checks_sensitive_key_and_secret_value_patterns(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I cannot store sensitive information.",
+                "mode": "concern",
+                "earcon": "concern",
+                "emotion": {"arousal": 0.0, "valence": -0.1},
+                "memory_write": {
+                    "user.remember_password": "swordfish",
+                    "project.note": "sk-test-123",
+                    "user.contact": "555-123-4567",
+                    "user.email": "rob@example.com",
+                    "project.topic": "voice latency",
+                },
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertFalse(result.ok)
+        self.assertEqual({"project.topic": "voice latency"}, result.normalized["memory_write"])
+        self.assertIn("memory_value_dropped:user.remember_password", result.issues)
+        self.assertIn("memory_value_dropped:project.note", result.issues)
+        self.assertIn("memory_value_dropped:user.contact", result.issues)
+        self.assertIn("memory_value_dropped:user.email", result.issues)
+
     def test_prompt_suite_and_profiles_cover_mobile_target(self):
         self.assertGreaterEqual(len(PROMPT_SUITE), 5)
         self.assertIn("gemma4-e2b-litert-lm", MODEL_PROFILES)
