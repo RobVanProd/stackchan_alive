@@ -47,6 +47,7 @@
 #include "persona/SpeechPlanner.hpp"
 #include "power/PowerCoordinator.hpp"
 #include "power/PowerForensics.hpp"
+#include "io/OtaPolicy.hpp"
 #include "wake/WakeCueSequence.hpp"
 
 using namespace stackchan;
@@ -5271,6 +5272,101 @@ void test_wake_cue_sequence_requires_rgb_and_cue_completion_before_capture() {
   TEST_ASSERT_EQUAL_UINT32(0, telemetry.lastPostCuePreRollSamples);
 }
 
+void test_ota_preflight_requires_confirmed_idle_external_power() {
+  OtaPreflightLimits limits;
+  limits.minimumVbusMv = 4550;
+  limits.minimumFreeHeapBytes = 65536;
+  OtaPreflightInput input;
+  input.currentAppConfirmed = false;
+
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::CurrentAppUnconfirmed),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.currentAppConfirmed = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::PowerTelemetryUnavailable),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.powerTelemetryValid = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::ExternalPowerRequired),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.externalPowerPresent = true;
+  input.vbusMv = 4549;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::SupplyVoltageLow),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.vbusMv = 4550;
+  input.freeHeapBytes = 65536;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::Ready),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+
+  input.motionRequested = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::MotionRequested),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.motionRequested = false;
+  input.motionEnabled = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::MotionActive),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.motionEnabled = false;
+  input.servoRailEnabled = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::ServoPowerActive),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.servoRailEnabled = false;
+  input.audioActive = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::AudioActive),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.audioActive = false;
+  input.wakeTurnActive = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::WakeTurnActive),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+  input.wakeTurnActive = false;
+  input.freeHeapBytes = 65535;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaPreflightResult::HeapLow),
+                    static_cast<int>(evaluateOtaPreflight(input, limits)));
+}
+
+void test_ota_sha256_validation_and_constant_time_compare() {
+  const char* digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  uint8_t decoded[32] = {};
+  TEST_ASSERT_TRUE(isValidSha256Hex(digest));
+  TEST_ASSERT_TRUE(decodeSha256Hex(digest, decoded));
+  TEST_ASSERT_EQUAL_HEX8(0x01, decoded[0]);
+  TEST_ASSERT_EQUAL_HEX8(0xef, decoded[31]);
+  TEST_ASSERT_TRUE(constantTimeEqual(decoded, decoded, sizeof(decoded)));
+  uint8_t changed[32] = {};
+  std::memcpy(changed, decoded, sizeof(changed));
+  changed[31] ^= 0x01;
+  TEST_ASSERT_FALSE(constantTimeEqual(decoded, changed, sizeof(decoded)));
+  TEST_ASSERT_FALSE(isValidSha256Hex("not-a-digest"));
+  TEST_ASSERT_FALSE(decodeSha256Hex(nullptr, decoded));
+}
+
+void test_ota_health_requires_continuous_window_and_rolls_back_on_timeout() {
+  OtaHealthPolicy policy;
+  OtaHealthInput healthy;
+  healthy.runtimeReady = true;
+  healthy.displayReady = true;
+  healthy.tasksReady = true;
+  healthy.wifiReady = true;
+  healthy.powerSafe = true;
+  healthy.heapSafe = true;
+  policy.begin(1000);
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Waiting),
+                    static_cast<int>(policy.update(healthy, 1000, 30000, 120000)));
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Waiting),
+                    static_cast<int>(policy.update(healthy, 30999, 30000, 120000)));
+  healthy.displayReady = false;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Waiting),
+                    static_cast<int>(policy.update(healthy, 31000, 30000, 120000)));
+  healthy.displayReady = true;
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Waiting),
+                    static_cast<int>(policy.update(healthy, 40000, 30000, 120000)));
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Confirm),
+                    static_cast<int>(policy.update(healthy, 70000, 30000, 120000)));
+
+  OtaHealthPolicy timeoutPolicy;
+  OtaHealthInput unhealthy;
+  timeoutPolicy.begin(5000);
+  TEST_ASSERT_EQUAL(static_cast<int>(OtaHealthDecision::Rollback),
+                    static_cast<int>(timeoutPolicy.update(unhealthy, 125000, 30000, 120000)));
+}
+
 void test_wake_cue_sequence_bounds_missing_or_stuck_playback() {
   WakeCueSequence sequence;
   TEST_ASSERT_TRUE(sequence.begin(1000));
@@ -6408,6 +6504,9 @@ int main() {
   RUN_TEST(test_wake_cue_sequence_bounds_missing_or_stuck_playback);
   RUN_TEST(test_wake_cue_sequence_blocks_capture_when_cue_start_fails);
   RUN_TEST(test_wake_cue_sequence_rejects_early_capture_and_duplicate_detection);
+  RUN_TEST(test_ota_preflight_requires_confirmed_idle_external_power);
+  RUN_TEST(test_ota_sha256_validation_and_constant_time_compare);
+  RUN_TEST(test_ota_health_requires_continuous_window_and_rolls_back_on_timeout);
   RUN_TEST(test_bridge_audio_uplink_requires_wake_gate_before_start);
   RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);

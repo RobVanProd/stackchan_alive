@@ -237,6 +237,26 @@
 #define STACKCHAN_ENABLE_POWER_FORENSICS 0
 #endif
 
+#ifndef STACKCHAN_OTA_PORT
+#define STACKCHAN_OTA_PORT 8790
+#endif
+
+#ifndef STACKCHAN_OTA_TOKEN_SHA256
+#define STACKCHAN_OTA_TOKEN_SHA256 ""
+#endif
+
+#ifndef STACKCHAN_OTA_MIN_VBUS_MV
+#define STACKCHAN_OTA_MIN_VBUS_MV 4550
+#endif
+
+#ifndef STACKCHAN_OTA_MIN_FREE_HEAP_BYTES
+#define STACKCHAN_OTA_MIN_FREE_HEAP_BYTES 65536
+#endif
+
+#ifndef STACKCHAN_OTA_HEALTH_MIN_VBUS_MV
+#define STACKCHAN_OTA_HEALTH_MIN_VBUS_MV 4400
+#endif
+
 #ifndef STACKCHAN_BASE_USB_POWER_INPUT
 #define STACKCHAN_BASE_USB_POWER_INPUT 0
 #endif
@@ -562,6 +582,7 @@
 #include "io/CameraHostProtocol.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/ImuAdapter.hpp"
+#include "io/LanOtaServer.hpp"
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
@@ -628,6 +649,7 @@ uint16_t gRuntimeBridgePort = STACKCHAN_BRIDGE_PORT;
 BridgeEndpointPreferencesStore gBridgeEndpointStoreBackend;
 BridgeWiFiProvisioningPreferencesStore gBridgeWiFiStoreBackend;
 WiFiServer gBridgeDebugServer(STACKCHAN_BRIDGE_DEBUG_PORT);
+LanOtaServer gLanOtaServer(STACKCHAN_OTA_PORT);
 bool gBridgeDebugServerStarted = false;
 RTC_DATA_ATTR uint32_t gRtcBootCount = 0;
 esp_reset_reason_t gBootResetReason = ESP_RST_UNKNOWN;
@@ -6271,6 +6293,70 @@ bool bodyFeedbackProtected() {
          bodyFeedbackPowerScale() <= 0.25f;
 }
 
+#if defined(ARDUINO_ARCH_ESP32)
+OtaPreflightInput collectLanOtaPreflight(void*) {
+  const uint32_t nowMs = millis();
+  samplePowerTelemetry(nowMs, true);
+  const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
+  const AudioOutTelemetry& audioOut = gAudioOut.telemetry();
+  const BridgeClientTelemetry& bridge = gBridge.telemetry();
+  const BridgeWakeGateTelemetry& wake = gBridgeWakeGate.telemetry();
+  const ServoPowerTelemetry servo = gServo.powerTelemetry();
+
+  OtaPreflightInput input;
+  input.powerTelemetryValid =
+      gPowerTelemetryValid && gPowerVbusValid && gPowerPmicVbusPresentValid;
+  input.externalPowerPresent = gPowerPmicVbusPresent;
+  input.vbusMv = gPowerVbusMv;
+  input.motionRequested = gMotionRequested;
+  input.motionEnabled = gActuation.isEnabled();
+  input.servoRailEnabled = servo.railEnabled;
+  input.servoTorqueEnabled = servo.torqueEnabled;
+  input.audioActive = downlink.active || downlink.playbackActive || bridge.audioStreamActive ||
+                      audioOut.playbackActive || audioOut.hardwarePlaybackActive ||
+                      gSpeakerSink.speakerPowerActive() || gSpeakerSink.speakerRunning();
+  input.wakeTurnActive = wake.turnActive;
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+  input.wakeTurnActive = input.wakeTurnActive ||
+                         gWakeCueSequence.phase() != WakeCueSequencePhase::Idle;
+#endif
+  input.freeHeapBytes = ESP.getFreeHeap();
+  input.currentAppConfirmed = gLanOtaServer.telemetry().currentAppConfirmed;
+  return input;
+}
+
+void serviceLanOta(uint32_t nowMs) {
+  const DisplayTelemetry& display = gDisplay.telemetry();
+  const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
+
+  OtaHealthInput health;
+  health.runtimeReady = gFrameQueue != nullptr && gSpeechQueue != nullptr &&
+                        gFaceControlQueue != nullptr && gMotionControlQueue != nullptr;
+  health.displayReady = display.ready && display.windowFps >= 15.0f &&
+                        display.windowMaxFrameUs <= 50000u;
+  health.tasksReady = gIntentTaskHandle != nullptr && gMotionTaskHandle != nullptr &&
+                      gFaceTaskHandle != nullptr;
+  health.wifiReady = gBridgeWiFi.isConnected() &&
+                     network.state == BridgeNetworkSessionState::Connected;
+  health.powerSafe = gPowerTelemetryValid && gPowerVbusValid &&
+                     gPowerPmicVbusPresentValid && gPowerPmicVbusPresent &&
+                     gPowerVbusMv >= STACKCHAN_OTA_HEALTH_MIN_VBUS_MV;
+  health.heapSafe = ESP.getFreeHeap() >= STACKCHAN_OTA_MIN_FREE_HEAP_BYTES;
+  gLanOtaServer.updateHealth(health, nowMs);
+  gLanOtaServer.poll(gBridgeWiFi.isConnected(), nowMs);
+
+  static bool wakePauseHeld = false;
+  const bool uploadActive = gLanOtaServer.telemetry().uploadActive;
+  if (uploadActive && !wakePauseHeld) {
+    suppressWakeMwwDetections(nowMs, 30000);
+    wakePauseHeld = requestWakeMwwAudioPause(nowMs, 700);
+  } else if (!uploadActive && wakePauseHeld) {
+    releaseWakeMwwAudioPause(nowMs);
+    wakePauseHeld = false;
+  }
+}
+#endif
+
 void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
 #if !STACKCHAN_ENABLE_BRIDGE_SERIAL_LOGS
   (void)output;
@@ -6487,6 +6573,12 @@ bool publishMotionControl(const BenchControl& control) {
   if (gMotionControlQueue == nullptr || !control.hasMotionEnable) {
     return false;
   }
+#if defined(ARDUINO_ARCH_ESP32)
+  const LanOtaTelemetry& ota = gLanOtaServer.telemetry();
+  if (control.motionEnabled && (ota.uploadActive || ota.healthPending || ota.rebootPending)) {
+    return false;
+  }
+#endif
 
   MotionControlInput input;
   input.hasMotionEnable = true;
@@ -6763,6 +6855,9 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   const BridgeClientTelemetry& bridge = gBridge.telemetry();
   const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
   const DisplayTelemetry& display = gDisplay.telemetry();
+#if defined(ARDUINO_ARCH_ESP32)
+  const LanOtaTelemetry& ota = gLanOtaServer.telemetry();
+#endif
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
   const WakeCueSequenceTelemetry& wakeCue = gWakeCueSequence.telemetry();
 #endif
@@ -7390,6 +7485,30 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"display_window_max_frame_us\":%lu", static_cast<unsigned long>(display.windowMaxFrameUs));
   append(",\"display_window_slow_frames\":%lu", static_cast<unsigned long>(display.windowSlowFrames));
   append(",\"display_window_fps\":%.2f", static_cast<double>(display.windowFps));
+#if defined(ARDUINO_ARCH_ESP32)
+  append(",\"ota_enabled\":%s", ota.enabled ? "true" : "false");
+  append(",\"ota_token_configured\":%s", ota.tokenConfigured ? "true" : "false");
+  append(",\"ota_server_started\":%s", ota.serverStarted ? "true" : "false");
+  append(",\"ota_upload_active\":%s", ota.uploadActive ? "true" : "false");
+  append(",\"ota_reboot_pending\":%s", ota.rebootPending ? "true" : "false");
+  append(",\"ota_health_pending\":%s", ota.healthPending ? "true" : "false");
+  append(",\"ota_current_app_confirmed\":%s", ota.currentAppConfirmed ? "true" : "false");
+  append(",\"ota_bootloader_rollback_enabled\":%s",
+         ota.bootloaderRollbackEnabled ? "true" : "false");
+  append(",\"ota_software_rollback_only\":%s", ota.softwareRollbackOnly ? "true" : "false");
+  append(",\"ota_phase\":\"%s\"", otaPersistentPhaseName(ota.persistentPhase));
+  append(",\"ota_running_partition\":\"%s\"", ota.runningPartition);
+  append(",\"ota_previous_partition\":\"%s\"", ota.previousPartition);
+  append(",\"ota_target_partition\":\"%s\"", ota.targetPartition);
+  append(",\"ota_expected_sha256\":\"%s\"", ota.expectedSha256);
+  append(",\"ota_last_preflight\":\"%s\"", otaPreflightResultName(ota.lastPreflight));
+  append(",\"ota_uploads_completed\":%lu", static_cast<unsigned long>(ota.uploadsCompleted));
+  append(",\"ota_uploads_aborted\":%lu", static_cast<unsigned long>(ota.uploadsAborted));
+  append(",\"ota_health_confirmations\":%lu",
+         static_cast<unsigned long>(ota.healthConfirmations));
+  append(",\"ota_rollback_requests\":%lu", static_cast<unsigned long>(ota.rollbackRequests));
+  append(",\"ota_last_error\":\"%s\"", ota.lastError);
+#endif
   append(",\"sr_wake_enabled\":%s", gWakeSrProbe.enabled ? "true" : "false");
   append(",\"sr_wake_compiled\":%s", gWakeSrProbe.compiled ? "true" : "false");
   append(",\"sr_wake_mww_enabled\":%s", gWakeSrProbe.mwwEnabled ? "true" : "false");
@@ -7677,18 +7796,20 @@ void pollBridgeDebugServer(uint32_t nowMs) {
   const bool rebootRequest =
       strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
       strcmp(requestTarget, "/reset") == 0;
+  const LanOtaTelemetry& ota = gLanOtaServer.telemetry();
+  const bool otaBusy = ota.uploadActive || ota.rebootPending;
   bool toneRequestAccepted = false;
   bool motionControlRequestAccepted = false;
-  if (speakerToneRequest) {
+  if (speakerToneRequest && !otaBusy) {
     suppressWakeMwwDetections(millis(), 900);
     toneRequestAccepted = gSpeakerSink.playDiagnosticTone();
-  } else if (micToneSoftRequest) {
+  } else if (micToneSoftRequest && !otaBusy) {
     suppressWakeMwwDetections(millis(), 900);
     toneRequestAccepted = gSpeakerSink.playMicActivationTone();
-  } else if (micToneTapRequest) {
+  } else if (micToneTapRequest && !otaBusy) {
     suppressWakeMwwDetections(millis(), 900);
     toneRequestAccepted = gSpeakerSink.playMicActivationTap();
-  } else if (micToneOldRequest) {
+  } else if (micToneOldRequest && !otaBusy) {
     suppressWakeMwwDetections(millis(), 900);
     toneRequestAccepted = gSpeakerSink.playLegacyMicActivationTone();
   }
@@ -8029,6 +8150,13 @@ void IntentTask(void* pv) {
     drainWakeMwwUplinkQueue(loopMs);
     gBridgeWakeGate.update(loopMs);
     updateBridgeNetwork(loopMs);
+#if defined(ARDUINO_ARCH_ESP32)
+    serviceLanOta(loopMs);
+    if (gLanOtaServer.telemetry().uploadActive) {
+      vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.intentPeriodMs));
+      continue;
+    }
+#endif
     pollBridgeOutputs(loopMs);
     pollBridgeDebugServer(loopMs);
     ensureWakeSrStarted(loopMs);
@@ -8296,6 +8424,13 @@ void setup() {
   gActuation.begin(&gServo);
   gFace.begin(&gDisplay, gConfig.face);
   gIntent.begin();
+#if defined(ARDUINO_ARCH_ESP32)
+  LanOtaConfig otaConfig;
+  otaConfig.tokenSha256 = STACKCHAN_OTA_TOKEN_SHA256;
+  otaConfig.preflightLimits.minimumVbusMv = STACKCHAN_OTA_MIN_VBUS_MV;
+  otaConfig.preflightLimits.minimumFreeHeapBytes = STACKCHAN_OTA_MIN_FREE_HEAP_BYTES;
+  gLanOtaServer.begin(otaConfig, collectLanOtaPreflight, nullptr, bootMs);
+#endif
   printHeartbeat();
   printSystemTelemetry();
   printRuntimeStatus();

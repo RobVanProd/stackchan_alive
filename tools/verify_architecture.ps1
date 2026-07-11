@@ -266,4 +266,34 @@ Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "blink_cou
 Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "saccade_count" "Face telemetry must report saccade counter."
 Assert-FileContains (Expand-SourcePath "src/face/ProceduralFace.cpp") "speech_env" "Face telemetry must report speech envelope state."
 
+$otaServerPath = Expand-SourcePath "src/io/LanOtaServer.cpp"
+$otaPolicyPath = Expand-SourcePath "src/io/OtaPolicy.cpp"
+Assert-FileContains $otaServerPath "Authorization" "LAN OTA uploads must require an authorization header."
+Assert-FileContains $otaServerPath "X-Stackchan-SHA256" "LAN OTA uploads must carry an expected SHA-256 header."
+Assert-FileContains $otaServerPath "constantTimeEqual" "LAN OTA token and image digests must use constant-time comparison."
+Assert-FileContains $otaServerPath "esp_ota_get_next_update_partition" "LAN OTA must select the inactive application partition through ESP-IDF."
+Assert-FileContains $otaServerPath "ESP_PARTITION_SUBTYPE_APP_OTA_0" "LAN OTA must constrain targets to OTA app slots."
+Assert-FileContains $otaServerPath "Update\.begin\([^;]*U_FLASH" "LAN OTA must invoke Arduino Update in firmware mode."
+Assert-FileContains $otaServerPath "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE" "LAN OTA must report the compiled bootloader rollback capability."
+Assert-FileContains $otaPolicyPath "CurrentAppUnconfirmed" "LAN OTA preflight must reject updates from an unconfirmed app."
+Assert-FileContains $otaPolicyPath "healthyWindowStarted_" "LAN OTA health confirmation must require a continuous stable window."
+Assert-FileNotContains $otaServerPath "U_SPIFFS|U_FATFS|U_LITTLEFS|ESP_PARTITION_TYPE_DATA|esp_partition_write" "LAN OTA must not write data, filesystem, or model partitions."
+Assert-NoMatchesOutside `
+  -Pattern "#include\s*<Update\.h>|Update\.(begin|write|end|abort)|esp_ota_(get_next_update_partition|set_boot_partition|mark_app_)" `
+  -AllowedRelativePaths @("src/io/LanOtaServer.cpp") `
+  -Message "OTA partition selection and writes must stay inside LanOtaServer."
+Assert-NoMatchesOutside `
+  -Pattern "STACKCHAN_OTA_TOKEN(?!_SHA256)" `
+  -AllowedRelativePaths @() `
+  -Message "Raw OTA token macros must never appear in firmware source."
+
+if ($sourceRoot -eq "src") {
+  Assert-FileContains "tools/platformio_apply_ota_env.py" "hashlib\.sha256" "The OTA build hook must compile only a token digest."
+  Assert-FileNotContains "tools/platformio_apply_ota_env.py" "print\s*\(" "The OTA build hook must not print token material."
+  Assert-FileContains "tools/upload_lan_ota.ps1" "Authorization.*Bearer" "The LAN OTA uploader must send bearer authentication."
+  Assert-FileContains "tools/upload_lan_ota.ps1" "Get-FileHash.*SHA256" "The LAN OTA uploader must hash firmware locally."
+  Assert-FileContains "docs/LAN_OTA.md" "does \*\*not\*\* protect against a crash" "LAN OTA docs must state the software rollback limitation."
+  Assert-FileContains "docs/LAN_OTA.md" "model.*never selected or written" "LAN OTA docs must preserve the model partition contract."
+}
+
 Write-Host "Architecture boundaries verified."

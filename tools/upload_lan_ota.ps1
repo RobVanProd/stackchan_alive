@@ -1,0 +1,154 @@
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$Device,
+  [Parameter(Mandatory = $true)]
+  [string]$Firmware,
+  [int]$Port = 8790,
+  [int]$RequestTimeoutSec = 45,
+  [int]$HealthTimeoutSec = 180,
+  [switch]$ConfirmUpload,
+  [switch]$SkipHealthWait
+)
+
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Net.Http
+
+if (-not $ConfirmUpload) {
+  throw "LAN OTA changes the running firmware. Re-run with -ConfirmUpload after checking the device is on stable external power and physically clear."
+}
+if ($Port -lt 1024 -or $Port -gt 65535) {
+  throw "Port must be between 1024 and 65535."
+}
+if ($RequestTimeoutSec -lt 10 -or $RequestTimeoutSec -gt 600) {
+  throw "RequestTimeoutSec must be between 10 and 600."
+}
+if ($HealthTimeoutSec -lt 30 -or $HealthTimeoutSec -gt 900) {
+  throw "HealthTimeoutSec must be between 30 and 900."
+}
+if ($Device -notmatch '^[A-Za-z0-9._-]+$') {
+  throw "Device must be a LAN hostname or IPv4 address without a URL scheme or path."
+}
+
+$firmwarePath = (Resolve-Path -LiteralPath $Firmware).Path
+$firmwareInfo = Get-Item -LiteralPath $firmwarePath
+if ($firmwareInfo.Length -le 0) {
+  throw "Firmware image is empty: $firmwarePath"
+}
+
+$token = [Environment]::GetEnvironmentVariable("STACKCHAN_OTA_TOKEN")
+if ([string]::IsNullOrEmpty($token)) {
+  throw "Set STACKCHAN_OTA_TOKEN in this process environment before running the uploader."
+}
+$tokenBytes = [Text.Encoding]::UTF8.GetBytes($token)
+if ($tokenBytes.Length -lt 32 -or $tokenBytes.Length -gt 128 -or $token -ne $token.Trim()) {
+  throw "STACKCHAN_OTA_TOKEN must be 32 to 128 UTF-8 bytes with no leading or trailing whitespace."
+}
+foreach ($byte in $tokenBytes) {
+  if ($byte -lt 0x21 -or $byte -gt 0x7E) {
+    throw "STACKCHAN_OTA_TOKEN must contain printable ASCII without spaces."
+  }
+}
+
+function Test-PrivateAddress {
+  param([Net.IPAddress]$Address)
+
+  if ([Net.IPAddress]::IsLoopback($Address)) {
+    return $true
+  }
+  if ($Address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork) {
+    $bytes = $Address.GetAddressBytes()
+    return $bytes[0] -eq 10 -or
+      ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
+      ($bytes[0] -eq 192 -and $bytes[1] -eq 168) -or
+      ($bytes[0] -eq 169 -and $bytes[1] -eq 254)
+  }
+  return $Address.IsIPv6LinkLocal -or $Address.IsIPv6SiteLocal -or
+    (($Address.GetAddressBytes()[0] -band 0xFE) -eq 0xFC)
+}
+
+$resolvedAddresses = @([Net.Dns]::GetHostAddresses($Device))
+$privateAddresses = @($resolvedAddresses | Where-Object { Test-PrivateAddress $_ })
+if ($resolvedAddresses.Count -eq 0 -or $privateAddresses.Count -ne $resolvedAddresses.Count) {
+  throw "Device must resolve to a private, link-local, or loopback LAN address."
+}
+
+$sha256 = (Get-FileHash -LiteralPath $firmwarePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$baseUri = "http://${Device}:$Port"
+$handler = [Net.Http.HttpClientHandler]::new()
+$handler.UseProxy = $false
+$client = [Net.Http.HttpClient]::new($handler)
+$client.Timeout = [TimeSpan]::FromSeconds($RequestTimeoutSec)
+
+function Get-OtaStatus {
+  $json = $client.GetStringAsync("$baseUri/status").GetAwaiter().GetResult()
+  return $json | ConvertFrom-Json
+}
+
+try {
+  $before = Get-OtaStatus
+  if (-not $before.enabled) {
+    throw "Device OTA endpoint is disabled. Confirm the token-enabled firmware and dedicated port."
+  }
+  if ($before.upload_active -or $before.health_pending -or -not $before.current_app_confirmed) {
+    throw "Device is already uploading, validating, or running an unconfirmed image."
+  }
+
+  Write-Host "Uploading $($firmwareInfo.Name) ($($firmwareInfo.Length) bytes, SHA-256 $sha256) to $Device on LAN port $Port."
+  $firmwareBytes = [IO.File]::ReadAllBytes($firmwarePath)
+  $content = [Net.Http.ByteArrayContent]::new($firmwareBytes)
+  $content.Headers.ContentType = [Net.Http.Headers.MediaTypeHeaderValue]::new("application/octet-stream")
+  $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$baseUri/firmware")
+  $request.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $token)
+  [void]$request.Headers.TryAddWithoutValidation("X-Stackchan-SHA256", $sha256)
+  $request.Content = $content
+  try {
+    $response = $client.SendAsync($request).GetAwaiter().GetResult()
+    $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    if (-not $response.IsSuccessStatusCode) {
+      throw "OTA upload rejected with HTTP $([int]$response.StatusCode): $responseBody"
+    }
+    $accepted = $responseBody | ConvertFrom-Json
+    if (-not $accepted.ok -or $accepted.sha256 -ne $sha256) {
+      throw "Device response did not confirm the uploaded SHA-256."
+    }
+  } finally {
+    $request.Dispose()
+    $content.Dispose()
+  }
+
+  if ($SkipHealthWait) {
+    Write-Host "Upload accepted; device reboot and health confirmation were not monitored."
+    return
+  }
+
+  $deadline = [DateTime]::UtcNow.AddSeconds($HealthTimeoutSec)
+  $lastPhase = "rebooting"
+  do {
+    Start-Sleep -Seconds 2
+    try {
+      $status = Get-OtaStatus
+    } catch {
+      continue
+    }
+    if ($status.expected_sha256 -ne $sha256) {
+      continue
+    }
+    if ($status.phase -ne $lastPhase) {
+      Write-Host "OTA phase: $($status.phase)"
+      $lastPhase = $status.phase
+    }
+    if ($status.phase -eq "confirmed" -and $status.current_app_confirmed) {
+      Write-Host "OTA confirmed on partition $($status.running_partition)."
+      return
+    }
+    if ($status.phase -in @("rollback_requested", "rolled_back", "failed")) {
+      throw "OTA did not pass health validation: phase=$($status.phase), error=$($status.last_error)"
+    }
+  } while ([DateTime]::UtcNow -lt $deadline)
+
+  throw "Timed out waiting for OTA health confirmation. Query $baseUri/status before taking further action."
+} finally {
+  [Array]::Clear($tokenBytes, 0, $tokenBytes.Length)
+  $client.Dispose()
+  $handler.Dispose()
+}
