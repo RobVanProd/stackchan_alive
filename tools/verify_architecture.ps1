@@ -153,6 +153,14 @@ if (Test-Path -LiteralPath $sdProvisionerPath) {
     -Path $sdProvisionerPath `
     -Pattern 'FORMAT STACKCHAN 64GB ERASE MOVIES' `
     -Message "SD provisioner must retain its exact destructive runtime confirmation phrase."
+  $sdProvisionerText = Get-Content -LiteralPath $sdProvisionerPath -Raw
+  $sdRegisterIndex = $sdProvisionerText.IndexOf("sdcard_init")
+  $sdInitializeIndex = $sdProvisionerText.IndexOf("disk_initialize")
+  $sdCapacityIndex = $sdProvisionerText.IndexOf("sdcard_num_sectors")
+  if ($sdRegisterIndex -lt 0 -or $sdInitializeIndex -le $sdRegisterIndex -or
+      $sdCapacityIndex -le $sdInitializeIndex) {
+    throw "SD provisioner must initialize its registered FatFs drive before reading card capacity."
+  }
   $platformioText = Get-Content -LiteralPath $platformioPath -Raw
   $sdSection = [regex]::Match(
     $platformioText,

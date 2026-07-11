@@ -4,6 +4,7 @@
 #include <M5Unified.h>
 #include <SD.h>
 #include <SPI.h>
+#include <diskio.h>
 #include <ff.h>
 #include <sd_diskio.h>
 
@@ -103,6 +104,13 @@ void setup() {
   const uint8_t drive = sdcard_init(kSdCsPin, &SPI, kSdFrequencyHz);
   if (drive == 0xFF) {
     Serial.println("[sd-provisioner] result=refused reason=card_init");
+    return;
+  }
+  const DSTATUS diskStatus = disk_initialize(drive);
+  if ((diskStatus & STA_NOINIT) != 0) {
+    Serial.print("[sd-provisioner] result=refused reason=disk_initialize status=");
+    Serial.println(static_cast<unsigned int>(diskStatus));
+    sdcard_uninit(drive);
     return;
   }
   const uint64_t capacityBytes =

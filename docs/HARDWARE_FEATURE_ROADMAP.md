@@ -188,7 +188,8 @@ normal runtime command:
    in the 58-70 GB range.
 2. Print card type, sector count, capacity, and the exact erase confirmation phrase.
 3. Require an operator confirmation that the old movies may be erased.
-4. Invoke the board-local FatFs format path, remount, and verify a write/read/delete test.
+4. Invoke the board-local FatFs format path, remount, and verify the persistent readiness marker
+   with a write/read test.
 5. Reflash the validated release firmware and confirm it boots normally with and without the
    card. Do not make wake, face, bridge, voice, memory, or safety behavior depend on this
    unsupported-capacity card.
