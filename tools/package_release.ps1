@@ -405,6 +405,8 @@ foreach ($file in $voiceRvcFiles) {
 
 Copy-Item -LiteralPath "README.md" -Destination $outDir
 Copy-Item -LiteralPath "AGENTS.md" -Destination $outDir
+Copy-Item -LiteralPath "CONTRIBUTING.md" -Destination $outDir
+Copy-Item -LiteralPath "SECURITY.md" -Destination $outDir
 Copy-Item -LiteralPath "LICENSE" -Destination $outDir
 Copy-Item -LiteralPath "docs/README.md" -Destination $docsDir
 $packageReadmePath = Join-Path $outDir "README.md"
@@ -1338,6 +1340,8 @@ $manifest = [ordered]@{
   conversationV2Roadmap = "docs/CONVERSATION_V2_ROADMAP.md"
   androidCompanionSource = "provenance/companion"
   agentGuide = "AGENTS.md"
+  contributorGuide = "CONTRIBUTING.md"
+  securityPolicy = "SECURITY.md"
   docsIndex = "docs/README.md"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"

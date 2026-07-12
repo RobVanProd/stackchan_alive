@@ -146,6 +146,8 @@ function Assert-Mp3File {
 $requiredFiles = @(
   "README.md",
   "AGENTS.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
   "LICENSE",
   "DEPENDENCIES.md",
   "THIRD_PARTY_NOTICES.md",
@@ -763,8 +765,22 @@ foreach ($pattern in @(
   }
 }
 
-foreach ($document in @("README.md", "AGENTS.md", "docs/README.md", "docs/CONVERSATION_V2_ROADMAP.md")) {
+foreach ($document in @("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "docs/README.md", "docs/CONVERSATION_V2_ROADMAP.md")) {
   Assert-LocalMarkdownLinks $document
+}
+
+$contributorGuideText = Get-Content -LiteralPath (Join-PackagePath "CONTRIBUTING.md") -Raw
+foreach ($pattern in @("physical hardware", "Private Material", "Bring-your-own-model", "Exact firmware SHA-256", "Apache License 2.0")) {
+  if ($contributorGuideText -notmatch [regex]::Escape($pattern)) {
+    throw "CONTRIBUTING.md missing release-safety guidance: $pattern"
+  }
+}
+
+$securityPolicyText = Get-Content -LiteralPath (Join-PackagePath "SECURITY.md") -Raw
+foreach ($pattern in @("private vulnerability reporting", "latest published prerelease", "unexpected motion", "rotate or revoke", "Git history")) {
+  if ($securityPolicyText -notmatch [regex]::Escape($pattern)) {
+    throw "SECURITY.md missing vulnerability-response guidance: $pattern"
+  }
 }
 
 $visionModelRelativePath = "bridge/models/face_detection_yunet_2023mar.onnx"
@@ -2549,6 +2565,14 @@ if ($manifest.conversationV2Roadmap -ne "docs/CONVERSATION_V2_ROADMAP.md") {
 
 if ($manifest.agentGuide -ne "AGENTS.md") {
   throw "Manifest agentGuide mismatch: $($manifest.agentGuide)"
+}
+
+if ($manifest.contributorGuide -ne "CONTRIBUTING.md") {
+  throw "Manifest contributorGuide mismatch: $($manifest.contributorGuide)"
+}
+
+if ($manifest.securityPolicy -ne "SECURITY.md") {
+  throw "Manifest securityPolicy mismatch: $($manifest.securityPolicy)"
 }
 
 if ($manifest.projectLicense -ne "Apache-2.0") {
