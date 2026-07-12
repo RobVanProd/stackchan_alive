@@ -140,16 +140,15 @@ To open one combined local page with Stackchan Spark plus any authorized locally
 .\tools\open_voice_audition.cmd -All
 ```
 
-To verify the public BYOM policy and confirm no RVC model or converted assets are bundled:
+To verify the exact production RVC model and index bundled in the release:
 
 ```powershell
 .\tools\verify_tracked_rvc_assets.cmd
 ```
 
-Published prereleases upload only the project-owned Stackchan Spark audition MP3s as standalone
-GitHub release assets. Optional RVC conversion is bring-your-own-model and local-only; model
-weights, indexes, converted samples, and RVC audition pages are excluded from Git and release
-packages until a production source has complete rights provenance.
+Published releases include the current production `model.pth` and `model.index`, plus small
+Stackchan Spark MP3 previews as standalone GitHub assets. The model files are tracked with Git LFS
+and are accepted only when their exact byte lengths and SHA-256 values match the production record.
 
 To scrub restricted model and RVC payloads from a legacy/private ZIP while preserving the approved
 hash-pinned YuNet detector, write to a new archive:

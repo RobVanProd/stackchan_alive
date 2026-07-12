@@ -28,5 +28,5 @@
 - `VOICE_PERSONALITY.md`: original robot TTS/personality target and voice-source guardrails.
 - `VOICE_SOURCE_PROVENANCE_TEMPLATE.md`: production voice release record and file hashes.
 - `stackchan_procedural_runtime_design.pdf`: source design document from Google Drive.
-- `../media/voice/rvc/README.md`: bring-your-own-model policy for optional local RVC conversion; no model or converted samples are distributed.
-- Run `../tools/open_voice_audition.cmd -All` only after generating optional RVC samples locally from an authorized model.
+- `../media/voice/rvc/README.md`: exact production RVC model/index hashes and installation guidance.
+- Run `../tools/open_voice_audition.cmd -All` to review the bundled production voice and quick audition samples.

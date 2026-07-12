@@ -63,7 +63,7 @@ The Apache-2.0 release includes the active production RVC model and index.
   remaining duration of the interrupted launch run for this release.
 - Audit downloaded release assets against the published SHA-256 sidecars.
 - PC/mobile owner failover and target-store distribution evidence for whichever companion targets
-  are presented as consumer-ready. These do not block sharing the source/BYOM developer release.
+  are presented as consumer-ready. These do not block the current PC-hosted public release.
 - Real LiteRT-LM/mobile runner speed and memory behavior.
 - Proximity behavior is not implemented and must not be advertised.
 

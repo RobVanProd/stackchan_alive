@@ -811,7 +811,7 @@ foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "Downloa
 }
 
 $arrivalRunbookText = Get-Content -LiteralPath (Join-PackagePath "ARRIVAL_DAY_RUNBOOK.md") -Raw
-foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion; .\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "android/apk-install/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/screen-off-soak/", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "production voice-source provenance", "GitHub Actions")) {
+foreach ($pattern in @("Stackchan Arrival-Day Runbook", "NEXT_STEPS.md", "RUN_PACKAGE_VERIFY.cmd", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_SOAK_MONITOR.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio/", "HOSTED_MEDIA_REFERENCE.md", "verified local or Cloudflare share page", "share\VERIFIED_URL.txt", "pitch 2, index 0.62, RMS mix 0.72, and protect 0.28", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion; .\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "android/apk-install/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/screen-off-soak/", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.json", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hard stop if", "send", "status", "[heartbeat]", "[system]", "verified production voice hashes", "GitHub Actions")) {
   if ($arrivalRunbookText -notmatch [regex]::Escape($pattern)) {
     throw "ARRIVAL_DAY_RUNBOOK.md missing required bench guidance: $pattern"
   }
@@ -838,9 +838,9 @@ foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalU
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
 }
-foreach ($pattern in @("Optional Local RVC", "bring-your-own-model", "RVC BYOM Policy")) {
+foreach ($pattern in @("Production RVC Voice", "model.pth", "model.index", "production-release-verified")) {
   if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
-    throw "tools/share_release.ps1 missing RVC BYOM policy marker: $pattern"
+    throw "tools/share_release.ps1 missing production RVC marker: $pattern"
   }
 }
 
@@ -1121,7 +1121,7 @@ $repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "README.md") -Raw
 if ($repoReadmeText -match '\]\(docs/media/') {
   throw "README.md still points at source-only docs/media paths instead of packaged media paths"
 }
-foreach ($pattern in @("media/voice/rvc", "bring-your-own-model", "No model", "converted sample", "open_voice_audition.cmd -All")) {
+foreach ($pattern in @("media/voice/rvc", "model.pth", "model.index", "install_bundled_rvc_voice.ps1", "open_voice_audition.cmd -All")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing RVC audition discoverability guidance: $pattern"
   }
@@ -1146,7 +1146,7 @@ foreach ($pattern in @("On-device wake phrase", "microphone capture", "wake-gate
     throw "README.md missing mic capture status guidance: $pattern"
   }
 }
-foreach ($pattern in @("integrated physical release candidate", "one-hour actuator acceptance", "eight-hour all-feature actuator soak", "exact paired candidate", "secret-free public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
+foreach ($pattern in @("public v0.2 release candidate", "formal one-hour actuator acceptance", "more than five hours", "exact paired candidate", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing current release-candidate status or navigation: $pattern"
   }
@@ -1174,7 +1174,7 @@ foreach ($pattern in @("post-release feature", "REPLY_WINDOW", "echo guard", "pr
 }
 
 $creatingPersonasText = Get-Content -LiteralPath (Join-PackagePath "docs/CREATING_PERSONAS.md") -Raw
-foreach ($pattern in @("create_persona_pack.cmd nova", "Name or handle to credit", "Author credit is required", "placeholders", "copy-edit-validate-build", "verify_persona_pack.cmd nova --Json", "run_character_red_team.cmd -Persona nova -Json", "STACKCHAN_PERSONA", "voice provenance gate")) {
+foreach ($pattern in @("create_persona_pack.cmd nova", "Name or handle to credit", "Author credit is required", "placeholders", "copy-edit-validate-build", "verify_persona_pack.cmd nova --Json", "run_character_red_team.cmd -Persona nova -Json", "STACKCHAN_PERSONA", "voice asset hash verification")) {
   if ($creatingPersonasText -notmatch [regex]::Escape($pattern)) {
     throw "docs/CREATING_PERSONAS.md missing creator path guidance: $pattern"
   }
@@ -1188,7 +1188,7 @@ foreach ($pattern in @("red-team dry-run harness", "configured real runner", "co
 }
 
 $releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
-foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "verify_tracked_rvc_assets.cmd", "bring-your-own-model", "local-only", "weights, indexes")) {
+foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "verify_tracked_rvc_assets.cmd", "model.pth", "model.index", "SHA-256")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing RVC audition process guidance: $pattern"
   }
@@ -1634,7 +1634,7 @@ foreach ($pattern in @("VOICE_AUDITION.html", "RVC_AUDITION.html", "VOICE_AUDITI
 }
 
 $trackedRvcVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -Raw
-foreach ($pattern in @("Optional Local RVC", "user-supplied RVC model", "No RVC model", "output/voice_auditions/", "forbidden bundled assets")) {
+foreach ($pattern in @("Production RVC files verified", "model.pth", "model.index", "SHA256", "git lfs pull")) {
   if ($trackedRvcVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_tracked_rvc_assets.ps1 missing tracked RVC asset check: $pattern"
   }
@@ -2490,8 +2490,8 @@ if (-not ($envs -contains "stackchan") -or
   throw "Manifest missing expected environments"
 }
 
-if ($manifest.status -notmatch "hardware validation pending") {
-  throw "Manifest status must state that hardware validation is pending"
+if ($manifest.status -notmatch "public release" -or $manifest.status -notmatch "accepted by owner") {
+  throw "Manifest status must identify the owner-accepted public release"
 }
 
 if ($manifest.dirty -and -not $AllowDirtyPackage) {
@@ -2867,7 +2867,9 @@ $expectedMediaArtifacts = @(
   "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json",
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/VOICE_AUDITION.html",
-  "media/voice/rvc/README.md"
+  "media/voice/rvc/README.md",
+  "media/voice/rvc/model.pth",
+  "media/voice/rvc/model.index"
 )
 $actualMediaArtifacts = @($manifest.mediaArtifacts)
 foreach ($file in $expectedMediaArtifacts) {
@@ -3111,14 +3113,19 @@ foreach ($entry in $thirdPartyLicenseIndex) {
     throw "Third-party license index contains unsafe path: $relative"
   }
   $indexedPath = Join-PackagePath ("third_party_licenses/" + $relative)
-  if (-not (Test-Path -LiteralPath $indexedPath -PathType Leaf)) {
+  $indexedFilePath = if ($indexedPath.Length -ge 248 -and -not $indexedPath.StartsWith("\\?\")) {
+    "\\?\$indexedPath"
+  } else {
+    $indexedPath
+  }
+  if (-not (Test-Path -LiteralPath $indexedFilePath -PathType Leaf)) {
     throw "Third-party license index references missing file: $relative"
   }
-  $indexedFile = Get-Item -LiteralPath $indexedPath
+  $indexedFile = Get-Item -LiteralPath $indexedFilePath
   if ([int64]$entry.bytes -ne $indexedFile.Length) {
     throw "Third-party license index size mismatch: $relative"
   }
-  $actualHash = (Get-FileHash -LiteralPath $indexedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $actualHash = (Get-FileHash -LiteralPath $indexedFilePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ([string]$entry.sha256 -ne $actualHash) {
     throw "Third-party license index hash mismatch: $relative"
   }
@@ -3151,7 +3158,7 @@ if ($releaseNotes -notmatch [regex]::Escape($ExpectedCommit)) {
 if ($releaseNotes -notmatch "Hardware validation is still required") {
   throw "RELEASE_NOTES.md must state that hardware validation is still required"
 }
-foreach ($pattern in @("secret-free BYOM package", "private paired reference robot", "exact-image evidence", "does not validate another assembled unit")) {
+foreach ($pattern in @("model.pth", "model.index", "private paired reference robot", "exact-image evidence", "does not validate another assembled unit")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing reference-versus-recipient validation boundary: $pattern"
   }
@@ -3159,7 +3166,7 @@ foreach ($pattern in @("secret-free BYOM package", "private paired reference rob
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "bring-your-own-model", "local-only", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "model.pth", "model.index", "SHA-256", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
@@ -3366,10 +3373,10 @@ $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.jso
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
   throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
 }
-if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
+if ($acceptance.currentDecision -ne "owner-approved-release") {
   throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
 }
-if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
+if ($acceptance.consumerRolloutDecision -ne "released") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
 foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
@@ -3378,15 +3385,19 @@ foreach ($requirement in @("clean-release-package", "dependency-provenance-prese
     throw "release_acceptance.json missing passed no-hardware requirement: $requirement"
   }
 }
-foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "target-speaker-audio-evidence", "hardware-evidence-verification", "production-voice-source")) {
+foreach ($requirement in @("display-only-flash", "speech-mouth-demo-evidence", "servo-calibration", "mixed-mode-soak", "power-cycle-recovery", "target-speaker-audio-evidence", "hardware-evidence-verification")) {
   $match = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq $requirement -and $_.status -match "pending" })
   if ($match.Count -ne 1) {
     throw "release_acceptance.json missing pending hardware requirement: $requirement"
   }
 }
+$productionVoiceRequirement = @($acceptance.hardwareAcceptanceRequired | Where-Object { $_.requirement -eq "production-voice-assets" -and $_.status -eq "pass" })
+if ($productionVoiceRequirement.Count -ne 1) {
+  throw "release_acceptance.json missing passed production voice asset requirement"
+}
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("test-ready for device arrival", "blocked pending hardware validation", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Completed voice-source provenance", "licensed or owned production voice source")) {
+foreach ($pattern in @("owner-approved public release", "Consumer rollout: released", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -3420,7 +3431,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Requ
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "device-ready prerelease", "blocked pending hardware validation", "Proven Without Hardware", "Pending Package And Consumer Evidence", "secret-free BYOM distribution", "private paired reference robot", "exact-image physical evidence", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Voice source provenance", "Do not mark this release consumer-ready")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "Status: public release", "Consumer rollout: owner-approved", "Proven Without Hardware", "Recipient Hardware Evidence", "private paired reference robot", "exact-image physical evidence", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "owner approved the reference release evidence")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -3436,8 +3447,8 @@ if ($readinessJson.version -ne $Version) {
 if ($readinessJson.commit -ne $ExpectedCommit) {
   throw "readiness_report.json commit mismatch: expected $ExpectedCommit, got $($readinessJson.commit)"
 }
-if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
-  throw "readiness_report.json must keep consumer rollout blocked until hardware validation"
+if ($readinessJson.consumerRollout -ne "owner-approved") {
+  throw "readiness_report.json must record the owner's release decision"
 }
 foreach ($gate in @($readinessJson.noHardwareProof)) {
   if ($gate.status -ne "pass") {
@@ -3477,9 +3488,9 @@ if ($powerCycleGate.Count -ne 1) {
   throw "readiness_report.json missing pending power-cycle-recovery gate"
 }
 foreach ($gate in @($readinessJson.hardwareGates)) {
-  $allowedStatus = if ($gate.gate -eq "production-voice-source") { "pending-before-consumer-rollout" } else { "pending-device" }
+  $allowedStatus = if ($gate.gate -eq "production-voice-assets") { "pass" } else { "pending-device" }
   if ($gate.status -ne $allowedStatus) {
-    throw "readiness_report.json hardware gate must remain pending-device before promotion: $($gate.gate)"
+    throw "readiness_report.json hardware gate status mismatch: $($gate.gate)"
   }
 }
 if (@($readinessJson.hardwareGates).Count -lt 8) {

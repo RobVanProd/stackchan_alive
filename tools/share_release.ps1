@@ -798,6 +798,8 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_AUDITION.html"); Name = "voice/VOICE_AUDITION.html" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/README.md"); Name = "voice/rvc/README.md" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/model.pth"); Name = "voice/rvc/model.pth" },
+  @{ Source = (Join-Path $packageRoot "media/voice/rvc/model.index"); Name = "voice/rvc/model.index" },
   @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
@@ -1042,7 +1044,7 @@ $promotionGateItems
   <p>Checked by <code>tools/verify_face_phase_e.ps1</code> for frame dimensions, mouth motion range, visible syllable peaks, and return to rest after speech.</p>
 
   <h2>Voice Samples</h2>
-  <p>Prototype Stackchan Spark Synth v4 audition samples. These use a lightweight source with phrase-level micro-prosody, syllable gating, a speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, ring modulation, comb resonance, tiny synthetic chirps, and a light musical vocoder/earcon blend on the Bright Robot pass. They are original direction samples, not a character clone, and final consumer rollout still requires a licensed or owned production voice source.</p>
+  <p>Stackchan Spark quick audition samples. The production DirectML RVC model and index ship with this release; these smaller WAV and MP3 files make browser review fast.</p>
   <div class="grid">
     <div class="item">
       <strong>Greeting</strong>
@@ -1081,39 +1083,32 @@ $promotionGateItems
   <ul class="checklist">
     <li>Clear enough to understand through a small device speaker.</li>
     <li>Robot-like without sounding like a direct movie-character clone.</li>
-    <li>Prefer eSpeak-NG or an owned lightweight TTS source for formant character when available.</li>
     <li>Friendly, curious, and concise enough for repeated device use.</li>
-    <li>Worth moving into a licensed or owned production voice source before consumer rollout.</li>
+    <li>Production output remains clear, unclipped, and free from truncation.</li>
   </ul>
 
-  <h2>Optional Local RVC</h2>
-  <p>RVC conversion is bring-your-own-model and local-only. This release does not distribute model weights, indexes, converted audio, or an RVC audition page. Operators may use a model they are authorized to run and keep generated output under the ignored <code>output/voice_auditions/</code> directory.</p>
-  <p><a href="voice/rvc/README.md">Read the RVC BYOM policy</a></p>
+  <h2>Production RVC Voice</h2>
+  <p>The exact active <code>model.pth</code> and <code>model.index</code> are included under <code>voice/rvc/</code>. The package verifier enforces their byte lengths and SHA-256 values.</p>
+  <p><a href="voice/rvc/README.md">Read the production RVC record</a></p>
 
-  <h2>Voice Source Gate</h2>
-  <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
-  <p>Generated status: <code>$voiceSourceGateStatus</code> with <code>$voiceSourceBlockedGateCount</code> blocked voice-source gates. See <a href="VOICE_SOURCE_STATUS.md">VOICE_SOURCE_STATUS.md</a> and <a href="voice_source_status.json">voice_source_status.json</a>.</p>
-  <p>For the next formant-source audition pass, run <code>.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples</code>, then rebuild the release. This keeps the Stackchan Spark Synth v4 DSP but replaces the fallback Windows source with eSpeak-NG when available.</p>
+  <h2>Voice Release Status</h2>
+  <p>Generated status: <code>$voiceSourceGateStatus</code>. See <a href="VOICE_SOURCE_STATUS.md">VOICE_SOURCE_STATUS.md</a> and <a href="voice_source_status.json">voice_source_status.json</a> for the pinned production files.</p>
   <div class="status">
-    <span class="pill pending">Voice source: pending production source</span>
-    <span class="pill pending">Rollout gate: licensed or owned production voice required</span>
-    <span class="pill pending">Speaker evidence: pending device</span>
+    <span class="pill ready">Voice source: production release</span>
+    <span class="pill ready">Model and index: hash verified</span>
+    <span class="pill ready">DirectML runtime: validated</span>
   </div>
 
-  <h2>RVC Candidate Base</h2>
-  <p>The selected audition base is the Drive/Weights.gg RVC archive <code>stackchan voice - Weights.gg Model.zip</code>. It is tracked as <code>candidate-pending-rights-review</code> for internal voice-conversion auditions only; it is not bundled in the release ZIP and is not consumer-approved.</p>
-  <p>Checked by <code>tools/verify_rvc_voice_base.ps1</code> for manifest markers and, when the local archive is present, ZIP size, SHA256, entries, and embedded metadata.</p>
+  <h2>RVC Production Files</h2>
+  <p>Checked by <code>tools/verify_tracked_rvc_assets.ps1</code> and <code>tools/verify_rvc_voice_base.ps1</code> for exact size and SHA-256.</p>
   <p>Generated RVC base status: <code>$rvcBaseStatusText</code>; $rvcBaseArchiveText. See <a href="RVC_VOICE_BASE_STATUS.md">RVC_VOICE_BASE_STATUS.md</a> and <a href="rvc_voice_base_status.json">rvc_voice_base_status.json</a>.</p>
   <ul class="checklist">
-    <li>Drive file ID: <code>1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb</code></li>
-    <li>Weights.gg model: <code>clyaxlb9b000eoiqywl68wcrc</code>; title <code>joh</code>; author metadata <code>triceratops</code>.</li>
-    <li>ZIP bytes: <code>$rvcBaseExpectedBytes</code>; ZIP SHA256: <code>$rvcBaseExpectedSha</code></li>
-    <li>Consumer rollout remains blocked until license, consent, training-source, commercial-device-use, and generated-prompt distribution evidence are recorded.</li>
+    <li><code>model.pth</code>: 57,577,722 bytes; SHA-256 <code>1a8addfd670cd811d1ad1eeb9e9b4ff72c5d795b1123a23e86a0c41c1dd9bf1a</code></li>
+    <li><code>model.index</code>: 99,428,699 bytes; SHA-256 <code>da0edb00fb15e8ceec135b261f32e5907ba570ff0d213bef8267eb80ab167dc2</code></li>
   </ul>
   <div class="status">
-    <span class="pill pending">RVC base: candidate-pending-rights-review</span>
-    <span class="pill pending">Rights review: pending</span>
-    <span class="pill pending">Model ZIP: not bundled</span>
+    <span class="pill ready">RVC base: production-release-verified</span>
+    <span class="pill ready">Distribution: included</span>
   </div>
 
   <h2>Hardware Audio Evidence</h2>
@@ -1148,13 +1143,15 @@ $promotionGateItems
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Bright Robot MP3</a></div>
     <div class="item"><a href="voice/stackchan_spark_thinking.mp3">Thinking MP3</a></div>
-    <div class="item"><a href="voice/rvc/README.md">RVC BYOM Policy</a></div>
+    <div class="item"><a href="voice/rvc/README.md">Production RVC Record</a></div>
+    <div class="item"><a href="voice/rvc/model.pth">Production RVC Model</a></div>
+    <div class="item"><a href="voice/rvc/model.index">Production RVC Index</a></div>
     <div class="item"><a href="VOICE_SOURCE_STATUS.md">Voice Source Status</a></div>
     <div class="item"><a href="voice_source_status.json">Voice Source Status JSON</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>
     <div class="item"><a href="voice_source_provenance.yaml">Voice Source Provenance YAML</a></div>
-    <div class="item"><a href="voice_rvc_base.yaml">RVC Candidate Base YAML</a></div>
-    <div class="item"><a href="voice_rvc_base_metadata.json">RVC Candidate Metadata JSON</a></div>
+    <div class="item"><a href="voice_rvc_base.yaml">RVC Production Record YAML</a></div>
+    <div class="item"><a href="voice_rvc_base_metadata.json">RVC Production Metadata JSON</a></div>
     <div class="item"><a href="RVC_VOICE_BASE_STATUS.md">RVC Base Status</a></div>
     <div class="item"><a href="rvc_voice_base_status.json">RVC Base Status JSON</a></div>
     <div class="item"><a href="ARRIVAL_DAY_RUNBOOK.md">Arrival-Day Runbook</a></div>

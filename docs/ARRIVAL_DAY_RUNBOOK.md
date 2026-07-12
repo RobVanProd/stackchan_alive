@@ -1031,7 +1031,7 @@ Optional speech-mouth sidecar check from the extracted release folder:
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
 ```
 
-Release evidence packets use the project-owned Stackchan Spark sample or built-in fallback pattern. An operator may generate a mouth-envelope check from an authorized local RVC model under `output/voice_auditions/`, but model files and converted RVC audio are never copied into the package.
+Release evidence packets use the bundled Stackchan production RVC model and index. `tools/verify_tracked_rvc_assets.cmd` verifies their pinned hashes before packaging; locally generated audition output remains under `output/voice_auditions/`.
 Run `RUN_SPEAK_ALL_INTENTS.cmd` after that helper while display-only firmware is still connected. It sends `speak <intent>` for every packaged speech intent and captures prompt, earcon, and `[audio_out]` handoff telemetry in `logs/speak_all_intents_serial.log`.
 
 P7 bridge comparison: run `RUN_BRIDGE_REPLAY.cmd` while display-only firmware is connected.
@@ -1381,7 +1381,7 @@ This still requires:
 
 ## Current Release Limits
 
-- Current hosted samples are review-only Stackchan Spark Synth samples.
-- Production voice source remains pending.
+- Hosted MP3 files are quick previews; the production DirectML RVC model and index ship in the release.
+- Production voice hashes are verified and recorded in the package status files.
 - GitHub Actions may be externally blocked by account billing or spending-limit state.
 - Hardware evidence and CI/account state remain independently visible during rollout.

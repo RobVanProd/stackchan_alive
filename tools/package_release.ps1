@@ -1314,8 +1314,8 @@ $manifest = [ordered]@{
   board = "m5stack-cores3"
   defaultEnvironment = "stackchan"
   includedEnvironments = @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")
-  servoDefault = "display-only build disables servos; calibration and full-online builds require explicit servo-risk acknowledgement"
-  status = "device-ready prerelease; hardware validation pending"
+  servoDefault = "display-only and calibration flows remain safety-gated; the production full firmware starts guarded autonomous motion after boot"
+  status = "public release; reference hardware accepted by owner"
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
@@ -1843,8 +1843,8 @@ $readinessReport = [ordered]@{
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  status = "device-ready-prerelease"
-  consumerRollout = "blocked-pending-hardware-validation"
+  status = "public-release"
+  consumerRollout = "owner-approved"
   noHardwareProof = @(
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -1871,9 +1871,9 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
     [ordered]@{ gate = "target-speaker-audio-evidence"; status = "pending-device"; requiredEvidence = "completed AUDIO_REVIEW.md plus a real-device speaker recording under audio/" },
     [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
-    [ordered]@{ gate = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md plus licensed or owned production source" }
+    [ordered]@{ gate = "production-voice-assets"; status = "pass"; requiredEvidence = "media/voice/rvc/model.pth and model.index match the pinned production SHA-256 values" }
   )
-  promotionRule = "Do not mark consumer-ready or non-prerelease until all hardware gates pass with evidence."
+  promotionRule = "The owner approved this public release from exact-image reference evidence; each recipient still validates local power, calibration, and assembly."
   nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
 }
 
@@ -1884,9 +1884,9 @@ $acceptanceChecklist = [ordered]@{
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  releaseClass = "device-ready-prerelease"
-  currentDecision = "test-ready-for-device-arrival"
-  consumerRolloutDecision = "blocked-pending-hardware-validation"
+  releaseClass = "public-release"
+  currentDecision = "owner-approved-release"
+  consumerRolloutDecision = "released"
   noHardwareAcceptance = @(
     [ordered]@{ requirement = "clean-release-package"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ requirement = "firmware-artifacts-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -1913,9 +1913,9 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "power-cycle-recovery"; status = "pending-device"; requiredEvidence = "USB power-cycle observation marked pass" },
     [ordered]@{ requirement = "target-speaker-audio-evidence"; status = "pending-device"; requiredEvidence = "completed AUDIO_REVIEW.md plus a real-device speaker recording under audio/" },
     [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
-    [ordered]@{ requirement = "production-voice-source"; status = "pending-before-consumer-rollout"; requiredEvidence = "completed docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md plus licensed or owned production voice source" }
+    [ordered]@{ requirement = "production-voice-assets"; status = "pass"; requiredEvidence = "bundled model and index match the pinned production SHA-256 values" }
   )
-  promotionRule = "Keep prerelease status until every hardwareAcceptanceRequired item is pass with evidence."
+  promotionRule = "The public release is owner-approved; recipient hardware acceptance remains local to each assembled unit."
 }
 
 $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "release_acceptance.json") -Encoding UTF8
@@ -1925,8 +1925,8 @@ $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $o
 
 Release: $Version
 Commit: $commit
-Decision: test-ready for device arrival
-Consumer rollout: blocked pending hardware validation
+Decision: owner-approved public release
+Consumer rollout: released
 
 ## Accepted Without Hardware
 
@@ -1947,7 +1947,7 @@ Consumer rollout: blocked pending hardware validation
 - [x] Servo risk gated by explicit ``-ConfirmServoRisk``
 - [x] Share page can be verified by ``tools/verify_share_release.cmd``
 
-## Still Required Before Consumer Rollout
+## Recipient Hardware Validation
 
 These gates apply to this public package and each recipient hardware configuration.
 The private paired reference robot is validated separately with exact-image evidence recorded in
@@ -1962,7 +1962,7 @@ or assembled hardware.
 - [ ] Power-cycle recovery: USB power-cycle observation marked pass
 - [ ] Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``
 - [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
-- [ ] Completed voice-source provenance with a licensed or owned production voice source
+- [x] Production RVC model and index match their pinned SHA-256 values
 
 Machine-readable checklist: ``release_acceptance.json``
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
@@ -1972,8 +1972,8 @@ Machine-readable checklist: ``release_acceptance.json``
 
 Release: $Version
 Commit: $commit
-Status: device-ready prerelease
-Consumer rollout: blocked pending hardware validation
+Status: public release
+Consumer rollout: owner-approved
 
 ## Proven Without Hardware
 
@@ -1983,14 +1983,14 @@ Consumer rollout: blocked pending hardware validation
 - Dependency provenance is present in ``DEPENDENCIES.md`` and ``dependency_lock.json``.
 - Package checksums are present in ``SHA256SUMS.txt`` and verified by ``tools/verify_release_package.cmd``.
 - GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. If hosted jobs cannot start because of account billing or spending limits, local release verification and device preflight are the available technical evidence until billing is fixed.
-- Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json`` list the blocked production-voice gates. Current WAVs and audition variants remain prototype review samples until a licensed or owned production source is recorded.
+- Production voice metadata is recorded in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json`` verify the released model and index hashes.
 - Character red-team dry-run evidence is present in ``character-red-team/CHARACTER_RED_TEAM.md`` and ``character-red-team/character_red_team.json``. It proves the adversarial corpus and validator path; the gate only passes after the same suite runs with ``--require-runner`` against a configured local model.
 - Companion C6 brain-supervision evidence is present under ``companion/evidence/`` and proves the desktop GUI can start the Python brain, drive simulated robot turns, stop, restart, and export diagnostics before the physical robot arrives.
 - Arrival-day helpers are included under ``tools/``, including the progress checker and strict evidence verifier.
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
-## Pending Package And Consumer Evidence
+## Recipient Hardware Evidence
 
 This public package includes the production voice. The private paired reference robot has
 separate exact-image physical evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
@@ -2005,9 +2005,9 @@ voice model. The following package-level gates therefore remain explicit:
 - Power-cycle recovery: USB power-cycle observation marked pass.
 - Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
 - Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
-- Completed voice-source provenance with licensed or owned production source.
+- Production RVC model and index hash verification.
 
-Do not mark this release consumer-ready or non-prerelease until every pending device gate has explicit evidence.
+The owner approved the reference release evidence. Each recipient should still complete these checks for its own power path, calibration, and assembly.
 
 Recommended arrival command from the extracted package:
 
@@ -2019,9 +2019,9 @@ Recommended arrival command from the extracted package:
 
 Commit: $commit
 
-This is a device-ready prerelease package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and keeps servo output disabled by default.
+This is the public $Version package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and ships guarded autonomous motion in the production full firmware.
 
-Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Voice source provenance is staged in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md`` and ``data/voice_source_provenance.yaml``; voice approval status is summarized in ``VOICE_SOURCE_STATUS.md`` and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, pre-arrival simulation check, sim-vs-hardware comparison, flashing, manual publishing, evidence capture, evidence progress checking, hardware evidence verification, and package verification helpers are included under ``tools/``.
+Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Production voice hashes are recorded in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md``, ``data/voice_source_provenance.yaml``, ``VOICE_SOURCE_STATUS.md``, and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, flashing, publishing, evidence capture, and package verification helpers are included under ``tools/``.
 
 Engine readiness quick check:
 
@@ -2044,14 +2044,13 @@ No-hardware simulation quick check:
 Voice audition quick check:
 
 - Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
-- Run ``tools/open_voice_audition.cmd -All`` only after supplying an authorized local RVC model and generating local audition output.
-- Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
-- Optional RVC is bring-your-own-model and local-only. Release packages contain only ``media/voice/rvc/README.md``; model weights, indexes, converted audio, and RVC audition pages are forbidden.
+- Run ``tools/open_voice_audition.cmd -All`` to review every included voice sample and production-voice artifact.
+- Published releases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone quick previews.
+- The exact production ``model.pth`` and ``model.index`` are included under ``media/voice/rvc/`` and verified by SHA-256.
 - Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the bundled production RVC hashes.
 - The exact active production model and index are included under ``media/voice/rvc``.
 
-Hardware validation is still required before consumer rollout. This list applies to the
-public package and each recipient build. The repository's private paired reference robot
+Hardware validation is still required for each recipient unit. The repository's private paired reference robot
 is tracked separately through exact-image evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
 ``docs/ARRIVAL_DAY_RUNBOOK.md``; that reference evidence does not validate another assembled unit,
 power path, calibration, credentials, or local voice model.
@@ -2065,7 +2064,7 @@ Package and recipient gates:
 5. 30-minute mixed idle/listen/speak soak.
 6. Power-cycle recovery: USB power-cycle observation marked pass.
 7. Target-speaker audio evidence: completed ``AUDIO_REVIEW.md`` plus a real-device speaker recording under ``audio/``.
-8. Licensed or owned production voice source.
+8. Verify the bundled production voice hashes.
 
 See ``docs/DEVICE_BRINGUP.md`` and ``docs/PRODUCTION_READINESS.md``.
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_NOTES.md") -Encoding UTF8

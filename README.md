@@ -123,7 +123,7 @@ Prototype voice auditions:
 - Stackchan Spark samples: `docs/media/voice/VOICE_AUDITION.html`
 - Optional local RVC policy: `media/voice/rvc/README.md`
 - Open an operator-generated RVC page with `tools/open_voice_audition.cmd -Rvc`
-- Open a combined page with `tools/open_voice_audition.cmd -All` after generating authorized local RVC samples
+- Open a combined page with `tools/open_voice_audition.cmd -All` to review the included production voice and audition samples
 
 The release includes the exact active production RVC model and index under `media/voice/rvc/`.
 Install that pair into the ignored runtime tree before starting the DirectML worker:
@@ -358,7 +358,7 @@ operator instructions live in [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md) a
 - Servos are disabled in the default display-only build.
 - Servo calibration is a separate environment and requires explicit `-ConfirmServoRisk` in the release flash helper.
 - Motion commands flow through the existing motion-control queue and safety limits.
-- Do not promote a release as consumer-ready until the hardware evidence and production voice-source gates pass.
+- Release promotion binds the exact firmware and production voice hashes to the recorded hardware evidence.
 
 ![Motion system servo safety](docs/media/diagrams/05-motion-servo-safety.png)
 
