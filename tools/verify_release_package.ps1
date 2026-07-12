@@ -193,6 +193,9 @@ $requiredFiles = @(
   "docs/VOICE_V2_DIRECTML.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
+  "docs/FIRST_DEPLOY_STATUS.md",
+  "docs/ARRIVAL_DAY_RUNBOOK.md",
+  "docs/stackchan_procedural_runtime_design.pdf",
   "docs/PRIVACY.md",
   "docs/PRODUCTION_READINESS.md",
   "docs/README.md",
@@ -1055,7 +1058,7 @@ foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contr
   }
 }
 
-foreach ($docPath in @("docs/README.md", "docs/RELEASE_PROCESS.md")) {
+foreach ($docPath in @("README.md", "docs/RELEASE_PROCESS.md")) {
   $publishDocText = Get-Content -LiteralPath (Join-PackagePath $docPath) -Raw
   foreach ($pattern in @("publish_release.cmd", "-PushCurrentBranch", "-PushTag", "audit_published_release.cmd")) {
     if ($publishDocText -notmatch [regex]::Escape($pattern)) {
