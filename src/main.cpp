@@ -205,6 +205,10 @@
 #define STACKCHAN_ENABLE_CAMERA_HOST_VISION 0
 #endif
 
+#ifndef STACKCHAN_CAMERA_AUDIO_DIRECTION_INVERT
+#define STACKCHAN_CAMERA_AUDIO_DIRECTION_INVERT 0
+#endif
+
 #ifndef STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
 #define STACKCHAN_ENABLE_WAKE_SERIAL_LOGS 1
 #endif
@@ -252,6 +256,9 @@
 #ifndef STACKCHAN_OTA_MIN_FREE_HEAP_BYTES
 #define STACKCHAN_OTA_MIN_FREE_HEAP_BYTES 65536
 #endif
+
+static_assert(STACKCHAN_OTA_MIN_FREE_HEAP_BYTES >= 24576,
+              "OTA heap safety floor must retain at least 24 KiB of internal heap");
 
 #ifndef STACKCHAN_OTA_HEALTH_MIN_VBUS_MV
 #define STACKCHAN_OTA_HEALTH_MIN_VBUS_MV 4400
@@ -594,6 +601,7 @@
 #include "persona/IntentEngine.hpp"
 #include "persona/BodyFeedback.hpp"
 #include "persona/StateMatrix.hpp"
+#include "persona/StereoDirection.hpp"
 #include "power/PowerCoordinator.hpp"
 #include "power/PowerForensics.hpp"
 #include "wake/WakeCueSequence.hpp"
@@ -747,6 +755,9 @@ PowerFloorTracker gPowerFloorTracker;
 PmicPowerForensics gPmicPowerForensics;
 #endif
 volatile bool gMotionRequested = STACKCHAN_MOTION_ENABLED_AT_BOOT != 0;
+bool gMotionAudioPlaybackActive = false;
+bool gMotionAudioPreemptActive = false;
+MotionAudioPreemptionGate gMotionAudioPreemptionGate;
 ActuationEngine gActuation(gConfig);
 ProceduralFace gFace;
 IntentEngine gIntent;
@@ -808,6 +819,12 @@ struct WakeSrProbeTelemetry {
   uint32_t audioMeanAbsLeft = 0;
   uint32_t audioMeanAbsRight = 0;
   uint32_t audioClips = 0;
+  uint32_t stereoDirectionEstimates = 0;
+  uint32_t stereoDirectionRejected = 0;
+  float stereoDirectionLastAzimuthNorm = 0.0f;
+  float stereoDirectionLastConfidence = 0.0f;
+  float stereoDirectionLastCorrelation = 0.0f;
+  int32_t stereoDirectionLastLagSamples = 0;
   uint32_t mwwFeatures = 0;
   uint32_t mwwInferences = 0;
   uint32_t mwwDetections = 0;
@@ -828,6 +845,7 @@ struct WakeSrProbeTelemetry {
   int32_t mwwMaxFeatureSeen = 0;
   uint32_t mwwLastInferenceUs = 0;
   uint32_t mwwMaxInferenceUs = 0;
+  bool mwwArenasZeroInitialized = false;
   uint32_t mwwArenaUsedBytes = 0;
   uint32_t mwwModelStride = 0;
   uint32_t wakeDetections = 0;
@@ -891,11 +909,31 @@ volatile bool gWakeMwwInteractionLatched = false;
 volatile uint32_t gWakeMwwInteractionLatchedAtMs = 0;
 volatile bool gWakeMwwAudioPauseRequested = false;
 volatile bool gWakeMwwAudioPaused = false;
+#if STACKCHAN_ENABLE_CAMERA && STACKCHAN_MWW_WAKE_RECORD_STEREO
+struct WakeMwwStereoDirectionPending {
+  float azimuthNorm = 0.0f;
+  float confidence = 0.0f;
+  uint32_t capturedAtMs = 0;
+};
+portMUX_TYPE gWakeMwwStereoDirectionMux = portMUX_INITIALIZER_UNLOCKED;
+WakeMwwStereoDirectionPending gWakeMwwStereoDirectionPending;
+volatile bool gWakeMwwStereoDirectionPendingReady = false;
+#endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
 constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
+constexpr uint8_t kWakeMwwDedicatedCaptureChunks = 96;
 RobotEvent gWakeMwwPendingCaptureEvent {};
 bool gWakeMwwPendingCaptureEventReady = false;
 WakeCueSequence gWakeCueSequence;
+struct WakeMwwDedicatedCaptureRuntime {
+  bool active = false;
+  uint32_t seq = 0;
+  uint16_t chunksAttempted = 0;
+  uint16_t chunksSubmitted = 0;
+  uint32_t serviceCalls = 0;
+  uint32_t maxServiceUs = 0;
+};
+WakeMwwDedicatedCaptureRuntime gWakeMwwDedicatedCapture;
 #endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_WAKE_DRIVES_AUDIO_UPLINK
 struct WakeMwwUplinkChunk {
@@ -1094,6 +1132,8 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     downlinkExpectedBytes_ = stream.audioBytes;
     downlinkExpectedChunks_ = stream.chunks;
     downlinkStartedAtMs_ = nowMs;
+    downlinkLastActivityAtMs_ = nowMs;
+    streamWatchdogStopPending_ = false;
     downlinkFirstChunkQueuedAtMs_ = 0;
     downlinkQueuedAudioMs_ = 0;
     downlinkNextStreamingBuffer_ = 0;
@@ -1105,6 +1145,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     if (!ready_ || !downlinkActive_ || chunk.payload == nullptr || chunk.payloadBytes < 2) {
       return false;
     }
+    downlinkLastActivityAtMs_ = nowMs;
 
 #if STACKCHAN_BRIDGE_AUDIO_STREAMING_PLAYBACK
     if ((chunk.payloadBytes & 1u) != 0 || chunk.payloadBytes > kBridgeAudioStreamChunkPayloadMax ||
@@ -1183,6 +1224,8 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     active_ = false;
     wavActive_ = false;
     downlinkActive_ = false;
+    downlinkLastActivityAtMs_ = 0;
+    streamWatchdogStopPending_ = false;
     releaseAudioHardware(millis());
   }
 
@@ -1199,6 +1242,8 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     const bool ok = playBufferedDownlink(nowMs);
 #endif
     downlinkActive_ = false;
+    downlinkLastActivityAtMs_ = 0;
+    streamWatchdogStopPending_ = false;
     downlinkBufferedBytes_ = 0;
     downlinkBufferedChunks_ = 0;
     return ok;
@@ -1210,6 +1255,8 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     }
     M5.Speaker.stop(kChannel);
     downlinkActive_ = false;
+    downlinkLastActivityAtMs_ = 0;
+    streamWatchdogStopPending_ = false;
     releaseAudioHardware(nowMs);
   }
 
@@ -1235,6 +1282,17 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
       }
       releaseAudioHardware(nowMs);
     }
+    if (downlinkActive_ && downlinkLastActivityAtMs_ != 0 && !streamWatchdogStopPending_ &&
+        nowMs - downlinkLastActivityAtMs_ >= kStreamingInactivityTimeoutMs) {
+      streamWatchdogStopPending_ = true;
+      streamOrphanStops_++;
+    }
+  }
+
+  bool takeStreamWatchdogStop() {
+    const bool pending = streamWatchdogStopPending_;
+    streamWatchdogStopPending_ = false;
+    return pending;
   }
 
   bool isReady() const override {
@@ -1403,6 +1461,10 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     return streamForcedStops_;
   }
 
+  uint32_t streamOrphanStops() const {
+    return streamOrphanStops_;
+  }
+
   uint8_t speakerVolume() const {
     return ready_ ? M5.Speaker.getVolume() : 0;
   }
@@ -1485,6 +1547,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   static constexpr uint32_t kDownlinkReleaseSlackMs = 180;
   static constexpr uint32_t kStreamingDrainPollMs = 25;
   static constexpr uint32_t kStreamingForceReleaseSlackMs = 5000;
+  static constexpr uint32_t kStreamingInactivityTimeoutMs = 30000;
   static constexpr size_t kStreamingSamplesPerBuffer = kBridgeAudioStreamChunkPayloadMax / 2u;
   static constexpr uint8_t kCoreS3Aw9523Address = 0x58;
   static constexpr uint32_t kCoreS3AudioI2cFrequency = 400000;
@@ -1791,6 +1854,7 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   uint32_t downlinkExpectedChunks_ = 0;
   uint32_t downlinkSampleRate_ = kSampleRate;
   uint32_t downlinkStartedAtMs_ = 0;
+  uint32_t downlinkLastActivityAtMs_ = 0;
   uint32_t downlinkFirstChunkQueuedAtMs_ = 0;
   uint32_t downlinkQueuedAudioMs_ = 0;
   uint32_t downlinkNextStreamingBuffer_ = 0;
@@ -1805,6 +1869,8 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
   uint32_t streamQueueWaitMaxUs_ = 0;
   uint32_t streamReleaseDeferrals_ = 0;
   uint32_t streamForcedStops_ = 0;
+  uint32_t streamOrphanStops_ = 0;
+  bool streamWatchdogStopPending_ = false;
   uint32_t diagnosticToneOk_ = 0;
   uint32_t diagnosticToneFailed_ = 0;
   uint32_t speakerAmpResetAttempts_ = 0;
@@ -1838,6 +1904,75 @@ SpeechCue gPendingBridgeSpeechCue {};
 bool gBridgeSpeechCuePending = false;
 bool gBridgeResponseHadAudioStream = false;
 uint32_t gBridgeLocalSpeechSuppressedUntilMs = 0;
+
+enum class BridgeAudioSafetyStopReason : uint8_t {
+  None = 0,
+  TransportDisconnected,
+  StreamWatchdog,
+  RemoteRequest,
+};
+
+uint32_t gBridgeAudioSafetyStops = 0;
+uint32_t gBridgeAudioDisconnectStops = 0;
+uint32_t gBridgeAudioWatchdogStops = 0;
+uint32_t gBridgeAudioRemoteStopRequests = 0;
+uint32_t gBridgeAudioLastSafetyStopMs = 0;
+BridgeAudioSafetyStopReason gBridgeAudioLastSafetyStopReason = BridgeAudioSafetyStopReason::None;
+
+const char* bridgeAudioSafetyStopReasonName(BridgeAudioSafetyStopReason reason) {
+  switch (reason) {
+    case BridgeAudioSafetyStopReason::TransportDisconnected:
+      return "transport_disconnected";
+    case BridgeAudioSafetyStopReason::StreamWatchdog:
+      return "stream_watchdog";
+    case BridgeAudioSafetyStopReason::RemoteRequest:
+      return "remote_request";
+    case BridgeAudioSafetyStopReason::None:
+      break;
+  }
+  return "none";
+}
+
+bool bridgeAudioRuntimeHeld() {
+  const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
+  return downlink.active || downlink.playbackActive || gSpeakerSink.speakerPowerActive() != 0 ||
+         gSpeakerSink.speakerRunning() != 0;
+}
+
+bool stopBridgeAudioRuntime(uint32_t nowMs, BridgeAudioSafetyStopReason reason) {
+  const bool held = bridgeAudioRuntimeHeld();
+  gBridgeAudioDownlink.abort(nowMs, 100u + static_cast<uint32_t>(reason));
+  gAudioOut.cancel();
+  gSpeakerSink.stop(nowMs);
+  gBridgeSpeechCuePending = false;
+  gBridgeResponseHadAudioStream = false;
+  gBridgeLocalSpeechSuppressedUntilMs = 0;
+  if (!held) {
+    return false;
+  }
+
+  gBridgeAudioSafetyStops++;
+  if (reason == BridgeAudioSafetyStopReason::TransportDisconnected) {
+    gBridgeAudioDisconnectStops++;
+  } else if (reason == BridgeAudioSafetyStopReason::StreamWatchdog) {
+    gBridgeAudioWatchdogStops++;
+  }
+  gBridgeAudioLastSafetyStopMs = nowMs;
+  gBridgeAudioLastSafetyStopReason = reason;
+  return true;
+}
+
+void serviceBridgeAudioTransportSafety(uint32_t nowMs) {
+  static bool initialized = false;
+  static bool wasConnected = false;
+  const bool connected =
+      gBridgeNetworkSession.telemetry().state == BridgeNetworkSessionState::Connected;
+  if (initialized && wasConnected && !connected && bridgeAudioRuntimeHeld()) {
+    stopBridgeAudioRuntime(nowMs, BridgeAudioSafetyStopReason::TransportDisconnected);
+  }
+  wasConnected = connected;
+  initialized = true;
+}
 
 const __FlashStringHelper* firmwareMode() {
 #if STACKCHAN_SERVO_HARDWARE_ENABLE
@@ -3081,6 +3216,45 @@ void updateWakeSrAudioWindow(uint32_t peak, uint32_t meanAbs, uint32_t nowMs) {
 }
 #endif
 
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_CAMERA && STACKCHAN_MWW_WAKE_RECORD_STEREO
+void queueWakeMwwStereoDirection(const StereoDirectionEstimate& estimate, uint32_t nowMs) {
+  if (!estimate.valid) {
+    gWakeSrProbe.stereoDirectionRejected++;
+    return;
+  }
+  float azimuthNorm = estimate.azimuthNorm;
+#if STACKCHAN_CAMERA_AUDIO_DIRECTION_INVERT
+  azimuthNorm = -azimuthNorm;
+#endif
+  gWakeSrProbe.stereoDirectionEstimates++;
+  gWakeSrProbe.stereoDirectionLastAzimuthNorm = azimuthNorm;
+  gWakeSrProbe.stereoDirectionLastConfidence = estimate.confidence;
+  gWakeSrProbe.stereoDirectionLastCorrelation = estimate.correlation;
+  gWakeSrProbe.stereoDirectionLastLagSamples = estimate.lagSamples;
+  portENTER_CRITICAL(&gWakeMwwStereoDirectionMux);
+  gWakeMwwStereoDirectionPending.azimuthNorm = azimuthNorm;
+  gWakeMwwStereoDirectionPending.confidence = estimate.confidence;
+  gWakeMwwStereoDirectionPending.capturedAtMs = nowMs;
+  gWakeMwwStereoDirectionPendingReady = true;
+  portEXIT_CRITICAL(&gWakeMwwStereoDirectionMux);
+}
+
+bool takeWakeMwwStereoDirection(WakeMwwStereoDirectionPending* directionOut) {
+  if (directionOut == nullptr) {
+    return false;
+  }
+  bool ready = false;
+  portENTER_CRITICAL(&gWakeMwwStereoDirectionMux);
+  if (gWakeMwwStereoDirectionPendingReady) {
+    *directionOut = gWakeMwwStereoDirectionPending;
+    gWakeMwwStereoDirectionPendingReady = false;
+    ready = true;
+  }
+  portEXIT_CRITICAL(&gWakeMwwStereoDirectionMux);
+  return ready;
+}
+#endif
+
 #if STACKCHAN_HAS_SR_WAKE_DIRECT
 uint32_t takeWakeSrDirectPendingDetections() {
   portENTER_CRITICAL(&gWakeSrDirectMux);
@@ -4022,9 +4196,7 @@ void queueWakeMwwDetection(uint32_t nowMs) {
 }
 
 void resetWakeMwwValidationCounters() {
-#if STACKCHAN_MWW_WAKE_RESET_MODEL_ON_VALIDATION
   gMicroWakeWordProbe.reset();
-#endif
   gMicroWakeWordProbe.clearTelemetry();
   const uint32_t nowMs = millis();
   portENTER_CRITICAL(&gWakeMwwMux);
@@ -4248,9 +4420,8 @@ void finishDedicatedWakeCaptureTurn(uint32_t seq, uint32_t nowMs) {
   }
 }
 
-bool runDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
+bool beginDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
   if (gBridgeNetworkSession.telemetry().state != BridgeNetworkSessionState::Connected) {
-    releaseWakeMwwAudioPause(millis());
     return false;
   }
 
@@ -4273,15 +4444,12 @@ bool runDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
   M5.Mic.config(micConfig);
   if (!M5.Mic.begin()) {
     gWakeSrProbe.audioPauseFailures++;
-    releaseWakeMwwAudioPause(millis());
     return false;
   }
   applyWakeMwwEs7210GainOverride();
 
   const uint32_t captureStartMs = millis();
   if (!gWakeCueSequence.noteCaptureStarted(captureStartMs, 0)) {
-    M5.Mic.end();
-    releaseWakeMwwAudioPause(millis());
     return false;
   }
   gBridgeNetworkSession.update(captureStartMs);
@@ -4290,28 +4458,58 @@ bool runDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
 
   const BridgeAudioUplinkTelemetry& started = gBridgeAudioUplink.telemetry();
   if (!started.active) {
-    M5.Mic.end();
-    releaseWakeMwwAudioPause(millis());
     return false;
   }
-  const uint32_t seq = started.lastSeq;
+
+  gWakeMwwDedicatedCapture.active = true;
+  gWakeMwwDedicatedCapture.seq = started.lastSeq;
+  gWakeMwwDedicatedCapture.chunksAttempted = 0;
+  gWakeMwwDedicatedCapture.chunksSubmitted = 0;
+  return true;
+}
+
+void finishDedicatedWakeCaptureSession(bool captured) {
+  if (gWakeMwwDedicatedCapture.active) {
+    finishDedicatedWakeCaptureTurn(gWakeMwwDedicatedCapture.seq, millis());
+  }
+  M5.Mic.end();
+  releaseWakeMwwAudioPause(millis());
+  suppressWakeMwwDetections(millis(), 900);
+
+  const uint32_t captureEndMs = millis();
+  if (gWakeCueSequence.phase() == WakeCueSequencePhase::Capturing) {
+    gWakeCueSequence.finishCapture(captureEndMs, captured);
+  } else {
+    gWakeCueSequence.abort(captureEndMs);
+  }
+  gWakeMwwPendingCaptureEventReady = false;
+  gWakeMwwDedicatedCapture.active = false;
+  if (captured) {
+    ++gWakeSrProbe.wakeEventsApplied;
+  }
+}
+
+void serviceDedicatedWakeCaptureChunk() {
+  if (!gWakeMwwDedicatedCapture.active) {
+    return;
+  }
+
+  const uint32_t serviceStartUs = micros();
 
   constexpr bool kRecordStereo = STACKCHAN_MWW_WAKE_RECORD_STEREO != 0;
   constexpr uint32_t kSampleRate = STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE;
   constexpr size_t kMonoSamples = STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES;
   constexpr size_t kRecordChannels = kRecordStereo ? 2u : 1u;
   constexpr size_t kRecordSamples = kMonoSamples * kRecordChannels;
-  constexpr uint8_t kCaptureChunks = 96;
   static int16_t recordBuf[kRecordSamples];
   static int16_t monoBuf[kMonoSamples];
 
-  uint16_t submitted = 0;
-  for (uint8_t chunk = 0; chunk < kCaptureChunks; ++chunk) {
-    if (!recordWakeMwwAudioBlocking(recordBuf, kRecordSamples, kSampleRate, kRecordStereo)) {
-      gWakeSrProbe.recordDrops++;
-      vTaskDelay(pdMS_TO_TICKS(1));
-      continue;
-    }
+  ++gWakeMwwDedicatedCapture.serviceCalls;
+  ++gWakeMwwDedicatedCapture.chunksAttempted;
+  bool submitFailed = false;
+  if (!recordWakeMwwAudioBlocking(recordBuf, kRecordSamples, kSampleRate, kRecordStereo)) {
+    gWakeSrProbe.recordDrops++;
+  } else {
 
     if constexpr (kRecordStereo) {
       constexpr size_t selectedChannel = STACKCHAN_MWW_WAKE_STEREO_MONO_CHANNEL ? 1u : 0u;
@@ -4327,23 +4525,33 @@ bool runDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
     gWakeSrProbe.samplesFed += kMonoSamples;
     gWakeSrProbe.lastRecordMs = millis();
 
-    if (submitDedicatedWakeCaptureChunk(seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs)) {
-      submitted++;
+    if (submitDedicatedWakeCaptureChunk(
+            gWakeMwwDedicatedCapture.seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs)) {
+      ++gWakeMwwDedicatedCapture.chunksSubmitted;
     } else {
       gWakeMwwUplinkSubmitFailed = gWakeMwwUplinkSubmitFailed + 1u;
-      break;
+      submitFailed = true;
     }
-    vTaskDelay(pdMS_TO_TICKS(1));
   }
 
-  finishDedicatedWakeCaptureTurn(seq, millis());
-  M5.Mic.end();
-  releaseWakeMwwAudioPause(millis());
-  suppressWakeMwwDetections(millis(), 900);
-  return submitted > 0;
+  const uint32_t serviceUs = micros() - serviceStartUs;
+  if (serviceUs > gWakeMwwDedicatedCapture.maxServiceUs) {
+    gWakeMwwDedicatedCapture.maxServiceUs = serviceUs;
+  }
+  const bool complete = submitFailed ||
+                        gWakeMwwDedicatedCapture.chunksAttempted >=
+                            kWakeMwwDedicatedCaptureChunks;
+  if (complete) {
+    finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
+  }
 }
 
 void serviceDedicatedWakeCapture(uint32_t nowMs) {
+  if (gWakeMwwDedicatedCapture.active) {
+    serviceDedicatedWakeCaptureChunk();
+    return;
+  }
+
   WakeCueSequencePhase phase = gWakeCueSequence.phase();
   if (phase == WakeCueSequencePhase::AwaitingAudioPause) {
     if (!requestWakeMwwAudioPause(nowMs, 700)) {
@@ -4403,17 +4611,10 @@ void serviceDedicatedWakeCapture(uint32_t nowMs) {
     return;
   }
 
-  const bool captured = gWakeMwwPendingCaptureEventReady &&
-                        runDedicatedWakeCaptureAfterCue(gWakeMwwPendingCaptureEvent);
-  const uint32_t captureEndMs = millis();
-  if (gWakeCueSequence.phase() == WakeCueSequencePhase::Capturing) {
-    gWakeCueSequence.finishCapture(captureEndMs, captured);
-  } else {
-    gWakeCueSequence.abort(captureEndMs);
-  }
-  gWakeMwwPendingCaptureEventReady = false;
-  if (captured) {
-    ++gWakeSrProbe.wakeEventsApplied;
+  const bool started = gWakeMwwPendingCaptureEventReady &&
+                       beginDedicatedWakeCaptureAfterCue(gWakeMwwPendingCaptureEvent);
+  if (!started) {
+    finishDedicatedWakeCaptureSession(false);
   }
 }
 #endif
@@ -4599,6 +4800,8 @@ void WakeMwwProbeTask(void* pv) {
   gWakeSrProbe.stereo = kRecordStereo;
   gWakeSrProbe.audioGainQ8 = STACKCHAN_SR_WAKE_DIRECT_GAIN_Q8;
   gWakeSrProbe.mwwArenaUsedBytes = gMicroWakeWordProbe.telemetry().arenaUsedBytes;
+  gWakeSrProbe.mwwArenasZeroInitialized =
+      gMicroWakeWordProbe.telemetry().arenasZeroInitialized;
   gWakeSrProbe.mwwModelStride = gMicroWakeWordProbe.telemetry().modelStride;
   copyWakeSrString(gWakeSrProbe.modelName, sizeof(gWakeSrProbe.modelName), modelName);
   copyWakeSrString(gWakeSrProbe.wakeWord, sizeof(gWakeSrProbe.wakeWord), wakeWord);
@@ -4723,6 +4926,11 @@ void WakeMwwProbeTask(void* pv) {
       vTaskDelay(pdMS_TO_TICKS(1));
       continue;
     }
+
+#if STACKCHAN_ENABLE_CAMERA && STACKCHAN_MWW_WAKE_RECORD_STEREO
+    queueWakeMwwStereoDirection(
+        estimateStereoDirection(audioBuf, kCaptureFrames, kCaptureSampleRate), millis());
+#endif
 
     int16_t* modelAudio = monoBuf;
     size_t modelSamples = kMonoRecordSamples;
@@ -6752,6 +6960,7 @@ void updateBridgeNetwork(uint32_t nowMs) {
 
   gBridgeWiFi.update(nowMs);
   serviceBridgeRecovery(nowMs);
+  serviceBridgeAudioTransportSafety(nowMs);
   const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
   const bool changed = wifi.ready != lastReady || wifi.configured != lastConfigured ||
                        wifi.connected != lastConnected || wifi.connecting != lastConnecting ||
@@ -6787,10 +6996,12 @@ void updateBridgeNetwork(uint32_t nowMs) {
         state == BridgeNetworkSessionState::Connected) {
       gBridgeNetworkSession.stop(nowMs);
     }
+    serviceBridgeAudioTransportSafety(nowMs);
     return;
   }
 
   gBridgeNetworkSession.update(nowMs);
+  serviceBridgeAudioTransportSafety(nowMs);
 
   const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
   if (network.state != BridgeNetworkSessionState::Connected) {
@@ -6801,12 +7012,49 @@ void updateBridgeNetwork(uint32_t nowMs) {
   const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
   if (!writer.frameBuffered && !writer.textFrameQueued && !writer.binaryFrameQueued &&
       (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= kBridgeHeartbeatIntervalMs)) {
-    char heartbeat[512] = {};
+    char heartbeat[896] = {};
     char chipTempJson[96] = {};
+    char embodimentJson[384] = {};
 #if defined(ARDUINO_ARCH_ESP32)
     sampleChipTemperature(nowMs, false);
     formatChipTemperatureJson(chipTempJson, sizeof(chipTempJson));
 #endif
+    RobotFrame embodimentFrame = makeNeutralFrame();
+    if (gFrameQueue != nullptr) {
+      xQueuePeek(gFrameQueue, &embodimentFrame, 0);
+    }
+    const ImuAdapterTelemetry& imu = gImu.telemetry();
+    const CameraAdapterTelemetry& camera = gCamera.telemetry();
+    const BodyPeripheralTelemetry& body = gBodyPeripheral.telemetry();
+    const bool cameraTargetFresh = camera.lastSize > 0.0f &&
+                                   nowMs - camera.lastEventMs < 3000;
+    snprintf(
+        embodimentJson,
+        sizeof(embodimentJson),
+        ",\"robot_mode\":%u,\"emotion_arousal\":%.2f,\"emotion_valence\":%.2f,"
+        "\"emotion_focus\":%.2f,\"emotion_fatigue\":%.2f,\"external_power\":%d,"
+        "\"battery_percent\":%ld,\"charging_state\":%ld,\"motion_enabled\":%d,"
+        "\"speaker_active\":%d,\"imu_picked_up\":%d,\"imu_gravity_x\":%.2f,"
+        "\"imu_gravity_y\":%.2f,\"imu_gravity_z\":%.2f,\"touch_ready\":%d,"
+        "\"camera_enabled\":%d,\"camera_active\":%d,\"camera_target_fresh\":%d",
+        static_cast<unsigned>(embodimentFrame.mode),
+        static_cast<double>(embodimentFrame.emotion.arousal),
+        static_cast<double>(embodimentFrame.emotion.valence),
+        static_cast<double>(embodimentFrame.emotion.focus),
+        static_cast<double>(embodimentFrame.emotion.fatigue),
+        gPowerPmicVbusPresentValid && gPowerPmicVbusPresent ? 1 : 0,
+        static_cast<long>(gPowerBatteryLevel),
+        static_cast<long>(gPowerChargingState),
+        gActuation.isEnabled() ? 1 : 0,
+        gSpeakerSink.speakerRunning() ? 1 : 0,
+        imu.pickedUp ? 1 : 0,
+        static_cast<double>(imu.gravityX),
+        static_cast<double>(imu.gravityY),
+        static_cast<double>(imu.gravityZ),
+        body.touchReady ? 1 : 0,
+        STACKCHAN_ENABLE_CAMERA ? 1 : 0,
+        camera.active ? 1 : 0,
+        cameraTargetFresh ? 1 : 0);
 #if STACKCHAN_HAS_MWW_WAKE_PROBE
     snprintf(
         heartbeat,
@@ -6815,7 +7063,7 @@ void updateBridgeNetwork(uint32_t nowMs) {
         "\"wake_record_ok\":%lu,\"wake_detections\":%lu,\"wake_events\":%lu,"
         "\"wake_peak\":%lu,\"wake_mean\":%lu,\"wake_peak_max\":%lu,"
         "\"mww_last\":%lu,\"mww_max\":%lu,\"mww_avg\":%lu,\"mww_max_avg\":%lu,"
-        "\"mww_cutoff\":%lu,\"mww_inferences\":%lu,\"mww_features\":%lu%s}",
+        "\"mww_cutoff\":%lu,\"mww_inferences\":%lu,\"mww_features\":%lu%s%s}",
         gWakeSrProbe.taskStarted ? 1 : 0,
         gWakeSrProbe.micReady ? 1 : 0,
         static_cast<unsigned long>(gWakeSrProbe.recordOk),
@@ -6831,9 +7079,15 @@ void updateBridgeNetwork(uint32_t nowMs) {
         static_cast<unsigned long>(gWakeSrProbe.mwwProbabilityCutoff),
         static_cast<unsigned long>(gWakeSrProbe.mwwInferences),
         static_cast<unsigned long>(gWakeSrProbe.mwwFeatures),
-        chipTempJson);
+        chipTempJson,
+        embodimentJson);
 #else
-    snprintf(heartbeat, sizeof(heartbeat), "{\"type\":\"heartbeat\"%s}", chipTempJson);
+    snprintf(
+        heartbeat,
+        sizeof(heartbeat),
+        "{\"type\":\"heartbeat\"%s%s}",
+        chipTempJson,
+        embodimentJson);
 #endif
     if (gBridgeNetworkSession.queueTextFrame(heartbeat)) {
       lastHeartbeatMs = nowMs;
@@ -6864,6 +7118,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   const WakeCueSequenceTelemetry& wakeCue = gWakeCueSequence.telemetry();
 #endif
   const ActuationTelemetry motion = gActuation.telemetry();
+  const GazeTrackerTelemetry& gaze = gIntent.gazeTelemetry();
   const PowerCoordinatorTelemetry powerCoordinator = gPowerCoordinator.telemetry();
   const PowerFloorTelemetry powerFloor = gPowerFloorTracker.telemetry();
   const ServoPowerTelemetry servoPower = gServo.powerTelemetry();
@@ -6880,6 +7135,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   const bool rebootRequest =
       strcmp(requestTarget, "/reboot") == 0 || strcmp(requestTarget, "/restart") == 0 ||
       strcmp(requestTarget, "/reset") == 0;
+  const bool audioStopRequest =
+      strcmp(requestTarget, "/audio-stop") == 0 || strcmp(requestTarget, "/playback-stop") == 0;
 
   static char body[20480];
   constexpr size_t kDebugJsonTailReserve = 96;
@@ -7279,6 +7536,13 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"camera_init_attempts\":%lu", static_cast<unsigned long>(camera.initAttempts));
   append(",\"camera_init_failures\":%lu", static_cast<unsigned long>(camera.initFailures));
   append(",\"camera_last_init_error\":%ld", static_cast<long>(camera.lastInitError));
+  append(",\"camera_sensor_pid\":%u", static_cast<unsigned>(camera.sensorPid));
+  append(",\"camera_horizontal_mirror_configured\":%s",
+         camera.horizontalMirrorConfigured ? "true" : "false");
+  append(",\"camera_vertical_flip_configured\":%s",
+         camera.verticalFlipConfigured ? "true" : "false");
+  append(",\"camera_orientation_failures\":%lu",
+         static_cast<unsigned long>(camera.orientationFailures));
   append(",\"camera_frames_captured\":%lu", static_cast<unsigned long>(camera.framesCaptured));
   append(",\"camera_capture_failures\":%lu", static_cast<unsigned long>(camera.captureFailures));
   append(",\"camera_last_capture_us\":%lu", static_cast<unsigned long>(camera.lastCaptureUs));
@@ -7299,10 +7563,34 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"camera_events\":%lu", static_cast<unsigned long>(camera.eventsPublished));
   append(",\"camera_face_batches\":%lu", static_cast<unsigned long>(camera.faceBatches));
   append(",\"camera_faces_observed\":%lu", static_cast<unsigned long>(camera.facesObserved));
+  append(",\"camera_sound_direction_updates\":%lu",
+         static_cast<unsigned long>(camera.soundDirectionUpdates));
+  append(",\"camera_sound_direction_last_ms\":%lu",
+         static_cast<unsigned long>(camera.lastSoundDirectionMs));
+  append(",\"camera_sound_azimuth_norm\":%.3f",
+         static_cast<double>(camera.lastSoundAzimuthNorm));
+  append(",\"camera_sound_direction_strength\":%.3f",
+         static_cast<double>(camera.lastSoundStrength));
   append(",\"camera_audio_matched_selections\":%lu",
          static_cast<unsigned long>(camera.audioMatchedSelections));
   append(",\"camera_reply_held_selections\":%lu",
          static_cast<unsigned long>(camera.replyHeldSelections));
+  append(",\"camera_face_hold_selections\":%lu",
+         static_cast<unsigned long>(camera.faceHoldSelections));
+  append(",\"camera_target_valid\":%s", camera.targetValid ? "true" : "false");
+  append(",\"camera_target_audio_matched\":%s",
+         camera.targetAudioMatched ? "true" : "false");
+  append(",\"camera_target_held_for_reply\":%s",
+         camera.targetHeldForReply ? "true" : "false");
+  append(",\"camera_target_x\":%.3f", static_cast<double>(camera.targetX));
+  append(",\"camera_target_y\":%.3f", static_cast<double>(camera.targetY));
+  append(",\"camera_target_size\":%.3f", static_cast<double>(camera.targetSize));
+  append(",\"camera_target_confidence\":%.3f",
+         static_cast<double>(camera.targetConfidence));
+  append(",\"camera_target_audio_direction_error\":%.3f",
+         static_cast<double>(camera.targetAudioDirectionError));
+  append(",\"camera_target_selected_at_ms\":%lu",
+         static_cast<unsigned long>(camera.targetSelectedAtMs));
   const ImuAdapterTelemetry& imu = gImu.telemetry();
   append(",\"compiled_enable_imu\":%d", STACKCHAN_ENABLE_IMU ? 1 : 0);
   append(",\"imu_ready\":%s", imu.ready ? "true" : "false");
@@ -7323,18 +7611,49 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"imu_gravity_y\":%.3f", static_cast<double>(imu.gravityY));
   append(",\"imu_gravity_z\":%.3f", static_cast<double>(imu.gravityZ));
   const BodyPeripheralTelemetry& bodyPeripheral = gBodyPeripheral.telemetry();
+  const BodyFeedbackTelemetry& bodyFeedback = gBodyFeedback.telemetry();
   append(",\"compiled_enable_body_rgb\":%d", STACKCHAN_ENABLE_BODY_RGB ? 1 : 0);
   append(",\"compiled_enable_body_touch\":%d", STACKCHAN_ENABLE_BODY_TOUCH ? 1 : 0);
   append(",\"body_rgb_ready\":%s", bodyPeripheral.rgbReady ? "true" : "false");
   append(",\"body_rgb_frames\":%lu", static_cast<unsigned long>(bodyPeripheral.rgbFrames));
+  append(",\"body_rgb_write_retries\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.rgbWriteRetries));
+  append(",\"body_rgb_write_recoveries\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.rgbWriteRecoveries));
   append(",\"body_rgb_write_failures\":%lu",
          static_cast<unsigned long>(bodyPeripheral.rgbWriteFailures));
+  append(",\"body_rgb_rendered_frames\":%lu",
+         static_cast<unsigned long>(bodyFeedback.renderedFrames));
+  append(",\"body_rgb_mode_transitions\":%lu",
+         static_cast<unsigned long>(bodyFeedback.modeTransitions));
+  append(",\"body_rgb_transition_active\":%s",
+         bodyFeedback.transitionActive ? "true" : "false");
+  append(",\"body_rgb_last_channel_step\":%u", bodyFeedback.lastChannelStep);
+  append(",\"body_rgb_max_channel_step\":%u", bodyFeedback.maxChannelStep);
   append(",\"body_touch_ready\":%s", bodyPeripheral.touchReady ? "true" : "false");
   append(",\"body_touch_samples\":%lu", static_cast<unsigned long>(bodyPeripheral.touchSamples));
   append(",\"body_touch_read_failures\":%lu",
          static_cast<unsigned long>(bodyPeripheral.touchReadFailures));
   append(",\"body_touch_events\":%lu", static_cast<unsigned long>(bodyPeripheral.touchEvents));
   append(",\"body_touch_last_raw\":%u", bodyPeripheral.lastTouchRaw);
+  append(",\"body_touch_last_zone\":%u", static_cast<unsigned>(bodyPeripheral.lastZone));
+  append(",\"body_touch_last_gesture\":%u", static_cast<unsigned>(bodyPeripheral.lastGesture));
+  append(",\"body_touch_last_event_ms\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.lastTouchEventMs));
+  append(",\"body_touch_front_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchFrontEvents));
+  append(",\"body_touch_middle_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchMiddleEvents));
+  append(",\"body_touch_back_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchBackEvents));
+  append(",\"body_touch_tap_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchTapEvents));
+  append(",\"body_touch_hold_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchHoldEvents));
+  append(",\"body_touch_swipe_forward_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchSwipeForwardEvents));
+  append(",\"body_touch_swipe_backward_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.touchSwipeBackwardEvents));
   append(",\"motion_requested\":%s", gMotionRequested ? "true" : "false");
   append(",\"motion_enabled\":%s", gActuation.isEnabled() ? "true" : "false");
   append(",\"servo_power_allowed\":%s", servoPower.powerAllowed ? "true" : "false");
@@ -7359,6 +7678,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"motion_enabled_at_ms\":%lu", static_cast<unsigned long>(motion.enabledAtMs));
   append(",\"motion_last_update_ms\":%lu", static_cast<unsigned long>(motion.lastUpdateMs));
   append(",\"motion_last_write_ms\":%lu", static_cast<unsigned long>(motion.lastActuatorWriteMs));
+  append(",\"motion_last_pitch_command_deg\":%.3f", static_cast<double>(motion.lastPitchCommandDeg));
+  append(",\"motion_last_yaw_command_deg\":%.3f", static_cast<double>(motion.lastYawCommandDeg));
   append(",\"motion_enable_requests\":%lu", static_cast<unsigned long>(motion.enableRequests));
   append(",\"motion_disable_requests\":%lu", static_cast<unsigned long>(motion.disableRequests));
   append(",\"motion_enable_failures\":%lu", static_cast<unsigned long>(motion.enableFailures));
@@ -7375,6 +7696,11 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"motion_duty_rest_entries\":%lu", static_cast<unsigned long>(motion.dutyRestEntries));
   append(",\"motion_duty_rest_total_ms\":%lu", static_cast<unsigned long>(motion.dutyRestMs));
   append(",\"motion_output_suppressed\":%s", motion.outputSuppressed ? "true" : "false");
+  append(",\"camera_gaze_tracking\":%s", gaze.tracking ? "true" : "false");
+  append(",\"camera_gaze_motion_output_active\":%s", gaze.motionOutputActive ? "true" : "false");
+  append(",\"camera_gaze_presence\":%.3f", static_cast<double>(gaze.presence));
+  append(",\"camera_gaze_yaw_offset_deg\":%.3f", static_cast<double>(gaze.yawOffsetDeg));
+  append(",\"camera_gaze_pitch_offset_deg\":%.3f", static_cast<double>(gaze.pitchOffsetDeg));
   append(",\"motion_self_motion_active\":%s", motion.selfMotionActive ? "true" : "false");
   append(",\"motion_self_motion_until_ms\":%lu",
          static_cast<unsigned long>(motion.selfMotionUntilMs));
@@ -7384,6 +7710,14 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(motion.outputSuppressMs));
   append(",\"motion_audio_load_shed_cooldown_ms\":%lu",
          static_cast<unsigned long>(STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS));
+  append(",\"motion_audio_playback_active\":%s",
+         gMotionAudioPlaybackActive ? "true" : "false");
+  append(",\"motion_audio_preempt_active\":%s",
+         gMotionAudioPreemptActive ? "true" : "false");
+  append(",\"motion_audio_cooldown_tail_active\":%s",
+         gMotionAudioPreemptionGate.cooldownTailActive() ? "true" : "false");
+  append(",\"motion_audio_microphone_cooldown_clears\":%lu",
+         static_cast<unsigned long>(gMotionAudioPreemptionGate.microphoneCooldownClears()));
 #if defined(ARDUINO_ARCH_ESP32)
   append(",\"motion_thermal_suppressed\":%s", gMotionThermalSuppressed ? "true" : "false");
   append(",\"motion_thermal_suppress_entries\":%lu",
@@ -7419,6 +7753,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"debug_reboot_request\":%s", rebootRequest ? "true" : "false");
   append(",\"debug_reboot_accepted\":%s",
          (rebootRequest && STACKCHAN_REMOTE_RECOVERY_ENABLE != 0) ? "true" : "false");
+  append(",\"debug_audio_stop_request\":%s", audioStopRequest ? "true" : "false");
   append(",\"recovery_enabled\":%d", STACKCHAN_REMOTE_RECOVERY_ENABLE ? 1 : 0);
   append(",\"recovery_requested\":%s", gBridgeRecovery.recoveryRequested ? "true" : "false");
   append(",\"recovery_reboot_requested\":%s", gBridgeRecovery.rebootRequested ? "true" : "false");
@@ -7463,6 +7798,15 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"bridge_downlink_playback_bytes\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackBytes));
   append(",\"bridge_downlink_playback_stops\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackStops));
   append(",\"bridge_downlink_playback_errors\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackErrors));
+  append(",\"bridge_audio_safety_stops\":%lu", static_cast<unsigned long>(gBridgeAudioSafetyStops));
+  append(",\"bridge_audio_disconnect_stops\":%lu", static_cast<unsigned long>(gBridgeAudioDisconnectStops));
+  append(",\"bridge_audio_watchdog_stops\":%lu", static_cast<unsigned long>(gBridgeAudioWatchdogStops));
+  append(",\"bridge_audio_remote_stop_requests\":%lu",
+         static_cast<unsigned long>(gBridgeAudioRemoteStopRequests));
+  append(",\"bridge_audio_last_safety_stop_ms\":%lu",
+         static_cast<unsigned long>(gBridgeAudioLastSafetyStopMs));
+  append(",\"bridge_audio_last_safety_stop_reason\":\"%s\"",
+         bridgeAudioSafetyStopReasonName(gBridgeAudioLastSafetyStopReason));
   append(",\"speaker_volume\":%lu", static_cast<unsigned long>(gSpeakerSink.speakerVolume()));
   append(",\"speaker_enabled\":%s", gSpeakerSink.speakerEnabled() ? "true" : "false");
   append(",\"speaker_running\":%s", gSpeakerSink.speakerRunning() ? "true" : "false");
@@ -7482,6 +7826,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"speaker_stream_queue_wait_max_us\":%lu", static_cast<unsigned long>(gSpeakerSink.streamQueueWaitMaxUs()));
   append(",\"speaker_stream_release_deferrals\":%lu", static_cast<unsigned long>(gSpeakerSink.streamReleaseDeferrals()));
   append(",\"speaker_stream_forced_stops\":%lu", static_cast<unsigned long>(gSpeakerSink.streamForcedStops()));
+  append(",\"speaker_stream_orphan_stops\":%lu", static_cast<unsigned long>(gSpeakerSink.streamOrphanStops()));
   append(",\"speaker_tone_ok\":%lu", static_cast<unsigned long>(gSpeakerSink.diagnosticToneOk()));
   append(",\"speaker_tone_failed\":%lu", static_cast<unsigned long>(gSpeakerSink.diagnosticToneFailed()));
   append(",\"display_window_max_frame_us\":%lu", static_cast<unsigned long>(display.windowMaxFrameUs));
@@ -7494,6 +7839,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"ota_upload_active\":%s", ota.uploadActive ? "true" : "false");
   append(",\"ota_reboot_pending\":%s", ota.rebootPending ? "true" : "false");
   append(",\"ota_health_pending\":%s", ota.healthPending ? "true" : "false");
+  append(",\"ota_min_free_heap_bytes\":%lu",
+         static_cast<unsigned long>(STACKCHAN_OTA_MIN_FREE_HEAP_BYTES));
+  append(",\"ota_health_min_vbus_mv\":%u",
+         static_cast<unsigned>(STACKCHAN_OTA_HEALTH_MIN_VBUS_MV));
+  append(",\"ota_health_max_frame_us\":%lu",
+         static_cast<unsigned long>(STACKCHAN_OTA_HEALTH_MAX_FRAME_US));
   append(",\"ota_current_app_confirmed\":%s", ota.currentAppConfirmed ? "true" : "false");
   append(",\"ota_bootloader_rollback_enabled\":%s",
          ota.bootloaderRollbackEnabled ? "true" : "false");
@@ -7550,6 +7901,16 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(wakeCue.capturesCompleted));
   append(",\"wake_cue_captures_failed\":%lu",
          static_cast<unsigned long>(wakeCue.capturesFailed));
+  append(",\"wake_capture_incremental_active\":%s",
+         gWakeMwwDedicatedCapture.active ? "true" : "false");
+  append(",\"wake_capture_chunks_attempted\":%u",
+         static_cast<unsigned>(gWakeMwwDedicatedCapture.chunksAttempted));
+  append(",\"wake_capture_chunks_submitted\":%u",
+         static_cast<unsigned>(gWakeMwwDedicatedCapture.chunksSubmitted));
+  append(",\"wake_capture_service_calls\":%lu",
+         static_cast<unsigned long>(gWakeMwwDedicatedCapture.serviceCalls));
+  append(",\"wake_capture_max_service_us\":%lu",
+         static_cast<unsigned long>(gWakeMwwDedicatedCapture.maxServiceUs));
   append(",\"wake_cue_aborts\":%lu", static_cast<unsigned long>(wakeCue.aborts));
   append(",\"wake_cue_ordering_violations\":%lu",
          static_cast<unsigned long>(wakeCue.orderingViolations));
@@ -7587,6 +7948,18 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"sr_wake_audio_peak\":%d", gWakeSrProbe.audioPeak);
   append(",\"sr_wake_audio_mean_abs\":%d", gWakeSrProbe.audioMeanAbs);
   append(",\"sr_wake_audio_clips\":%lu", static_cast<unsigned long>(gWakeSrProbe.audioClips));
+  append(",\"sr_wake_stereo_direction_estimates\":%lu",
+         static_cast<unsigned long>(gWakeSrProbe.stereoDirectionEstimates));
+  append(",\"sr_wake_stereo_direction_rejected\":%lu",
+         static_cast<unsigned long>(gWakeSrProbe.stereoDirectionRejected));
+  append(",\"sr_wake_stereo_direction_azimuth_norm\":%.3f",
+         static_cast<double>(gWakeSrProbe.stereoDirectionLastAzimuthNorm));
+  append(",\"sr_wake_stereo_direction_confidence\":%.3f",
+         static_cast<double>(gWakeSrProbe.stereoDirectionLastConfidence));
+  append(",\"sr_wake_stereo_direction_correlation\":%.3f",
+         static_cast<double>(gWakeSrProbe.stereoDirectionLastCorrelation));
+  append(",\"sr_wake_stereo_direction_lag_samples\":%ld",
+         static_cast<long>(gWakeSrProbe.stereoDirectionLastLagSamples));
   append(",\"sr_wake_mww_detections\":%lu", static_cast<unsigned long>(gWakeSrProbe.mwwDetections));
   append(",\"sr_wake_mww_last_probability\":%d", gWakeSrProbe.mwwLastProbability);
   append(",\"sr_wake_mww_max_probability\":%d", gWakeSrProbe.mwwMaxProbability);
@@ -7597,6 +7970,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"sr_wake_mww_last_detection_probability\":%d", gWakeSrProbe.mwwLastDetectionProbability);
   append(",\"sr_wake_mww_last_detection_average_probability\":%d", gWakeSrProbe.mwwLastDetectionAverageProbability);
   append(",\"sr_wake_mww_max_detection_average_probability\":%d", gWakeSrProbe.mwwMaxDetectionAverageProbability);
+  append(",\"sr_wake_mww_arenas_zero_initialized\":%s",
+         gWakeSrProbe.mwwArenasZeroInitialized ? "true" : "false");
   append(",\"sr_wake_detections\":%lu", static_cast<unsigned long>(gWakeSrProbe.wakeDetections));
   append(",\"sr_wake_events_applied\":%lu", static_cast<unsigned long>(gWakeSrProbe.wakeEventsApplied));
   append(",\"sr_wake_model\":\"%s\"", gWakeSrProbe.modelName);
@@ -7727,7 +8102,6 @@ void serveCameraVisionTarget(WiFiClient& client, const char* requestTarget) {
 #endif
 
 void pollBridgeDebugServer(uint32_t nowMs) {
-  (void)nowMs;
 #if defined(ARDUINO_ARCH_ESP32)
   if (!gBridgeWiFi.isConnected()) {
     return;
@@ -7793,6 +8167,8 @@ void pollBridgeDebugServer(uint32_t nowMs) {
   const bool micToneOldRequest = strcmp(requestTarget, "/mic-tone-old") == 0;
   const bool micToneRequest = micToneSoftRequest || micToneTapRequest || micToneOldRequest;
   const bool wakeResetRequest = strcmp(requestTarget, "/wake-reset") == 0;
+  const bool audioStopRequest =
+      strcmp(requestTarget, "/audio-stop") == 0 || strcmp(requestTarget, "/playback-stop") == 0;
   const bool motionEnableRequest =
       strcmp(requestTarget, "/motion-resume") == 0 || strcmp(requestTarget, "/motion-on") == 0 ||
       strcmp(requestTarget, "/servos-on") == 0;
@@ -7828,6 +8204,10 @@ void pollBridgeDebugServer(uint32_t nowMs) {
     gWakeMwwResetRequested = true;
   }
 #endif
+  if (audioStopRequest) {
+    gBridgeAudioRemoteStopRequests++;
+    stopBridgeAudioRuntime(nowMs, BridgeAudioSafetyStopReason::RemoteRequest);
+  }
   if (motionControlRequest) {
     BenchControl control;
     control.hasMotionEnable = true;
@@ -7952,7 +8332,6 @@ void applyMotionControlInput() {
 
 bool shouldSuppressMotionForAudio(uint32_t nowMs) {
 #if STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS > 0
-  static uint32_t sLastAudioLoadMs = 0;
   const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
   const BridgeAudioDownlinkTelemetry& downlink = gBridgeAudioDownlink.telemetry();
   const BridgeWakeGateTelemetry& wakeGate = gBridgeWakeGate.telemetry();
@@ -7963,21 +8342,26 @@ bool shouldSuppressMotionForAudio(uint32_t nowMs) {
       bridge.state == BridgeClientState::Thinking ||
       bridge.state == BridgeClientState::Responding ||
       gBridge.hasPendingOutput();
-  const bool audioLoadActive =
-      uplink.active ||
-      wakeGate.turnActive ||
-      downlink.active ||
-      downlink.playbackActive ||
-      bridge.audioStreamActive ||
-      audioOut.playbackActive ||
-      bridgeBusy;
-  if (audioLoadActive) {
-    sLastAudioLoadMs = nowMs;
-  }
-  return sLastAudioLoadMs != 0 &&
-         nowMs - sLastAudioLoadMs < STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS;
+  MotionAudioActivity activity;
+  activity.microphoneCaptureActive = uplink.active;
+  activity.wakeTurnActive = wakeGate.turnActive;
+  activity.bridgeConversationBusy = bridgeBusy;
+  activity.pendingBridgeOutput = gBridge.hasPendingOutput();
+  activity.downlinkActive = downlink.active;
+  activity.downlinkPlaybackActive = downlink.playbackActive;
+  activity.bridgeAudioStreamActive = bridge.audioStreamActive;
+  activity.audioOutputPlaybackActive = audioOut.playbackActive || audioOut.hardwarePlaybackActive;
+  activity.speakerPowerActive = gSpeakerSink.speakerPowerActive() != 0;
+  activity.speakerRunning = gSpeakerSink.speakerRunning() != 0;
+  gMotionAudioPreemptActive = gMotionAudioPreemptionGate.update(
+      activity, nowMs, STACKCHAN_MOTION_AUDIO_LOAD_SHED_COOLDOWN_MS);
+  gMotionAudioPlaybackActive = gMotionAudioPreemptionGate.audioLoadActive();
+  return gMotionAudioPreemptActive;
 #else
   (void)nowMs;
+  gMotionAudioPreemptionGate.reset();
+  gMotionAudioPlaybackActive = false;
+  gMotionAudioPreemptActive = false;
   return false;
 #endif
 }
@@ -8202,6 +8586,15 @@ void IntentTask(void* pv) {
       }
     }
 
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_CAMERA && STACKCHAN_MWW_WAKE_RECORD_STEREO
+    WakeMwwStereoDirectionPending stereoDirection;
+    if (takeWakeMwwStereoDirection(&stereoDirection)) {
+      gCamera.submitSoundDirection(stereoDirection.azimuthNorm,
+                                   stereoDirection.confidence,
+                                   stereoDirection.capturedAtMs);
+    }
+#endif
+
     RobotEvent cameraEvent;
     while (gCamera.poll(&cameraEvent)) {
       gIntent.applyEvent(cameraEvent, visionModeForEvent(cameraEvent.type));
@@ -8318,11 +8711,19 @@ void IntentTask(void* pv) {
     }
     pollBridgeOutputs(millis());
     playMicActivationCueIfNeeded();
-    gSpeakerSink.service(millis());
+    const uint32_t speakerNowMs = millis();
+    gSpeakerSink.service(speakerNowMs);
+    if (gSpeakerSink.takeStreamWatchdogStop()) {
+      stopBridgeAudioRuntime(speakerNowMs, BridgeAudioSafetyStopReason::StreamWatchdog);
+    }
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
     serviceDedicatedWakeCapture(millis());
 #endif
 
+    const ServoPowerTelemetry intentServoPower = gServo.powerTelemetry();
+    gIntent.setMotionOutputActive(
+        gActuation.isEnabled() && !gActuation.outputSuppressed() && intentServoPower.railEnabled,
+        millis());
     RobotFrame frame = gIntent.update(millis());
     gCamera.setRobotSpeaking(frame.mode == CharacterMode::Speak, frame.timestampMs);
     const FaceSpeechTelemetry& faceSpeech = gFace.speechTelemetry();

@@ -27,6 +27,7 @@ struct MicroWakeWordProbeConfig {
 
 struct MicroWakeWordProbeTelemetry {
   bool ready = false;
+  bool arenasZeroInitialized = false;
   uint32_t arenaUsedBytes = 0;
   uint32_t modelStride = 0;
   uint32_t features = 0;

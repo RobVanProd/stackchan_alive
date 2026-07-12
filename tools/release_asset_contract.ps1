@@ -68,10 +68,6 @@ function Get-ReleaseBaseAssetEntries {
     New-ReleaseAssetEntry -Name "stackchan_spark_audition_bright_robot_greeting.wav" -Path (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.wav")
     New-ReleaseAssetEntry -Name "stackchan_spark_audition_bright_robot_greeting.mp3" -Path (Join-Path $PackageRoot "media/voice/stackchan_spark_audition_bright_robot_greeting.mp3")
     New-ReleaseAssetEntry -Name "stackchan_spark_thinking.mp3" -Path (Join-Path $PackageRoot "media/voice/stackchan_spark_thinking.mp3")
-    New-ReleaseAssetEntry -Name "RVC_AUDITION.html" -Path (Join-Path $PackageRoot "media/voice/rvc/RVC_AUDITION.html")
-    New-ReleaseAssetEntry -Name "stackchan_rvc_bright_robot.mp3" -Path (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3")
-    New-ReleaseAssetEntry -Name "stackchan_rvc_thinking_neutral.mp3" -Path (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3")
-    New-ReleaseAssetEntry -Name "stackchan_rvc_safety_neutral.mp3" -Path (Join-Path $PackageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3")
   )
 
   return @($entries + (Get-ReleaseFirmwareAssetEntries -PackageRoot $PackageRoot -FirmwareAssetRoot $FirmwareAssetRoot -FirmwareAssetPathMode $FirmwareAssetPathMode))

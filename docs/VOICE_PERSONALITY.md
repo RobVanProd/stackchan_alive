@@ -77,7 +77,10 @@ Prefer a tiny formant-capable source before considering larger model training:
 
 The selected audition base is recorded in `data/voice_rvc_base.yaml` as an RVC conversion candidate from the Drive file `stackchan voice - Weights.gg Model.zip` / Weights.gg model `clyaxlb9b000eoiqywl68wcrc`. It is useful for checking whether this voice direction feels closer to the desired bright synthetic robot character.
 
-Quick review MP3s for the current lead, thinking, and safety lines live in `media/voice/rvc/`; open `media/voice/rvc/RVC_AUDITION.html` or run `tools/open_voice_audition.cmd -Rvc` to audition them locally. Run `tools/open_voice_audition.cmd -All` to generate one local page with both Stackchan Spark and RVC samples.
+RVC review output is local-only under `output/voice_auditions/` and is never checked in or copied
+into a release. `tools/open_voice_audition.cmd -Rvc` may open an operator-generated local page
+when an authorized model is present. The public package includes only the BYOM policy in
+`media/voice/rvc/README.md`.
 
 This is not a production approval. The model title is `joh`, the author metadata is `triceratops`, and the current record does not include license, consent, training-source, or commercial-device-use evidence. Keep it behind the review gate until the rights owner and permitted uses are verified, then pair any generated audition with the Stackchan Spark Synth DSP and real-device speaker evidence.
 

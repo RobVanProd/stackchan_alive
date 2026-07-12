@@ -9,7 +9,7 @@ param(
   [int]$ExpectedDownlinkAudioChunkBytes = 4096,
   [int]$ExpectedDownlinkBinaryFrameDelayMs = 20,
   [int]$ExpectedDownlinkTextFrameDelayMs = 40,
-  [int]$ExpectedClientIdleTimeoutSeconds = 120,
+  [int]$ExpectedClientIdleTimeoutSeconds = 20,
   [string]$ExpectedTurnLogFile = "output\pc-brain\latest\turns.jsonl",
   [bool]$ExpectedRequireAudioWakePhrase = $false,
   [bool]$ExpectedDisableAudioDownlink = $true,

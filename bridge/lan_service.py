@@ -46,6 +46,7 @@ from research_broker import (
     evidence_prompt,
     source_urls,
 )
+from robot_embodiment import RobotEmbodimentState
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -54,7 +55,9 @@ DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS = 180
 DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS = 40
-DEFAULT_CLIENT_IDLE_TIMEOUT_S = 120.0
+DEFAULT_CLIENT_IDLE_TIMEOUT_S = 20.0
+DEFAULT_TCP_KEEPALIVE_IDLE_MS = 5_000
+DEFAULT_TCP_KEEPALIVE_INTERVAL_MS = 1_000
 DEFAULT_TTS_PHRASE_MAX_CHARS = 96
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_TRUSTED_ENDPOINTS = 8
@@ -587,6 +590,52 @@ def read_ws_frame(conn: socket.socket) -> tuple[int, bytes]:
     return opcode, payload
 
 
+def configure_client_socket(
+    conn: socket.socket,
+    idle_timeout_s: float,
+    *,
+    low_latency: bool = False,
+) -> None:
+    """Bound stale-session recovery without changing turn execution timeouts."""
+    conn.settimeout(max(1.0, float(idle_timeout_s)))
+    try:
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    except OSError:
+        pass
+    if low_latency:
+        try:
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
+    # Windows exposes keepalive timing through SIO_KEEPALIVE_VALS. POSIX hosts
+    # use the TCP_* options when available. Both paths are best-effort because
+    # the heartbeat-aware idle timeout remains the final recovery bound.
+    if hasattr(socket, "SIO_KEEPALIVE_VALS"):
+        try:
+            conn.ioctl(
+                socket.SIO_KEEPALIVE_VALS,
+                (1, DEFAULT_TCP_KEEPALIVE_IDLE_MS, DEFAULT_TCP_KEEPALIVE_INTERVAL_MS),
+            )
+        except OSError:
+            pass
+        return
+
+    keepalive_options = (
+        ("TCP_KEEPIDLE", max(1, DEFAULT_TCP_KEEPALIVE_IDLE_MS // 1000)),
+        ("TCP_KEEPINTVL", max(1, DEFAULT_TCP_KEEPALIVE_INTERVAL_MS // 1000)),
+        ("TCP_KEEPCNT", 3),
+    )
+    for option_name, value in keepalive_options:
+        option = getattr(socket, option_name, None)
+        if option is None:
+            continue
+        try:
+            conn.setsockopt(socket.IPPROTO_TCP, option, value)
+        except OSError:
+            pass
+
+
 def frame_to_text(frame: dict[str, object]) -> str:
     return json.dumps(frame, separators=(",", ":"), ensure_ascii=True)
 
@@ -630,8 +679,10 @@ def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
         return "picked_up"
     if "battery" in lowered or "power" in lowered:
         return "low_battery"
-    if "?" in text or "confused" in lowered:
+    if "confused" in lowered or "ambiguous" in lowered or not text.strip():
         return "confused"
+    if "?" in text:
+        return "question"
     return default_case
 
 
@@ -685,6 +736,7 @@ class LanBridgeSession:
         self.endpoint_id = ""
         self.next_seq = 1
         self.audio = AudioUpload()
+        self.robot_embodiment = RobotEmbodimentState()
         self.research_broker = research_broker
         if self.research_broker is None and config.research_enabled:
             self.research_broker = ResearchBroker(ResearchBrokerConfig(searxng_url=config.searxng_url))
@@ -837,6 +889,7 @@ class LanBridgeSession:
             self.endpoint_id = str(frame.get("endpoint_id", self.endpoint_id)) if frame.get("type") != "error" else self.endpoint_id
             return [frame]
         if message_type == "heartbeat":
+            self.robot_embodiment.update(message)
             endpoint_id = self.control_state.touch_endpoint(message.get("endpoint_id") or self.endpoint_id)
             frame: dict[str, object] = {"type": "heartbeat", "active_brain_owner": self.control_state.active_brain_owner}
             if endpoint_id:
@@ -1235,6 +1288,7 @@ class LanBridgeSession:
                     timeout_ms=self.config.runner_timeout_ms,
                     user_text=user_text,
                     research_tools_enabled=self.config.research_enabled,
+                    embodiment_lines=self.robot_embodiment.prompt_lines(),
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [error_frame("runner_error", str(exc))]
@@ -1279,6 +1333,7 @@ class LanBridgeSession:
                             timeout_ms=self.config.runner_timeout_ms,
                             user_text=evidence_user_text,
                             research_tools_enabled=False,
+                            embodiment_lines=self.robot_embodiment.prompt_lines(),
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                         return [error_frame("runner_error", str(exc))]
@@ -1459,12 +1514,11 @@ def handle_connection(
     request = read_http_request(conn)
     print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)
     conn.sendall(build_handshake_response(request))
-    if config.stream_tts_phrases:
-        try:
-            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        except OSError:
-            pass
-    conn.settimeout(config.client_idle_timeout_s)
+    configure_client_socket(
+        conn,
+        config.client_idle_timeout_s,
+        low_latency=config.stream_tts_phrases,
+    )
     print("[bridge-lan] handshake_accepted=1", flush=True)
     conn.sendall(encode_ws_text(frame_to_text({"type": "hello", "protocol": PROTOCOL, "session": session.session})))
     print("[bridge-lan] session_hello=1", flush=True)

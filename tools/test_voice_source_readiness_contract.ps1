@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checkScript = Join-Path $PSScriptRoot "check_voice_source_readiness.ps1"
+$exportScript = Join-Path $PSScriptRoot "export_voice_source_status.ps1"
 $createdRoots = New-Object System.Collections.Generic.List[string]
 
 function New-TempEvidenceRoot {
@@ -210,6 +211,26 @@ try {
   Assert-CheckStatus -Report $pendingResult.report -Id "production-source-selected" -Status "pending"
   Assert-CheckStatus -Report $pendingResult.report -Id "voice-source-provenance-commit-match" -Status "pending"
   Write-Host "[ok] pending production voice source remains pending"
+
+  $portableExportRoot = New-TempEvidenceRoot
+  $powerShellExe = (Get-Process -Id $PID).Path
+  & $powerShellExe -NoProfile -ExecutionPolicy Bypass -File $exportScript `
+    -VoiceSourceProvenancePath (Join-Path $pendingRoot "voice_source.yaml") `
+    -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
+    -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") `
+    -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
+    -OutputDir $portableExportRoot *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Expected portable voice-source status export to succeed."
+  }
+  $portableStatus = Get-Content -LiteralPath (Join-Path $portableExportRoot "voice_source_status.json") -Raw | ConvertFrom-Json
+  if ($portableStatus.provenancePath -ne "data/voice_source_provenance.yaml" -or
+      $portableStatus.templatePath -ne "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" -or
+      [System.IO.Path]::IsPathRooted([string]$portableStatus.provenancePath) -or
+      [System.IO.Path]::IsPathRooted([string]$portableStatus.templatePath)) {
+    throw "Voice-source status export leaked non-portable package paths."
+  }
+  Write-Host "[ok] packaged voice-source status paths remain portable"
 
   $pendingStrictResult = Invoke-VoiceSourceCheck -Root $repoRoot -VoiceSourceProvenancePath (Join-Path $pendingRoot "voice_source.yaml") -TemplatePath (Join-Path $pendingRoot "VOICE_TEMPLATE.md") -SourceCommit $sourceCommit -RequireProductionReady
   if ([int]$pendingStrictResult.exitCode -eq 0) {

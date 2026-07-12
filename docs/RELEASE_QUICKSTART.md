@@ -427,6 +427,25 @@ Only after display-only firmware boots cleanly and the body is on a clear surfac
 
 The servo command includes `-ConfirmServoRisk` because it can move the physical body.
 
+After servo calibration, Wi-Fi/pairing provisioning, and the short hardware gates pass, flash
+the secret-free full system from the verified release ZIP:
+
+```powershell
+.\tools\flash_release_firmware.cmd `
+  -PackageZip .\stackchan_alive_<version>.zip `
+  -Firmware full_online `
+  -ConfirmServoRisk
+```
+
+`full_online` contains wake, bridge audio, speaker playback, RGB, touch, IMU, power
+coordination, servos, camera capture, and paired host-vision support. Motion remains disabled
+at boot. The public binary contains no Wi-Fi password, bridge address, pairing code, private
+voice model, or OTA token. Provision the robot after flashing, set a per-device pairing code,
+and follow `docs/LOCAL_VISION.md` before starting the local camera worker.
+
+LAN OTA is an owner build, not a shared release credential. Follow `docs/LAN_OTA.md` to build
+an OTA-capable image with a unique per-device token after the first supervised serial install.
+
 During bring-up, run:
 
 ```powershell
@@ -457,7 +476,7 @@ The evidence packet also includes `RVC_LEAD_AUDITION.md`, `reference_audio\`, an
 For speech-reactive mouth bench tests from an actual WAV, generate a 50 Hz sidecar and stream it over serial:
 
 ```powershell
-.\tools\generate_speech_envelope_sidecar.cmd -InputWav media\voice\rvc\stackchan_rvc_bright_robot.wav -OutputJson output\bright_robot.speech_envelope.json
+.\tools\generate_speech_envelope_sidecar.cmd -InputWav output\voice_auditions\rvc_base\final\stackchan_rvc_bright_robot.wav -OutputJson output\bright_robot.speech_envelope.json
 .\tools\verify_speech_envelope_sidecar.cmd -Path output\bright_robot.speech_envelope.json
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
 ```

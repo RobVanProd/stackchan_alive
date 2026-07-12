@@ -1,12 +1,12 @@
-# Stackchan RVC MP3 Auditions
+# Optional Local RVC
 
-These are quick browser-friendly review copies of the current RVC voice direction.
+Stackchan supports a user-supplied RVC model for local voice conversion. No RVC model,
+index, converted WAV, converted MP3, or audition page is distributed with the repository,
+release ZIP, or published release assets.
 
-- `RVC_AUDITION.html` opens a local page with all three samples.
-- `stackchan_rvc_bright_robot.mp3` is the current lead voice direction.
-- `stackchan_rvc_thinking_neutral.mp3` checks cadence on a longer thinking line.
-- `stackchan_rvc_safety_neutral.mp3` checks clarity on a calm safety line.
+The operator must supply a model they are authorized to use and keep it outside the release
+tree. Local review output belongs under `output/voice_auditions/`, which is ignored by Git.
+The application and release scripts must never copy that output into a package automatically.
 
-Run `tools/verify_tracked_rvc_assets.cmd` from the repository root to verify this MP3-only review bundle without regenerating the full RVC WAV audition set.
-
-Status: review-only candidate samples. Do not treat these as consumer-approved voice assets until source provenance and rights review are complete.
+The historical Weights.gg candidate remains recorded in `data/voice_rvc_base.yaml` as
+review-only provenance evidence. It is not an approved production source and is not bundled.

@@ -16,6 +16,7 @@ param(
   [double]$MaxFailedPollRatio = 0.01,
   [int]$MinPollsForFailedRatio = 100,
   [int]$MaxConsecutiveFailedPolls = 1,
+  [string]$RvcWorkerUrl = "http://127.0.0.1:5055",
   [string]$EvidenceRoot = "",
   [switch]$NoSerial,
   [switch]$SkipBridgeRestart,
@@ -41,6 +42,12 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 if (-not $OperatorPresent -or -not $BodyClear -or -not $ConfirmServoRisk) {
   throw "Refusing to start servo-enabled warm ROCm soak without -OperatorPresent -BodyClear -ConfirmServoRisk. This wrapper calls /motion-resume and refreshes motion during the soak."
 }
+try { $workerUri = [uri]$RvcWorkerUrl } catch { throw "RvcWorkerUrl must be a valid local HTTP URL." }
+if ($workerUri.Scheme -ne "http" -or $workerUri.Host -notin @("127.0.0.1", "localhost", "::1") -or
+    -not [string]::IsNullOrWhiteSpace($workerUri.UserInfo)) {
+  throw "RvcWorkerUrl must use unauthenticated local loopback HTTP."
+}
+$RvcWorkerUrl = $RvcWorkerUrl.TrimEnd("/")
 
 function Invoke-JsonEndpoint {
   param([string]$Path, [int]$TimeoutSeconds = 5)
@@ -101,26 +108,76 @@ function Has-JsonProperty {
   return $null -ne $Object.PSObject.Properties[$Name]
 }
 
+function Stop-MotionVerified {
+  param([int]$Attempts = 4)
+  $records = New-Object System.Collections.Generic.List[object]
+  for ($attempt = 1; $attempt -le $Attempts; ++$attempt) {
+    $request = $null
+    $debug = $null
+    try { $request = Invoke-JsonEndpoint -Path "/motion-stop" -TimeoutSeconds 5 } catch {}
+    Start-Sleep -Milliseconds 350
+    try { $debug = Invoke-JsonEndpoint -Path "/debug" -TimeoutSeconds 5 } catch {}
+    $verified = $null -ne $debug -and
+      -not [bool]$debug.motion_enabled -and
+      -not [bool]$debug.servo_rail_enabled -and
+      -not [bool]$debug.servo_torque_enabled
+    $records.Add([ordered]@{ attempt = $attempt; request = $request; debug = $debug; verified = $verified })
+    if ($verified) { return [pscustomobject]@{ verified = $true; attempts = $attempt; records = $records; debug = $debug } }
+  }
+  return [pscustomobject]@{ verified = $false; attempts = $Attempts; records = $records; debug = $debug }
+}
+
+function Stop-MotionAndThrow {
+  param([string]$Message, [string]$PrimaryEvidencePath)
+  $stop = Stop-MotionVerified
+  $cleanupPath = Join-Path $script:evidencePath "preflight-failure-motion-stop.json"
+  [ordered]@{
+    schema = "stackchan.warm-rocm-preflight-failure-stop.v1"
+    capturedAt = (Get-Date).ToString("o")
+    reason = $Message
+    stop = $stop
+  } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $cleanupPath -Encoding UTF8
+  throw "$Message Motion-stop verified=$($stop.verified). Evidence: $PrimaryEvidencePath. Cleanup: $cleanupPath"
+}
+
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $evidencePath = (Resolve-Path $EvidenceRoot).Path
 $preflightPath = Join-Path $evidencePath "preflight.json"
 
 if (-not $SkipWorkerRestart) {
+  if ($RvcWorkerUrl -ne "http://127.0.0.1:5055") {
+    throw "Automatic worker restart supports only the warm ROCm worker on port 5055. Use -SkipWorkerRestart for an existing production worker."
+  }
   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_rvc_worker.ps1 -StopExisting -Background -Device cuda:0 -Method pm -Port 5055 | Out-Null
   Start-Sleep -Seconds 8
 }
 
-$workerHealth = $null
+$workerHealthRaw = $null
 try {
-  $workerHealth = Invoke-RestMethod -Uri "http://127.0.0.1:5055/health" -TimeoutSec 5
+  $workerHealthRaw = Invoke-RestMethod -Uri "$RvcWorkerUrl/health" -TimeoutSec 5
 } catch {
-  throw "Warm RVC worker is not healthy on http://127.0.0.1:5055/health :: $($_.Exception.Message)"
+  throw "Voice worker is not healthy on $RvcWorkerUrl/health :: $($_.Exception.Message)"
 }
-if (-not [bool]$workerHealth.ready) {
+if (-not [bool]$workerHealthRaw.ready) {
   throw "Warm RVC worker reported not ready."
+}
+$workerHealth = [ordered]@{
+  schema = [string]$workerHealthRaw.schema
+  ready = [bool]$workerHealthRaw.ready
+  backend = [string]$workerHealthRaw.backend
+  device = [string]$workerHealthRaw.device
+  method = [string]$workerHealthRaw.method
+  load_ms = $workerHealthRaw.load_ms
+  convert_count = $workerHealthRaw.convert_count
+  average_convert_ms = $workerHealthRaw.average_convert_ms
+  last = $workerHealthRaw.last
+  uptime_seconds = $workerHealthRaw.uptime_seconds
 }
 
 if (-not $SkipBridgeRestart) {
+  if ($RvcWorkerUrl -ne "http://127.0.0.1:5055") {
+    throw "Automatic bridge restart is configured for the warm ROCm adapter. Use -SkipBridgeRestart with an existing production DirectML bridge."
+  }
   $env:STACKCHAN_RVC_WORKER_URL = "http://127.0.0.1:5055"
   $env:STACKCHAN_RVC_WORKER_TIMEOUT_SECONDS = "90"
   $env:STACKCHAN_RVC_MAX_AUDIO_BYTES = "2097152"
@@ -134,7 +191,52 @@ if (-not $SkipBridgeRestart) {
   Start-Sleep -Seconds 8
 }
 
-$before = Invoke-JsonEndpoint -Path "/debug" -TimeoutSeconds 5
+$initialStop = Stop-MotionVerified
+if (-not $initialStop.verified) {
+  throw "Could not verify motion, servo rail, and torque off before soak preflight. Evidence root: $evidencePath"
+}
+$sourceCommit = (& git rev-parse HEAD).Trim()
+$sourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 --untracked-files=normal) -join "`n"))
+if ($RequireFinalIntegration -and ($sourceDirty -or $sourceCommit -notmatch "^[0-9a-fA-F]{40}$")) {
+  $sourceFailurePath = Join-Path $evidencePath "source-identity-preflight-failure.json"
+  [ordered]@{
+    schema = "stackchan.final-integration-source-preflight-failure.v1"
+    capturedAt = (Get-Date).ToString("o")
+    sourceCommit = $sourceCommit
+    sourceDirty = $sourceDirty
+    initialStop = $initialStop
+  } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $sourceFailurePath -Encoding UTF8
+  throw "Final integration requires a clean pinned source commit; motion was not enabled. Evidence: $sourceFailurePath"
+}
+$before = $initialStop.debug
+$preflightSocketRemote = $null
+try {
+  $preflightSocket = Get-NetTCPConnection -LocalPort 8765 -State Established -ErrorAction SilentlyContinue |
+    Where-Object { $_.RemoteAddress -eq $DeviceHost } |
+    Select-Object -First 1
+  if ($preflightSocket) { $preflightSocketRemote = [string]$preflightSocket.RemoteAddress }
+} catch {
+}
+$runtimePreflightReady =
+  [string]$before.network_state -eq "connected" -and
+  [string]$before.bridge_state -in @("ready", "listening", "thinking", "responding") -and
+  $preflightSocketRemote -eq $DeviceHost -and
+  [double]$before.chip_temp_c -le $MaxAllowedChipTempC -and
+  [int]$before.power_vbus_mv -ge $MinPowerVbusMv -and
+  [int]$before.power_vbus_min_mv -ge $MinPowerVbusReportedMv -and
+  [int]$before.display_window_max_frame_us -le $MaxDisplayFrameUs
+if (-not $runtimePreflightReady) {
+  $runtimeFailurePath = Join-Path $evidencePath "runtime-preflight-failure.json"
+  [ordered]@{
+    schema = "stackchan.warm-rocm-runtime-preflight-failure.v1"
+    capturedAt = (Get-Date).ToString("o")
+    reason = "runtime_gate_not_ready"
+    thresholds = [ordered]@{ maxChipTempC = $MaxAllowedChipTempC; minVbusMv = $MinPowerVbusMv; minReportedVbusMv = $MinPowerVbusReportedMv; maxDisplayFrameUs = $MaxDisplayFrameUs }
+    bridgeSocketRemote = $preflightSocketRemote
+    debug = $before
+  } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $runtimeFailurePath -Encoding UTF8
+  throw "Runtime preflight is not ready; motion was not enabled. Evidence: $runtimeFailurePath"
+}
 if ($RequirePowerForensics -and
     (-not [bool]$before.power_forensics_enabled -or
      -not [bool]$before.power_forensics_irq_enable_succeeded -or
@@ -147,6 +249,45 @@ if ($RequirePowerForensics -and
     before = $before
   } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $forensicsFailurePath -Encoding UTF8
   throw "PMIC power forensics is not armed; motion was not enabled. Flash stackchan_release_forensics and verify /debug. Evidence: $forensicsFailurePath."
+}
+$visionBefore = $null
+$visionAfter = $null
+$visionSocketRemote = $null
+$visionPreflightReady = $false
+if ($RequireFinalIntegration) {
+  $visionBefore = $before
+  Start-Sleep -Milliseconds 1400
+  $visionAfter = Invoke-JsonEndpoint -Path "/debug" -TimeoutSeconds 5
+  try {
+    $visionSocket = Get-NetTCPConnection -LocalPort 8765 -State Established -ErrorAction SilentlyContinue |
+      Where-Object { $_.RemoteAddress -eq $DeviceHost } |
+      Select-Object -First 1
+    if ($visionSocket) { $visionSocketRemote = [string]$visionSocket.RemoteAddress }
+  } catch {
+  }
+  $visionPreflightReady =
+    [int]$visionAfter.compiled_enable_camera -eq 1 -and
+    [int]$visionAfter.compiled_enable_camera_host_vision -eq 1 -and
+    [bool]$visionAfter.camera_ready -and [bool]$visionAfter.camera_active -and
+    [bool]$visionAfter.camera_capture_ready -and
+    [bool]$visionBefore.camera_target_valid -and [bool]$visionAfter.camera_target_valid -and
+    $visionSocketRemote -eq $DeviceHost -and
+    [int64]$visionAfter.camera_host_frame_requests -gt [int64]$visionBefore.camera_host_frame_requests -and
+    [int64]$visionAfter.camera_host_target_updates -gt [int64]$visionBefore.camera_host_target_updates -and
+    [int64]$visionAfter.camera_host_frame_failures -eq [int64]$visionBefore.camera_host_frame_failures -and
+    [int64]$visionAfter.camera_host_auth_failures -eq [int64]$visionBefore.camera_host_auth_failures
+  if (-not $visionPreflightReady) {
+    $visionFailurePath = Join-Path $evidencePath "vision-preflight-failure.json"
+    [ordered]@{
+      schema = "stackchan.final-integration-vision-preflight-failure.v1"
+      capturedAt = (Get-Date).ToString("o")
+      reason = "stable_authenticated_vision_not_ready"
+      before = $visionBefore
+      after = $visionAfter
+      initialStop = $initialStop
+    } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $visionFailurePath -Encoding UTF8
+    throw "Final integration vision is not ready and advancing; motion was not enabled. Start the paired vision worker and acquire a stable face. Evidence: $visionFailurePath"
+  }
 }
 $motionStart = Enable-MotionWithRetry -TimeoutSeconds 20 -RetrySeconds 3
 $motionRequest = $motionStart.request
@@ -189,6 +330,7 @@ $preflight = [ordered]@{
   maxFailedPollRatio = $MaxFailedPollRatio
   minPollsForFailedRatio = $MinPollsForFailedRatio
   maxConsecutiveFailedPolls = $MaxConsecutiveFailedPolls
+  rvcWorkerUrl = $RvcWorkerUrl
   workerHealth = $workerHealth
   before = $before
   motionRequest = $motionRequest
@@ -201,35 +343,46 @@ $preflight = [ordered]@{
     [bool]$after.power_forensics_irq_enable_succeeded -and
     [bool]$after.power_forensics_boot_status_valid
   finalIntegrationRequired = [bool]$RequireFinalIntegration
+  initialMotionStop = $initialStop
+  sourceCommit = $sourceCommit
+  sourceDirty = $sourceDirty
+  runtimePreflightReady = $runtimePreflightReady
+  preflightSocketRemote = $preflightSocketRemote
+  visionBefore = $visionBefore
+  visionAfter = $visionAfter
+  visionSocketRemote = $visionSocketRemote
+  visionPreflightReady = $visionPreflightReady
   finalIntegrationReady = $after.power_forensics_schema -eq "axp2101-v2" -and
     $null -ne $after.PSObject.Properties["debug_response_truncated"] -and
     -not [bool]$after.debug_response_truncated -and
     [int]$after.compiled_enable_body_rgb -eq 1 -and [bool]$after.body_rgb_ready -and
     [int]$after.compiled_enable_body_touch -eq 1 -and [bool]$after.body_touch_ready -and
     [int]$after.compiled_enable_imu -eq 1 -and [bool]$after.imu_ready -and
-    [bool]$after.imu_calibrated -and [int]$after.compiled_enable_camera -eq 0 -and
-    -not [bool]$after.camera_active
+    [bool]$after.imu_calibrated -and [int]$after.compiled_enable_camera -eq 1 -and
+    [int]$after.compiled_enable_camera_host_vision -eq 1 -and
+    [bool]$after.camera_ready -and [bool]$after.camera_active -and
+    [bool]$after.camera_capture_ready -and [bool]$after.camera_target_valid
   bridgeSocketRemote = $socketRemote
 }
 $preflight | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $preflightPath -Encoding UTF8
 
 if (-not $motionTelemetryPresent -and -not $AllowLegacyMotionTelemetry) {
-  throw "Motion debug telemetry is missing. Flash the motion timing candidate before starting the strict servo-enabled soak, or rerun with -AllowLegacyMotionTelemetry. Evidence: $preflightPath."
+  Stop-MotionAndThrow "Motion debug telemetry is missing. Flash the motion timing candidate before starting the strict servo-enabled soak, or rerun with -AllowLegacyMotionTelemetry." $preflightPath
 }
 
 if (-not [bool]$after.motion_enabled) {
-  throw "Motion did not become enabled after /motion-resume. Evidence: $preflightPath. Power-cycle or side-button reset the robot before starting the servo-enabled soak."
+  Stop-MotionAndThrow "Motion did not become enabled after /motion-resume. Power-cycle or side-button reset the robot before starting the servo-enabled soak." $preflightPath
 }
 
 if ($RequirePowerForensics -and
     (-not [bool]$after.power_forensics_enabled -or
      -not [bool]$after.power_forensics_irq_enable_succeeded -or
      -not [bool]$after.power_forensics_boot_status_valid)) {
-  throw "PMIC power forensics is not armed. Flash stackchan_release_forensics and verify /debug before starting this run. Evidence: $preflightPath."
+  Stop-MotionAndThrow "PMIC power forensics is not armed. Flash stackchan_release_forensics and verify /debug before starting this run." $preflightPath
 }
 
 if ($RequireFinalIntegration -and -not $preflight.finalIntegrationReady) {
-  throw "Final integration telemetry is not ready. Require PMIC v2, untruncated debug JSON, RGB/touch/IMU ready and calibrated, and production camera disabled. Evidence: $preflightPath."
+  Stop-MotionAndThrow "Final integration telemetry is not ready. Require PMIC v2, untruncated debug JSON, RGB/touch/IMU ready, calibrated IMU, active paired vision, and a stable camera target." $preflightPath
 }
 
 $stdout = Join-Path $evidencePath "soak_stdout.log"
@@ -253,7 +406,7 @@ $args = @(
   "-MotionRefreshInitialDelaySeconds",
   [string]$MotionRefreshInitialDelaySeconds,
   "-RvcWorkerUrl",
-  "http://127.0.0.1:5055",
+  $RvcWorkerUrl,
   "-RvcWorkerPollSeconds",
   "60",
   "-MaxAllowedChipTempC",
@@ -306,7 +459,11 @@ if ($NoSerial) {
   $args += "-NoSerial"
 }
 
-$proc = Start-Process -FilePath "powershell.exe" -ArgumentList $args -WorkingDirectory $RepoRoot -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
+try {
+  $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $args -WorkingDirectory $RepoRoot -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
+} catch {
+  Stop-MotionAndThrow "Could not launch the soak runner: $($_.Exception.Message)" $preflightPath
+}
 
 [pscustomobject]@{
   schema = "stackchan.warm-rocm-full-system-soak-started.v1"

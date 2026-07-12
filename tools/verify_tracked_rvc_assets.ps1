@@ -7,104 +7,53 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
-if (-not (Test-Path -LiteralPath $VoiceRoot)) {
-  throw "Missing tracked RVC voice asset directory: $VoiceRoot"
+if (-not (Test-Path -LiteralPath $VoiceRoot -PathType Container)) {
+  throw "Missing public RVC policy directory: $VoiceRoot"
 }
 
 $voiceRootPath = (Resolve-Path $VoiceRoot).Path
-
-function Join-VoicePath {
-  param([string]$RelativePath)
-  return Join-Path $voiceRootPath $RelativePath
+$readmePath = Join-Path $voiceRootPath "README.md"
+if (-not (Test-Path -LiteralPath $readmePath -PathType Leaf)) {
+  throw "Missing public RVC BYOM policy: README.md"
+}
+if ((Get-Item -LiteralPath $readmePath).Length -lt 400) {
+  throw "Public RVC BYOM policy is unexpectedly small."
 }
 
-function Assert-File {
-  param(
-    [string]$RelativePath,
-    [int64]$MinBytes = 1
-  )
-
-  $path = Join-VoicePath $RelativePath
-  if (-not (Test-Path -LiteralPath $path)) {
-    throw "Missing tracked RVC asset: $RelativePath"
-  }
-  $item = Get-Item -LiteralPath $path
-  if ($item.Length -lt $MinBytes) {
-    throw "Tracked RVC asset is too small: $RelativePath ($($item.Length) bytes)"
-  }
-}
-
-function Assert-Mp3File {
-  param(
-    [string]$RelativePath,
-    [int64]$MinBytes = 50000
-  )
-
-  Assert-File $RelativePath $MinBytes
-  $bytes = [System.IO.File]::ReadAllBytes((Join-VoicePath $RelativePath))
-  $hasId3 = $bytes.Length -ge 3 -and $bytes[0] -eq 0x49 -and $bytes[1] -eq 0x44 -and $bytes[2] -eq 0x33
-  $hasFrameSync = $bytes.Length -ge 2 -and $bytes[0] -eq 0xff -and (($bytes[1] -band 0xe0) -eq 0xe0)
-  if (-not ($hasId3 -or $hasFrameSync)) {
-    throw "Tracked RVC MP3 has no ID3 tag or MPEG frame sync: $RelativePath"
-  }
-}
-
-$samples = @(
-  [pscustomobject]@{
-    File = "stackchan_rvc_bright_robot.mp3"
-    Title = "RVC Bright Robot"
-    Transcript = "Hello. I am Stackchan, and I am awake."
-  },
-  [pscustomobject]@{
-    File = "stackchan_rvc_thinking_neutral.mp3"
-    Title = "RVC Thinking"
-    Transcript = "Input received. I am thinking now. Curiosity level rising."
-  },
-  [pscustomobject]@{
-    File = "stackchan_rvc_safety_neutral.mp3"
-    Title = "RVC Safety"
-    Transcript = "Small problem found. I can help fix it. Safety first."
-  }
-)
-
-Assert-File "README.md" 400
-Assert-File "RVC_AUDITION.html" 1000
-
-$readme = Get-Content -LiteralPath (Join-VoicePath "README.md") -Raw
-$page = Get-Content -LiteralPath (Join-VoicePath "RVC_AUDITION.html") -Raw
-
+$readme = Get-Content -LiteralPath $readmePath -Raw
 foreach ($pattern in @(
-  "Stackchan RVC MP3 Auditions",
-  "RVC_AUDITION.html",
-  "review-only candidate samples",
-  "source provenance and rights review"
+  "Optional Local RVC",
+  "user-supplied RVC model",
+  "No RVC model",
+  "output/voice_auditions/",
+  "not bundled"
 )) {
   if ($readme -notmatch [regex]::Escape($pattern)) {
-    throw "RVC README missing expected marker: $pattern"
+    throw "RVC BYOM policy missing expected marker: $pattern"
   }
 }
 
-foreach ($pattern in @(
-  "Stackchan RVC Voice Audition",
-  "Review-only RVC candidate samples",
-  "source provenance and rights review"
-)) {
-  if ($page -notmatch [regex]::Escape($pattern)) {
-    throw "RVC audition page missing expected marker: $pattern"
-  }
+$allowedNames = @("README.md")
+$unexpected = @(
+  Get-ChildItem -LiteralPath $voiceRootPath -Recurse -File |
+    Where-Object { $allowedNames -notcontains $_.Name } |
+    Select-Object -ExpandProperty FullName
+)
+if ($unexpected.Count -gt 0) {
+  throw "Public RVC directory contains forbidden bundled assets: $($unexpected -join ', ')"
 }
 
-foreach ($sample in $samples) {
-  Assert-Mp3File $sample.File
-  foreach ($pattern in @($sample.File, $sample.Title, $sample.Transcript)) {
-    if ($readme -notmatch [regex]::Escape($sample.File) -and $pattern -eq $sample.File) {
-      throw "RVC README missing expected MP3 file: $($sample.File)"
+$forbiddenExtensions = @(".pth", ".index", ".onnx")
+$forbidden = @(
+  Get-ChildItem -LiteralPath $voiceRootPath -Recurse -File |
+    Where-Object {
+      $forbiddenExtensions -contains $_.Extension.ToLowerInvariant() -or
+      $_.Name -match '(?i)weightsgg|weights\.gg|rvc.*\.(wav|mp3|html)$'
     }
-    if ($page -notmatch [regex]::Escape($pattern)) {
-      throw "RVC audition page missing expected sample marker: $pattern"
-    }
-  }
+)
+if ($forbidden.Count -gt 0) {
+  throw "Public RVC directory contains a model, index, or converted derivative."
 }
 
-Write-Host "Tracked RVC MP3 audition assets verified:"
+Write-Host "Public RVC BYOM policy verified; no model or converted assets are bundled:"
 Write-Host $voiceRootPath

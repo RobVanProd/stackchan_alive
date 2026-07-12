@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("display_only", "servo_calibration")]
+  [ValidateSet("display_only", "servo_calibration", "full_online")]
   [string]$Firmware = "display_only",
   [string]$Version = "",
   [string]$PackageRoot = "",
@@ -116,10 +116,10 @@ function Get-EsptoolInvocation {
   throw "No usable esptool runtime found. Install PlatformIO and run a firmware build once so tool-esptoolpy is installed, or install esptool into a real Python 3 environment."
 }
 
-if ($Firmware -eq "servo_calibration") {
-  Write-Warning "Servo calibration firmware enables motor output. Keep the body clear and powered safely."
+if ($Firmware -in @("servo_calibration", "full_online")) {
+  Write-Warning "$Firmware firmware contains motor support. Keep the body clear and powered safely."
   if (-not $ConfirmServoRisk) {
-    throw "Refusing to flash servo calibration package firmware without -ConfirmServoRisk. Run display-only firmware first, clear the body, and supervise the test."
+    throw "Refusing to flash $Firmware package firmware without -ConfirmServoRisk. Run display-only firmware first, clear the body, and supervise the test."
   }
 }
 

@@ -5,6 +5,11 @@ param(
   [string]$EvidenceRoot,
   [string]$VoiceSourceProvenancePath,
   [string]$VoiceSourceTemplatePath,
+  [string]$ProjectLicensePath,
+  [string]$CameraFollowSummaryPath,
+  [string]$BodySensorReportPath,
+  [string]$FullSystemSoakSummaryPath,
+  [int]$MinFinalSoakDurationSeconds = 3600,
   [string]$ExternalAccountCiExceptionPath,
   [string]$ExpectedCommit,
   [switch]$AllowExternalAccountCiBlock
@@ -74,6 +79,98 @@ function Assert-ObjectTextComplete {
   }
   if ($text -match "(?i)\b(TBD|pending|required-before|required before|not approved)\b") {
     throw "Voice source provenance field is not production-ready: $Path = $text"
+  }
+}
+
+function Assert-ProjectLicenseReady {
+  param([string]$Path)
+  Assert-FilePath $Path 100
+  $text = Get-Content -LiteralPath $Path -Raw
+  if ($text -match "(?i)\b(TBD|TODO|choose a license|license pending)\b") {
+    throw "Project license still contains a placeholder: $Path"
+  }
+}
+
+function Assert-EvidenceIdentity {
+  param($Record, [string]$Label, [string]$ExpectedCommit)
+  if ([string]$Record.sourceCommit -ne $ExpectedCommit) {
+    throw "$Label source commit mismatch: expected $ExpectedCommit, got $($Record.sourceCommit)"
+  }
+  if ([bool]$Record.sourceDirty) {
+    throw "$Label was captured from a dirty source worktree"
+  }
+  $firmwareSha = [string]$Record.installedFirmwareSha256
+  if ($firmwareSha -notmatch "^[0-9a-fA-F]{64}$") {
+    throw "$Label does not pin a valid installed firmware SHA-256"
+  }
+  return $firmwareSha.ToUpperInvariant()
+}
+
+function Assert-CameraFollowReady {
+  param([string]$Path, [string]$ExpectedCommit)
+  $summary = Read-JsonFile $Path
+  if ($summary.schema -ne "stackchan.camera-follow-wake-validation.v1" -or
+      $summary.status -ne "pass" -or $summary.visualVerdict -ne "pass" -or
+      -not [bool]$summary.motionStopVerified) {
+    throw "Camera wake/follow evidence is not operator-approved and motion-stop verified: $Path"
+  }
+  if (@($summary.checks | Where-Object { $_.status -ne "pass" }).Count -gt 0 -or
+      [int]$summary.captureTargetSamples -lt 2 -or
+      [int]$summary.captureFollowSamples -ne [int]$summary.captureTargetSamples -or
+      [int]$summary.chunksSubmittedDelta -lt 96 -or [int]$summary.bridgeTurnDelta -lt 1) {
+    throw "Camera wake/follow evidence is incomplete: $Path"
+  }
+  return [pscustomobject]@{
+    record = $summary
+    firmwareSha256 = Assert-EvidenceIdentity $summary "Camera wake/follow evidence" $ExpectedCommit
+  }
+}
+
+function Assert-BodySensorReady {
+  param([string]$Path, [string]$ExpectedCommit)
+  $report = Read-JsonFile $Path
+  if ($report.schema -ne "stackchan.body-sensor-validation-report.v1" -or
+      $report.status -ne "pass" -or [int]$report.failed -ne 0) {
+    throw "Body touch/IMU evidence is not complete: $Path"
+  }
+  return [pscustomobject]@{
+    record = $report
+    firmwareSha256 = Assert-EvidenceIdentity $report "Body touch/IMU evidence" $ExpectedCommit
+  }
+}
+
+function Assert-FinalSoakReady {
+  param([string]$Path, [string]$ExpectedCommit, [int]$MinDurationSeconds)
+  $summary = Read-JsonFile $Path
+  if ($summary.schema -ne "stackchan.full-system-soak-summary.v1" -or
+      $summary.status -ne "pass" -or [int]$summary.durationSeconds -lt $MinDurationSeconds) {
+    throw "Final integrated soak evidence is not complete or long enough: $Path"
+  }
+  foreach ($flag in @(
+      "requireMotion", "requireMotionTelemetry", "requireNoMotionTimeouts", "requireBridgeSocket",
+      "requireWakeReady", "requireMicReady", "requireSpeakerReady", "requireRvcWorker",
+      "requirePowerCoordinator", "requirePowerForensics", "requireFinalIntegration",
+      "requireCameraCapture", "requireCameraHostVision", "requirePmicVbusStable",
+      "requireNoNewHardFloorEvents", "requireManagedChargePolicy", "requireVerifiedMotionStop",
+      "failFastOnStrictBreach"
+    )) {
+    if ($null -eq $summary.strict.PSObject.Properties[$flag] -or -not [bool]$summary.strict.$flag) {
+      throw "Final integrated soak is missing strict flag: $flag"
+    }
+  }
+  $checker = Join-Path $PSScriptRoot "check_full_system_soak_evidence.ps1"
+  $checkOutput = & $checker -SummaryJsonPath $Path -MinDurationSeconds $MinDurationSeconds -RequirePowerForensics -RequireFinalIntegration -RequireReady -Json
+  if ($LASTEXITCODE -ne 0) {
+    throw "Final integrated soak formal verification failed: $checkOutput"
+  }
+  $check = $checkOutput | ConvertFrom-Json
+  if ($check.status -ne "full-system-soak-ready" -or [int]$check.failed -ne 0) {
+    throw "Final integrated soak formal verification did not return ready: $($check.status)"
+  }
+  return [pscustomobject]@{
+    record = $summary
+    check = $check
+    firmwareSha256 = Assert-EvidenceIdentity $summary "Final integrated soak evidence" $ExpectedCommit
   }
 }
 
@@ -237,6 +334,27 @@ try {
     throw "Hardware evidence verification failed."
   }
 
+  if ([string]::IsNullOrWhiteSpace($ProjectLicensePath)) {
+    $ProjectLicensePath = Join-Path $repoRoot "LICENSE"
+  }
+  Assert-ProjectLicenseReady $ProjectLicensePath
+  foreach ($requiredEvidence in @(
+      @{ name = "CameraFollowSummaryPath"; value = $CameraFollowSummaryPath },
+      @{ name = "BodySensorReportPath"; value = $BodySensorReportPath },
+      @{ name = "FullSystemSoakSummaryPath"; value = $FullSystemSoakSummaryPath }
+    )) {
+    if ([string]::IsNullOrWhiteSpace([string]$requiredEvidence.value)) {
+      throw "Consumer promotion requires -$($requiredEvidence.name)."
+    }
+  }
+  $cameraEvidence = Assert-CameraFollowReady $CameraFollowSummaryPath $ExpectedCommit
+  $bodyEvidence = Assert-BodySensorReady $BodySensorReportPath $ExpectedCommit
+  $soakEvidence = Assert-FinalSoakReady $FullSystemSoakSummaryPath $ExpectedCommit $MinFinalSoakDurationSeconds
+  $firmwareHashes = @(@($cameraEvidence.firmwareSha256, $bodyEvidence.firmwareSha256, $soakEvidence.firmwareSha256) | Select-Object -Unique)
+  if ($firmwareHashes.Count -ne 1) {
+    throw "Camera, body-sensor, and final-soak evidence do not reference the same installed firmware SHA-256"
+  }
+
   $manifest = Get-Content -LiteralPath (Join-ResolvedPath $packageRootPath "release_manifest.json") -Raw | ConvertFrom-Json
   if ($manifest.status -notmatch "hardware validation pending") {
     throw "Unexpected manifest status for prerelease promotion review: $($manifest.status)"
@@ -283,6 +401,7 @@ try {
   Write-Host "Commit: $ExpectedCommit"
   Write-Host "Package: $packageRootPath"
   Write-Host "Evidence: $EvidenceRoot"
+  Write-Host "Installed firmware SHA256: $($firmwareHashes[0])"
   if ($null -ne $ciException) {
     Write-Host "CI exception: $ExternalAccountCiExceptionPath"
   }

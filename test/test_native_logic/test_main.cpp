@@ -45,6 +45,7 @@
 #include "persona/IdleLife.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/SpeechPlanner.hpp"
+#include "persona/StereoDirection.hpp"
 #include "power/PowerCoordinator.hpp"
 #include "power/PowerForensics.hpp"
 #include "io/OtaPolicy.hpp"
@@ -1084,8 +1085,8 @@ void test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking() {
   TEST_ASSERT_GREATER_THAN_FLOAT(0.12f, frame.face.pupilX);
   TEST_ASSERT_LESS_THAN_FLOAT(-0.02f, frame.face.pupilY);
   TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, frame.face.faceX);
-  TEST_ASSERT_GREATER_THAN_FLOAT(4.0f, frame.motion.yawDeg);
-  TEST_ASSERT_LESS_THAN_FLOAT(-0.5f, frame.motion.pitchDeg);
+  TEST_ASSERT_LESS_THAN_FLOAT(-1.0f, frame.motion.yawDeg);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.08f, frame.motion.pitchDeg);
 }
 
 void test_gaze_tracker_reduced_motion_dampens_face_tracking() {
@@ -1115,6 +1116,155 @@ void test_gaze_tracker_reduced_motion_dampens_face_tracking() {
   TEST_ASSERT_GREATER_THAN_FLOAT(fabsf(reduced.motion.yawDeg) * 2.0f, fabsf(full.motion.yawDeg));
 }
 
+void test_gaze_tracker_face_lock_owns_motion_pose() {
+  GazeTracker tracker;
+  tracker.reset(0);
+
+  RobotEvent centered;
+  centered.type = EventType::FaceDetected;
+  centered.timestampMs = 100;
+  centered.strength = 1.0f;
+  centered.hasPayload = true;
+  centered.x = 0.0f;
+  centered.y = 0.0f;
+  centered.z = 0.65f;
+  tracker.applyEvent(centered);
+
+  RobotFrame frame = makeNeutralFrame();
+  frame.motion.yawMode = YawMode::Angle;
+  frame.motion.yawDeg = 22.0f;
+  frame.motion.pitchDeg = -9.0f;
+  tracker.apply(frame, 150, false);
+
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, frame.motion.yawDeg);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, frame.motion.pitchDeg);
+}
+
+void test_gaze_tracker_accumulates_and_holds_closed_loop_head_pose() {
+  GazeTracker tracker;
+  tracker.reset(0);
+
+  RobotEvent left;
+  left.type = EventType::FaceDetected;
+  left.timestampMs = 100;
+  left.strength = 1.0f;
+  left.hasPayload = true;
+  left.x = -0.60f;
+  left.y = 0.30f;
+  left.z = 0.70f;
+  tracker.applyEvent(left);
+  for (uint32_t nowMs = 100; nowMs <= 1100; nowMs += 50) {
+    RobotFrame frame = makeNeutralFrame();
+    frame.motion.yawMode = YawMode::Angle;
+    tracker.apply(frame, nowMs, false);
+  }
+
+  const float acquiredYaw = tracker.telemetry().yawOffsetDeg;
+  const float acquiredPitch = tracker.telemetry().pitchOffsetDeg;
+  TEST_ASSERT_GREATER_THAN_FLOAT(10.0f, acquiredYaw);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.80f, acquiredPitch);
+
+  RobotEvent centered = left;
+  centered.timestampMs = 1150;
+  centered.x = 0.0f;
+  centered.y = 0.0f;
+  tracker.applyEvent(centered);
+  for (uint32_t nowMs = 1150; nowMs <= 1600; nowMs += 50) {
+    RobotFrame frame = makeNeutralFrame();
+    frame.motion.yawMode = YawMode::Angle;
+    tracker.apply(frame, nowMs, false);
+  }
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, acquiredYaw, tracker.telemetry().yawOffsetDeg);
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, acquiredPitch, tracker.telemetry().pitchOffsetDeg);
+
+  RobotEvent right = centered;
+  right.timestampMs = 1650;
+  right.x = 0.60f;
+  tracker.applyEvent(right);
+  RobotFrame finalFrame = makeNeutralFrame();
+  for (uint32_t nowMs = 1650; nowMs <= 3750; nowMs += 50) {
+    finalFrame = makeNeutralFrame();
+    finalFrame.motion.yawMode = YawMode::Angle;
+    tracker.apply(finalFrame, nowMs, false);
+  }
+  TEST_ASSERT_LESS_THAN_FLOAT(-8.0f, tracker.telemetry().yawOffsetDeg);
+  TEST_ASSERT_LESS_THAN_FLOAT(-7.0f, finalFrame.motion.yawDeg);
+}
+
+void test_gaze_tracker_vertical_follow_is_bounded_and_returns_without_snap() {
+  GazeTracker tracker;
+  tracker.reset(0);
+
+  RobotEvent lowFace;
+  lowFace.type = EventType::FaceDetected;
+  lowFace.timestampMs = 100;
+  lowFace.strength = 1.0f;
+  lowFace.hasPayload = true;
+  lowFace.x = 0.0f;
+  lowFace.y = 0.90f;
+  lowFace.z = 0.70f;
+  tracker.applyEvent(lowFace);
+  for (uint32_t nowMs = 100; nowMs <= 3000; nowMs += 50) {
+    RobotFrame frame = makeNeutralFrame();
+    frame.motion.yawMode = YawMode::Angle;
+    tracker.apply(frame, nowMs, false);
+  }
+  const float trackedPitch = tracker.telemetry().pitchOffsetDeg;
+  TEST_ASSERT_LESS_THAN_FLOAT(-7.0f, trackedPitch);
+  TEST_ASSERT_GREATER_THAN_FLOAT(-8.01f, trackedPitch);
+
+  RobotEvent lost;
+  lost.type = EventType::FaceLost;
+  lost.timestampMs = 3100;
+  lost.strength = 1.0f;
+  tracker.applyEvent(lost);
+  RobotFrame returning = makeNeutralFrame();
+  for (uint32_t nowMs = 3100; nowMs <= 4100; nowMs += 100) {
+    returning = makeNeutralFrame();
+    returning.motion.yawMode = YawMode::Angle;
+    tracker.apply(returning, nowMs, false);
+  }
+  TEST_ASSERT_FLOAT_WITHIN(0.15f, trackedPitch + 0.75f, tracker.telemetry().pitchOffsetDeg);
+  TEST_ASSERT_FLOAT_WITHIN(0.20f, tracker.telemetry().pitchOffsetDeg, returning.motion.pitchDeg);
+}
+
+void test_gaze_tracker_prevents_windup_while_motion_output_is_off() {
+  GazeTracker tracker;
+  tracker.reset(0);
+  tracker.setMotionOutputActive(false, 0);
+
+  RobotEvent face;
+  face.type = EventType::FaceDetected;
+  face.timestampMs = 100;
+  face.strength = 1.0f;
+  face.hasPayload = true;
+  face.x = -0.80f;
+  face.y = -0.50f;
+  face.z = 0.70f;
+  tracker.applyEvent(face);
+
+  RobotFrame inactiveFrame = makeNeutralFrame();
+  for (uint32_t nowMs = 100; nowMs <= 3000; nowMs += 50) {
+    inactiveFrame = makeNeutralFrame();
+    inactiveFrame.motion.yawMode = YawMode::Angle;
+    tracker.apply(inactiveFrame, nowMs, false);
+  }
+  TEST_ASSERT_FALSE(tracker.telemetry().motionOutputActive);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, tracker.telemetry().yawOffsetDeg);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, tracker.telemetry().pitchOffsetDeg);
+  TEST_ASSERT_LESS_THAN_FLOAT(-0.10f, inactiveFrame.face.pupilX);
+
+  face.timestampMs = 3000;
+  tracker.applyEvent(face);
+  tracker.setMotionOutputActive(true, 3000);
+  RobotFrame firstActiveFrame = makeNeutralFrame();
+  firstActiveFrame.motion.yawMode = YawMode::Angle;
+  tracker.apply(firstActiveFrame, 3050, false);
+  TEST_ASSERT_TRUE(tracker.telemetry().motionOutputActive);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.50f, tracker.telemetry().yawOffsetDeg);
+  TEST_ASSERT_LESS_THAN_FLOAT(2.0f, tracker.telemetry().yawOffsetDeg);
+}
+
 void test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction() {
   GazeTracker tracker;
   tracker.reset(0);
@@ -1129,6 +1279,10 @@ void test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction() {
   seen.z = 0.60f;
   tracker.applyEvent(seen);
 
+  RobotFrame acquired = makeNeutralFrame();
+  acquired.motion.yawMode = YawMode::Angle;
+  tracker.apply(acquired, 150, false);
+
   RobotEvent lost;
   lost.type = EventType::FaceLost;
   lost.timestampMs = 900;
@@ -1140,11 +1294,11 @@ void test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction() {
   tracker.apply(searching, 1300, false);
   TEST_ASSERT_FALSE(tracker.telemetry().tracking);
   TEST_ASSERT_LESS_THAN_FLOAT(-0.02f, searching.face.pupilX);
-  TEST_ASSERT_LESS_THAN_FLOAT(-0.3f, searching.motion.yawDeg);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.3f, searching.motion.yawDeg);
 
   RobotFrame settled = makeNeutralFrame();
   settled.motion.yawMode = YawMode::Angle;
-  tracker.apply(settled, 7000, false);
+  tracker.apply(settled, 12000, false);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, settled.face.pupilX);
 }
 
@@ -1167,7 +1321,7 @@ void test_intent_engine_tracks_face_position_payload() {
   const RobotFrame tracked = engine.update(160);
   TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(tracked.mode));
   TEST_ASSERT_LESS_THAN_FLOAT(before.face.pupilX - 0.10f, tracked.face.pupilX);
-  TEST_ASSERT_LESS_THAN_FLOAT(before.motion.yawDeg - 3.0f, tracked.motion.yawDeg);
+  TEST_ASSERT_GREATER_THAN_FLOAT(before.motion.yawDeg + 0.50f, tracked.motion.yawDeg);
 }
 
 void test_camera_adapter_publishes_clamped_face_detection() {
@@ -1275,6 +1429,47 @@ void test_command_map_accepts_bench_tokens_matching_yaml_keys() {
                     static_cast<int>(CommandMap::fromToken("dance")));
 }
 
+void test_stereo_direction_estimates_opposite_sample_delays() {
+  constexpr size_t kFrames = 224;
+  int16_t signal[kFrames] = {};
+  uint32_t state = 0x42A5F00Du;
+  for (size_t i = 0; i < kFrames; ++i) {
+    state = state * 1664525u + 1013904223u;
+    signal[i] = static_cast<int16_t>((static_cast<int32_t>(state >> 16) - 32768) / 3);
+  }
+
+  int16_t rightDelayed[kFrames * 2u] = {};
+  int16_t leftDelayed[kFrames * 2u] = {};
+  constexpr size_t kDelay = 2;
+  for (size_t i = 0; i < kFrames; ++i) {
+    rightDelayed[i * 2u] = signal[i];
+    rightDelayed[i * 2u + 1u] = i >= kDelay ? signal[i - kDelay] : 0;
+    leftDelayed[i * 2u] = i >= kDelay ? signal[i - kDelay] : 0;
+    leftDelayed[i * 2u + 1u] = signal[i];
+  }
+
+  const StereoDirectionEstimate right =
+      estimateStereoDirection(rightDelayed, kFrames, 16000, 4);
+  const StereoDirectionEstimate left =
+      estimateStereoDirection(leftDelayed, kFrames, 16000, 4);
+  TEST_ASSERT_TRUE(right.valid);
+  TEST_ASSERT_TRUE(left.valid);
+  TEST_ASSERT_EQUAL_INT8(2, right.lagSamples);
+  TEST_ASSERT_EQUAL_INT8(-2, left.lagSamples);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.50f, right.azimuthNorm);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -0.50f, left.azimuthNorm);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.70f, right.correlation);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.70f, left.correlation);
+}
+
+void test_stereo_direction_rejects_silence() {
+  int16_t silence[128 * 2u] = {};
+  const StereoDirectionEstimate result =
+      estimateStereoDirection(silence, 128, 16000, 4);
+  TEST_ASSERT_FALSE(result.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, result.level);
+}
+
 void test_active_speaker_tracker_uses_audio_to_choose_among_faces() {
   ActiveSpeakerTracker tracker;
   tracker.reset(0);
@@ -1305,10 +1500,46 @@ void test_active_speaker_tracker_holds_target_while_robot_replies() {
   TEST_ASSERT_FALSE(tracker.target(8000).valid);
 }
 
+void test_active_speaker_tracker_requires_spatial_agreement_for_audio_match() {
+  ActiveSpeakerTracker tracker;
+  tracker.reset(0);
+  tracker.updateSoundDirection(0.75f, 0.9f, 100);
+  const FaceCandidate opposite[] = {{-0.70f, 0.0f, 0.45f, 0.95f}};
+  const ActiveSpeakerTarget target = tracker.updateFaces(opposite, 1, 180);
+  TEST_ASSERT_TRUE(target.valid);
+  TEST_ASSERT_FALSE(target.audioMatched);
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, target.audioDirectionError);
+}
+
+void test_camera_adapter_holds_recent_face_across_short_detector_miss() {
+  CameraAdapter camera;
+  TEST_ASSERT_TRUE(camera.begin());
+  const FaceCandidate face[] = {{0.55f, -0.05f, 0.40f, 0.90f}};
+  camera.submitFaces(face, 1, 100);
+  RobotEvent event;
+  TEST_ASSERT_TRUE(camera.poll(&event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(event.type));
+
+  camera.submitFaces(nullptr, 0, 1000);
+  TEST_ASSERT_TRUE(camera.poll(&event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceDetected), static_cast<int>(event.type));
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().faceHoldSelections);
+  TEST_ASSERT_TRUE(camera.telemetry().targetValid);
+
+  camera.submitFaces(nullptr, 0, 3000);
+  TEST_ASSERT_TRUE(camera.poll(&event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::FaceLost), static_cast<int>(event.type));
+  TEST_ASSERT_FALSE(camera.telemetry().targetValid);
+}
+
 void test_camera_adapter_publishes_audio_matched_active_speaker() {
   CameraAdapter camera;
   TEST_ASSERT_TRUE(camera.begin());
   camera.submitSoundDirection(-0.65f, 0.9f, 100);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().soundDirectionUpdates);
+  TEST_ASSERT_EQUAL_UINT32(100, camera.telemetry().lastSoundDirectionMs);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.65f, camera.telemetry().lastSoundAzimuthNorm);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.9f, camera.telemetry().lastSoundStrength);
   const FaceCandidate faces[] = {
       {-0.60f, 0.10f, 0.35f, 0.95f},
       {0.70f, 0.0f, 0.70f, 0.95f},
@@ -1574,8 +1805,64 @@ void test_body_feedback_speech_envelope_animates_speaking_light() {
   RobotFrame frame = makeNeutralFrame();
   frame.mode = CharacterMode::Speak;
   const BodyRgbFrame closed = feedback.render(frame, 0.0f, 400, 1.0f, false);
-  const BodyRgbFrame open = feedback.render(frame, 1.0f, 400, 1.0f, false);
+  const BodyRgbFrame open = feedback.render(frame, 1.0f, 450, 1.0f, false);
   TEST_ASSERT_GREATER_THAN_UINT32(bodyRgbEnergy(closed), bodyRgbEnergy(open));
+}
+
+void test_body_feedback_crossfades_mode_and_mood_changes() {
+  BodyFeedback feedback;
+  feedback.begin(0);
+  RobotFrame frame = makeNeutralFrame();
+  frame.mode = CharacterMode::Idle;
+  frame.emotion.valence = 0.2f;
+  const BodyRgbFrame idle = feedback.render(frame, 0.0f, 100, 1.0f, false);
+
+  frame.mode = CharacterMode::Think;
+  frame.emotion.valence = -0.4f;
+  frame.emotion.arousal = 0.8f;
+  const BodyRgbFrame firstThink = feedback.render(frame, 0.0f, 150, 1.0f, false);
+  TEST_ASSERT_EQUAL_UINT32(1, feedback.telemetry().modeTransitions);
+  TEST_ASSERT_TRUE(feedback.telemetry().transitionActive);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT8(16, feedback.telemetry().lastChannelStep);
+  TEST_ASSERT_NOT_EQUAL(bodyRgbEnergy(idle), bodyRgbEnergy(firstThink));
+
+  for (uint32_t nowMs = 200; nowMs <= 1200; nowMs += 50) {
+    feedback.render(frame, 0.0f, nowMs, 1.0f, false);
+  }
+  TEST_ASSERT_FALSE(feedback.telemetry().transitionActive);
+  TEST_ASSERT_EQUAL_UINT32(1, feedback.telemetry().modeTransitions);
+}
+
+void test_body_feedback_bounds_every_normal_mode_transition() {
+  BodyFeedback feedback;
+  feedback.begin(0);
+  RobotFrame frame = makeNeutralFrame();
+  const CharacterMode modes[] = {
+      CharacterMode::Idle,
+      CharacterMode::Attend,
+      CharacterMode::Listen,
+      CharacterMode::Think,
+      CharacterMode::Speak,
+      CharacterMode::React,
+      CharacterMode::Sleep,
+      CharacterMode::Idle,
+  };
+  uint32_t nowMs = 100;
+  frame.mode = modes[0];
+  feedback.render(frame, 0.0f, nowMs, 1.0f, false);
+  for (size_t index = 1; index < sizeof(modes) / sizeof(modes[0]); ++index) {
+    frame.mode = modes[index];
+    frame.emotion.arousal = static_cast<float>(index % 3) * 0.30f;
+    frame.emotion.valence = index % 2 == 0 ? 0.45f : -0.35f;
+    nowMs += 50;
+    feedback.render(frame, frame.mode == CharacterMode::Speak ? 0.8f : 0.0f, nowMs, 1.0f, false);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT8(16, feedback.telemetry().lastChannelStep);
+    for (uint8_t settle = 0; settle < 8; ++settle) {
+      nowMs += 50;
+      feedback.render(frame, frame.mode == CharacterMode::Speak ? 0.8f : 0.0f, nowMs, 1.0f, false);
+    }
+  }
+  TEST_ASSERT_EQUAL_UINT32(7, feedback.telemetry().modeTransitions);
 }
 
 void test_intent_engine_prioritizes_explicit_command_speech_cue() {
@@ -2278,6 +2565,83 @@ void test_power_coordinator_grants_only_healthy_motion() {
   const uint32_t transitions = coordinator.telemetry().transitions;
   coordinator.update(input, 140);
   TEST_ASSERT_EQUAL_UINT32(transitions, coordinator.telemetry().transitions);
+}
+
+void test_motion_audio_policy_allows_listening_and_thinking_follow() {
+  MotionAudioActivity activity;
+  activity.microphoneCaptureActive = true;
+  activity.wakeTurnActive = true;
+  activity.bridgeConversationBusy = true;
+  activity.pendingBridgeOutput = true;
+
+  TEST_ASSERT_FALSE(shouldPreemptMotionForAudio(activity));
+}
+
+void test_motion_audio_policy_preempts_only_for_playback_load() {
+  MotionAudioActivity activity;
+  activity.downlinkActive = true;
+  TEST_ASSERT_TRUE(shouldPreemptMotionForAudio(activity));
+
+  activity = {};
+  activity.downlinkPlaybackActive = true;
+  TEST_ASSERT_TRUE(shouldPreemptMotionForAudio(activity));
+
+  activity = {};
+  activity.bridgeAudioStreamActive = true;
+  TEST_ASSERT_TRUE(shouldPreemptMotionForAudio(activity));
+
+  activity = {};
+  activity.audioOutputPlaybackActive = true;
+  TEST_ASSERT_TRUE(shouldPreemptMotionForAudio(activity));
+
+  activity = {};
+  activity.speakerPowerActive = true;
+  TEST_ASSERT_TRUE(shouldPreemptMotionForAudio(activity));
+
+  activity = {};
+  activity.speakerRunning = true;
+  TEST_ASSERT_TRUE(shouldPreemptMotionForAudio(activity));
+}
+
+void test_motion_audio_preemption_gate_releases_wake_cue_tail_for_listening() {
+  MotionAudioPreemptionGate gate;
+  MotionAudioActivity activity;
+  activity.speakerPowerActive = true;
+
+  TEST_ASSERT_TRUE(gate.update(activity, 100, 8000));
+  TEST_ASSERT_TRUE(gate.audioLoadActive());
+  TEST_ASSERT_FALSE(gate.cooldownTailActive());
+
+  activity = {};
+  TEST_ASSERT_TRUE(gate.update(activity, 200, 8000));
+  TEST_ASSERT_FALSE(gate.audioLoadActive());
+  TEST_ASSERT_TRUE(gate.cooldownTailActive());
+
+  activity.microphoneCaptureActive = true;
+  activity.wakeTurnActive = true;
+  activity.bridgeConversationBusy = true;
+  TEST_ASSERT_FALSE(gate.update(activity, 300, 8000));
+  TEST_ASSERT_FALSE(gate.cooldownTailActive());
+  TEST_ASSERT_EQUAL_UINT32(1, gate.microphoneCooldownClears());
+
+  activity.microphoneCaptureActive = false;
+  TEST_ASSERT_FALSE(gate.update(activity, 400, 8000));
+}
+
+void test_motion_audio_preemption_gate_keeps_real_playback_and_tail_protected() {
+  MotionAudioPreemptionGate gate;
+  MotionAudioActivity activity;
+  activity.downlinkPlaybackActive = true;
+  activity.microphoneCaptureActive = true;
+
+  TEST_ASSERT_TRUE(gate.update(activity, 100, 8000));
+  TEST_ASSERT_TRUE(gate.audioLoadActive());
+
+  activity = {};
+  TEST_ASSERT_TRUE(gate.update(activity, 200, 8000));
+  TEST_ASSERT_TRUE(gate.cooldownTailActive());
+  TEST_ASSERT_FALSE(gate.update(activity, 8100, 8000));
+  TEST_ASSERT_FALSE(gate.cooldownTailActive());
 }
 
 void test_power_coordinator_protection_preempts_audio_and_motion() {
@@ -6337,6 +6701,8 @@ int main() {
   RUN_TEST(test_audio_saliency_detects_speech_direction_and_habituation);
   RUN_TEST(test_audio_saliency_marks_loud_noise_without_speech_band);
   RUN_TEST(test_audio_saliency_uses_wav_fixtures_for_vad_and_direction);
+  RUN_TEST(test_stereo_direction_estimates_opposite_sample_delays);
+  RUN_TEST(test_stereo_direction_rejects_silence);
   RUN_TEST(test_audio_reflex_maps_saliency_to_persona_events);
   RUN_TEST(test_audio_reflex_loud_noise_preempts_speech_events);
   RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);
@@ -6385,14 +6751,22 @@ int main() {
   RUN_TEST(test_body_feedback_caps_brightness_and_protected_mode_load_sheds);
   RUN_TEST(test_body_feedback_mic_and_touch_events_create_visible_pulses);
   RUN_TEST(test_body_feedback_speech_envelope_animates_speaking_light);
+  RUN_TEST(test_body_feedback_crossfades_mode_and_mood_changes);
+  RUN_TEST(test_body_feedback_bounds_every_normal_mode_transition);
   RUN_TEST(test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking);
   RUN_TEST(test_gaze_tracker_reduced_motion_dampens_face_tracking);
+  RUN_TEST(test_gaze_tracker_face_lock_owns_motion_pose);
+  RUN_TEST(test_gaze_tracker_accumulates_and_holds_closed_loop_head_pose);
+  RUN_TEST(test_gaze_tracker_vertical_follow_is_bounded_and_returns_without_snap);
+  RUN_TEST(test_gaze_tracker_prevents_windup_while_motion_output_is_off);
   RUN_TEST(test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction);
   RUN_TEST(test_intent_engine_tracks_face_position_payload);
   RUN_TEST(test_camera_adapter_publishes_clamped_face_detection);
   RUN_TEST(test_camera_adapter_publishes_face_lost_event);
   RUN_TEST(test_active_speaker_tracker_uses_audio_to_choose_among_faces);
   RUN_TEST(test_active_speaker_tracker_holds_target_while_robot_replies);
+  RUN_TEST(test_active_speaker_tracker_requires_spatial_agreement_for_audio_match);
+  RUN_TEST(test_camera_adapter_holds_recent_face_across_short_detector_miss);
   RUN_TEST(test_camera_adapter_publishes_audio_matched_active_speaker);
   RUN_TEST(test_camera_host_protocol_requires_exact_pairing_code_query);
   RUN_TEST(test_camera_host_protocol_parses_bounded_face_candidates);
@@ -6426,6 +6800,10 @@ int main() {
   RUN_TEST(test_sensor_adapter_parses_soft_mic_cue_command);
   RUN_TEST(test_power_coordinator_keeps_idle_servo_rail_off);
   RUN_TEST(test_power_coordinator_grants_only_healthy_motion);
+  RUN_TEST(test_motion_audio_policy_allows_listening_and_thinking_follow);
+  RUN_TEST(test_motion_audio_policy_preempts_only_for_playback_load);
+  RUN_TEST(test_motion_audio_preemption_gate_releases_wake_cue_tail_for_listening);
+  RUN_TEST(test_motion_audio_preemption_gate_keeps_real_playback_and_tail_protected);
   RUN_TEST(test_power_coordinator_protection_preempts_audio_and_motion);
   RUN_TEST(test_power_coordinator_holds_derated_charge_after_load);
   RUN_TEST(test_power_floor_tracker_records_confirmed_event_context);

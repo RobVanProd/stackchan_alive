@@ -22,7 +22,7 @@ FOUNDATION_MAX_SENTENCES = 2
 FOUNDATION_ALLOWED_MODES = {"idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"}
 FOUNDATION_ALLOWED_EARCONS = {"none", "wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety"}
 FOUNDATION_SPEECH_INTENTS = ("boot", "idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety")
-FOUNDATION_MEMORY_PREFIXES = ("user.", "project.", "robot.")
+FOUNDATION_MEMORY_PREFIXES = ("user.", "project.")
 FOUNDATION_DENIED_MEMORY_TERMS = (
     "password",
     "passcode",

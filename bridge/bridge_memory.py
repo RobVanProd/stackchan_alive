@@ -12,8 +12,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-MEMORY_SCHEMA = "stackchan.bridge-memory.v2"
-MEMORY_SCHEMA_VERSION = 2
+MEMORY_SCHEMA = "stackchan.bridge-memory.v3"
+MEMORY_SCHEMA_VERSION = 3
+LEGACY_MEMORY_SCHEMA = "stackchan.bridge-memory.v2"
+LEGACY_MEMORY_SCHEMA_VERSION = 2
 MAX_MEMORY_ITEMS = 4
 MAX_DURABLE_FACTS = 24
 MAX_RECENT_CONTEXT = 8
@@ -398,10 +400,12 @@ class BridgeMemory:
             return cls(
                 preferred_name=str(data.get("preferred_name", "")),
                 recent_topics=cls._items(data.get("recent_topics", [])),
-                physical_context=cls._items(data.get("physical_context", [])),
                 turns_seen=_turns_seen(data.get("turns_seen", 0)),
             )
-        if data.get("schema") != MEMORY_SCHEMA or data.get("schema_version") != MEMORY_SCHEMA_VERSION:
+        schema = data.get("schema")
+        schema_version = data.get("schema_version")
+        legacy_v2 = schema == LEGACY_MEMORY_SCHEMA and schema_version == LEGACY_MEMORY_SCHEMA_VERSION
+        if not legacy_v2 and (schema != MEMORY_SCHEMA or schema_version != MEMORY_SCHEMA_VERSION):
             return cls()
 
         now = _utc_now()
@@ -409,11 +413,13 @@ class BridgeMemory:
             record
             for item in data.get("durable_facts", []) if isinstance(data.get("durable_facts"), list)
             if (record := MemoryRecord.from_dict(item, now=now)) is not None
+            if not legacy_v2 or not record.key.startswith("robot.")
         )
         recent = _bounded_recent(
             record
             for item in data.get("recent_context", []) if isinstance(data.get("recent_context"), list)
             if (record := MemoryRecord.from_dict(item, now=now)) is not None
+            if not legacy_v2 or not record.key.startswith("robot.")
         )
         preferred_name = next((record.value for record in reversed(durable) if record.key in _NAME_KEYS), "")
         topics = _dedupe_tail(
@@ -520,9 +526,8 @@ class BridgeMemory:
                     durable = _upsert_durable(durable, key, value, 0.75, now=now)
                 elif key.startswith("user."):
                     durable = _upsert_durable(durable, key, value, 0.7, now=now)
-                elif key.startswith("robot."):
-                    physical.append(value)
-                    recent = _upsert_recent(recent, key, value, 0.5, PHYSICAL_CONTEXT_TTL, now=now)
+                # Robot state is trusted runtime telemetry, not character-authored memory.
+                # The runtime may add bounded robot context through with_overrides().
 
         forgets = normalized.get("memory_forget", [])
         if isinstance(forgets, list):
@@ -586,23 +591,10 @@ class BridgeMemory:
                 topics.append(topic)
                 recent = _upsert_recent(recent, "project.topic", topic, 0.4, RECENT_TOPIC_TTL, now=now)
 
-        physical = list(self.physical_context)
-        for marker, context in (
-            ("picked you up", "user picked Stackchan up"),
-            ("pick you up", "user picked Stackchan up"),
-            ("shook you", "user shook Stackchan"),
-            ("touch", "user touched Stackchan"),
-            ("dark", "room is dark"),
-        ):
-            if marker in lowered:
-                physical.append(context)
-                recent = _upsert_recent(recent, "robot.physical_context", context, 0.5, PHYSICAL_CONTEXT_TTL, now=now)
-
         return replace(
             self,
             preferred_name=preferred_name,
             recent_topics=_dedupe_tail(topics),
-            physical_context=_dedupe_tail(physical),
             turns_seen=min(MAX_TURNS_SEEN, self.turns_seen + 1),
             _durable_facts=durable,
             _recent_context=recent,

@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-11 11:54 America/New_York
+Status timestamp: 2026-07-11 22:31 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -9,11 +9,155 @@ full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink
 Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
 support compiled with motion disabled at boot.
 
+### Final Integration Checkpoint (2026-07-11)
+
+- The live robot is running the OTA-confirmed incremental microphone-capture camera candidate,
+  firmware SHA256 `890AE99A55CA89BAE3694D60287359D9F2A21814D1AD1B15E99A1E98E6DF8AC2`.
+  Its build evidence is
+  `output\hardware-evidence\final-integration\camera-follow-incremental-capture-candidate-20260711-203030`
+  and OTA evidence is
+  `output\hardware-evidence\final-integration\camera-follow-incremental-capture-ota-20260711-203030`.
+  At the latest check bridge/network were ready, motion/rail/torque were off, VBUS was `4934 mV`,
+  no hard-floor or PMIC VBUS-loss event had occurred, and the display window maximum was `33333 us`.
+- A verified private rollback archive of that installed lead is stored at
+  `output\private\firmware-leads\camera-follow-incremental-capture-20260711-203030-archived-20260711-211938.zip`,
+  archive SHA256 `2F6891E401C4C7652DB9E991C790D8250F8394BEC5A410776A96131D21F564DE`.
+  It contains the firmware binary, OTA evidence, and source snapshot but no plaintext secret files.
+  The diagnostic binary is token-enabled, so the archive is private recovery material and must
+  never be included in a public package or Git release.
+- Camera capture and detection are physically proven. The oriented GC0308 initializes on its first
+  attempt; authenticated host requests and target updates advance without capture/authentication
+  failures; and hash-pinned YuNet has acquired a real face across center, left, right, loss, and
+  reacquisition positions. A 50-second supervised horizontal follow at
+  `output\hardware-evidence\final-integration\camera-follow-anti-windup-supervised-20260711-184445`
+  passed electrical/telemetry gates and was visually accepted as correct but slow.
+- Full wake/listen following is not yet accepted. The failed run at
+  `output\hardware-evidence\final-integration\camera-follow-full-stack-supervised-20260711-200935`
+  proved that the wake cue's eight-second audio cooldown was removing the servo rail during
+  microphone capture even though speaker playback was quiet. `MotionAudioPreemptionGate` now clears
+  only that stale wake-cue tail when listening begins; real downlink playback and its cooldown still
+  preempt motion. The follow-up run at
+  `output\hardware-evidence\final-integration\camera-follow-mic-handoff-supervised-20260711-202512`
+  proved the power handoff (`audio_preempt=false`, rail/torque retained) but exposed a second issue:
+  the 4.8-second dedicated capture loop blocked the intent task and froze camera gaze output.
+- Dedicated wake capture is now an incremental one-chunk-per-intent-cycle state machine, so camera
+  event polling, gaze, RGB, and character updates can continue through listening. Debug counters
+  expose active state, attempted/submitted chunks, service calls, and maximum service time. Native
+  logic passes `239/239`; the complete bridge/vision suite passes `205/205`; both camera and
+  production embedded builds pass. Final visual wake/listen/reply following remains pending because
+  the latest supervised attempt correctly refused to enable servos without a fresh face lock.
+- Release packaging now builds the legacy and pioarduino profiles sequentially with isolated cores,
+  snapshots each firmware before the framework switch, preserves 360 installed third-party
+  license/notice/metadata files with a portable SHA-256 index, and runs the complete verifier against
+  the exact ZIP before returning success. The diagnostic self-verification rehearsal
+  `postbuild-self-verify-smoke-20260711-214315` produced ZIP SHA256
+  `F702130F8424220B1D1EA8AB5E288F3161C60FC4F0EEF27E1406428965B48D9A`; its persisted verifier log
+  ends in `Release package verified`. All `49/49` PowerShell release/evidence contracts pass,
+  including the 24-point camera wake/follow safety contract, visual-review completion guard, and
+  unified consumer-promotion contract. This
+  rehearsal is not the final release package because physical evidence, owner license choice, and
+  production voice provenance remain open.
+- A superseding `-SkipBuild` packaging rehearsal after adding the camera/body-sensor validators,
+  visual-review guard, unified promotion contract, final integrated soak runner/checker, and the
+  production DirectML wrapper produced
+  `stackchan_alive_post-production-soak-gates-smoke-20260711-222909.zip`, SHA256
+  `90D98F90CF2F055D8A3FA9D31180DEBBD78E1AA889153749A6549BD7FC09FB7F`
+  (`42,746,302` bytes). Its persisted verifier log ends in `Release package verified`. It is
+  diagnostic rehearsal evidence, not the final release.
+- The final promotion gate now requires a clean matching source commit, one installed firmware
+  SHA-256 across operator-approved camera evidence, complete touch/IMU evidence, and the formally
+  verified integrated soak. `-RequireFinalIntegration` now includes camera capture and paired host
+  vision instead of rejecting camera-enabled production firmware. The gate also requires an
+  owner-selected project license and production voice provenance, both still open decisions.
+- The final-soak launcher now targets the accepted DirectML worker on local port `5059` and reuses
+  the existing production bridge. It refuses dirty source, non-loopback worker URLs, missing power,
+  display, network, or socket gates, and missing advancing paired vision before motion. It forces
+  and verifies motion off at preflight and performs verified stop cleanup on every post-enable
+  failure. The retired warm ROCm path remains an explicit rollback only.
+- The body RGB flow was visually accepted by the operator after mode/mood crossfades were added.
+  Touch and IMU telemetry were physically exercised for touch, pickup, putdown, shake, and tilt;
+  final zone-label orientation and combined-soak acceptance remain open.
+- The exact-name voice turn before the camera diagnostic passed end to end:
+  `What is your name?` -> `I am Stackchan.`, first audio `2072.38 ms`, total turn `4039.92 ms`,
+  one complete phrase, and no truncation. After production restore, a fresh wake/name turn is
+  still required. The failed physical attempt had healthy microphone reads with zero drops but
+  never opened the wake gate: maximum model probability was only 17 against cutoff 200, with
+  zero captures/uplinks/playbacks. The temporary archived image then remained pinned at maximum
+  probability 1 despite healthy microphone reads and ordinary audio peaks. Historical accepted
+  evidence from the same model reached probability 255 and completed wake turns at comparable
+  audio peaks, weakening threshold, gain, and channel-selection explanations. Source now makes
+  `/wake-reset` reset recurrent inference state as well as counters and zero-initializes both
+  TFLite arenas with `heap_caps_calloc` before constructing the streaming model. It verifies every
+  byte before use, fails closed on an initialization violation, and exposes
+  `sr_wake_mww_arenas_zero_initialized` in `/debug`. This is a strong, directly testable cause
+  hypothesis, not yet a claimed root cause. The superseding uninstalled OTA-capable candidate is
+  archived at
+  `output\hardware-evidence\final-integration\wake-zero-init-verified-ota-candidate-20260711-160828`,
+  SHA256 `298CDD4A07476B33CB75F07C4CF4162E539D64B972B75F4384A9DC7E934E0CC1`;
+  serial recovery and a fresh physical wake/name turn are required for confirmation.
+  A controlled PC-speaker replay adds a second, independent caveat: the exact stored wake fixture
+  reaches probability 255 when processed by the host with the embedded C frontend and the actual
+  TFLite model, but three short robot-microphone snapshots from a live replay reached only 9 when
+  processed through that same host path. Whisper heard only room noise in two snapshots and a
+  distorted phrase in one. That evidence keeps robot acoustics, playback geometry, and microphone
+  capture quality in scope alongside recurrent-state initialization. After serial recovery, the
+  acceptance test must verify the zero-initialized-arena invariant and compare one correctly timed
+  robot-mic capture against the model before any threshold, gain, or channel change.
+  `tools\flash_archived_app.ps1` now pins this exact app hash and resets OTA selection to `app0`
+  while preserving NVS and the partition table. Its dry run passed, and a deliberately incorrect
+  expected hash was rejected. The shared UTF-8 process runner now also throws on a nonzero native
+  child exit code, preventing failed PlatformIO or esptool runs from appearing successful.
+- Host memory is now `stackchan.bridge-memory.v3`. The v2 store was backed up and atomically
+  migrated; stale model-authored `low_battery` context was removed. Character output may write
+  only approved `user.*` and `project.*` memory. Typed `robot.*` context is reserved for trusted,
+  expiring runtime telemetry. The full bridge suite passes `202/202` with this boundary.
+- The real Gemma 4 character red team passes `25/25` with zero validation failures at
+  `output\character-red-team\memory-v3-gemma-20260711-143532`. A silent proof using the live
+  robot heartbeat correctly answered, `Yes I am on external power. I cannot see you because my
+  vision is not active.`, made no memory write, and completed in `1202.29 ms` at approximately
+  `13.31 tokens/s`; evidence is under
+  `output\character-red-team\live-embodiment-20260711-143644`.
+- Companion-v1 source readiness reports `111` passed, `0` failed, and `14` explicitly pending
+  hardware/store/distribution gates at
+  `output\release\final-readiness-20260711-144200`. The live DirectML worker remains ready on
+  `5059`; its last conversion took `0.3824 s` for `1.66 s` of audio, and the current robot remains
+  bridge/network ready with motion, rail, and torque off.
+- A no-motion final-integration run at
+  `output\pc-brain\final-integration-passive-30min-20260711-144503` stopped after 211 seconds on
+  one new terminal body-RGB I2C write failure. This was not a robot blackout: all 42 polls were
+  good, bridge/network and RVC remained ready, the board VBUS floor was 5.002 V, maximum chip
+  temperature was 65.5 C, maximum display frame time was 42,454 us, and no reset, PMIC event,
+  motion, servo rail, or torque occurred. The RGB adapter subsequently recovered. A source
+  candidate now retries one failed RGB transaction immediately and distinguishes retry/recovery
+  from terminal failure; it also adds independently auditable touch-zone and gesture counters.
+  Native logic passes 229/229 and the production build succeeds at 53.0% RAM and 41.8% flash.
+  The uninstalled candidate is archived at
+  `output\hardware-evidence\final-integration\rgb-i2c-retry-candidate-20260711-145737`, SHA256
+  `03DEC9FF3CEA1F91427A45876365A81F731E17D276D6FDB3506775714EA03A61`.
+- Current-lead reproducibility now checks the live DirectML worker on `5059`, the actual Python
+  LAN bridge process, bounded passive-watch failure ratio, and the longest clean soak instead of
+  stale hard-coded July 8/9 runtime assumptions. Its live result is `22` passed, `0` failed, and
+  `1` pending. The sole pending check is the required 28,800-second final soak; the longest clean
+  evidence currently selected is the 7,203-second no-motion lock-safe run. Report:
+  `output\current-lead\current-lead-reproducibility-latest\CURRENT_LEAD_REPRODUCIBILITY.json`.
+- Merge-readiness inspection confirms `origin/main` is already an ancestor of the working branch
+  (`0` commits needed from main, `144` branch commits ahead), so no upstream reconciliation is
+  currently pending. A content scan of all 742 tracked files found no occurrence of either private
+  OTA or camera-pairing secret. The final integration worktree remains intentionally uncommitted
+  until wake recovery, camera/touch/IMU hardware gates, and the final soak pass.
+- Release voice conversion is now explicitly BYOM and local-only. Model weights, indexes,
+  converted RVC audio, and RVC audition pages were removed from the public tree and release asset
+  contract, while restricted review material was preserved under `output\private`. The public
+  warm current-lead ZIP was sanitized to 89 required entries with zero restricted payloads,
+  SHA256 `CE06204F4F28CB819818AE9840EFA40A369A74AA4455C669D00D3A0C1DC2B4E3`. A real diagnostic
+  release ZIP was built and verified from extraction with the new archive guard.
+
 - Robot IP: `192.168.1.238`
 - PC bridge host: `192.168.1.240`
 - PC bridge port/path: `8765` / `/bridge`
 - Firmware debug endpoint: `http://192.168.1.238:8789/debug`
-- The authenticated LAN OTA baseline is physically installed in both `app0` and `app1` with
+- Historical accepted evidence (superseded by the temporary diagnostic install): the authenticated
+  LAN OTA baseline was physically installed in both `app0` and `app1` with
   firmware SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
   Both slots independently completed a continuous 30-second runtime-health window and reached
   `phase=confirmed`; bootloader rollback is enabled and software-only rollback is false. The
@@ -28,21 +172,27 @@ support compiled with motion disabled at boot.
   confirmed on both slots. Evidence is under
   `output\hardware-evidence\final-integration\ota-app1-confirmation-20260711` and
   `output\hardware-evidence\final-integration\ota-app0-confirmation-20260711`.
-- Bot-local wake acknowledgement now completes in the required order: detection, RGB commit,
+- Historical accepted wake evidence showed the required order: detection, RGB commit,
   microphone pause, tone, speaker-to-mic handoff, then capture. The physical check recorded 3/3
   detections, tones, captures, and completed downlinks with zero ordering violations or truncation.
   The last turn committed RGB in 1 ms, started the 176 ms cue after 218 ms, and began capture 9 ms
   after cue completion.
 - Production and isolated camera diagnostic images compile; the paired camera path serves ephemeral
   160x120 grayscale frames locally and returns bounded face boxes to the active-speaker tracker.
+  The zero-initialized-wake camera follow-on is archived at
+  `output\hardware-evidence\final-integration\camera-probe-zero-init-candidate-20260711-161206`,
+  SHA256 `A8E3B5BFFF879CA7629A95B411937345ADA85B40F3EE87CE62A7ECB19C5529AC`.
+  It builds at 56.4% RAM and 42.7% flash with motion disabled at boot and is queued only after the
+  production recovery image passes its wake/name gate.
   Physical camera and camera-guided servo tracking remain the next supervised hardware gate. No
   camera pass or final combined soak is claimed yet.
 - The installed 64 GB microSD is authorized for erasure at the next USB session, but exceeds
   M5Stack's documented 16 GB maximum and is optional/experimental. The destructive formatter
   remains separately build- and runtime-gated; card type/capacity must be shown before the exact
   erase phrase is accepted, then production firmware must be restored.
-- Current flashed diagnostic environment: `stackchan_release_forensics`; both OTA slots contain the
-  same confirmed image SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
+- Current running image is the archived production rollback on `app1`, SHA256
+  `875FE2DE5FB93BECEF6C72C08C1951326439CDCAE299528970C28D43CF115CFB`. `app0` retains the
+  isolated camera diagnostic for the next supervised real-face test; do not promote that slot.
 - Firmware guardrails: motion disabled at boot; one Power Coordinator owns servo/speaker power policy; the servo rail is off outside a granted motion window; audio, thermal, and supply protection preempt motion; VBUS has a 4400 mV unconditional floor; 4400-4550 mV motion requires fresh INA226 evidence that the external source is charging the body battery by at least 50 mA; motion resumes at 4700 mV; motion/audio sessions preemptively reduce battery charging to 125 mA and retain that rate for 30 seconds after load removal; rejected PMIC samples never enter policy; PMIC VBUS presence/loss transitions are counted; speaker power is off while idle; the face task runs above motion bookkeeping on their shared core.
 - Current exact firmware lead directory:
   `output\firmware-leads\ota-wake-confirmed-20260711-115537`

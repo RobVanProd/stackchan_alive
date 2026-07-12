@@ -54,6 +54,9 @@ Start with these files:
 - `personas/nova/voice.yaml`: voice/DSP target, packaged prompt metadata, and voice
   provenance notes.
 
+For a face-only walkthrough, including every currently wired YAML control and the advanced
+procedural engine path, use [CUSTOMIZING_THE_FACE.md](CUSTOMIZING_THE_FACE.md).
+
 Edit in that order. First establish what the character says, then tune how the same intent
 looks, moves, sounds, and settles. Keep `prompt.md` short: the generated character rules,
 validated local memory, and current context markers should remain visibly separate. Treat
@@ -178,17 +181,17 @@ overclaim content: "I understood everything you said."
 
 ## Author Privacy-Safe Memory
 
-Memory should feel like familiarity, never surveillance. The bridge may write only
-allowlisted `user.*`, `project.*`, and `robot.*` keys, and the foundation deny list cannot be
-removed. A persona may narrow the allowed prefixes or add denied terms.
+Memory should feel like familiarity, never surveillance. Character output may write only
+allowlisted `user.*` and `project.*` keys, and the foundation deny list cannot be removed.
+`robot.*` is reserved for fresh, typed runtime telemetry; a persona or model cannot author it.
+A persona may narrow the allowed prefixes or add denied terms.
 
 Prefer small, durable summaries:
 
 ```json
 "memory_write": {
   "user.preferred_name": "Rob",
-  "project.current_topic": "servo bracket",
-  "robot.recent_event": "picked up today"
+  "project.current_topic": "servo bracket"
 }
 ```
 
@@ -267,6 +270,11 @@ Review the result as a desk companion: let it idle, wake it, give it an ambiguou
 praise it, ignore one bid for attention, trigger a safe error path, and ask it to forget a
 stored preference. Check that speech, face, motion bias, and earcon agree in every state and
 that reduced-motion mode remains readable.
+
+When the persona changes face values, also follow the preview, native-test, display-only,
+viseme, and frame-time acceptance sequence in
+[CUSTOMIZING_THE_FACE.md](CUSTOMIZING_THE_FACE.md). A valid pack is necessary, but it does
+not by itself prove that a custom face is smooth on the physical display.
 
 ## Share
 

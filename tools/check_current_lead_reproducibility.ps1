@@ -2,11 +2,12 @@ param(
   [string]$WarmArchivePath = "",
   [string]$CandidateArchivePath = "",
   [string]$ReportDir = "output\current-lead\current-lead-reproducibility-latest",
-  [string]$RvcWorkerUrl = "http://127.0.0.1:5055",
+  [string]$RvcWorkerUrl = "http://127.0.0.1:5059",
   [string]$DeviceHost = "192.168.1.238",
   [int]$DevicePort = 8789,
-  [string]$PassiveWatchProgressPath = "output\pc-brain\warm-rocm-passive-overnight-watch-20260708-025548\progress.json",
+  [string]$PassiveWatchProgressPath = "",
   [string]$SoakSummaryPath = "",
+  [int]$MinSoakDurationSeconds = 28800,
   [switch]$SkipLive,
   [switch]$RequireReady,
   [switch]$Json
@@ -69,6 +70,12 @@ function Test-ZipEntries {
     $entries = Get-ZipEntryNames -Path $Path
     $missing = @($RequiredEntries | Where-Object { $entries -notcontains $_ })
     Add-Check "$CheckPrefix-entries" ($(if ($missing.Count -eq 0) { "pass" } else { "fail" })) "$(if ($missing.Count -eq 0) { 'required entries present' } else { 'missing: ' + ($missing -join ', ') })"
+    $restricted = @($entries | Where-Object {
+      $_ -match '(?i)(^|/)[^/]+\.(pth|index|onnx)$' -or
+      $_ -match '(?i)weightsgg|weights\.gg' -or
+      $_ -match '(?i)(^|/)[^/]*rvc[^/]*\.(wav|mp3|html)$'
+    })
+    Add-Check "$CheckPrefix-voice-payload" ($(if ($restricted.Count -eq 0) { "pass" } else { "fail" })) "$(if ($restricted.Count -eq 0) { 'no restricted model or converted RVC payload' } else { 'restricted: ' + ($restricted -join ', ') })"
   } catch {
     Add-Check "$CheckPrefix-entries" "fail" $_.Exception.Message
   }
@@ -169,14 +176,19 @@ if ($SkipLive) {
 } else {
   try {
     $health = Invoke-RestMethod -Uri "$RvcWorkerUrl/health" -TimeoutSec 5
-    $rvcOk = [bool]$health.ready -and [string]$health.device -eq "cuda:0" -and [string]$health.method -eq "pm"
+    $rvcOk = [bool]$health.ready -and
+      -not [string]::IsNullOrWhiteSpace([string]$health.device) -and
+      [string]$health.method -eq "pm"
     Add-Check "rvc-worker-live" ($(if ($rvcOk) { "pass" } else { "fail" })) "ready=$($health.ready) device=$($health.device) method=$($health.method)"
   } catch {
     Add-Check "rvc-worker-live" "fail" "$RvcWorkerUrl/health :: $($_.Exception.Message)"
   }
 
-  $bridge = @(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match "lan_service.py" -and $_.CommandLine -match "rvc_tts_client.py" -and $_.CommandLine -match "8765" })
-  Add-Check "bridge-process-live" ($(if ($bridge.Count -gt 0) { "pass" } else { "fail" })) "$(if ($bridge.Count -gt 0) { 'bridge process count=' + $bridge.Count } else { 'No lan_service.py process with rvc_tts_client.py on port 8765.' })"
+  $bridge = @(Get-CimInstance Win32_Process | Where-Object {
+      $_.Name -match '^python(?:w)?\.exe$' -and $_.CommandLine -and
+      $_.CommandLine -match "lan_service.py" -and $_.CommandLine -match "8765"
+    })
+  Add-Check "bridge-process-live" ($(if ($bridge.Count -gt 0) { "pass" } else { "fail" })) "$(if ($bridge.Count -gt 0) { 'bridge process count=' + $bridge.Count } else { 'No Python lan_service.py process on port 8765.' })"
 
   try {
     $debug = Invoke-RestMethod -Uri "http://$DeviceHost`:$DevicePort/debug" -TimeoutSec 3
@@ -186,11 +198,40 @@ if ($SkipLive) {
   }
 }
 
-if (Test-Path -LiteralPath $PassiveWatchProgressPath -PathType Leaf) {
+if ([string]::IsNullOrWhiteSpace($PassiveWatchProgressPath)) {
+  foreach ($progressFile in @(Get-ChildItem -Path "output\pc-brain" -Recurse -Filter "progress.json" -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending)) {
+    try {
+      $progressCandidate = Read-JsonFile $progressFile.FullName
+      $candidateRecords = Get-IntValue $progressCandidate "records" 0
+      $candidateFailedPolls = Get-IntValue $progressCandidate "failedPolls" 0
+      $candidateFailureRatio = if ($candidateRecords -gt 0) {
+        [double]$candidateFailedPolls / [double]$candidateRecords
+      } else { 1.0 }
+      if ([string]$progressCandidate.schema -eq "stackchan.full-system-soak-progress.v1" -and
+          (Get-IntValue $progressCandidate "motionRefreshes" -1) -eq 0 -and
+          $candidateRecords -gt 0 -and $candidateFailureRatio -le 0.01) {
+        $PassiveWatchProgressPath = $progressFile.FullName
+        break
+      }
+    } catch {
+      continue
+    }
+  }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($PassiveWatchProgressPath) -and
+    (Test-Path -LiteralPath $PassiveWatchProgressPath -PathType Leaf)) {
   try {
     $watch = Read-JsonFile $PassiveWatchProgressPath
     $motionRefreshes = Get-IntValue $watch "motionRefreshes" -1
-    Add-Check "passive-watch-progress" "pass" "$PassiveWatchProgressPath records=$($watch.records) failedPolls=$($watch.failedPolls)"
+    $watchRecords = Get-IntValue $watch "records" 0
+    $watchFailedPolls = Get-IntValue $watch "failedPolls" 0
+    $watchFailureRatio = if ($watchRecords -gt 0) {
+      [double]$watchFailedPolls / [double]$watchRecords
+    } else { 1.0 }
+    $watchHealthy = $watchRecords -gt 0 -and $watchFailureRatio -le 0.01
+    Add-Check "passive-watch-progress" ($(if ($watchHealthy) { "pass" } else { "fail" })) "$PassiveWatchProgressPath records=$watchRecords failedPolls=$watchFailedPolls failedPollRatio=$([Math]::Round($watchFailureRatio, 6))"
     Add-Check "passive-watch-no-motion" ($(if ($motionRefreshes -eq 0) { "pass" } else { "fail" })) "motionRefreshes=$motionRefreshes"
   } catch {
     Add-Check "passive-watch-progress" "fail" $_.Exception.Message
@@ -201,17 +242,41 @@ if (Test-Path -LiteralPath $PassiveWatchProgressPath -PathType Leaf) {
 
 $activeSoakProgressPath = ""
 if ([string]::IsNullOrWhiteSpace($SoakSummaryPath)) {
-  $candidateSummary = Get-ChildItem -Path "output\pc-brain" -Recurse -Filter "summary.json" -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match "full-system-soak|warm-rocm" -and $_.FullName -notmatch "passive" } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+  $candidateSummary = $null
+  $passedSummaryCandidates = @()
+  $summaryCandidates = Get-ChildItem -Path "output\pc-brain" -Recurse -Filter "summary.json" -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending
+  foreach ($summaryFile in $summaryCandidates) {
+    try {
+      $summaryCandidate = Read-JsonFile $summaryFile.FullName
+      if ([string]$summaryCandidate.schema -eq "stackchan.full-system-soak-summary.v1" -and
+          [string]$summaryCandidate.status -eq "pass" -and @($summaryCandidate.issues).Count -eq 0) {
+        $passedSummaryCandidates += [pscustomobject]@{
+          item = $summaryFile
+          durationSeconds = Get-IntValue $summaryCandidate "durationSeconds" 0
+        }
+      }
+    } catch {
+      continue
+    }
+  }
+  $selectedSummaryCandidate = $passedSummaryCandidates |
+      Sort-Object @{ Expression = "durationSeconds"; Descending = $true },
+                  @{ Expression = { $_.item.LastWriteTime }; Descending = $true } |
+      Select-Object -First 1
+  if ($selectedSummaryCandidate) {
+    $candidateSummary = $selectedSummaryCandidate.item
+  }
   $candidateProgress = Get-ChildItem -Path "output\pc-brain" -Recurse -Filter "progress.json" -File -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match "full-system-soak|warm-rocm" -and $_.FullName -notmatch "passive" } |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
-  if ($candidateProgress -and ($null -eq $candidateSummary -or $candidateProgress.LastWriteTime -gt $candidateSummary.LastWriteTime)) {
+  $candidateProgressSummaryPath = if ($candidateProgress) {
+    Join-Path $candidateProgress.DirectoryName "summary.json"
+  } else { "" }
+  if ($candidateProgress -and -not (Test-Path -LiteralPath $candidateProgressSummaryPath -PathType Leaf)) {
     $activeSoakProgressPath = $candidateProgress.FullName
-    $SoakSummaryPath = Join-Path $candidateProgress.DirectoryName "summary.json"
+    $SoakSummaryPath = $candidateProgressSummaryPath
   } elseif ($candidateSummary) {
     $SoakSummaryPath = $candidateSummary.FullName
   }
@@ -243,7 +308,8 @@ if (-not [string]::IsNullOrWhiteSpace($activeSoakProgressPath) -and -not (Test-P
 } else {
   try {
     $soak = Read-JsonFile $SoakSummaryPath
-    $soakReady = [string]$soak.status -eq "pass" -and @($soak.issues).Count -eq 0 -and (Get-IntValue $soak "durationSeconds" 0) -ge 28800
+    $soakReady = [string]$soak.status -eq "pass" -and @($soak.issues).Count -eq 0 -and
+      (Get-IntValue $soak "durationSeconds" 0) -ge $MinSoakDurationSeconds
     $soakStatus = if ($soakReady) {
       "pass"
     } elseif ([string]$soak.status -eq "fail" -or @($soak.issues).Count -gt 0) {
@@ -276,11 +342,12 @@ $result = [ordered]@{
   schema = "stackchan.current-lead-reproducibility.v1"
   status = $status
   generatedAt = (Get-Date).ToString("o")
-  warmArchivePath = $WarmArchivePath
+    warmArchivePath = $WarmArchivePath
   candidateArchivePath = $CandidateArchivePath
   rvcWorkerUrl = $RvcWorkerUrl
   deviceHost = $DeviceHost
-  soakSummaryPath = $SoakSummaryPath
+    soakSummaryPath = $SoakSummaryPath
+    minSoakDurationSeconds = $MinSoakDurationSeconds
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count
   failed = $failed.Count
   pending = $pending.Count

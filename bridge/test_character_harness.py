@@ -139,8 +139,9 @@ class CharacterHarnessTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertEqual({"project.topic": "voice"}, result.normalized["memory_write"])
-        self.assertEqual(["robot.status"], result.normalized["memory_forget"])
-        self.assertIn("memory_value_not_string:robot.physical_context", result.issues)
+        self.assertEqual([], result.normalized["memory_forget"])
+        self.assertIn("memory_key_dropped:robot.physical_context", result.issues)
+        self.assertIn("memory_forget_key_dropped:robot.status", result.issues)
         self.assertIn("memory_value_not_string:project.note", result.issues)
         self.assertIn("memory_forget_item_not_string", result.issues)
 

@@ -4,8 +4,10 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$Firmware,
   [int]$Port = 8790,
+  [int]$DebugPort = 8789,
   [int]$RequestTimeoutSec = 45,
   [int]$HealthTimeoutSec = 180,
+  [string]$EvidenceRoot = "",
   [switch]$ConfirmUpload,
   [switch]$SkipHealthWait
 )
@@ -18,6 +20,9 @@ if (-not $ConfirmUpload) {
 }
 if ($Port -lt 1024 -or $Port -gt 65535) {
   throw "Port must be between 1024 and 65535."
+}
+if ($DebugPort -lt 1024 -or $DebugPort -gt 65535) {
+  throw "DebugPort must be between 1024 and 65535."
 }
 if ($RequestTimeoutSec -lt 10 -or $RequestTimeoutSec -gt 600) {
   throw "RequestTimeoutSec must be between 10 and 600."
@@ -74,6 +79,7 @@ if ($resolvedAddresses.Count -eq 0 -or $privateAddresses.Count -ne $resolvedAddr
 
 $sha256 = (Get-FileHash -LiteralPath $firmwarePath -Algorithm SHA256).Hash.ToLowerInvariant()
 $baseUri = "http://${Device}:$Port"
+$debugBaseUri = "http://${Device}:$DebugPort"
 $handler = [Net.Http.HttpClientHandler]::new()
 $handler.UseProxy = $false
 $client = [Net.Http.HttpClient]::new($handler)
@@ -84,8 +90,60 @@ function Get-OtaStatus {
   return $json | ConvertFrom-Json
 }
 
+$evidencePath = $null
+$evidenceSequence = 0
+if (-not [string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+  $evidencePath = (New-Item -ItemType Directory -Force -Path $EvidenceRoot).FullName
+  [ordered]@{
+    schema = "stackchan.lan-ota-upload-evidence.v1"
+    generated_at = [DateTime]::UtcNow.ToString("o")
+    device = $Device
+    ota_port = $Port
+    debug_port = $DebugPort
+    firmware_file = $firmwareInfo.Name
+    firmware_bytes = $firmwareInfo.Length
+    firmware_sha256 = $sha256
+  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $evidencePath "manifest.json") -Encoding UTF8
+}
+
+function Write-OtaEvidencePoll {
+  param(
+    [string]$Stage,
+    [object]$Status = $null,
+    [string]$StatusError = ""
+  )
+
+  if ($null -eq $evidencePath) {
+    return
+  }
+
+  $script:evidenceSequence++
+  $debug = $null
+  $debugError = ""
+  try {
+    $debugJson = $client.GetStringAsync("$debugBaseUri/debug").GetAwaiter().GetResult()
+    $debug = $debugJson | ConvertFrom-Json
+  } catch {
+    $debugError = $_.Exception.Message
+  }
+
+  $record = [ordered]@{
+    schema = "stackchan.lan-ota-upload-poll.v1"
+    sequence = $script:evidenceSequence
+    observed_at = [DateTime]::UtcNow.ToString("o")
+    stage = $Stage
+    status = $Status
+    status_error = $StatusError
+    debug = $debug
+    debug_error = $debugError
+  }
+  $name = "poll-{0:D4}.json" -f $script:evidenceSequence
+  $record | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $evidencePath $name) -Encoding UTF8
+}
+
 try {
   $before = Get-OtaStatus
+  Write-OtaEvidencePoll -Stage "preflight" -Status $before
   if (-not $before.enabled) {
     throw "Device OTA endpoint is disabled. Confirm the token-enabled firmware and dedicated port."
   }
@@ -111,6 +169,7 @@ try {
     if (-not $accepted.ok -or $accepted.sha256 -ne $sha256) {
       throw "Device response did not confirm the uploaded SHA-256."
     }
+    Write-OtaEvidencePoll -Stage "upload-accepted" -Status $accepted
   } finally {
     $request.Dispose()
     $content.Dispose()
@@ -128,8 +187,10 @@ try {
     try {
       $status = Get-OtaStatus
     } catch {
+      Write-OtaEvidencePoll -Stage "health-poll-unreachable" -StatusError $_.Exception.Message
       continue
     }
+    Write-OtaEvidencePoll -Stage "health-poll" -Status $status
     if ($status.expected_sha256 -ne $sha256) {
       continue
     }
@@ -148,6 +209,14 @@ try {
 
   throw "Timed out waiting for OTA health confirmation. Query $baseUri/status before taking further action."
 } finally {
+  if ($null -ne $evidencePath) {
+    try {
+      $finalStatus = Get-OtaStatus
+      Write-OtaEvidencePoll -Stage "final" -Status $finalStatus
+    } catch {
+      Write-OtaEvidencePoll -Stage "final-unreachable" -StatusError $_.Exception.Message
+    }
+  }
   [Array]::Clear($tokenBytes, 0, $tokenBytes.Length)
   $client.Dispose()
   $handler.Dispose()

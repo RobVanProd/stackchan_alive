@@ -3,6 +3,12 @@ import os
 
 Import("env")
 
+# esptool 5 renders Unicode progress bars. Force every child process launched by
+# production PlatformIO environments onto UTF-8 even when Windows starts pio in
+# a legacy console code page.
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+
 
 def escaped_define_string(name, value):
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -10,6 +16,17 @@ def escaped_define_string(name, value):
 
 
 raw_token = os.environ.get("STACKCHAN_OTA_TOKEN", "")
+pio_environment = env.subst("$PIOENV")
+if raw_token and pio_environment == "stackchan_release_full":
+    raise RuntimeError("stackchan_release_full forbids embedding an OTA token")
+token_required_environments = {
+    "stackchan_release_forensics",
+    "stackchan_camera_probe",
+}
+if not raw_token and pio_environment in token_required_environments:
+    raise RuntimeError(
+        f"{pio_environment} is an OTA production environment and requires STACKCHAN_OTA_TOKEN"
+    )
 if raw_token:
     if raw_token != raw_token.strip():
         raise RuntimeError("STACKCHAN_OTA_TOKEN must not have leading or trailing whitespace")

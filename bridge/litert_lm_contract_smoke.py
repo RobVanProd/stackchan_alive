@@ -59,7 +59,7 @@ def write_fake_litert_command(path: Path) -> str:
                 "  'mode': 'think',",
                 "  'earcon': 'think',",
                 "  'emotion': {'arousal': 0.1, 'valence': 0.05},",
-                "  'memory_write': {'robot.brain_path': 'litert-lm contract smoke'},",
+                "  'memory_write': {'project.brain_path': 'litert-lm contract smoke'},",
                 "  'memory_forget': []",
                 "}))",
             ]

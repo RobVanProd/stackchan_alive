@@ -8,6 +8,7 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Display-only and servo-calibration firmware variants are separate PlatformIO environments.
 - Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
 - Release packages include dependency provenance, a machine-readable dependency lock, copied build inputs, and a dependency audit that flags duplicate resolved package names or upstream Git requirements that were not directly pinned by this project.
+- Release packages preserve installed third-party license, licence, copying, notice, and package-metadata files under `third_party_licenses/`, publish a portable SHA-256 index, and include `THIRD_PARTY_NOTICES.md`. Package verification checks every indexed file and the required pioarduino, Arduino-ESP32, direct-library, nested M5GFX, and YuNet evidence.
 - Release packages can be verified locally before publication, and published release assets can be re-audited after upload.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
 - Hardware evidence packets include a media importer that validates phone photos/videos/audio and records SHA256 hashes in `media_manifest.json`.
@@ -16,7 +17,11 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Published release assets can be audited against the local package by size, SHA256 digest, and downloaded-ZIP verification.
 - A local release handoff page can serve the ZIP, preview image, expression sheet, and preview video, with optional Cloudflare tunnel exposure.
 - Hardware evidence packets can be verified before release promotion, including proof that the tested ZIP was copied and package-verified.
-- Consumer promotion is guarded by `tools/verify_consumer_promotion.ps1`, which composes package verification, hardware evidence verification, GitHub Actions status, and production voice-source provenance.
+- Consumer promotion is guarded by `tools/verify_consumer_promotion.ps1`, which composes package
+  verification, hardware evidence verification, GitHub Actions status, production voice-source
+  provenance, an owner-selected project license, operator-approved camera wake/follow evidence,
+  complete touch/IMU evidence, and a formally verified integrated soak. Camera, body, and soak
+  reports must pin the same installed firmware SHA-256 and the clean matching source commit.
 - Synthetic diagnostic evidence packets can be generated to self-test the verifier, and are rejected by default unless `-AllowSyntheticEvidence` is explicit.
 - Hardware evidence verification rejects completed observation records that report reset loops, missing face display, missing dry-run servo log, missing firmware boot/heartbeat serial markers, missing runtime health telemetry, heat/brownout, short soak duration, failed power-cycle recovery, invalid calibration ranges, placeholder-only media evidence, header-only media files, or implausibly small media files.
 - No-hardware preflight checks can validate toolchain availability, dependency pins, flash-helper safety gates, local-share evidence capture, speech-envelope sidecar generation/dry streaming, preview media, hardware evidence verifier gates, tests, builds, and an optional release ZIP before device flashing.
@@ -41,8 +46,8 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Servo pin mapping on the specific body revision.
 - Mechanical limits under load.
 - Long-running thermal and power behavior.
-- Physical acceptance of the compiled body RGB/touch and IMU candidate; camera capture and
-  face detection remain separate gated profiles. Proximity is not implemented.
+- Physical acceptance of body RGB/touch, IMU, and paired camera/host vision in one integrated
+  release candidate. The camera-only profile remains diagnostic. Proximity is not implemented.
 - Real LiteRT-LM/mobile runner speed and memory behavior.
 
 ## Consumer Rollout Gate

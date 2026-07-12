@@ -61,6 +61,8 @@ struct ActuationTelemetry {
   uint32_t dutyRestMs = 0;
   uint32_t outputSuppressEntries = 0;
   uint32_t outputSuppressMs = 0;
+  float lastPitchCommandDeg = 0.0f;
+  float lastYawCommandDeg = 0.0f;
   bool dutyResting = false;
   const char* lastReason = "not_started";
 };

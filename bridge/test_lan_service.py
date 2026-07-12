@@ -22,6 +22,7 @@ from lan_service import (
     audio_downlink_frames,
     build_handshake_response,
     contains_stackchan_wake_phrase,
+    configure_client_socket,
     encode_ws_frame,
     encode_ws_text,
     is_identity_question,
@@ -46,6 +47,15 @@ RUNNER_ENV = {
 
 
 class LanServiceTests(unittest.TestCase):
+    def test_client_socket_policy_bounds_stale_reboot_sessions(self):
+        conn = Mock()
+
+        configure_client_socket(conn, 20.0, low_latency=True)
+
+        conn.settimeout.assert_called_once_with(20.0)
+        conn.setsockopt.assert_any_call(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        conn.setsockopt.assert_any_call(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
     def test_websocket_accept_matches_rfc_example(self):
         self.assertEqual(
             "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
@@ -153,7 +163,8 @@ class LanServiceTests(unittest.TestCase):
     def test_prompt_case_can_follow_utterance_text(self):
         self.assertEqual("picked_up", prompt_case_for_text("I picked you up", "", "greeting"))
         self.assertEqual("low_battery", prompt_case_for_text("Power is low", "", "greeting"))
-        self.assertEqual("confused", prompt_case_for_text("What is that?", "", "greeting"))
+        self.assertEqual("question", prompt_case_for_text("What is that?", "", "greeting"))
+        self.assertEqual("confused", prompt_case_for_text("This is ambiguous", "", "greeting"))
         self.assertEqual("forget", prompt_case_for_text("Forget that note", "", "greeting"))
         self.assertEqual("greeting", prompt_case_for_text("Hello", "", "greeting"))
         self.assertEqual("picked_up", prompt_case_for_text("Hello", "picked_up", "greeting"))
@@ -213,7 +224,7 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("react", response[1]["intent"])
         self.assertIn("Altitude change detected", response[1]["text"])
         self.assertEqual("response_end", response[-1]["type"])
-        self.assertIn("user picked Stackchan up", session.memory.physical_context)
+        self.assertEqual((), session.memory.physical_context)
 
     def test_endpoint_controls_track_owner_settings_and_forget(self):
         state = BridgeControlState()
@@ -465,7 +476,7 @@ class LanServiceTests(unittest.TestCase):
         self.assertGreaterEqual(frames[0]["stt_elapsed_ms"], 0.0)
         self.assertEqual("response_start", frames[1]["type"])
         self.assertEqual("react", frames[1]["intent"])
-        self.assertIn("user picked Stackchan up", session.memory.physical_context)
+        self.assertEqual((), session.memory.physical_context)
         self.assertEqual(1, len(records))
         self.assertEqual("stackchan.lan-turn-summary.v1", records[0]["schema"])
         self.assertEqual("audio", records[0]["source"])
@@ -737,12 +748,25 @@ class LanServiceTests(unittest.TestCase):
                     turn_log_file=turn_log,
                 )
             )
+            session.handle_text(
+                json.dumps(
+                    {
+                        "type": "heartbeat",
+                        "robot_mode": 3,
+                        "external_power": 1,
+                        "battery_percent": 88,
+                        "imu_picked_up": 0,
+                        "imu_gravity_y": 1.0,
+                    }
+                )
+            )
             with patch("lan_service.run_runner_profile", return_value=runner) as run_runner:
                 returned = session.handle_text(
                     json.dumps({"type": "utterance_end", "seq": 21, "text": "Tell me something."}),
                     frame_sink=emitted.append,
                 )
             self.assertEqual("Tell me something.", run_runner.call_args.kwargs["user_text"])
+            self.assertIn("mode: listening", run_runner.call_args.kwargs["embodiment_lines"])
             record = json.loads(turn_log.read_text(encoding="utf-8").splitlines()[0])
 
         self.assertEqual([], returned)

@@ -18,11 +18,17 @@ class IntentEngine {
   void applyAmbient(float lux, uint8_t hourOfDay);
   void setDemoEnabled(bool enabled, uint32_t nowMs);
   void setReducedMotion(bool enabled);
+  void setMotionOutputActive(bool active, uint32_t nowMs) {
+    gaze_.setMotionOutputActive(active, nowMs);
+  }
   bool isDemoEnabled() const {
     return demoEnabled_;
   }
   bool isReducedMotion() const {
     return reducedMotion_;
+  }
+  const GazeTrackerTelemetry& gazeTelemetry() const {
+    return gaze_.telemetry();
   }
   RobotFrame update(uint32_t nowMs);
 

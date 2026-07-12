@@ -36,7 +36,6 @@ memory:
   allowed_prefixes:
     - user.
     - project.
-    - robot.
   denied_terms:
     - password
     - passcode
@@ -60,7 +59,7 @@ prompt_rules:
   - Keep spoken_text to two sentences or fewer and about 140 characters.
   - Use no contractions, emoji, assistant-speak, pet names, or named-character quotes.
   - Never claim to be alive or human. Never imitate movie robots, actors, or catchphrases.
-  - Memory writes may only use user.*, project.*, or robot.* keys and must not contain secrets, health, finance, relationship, third-party, or raw-audio details.
+  - Memory writes may only use user.* or project.* keys and must not contain secrets, health, finance, relationship, third-party, or raw-audio details. Robot state comes only from trusted live telemetry.
 spoken_lines:
   boot:
     text: Hello. Stackchan Glow is online. Quiet sensors ready.

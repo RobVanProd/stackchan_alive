@@ -10,6 +10,44 @@ Use this when the physical Stackchan device arrives. Keep this release as a devi
 - Have a camera ready for display, speaker, and motion evidence.
 - Know the serial port, for example `COM3`.
 
+Current lab note (2026-07-11): the live robot is temporarily on an OTA-disabled diagnostic image
+after wake isolation. Reinstall the archived `stackchan_release_forensics` candidate from
+`output\hardware-evidence\final-integration\wake-zero-init-verified-ota-candidate-20260711-160828`
+by the shared UTF-8 serial flasher before relying on OTA. Confirm
+`sr_wake_mww_arenas_zero_initialized=true` in `/debug`, reset the wake counters once, then
+physically pass one wake/name turn. The candidate uses zero-initialized TFLite tensor and resource
+arenas because the current boot is pinned at probability 1 while historical accepted runs of the
+same model reached 255 at comparable microphone levels. Treat this as a testable cause hypothesis
+until that physical turn passes. A controlled host replay also showed that short robot-microphone
+captures from the current boot score poorly even when replayed through the exact host copy of the
+embedded frontend and model, so acoustic capture remains a separate live hypothesis. After the
+flash, verify the arena invariant, call `/wake-reset` once, capture one correctly timed wake phrase,
+and compare the on-device probability with the host-model result before changing cutoff, gain, or
+microphone channel. Keep motion off during the recovery flash.
+
+Use the exact archived application rather than rebuilding the dirty worktree:
+
+```powershell
+.\tools\flash_archived_app.cmd `
+  -CandidateManifestPath output\hardware-evidence\final-integration\wake-zero-init-verified-ota-candidate-20260711-160828\manifest.json `
+  -Port COM4 `
+  -ExpectedSha256 298cdd4a07476b33cb75f07c4cf4162e539d64b972b75f4384a9dc7e934e0cc1 `
+  -ConfirmServoRisk
+```
+
+The guarded flasher verifies the manifest, byte count, and SHA256, writes the canonical OTA
+`boot_app0.bin` selector at `0xe000`, and writes the exact archived app at `0x10000`. It preserves
+NVS/Wi-Fi and the existing partition table. Motion is disabled at boot; do not call
+`/motion-resume` during wake recovery.
+
+After that wake/name turn passes, use LAN OTA for the prepared camera diagnostic at
+`output\hardware-evidence\final-integration\camera-stereo-speaker-follow-candidate-20260711-163359`.
+Do not install the camera image first: preserve the production wake result as a separate gate and
+rollback point. Validate a real face with motion off, then speak from physical left and right and
+confirm opposite bounded direction telemetry before requesting fresh servo clearance. The camera
+profile alone may invert the direction sign if board orientation requires it; never compensate by
+swapping face coordinates or changing the production wake channel.
+
 ### Optional 64 GB microSD
 
 The installed 64 GB card is optional and exceeds M5Stack's documented 16 GB CoreS3 limit.
@@ -426,7 +464,7 @@ and servo validation remain open.
 The collector also writes `FULL_ONLINE_NEXT_ACTIONS.md` in the same evidence folder; use it
 as the current resume point if the physical validation session is paused.
 
-For the first CoreS3 lab deploy on Robot_Wifi, the calibrated speaker/output settings were:
+For the first CoreS3 lab deploy on the private lab Wi-Fi, the calibrated speaker/output settings were:
 
 - firmware speaker volume: `150`
 - M5 speaker magnification: `16`
@@ -921,12 +959,12 @@ Import the display photo or video into the packet:
 Optional speech-mouth sidecar check from the extracted release folder:
 
 ```powershell
-.\tools\generate_speech_envelope_sidecar.cmd -InputWav media\voice\rvc\stackchan_rvc_bright_robot.wav -OutputJson output\bright_robot.speech_envelope.json
+.\tools\generate_speech_envelope_sidecar.cmd -InputWav output\voice_auditions\rvc_base\final\stackchan_rvc_bright_robot.wav -OutputJson output\bright_robot.speech_envelope.json
 .\tools\verify_speech_envelope_sidecar.cmd -Path output\bright_robot.speech_envelope.json
 .\tools\send_speech_mouth_demo.cmd -Port COM3 -SidecarPath output\bright_robot.speech_envelope.json
 ```
 
-Evidence packets created from a verified package wire `RUN_SPEECH_MOUTH_DEMO.cmd` to the copied lead audition automatically. It generates `speech/lead_voice.speech_envelope.json`, verifies it, then streams that envelope so the mouth check follows the selected RVC review voice instead of the built-in fallback pattern.
+Release evidence packets use the project-owned Stackchan Spark sample or built-in fallback pattern. An operator may generate a mouth-envelope check from an authorized local RVC model under `output/voice_auditions/`, but model files and converted RVC audio are never copied into the package.
 Run `RUN_SPEAK_ALL_INTENTS.cmd` after that helper while display-only firmware is still connected. It sends `speak <intent>` for every packaged speech intent and captures prompt, earcon, and `[audio_out]` handoff telemetry in `logs/speak_all_intents_serial.log`.
 
 P7 bridge comparison: run `RUN_BRIDGE_REPLAY.cmd` while display-only firmware is connected.
@@ -1103,17 +1141,24 @@ The first post-flash boot is a baseline. After switching to the 5 V / 3 A BASE s
 soak only after the setup VBUS transition has been sampled and baselined. Pass
 `-RequirePowerForensics` to `tools\start_warm_rocm_full_system_soak.ps1`.
 
-For the final integrated production candidate, also pass `-RequireFinalIntegration`. Start with a
-short supervised run before the long release soak:
+For the final integrated production candidate, start the paired local vision worker and confirm
+authenticated target updates are advancing, then pass `-RequireFinalIntegration`. This switch now
+includes camera capture and host vision alongside RGB, touch, and IMU. Start with a short supervised
+run before the long release soak:
 
 ```powershell
-.\tools\start_warm_rocm_full_system_soak.ps1 `
+.\tools\start_production_full_system_soak.ps1 `
   -DurationSeconds 900 `
   -PollSeconds 5 `
-  -RequirePowerForensics `
-  -RequireFinalIntegration `
   -OperatorPresent -BodyClear -ConfirmServoRisk
 ```
+
+This production wrapper requires the already-running DirectML worker on `127.0.0.1:5059` and the
+existing production bridge; it will not restart the retired warm ROCm path. The underlying strict
+wrapper verifies motion-off, power/display/network/socket gates, advancing authenticated vision,
+and a stable face before enabling servos. Final integration also requires a clean pinned Git commit;
+commit the reviewed release candidate before starting the soak so every evidence artifact can be
+tied to the exact source and installed firmware SHA-256.
 
 After completion, formally verify the same profile:
 
@@ -1126,9 +1171,10 @@ After completion, formally verify the same profile:
   -RequireReady -Json
 ```
 
-Only after the production candidate is restored and stopped cleanly may the isolated camera probe
-be flashed. Configure a temporary six-digit pairing code over serial, start the local worker from
-`docs\LOCAL_VISION.md`, run without motion refresh, and require both sensor and host-loop progress:
+For camera-only fault isolation, the separate diagnostic camera profile remains available. Stop the
+production run cleanly before flashing it. Configure a temporary six-digit pairing code, start the
+local worker from `docs\LOCAL_VISION.md`, run without motion refresh, and require both sensor and
+host-loop progress:
 
 ```powershell
 .\tools\run_full_system_soak_http_motion.ps1 `
@@ -1144,9 +1190,23 @@ be flashed. Configure a temporary six-digit pairing code over serial, start the 
 
 Verify that probe with `-NoMotionProfile -RequireCameraCapture -RequireCameraHostVision`.
 Visible human-face acquire/loss/reacquire and sound-aware speaker selection remain required;
-counters cannot substitute for operator observation. Clear the temporary pairing code and reflash
-the production candidate afterward; the camera probe is diagnostic firmware and cannot be
-promoted directly.
+counters cannot substitute for operator observation. Clear the diagnostic profile's temporary
+pairing code and reflash the integrated production candidate afterward; the isolated camera probe
+cannot be promoted directly.
+
+For the bounded wake/listen/follow gate, first start the paired vision worker and wait for a stable
+face lock. With a present operator, clear body, and fresh servo-risk confirmation, run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File tools\camera_follow_wake_validation.ps1 `
+  -OperatorPresent -BodyClear -ConfirmServoRisk
+```
+
+When it prints `CAMERA FOLLOW ACTIVE`, say `Hey Stackchan` once and ask `What is your name?`
+once. Accept only when the summary reports `telemetry_pass_pending_visual`, the operator confirms
+visible following continued during microphone capture, and `motionStopVerified` is true. A missing
+face lock is `not started`, not a behavioral pass or failure.
 
 ### Confirmed LAN OTA Baseline (2026-07-11)
 
@@ -1155,6 +1215,18 @@ SHA256 `465DC560663DD3D0559AA9F986D1C46CEEE2DE5D2640309D9EDED1E485D15F1D`.
 The device reports bootloader rollback enabled and software-only rollback false. Each slot passed
 the 30-second runtime-health window with motion, servo rail, and torque off. Use
 `docs\LAN_OTA.md` and the private build token; never expose port 8790 outside the trusted LAN.
+
+Later final-integration testing intentionally placed the oriented camera diagnostic on `app0` and
+restored the archived production image on `app1`. The current production SHA256 is
+`875FE2DE5FB93BECEF6C72C08C1951326439CDCAE299528970C28D43CF115CFB`; restore evidence is
+`output\hardware-evidence\final-integration\production-voice-restore-20260711-141611`. Do not
+assume both slots contain production during this supervised camera phase. The camera slot is
+diagnostic-only and must be replaced before release promotion.
+
+The live host memory store was also migrated from `stackchan.bridge-memory.v2` to v3 with an atomic
+backup. v3 drops legacy model-authored robot-state residue, permits character memory only in
+approved `user.*` and `project.*` namespaces, and reserves expiring `robot.*` context for typed
+runtime telemetry. This prevents stale remembered state from contradicting the current heartbeat.
 
 On Windows, set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` for serial PlatformIO uploads. Without
 that setting, PlatformIO's output reader can fail on esptool's Unicode progress bar while the child

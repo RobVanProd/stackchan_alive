@@ -19,14 +19,30 @@ namespace stackchan {
 namespace {
 
 uint8_t* allocateArena(size_t bytes) {
-  uint8_t* ptr = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  // Streaming models keep CALL_ONCE and recurrent resource state in these
+  // arenas. Fresh allocations must not inherit arbitrary PSRAM contents.
+  uint8_t* ptr = static_cast<uint8_t*>(
+      heap_caps_calloc(1u, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (ptr == nullptr) {
-    ptr = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    ptr = static_cast<uint8_t*>(
+        heap_caps_calloc(1u, bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   }
   if (ptr == nullptr) {
-    ptr = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_8BIT));
+    ptr = static_cast<uint8_t*>(heap_caps_calloc(1u, bytes, MALLOC_CAP_8BIT));
   }
   return ptr;
+}
+
+bool arenaIsZeroInitialized(const uint8_t* arena, size_t bytes) {
+  if (arena == nullptr) {
+    return false;
+  }
+  for (size_t i = 0; i < bytes; ++i) {
+    if (arena[i] != 0u) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -79,6 +95,10 @@ bool MicroWakeWordProbe::begin(const MicroWakeWordProbeConfig& config) {
     copyError("mww_var_alloc_failed");
     return false;
   }
+  if (!arenaIsZeroInitialized(variableArena_, config_.variableArenaSize)) {
+    copyError("mww_var_not_zeroed");
+    return false;
+  }
   allocator_ = tflite::MicroAllocator::Create(variableArena_, config_.variableArenaSize);
   resourceVariables_ = tflite::MicroResourceVariables::Create(allocator_, 20);
   if (allocator_ == nullptr || resourceVariables_ == nullptr) {
@@ -91,6 +111,11 @@ bool MicroWakeWordProbe::begin(const MicroWakeWordProbeConfig& config) {
     copyError("mww_tensor_alloc_failed");
     return false;
   }
+  if (!arenaIsZeroInitialized(tensorArena_, config_.tensorArenaSize)) {
+    copyError("mww_tensor_not_zeroed");
+    return false;
+  }
+  telemetry_.arenasZeroInitialized = true;
 
   const tflite::Model* model = tflite::GetModel(config_.modelData);
   if (model == nullptr || model->version() != TFLITE_SCHEMA_VERSION) {
@@ -149,6 +174,7 @@ void MicroWakeWordProbe::reset() {
 
 void MicroWakeWordProbe::clearTelemetry() {
   const bool ready = telemetry_.ready;
+  const bool arenasZeroInitialized = telemetry_.arenasZeroInitialized;
   const uint32_t arenaUsedBytes = telemetry_.arenaUsedBytes;
   const uint32_t modelStride = telemetry_.modelStride;
   const uint32_t probabilityCutoff = telemetry_.probabilityCutoff;
@@ -157,6 +183,7 @@ void MicroWakeWordProbe::clearTelemetry() {
   memcpy(savedError, telemetry_.error, sizeof(savedError));
   telemetry_ = MicroWakeWordProbeTelemetry {};
   telemetry_.ready = ready;
+  telemetry_.arenasZeroInitialized = arenasZeroInitialized;
   telemetry_.arenaUsedBytes = arenaUsedBytes;
   telemetry_.modelStride = modelStride;
   telemetry_.probabilityCutoff = probabilityCutoff;

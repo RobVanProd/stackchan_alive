@@ -242,6 +242,12 @@ if ($summary) {
     Add-Check "strict-requireFinalIntegration" ($(if ($summaryRequiresFinalIntegration) { "pass" } else { "fail" })) "requireFinalIntegration=$summaryRequiresFinalIntegration"
   }
   if ($RequireFinalIntegration -or $summaryRequiresFinalIntegration) {
+    $sourceCommit = [string]$summary.sourceCommit
+    $sourceDirty = if ($summary.PSObject.Properties.Name -contains "sourceDirty") { [bool]$summary.sourceDirty } else { $true }
+    $installedFirmwareSha256 = [string]$summary.installedFirmwareSha256
+    Add-Check "source-commit-pinned" ($(if ($sourceCommit -match "^[0-9a-fA-F]{40}$") { "pass" } else { "fail" })) "sourceCommit=$sourceCommit"
+    Add-Check "source-worktree-clean" ($(if (-not $sourceDirty) { "pass" } else { "fail" })) "sourceDirty=$sourceDirty"
+    Add-Check "installed-firmware-pinned" ($(if ($installedFirmwareSha256 -match "^[0-9a-fA-F]{64}$") { "pass" } else { "fail" })) "installedFirmwareSha256=$installedFirmwareSha256"
     $latestIntegration = $summary.latestFinalIntegration
     $debugContractPassed = $null -ne $latestIntegration -and
       -not [bool]$latestIntegration.debug_response_truncated -and
@@ -266,11 +272,21 @@ if ($summary) {
       $delta = Get-IntValue $summary $counter.name -1
       Add-Check $counter.id ($(if ($delta -eq 0) { "pass" } else { "fail" })) "$($counter.name)=$delta expected=0"
     }
-    $productionCameraDisabled = $null -ne $latestIntegration -and
-      [int]$latestIntegration.compiled_enable_camera -eq 0 -and
-      [int]$latestIntegration.compiled_enable_camera_host_vision -eq 0 -and
-      -not [bool]$latestIntegration.camera_active
-    Add-Check "production-camera-disabled" ($(if ($productionCameraDisabled) { "pass" } else { "fail" })) "camera=$($latestIntegration.compiled_enable_camera) hostVision=$($latestIntegration.compiled_enable_camera_host_vision) active=$($latestIntegration.camera_active)"
+    if ($summary.PSObject.Properties.Name -contains "newBodyRgbWriteRetries" -or
+        $summary.PSObject.Properties.Name -contains "newBodyRgbWriteRecoveries") {
+      $rgbRetries = Get-IntValue $summary "newBodyRgbWriteRetries" -1
+      $rgbRecoveries = Get-IntValue $summary "newBodyRgbWriteRecoveries" -1
+      $rgbRetryAccountingPassed = $rgbRetries -ge 0 -and $rgbRecoveries -ge 0 -and
+        $rgbRetries -eq $rgbRecoveries
+      Add-Check "body-rgb-retry-accounting" ($(if ($rgbRetryAccountingPassed) { "pass" } else { "fail" })) "retries=$rgbRetries recoveries=$rgbRecoveries expected equal nonnegative deltas"
+    }
+    $productionCameraEnabled = $null -ne $latestIntegration -and
+      [int]$latestIntegration.compiled_enable_camera -eq 1 -and
+      [int]$latestIntegration.compiled_enable_camera_host_vision -eq 1 -and
+      [bool]$latestIntegration.camera_ready -and
+      [bool]$latestIntegration.camera_active -and
+      [bool]$latestIntegration.camera_capture_ready
+    Add-Check "production-camera-enabled" ($(if ($productionCameraEnabled) { "pass" } else { "fail" })) "camera=$($latestIntegration.compiled_enable_camera) hostVision=$($latestIntegration.compiled_enable_camera_host_vision) ready=$($latestIntegration.camera_ready) active=$($latestIntegration.camera_active) captureReady=$($latestIntegration.camera_capture_ready)"
   }
 
   $summaryRequiresCameraCapture = Has-StrictFlag $summary "requireCameraCapture"

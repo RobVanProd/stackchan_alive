@@ -15,6 +15,7 @@ foreach ($requiredPattern in @(
     'power_forensics_not_armed',
     'RequireFinalIntegration',
     'final_integration_peripheral_not_ready',
+    'final_integration_camera_not_ready',
     'RequireCameraCapture',
     'camera_capture_probe_not_ready',
     'RequireCameraHostVision',
@@ -187,14 +188,31 @@ try {
   $finalIntegrationPath = Join-Path $tempRoot "final-integration-ready-summary.json"
   $finalIntegrationSummary = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
   $finalIntegrationSummary.strict | Add-Member -NotePropertyName requireFinalIntegration -NotePropertyValue $true
+  $finalIntegrationSummary | Add-Member -NotePropertyName sourceCommit -NotePropertyValue ("a" * 40)
+  $finalIntegrationSummary | Add-Member -NotePropertyName sourceDirty -NotePropertyValue $false
+  $finalIntegrationSummary | Add-Member -NotePropertyName installedFirmwareSha256 -NotePropertyValue ("b" * 64)
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName requireCameraCapture -NotePropertyValue $true
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName requireCameraHostVision -NotePropertyValue $true
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName maxCameraCaptureUs -NotePropertyValue 250000
   $finalIntegrationSummary | Add-Member -NotePropertyName finalIntegrationReadySamples -NotePropertyValue 959
   $finalIntegrationSummary | Add-Member -NotePropertyName bodyRgbFrameDelta -NotePropertyValue 575000
   $finalIntegrationSummary | Add-Member -NotePropertyName bodyTouchSampleDelta -NotePropertyValue 860000
   $finalIntegrationSummary | Add-Member -NotePropertyName imuSampleDelta -NotePropertyValue 720000
   $finalIntegrationSummary | Add-Member -NotePropertyName newBodyRgbWriteFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newBodyRgbWriteRetries -NotePropertyValue 2
+  $finalIntegrationSummary | Add-Member -NotePropertyName newBodyRgbWriteRecoveries -NotePropertyValue 2
   $finalIntegrationSummary | Add-Member -NotePropertyName newBodyTouchReadFailures -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadFailures -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuEvents -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraCaptureReadySamples -NotePropertyValue 959
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostVisionReadySamples -NotePropertyValue 959
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraFrameDelta -NotePropertyValue 57500
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostFrameRequestDelta -NotePropertyValue 57500
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostTargetUpdateDelta -NotePropertyValue 57500
+  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraCaptureFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostFrameFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostAuthFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName maxCameraCaptureUsObserved -NotePropertyValue 81000
   $finalIntegrationSummary | Add-Member -NotePropertyName latestFinalIntegration -NotePropertyValue ([pscustomobject]@{
       debug_response_truncated = $false
       power_forensics_schema = "axp2101-v2"
@@ -205,20 +223,32 @@ try {
       compiled_enable_imu = 1
       imu_ready = $true
       imu_calibrated = $true
-      compiled_enable_camera = 0
-      compiled_enable_camera_host_vision = 0
-      camera_active = $false
+      compiled_enable_camera = 1
+      compiled_enable_camera_host_vision = 1
+      camera_ready = $true
+      camera_active = $true
+      camera_capture_ready = $true
     })
   Write-Json $finalIntegrationPath $finalIntegrationSummary
   $finalIntegrationReady = Invoke-Check -SummaryPath $finalIntegrationPath -RequireFinalIntegration -RequireReady
   if ($finalIntegrationReady.exitCode -ne 0 -or $finalIntegrationReady.json.failed -ne 0) {
     throw "Expected final integration summary to pass: $($finalIntegrationReady.output)"
   }
-  foreach ($id in @("strict-requireFinalIntegration", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-touch-read-failures", "imu-read-failures", "unexpected-imu-events", "production-camera-disabled")) {
+  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "unexpected-imu-events", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-frame-failures", "camera-host-auth-failures")) {
     if (@($finalIntegrationReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
       throw "Expected final integration check $id to pass."
     }
   }
+
+  $finalIntegrationRgbRetryMismatchPath = Join-Path $tempRoot "final-integration-rgb-retry-mismatch-summary.json"
+  $finalIntegrationSummary.newBodyRgbWriteRecoveries = 1
+  Write-Json $finalIntegrationRgbRetryMismatchPath $finalIntegrationSummary
+  $finalIntegrationRgbRetryMismatch = Invoke-Check -SummaryPath $finalIntegrationRgbRetryMismatchPath -RequireFinalIntegration
+  if ($finalIntegrationRgbRetryMismatch.exitCode -eq 0 -or
+      @($finalIntegrationRgbRetryMismatch.json.checks | Where-Object { $_.id -eq "body-rgb-retry-accounting" -and $_.status -eq "fail" }).Count -ne 1) {
+    throw "Expected unbalanced RGB retry telemetry to fail final integration checker."
+  }
+  $finalIntegrationSummary.newBodyRgbWriteRecoveries = 2
 
   $finalIntegrationImuEventPath = Join-Path $tempRoot "final-integration-imu-event-summary.json"
   $finalIntegrationSummary.newImuEvents = 1

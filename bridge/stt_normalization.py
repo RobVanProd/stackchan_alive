@@ -12,6 +12,7 @@ STACKCHAN_NAME_VARIANTS = re.compile(
     r"\bstack[\s-]*(?:chan|chin|chain|can|chad|shan|shen|shed)\b",
     flags=re.IGNORECASE,
 )
+HELD_QUERY_VARIANTS = re.compile(r"\bbeing\s+(?:hella|hello)\b", flags=re.IGNORECASE)
 
 
 def normalize_stackchan_terms(transcript: str) -> str:
@@ -20,4 +21,5 @@ def normalize_stackchan_terms(transcript: str) -> str:
         return ""
     if os.environ.get(NORMALIZE_ENV, "1").strip().lower() in {"0", "false", "off", "no"}:
         return text
-    return STACKCHAN_NAME_VARIANTS.sub("Stackchan", text)
+    text = STACKCHAN_NAME_VARIANTS.sub("Stackchan", text)
+    return HELD_QUERY_VARIANTS.sub("being held", text)

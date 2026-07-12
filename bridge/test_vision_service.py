@@ -1,14 +1,21 @@
+from pathlib import Path
+import tempfile
 import unittest
 
 import numpy as np
 
 from vision_service import (
     FaceTarget,
+    OpenCvYuNetDetector,
+    YUNET_MODEL_PATH,
+    YUNET_SCORE_THRESHOLD,
     encode_face_targets,
     normalize_face_targets,
     parse_pgm,
+    read_pairing_code_file,
     require_private_robot_url,
     validate_pairing_code,
+    verify_yunet_model,
 )
 
 
@@ -48,6 +55,27 @@ class VisionServiceTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             require_private_robot_url("https://example.com")
+
+    def test_pairing_code_file_keeps_secret_out_of_command_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pairing.txt"
+            path.write_text("123456\n", encoding="ascii")
+            self.assertEqual(read_pairing_code_file(str(path)), "123456")
+            path.write_text("12 3456", encoding="ascii")
+            with self.assertRaises(ValueError):
+                read_pairing_code_file(str(path))
+
+    def test_hash_pinned_yunet_model_loads_and_rejects_blank_frame(self) -> None:
+        self.assertEqual(0.35, YUNET_SCORE_THRESHOLD)
+        self.assertEqual(YUNET_MODEL_PATH.resolve(), verify_yunet_model(YUNET_MODEL_PATH))
+        detector = OpenCvYuNetDetector()
+        self.assertEqual([], detector.detect(np.zeros((120, 160), dtype=np.uint8)))
+
+        with tempfile.TemporaryDirectory() as directory:
+            bad_model = Path(directory) / "face.onnx"
+            bad_model.write_bytes(b"not an onnx model")
+            with self.assertRaises(RuntimeError):
+                verify_yunet_model(bad_model)
 
 
 if __name__ == "__main__":

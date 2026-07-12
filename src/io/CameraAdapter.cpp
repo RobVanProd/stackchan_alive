@@ -4,6 +4,14 @@
 #define STACKCHAN_ENABLE_CAMERA 0
 #endif
 
+#ifndef STACKCHAN_CAMERA_HMIRROR
+#define STACKCHAN_CAMERA_HMIRROR 0
+#endif
+
+#ifndef STACKCHAN_CAMERA_VFLIP
+#define STACKCHAN_CAMERA_VFLIP 0
+#endif
+
 #if STACKCHAN_ENABLE_CAMERA && __has_include(<M5Unified.h>) && __has_include(<esp_camera.h>)
 #include <M5Unified.h>
 #include <esp_camera.h>
@@ -72,6 +80,30 @@ bool CameraAdapter::initializeHardware() {
   telemetry_.lastInitError = result;
   if (result != ESP_OK) {
     ++telemetry_.initFailures;
+    return false;
+  }
+
+  sensor_t* sensor = esp_camera_sensor_get();
+  if (sensor == nullptr) {
+    esp_camera_deinit();
+    ++telemetry_.initFailures;
+    telemetry_.lastInitError = -3;
+    return false;
+  }
+  telemetry_.sensorPid = sensor->id.PID;
+  const int horizontalResult = sensor->set_hmirror != nullptr
+                                   ? sensor->set_hmirror(sensor, STACKCHAN_CAMERA_HMIRROR)
+                                   : -1;
+  const int verticalResult = sensor->set_vflip != nullptr
+                                 ? sensor->set_vflip(sensor, STACKCHAN_CAMERA_VFLIP)
+                                 : -1;
+  telemetry_.horizontalMirrorConfigured = horizontalResult == 0;
+  telemetry_.verticalFlipConfigured = verticalResult == 0;
+  if (!telemetry_.horizontalMirrorConfigured || !telemetry_.verticalFlipConfigured) {
+    esp_camera_deinit();
+    ++telemetry_.initFailures;
+    ++telemetry_.orientationFailures;
+    telemetry_.lastInitError = -4;
     return false;
   }
   return true;
@@ -219,13 +251,15 @@ void CameraAdapter::submitFace(float x, float y, float size, uint32_t nowMs) {
 }
 
 void CameraAdapter::submitFaces(const FaceCandidate* faces, uint8_t count, uint32_t nowMs) {
-  if (faces == nullptr || count == 0) {
-    submitFaceLost(nowMs, 1.0f);
-    return;
-  }
+  const bool hasFreshFaces = faces != nullptr && count > 0;
   const ActiveSpeakerTarget target = activeSpeaker_.updateFaces(faces, count, nowMs);
-  if (!target.valid) {
-    return;
+  if (faces == nullptr || count == 0) {
+    if (!target.valid) {
+      telemetry_.targetValid = false;
+      submitFaceLost(nowMs, 1.0f);
+      return;
+    }
+    telemetry_.faceHoldSelections++;
   }
   RobotEvent event;
   event.type = EventType::FaceDetected;
@@ -235,8 +269,19 @@ void CameraAdapter::submitFaces(const FaceCandidate* faces, uint8_t count, uint3
   event.x = target.x;
   event.y = target.y;
   event.z = target.size;
-  telemetry_.faceBatches++;
-  telemetry_.facesObserved += min(count, kActiveSpeakerMaxFaces);
+  if (hasFreshFaces) {
+    telemetry_.faceBatches++;
+    telemetry_.facesObserved += min(count, kActiveSpeakerMaxFaces);
+  }
+  telemetry_.targetValid = true;
+  telemetry_.targetAudioMatched = target.audioMatched;
+  telemetry_.targetHeldForReply = target.heldForReply;
+  telemetry_.targetX = target.x;
+  telemetry_.targetY = target.y;
+  telemetry_.targetSize = target.size;
+  telemetry_.targetConfidence = target.confidence;
+  telemetry_.targetAudioDirectionError = target.audioDirectionError;
+  telemetry_.targetSelectedAtMs = target.selectedAtMs;
   if (target.audioMatched) {
     telemetry_.audioMatchedSelections++;
   }
@@ -247,7 +292,12 @@ void CameraAdapter::submitFaces(const FaceCandidate* faces, uint8_t count, uint3
 }
 
 void CameraAdapter::submitSoundDirection(float azimuthNorm, float strength, uint32_t nowMs) {
-  activeSpeaker_.updateSoundDirection(azimuthNorm, strength, nowMs);
+  telemetry_.soundDirectionUpdates++;
+  telemetry_.lastSoundDirectionMs = nowMs;
+  telemetry_.lastSoundAzimuthNorm = constrain(azimuthNorm, -1.0f, 1.0f);
+  telemetry_.lastSoundStrength = constrain(strength, 0.0f, 1.0f);
+  activeSpeaker_.updateSoundDirection(
+      telemetry_.lastSoundAzimuthNorm, telemetry_.lastSoundStrength, nowMs);
 }
 
 void CameraAdapter::setRobotSpeaking(bool speaking, uint32_t nowMs) {
@@ -255,6 +305,9 @@ void CameraAdapter::setRobotSpeaking(bool speaking, uint32_t nowMs) {
 }
 
 void CameraAdapter::submitFaceLost(uint32_t nowMs, float strength) {
+  telemetry_.targetValid = false;
+  telemetry_.targetAudioMatched = false;
+  telemetry_.targetHeldForReply = false;
   RobotEvent event;
   event.type = EventType::FaceLost;
   event.timestampMs = nowMs;

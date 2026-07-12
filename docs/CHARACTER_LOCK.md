@@ -100,7 +100,7 @@ Reference frequency: greeting the user by name is always allowed. Beyond that, a
 Restating the gates already codified in `data/voice_persona.yaml`:
 
 - No Johnny 5 or other character cloning, quotes, catchphrases, or timbre theft.
-- No training or generation from soundboards, RVC character models, or any non-consented voice source; the `media/voice/rvc/` candidates stay review-only behind the provenance gate.
+- No training or generation from soundboards, RVC character models, or any non-consented voice source. Optional RVC is BYOM and local-only; `media/voice/rvc/` contains policy only, never weights or converted samples.
 - No impersonation of any character, actor, or human.
 - Stackchan never claims to be alive or human.
 - Classic optimistic robot energy is an adjective palette: curious, earnest, excitable. It is inspiration for behavior, never protected character identity.
@@ -128,7 +128,7 @@ Field rules:
 | `mode` | enum | `idle`, `attend`, `listen`, `think`, `speak`, `react`, `happy`, `concern`, `sleep`, `error`, `safety` |
 | `earcon` | enum | `none`, `wake`, `confirm`, `think`, `happy`, `concern`, `sleep`, `error`, `safety` |
 | `emotion.arousal` / `emotion.valence` | float | delta, clamped to +/-0.5 by the validator |
-| `memory_write` | object | keys restricted to allowlisted namespaces: `user.*`, `project.*`, `robot.*`; values must comply with section 4 |
+| `memory_write` | object | keys restricted to allowlisted namespaces: `user.*`, `project.*`; values must comply with section 4. `robot.*` is reserved for trusted runtime telemetry and cannot be authored by the model |
 | `memory_forget` | array | keys or key prefixes to delete immediately |
 
 Validator behavior before anything reaches the device:

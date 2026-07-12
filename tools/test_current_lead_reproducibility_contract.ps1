@@ -79,7 +79,7 @@ try {
   New-TextFile -Path $watchPath -Text (@{
       schema = "stackchan.full-system-soak-progress.v1"
       records = 3
-      failedPolls = 3
+      failedPolls = 0
       motionRefreshes = 0
     } | ConvertTo-Json -Depth 4)
   New-TextFile -Path $soakPath -Text (@{

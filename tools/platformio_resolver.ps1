@@ -76,9 +76,47 @@ function Get-StackchanPlatformioCommand {
   throw "Required command is not available: PlatformIO. Install it with a real Python 3 environment, add platformio/pio to PATH, or set PLATFORMIO_EXE to platformio.exe. Searched:$([Environment]::NewLine)$searched"
 }
 
+function Invoke-StackchanUtf8Process {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Command,
+    [string[]]$Arguments = @()
+  )
+
+  $previousPythonIoEncoding = $env:PYTHONIOENCODING
+  $previousPythonUtf8 = $env:PYTHONUTF8
+  $previousOutputEncoding = $OutputEncoding
+  $previousConsoleEncoding = [Console]::OutputEncoding
+  try {
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    $env:PYTHONIOENCODING = "utf-8"
+    $env:PYTHONUTF8 = "1"
+    $OutputEncoding = $utf8
+    [Console]::OutputEncoding = $utf8
+    & $Command @Arguments
+    $processExitCode = $LASTEXITCODE
+    if ($processExitCode -ne 0) {
+      throw "Command failed with exit code $processExitCode`: $(Format-StackchanCommand (@($Command) + $Arguments))"
+    }
+  } finally {
+    if ($null -eq $previousPythonIoEncoding) {
+      Remove-Item Env:PYTHONIOENCODING -ErrorAction SilentlyContinue
+    } else {
+      $env:PYTHONIOENCODING = $previousPythonIoEncoding
+    }
+    if ($null -eq $previousPythonUtf8) {
+      Remove-Item Env:PYTHONUTF8 -ErrorAction SilentlyContinue
+    } else {
+      $env:PYTHONUTF8 = $previousPythonUtf8
+    }
+    $OutputEncoding = $previousOutputEncoding
+    [Console]::OutputEncoding = $previousConsoleEncoding
+  }
+}
+
 function Invoke-StackchanPlatformio {
   $platformio = Get-StackchanPlatformioCommand
-  & $platformio @args
+  Invoke-StackchanUtf8Process -Command $platformio -Arguments $args
 }
 
 function Get-StackchanPlatformioCoreDir {

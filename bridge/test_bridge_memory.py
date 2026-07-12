@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from bridge_memory import (
+    LEGACY_MEMORY_SCHEMA,
+    LEGACY_MEMORY_SCHEMA_VERSION,
     MAX_DURABLE_FACTS,
     MAX_MEMORY_ITEMS,
     MAX_RECENT_CONTEXT,
@@ -48,15 +50,15 @@ class BridgeMemoryStoreTests(unittest.TestCase):
             {"user.preferred_name", "project.note"},
             {item["key"] for item in data["durable_facts"]},
         )
-        self.assertEqual(["robot.physical_context"], [item["key"] for item in data["recent_context"]])
-        for item in (*data["durable_facts"], *data["recent_context"]):
+        self.assertEqual([], data["recent_context"])
+        self.assertEqual((), memory.physical_context)
+        for item in data["durable_facts"]:
             self.assertIn("created_at", item)
             self.assertIn("updated_at", item)
             self.assertIn("last_used_at", item)
             self.assertIn("importance", item)
             self.assertIn("expires_at", item)
         self.assertIsNone(data["durable_facts"][0]["expires_at"])
-        self.assertIsNotNone(data["recent_context"][0]["expires_at"])
 
     def test_flat_schema_migrates_without_losing_public_fields(self):
         legacy = {
@@ -71,12 +73,12 @@ class BridgeMemoryStoreTests(unittest.TestCase):
 
         self.assertEqual("Rob", memory.preferred_name)
         self.assertEqual(("voice",), memory.recent_topics)
-        self.assertEqual(("room is dark",), memory.physical_context)
+        self.assertEqual((), memory.physical_context)
         self.assertEqual(3, memory.turns_seen)
         self.assertEqual(["voice"], data["recent_topics"])
         self.assertTrue(any(item["key"] == "user.preferred_name" for item in data["durable_facts"]))
         self.assertEqual(
-            {"project.topic", "robot.physical_context"},
+            {"project.topic"},
             {item["key"] for item in data["recent_context"]},
         )
 
@@ -92,8 +94,33 @@ class BridgeMemoryStoreTests(unittest.TestCase):
 
         self.assertEqual("", memory.preferred_name)
         self.assertEqual(("voice",), memory.recent_topics)
-        self.assertEqual(("low_battery",), memory.physical_context)
+        self.assertEqual((), memory.physical_context)
         self.assertNotIn("['", json.dumps(memory.to_dict()))
+
+    def test_v2_migration_preserves_user_and_project_but_drops_untrusted_robot_state(self):
+        legacy = {
+            "schema": LEGACY_MEMORY_SCHEMA,
+            "schema_version": LEGACY_MEMORY_SCHEMA_VERSION,
+            "durable_facts": [
+                self.record("user.preferred_name", "Rob"),
+                self.record("project.note", "servo bracket"),
+            ],
+            "recent_context": [
+                self.record("project.topic", "voice", expires_at="2999-01-01T00:00:00Z"),
+                self.record("robot.status", "low battery", expires_at="2999-01-01T00:00:00Z"),
+            ],
+            "turns_seen": 7,
+        }
+
+        memory = BridgeMemory.from_dict(legacy)
+        saved = memory.to_dict()
+
+        self.assertEqual("Rob", memory.preferred_name)
+        self.assertEqual(("servo bracket", "voice"), memory.recent_topics)
+        self.assertEqual((), memory.physical_context)
+        self.assertNotIn("low battery", json.dumps(saved))
+        self.assertEqual(MEMORY_SCHEMA, saved["schema"])
+        self.assertEqual(MEMORY_SCHEMA_VERSION, saved["schema_version"])
 
     def test_only_explicit_user_language_establishes_preferred_name(self):
         memory = BridgeMemory().remember_user_text("I'm happy you're my friend.")
@@ -112,6 +139,26 @@ class BridgeMemoryStoreTests(unittest.TestCase):
             {"memory_write": {"user.name": "Alice"}, "memory_forget": []}
         )
         self.assertEqual("Rob", replaced.preferred_name)
+
+    def test_user_text_and_character_output_cannot_invent_robot_state(self):
+        memory = BridgeMemory().remember_user_text(
+            "I picked you up, touched you, and think your battery is low."
+        )
+        memory = memory.apply_character_memory(
+            {"memory_write": {"robot.status": "low battery"}, "memory_forget": []}
+        )
+
+        self.assertEqual((), memory.physical_context)
+        self.assertFalse(any(item["key"].startswith("robot.") for item in memory.to_dict()["recent_context"]))
+
+    def test_trusted_runtime_override_can_add_bounded_robot_context(self):
+        memory = BridgeMemory().with_overrides(physical_context=("user picked Stackchan up",))
+
+        self.assertEqual(("user picked Stackchan up",), memory.physical_context)
+        self.assertEqual(
+            ["robot.physical_context"],
+            [item["key"] for item in memory.to_dict()["recent_context"]],
+        )
 
     def test_expired_records_are_pruned_on_load(self):
         data = {
@@ -223,7 +270,7 @@ class BridgeMemoryStoreTests(unittest.TestCase):
 
         self.assertEqual("Rob", memory.preferred_name)
         self.assertEqual((), memory.recent_topics)
-        self.assertEqual(("low battery",), memory.physical_context)
+        self.assertEqual((), memory.physical_context)
         self.assertFalse(any(item["key"].startswith("project.") for item in memory.to_dict()["durable_facts"]))
         self.assertEqual(BridgeMemory(), memory.apply_character_memory({"memory_forget": ["*"]}))
 

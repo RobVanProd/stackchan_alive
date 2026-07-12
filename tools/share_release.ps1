@@ -798,10 +798,6 @@ $files = @(
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_SAMPLES.md"); Name = "voice/VOICE_SAMPLES.md" },
   @{ Source = (Join-Path $packageRoot "media/voice/VOICE_AUDITION.html"); Name = "voice/VOICE_AUDITION.html" },
   @{ Source = (Join-Path $packageRoot "media/voice/rvc/README.md"); Name = "voice/rvc/README.md" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/RVC_AUDITION.html"); Name = "voice/rvc/RVC_AUDITION.html" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_bright_robot.mp3"); Name = "voice/rvc/stackchan_rvc_bright_robot.mp3" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"); Name = "voice/rvc/stackchan_rvc_thinking_neutral.mp3" },
-  @{ Source = (Join-Path $packageRoot "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"); Name = "voice/rvc/stackchan_rvc_safety_neutral.mp3" },
   @{ Source = (Join-Path $packageRoot "ARRIVAL_DAY_RUNBOOK.md"); Name = "ARRIVAL_DAY_RUNBOOK.md" },
   @{ Source = (Join-Path $packageRoot "QUICKSTART.md"); Name = "QUICKSTART.md" },
   @{ Source = (Join-Path $packageRoot "RELEASE_NOTES.md"); Name = "RELEASE_NOTES.md" },
@@ -935,17 +931,6 @@ $rvcBaseArchiveText = if ([bool]$rvcBaseStatus.localArchive.present) { "local ar
 $rvcBaseArchiveText = [System.Net.WebUtility]::HtmlEncode($rvcBaseArchiveText)
 $rvcBaseExpectedSha = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.expectedArchive.sha256)
 $rvcBaseExpectedBytes = [System.Net.WebUtility]::HtmlEncode([string]$rvcBaseStatus.expectedArchive.bytes)
-$rvcLeadTitle = "RVC Bright Robot"
-$rvcLeadFile = "stackchan_rvc_bright_robot.mp3"
-$rvcLeadTranscript = "Hello. I am Stackchan, and I am awake."
-$rvcLeadRating = "Accepted Stackchan voice direction"
-$rvcLeadPurpose = "Bright synthetic robot character tuned for the CoreS3 speaker."
-$rvcLeadPitch = "2"
-$rvcLeadIndex = "0.62"
-$rvcLeadRms = "0.72"
-$rvcLeadProtect = "0.28"
-$rvcLeadPath = "voice/rvc/$rvcLeadFile"
-$rvcLeadPathHtml = [System.Net.WebUtility]::HtmlEncode($rvcLeadPath)
 $declaredDependencyCount = @($dependencyLock.declaredLibDeps).Count
 $directGitMissingRefCount = @($dependencyLock.dependencyAudit.directGitDepsMissingRef).Count
 $duplicateDependencyCount = @($dependencyLock.dependencyAudit.duplicateResolvedPackages).Count
@@ -1101,30 +1086,9 @@ $promotionGateItems
     <li>Worth moving into a licensed or owned production voice source before consumer rollout.</li>
   </ul>
 
-  <h2>RVC Voice Auditions</h2>
-  <p>Review-only samples rendered through the selected RVC candidate base. These compare pitch, RVC blend, light vocoder, and beep/boop balance. They are not consumer-approved until voice rights and source provenance are cleared.</p>
-  <div class="item">
-    <strong>Current Lead: $rvcLeadTitle</strong>
-    <audio src="$rvcLeadPathHtml" controls preload="metadata"></audio>
-    <p class="transcript"><strong>Transcript:</strong> $rvcLeadTranscript</p>
-    <p><strong>Selected settings:</strong> pitch $rvcLeadPitch, index $rvcLeadIndex, RMS mix $rvcLeadRms, protect $rvcLeadProtect.</p>
-    <p><strong>Listening note:</strong> $rvcLeadRating. $rvcLeadPurpose.</p>
-    <p><a href="$rvcLeadPathHtml">Download $rvcLeadFile</a></p>
-  </div>
-  <div class="grid">
-    <div class="item">
-      <strong>RVC Thinking</strong>
-      <audio src="voice/rvc/stackchan_rvc_thinking_neutral.mp3" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Input received. I am thinking now. Curiosity level rising.</p>
-      <p><a href="voice/rvc/stackchan_rvc_thinking_neutral.mp3">Download MP3</a></p>
-    </div>
-    <div class="item">
-      <strong>RVC Safety</strong>
-      <audio src="voice/rvc/stackchan_rvc_safety_neutral.mp3" controls preload="metadata"></audio>
-      <p class="transcript"><strong>Transcript:</strong> Small problem found. I can help fix it. Safety first.</p>
-      <p><a href="voice/rvc/stackchan_rvc_safety_neutral.mp3">Download MP3</a></p>
-    </div>
-  </div>
+  <h2>Optional Local RVC</h2>
+  <p>RVC conversion is bring-your-own-model and local-only. This release does not distribute model weights, indexes, converted audio, or an RVC audition page. Operators may use a model they are authorized to run and keep generated output under the ignored <code>output/voice_auditions/</code> directory.</p>
+  <p><a href="voice/rvc/README.md">Read the RVC BYOM policy</a></p>
 
   <h2>Voice Source Gate</h2>
   <p>The current WAVs are review-only prototype samples. Production TTS remains blocked until the voice source is licensed or owned, the provenance template is completed, and real-device speaker evidence is captured.</p>
@@ -1184,11 +1148,7 @@ $promotionGateItems
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.wav">Bright Robot Voice Audition</a></div>
     <div class="item"><a href="voice/stackchan_spark_audition_bright_robot_greeting.mp3">Bright Robot MP3</a></div>
     <div class="item"><a href="voice/stackchan_spark_thinking.mp3">Thinking MP3</a></div>
-    <div class="item"><a href="voice/rvc/README.md">RVC MP3 Readme</a></div>
-    <div class="item"><a href="voice/rvc/RVC_AUDITION.html">RVC Local Audition Page</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_bright_robot.mp3">RVC Bright Robot MP3</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_thinking_neutral.mp3">RVC Thinking MP3</a></div>
-    <div class="item"><a href="voice/rvc/stackchan_rvc_safety_neutral.mp3">RVC Safety MP3</a></div>
+    <div class="item"><a href="voice/rvc/README.md">RVC BYOM Policy</a></div>
     <div class="item"><a href="VOICE_SOURCE_STATUS.md">Voice Source Status</a></div>
     <div class="item"><a href="voice_source_status.json">Voice Source Status JSON</a></div>
     <div class="item"><a href="VOICE_SOURCE_PROVENANCE_TEMPLATE.md">Voice Source Provenance Template</a></div>

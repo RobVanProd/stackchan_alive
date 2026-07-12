@@ -52,7 +52,7 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "mode": "react",
         "earcon": "confirm",
         "emotion": {"arousal": 0.3, "valence": 0.2},
-        "memory_write": {"robot.physical_context": "user picked Stackchan up"},
+        "memory_write": {},
         "memory_forget": [],
     },
     "low_battery": {
@@ -60,7 +60,7 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "mode": "safety",
         "earcon": "safety",
         "emotion": {"arousal": -0.1, "valence": -0.2},
-        "memory_write": {"robot.status": "low battery"},
+        "memory_write": {},
         "memory_forget": [],
     },
     "confused": {
@@ -206,6 +206,7 @@ def run_runner_profile(
     persona_id: str = DEFAULT_PERSONA_ID,
     user_text: str = "",
     research_tools_enabled: bool = False,
+    embodiment_lines: tuple[str, ...] = (),
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
@@ -215,7 +216,12 @@ def run_runner_profile(
     case = dict(prompt_case_by_name(case_name))
     if user_text.strip():
         case["user"] = user_text.strip()
-    prompt = build_prompt(case, persona, research_tools_enabled=research_tools_enabled)
+    prompt = build_prompt(
+        case,
+        persona,
+        research_tools_enabled=research_tools_enabled,
+        embodiment_lines=embodiment_lines,
+    )
     resolved_command, command_source = resolve_command(profile_id, command)
     configured_runner = resolved_command is not None
     elapsed_ms: float | None = None

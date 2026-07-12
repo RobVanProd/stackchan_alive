@@ -19,7 +19,7 @@ Status as of July 2026: **device-ready prerelease scaffold, not consumer-ready**
 What is working in the repository now:
 
 - Procedural face runtime with authored expressions, blink/saccade/breathing layers, speech-reactive mouth motion, and preview artifacts.
-- Display-only and servo-calibration firmware builds for `m5stack-cores3`.
+- Display-only, servo-calibration, and secret-free full-online firmware builds for `m5stack-cores3`.
 - Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
 - Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
 - Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
@@ -35,10 +35,16 @@ What is working in the repository now:
 
 What is still gated:
 
-- Real hardware evidence for display, speaker, servo calibration, soak, power-cycle recovery, and target-speaker audio.
-- Real configured Wi-Fi credentials/bridge host plus PC/mobile owner failover evidence on the CoreS3.
-- Physical acceptance for the candidate body RGB/touch and IMU producers; camera capture and a real face detector remain separately gated. Mic/wake/uplink are operational on the current hardware but still require final release-candidate regression evidence.
+- A final evidence packet bound to the exact release ZIP: mixed-load soak, power-cycle recovery,
+  target-speaker audio, and package verification. Earlier physical runs remain engineering evidence,
+  but cannot promote a later binary by implication.
+- PC/mobile owner failover evidence on the CoreS3. Configured robot Wi-Fi and the PC bridge are
+  operational on the current hardware.
+- Final touch-zone/gesture and IMU capture evidence. Body RGB is visually accepted; camera capture,
+  YuNet real-face acquisition, and bounded horizontal following are physically proven. Full visual
+  following through wake, listening, and reply remains pending on the incremental-capture candidate.
 - Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
+- A project license selected by the repository owner and added as a root license file.
 - Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.
 
 See [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
@@ -101,6 +107,7 @@ Useful docs:
 - [docs/CHARACTER_LOCK.md](docs/CHARACTER_LOCK.md): P7 bridge persona, response schema, and memory rules.
 - [docs/PERSONA_PACKS.md](docs/PERSONA_PACKS.md): swappable persona-pack format and migration plan.
 - [docs/CREATING_PERSONAS.md](docs/CREATING_PERSONAS.md): copy-edit-validate-build tutorial for creating a new Character OS persona.
+- [docs/CUSTOMIZING_THE_FACE.md](docs/CUSTOMIZING_THE_FACE.md): tune persona expressions or create a deeper procedural face skin without breaking the display runtime.
 - [docs/BRAIN_MODEL.md](docs/BRAIN_MODEL.md): Gemma 4 E2B / LiteRT-LM model target and harness gate.
 - [docs/ANDROID_COMPANION_SPEC.md](docs/ANDROID_COMPANION_SPEC.md): PC/mobile brain modes, bridge handoff, trusted endpoints, and app settings contract.
 - [docs/COMPANION_CROSS_PLATFORM_PLAN.md](docs/COMPANION_CROSS_PLATFORM_PLAN.md): KMP companion build, desktop/Android distribution, and C0-C8 evidence gates.
@@ -108,12 +115,13 @@ Useful docs:
 Prototype voice auditions:
 
 - Stackchan Spark samples: `docs/media/voice/VOICE_AUDITION.html`
-- Review-only RVC samples: `media/voice/rvc/RVC_AUDITION.html`
-- Open the RVC page with `tools/open_voice_audition.cmd -Rvc`
-- Open all checked-in MP3 auditions with `tools/open_voice_audition.cmd -All`
+- Optional local RVC policy: `media/voice/rvc/README.md`
+- Open an operator-generated RVC page with `tools/open_voice_audition.cmd -Rvc`
+- Open a combined page with `tools/open_voice_audition.cmd -All` after generating authorized local RVC samples
 
-RVC assets under `media/voice/rvc` are not production-approved. They are direction samples
-behind the voice-source provenance gate.
+RVC is bring-your-own-model and local-only. No model, index, converted sample, or RVC audition
+page is distributed; `media/voice/rvc` contains policy only and generated output stays under
+the ignored `output/voice_auditions/` tree.
 
 ## Privacy Boundary
 
@@ -178,6 +186,8 @@ Create a new persona from Spark, then edit the copied YAML:
 ```
 
 The full creator path is in [docs/CREATING_PERSONAS.md](docs/CREATING_PERSONAS.md).
+The face-specific path, including YAML controls, procedural geometry, visemes, previews, and
+frame-time gates, is in [docs/CUSTOMIZING_THE_FACE.md](docs/CUSTOMIZING_THE_FACE.md).
 
 Run the Character Lock red-team dry run:
 

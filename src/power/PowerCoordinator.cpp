@@ -20,6 +20,54 @@ const char* powerOperatingModeName(PowerOperatingMode mode) {
   return "unknown";
 }
 
+bool shouldPreemptMotionForAudio(const MotionAudioActivity& activity) {
+  return activity.downlinkActive || activity.downlinkPlaybackActive ||
+         activity.bridgeAudioStreamActive || activity.audioOutputPlaybackActive ||
+         activity.speakerPowerActive || activity.speakerRunning;
+}
+
+void MotionAudioPreemptionGate::reset() {
+  audioLoadActive_ = false;
+  preemptActive_ = false;
+  cooldownTailActive_ = false;
+  hasRecentAudioLoad_ = false;
+  lastAudioLoadMs_ = 0;
+  microphoneCooldownClears_ = 0;
+}
+
+bool MotionAudioPreemptionGate::update(const MotionAudioActivity& activity,
+                                       uint32_t nowMs,
+                                       uint32_t cooldownMs) {
+  audioLoadActive_ = shouldPreemptMotionForAudio(activity);
+  if (audioLoadActive_) {
+    hasRecentAudioLoad_ = true;
+    lastAudioLoadMs_ = nowMs;
+    cooldownTailActive_ = false;
+    preemptActive_ = true;
+    return true;
+  }
+
+  // The wake cue completes before microphone capture starts. Listening is a
+  // safe boundary at which a stale cue tail must no longer hold the servos off.
+  if (activity.microphoneCaptureActive) {
+    if (hasRecentAudioLoad_) {
+      ++microphoneCooldownClears_;
+    }
+    hasRecentAudioLoad_ = false;
+    cooldownTailActive_ = false;
+    preemptActive_ = false;
+    return false;
+  }
+
+  cooldownTailActive_ = hasRecentAudioLoad_ && cooldownMs > 0 &&
+                        nowMs - lastAudioLoadMs_ < cooldownMs;
+  if (!cooldownTailActive_) {
+    hasRecentAudioLoad_ = false;
+  }
+  preemptActive_ = cooldownTailActive_;
+  return preemptActive_;
+}
+
 void PowerFloorTracker::begin(uint16_t hardFloorMv) {
   telemetry_ = {};
   telemetry_.hardFloorMv = hardFloorMv;

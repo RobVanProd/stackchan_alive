@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import math
+from pathlib import Path
 import time
 import urllib.error
 import urllib.parse
@@ -18,6 +20,9 @@ import numpy as np
 
 MAX_FACES = 4
 MAX_FRAME_BYTES = 32768
+YUNET_MODEL_PATH = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
+YUNET_MODEL_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+YUNET_SCORE_THRESHOLD = 0.35
 
 
 @dataclass(frozen=True)
@@ -58,6 +63,14 @@ def validate_pairing_code(value: str) -> str:
     if len(value) != 6 or not value.isascii() or not value.isdigit():
         raise ValueError("pairing code must be exactly six ASCII digits")
     return value
+
+
+def read_pairing_code_file(path: str) -> str:
+    try:
+        value = Path(path).read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("pairing code file could not be read as ASCII") from exc
+    return validate_pairing_code(value)
 
 
 def parse_pgm(payload: bytes) -> np.ndarray:
@@ -117,35 +130,60 @@ def encode_face_targets(pairing_code: str, faces: list[FaceTarget]) -> str:
     return f"/vision-target?p={pairing_code}&f={';'.join(encoded)}"
 
 
-class OpenCvHaarDetector:
-    def __init__(self) -> None:
+def verify_yunet_model(path: str | Path) -> Path:
+    model_path = Path(path).resolve()
+    try:
+        payload = model_path.read_bytes()
+    except OSError as exc:
+        raise RuntimeError("YuNet face detector model is missing or unreadable") from exc
+    if hashlib.sha256(payload).hexdigest() != YUNET_MODEL_SHA256:
+        raise RuntimeError("YuNet face detector model SHA-256 does not match provenance")
+    return model_path
+
+
+class OpenCvYuNetDetector:
+    def __init__(self, model_path: str | Path = YUNET_MODEL_PATH) -> None:
         try:
             import cv2  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
                 "OpenCV vision dependency is missing; install bridge/requirements-vision.txt"
             ) from exc
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        verified_model = verify_yunet_model(model_path)
         self._cv2 = cv2
-        self._cascade = cv2.CascadeClassifier(cascade_path)
-        if self._cascade.empty():
-            raise RuntimeError("OpenCV frontal-face cascade failed to load")
+        self._detector = cv2.FaceDetectorYN_create(
+            str(verified_model), "", (160, 120), YUNET_SCORE_THRESHOLD, 0.30, 5000
+        )
 
     def detect(self, frame: np.ndarray) -> list[FaceTarget]:
-        boxes, _, weights = self._cascade.detectMultiScale3(
-            frame,
-            scaleFactor=1.12,
-            minNeighbors=4,
-            minSize=(24, 24),
-            outputRejectLevels=True,
-        )
-        box_list = [tuple(int(value) for value in box) for box in boxes]
-        weight_list = [float(value) for value in weights]
-        return normalize_face_targets(box_list, frame.shape[1], frame.shape[0], weight_list)
+        if frame.ndim != 2:
+            raise ValueError("YuNet detector expects one-channel grayscale input")
+        height, width = frame.shape
+        bgr = self._cv2.cvtColor(frame, self._cv2.COLOR_GRAY2BGR)
+        self._detector.setInputSize((width, height))
+        _, detections = self._detector.detect(bgr)
+        if detections is None:
+            return []
+
+        candidates: list[FaceTarget] = []
+        for detection in detections:
+            left, top, box_width, box_height = (float(value) for value in detection[:4])
+            if box_width <= 0.0 or box_height <= 0.0:
+                continue
+            center_x = left + box_width * 0.5
+            center_y = top + box_height * 0.5
+            x = max(-1.0, min(1.0, center_x / width * 2.0 - 1.0))
+            y = max(-1.0, min(1.0, center_y / height * 2.0 - 1.0))
+            size = max(0.0, min(1.0, math.sqrt((box_width * box_height) / (width * height))))
+            confidence = max(0.0, min(1.0, float(detection[-1])))
+            candidates.append(FaceTarget(x=x, y=y, size=size, confidence=confidence))
+
+        candidates.sort(key=lambda item: item.size * item.confidence, reverse=True)
+        return candidates[:MAX_FACES]
 
 
 class CameraVisionService:
-    def __init__(self, robot_url: str, pairing_code: str, detector: OpenCvHaarDetector) -> None:
+    def __init__(self, robot_url: str, pairing_code: str, detector: OpenCvYuNetDetector) -> None:
         self.robot_url = require_private_robot_url(robot_url)
         self.pairing_code = validate_pairing_code(pairing_code)
         self.detector = detector
@@ -189,15 +227,23 @@ class CameraVisionService:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--robot-url", default="http://192.168.1.238:8789")
-    parser.add_argument("--pairing-code", required=True)
+    pairing = parser.add_mutually_exclusive_group(required=True)
+    pairing.add_argument("--pairing-code")
+    pairing.add_argument("--pairing-code-file")
     parser.add_argument("--interval-seconds", type=float, default=1.0)
     parser.add_argument("--duration-seconds", type=float, default=0.0)
+    parser.add_argument("--model-path", default=str(YUNET_MODEL_PATH))
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     if args.interval_seconds < 0.5:
         parser.error("--interval-seconds must be at least 0.5")
 
-    service = CameraVisionService(args.robot_url, args.pairing_code, OpenCvHaarDetector())
+    pairing_code = (
+        read_pairing_code_file(args.pairing_code_file)
+        if args.pairing_code_file
+        else validate_pairing_code(args.pairing_code)
+    )
+    service = CameraVisionService(args.robot_url, pairing_code, OpenCvYuNetDetector(args.model_path))
     started = time.monotonic()
     exit_code = 0
     try:

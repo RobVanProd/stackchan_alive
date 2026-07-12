@@ -16,6 +16,14 @@ Remove-Item Env:STACKCHAN_OTA_TOKEN
 
 `tools/platformio_apply_ota_env.py` validates the token and supplies only `STACKCHAN_OTA_TOKEN_SHA256` to the compiler. The raw token is not part of the firmware or persisted OTA telemetry. `STACKCHAN_OTA_PORT` may override the default port and is restricted to `1024..65535`; the uploader must use the same port.
 
+`stackchan_release_forensics` and `stackchan_camera_probe` are production OTA environments and now fail the build when the token is missing. This prevents a serial or LAN deployment from silently replacing an OTA-capable image with one that cannot receive the next OTA update.
+
+The packaged `stackchan_release_full` binary is intentionally different: it rejects any OTA
+token, Wi-Fi credential, bridge target, or pairing code present in the build environment. This
+prevents a release artifact from carrying an owner's secrets. Install that public image over
+serial first, then build `stackchan_release_forensics` or `stackchan_camera_probe` locally with
+the owner's unique token when LAN OTA is desired.
+
 ## Upload
 
 Keep Stackchan on stable external power, clear its moving parts, and stop active voice or wake interactions. Use the firmware binary produced for the same board and partition layout already installed on the device.
@@ -30,6 +38,8 @@ Remove-Item Env:STACKCHAN_OTA_TOKEN
 ```
 
 The uploader accepts only a hostname or IPv4 address resolving entirely to private, link-local, or loopback addresses. It computes the local SHA-256, checks that the device is confirmed and idle, uploads with bounded timeouts, and waits for `confirmed`, `rolled_back`, or `failed`. `-SkipHealthWait` returns after the device accepts the image; use it only when another operator is watching OTA status.
+
+For serial recovery, use `tools\flash_device.ps1` rather than invoking PlatformIO or esptool directly. The shared repository launcher forces `PYTHONUTF8=1`, `PYTHONIOENCODING=utf-8`, and a UTF-8 console for every child process, preventing esptool's Unicode progress display from crashing under the Windows legacy code page. The `stackchan_release_forensics` environment also defaults to the proven `460800` baud upload rate.
 
 ## HTTP Contract
 
@@ -65,6 +75,15 @@ No partition CSV is changed by this feature. In layouts such as `partitions_esp_
 Before activation, namespace `stack_ota` in NVS records the previous app partition, target app partition, expected SHA-256, image size, and phase. When OTA is enabled, Stackchan overrides Arduino's weak `verifyRollbackLater()` hook so the framework cannot auto-confirm the image before application health runs. After reboot, the target must maintain runtime, display, task, Wi-Fi, power, and heap health continuously for 30 seconds. An unhealthy sample resets the stable window. Failure to establish health within 120 seconds requests rollback exactly once.
 
 The OTA boot-health display gate proves that the face task is alive, not that a release has passed its visual performance soak: it requires at least 15 FPS and no frame longer than 120 ms during the current telemetry window. The stricter 50 ms release/soak gate remains separate. Wi-Fi association is a device-health gate; the external PC bridge session is not, because a host restart or backoff must not reject otherwise healthy robot firmware. Status exposes current and cumulative health-failure masks, and the cumulative rejection mask is persisted across rollback so the prior image can report why the candidate was rejected.
+
+The production PC bridge uses a 20-second heartbeat-aware client idle timeout plus TCP
+keepalive. This bounds recovery from an OTA reboot that leaves the old TCP session half-open;
+new robot handshakes must not remain queued behind a stale pre-reboot socket for the former
+120-second timeout. Model, STT, and TTS execution retain their separate longer timeouts.
+
+The ordinary production profile retains a `65536` byte internal-heap floor. The camera probe uses a measured `32768` byte floor because the initialized QVGA camera consumes internal DMA/control memory even though its frame buffer lives in PSRAM; live hardware evidence showed about `39 KB` steady free heap and a `30.5 KB` boot minimum. This is a profile-specific budget, not a global relaxation. Firmware refuses to compile any OTA profile below `24576` bytes, and `/debug` reports `ota_min_free_heap_bytes`, `ota_health_min_vbus_mv`, and `ota_health_max_frame_us` so evidence captures the active policy.
+
+Pass `-EvidenceRoot <directory>` to `tools/upload_lan_ota.ps1` for release or diagnostic uploads. The uploader writes a non-secret manifest plus one JSON record for every reachable or failed OTA-status/debug poll, including terminal confirmation or rollback. This preserves the live failing gate even when the uploader exits with an expected rollback error.
 
 The implementation checks `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` at compile time. Do not infer that setting from the framework version: `/status` reports `bootloader_rollback_enabled` and `software_rollback_only`, and the running firmware is the authority.
 

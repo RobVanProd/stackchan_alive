@@ -124,8 +124,8 @@ function Assert-StagedFirmwareMatchesPackage {
 $baseEntries = Get-ReleaseBaseAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 $finalEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $packageRootPath -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath -FirmwareAssetRoot $firmwareAssetRootPath -FirmwareAssetPathMode $FirmwareAssetPathMode
 
-Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 21 -Label "Base"
-Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 24 -Label "Final"
+Assert-AssetEntrySet -Entries $baseEntries -ExpectedCount 17 -Label "Base"
+Assert-AssetEntrySet -Entries $finalEntries -ExpectedCount 20 -Label "Final"
 
 $manifestPath = Join-Path $packageRootPath "release_manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath)) {
@@ -212,10 +212,7 @@ foreach ($requiredAssetName in @(
   "bootloader.bin",
   "partitions.bin",
   "stackchan_spark_audition_bright_robot_greeting.mp3",
-  "stackchan_spark_thinking.mp3",
-  "stackchan_rvc_bright_robot.mp3",
-  "stackchan_rvc_thinking_neutral.mp3",
-  "stackchan_rvc_safety_neutral.mp3"
+  "stackchan_spark_thinking.mp3"
 )) {
   if (@($finalEntries | Where-Object { $_.Name -eq $requiredAssetName }).Count -ne 1) {
     throw "Release asset contract missing required release asset: $requiredAssetName"

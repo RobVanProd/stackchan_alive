@@ -42,6 +42,24 @@ if (-not (Test-Path -LiteralPath $PackageRoot)) {
 }
 
 $packageRootPath = (Resolve-Path $PackageRoot).Path
+$packageRootPrefix = $packageRootPath.TrimEnd('\') + '\'
+$restrictedVoicePayloads = @(
+  Get-ChildItem -LiteralPath $packageRootPath -File -Recurse | Where-Object {
+    $relative = $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+    $extension = $_.Extension.ToLowerInvariant()
+    $allowedVisionModel = $relative -match '(?i)^(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
+    ($extension -in @('.pth', '.index')) -or
+    ($extension -eq '.onnx' -and -not $allowedVisionModel) -or
+    ($_.Name -match '(?i)weightsgg|weights\.gg') -or
+    ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$).+') -or
+    ($_.Name -match '(?i)rvc.*\.(wav|mp3|html)$')
+  } | ForEach-Object {
+    $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+  }
+)
+if ($restrictedVoicePayloads.Count -gt 0) {
+  throw "Release package contains restricted RVC/model payloads: $($restrictedVoicePayloads -join ', ')"
+}
 
 function Join-PackagePath {
   param([string]$RelativePath)
@@ -103,6 +121,8 @@ function Assert-Mp3File {
 
 $requiredFiles = @(
   "DEPENDENCIES.md",
+  "THIRD_PARTY_NOTICES.md",
+  "third_party_licenses/files.json",
   "ARRIVAL_DAY_RUNBOOK.md",
   "GITHUB_ACTIONS_STATUS.md",
   "READINESS_REPORT.md",
@@ -131,6 +151,7 @@ $requiredFiles = @(
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
+  "docs/CUSTOMIZING_THE_FACE.md",
   "docs/DESKTOP_PYTHON_RUNTIME.md",
   "docs/GAP_ANALYSIS.md",
   "docs/JOHNNY_ALIVE_PATHWAY.md",
@@ -138,6 +159,8 @@ $requiredFiles = @(
   "docs/HARDWARE_SIMULATION.md",
   "docs/HARDWARE_FEATURE_ROADMAP.md",
   "docs/LOCAL_RESEARCH_TOOLING.md",
+  "docs/LOCAL_VISION.md",
+  "docs/LAN_OTA.md",
   "docs/POWER_BLACKOUT_FORENSICS.md",
   "docs/SPEAKER_AUDIO_RESEARCH.md",
   "docs/VOICE_V2_DIRECTML.md",
@@ -150,6 +173,7 @@ $requiredFiles = @(
   "docs/ROLLOUT_CHECKLIST.md",
   "docs/VOICE_PERSONALITY.md",
   "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md",
+  "bridge/models/LICENSE",
   "data/calibration.yaml",
   "data/expressions.yaml",
   "data/voice_persona.yaml",
@@ -157,6 +181,10 @@ $requiredFiles = @(
   "data/voice_rvc_base.yaml",
   "data/voice_rvc_base_metadata.json",
   "bridge/README.md",
+  "bridge/bridge_memory.py",
+  "bridge/test_bridge_memory.py",
+  "bridge/memory_maintenance.py",
+  "bridge/test_memory_maintenance.py",
   "bridge/character_harness.py",
   "bridge/test_character_harness.py",
   "bridge/character_red_team.py",
@@ -165,6 +193,10 @@ $requiredFiles = @(
   "bridge/test_persona_pack.py",
   "bridge/reference_bridge.py",
   "bridge/test_reference_bridge.py",
+  "bridge/research_broker.py",
+  "bridge/test_research_broker.py",
+  "bridge/robot_embodiment.py",
+  "bridge/test_robot_embodiment.py",
   "bridge/local_runner.py",
   "bridge/test_local_runner.py",
   "bridge/engine_probe.py",
@@ -192,9 +224,16 @@ $requiredFiles = @(
   "bridge/rvc_worker_service.py",
   "bridge/rvc_directml_tts_client.py",
   "bridge/rvc_directml_worker_service.py",
+  "bridge/rvc_production_tts_client.py",
+  "bridge/test_rvc_production_tts_client.py",
   "bridge/voice_v2_directml_runtime.py",
   "bridge/voice_v2_directml_benchmark.py",
   "bridge/voice_v2_wire_benchmark.py",
+  "bridge/vision_service.py",
+  "bridge/test_vision_service.py",
+  "bridge/requirements-vision.txt",
+  "bridge/models/README.md",
+  "bridge/models/face_detection_yunet_2023mar.onnx",
   "bridge/lan_smoke.py",
   "bridge/test_lan_smoke.py",
   "bridge/android_companion_probe.py",
@@ -258,6 +297,10 @@ $requiredFiles = @(
   "firmware/servo_calibration/firmware.bin",
   "firmware/servo_calibration/firmware.elf",
   "firmware/servo_calibration/partitions.bin",
+  "firmware/full_online/bootloader.bin",
+  "firmware/full_online/firmware.bin",
+  "firmware/full_online/firmware.elf",
+  "firmware/full_online/partitions.bin",
   "media/stackchan_alive_expression_sheet.png",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
@@ -292,10 +335,6 @@ $requiredFiles = @(
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/VOICE_AUDITION.html",
   "media/voice/rvc/README.md",
-  "media/voice/rvc/RVC_AUDITION.html",
-  "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
-  "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
-  "media/voice/rvc/stackchan_rvc_safety_neutral.mp3",
   "tools/flash_device.cmd",
   "tools/flash_device.ps1",
   "tools/provision_stackchan_wifi.cmd",
@@ -305,6 +344,24 @@ $requiredFiles = @(
   "tools/flash_wifi_bridge.cmd",
   "tools/flash_wifi_bridge.ps1",
   "tools/platformio_apply_wifi_bridge_env.py",
+  "tools/platformio_apply_ota_env.py",
+  "tools/test_platformio_ota_env_contract.py",
+  "tools/test_platformio_wifi_env_contract.py",
+  "tools/upload_lan_ota.cmd",
+  "tools/upload_lan_ota.ps1",
+  "tools/body_sensor_validation.ps1",
+  "tools/test_body_sensor_validation_contract.ps1",
+  "tools/run_full_system_soak_http_motion.ps1",
+  "tools/start_warm_rocm_full_system_soak.ps1",
+  "tools/start_production_full_system_soak.ps1",
+  "tools/check_full_system_soak_evidence.ps1",
+  "tools/test_full_system_soak_evidence_contract.ps1",
+  "tools/test_start_warm_rocm_full_system_soak_contract.ps1",
+  "tools/test_start_production_full_system_soak_contract.ps1",
+  "tools/camera_follow_wake_validation.ps1",
+  "tools/test_camera_follow_wake_validation_contract.ps1",
+  "tools/complete_camera_follow_wake_validation.ps1",
+  "tools/test_complete_camera_follow_wake_validation_contract.ps1",
   "tools/prepare_desktop_python_runtime.cmd",
   "tools/prepare_desktop_python_runtime.ps1",
   "tools/check_desktop_python_runtime_payload.cmd",
@@ -391,6 +448,8 @@ $requiredFiles = @(
   "tools/verify_rvc_auditions.ps1",
   "tools/verify_tracked_rvc_assets.cmd",
   "tools/verify_tracked_rvc_assets.ps1",
+  "tools/sanitize_public_archive.cmd",
+  "tools/sanitize_public_archive.ps1",
   "tools/generate_speech_envelope_sidecar.cmd",
   "tools/generate_speech_envelope_sidecar.ps1",
   "tools/generate_speech_envelope_sidecar.py",
@@ -509,6 +568,7 @@ $requiredFiles = @(
   "tools/verify_hardware_evidence.ps1",
   "tools/verify_consumer_promotion.cmd",
   "tools/verify_consumer_promotion.ps1",
+  "tools/test_consumer_promotion_contract.ps1",
   "tools/verify_published_release.cmd",
   "tools/verify_published_release.ps1",
   "tools/verify_architecture.cmd",
@@ -643,6 +703,17 @@ foreach ($file in $requiredFiles) {
   Assert-File $file
 }
 
+$visionModelRelativePath = "bridge/models/face_detection_yunet_2023mar.onnx"
+$visionModelPath = Join-PackagePath $visionModelRelativePath
+$visionModel = Get-Item -LiteralPath $visionModelPath
+if ($visionModel.Length -ne 232589) {
+  throw "Unexpected YuNet model size: $($visionModel.Length) bytes"
+}
+$visionModelSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $visionModelPath).Hash.ToLowerInvariant()
+if ($visionModelSha256 -ne "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4") {
+  throw "Unexpected YuNet model SHA-256: $visionModelSha256"
+}
+
 $quickstartText = Get-Content -LiteralPath (Join-PackagePath "QUICKSTART.md") -Raw
 foreach ($pattern in @("share_release.cmd", "verify_share_release.cmd", "DownloadCloudflared", "-Lan", "same-network URL", "stop_share.cmd -All", "PUBLIC_URL.txt", "VERIFIED_URL.txt", "STOP_SHARING.cmd", "run_engine_probe.cmd", "RunModelSmoke", "RunModelBenchmark", "run_character_red_team.cmd", "-RequireRunner", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "check_companion_v1_readiness.cmd", "source-ready-pending-hardware", "protocol fixture", "export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json", "-RequireArtifacts", "model-benchmark/MODEL_BENCHMARK.md/json", "prepare_device_arrival.cmd", "-Operator", "-DeviceId", "-ShareRoot", "NEXT_STEPS.md", "HOSTED_MEDIA_REFERENCE.md", "RUN_DISPLAY_ONLY.cmd", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "RUN_SERVO_CALIBRATION.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "-SourceCommit <git-commit>", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "android\apk-install\", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android\screen-off-soak\", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "android/logcat/", "Android dashboard connected state", "foreground service state", "RUN_ADD_MEDIA.cmd -Type Photo -Notes", "Android dashboard connected state; robot identity; firmware/version signal; last bridge frame; active brain owner; foreground service state", "RUN_PROGRESS_CHECK.cmd", "RUN_ROLLOUT_STATUS.cmd", "ROLLOUT_STATUS.md", "RUN_ADD_MEDIA.cmd", "RUN_PLAY_LEAD_VOICE.cmd", "RVC_LEAD_AUDITION.md", "reference_audio\", "RVC Bright Robot", "AUDIO_REVIEW.md", "real-device speaker recording", "audio\", "generated source WAVs alone do not count", "-ConfirmServoRisk", "Hardware validation is still required")) {
   if ($quickstartText -notmatch [regex]::Escape($pattern)) {
@@ -667,7 +738,10 @@ foreach ($pattern in @("status", "telemetry", "health", "[heartbeat]", "[system]
 $shareGeneratorText = Get-Content -LiteralPath (Join-PackagePath "tools/share_release.ps1") -Raw
 $retiredRvcSharePatterns = @(
   "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav",
-  "stackchan_rvc_bright_robot_less_static.wav", "RVC_AUDITIONS.md"
+  "stackchan_rvc_bright_robot_less_static.wav", "RVC_AUDITIONS.md",
+  "RVC Voice Auditions", "RVC MP3 Readme", "RVC_AUDITION.html",
+  "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3",
+  "stackchan_rvc_safety_neutral.mp3"
 )
 foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Next Action", "rolloutNextAction", "rolloutNextCommand", "ActionsStatusPath", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speech envelope mouth demo", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/README.md", "RVC MP3 Readme", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($retiredRvcSharePatterns -contains $pattern) { continue }
@@ -675,9 +749,19 @@ foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalU
     throw "tools/share_release.ps1 missing required share generation logic: $pattern"
   }
 }
+foreach ($pattern in @("Optional Local RVC", "bring-your-own-model", "RVC BYOM Policy")) {
+  if ($shareGeneratorText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/share_release.ps1 missing RVC BYOM policy marker: $pattern"
+  }
+}
 
 $shareVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_share_release.ps1") -Raw
+$retiredRvcShareVerifierPatterns = @(
+  "voice/rvc/RVC_AUDITION.html", "voice/rvc/stackchan_rvc_bright_robot.mp3",
+  "voice/rvc/stackchan_rvc_thinking_neutral.mp3", "voice/rvc/stackchan_rvc_safety_neutral.mp3"
+)
 foreach ($pattern in @("SHA256SUMS.txt", ".zip.sha256", "ZIP SHA256 sidecar", "Invoke-UrlProbe", "Assert-HttpOk", "ProbeRetries", "ProbeDelaySeconds", "share_verification_report.json", "share_static_verification_report.json", "stackchan.share-verification.v1", "verificationMode", "offline-static", "allStaticFilesPresent", "usedCurlResolveFallback", "bindAddress", "loopbackUrl", "lanUrls", "OPEN_LOCAL_SHARE.cmd", "openLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "lanDiagnostics", "hostProbeResults", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Next Action", "Next owner:", "Pending Promotion Gates", "speech-mouth-demo-evidence", "power-cycle-recovery", "USB power-cycle observation marked pass", "target-speaker-audio-evidence", "RUN_SPEECH_MOUTH_DEMO.cmd", "speech envelope mouth demo", "Face Phase A", "phase_a_idle_10s.gif", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "Face Phase C", "phase_c_idle_10s.gif", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "Face Phase E", "phase_e_speech_reactive_6s.gif", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "Speaker audio evidence", "voice/rvc/README.md", "voice/rvc/RVC_AUDITION.html", "voice/rvc/stackchan_rvc_bright_robot.mp3", "voice/rvc/stackchan_rvc_thinking_neutral.mp3", "voice/rvc/stackchan_rvc_safety_neutral.mp3")) {
+  if ($retiredRvcShareVerifierPatterns -contains $pattern) { continue }
   if ($shareVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_share_release.ps1 missing required remote verification logic: $pattern"
   }
@@ -866,7 +950,7 @@ foreach ($pattern in @("stackchan.ci-account-block-exception.v1", "stackchan.git
 }
 
 $consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
-foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "ExternalAccountCiExceptionPath", "Assert-CiExceptionRecord", "stackchan.ci-account-block-exception.v1", "riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady", "voice_source_provenance.yaml", "pending-production-source", "Assert-VoiceStatusReportsReady", "voice_source_status.json is not production-source-ready", "rvc_voice_base_status.json is not consumer approved", "rvc_voice_base_status.json is not distribution approved", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
+foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "ExternalAccountCiExceptionPath", "Assert-CiExceptionRecord", "stackchan.ci-account-block-exception.v1", "riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady", "voice_source_provenance.yaml", "pending-production-source", "Assert-VoiceStatusReportsReady", "voice_source_status.json is not production-source-ready", "rvc_voice_base_status.json is not consumer approved", "rvc_voice_base_status.json is not distribution approved", "ProjectLicensePath", "Assert-ProjectLicenseReady", "CameraFollowSummaryPath", "Assert-CameraFollowReady", "BodySensorReportPath", "Assert-BodySensorReady", "FullSystemSoakSummaryPath", "Assert-FinalSoakReady", "same installed firmware SHA-256", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
   if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_consumer_promotion.ps1 missing promotion gate logic: $pattern"
   }
@@ -876,14 +960,14 @@ if ($consumerPromotionVerifierText -match "evidenceArgs\s*\+=\s*['`"]-AllowMissi
 }
 
 $releaseAssetContractText = Get-Content -LiteralPath (Join-PackagePath "tools/release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
   if ($releaseAssetContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/release_asset_contract.ps1 missing required release asset contract logic: $pattern"
   }
 }
 
 $releaseAssetContractVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 21", "ExpectedCount 24", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "stackchan_rvc_bright_robot.mp3", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "ExpectedCount 17", "ExpectedCount 20", "release_assets.json", "stackchan.release-assets.v1", "release_manifest.json", "mediaArtifacts", "duplicate asset names", "FirmwareAssetRoot", "FirmwareAssetPathMode", "Assert-StagedFirmwareMatchesPackage", "Get-FileHash", "Release asset contract verified")) {
   if ($releaseAssetContractVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_release_asset_contract.ps1 missing required asset contract verification logic: $pattern"
   }
@@ -941,7 +1025,7 @@ foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEA
 }
 
 $repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -Raw
-foreach ($pattern in @("media/voice/rvc", "RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All")) {
+foreach ($pattern in @("media/voice/rvc", "bring-your-own-model", "No model", "converted sample", "open_voice_audition.cmd -All")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing RVC audition discoverability guidance: $pattern"
   }
@@ -961,7 +1045,7 @@ foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "f
     throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
-foreach ($pattern in @("disabled-by-default M5 mic capture adapter", "mic PCM-to-reflex events", "mic-enabled capture evidence")) {
+foreach ($pattern in @("disabled-by-default M5 mic capture adapter", "mic PCM-to-reflex events", "wake-gated PCM")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "docs/README.md missing mic capture status guidance: $pattern"
   }
@@ -982,7 +1066,7 @@ foreach ($pattern in @("red-team dry-run harness", "configured real runner", "co
 }
 
 $releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
-foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "verify_tracked_rvc_assets.cmd", "media/voice/rvc/", "browser-friendly RVC review copies")) {
+foreach ($pattern in @("open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "verify_tracked_rvc_assets.cmd", "bring-your-own-model", "local-only", "weights, indexes")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing RVC audition process guidance: $pattern"
   }
@@ -1421,14 +1505,14 @@ foreach ($pattern in @("eSpeak-NG.eSpeak-NG", "ChrisBagwell.SoX", "ContinueOnIns
 }
 
 $voiceAuditionOpenerText = Get-Content -LiteralPath (Join-PackagePath "tools/open_voice_audition.ps1") -Raw
-foreach ($pattern in @("VOICE_AUDITION.html", "RVC_AUDITION.html", "VOICE_AUDITION_INDEX.html", "docs/media/voice", "media/voice", "media/voice/rvc", '$Rvc', '$All', "Stackchan combined voice audition page", "PrintOnly", "Start-Process")) {
+foreach ($pattern in @("VOICE_AUDITION.html", "RVC_AUDITION.html", "VOICE_AUDITION_INDEX.html", "docs/media/voice", "media/voice", "output/voice_auditions", '$Rvc', '$All', "Stackchan combined voice audition page", "PrintOnly", "Start-Process")) {
   if ($voiceAuditionOpenerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/open_voice_audition.ps1 missing required local audition open logic: $pattern"
   }
 }
 
 $trackedRvcVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -Raw
-foreach ($pattern in @("Stackchan RVC MP3 Auditions", "RVC_AUDITION.html", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "source provenance and rights review")) {
+foreach ($pattern in @("Optional Local RVC", "user-supplied RVC model", "No RVC model", "output/voice_auditions/", "forbidden bundled assets")) {
   if ($trackedRvcVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_tracked_rvc_assets.ps1 missing tracked RVC asset check: $pattern"
   }
@@ -1529,6 +1613,24 @@ $platformioText = Get-Content -LiteralPath (Join-PackagePath "provenance/platfor
 foreach ($pattern in @("pre:tools/platformio_generate_persona_assets.py", "pre:tools/platformio_generate_voice_assets.py", "[env:native_logic]", "[env:stackchan_servo_calibration]", "[env:stackchan_wifi]", "STACKCHAN_ENABLE_WIFI_BRIDGE=1", "Do not bake Wi-Fi credentials into release or lab builds.", "+<io/AudioCaptureAdapter.cpp>", "+<io/BridgeAudioUplink.cpp>", "+<io/BridgeWakeGate.cpp>", "+<io/BridgeEndpointControl.cpp>", "+<io/BridgeEndpointRegistry.cpp>", "+<io/BridgeEndpointStore.cpp>", "+<io/BridgeNetworkSession.cpp>", "+<io/BridgeSocketWriter.cpp>", "+<io/BridgeWiFiClientSocket.cpp>", "+<io/BridgeWiFiProvisioner.cpp>", "+<io/BridgeWebSocketTransport.cpp>", "bblanchon/ArduinoJson@7.4.3")) {
   if ($platformioText -notmatch [regex]::Escape($pattern)) {
     throw "platformio.ini missing persona generator wiring: $pattern"
+  }
+}
+
+$publicArchiveSanitizerText = Get-Content -LiteralPath (Join-PackagePath "tools/sanitize_public_archive.ps1") -Raw
+foreach ($pattern in @(
+  "stackchan.public-archive-sanitizer.v1",
+  "face_detection_yunet_2023mar",
+  "media/voice/rvc/",
+  "Test-RestrictedArchiveEntry",
+  "remainingRestricted"
+)) {
+  if ($publicArchiveSanitizerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/sanitize_public_archive.ps1 missing restricted-payload policy: $pattern"
+  }
+}
+foreach ($pattern in @("[env:stackchan_release_full]", "Public full-system image", "STACKCHAN_ENABLE_CAMERA_HOST_VISION=1")) {
+  if ($platformioText -notmatch [regex]::Escape($pattern)) {
+    throw "platformio.ini missing public full-online release support: $pattern"
   }
 }
 
@@ -1718,7 +1820,7 @@ foreach ($asset in @($personaPromptAssets.assets)) {
 }
 
 $bridgeReferenceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_reference_bridge.py") -Raw
-foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_topics_and_physical_context", "test_plan_turn_couples_memory_to_response", "test_memory_store_round_trips_minimal_fields", "test_memory_store_reset_deletes_file", "test_character_response_feeds_bridge_turn_and_memory", "test_malformed_character_response_still_renders_fallback", "bridge response happy 7")) {
+foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_protocol_order", "test_jsonl_is_parseable", "test_bench_render_matches_serial_bridge_commands", "test_persona_prompt_uses_memory_without_clone_markers", "test_memory_extracts_name_and_topics_without_trusting_physical_claims", "test_plan_turn_couples_memory_to_response", "test_memory_store_round_trips_minimal_fields", "test_memory_store_reset_deletes_file", "test_character_response_feeds_bridge_turn_and_memory", "test_malformed_character_response_still_renders_fallback", "bridge response happy 7")) {
   if ($bridgeReferenceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_reference_bridge.py missing reference bridge test coverage: $pattern"
   }
@@ -2146,6 +2248,7 @@ foreach ($pattern in @("character_red_team.py", "character-red-team", "CHARACTER
 
 Assert-File "firmware/display_only/firmware.bin" 100000
 Assert-File "firmware/servo_calibration/firmware.bin" 100000
+Assert-File "firmware/full_online/firmware.bin" 1000000
 Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
@@ -2180,10 +2283,6 @@ Assert-File "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json" 1
 Assert-File "media/voice/VOICE_SAMPLES.md" 100
 Assert-File "media/voice/VOICE_AUDITION.html" 1000
 Assert-File "media/voice/rvc/README.md" 400
-Assert-File "media/voice/rvc/RVC_AUDITION.html" 1000
-Assert-Mp3File "media/voice/rvc/stackchan_rvc_bright_robot.mp3"
-Assert-Mp3File "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"
-Assert-Mp3File "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
@@ -2263,7 +2362,9 @@ if ($manifest.defaultEnvironment -ne "stackchan") {
 }
 
 $envs = @($manifest.includedEnvironments)
-if (-not ($envs -contains "stackchan") -or -not ($envs -contains "stackchan_servo_calibration")) {
+if (-not ($envs -contains "stackchan") -or
+    -not ($envs -contains "stackchan_servo_calibration") -or
+    -not ($envs -contains "stackchan_release_full")) {
   throw "Manifest missing expected environments"
 }
 
@@ -2281,6 +2382,12 @@ if ($manifest.dependencyReport -ne "DEPENDENCIES.md") {
 
 if ($manifest.dependencyLock -ne "dependency_lock.json") {
   throw "Manifest dependencyLock mismatch: $($manifest.dependencyLock)"
+}
+if ($manifest.thirdPartyNotices -ne "THIRD_PARTY_NOTICES.md") {
+  throw "Manifest thirdPartyNotices mismatch: $($manifest.thirdPartyNotices)"
+}
+if ($manifest.thirdPartyLicenseIndex -ne "third_party_licenses/files.json") {
+  throw "Manifest thirdPartyLicenseIndex mismatch: $($manifest.thirdPartyLicenseIndex)"
 }
 
 if ($manifest.readinessReport -ne "READINESS_REPORT.md") {
@@ -2373,6 +2480,49 @@ if ($manifest.personaPacksGuide -ne "docs/PERSONA_PACKS.md") {
 
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {
   throw "Manifest voicePersonalityGuide mismatch: $($manifest.voicePersonalityGuide)"
+}
+
+if ($manifest.bodySensorValidator -ne "tools/body_sensor_validation.ps1") {
+  throw "Manifest bodySensorValidator mismatch: $($manifest.bodySensorValidator)"
+}
+if ($manifest.bodySensorValidatorContract -ne "tools/test_body_sensor_validation_contract.ps1") {
+  throw "Manifest bodySensorValidatorContract mismatch: $($manifest.bodySensorValidatorContract)"
+}
+if ($manifest.finalSoakRunner -ne "tools/run_full_system_soak_http_motion.ps1") {
+  throw "Manifest finalSoakRunner mismatch: $($manifest.finalSoakRunner)"
+}
+if ($manifest.finalSoakWrapper -ne "tools/start_warm_rocm_full_system_soak.ps1") {
+  throw "Manifest finalSoakWrapper mismatch: $($manifest.finalSoakWrapper)"
+}
+if ($manifest.productionFinalSoakWrapper -ne "tools/start_production_full_system_soak.ps1") {
+  throw "Manifest productionFinalSoakWrapper mismatch: $($manifest.productionFinalSoakWrapper)"
+}
+if ($manifest.finalSoakChecker -ne "tools/check_full_system_soak_evidence.ps1") {
+  throw "Manifest finalSoakChecker mismatch: $($manifest.finalSoakChecker)"
+}
+if ($manifest.finalSoakCheckerContract -ne "tools/test_full_system_soak_evidence_contract.ps1") {
+  throw "Manifest finalSoakCheckerContract mismatch: $($manifest.finalSoakCheckerContract)"
+}
+if ($manifest.finalSoakWrapperContract -ne "tools/test_start_warm_rocm_full_system_soak_contract.ps1") {
+  throw "Manifest finalSoakWrapperContract mismatch: $($manifest.finalSoakWrapperContract)"
+}
+if ($manifest.productionFinalSoakWrapperContract -ne "tools/test_start_production_full_system_soak_contract.ps1") {
+  throw "Manifest productionFinalSoakWrapperContract mismatch: $($manifest.productionFinalSoakWrapperContract)"
+}
+if ($manifest.cameraFollowWakeValidator -ne "tools/camera_follow_wake_validation.ps1") {
+  throw "Manifest cameraFollowWakeValidator mismatch: $($manifest.cameraFollowWakeValidator)"
+}
+if ($manifest.cameraFollowWakeValidatorContract -ne "tools/test_camera_follow_wake_validation_contract.ps1") {
+  throw "Manifest cameraFollowWakeValidatorContract mismatch: $($manifest.cameraFollowWakeValidatorContract)"
+}
+if ($manifest.cameraFollowWakeCompletion -ne "tools/complete_camera_follow_wake_validation.ps1") {
+  throw "Manifest cameraFollowWakeCompletion mismatch: $($manifest.cameraFollowWakeCompletion)"
+}
+if ($manifest.cameraFollowWakeCompletionContract -ne "tools/test_complete_camera_follow_wake_validation_contract.ps1") {
+  throw "Manifest cameraFollowWakeCompletionContract mismatch: $($manifest.cameraFollowWakeCompletionContract)"
+}
+if ($manifest.consumerPromotionContract -ne "tools/test_consumer_promotion_contract.ps1") {
+  throw "Manifest consumerPromotionContract mismatch: $($manifest.consumerPromotionContract)"
 }
 
 $includedPersonaPacks = @($manifest.includedPersonaPacks)
@@ -2530,11 +2680,7 @@ $expectedMediaArtifacts = @(
   "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json",
   "media/voice/VOICE_SAMPLES.md",
   "media/voice/VOICE_AUDITION.html",
-  "media/voice/rvc/README.md",
-  "media/voice/rvc/RVC_AUDITION.html",
-  "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
-  "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
-  "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
+  "media/voice/rvc/README.md"
 )
 $actualMediaArtifacts = @($manifest.mediaArtifacts)
 foreach ($file in $expectedMediaArtifacts) {
@@ -2661,7 +2807,7 @@ function ConvertTo-Array {
   return @($Value)
 }
 
-foreach ($envName in @("stackchan", "stackchan_servo_calibration")) {
+foreach ($envName in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
   $envLock = $dependencyLock.environments.$envName
   if ($null -eq $envLock) {
     throw "dependency_lock.json missing environment: $envName"
@@ -2672,16 +2818,29 @@ foreach ($envName in @("stackchan", "stackchan_servo_calibration")) {
   if ($envLock.framework -ne "arduino") {
     throw "dependency_lock.json framework mismatch for $envName`: $($envLock.framework)"
   }
-  if ($envLock.platform -ne "espressif32@7.0.1") {
-    throw "dependency_lock.json platform mismatch for $envName`: $($envLock.platform)"
-  }
-
   $packages = @($envLock.resolvedPackages)
-  Assert-LockedPackage $packages "espressif32" "^7\.0\.1$"
-  Assert-LockedPackage $packages "framework-arduinoespressif32" "^3\.20017\.241212\+sha\.dcc1105b$"
-  Assert-LockedPackage $packages "tool-esptoolpy" "^2\.41100\.0$"
-  Assert-LockedPackage $packages "toolchain-xtensa-esp32s3" "^8\.4\.0\+2021r2-patch5$"
-  Assert-LockedPackage $packages "stackchan-arduino" "sha\.b7b98f5$"
+  if ($envName -eq "stackchan_release_full") {
+    if ($envLock.platform -ne "pioarduino/platform-espressif32@55.03.36") {
+      throw "dependency_lock.json platform mismatch for $envName`: $($envLock.platform)"
+    }
+    Assert-LockedPackage $packages "espressif32" "^55\.3\.36\+sha\.aa6e97c$"
+    Assert-LockedPackage $packages "framework-arduinoespressif32" "^3\.3\.6$"
+    Assert-LockedPackage $packages "framework-arduinoespressif32-libs" "^5\.5\.0\+sha\.f56bea3d1f$"
+    Assert-LockedPackage $packages "tool-esptoolpy" "^5\.1\.0$"
+    Assert-LockedPackage $packages "toolchain-xtensa-esp-elf" "^14\.2\.0\+20251107$"
+    Assert-LockedPackage $packages "esp-micro-speech-features" "^1\.2\.0\+sha\.351c4c6$"
+  } else {
+    if ($envLock.platform -ne "espressif32@7.0.1") {
+      throw "dependency_lock.json platform mismatch for $envName`: $($envLock.platform)"
+    }
+    Assert-LockedPackage $packages "espressif32" "^7\.0\.1$"
+    Assert-LockedPackage $packages "framework-arduinoespressif32" "^3\.20017\.241212\+sha\.dcc1105b$"
+    Assert-LockedPackage $packages "tool-esptoolpy" "^2\.41100\.0$"
+    Assert-LockedPackage $packages "toolchain-xtensa-esp32s3" "^8\.4\.0\+2021r2-patch5$"
+    Assert-LockedPackage $packages "stackchan-arduino" "sha\.b7b98f5$"
+  }
+  Assert-LockedPackage $packages "ArduinoJson" "^7\.4\.3$"
+  Assert-LockedPackage $packages "M5Unified" "^0\.2\.17$"
   Assert-LockedPackage $packages "SCServo" "sha\.ee6ee4a$"
 }
 
@@ -2707,7 +2866,18 @@ if ($gitResolvedWithoutSha.Count -gt 0) {
 
 $duplicateResolvedPackages = ConvertTo-Array $dependencyAudit.duplicateResolvedPackages
 foreach ($duplicate in $duplicateResolvedPackages) {
-  if ($duplicate.name -ne "SCServo") {
+  $knownLegacyScServo = $duplicate.name -eq "SCServo" -and $duplicate.environment -in @("stackchan", "stackchan_servo_calibration")
+  $duplicateEntries = ConvertTo-Array $duplicate.entries
+  $duplicateVersions = @($duplicateEntries | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
+  $knownFullOnlineM5Gfx = (
+    $duplicate.name -eq "M5GFX" -and
+    $duplicate.environment -eq "stackchan_release_full" -and
+    $duplicate.count -eq 2 -and
+    $duplicateVersions.Count -eq 2 -and
+    $duplicateVersions[0] -eq "0.2.24" -and
+    $duplicateVersions[1] -eq "0.2.25"
+  )
+  if (-not $knownLegacyScServo -and -not $knownFullOnlineM5Gfx) {
     throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
   }
 }
@@ -2722,6 +2892,71 @@ foreach ($requirement in $unpinnedGitRequirements) {
   }
 }
 
+$thirdPartyNotices = Get-Content -LiteralPath (Join-PackagePath "THIRD_PARTY_NOTICES.md") -Raw
+foreach ($pattern in @(
+  "Third-Party Notices",
+  "third_party_licenses/files.json",
+  "Apache-2.0",
+  "LGPL-2.1-or-later",
+  "OpenCV Zoo YuNet",
+  "do not select or grant a license",
+  "not legal advice"
+)) {
+  if ($thirdPartyNotices -notmatch [regex]::Escape($pattern)) {
+    throw "THIRD_PARTY_NOTICES.md missing required marker: $pattern"
+  }
+}
+
+$thirdPartyLicenseIndex = ConvertTo-Array (
+  Get-Content -LiteralPath (Join-PackagePath "third_party_licenses/files.json") -Raw |
+    ConvertFrom-Json
+)
+if ($thirdPartyLicenseIndex.Count -lt 10) {
+  throw "Third-party license index is unexpectedly small: $($thirdPartyLicenseIndex.Count)"
+}
+$indexedThirdPartyPaths = @()
+foreach ($entry in $thirdPartyLicenseIndex) {
+  $relative = ([string]$entry.path).Replace("\", "/")
+  if ([string]::IsNullOrWhiteSpace($relative) -or
+      [System.IO.Path]::IsPathRooted($relative) -or
+      $relative.StartsWith("../") -or
+      $relative.Contains("/../")) {
+    throw "Third-party license index contains unsafe path: $relative"
+  }
+  $indexedPath = Join-PackagePath ("third_party_licenses/" + $relative)
+  if (-not (Test-Path -LiteralPath $indexedPath -PathType Leaf)) {
+    throw "Third-party license index references missing file: $relative"
+  }
+  $indexedFile = Get-Item -LiteralPath $indexedPath
+  if ([int64]$entry.bytes -ne $indexedFile.Length) {
+    throw "Third-party license index size mismatch: $relative"
+  }
+  $actualHash = (Get-FileHash -LiteralPath $indexedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ([string]$entry.sha256 -ne $actualHash) {
+    throw "Third-party license index hash mismatch: $relative"
+  }
+  $indexedThirdPartyPaths += $relative
+}
+
+$requiredThirdPartyPatterns = @(
+  '^stackchan_release_full/platform/espressif32/LICENSE$',
+  '^stackchan_release_full/packages/framework-arduinoespressif32/package\.json$',
+  '^stackchan_release_full/packages/framework-arduinoespressif32-libs/package\.json$',
+  '^stackchan_release_full/libdeps/ArduinoJson/LICENSE\.txt$',
+  '^stackchan_release_full/libdeps/M5GFX/LICENSE$',
+  '^stackchan_release_full/libdeps/M5Unified/LICENSE$',
+  '^stackchan_release_full/libdeps/SCServo/LICENSE$',
+  '^stackchan_release_full/libdeps/YAMLDuino/License$',
+  '^stackchan_release_full/libdeps/esp-micro-speech-features/LICENSE$',
+  '^models/opencv-zoo-yunet/LICENSE$',
+  '^models/opencv-zoo-yunet/README\.md$'
+)
+foreach ($pattern in $requiredThirdPartyPatterns) {
+  if (@($indexedThirdPartyPaths | Where-Object { $_ -match $pattern }).Count -lt 1) {
+    throw "Third-party license index missing required evidence matching: $pattern"
+  }
+}
+
 $releaseNotes = Get-Content -LiteralPath (Join-PackagePath "RELEASE_NOTES.md") -Raw
 if ($releaseNotes -notmatch [regex]::Escape($ExpectedCommit)) {
   throw "RELEASE_NOTES.md missing expected commit"
@@ -2732,14 +2967,14 @@ if ($releaseNotes -notmatch "Hardware validation is still required") {
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/open_voice_audition.cmd -Rvc", "tools/verify_tracked_rvc_assets.cmd", "RVC_AUDITION.html", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3", "prototype voice-direction samples")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "bring-your-own-model", "local-only", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "prototype voice-direction samples")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
 }
 
 $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
-foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "persona/EarconSynth", "io/SpeechAdapter", "io/AudioOut", "generated firmware WAV playback", "mouth-frame streaming", "M5 speaker carrier fallback", "barge-in ducking", "[speech_audio]", 'typed `SpeechEarcon`', "no allocation", "media/voice/rvc/RVC_AUDITION.html", "open_voice_audition.cmd -Rvc", "open_voice_audition.cmd -All", "Acceptance Criteria")) {
+foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "persona/EarconSynth", "io/SpeechAdapter", "io/AudioOut", "generated firmware WAV playback", "mouth-frame streaming", "M5 speaker carrier fallback", "barge-in ducking", "[speech_audio]", 'typed `SpeechEarcon`', "no allocation", "output/voice_auditions/", "media/voice/rvc/README.md", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
   }
@@ -2888,6 +3123,12 @@ foreach ($pattern in @("Voice Source Status", "blocked-pending-production-voice-
 $voiceSourceStatusJson = Get-Content -LiteralPath (Join-PackagePath "voice_source_status.json") -Raw | ConvertFrom-Json
 if ($voiceSourceStatusJson.schema -ne "stackchan.voice-source-status.v1") {
   throw "voice_source_status.json schema mismatch: $($voiceSourceStatusJson.schema)"
+}
+if ($voiceSourceStatusJson.provenancePath -ne "data/voice_source_provenance.yaml") {
+  throw "voice_source_status.json provenancePath must be package-relative: $($voiceSourceStatusJson.provenancePath)"
+}
+if ($voiceSourceStatusJson.templatePath -ne "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md") {
+  throw "voice_source_status.json templatePath must be package-relative: $($voiceSourceStatusJson.templatePath)"
 }
 if ($voiceSourceStatusJson.status -ne "blocked-pending-production-voice-source") {
   throw "voice_source_status.json should keep current package blocked pending production voice source: $($voiceSourceStatusJson.status)"

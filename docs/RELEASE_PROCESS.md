@@ -8,8 +8,26 @@ This project can produce a pre-device review release now and a hardware-validate
 .\tools\package_release.cmd -Version <version>
 ```
 
-The package is written under `output/release/<version>/` and includes firmware binaries, preview media, an expression QA sheet, a root `QUICKSTART.md`, readiness docs, generated readiness reports, the active persona pack under `personas/spark`, `persona_pack_status.json`, voice-source provenance template, companion C6 brain-supervision evidence under `companion/evidence/`, dependency provenance, a machine-readable dependency lock, a dependency audit, copied build inputs, flash helpers, promotion verifiers, a manifest that names the readiness/media/voice/persona/companion evidence artifacts, and SHA256 checksums.
+The package is written under `output/release/<version>/` and includes safe display-only,
+servo-calibration, and secret-free full-online firmware binaries; preview media; an expression
+QA sheet; a root `QUICKSTART.md`; readiness docs; generated readiness reports; the active
+persona pack under `personas/spark`; `persona_pack_status.json`; voice-source provenance
+template; companion C6 brain-supervision evidence under `companion/evidence/`; the local
+vision worker and hash-pinned YuNet model; face-customization guidance; dependency provenance;
+a machine-readable dependency lock; a dependency audit; copied third-party license/notice files
+with a portable SHA-256 index; copied build inputs; flash helpers;
+promotion verifiers; a manifest that names the readiness/media/voice/persona/companion
+evidence artifacts; and SHA256 checksums.
 The package command refuses a dirty source worktree by default so code and configuration match the manifest commit. Regenerated preview media is treated as a release artifact.
+After creating the ZIP and SHA-256 sidecar, the command runs the complete package verifier against
+that exact ZIP and writes `output/release/<version>-package-verify.log`. Package creation fails if
+the verifier fails; a ZIP existing on disk is not by itself a successful package result.
+The three firmware profiles intentionally use two framework families. Packaging builds the two
+legacy Arduino 2.0.17 profiles and the pioarduino/Arduino 3.3.6 full-online profile sequentially,
+with separate PlatformIO cores, and snapshots each successful build before the next framework can
+replace shared packages. On Windows the pioarduino core stays at the short physical path
+`C:\spio\pioarduino` even when a temporary `subst` drive shortens the checkout. Generated package
+reports must use package-relative paths; the verifier rejects host-specific absolute paths.
 Release packages also include flash, evidence-capture, and package-verification helper scripts under `tools/`. Use `tools/flash_release_firmware.cmd` to flash the exact binaries from a verified ZIP instead of rebuilding during arrival-day testing.
 For the companion C8 distribution path, run `tools/export_companion_release_evidence.cmd`
 after Android APK or desktop package artifacts are built. It writes
@@ -54,25 +72,38 @@ To open the local MP3 audition page without starting a share server:
 .\tools\open_voice_audition.cmd
 ```
 
-To open the checked-in RVC MP3 audition page:
+To open an operator-generated local RVC audition page after supplying an authorized model:
 
 ```powershell
 .\tools\open_voice_audition.cmd -Rvc
 ```
 
-To open one combined local page with both Stackchan Spark and checked-in RVC MP3 audition samples:
+To open one combined local page with Stackchan Spark plus any authorized locally generated RVC samples:
 
 ```powershell
 .\tools\open_voice_audition.cmd -All
 ```
 
-To verify the checked-in RVC MP3-only review bundle without regenerating the full RVC WAV set:
+To verify the public BYOM policy and confirm no RVC model or converted assets are bundled:
 
 ```powershell
 .\tools\verify_tracked_rvc_assets.cmd
 ```
 
-Published prereleases also upload quick MP3 audition files as standalone GitHub release assets, so reviewers can play them without downloading the full ZIP. This includes the Stackchan Spark MP3s plus browser-friendly RVC review copies for the current lead, thinking, and safety lines. The same RVC review copies are also kept in `media/voice/rvc/` for local repository playback.
+Published prereleases upload only the project-owned Stackchan Spark audition MP3s as standalone
+GitHub release assets. Optional RVC conversion is bring-your-own-model and local-only; model
+weights, indexes, converted samples, and RVC audition pages are excluded from Git and release
+packages until a production source has complete rights provenance.
+
+To scrub restricted model and RVC payloads from a legacy/private ZIP while preserving the approved
+hash-pinned YuNet detector, write to a new archive:
+
+```powershell
+.\tools\sanitize_public_archive.cmd -InputArchive private.zip -OutputArchive public-scrubbed.zip
+```
+
+This tool enforces the model/RVC payload policy only. It is not a credential scanner and does not
+replace source review, package verification, or the secret-free production build contract.
 
 To audit the active production voice-source gate without generating package artifacts:
 
@@ -91,6 +122,9 @@ To prepare the optional formant-source audition toolchain and rerender using eSp
 If Windows Installer is busy or eSpeak-NG's MSI fails, rerun with `-ContinueOnInstallFailure` to capture a machine-readable setup status without changing the current review WAVs.
 
 The package verifier rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence. Known upstream transitive declarations, such as the current `stackchan-arduino` `SCServo` Git dependency, must be recorded in `dependency_lock.json` instead of being hidden in console output.
+It also verifies `THIRD_PARTY_NOTICES.md` and every entry in
+`third_party_licenses/files.json` by safe relative path, byte count, and SHA-256. These files
+preserve upstream notices; they do not choose a license for Stackchan: Alive itself.
 
 Dry-run the release-binary flasher before connecting hardware:
 

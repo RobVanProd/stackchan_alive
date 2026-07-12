@@ -41,7 +41,6 @@ function Write-CombinedAuditionPage {
     (Join-Path $RootPath "media/voice/VOICE_AUDITION.html")
   )
   $rvcPage = Resolve-FirstExisting @(
-    (Join-Path $RootPath "media/voice/rvc/RVC_AUDITION.html"),
     (Join-Path $RootPath "output/voice_auditions/rvc_base/final/RVC_AUDITION.html")
   )
 
@@ -66,7 +65,6 @@ function Write-CombinedAuditionPage {
       Group = "RVC Review"
       Title = "Bright Robot"
       Path = Resolve-FirstExisting @(
-        (Join-Path $RootPath "media/voice/rvc/stackchan_rvc_bright_robot.mp3"),
         (Join-Path $RootPath "output/voice_auditions/rvc_base/final/stackchan_rvc_bright_robot.mp3")
       )
     },
@@ -74,7 +72,6 @@ function Write-CombinedAuditionPage {
       Group = "RVC Review"
       Title = "Thinking"
       Path = Resolve-FirstExisting @(
-        (Join-Path $RootPath "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3"),
         (Join-Path $RootPath "output/voice_auditions/rvc_base/final/stackchan_rvc_thinking_neutral.mp3")
       )
     },
@@ -82,14 +79,13 @@ function Write-CombinedAuditionPage {
       Group = "RVC Review"
       Title = "Safety"
       Path = Resolve-FirstExisting @(
-        (Join-Path $RootPath "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"),
         (Join-Path $RootPath "output/voice_auditions/rvc_base/final/stackchan_rvc_safety_neutral.mp3")
       )
     }
   ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Path) }
 
   if (@($samples).Count -eq 0) {
-    throw "Missing local MP3 audition samples. Run tools/render_voice_samples.cmd and tools/render_rvc_audition_mp3s.cmd, or use a verified release package."
+    throw "Missing local MP3 audition samples. Render Stackchan Spark samples and, for RVC, supply an authorized local model and generate output under output/voice_auditions/."
   }
 
   $pageLinks = @()
@@ -163,7 +159,6 @@ if ($All) {
 $pageName = if ($Rvc) { "RVC_AUDITION.html" } else { "VOICE_AUDITION.html" }
 $candidates = if ($Rvc) {
   @(
-    (Join-Path $root "media/voice/rvc/$pageName"),
     (Join-Path $root "output/voice_auditions/rvc_base/final/$pageName")
   )
 } else {
@@ -183,7 +178,7 @@ foreach ($candidate in $candidates) {
 
 if ([string]::IsNullOrWhiteSpace($auditionPath)) {
   if ($Rvc) {
-    throw "Missing Stackchan RVC audition page. Run tools/render_rvc_audition_mp3s.cmd in the repo, or use a verified release package that includes media/voice/rvc/RVC_AUDITION.html."
+    throw "Missing local Stackchan RVC audition page. Supply an authorized model and run tools/render_rvc_audition_mp3s.cmd; release packages intentionally do not include RVC output."
   }
   throw "Missing Stackchan voice audition page. Run tools/render_voice_samples.cmd in the repo, or use a verified release package that includes media/voice/VOICE_AUDITION.html."
 }

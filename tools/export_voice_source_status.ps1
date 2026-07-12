@@ -1,6 +1,8 @@
 param(
   [string]$VoiceSourceProvenancePath = "",
+  [string]$VoiceSourceProvenanceDisplayPath = "",
   [string]$TemplatePath = "",
+  [string]$TemplateDisplayPath = "",
   [string]$OutputDir = "",
   [switch]$FailOnBlocked
 )
@@ -18,6 +20,12 @@ if ([string]::IsNullOrWhiteSpace($TemplatePath)) {
 }
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
   $OutputDir = $repoRoot
+}
+if ([string]::IsNullOrWhiteSpace($VoiceSourceProvenanceDisplayPath)) {
+  $VoiceSourceProvenanceDisplayPath = $VoiceSourceProvenancePath
+}
+if ([string]::IsNullOrWhiteSpace($TemplateDisplayPath)) {
+  $TemplateDisplayPath = $TemplatePath
 }
 
 if (-not (Test-Path -LiteralPath $VoiceSourceProvenancePath)) {
@@ -139,8 +147,8 @@ $statusObject = [ordered]@{
   schema = "stackchan.voice-source-status.v1"
   generatedUtc = $generatedUtc
   status = $overallStatus
-  provenancePath = $VoiceSourceProvenancePath
-  templatePath = $TemplatePath
+  provenancePath = $VoiceSourceProvenanceDisplayPath
+  templatePath = $TemplateDisplayPath
   blockedGateCount = $blockedGates.Count
   gates = $gateArray
   nextActions = @(

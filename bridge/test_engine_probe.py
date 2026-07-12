@@ -47,7 +47,7 @@ class EngineProbeTests(unittest.TestCase):
                         "  'mode': 'happy',",
                         "  'earcon': 'happy',",
                         "  'emotion': {'arousal': 0.1, 'valence': 0.2},",
-                        "  'memory_write': {'robot.status': 'ready'},",
+                        "  'memory_write': {'project.status': 'ready'},",
                         "  'memory_forget': []",
                         "}))",
                     ]

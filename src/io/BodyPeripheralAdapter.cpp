@@ -24,6 +24,7 @@ constexpr uint8_t kPy32LedConfig = 0x24;
 constexpr uint8_t kPy32LedRam = 0x30;
 constexpr uint8_t kRgbPin13Mask = 0x20;
 constexpr uint8_t kRgbLedCount = 12;
+constexpr uint8_t kRgbWriteAttempts = 2;
 constexpr uint32_t kRgbPeriodMs = 50;
 constexpr uint32_t kTouchPeriodMs = 30;
 constexpr uint32_t kPeripheralRetryMs = 5000;
@@ -155,9 +156,26 @@ bool BodyPeripheralAdapter::writeRgb(const BodyRgbFrame& frame, uint32_t nowMs) 
     packed[i * 2] = rgb565 & 0xFF;
     packed[i * 2 + 1] = rgb565 >> 8;
   }
-  bool ok = M5.In_I2C.writeRegister(kPy32Address, kPy32LedRam, packed, sizeof(packed), kBodyI2cFrequency);
-  ok &= M5.In_I2C.writeRegister8(
-      kPy32Address, kPy32LedConfig, static_cast<uint8_t>(kRgbLedCount | 0x40), kBodyI2cFrequency);
+  bool ok = false;
+  for (uint8_t attempt = 0; attempt < kRgbWriteAttempts; ++attempt) {
+    if (attempt > 0) {
+      ++telemetry_.rgbWriteRetries;
+    }
+    ok = M5.In_I2C.writeRegister(
+        kPy32Address, kPy32LedRam, packed, sizeof(packed), kBodyI2cFrequency);
+    ok = M5.In_I2C.writeRegister8(
+             kPy32Address,
+             kPy32LedConfig,
+             static_cast<uint8_t>(kRgbLedCount | 0x40),
+             kBodyI2cFrequency) &&
+         ok;
+    if (ok) {
+      if (attempt > 0) {
+        ++telemetry_.rgbWriteRecoveries;
+      }
+      break;
+    }
+  }
   if (!ok) {
     ++telemetry_.rgbWriteFailures;
     telemetry_.rgbReady = false;
@@ -212,7 +230,37 @@ bool BodyPeripheralAdapter::pollTouch(uint32_t nowMs,
   }
   telemetry_.lastGesture = interaction.gesture;
   telemetry_.lastZone = interaction.zone;
+  telemetry_.lastTouchEventMs = nowMs;
   ++telemetry_.touchEvents;
+  switch (interaction.zone) {
+    case BodyTouchZone::Front:
+      ++telemetry_.touchFrontEvents;
+      break;
+    case BodyTouchZone::Middle:
+      ++telemetry_.touchMiddleEvents;
+      break;
+    case BodyTouchZone::Back:
+      ++telemetry_.touchBackEvents;
+      break;
+    case BodyTouchZone::None:
+      break;
+  }
+  switch (interaction.gesture) {
+    case BodyTouchGesture::Tap:
+      ++telemetry_.touchTapEvents;
+      break;
+    case BodyTouchGesture::Hold:
+      ++telemetry_.touchHoldEvents;
+      break;
+    case BodyTouchGesture::SwipeForward:
+      ++telemetry_.touchSwipeForwardEvents;
+      break;
+    case BodyTouchGesture::SwipeBackward:
+      ++telemetry_.touchSwipeBackwardEvents;
+      break;
+    case BodyTouchGesture::None:
+      break;
+  }
   if (interactionOut != nullptr) {
     *interactionOut = interaction;
   }

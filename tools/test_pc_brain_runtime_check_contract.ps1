@@ -28,7 +28,7 @@ $escaped
   }
 }
 
-$goodCommand = '"C:\Python310\python.exe" bridge\lan_service.py --host 0.0.0.0 --port 8765 --runner-profile gemma4-e2b-gguf --runner-timeout-ms 120000 --stt-command "python bridge\whisper_cpp_stt.py" --stt-timeout-ms 15000 --tts-command "python bridge\selected_voice_tts.py" --tts-voice stackchan-rvc-bright-robot --tts-timeout-ms 120000 --downlink-audio-chunk-bytes 4096 --downlink-binary-frame-delay-ms 20 --downlink-text-frame-delay-ms 40 --client-idle-timeout-s 120 --memory-file output\pc-brain\latest\memory.json --turn-log-file output\pc-brain\latest\turns.jsonl --disable-audio-downlink --runner-command "python bridge\ollama_stackchan_runner.py" --require-runner'
+$goodCommand = '"C:\Python310\python.exe" bridge\lan_service.py --host 0.0.0.0 --port 8765 --runner-profile gemma4-e2b-gguf --runner-timeout-ms 120000 --stt-command "python bridge\whisper_cpp_stt.py" --stt-timeout-ms 15000 --tts-command "python bridge\selected_voice_tts.py" --tts-voice stackchan-rvc-bright-robot --tts-timeout-ms 120000 --downlink-audio-chunk-bytes 4096 --downlink-binary-frame-delay-ms 20 --downlink-text-frame-delay-ms 40 --client-idle-timeout-s 20 --memory-file output\pc-brain\latest\memory.json --turn-log-file output\pc-brain\latest\turns.jsonl --disable-audio-downlink --runner-command "python bridge\ollama_stackchan_runner.py" --require-runner'
 $good = Invoke-RuntimeCheck -CommandLine $goodCommand
 if (-not $good.machineReady) {
   throw "Expected good command line to be machine-ready."

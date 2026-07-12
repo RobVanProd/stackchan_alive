@@ -14,7 +14,7 @@ param(
   [int]$DownlinkAudioChunkBytes = 4096,
   [int]$DownlinkBinaryFrameDelayMs = 80,
   [int]$DownlinkTextFrameDelayMs = 40,
-  [int]$ClientIdleTimeoutSeconds = 120,
+  [int]$ClientIdleTimeoutSeconds = 20,
   [string]$LogDir = "output\pc-brain\latest",
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [string]$TurnLogFile = "output\pc-brain\latest\turns.jsonl",

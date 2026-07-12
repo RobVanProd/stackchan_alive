@@ -92,7 +92,7 @@ def audit_or_repair(path: Path, *, apply: bool) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--memory-file", type=Path, required=True)
-    parser.add_argument("--apply", action="store_true", help="Back up and atomically write sanitized v2 memory.")
+    parser.add_argument("--apply", action="store_true", help="Back up and atomically write sanitized v3 memory.")
     args = parser.parse_args()
     print(json.dumps(audit_or_repair(args.memory_file, apply=args.apply), indent=2, sort_keys=True))
     return 0

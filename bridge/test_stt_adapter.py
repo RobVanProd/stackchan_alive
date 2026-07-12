@@ -133,6 +133,13 @@ class SttAdapterTests(unittest.TestCase):
         self.assertEqual("Stackchan is awake", normalize_stackchan_terms("stack chin is awake"))
         self.assertEqual("Please stack the blocks", normalize_stackchan_terms("Please stack the blocks"))
 
+    def test_stt_normalizes_held_only_in_pickup_question_context(self):
+        self.assertEqual(
+            "Are you being held right now?",
+            normalize_stackchan_terms("Are you being hella right now?"),
+        )
+        self.assertEqual("That is hella bright", normalize_stackchan_terms("That is hella bright"))
+
     def test_whisper_adapter_writes_pcm_wav_contract(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             wav_path = Path(temp_dir) / "utterance.wav"

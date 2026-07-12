@@ -5,6 +5,7 @@
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
 - `COMPANION_CROSS_PLATFORM_PLAN.md`: Android/desktop companion build, distribution, and C0-C8 gate plan.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
+- `CUSTOMIZING_THE_FACE.md`: persona-safe expression tuning and advanced procedural eye, mouth, transition, viseme, preview, and performance workflow.
 - `GAP_ANALYSIS.md`: current implementation audit, ranked hardware/transport gaps, and recommended bottom-half order.
 - `HARDWARE_FEATURE_ROADMAP.md`: post-stability IMU, body touch/RGB, camera, active-speaker tracking, and opt-in face-recognition integration plan.
 - `LOCAL_RESEARCH_TOOLING.md`: local-first SearXNG plus restricted fetch/Playwright tool-broker architecture for cited web research.
@@ -22,5 +23,5 @@
 - `VOICE_PERSONALITY.md`: original robot TTS/personality target and voice-source guardrails.
 - `VOICE_SOURCE_PROVENANCE_TEMPLATE.md`: production TTS source license/consent evidence template.
 - `stackchan_procedural_runtime_design.pdf`: source design document from Google Drive.
-- `../media/voice/rvc/RVC_AUDITION.html`: checked-in review-only RVC MP3 audition page for the current bright robot direction.
-- Run `../tools/open_voice_audition.cmd -All` from the repo root to generate one local page with both Stackchan Spark and RVC MP3 audition samples.
+- `../media/voice/rvc/README.md`: bring-your-own-model policy for optional local RVC conversion; no model or converted samples are distributed.
+- Run `../tools/open_voice_audition.cmd -All` only after generating optional RVC samples locally from an authorized model.

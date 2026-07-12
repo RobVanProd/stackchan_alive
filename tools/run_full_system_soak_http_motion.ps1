@@ -48,6 +48,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $RepoRoot
+$SourceCommit = (& git rev-parse HEAD).Trim()
+$SourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 --untracked-files=normal) -join "`n"))
 
 $minPowerVbusMvThreshold = $MinPowerVbusMv
 $minPowerVbusReportedMvThreshold = $MinPowerVbusReportedMv
@@ -278,11 +282,12 @@ function Invoke-RvcWorkerHealth {
   }
 }
 
-if ($RequireFinalIntegration -and $RequireCameraCapture) {
-  throw "RequireFinalIntegration and RequireCameraCapture are separate production/probe profiles."
+if ($RequireFinalIntegration) {
+  $RequireCameraCapture = $true
+  $RequireCameraHostVision = $true
 }
 if ($RequireCameraHostVision -and -not $RequireCameraCapture) {
-  throw "RequireCameraHostVision requires the camera capture probe profile."
+  throw "RequireCameraHostVision requires RequireCameraCapture."
 }
 
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
@@ -315,6 +320,8 @@ $powerForensicsProtectiveEventsBaseline = $null
 $powerForensicsReadFailuresBaseline = $null
 $powerForensicsClearFailuresBaseline = $null
 $bodyRgbWriteFailuresBaseline = $null
+$bodyRgbWriteRetriesBaseline = $null
+$bodyRgbWriteRecoveriesBaseline = $null
 $bodyTouchReadFailuresBaseline = $null
 $imuReadFailuresBaseline = $null
 $imuEventsBaseline = $null
@@ -393,6 +400,8 @@ try {
         $records.Add([pscustomobject]@{
           t_s = $elapsed
           ok = $true
+          ota_expected_sha256 = Get-ObjectProperty $j "ota_expected_sha256" $null
+          ota_current_app_confirmed = Test-TrueValue (Get-ObjectProperty $j "ota_current_app_confirmed" $false)
           motion = Test-TrueValue (Get-ObjectProperty $j "motion_enabled" $false)
           motion_actuator_ready = Get-ObjectProperty $j "motion_actuator_ready" $null
           motion_last_reason = Get-ObjectProperty $j "motion_last_reason" $null
@@ -504,6 +513,8 @@ try {
           compiled_enable_body_rgb = Get-ObjectProperty $j "compiled_enable_body_rgb" $null
           body_rgb_ready = Test-TrueValue (Get-ObjectProperty $j "body_rgb_ready" $false)
           body_rgb_frames = Get-ObjectProperty $j "body_rgb_frames" $null
+          body_rgb_write_retries = Get-ObjectProperty $j "body_rgb_write_retries" $null
+          body_rgb_write_recoveries = Get-ObjectProperty $j "body_rgb_write_recoveries" $null
           body_rgb_write_failures = Get-ObjectProperty $j "body_rgb_write_failures" $null
           compiled_enable_body_touch = Get-ObjectProperty $j "compiled_enable_body_touch" $null
           body_touch_ready = Test-TrueValue (Get-ObjectProperty $j "body_touch_ready" $false)
@@ -606,6 +617,8 @@ try {
       if ($records.Count -gt 0 -and $records[$records.Count - 1].ok -and
           $null -eq $bodyRgbWriteFailuresBaseline) {
         $bodyRgbWriteFailuresBaseline = $records[$records.Count - 1].body_rgb_write_failures
+        $bodyRgbWriteRetriesBaseline = $records[$records.Count - 1].body_rgb_write_retries
+        $bodyRgbWriteRecoveriesBaseline = $records[$records.Count - 1].body_rgb_write_recoveries
         $bodyTouchReadFailuresBaseline = $records[$records.Count - 1].body_touch_read_failures
         $imuReadFailuresBaseline = $records[$records.Count - 1].imu_read_failures
         $imuEventsBaseline = $records[$records.Count - 1].imu_events
@@ -859,10 +872,11 @@ try {
               $abortReason = "final_integration_peripheral_not_ready"
               break
             }
-            if ([int]$latestRecord.compiled_enable_camera -ne 0 -or
-                [int]$latestRecord.compiled_enable_camera_host_vision -ne 0 -or
-                $latestRecord.camera_active) {
-              $abortReason = "production_camera_must_be_disabled"
+            if ([int]$latestRecord.compiled_enable_camera -ne 1 -or
+                [int]$latestRecord.compiled_enable_camera_host_vision -ne 1 -or
+                -not $latestRecord.camera_ready -or -not $latestRecord.camera_active -or
+                -not $latestRecord.camera_capture_ready) {
+              $abortReason = "final_integration_camera_not_ready"
               break
             }
             if ($null -eq $bodyRgbWriteFailuresBaseline -or
@@ -1018,8 +1032,9 @@ $finalIntegrationReadySamples = @($okRecords | Where-Object {
     [int]$_.compiled_enable_body_rgb -eq 1 -and $_.body_rgb_ready -and
     [int]$_.compiled_enable_body_touch -eq 1 -and $_.body_touch_ready -and
     [int]$_.compiled_enable_imu -eq 1 -and $_.imu_ready -and $_.imu_calibrated -and
-    [int]$_.compiled_enable_camera -eq 0 -and
-    [int]$_.compiled_enable_camera_host_vision -eq 0 -and -not $_.camera_active
+    [int]$_.compiled_enable_camera -eq 1 -and $_.camera_ready -and
+    $_.camera_active -and $_.camera_capture_ready -and
+    [int]$_.compiled_enable_camera_host_vision -eq 1
   }).Count
 $cameraCaptureReadySamples = @($okRecords | Where-Object {
     -not $_.debug_response_truncated -and
@@ -1061,6 +1076,14 @@ $cameraHostTargetUpdateDelta = if ($firstOkRecord -and $latestOkRecord -and
 $newBodyRgbWriteFailures = if ($null -ne $bodyRgbWriteFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.body_rgb_write_failures) {
   [int64]$latestOkRecord.body_rgb_write_failures - [int64]$bodyRgbWriteFailuresBaseline
+} else { $null }
+$newBodyRgbWriteRetries = if ($null -ne $bodyRgbWriteRetriesBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.body_rgb_write_retries) {
+  [int64]$latestOkRecord.body_rgb_write_retries - [int64]$bodyRgbWriteRetriesBaseline
+} else { $null }
+$newBodyRgbWriteRecoveries = if ($null -ne $bodyRgbWriteRecoveriesBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.body_rgb_write_recoveries) {
+  [int64]$latestOkRecord.body_rgb_write_recoveries - [int64]$bodyRgbWriteRecoveriesBaseline
 } else { $null }
 $newBodyTouchReadFailures = if ($null -ne $bodyTouchReadFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.body_touch_read_failures) {
@@ -1465,11 +1488,23 @@ $summaryMaxFrameUs = if ($okRecords.Count -gt 0) { ($okRecords | Measure-Object 
 if ($MaxDisplayFrameUs -gt 0 -and $summaryMaxFrameUs -ne $null -and [int64]$summaryMaxFrameUs -gt $MaxDisplayFrameUs) {
   $issues.Add("display_frame_limit_exceeded")
 }
+$installedFirmwareSha256 = if ($latestOkRecord) { [string]$latestOkRecord.ota_expected_sha256 } else { "" }
+if ($RequireFinalIntegration) {
+  if ($SourceDirty) { $issues.Add("final_integration_source_worktree_dirty") }
+  if ($SourceCommit -notmatch "^[0-9a-fA-F]{40}$") { $issues.Add("final_integration_source_commit_missing") }
+  if ($installedFirmwareSha256 -notmatch "^[0-9a-fA-F]{64}$" -or
+      -not [bool]$latestOkRecord.ota_current_app_confirmed) {
+    $issues.Add("final_integration_firmware_identity_missing")
+  }
+}
 
 $endedAt = Get-Date
 $actualElapsedSeconds = [math]::Round((([DateTime]::UtcNow - $startUtc).TotalSeconds), 1)
 $summary = [ordered]@{
   schema = "stackchan.full-system-soak-summary.v1"
+  sourceCommit = $SourceCommit
+  sourceDirty = $SourceDirty
+  installedFirmwareSha256 = $installedFirmwareSha256
   startedAt = $startedAt.ToString("o")
   endedAt = $endedAt.ToString("o")
   durationSeconds = [int][math]::Floor($actualElapsedSeconds)
@@ -1587,6 +1622,8 @@ $summary = [ordered]@{
   cameraHostFrameRequestDelta = $cameraHostFrameRequestDelta
   cameraHostTargetUpdateDelta = $cameraHostTargetUpdateDelta
   bodyRgbWriteFailuresBaseline = $bodyRgbWriteFailuresBaseline
+  bodyRgbWriteRetriesBaseline = $bodyRgbWriteRetriesBaseline
+  bodyRgbWriteRecoveriesBaseline = $bodyRgbWriteRecoveriesBaseline
   bodyTouchReadFailuresBaseline = $bodyTouchReadFailuresBaseline
   imuReadFailuresBaseline = $imuReadFailuresBaseline
   imuEventsBaseline = $imuEventsBaseline
@@ -1594,6 +1631,8 @@ $summary = [ordered]@{
   cameraHostFrameFailuresBaseline = $cameraHostFrameFailuresBaseline
   cameraHostAuthFailuresBaseline = $cameraHostAuthFailuresBaseline
   newBodyRgbWriteFailures = $newBodyRgbWriteFailures
+  newBodyRgbWriteRetries = $newBodyRgbWriteRetries
+  newBodyRgbWriteRecoveries = $newBodyRgbWriteRecoveries
   newBodyTouchReadFailures = $newBodyTouchReadFailures
   newImuReadFailures = $newImuReadFailures
   newImuEvents = $newImuEvents

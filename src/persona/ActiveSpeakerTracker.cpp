@@ -9,6 +9,7 @@ constexpr uint32_t kSoundFreshMs = 1600;
 constexpr uint32_t kFaceHoldMs = 2400;
 constexpr uint32_t kReplyHoldMaxMs = 30000;
 constexpr float kSmoothing = 0.42f;
+constexpr float kAudioMatchTolerance = 0.55f;
 
 float clampSigned(float value) {
   return constrain(value, -1.0f, 1.0f);
@@ -79,7 +80,10 @@ ActiveSpeakerTarget ActiveSpeakerTracker::updateFaces(const FaceCandidate* faces
   }
   target_.valid = true;
   target_.confidence = clamp01(selected.confidence);
-  target_.audioMatched = audioFresh;
+  target_.audioDirectionError = audioFresh
+                                    ? fabsf(clampSigned(selected.x) - soundAzimuthNorm_)
+                                    : 1.0f;
+  target_.audioMatched = audioFresh && target_.audioDirectionError <= kAudioMatchTolerance;
   target_.heldForReply = false;
   target_.selectedAtMs = nowMs;
   lastFaceAtMs_ = nowMs;

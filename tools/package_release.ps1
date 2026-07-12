@@ -50,12 +50,94 @@ Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 . (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
+$releaseLegacyPlatformioCore = Get-StackchanPlatformioCoreDir
+$releasePlatformioCoreRoot = if ($env:OS -eq "Windows_NT") {
+  # The repository may be running through a temporary subst drive. Keep the
+  # pioarduino core on the physical system drive so it survives that mapping
+  # and retains the intentionally short path used by release builds.
+  Join-Path ([System.IO.Path]::GetPathRoot($env:SystemRoot)) "spio"
+} else {
+  Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-pio-release-cores"
+}
+
+function Get-ReleasePlatformioCoreDir {
+  param([string]$Environment)
+
+  if ($Environment -eq "stackchan_release_full") {
+    return Join-Path $releasePlatformioCoreRoot "pioarduino"
+  }
+  return $releaseLegacyPlatformioCore
+}
+
+function Invoke-StackchanReleasePlatformio {
+  param(
+    [string]$Environment,
+    [string[]]$Arguments
+  )
+
+  $previousCoreDir = $env:PLATFORMIO_CORE_DIR
+  try {
+    $env:PLATFORMIO_CORE_DIR = Get-ReleasePlatformioCoreDir -Environment $Environment
+    Invoke-StackchanPlatformio @Arguments
+  } finally {
+    if ($null -eq $previousCoreDir) {
+      Remove-Item Env:\PLATFORMIO_CORE_DIR -ErrorAction SilentlyContinue
+    } else {
+      $env:PLATFORMIO_CORE_DIR = $previousCoreDir
+    }
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
 }
 
+$firmwareArtifactNames = @(
+  "firmware.bin",
+  "firmware.elf",
+  "bootloader.bin",
+  "partitions.bin"
+)
+
+function Copy-BuildArtifacts {
+  param(
+    [string]$BuildDir,
+    [string]$Destination
+  )
+
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  foreach ($file in $firmwareArtifactNames) {
+    $source = Join-Path $BuildDir $file
+    if (-not (Test-Path -LiteralPath $source)) {
+      throw "Missing build artifact: $source"
+    }
+    Copy-Item -LiteralPath $source -Destination $Destination -Force
+  }
+}
+
+$releaseOutputRoot = Join-Path $repoRoot "output/release"
+Get-ChildItem -LiteralPath $releaseOutputRoot -Directory -Force -Filter ".firmware-build-cache-*" -ErrorAction SilentlyContinue |
+  Remove-Item -Recurse -Force
+
+$builtFirmwareCache = $null
 if (-not $SkipBuild) {
-  Invoke-StackchanPlatformio run -e stackchan -e stackchan_servo_calibration
+  # These profiles intentionally span the legacy Espressif platform and the
+  # pioarduino/Arduino 3.3.6 platform. Building them in one PlatformIO process
+  # lets the shared framework package name replace the active toolchain. The
+  # replacement can also invalidate prior .pio/build trees, so snapshot every
+  # successful environment before installing the next framework family.
+  $builtFirmwareCache = Join-Path $repoRoot "output/release/.firmware-build-cache-$PID"
+  if (Test-Path -LiteralPath $builtFirmwareCache) {
+    Remove-Item -LiteralPath $builtFirmwareCache -Recurse -Force
+  }
+  foreach ($environment in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
+    Invoke-StackchanReleasePlatformio `
+      -Environment $environment `
+      -Arguments @("run", "-e", $environment)
+    Copy-BuildArtifacts `
+      -BuildDir (Join-Path $repoRoot ".pio/build/$environment") `
+      -Destination (Join-Path $builtFirmwareCache $environment)
+  }
   $previewPython = Get-StackchanPreviewPython
   & $previewPython tools/render_preview.py
   if ($LASTEXITCODE -ne 0) {
@@ -90,15 +172,18 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $firmwareDir = Join-Path $outDir "firmware"
 $displayFirmwareDir = Join-Path $firmwareDir "display_only"
 $servoFirmwareDir = Join-Path $firmwareDir "servo_calibration"
+$fullOnlineFirmwareDir = Join-Path $firmwareDir "full_online"
 $mediaDir = Join-Path $outDir "media"
 $faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
 $dataDir = Join-Path $outDir "data"
 $bridgeDir = Join-Path $outDir "bridge"
+$bridgeModelsDir = Join-Path $bridgeDir "models"
 $companionEvidenceDir = Join-Path $outDir "companion/evidence"
 $provenanceDir = Join-Path $outDir "provenance"
+$thirdPartyLicensesDir = Join-Path $outDir "third_party_licenses"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $companionEvidenceDir, $provenanceDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $fullOnlineFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $bridgeModelsDir, $companionEvidenceDir, $provenanceDir, $thirdPartyLicensesDir, $toolsDir | Out-Null
 
 $releaseRootPrefix = [System.IO.Path]::GetFullPath($outDir).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 
@@ -171,24 +256,21 @@ function Copy-FirmwareSet {
     [string]$Destination
   )
 
-  $firmwareFiles = @(
-    "firmware.bin",
-    "firmware.elf",
-    "bootloader.bin",
-    "partitions.bin"
-  )
-
-  foreach ($file in $firmwareFiles) {
-    $source = Join-Path $BuildDir $file
-    if (-not (Test-Path -LiteralPath $source)) {
-      throw "Missing build artifact: $source"
-    }
-    Copy-Item -LiteralPath $source -Destination $Destination
-  }
+  Copy-BuildArtifacts -BuildDir $BuildDir -Destination $Destination
 }
 
-Copy-FirmwareSet -BuildDir ".pio/build/stackchan" -Destination $displayFirmwareDir
-Copy-FirmwareSet -BuildDir ".pio/build/stackchan_servo_calibration" -Destination $servoFirmwareDir
+$firmwareSourceRoot = if ($builtFirmwareCache) {
+  $builtFirmwareCache
+} else {
+  Join-Path $repoRoot ".pio/build"
+}
+Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan") -Destination $displayFirmwareDir
+Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan_servo_calibration") -Destination $servoFirmwareDir
+Copy-FirmwareSet -BuildDir (Join-Path $firmwareSourceRoot "stackchan_release_full") -Destination $fullOnlineFirmwareDir
+if ($builtFirmwareCache -and (Test-Path -LiteralPath $builtFirmwareCache)) {
+  Remove-Item -LiteralPath $builtFirmwareCache -Recurse -Force
+  $builtFirmwareCache = $null
+}
 
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
@@ -311,16 +393,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $voiceRvcFiles = @(
-  "media/voice/rvc/README.md",
-  "media/voice/rvc/RVC_AUDITION.html",
-  "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
-  "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
-  "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
+  "media/voice/rvc/README.md"
 )
 
 foreach ($file in $voiceRvcFiles) {
   if (-not (Test-Path -LiteralPath $file)) {
-    throw "Missing RVC voice audition artifact: $file. Run tools/render_rvc_auditions.ps1 first."
+    throw "Missing public RVC BYOM policy: $file"
   }
   Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
 }
@@ -335,6 +413,7 @@ Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/CUSTOMIZING_THE_FACE.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DESKTOP_PYTHON_RUNTIME.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/GAP_ANALYSIS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
@@ -342,6 +421,8 @@ Copy-Item -LiteralPath "docs/PERSONA_PACKS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/HARDWARE_SIMULATION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/HARDWARE_FEATURE_ROADMAP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/LOCAL_RESEARCH_TOOLING.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/LOCAL_VISION.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/LAN_OTA.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/POWER_BLACKOUT_FORENSICS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/SPEAKER_AUDIO_RESEARCH.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_V2_DIRECTML.md" -Destination $docsDir
@@ -366,6 +447,10 @@ Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
 $bridgePackageFiles = @(
   "README.md",
+  "bridge_memory.py",
+  "test_bridge_memory.py",
+  "memory_maintenance.py",
+  "test_memory_maintenance.py",
   "character_harness.py",
   "test_character_harness.py",
   "character_red_team.py",
@@ -374,6 +459,10 @@ $bridgePackageFiles = @(
   "test_persona_pack.py",
   "reference_bridge.py",
   "test_reference_bridge.py",
+  "research_broker.py",
+  "test_research_broker.py",
+  "robot_embodiment.py",
+  "test_robot_embodiment.py",
   "local_runner.py",
   "test_local_runner.py",
   "litert_lm_stackchan_wrapper.py",
@@ -403,9 +492,14 @@ $bridgePackageFiles = @(
   "rvc_worker_service.py",
   "rvc_directml_tts_client.py",
   "rvc_directml_worker_service.py",
+  "rvc_production_tts_client.py",
+  "test_rvc_production_tts_client.py",
   "voice_v2_directml_runtime.py",
   "voice_v2_directml_benchmark.py",
   "voice_v2_wire_benchmark.py",
+  "vision_service.py",
+  "test_vision_service.py",
+  "requirements-vision.txt",
   "lan_smoke.py",
   "test_lan_smoke.py",
   "android_companion_probe.py",
@@ -423,6 +517,9 @@ $bridgePackageFiles = @(
 foreach ($bridgeFile in $bridgePackageFiles) {
   Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
 }
+Copy-Item -LiteralPath "bridge/models/README.md" -Destination $bridgeModelsDir
+Copy-Item -LiteralPath "bridge/models/LICENSE" -Destination $bridgeModelsDir
+Copy-Item -LiteralPath "bridge/models/face_detection_yunet_2023mar.onnx" -Destination $bridgeModelsDir
 
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $outDir "personas") -Recurse
 
@@ -448,7 +545,9 @@ if ($LASTEXITCODE -ne 0) {
 
 & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "export_voice_source_status.ps1") `
   -VoiceSourceProvenancePath (Join-Path $dataDir "voice_source_provenance.yaml") `
+  -VoiceSourceProvenanceDisplayPath "data/voice_source_provenance.yaml" `
   -TemplatePath (Join-Path $docsDir "VOICE_SOURCE_PROVENANCE_TEMPLATE.md") `
+  -TemplateDisplayPath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md" `
   -OutputDir $outDir
 if ($LASTEXITCODE -ne 0) {
   throw "Voice source status export failed."
@@ -490,6 +589,24 @@ $releaseTools = @(
   "tools/flash_wifi_bridge.cmd",
   "tools/flash_wifi_bridge.ps1",
   "tools/platformio_apply_wifi_bridge_env.py",
+  "tools/platformio_apply_ota_env.py",
+  "tools/test_platformio_ota_env_contract.py",
+  "tools/test_platformio_wifi_env_contract.py",
+  "tools/upload_lan_ota.cmd",
+  "tools/upload_lan_ota.ps1",
+  "tools/body_sensor_validation.ps1",
+  "tools/test_body_sensor_validation_contract.ps1",
+  "tools/run_full_system_soak_http_motion.ps1",
+  "tools/start_warm_rocm_full_system_soak.ps1",
+  "tools/start_production_full_system_soak.ps1",
+  "tools/check_full_system_soak_evidence.ps1",
+  "tools/test_full_system_soak_evidence_contract.ps1",
+  "tools/test_start_warm_rocm_full_system_soak_contract.ps1",
+  "tools/test_start_production_full_system_soak_contract.ps1",
+  "tools/camera_follow_wake_validation.ps1",
+  "tools/test_camera_follow_wake_validation_contract.ps1",
+  "tools/complete_camera_follow_wake_validation.ps1",
+  "tools/test_complete_camera_follow_wake_validation_contract.ps1",
   "tools/prepare_desktop_python_runtime.cmd",
   "tools/prepare_desktop_python_runtime.ps1",
   "tools/check_desktop_python_runtime_payload.cmd",
@@ -555,6 +672,8 @@ $releaseTools = @(
   "tools/verify_rvc_auditions.ps1",
   "tools/verify_tracked_rvc_assets.cmd",
   "tools/verify_tracked_rvc_assets.ps1",
+  "tools/sanitize_public_archive.cmd",
+  "tools/sanitize_public_archive.ps1",
   "tools/generate_speech_envelope_sidecar.cmd",
   "tools/generate_speech_envelope_sidecar.ps1",
   "tools/generate_speech_envelope_sidecar.py",
@@ -671,6 +790,7 @@ $releaseTools = @(
   "tools/verify_hardware_evidence.ps1",
   "tools/verify_consumer_promotion.cmd",
   "tools/verify_consumer_promotion.ps1",
+  "tools/test_consumer_promotion_contract.ps1",
   "tools/verify_published_release.cmd",
   "tools/verify_published_release.ps1",
   "tools/verify_architecture.cmd",
@@ -828,6 +948,80 @@ function Convert-PioPackageList {
   return @($entries)
 }
 
+function Copy-LicenseEvidenceTree {
+  param(
+    [string]$SourceRoot,
+    [string]$DestinationRoot
+  )
+
+  if (-not (Test-Path -LiteralPath $SourceRoot -PathType Container)) {
+    return 0
+  }
+
+  $sourcePath = (Resolve-Path -LiteralPath $SourceRoot).Path.TrimEnd("\", "/")
+  $count = 0
+  foreach ($file in Get-ChildItem -LiteralPath $sourcePath -Recurse -File -Force -ErrorAction SilentlyContinue) {
+    if ($file.Name -notmatch '(?i)^(LICENSE|LICENCE|COPYING|NOTICE)(\..*)?$') {
+      continue
+    }
+    $relative = $file.FullName.Substring($sourcePath.Length + 1)
+    $destination = Join-Path $DestinationRoot $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+    $count++
+  }
+  return $count
+}
+
+function Copy-EnvironmentLicenseEvidence {
+  param(
+    [string]$Environment,
+    [object[]]$ResolvedPackages
+  )
+
+  $destination = Join-Path $thirdPartyLicensesDir $Environment
+  New-Item -ItemType Directory -Force -Path $destination | Out-Null
+  $count = Copy-LicenseEvidenceTree `
+    -SourceRoot (Join-Path $repoRoot ".pio/libdeps/$Environment") `
+    -DestinationRoot (Join-Path $destination "libdeps")
+
+  $coreDir = Get-ReleasePlatformioCoreDir -Environment $Environment
+  $platformRoot = Join-Path $coreDir "platforms/espressif32"
+  $count += Copy-LicenseEvidenceTree `
+    -SourceRoot $platformRoot `
+    -DestinationRoot (Join-Path $destination "platform/espressif32")
+  foreach ($metadataName in @("platform.json", "package.json")) {
+    $metadataPath = Join-Path $platformRoot $metadataName
+    if (Test-Path -LiteralPath $metadataPath -PathType Leaf) {
+      $metadataDestination = Join-Path $destination "platform/espressif32/$metadataName"
+      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $metadataDestination) | Out-Null
+      Copy-Item -LiteralPath $metadataPath -Destination $metadataDestination -Force
+    }
+  }
+
+  $packageNames = @(
+    $ResolvedPackages |
+      Where-Object { $_.kind -eq "package" } |
+      ForEach-Object { [string]$_.name } |
+      Sort-Object -Unique
+  )
+  foreach ($packageName in $packageNames) {
+    $packageRoot = Join-Path $coreDir "packages/$packageName"
+    if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
+      continue
+    }
+    $packageDestination = Join-Path $destination "packages/$packageName"
+    $count += Copy-LicenseEvidenceTree -SourceRoot $packageRoot -DestinationRoot $packageDestination
+    $packageMetadata = Join-Path $packageRoot "package.json"
+    if (Test-Path -LiteralPath $packageMetadata -PathType Leaf) {
+      New-Item -ItemType Directory -Force -Path $packageDestination | Out-Null
+      Copy-Item -LiteralPath $packageMetadata -Destination (Join-Path $packageDestination "package.json") -Force
+    }
+  }
+
+  return $count
+}
+
 function Test-GitRequirement {
   param([string]$Value)
   return $Value -match "(?i)(git\+|\.git($|[#@\s])|github\.com/.+\.git)"
@@ -845,7 +1039,8 @@ function Get-DependencyAudit {
   param(
     [string[]]$DeclaredLibDeps,
     [object[]]$DisplayResolvedPackages,
-    [object[]]$ServoResolvedPackages
+    [object[]]$ServoResolvedPackages,
+    [object[]]$FullResolvedPackages
   )
 
   $directGitDepsMissingRef = @(
@@ -866,6 +1061,15 @@ function Get-DependencyAudit {
   foreach ($entry in $ServoResolvedPackages) {
     $allResolved += [pscustomobject][ordered]@{
       environment = "stackchan_servo_calibration"
+      kind = $entry.kind
+      name = $entry.name
+      version = $entry.version
+      required = $entry.required
+    }
+  }
+  foreach ($entry in $FullResolvedPackages) {
+    $allResolved += [pscustomobject][ordered]@{
+      environment = "stackchan_release_full"
       kind = $entry.kind
       name = $entry.name
       version = $entry.version
@@ -906,9 +1110,71 @@ function Get-DependencyAudit {
   }
 }
 
-$platformioVersion = Invoke-CapturedText { Invoke-StackchanPlatformio --version }
-$displayDeps = Invoke-CapturedText { Invoke-StackchanPlatformio pkg list -e stackchan }
-$servoDeps = Invoke-CapturedText { Invoke-StackchanPlatformio pkg list -e stackchan_servo_calibration }
+$platformioVersion = Invoke-CapturedText {
+  Invoke-StackchanReleasePlatformio -Environment "stackchan" -Arguments @("--version")
+}
+$displayDeps = Invoke-CapturedText {
+  Invoke-StackchanReleasePlatformio -Environment "stackchan" -Arguments @("pkg", "list", "-e", "stackchan")
+}
+$displayResolvedPackages = Convert-PioPackageList $displayDeps
+$displayLicenseCount = Copy-EnvironmentLicenseEvidence `
+  -Environment "stackchan" `
+  -ResolvedPackages $displayResolvedPackages
+$servoDeps = Invoke-CapturedText {
+  Invoke-StackchanReleasePlatformio -Environment "stackchan_servo_calibration" -Arguments @("pkg", "list", "-e", "stackchan_servo_calibration")
+}
+$servoResolvedPackages = Convert-PioPackageList $servoDeps
+$servoLicenseCount = Copy-EnvironmentLicenseEvidence `
+  -Environment "stackchan_servo_calibration" `
+  -ResolvedPackages $servoResolvedPackages
+$fullDeps = Invoke-CapturedText {
+  Invoke-StackchanReleasePlatformio -Environment "stackchan_release_full" -Arguments @("pkg", "list", "-e", "stackchan_release_full")
+}
+$fullResolvedPackages = Convert-PioPackageList $fullDeps
+$fullLicenseCount = Copy-EnvironmentLicenseEvidence `
+  -Environment "stackchan_release_full" `
+  -ResolvedPackages $fullResolvedPackages
+$visionLicenseDir = Join-Path $thirdPartyLicensesDir "models/opencv-zoo-yunet"
+New-Item -ItemType Directory -Force -Path $visionLicenseDir | Out-Null
+Copy-Item -LiteralPath "bridge/models/LICENSE" -Destination (Join-Path $visionLicenseDir "LICENSE") -Force
+Copy-Item -LiteralPath "bridge/models/README.md" -Destination (Join-Path $visionLicenseDir "README.md") -Force
+
+$thirdPartyLicenseFiles = @(
+  Get-ChildItem -LiteralPath $thirdPartyLicensesDir -Recurse -File -Force |
+    Sort-Object FullName
+)
+$thirdPartyLicenseIndex = @($thirdPartyLicenseFiles | ForEach-Object {
+  [ordered]@{
+    path = $_.FullName.Substring($thirdPartyLicensesDir.Length + 1).Replace("\", "/")
+    bytes = $_.Length
+    sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+})
+$thirdPartyLicenseIndex | ConvertTo-Json -Depth 5 | Set-Content `
+  -LiteralPath (Join-Path $thirdPartyLicensesDir "files.json") `
+  -Encoding UTF8
+
+@"
+# Third-Party Notices
+
+This release package includes third-party source and binary components. Their installed license,
+licence, copying, notice, and package-metadata files are preserved under
+``third_party_licenses/`` and hash-indexed in ``third_party_licenses/files.json``.
+
+- ``stackchan`` captured license files: $displayLicenseCount
+- ``stackchan_servo_calibration`` captured license files: $servoLicenseCount
+- ``stackchan_release_full`` captured license files: $fullLicenseCount
+- OpenCV Zoo YuNet model: verbatim MIT license and source/hash record included
+
+The pioarduino platform declares Apache-2.0. Arduino-ESP32 3.3.6 package metadata declares
+LGPL-2.1-or-later. Direct libraries include MIT and Apache-2.0 components; M5GFX also carries
+embedded BSD and font-license notices, which are retained from its installed tree.
+
+These notices describe third-party components only. They do not select or grant a license for
+Stackchan: Alive itself. Review ``dependency_lock.json`` for exact versions and resolved sources.
+This inventory is release evidence, not legal advice.
+"@ | Set-Content -LiteralPath (Join-Path $outDir "THIRD_PARTY_NOTICES.md") -Encoding UTF8
+
 $previewRequirements = (Get-Content -LiteralPath "requirements-preview.txt" -Raw).TrimEnd()
 $previewRequirementEntries = @(
   Get-Content -LiteralPath "requirements-preview.txt" |
@@ -916,12 +1182,11 @@ $previewRequirementEntries = @(
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and -not $_.StartsWith("#") }
 )
 $declaredLibDeps = Get-DeclaredLibDeps
-$displayResolvedPackages = Convert-PioPackageList $displayDeps
-$servoResolvedPackages = Convert-PioPackageList $servoDeps
 $dependencyAudit = Get-DependencyAudit `
   -DeclaredLibDeps $declaredLibDeps `
   -DisplayResolvedPackages $displayResolvedPackages `
-  -ServoResolvedPackages $servoResolvedPackages
+  -ServoResolvedPackages $servoResolvedPackages `
+  -FullResolvedPackages $fullResolvedPackages
 
 @"
 # Dependency Provenance
@@ -954,6 +1219,12 @@ $displayDeps
 
 ``````text
 $servoDeps
+``````
+
+## PlatformIO Dependencies: stackchan_release_full
+
+``````text
+$fullDeps
 ``````
 
 ## Dependency Audit
@@ -992,6 +1263,12 @@ $dependencyLock = [ordered]@{
       platform = "espressif32@7.0.1"
       resolvedPackages = @($servoResolvedPackages)
     }
+    stackchan_release_full = [ordered]@{
+      board = "m5stack-cores3"
+      framework = "arduino"
+      platform = "pioarduino/platform-espressif32@55.03.36"
+      resolvedPackages = @($fullResolvedPackages)
+    }
   }
   dependencyAudit = $dependencyAudit
 }
@@ -1004,14 +1281,16 @@ $manifest = [ordered]@{
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   board = "m5stack-cores3"
   defaultEnvironment = "stackchan"
-  includedEnvironments = @("stackchan", "stackchan_servo_calibration")
-  servoDefault = "display-only build disables servos; calibration build enables servos"
+  includedEnvironments = @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")
+  servoDefault = "display-only build disables servos; calibration and full-online builds require explicit servo-risk acknowledgement"
   status = "device-ready prerelease; hardware validation pending"
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
   dependencyReport = "DEPENDENCIES.md"
   dependencyLock = "dependency_lock.json"
+  thirdPartyNotices = "THIRD_PARTY_NOTICES.md"
+  thirdPartyLicenseIndex = "third_party_licenses/files.json"
   readinessReport = "READINESS_REPORT.md"
   readinessReportJson = "readiness_report.json"
   ciStatusReport = "GITHUB_ACTIONS_STATUS.md"
@@ -1030,6 +1309,7 @@ $manifest = [ordered]@{
   androidCompanionSource = "provenance/companion"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
+  faceCustomizationGuide = "docs/CUSTOMIZING_THE_FACE.md"
   gapAnalysis = "docs/GAP_ANALYSIS.md"
   johnnyAlivePathway = "docs/JOHNNY_ALIVE_PATHWAY.md"
   personaPacksGuide = "docs/PERSONA_PACKS.md"
@@ -1037,6 +1317,25 @@ $manifest = [ordered]@{
   voiceV2Guide = "docs/VOICE_V2_DIRECTML.md"
   hardwareFeatureRoadmap = "docs/HARDWARE_FEATURE_ROADMAP.md"
   localResearchTooling = "docs/LOCAL_RESEARCH_TOOLING.md"
+  localVisionGuide = "docs/LOCAL_VISION.md"
+  bodySensorValidator = "tools/body_sensor_validation.ps1"
+  bodySensorValidatorContract = "tools/test_body_sensor_validation_contract.ps1"
+  finalSoakRunner = "tools/run_full_system_soak_http_motion.ps1"
+  finalSoakWrapper = "tools/start_warm_rocm_full_system_soak.ps1"
+  productionFinalSoakWrapper = "tools/start_production_full_system_soak.ps1"
+  finalSoakChecker = "tools/check_full_system_soak_evidence.ps1"
+  finalSoakCheckerContract = "tools/test_full_system_soak_evidence_contract.ps1"
+  finalSoakWrapperContract = "tools/test_start_warm_rocm_full_system_soak_contract.ps1"
+  productionFinalSoakWrapperContract = "tools/test_start_production_full_system_soak_contract.ps1"
+  cameraFollowWakeValidator = "tools/camera_follow_wake_validation.ps1"
+  cameraFollowWakeValidatorContract = "tools/test_camera_follow_wake_validation_contract.ps1"
+  cameraFollowWakeCompletion = "tools/complete_camera_follow_wake_validation.ps1"
+  cameraFollowWakeCompletionContract = "tools/test_complete_camera_follow_wake_validation_contract.ps1"
+  consumerPromotionContract = "tools/test_consumer_promotion_contract.ps1"
+  visionWorker = "bridge/vision_service.py"
+  visionRequirements = "bridge/requirements-vision.txt"
+  visionModel = "bridge/models/face_detection_yunet_2023mar.onnx"
+  visionModelSha256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
   includedPersonaPacks = @("spark", "glow")
   activePersona = "spark"
   activePersonaPack = "personas/spark"
@@ -1102,11 +1401,7 @@ $manifest = [ordered]@{
     "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json",
     "media/voice/VOICE_SAMPLES.md",
     "media/voice/VOICE_AUDITION.html",
-    "media/voice/rvc/README.md",
-    "media/voice/rvc/RVC_AUDITION.html",
-    "media/voice/rvc/stackchan_rvc_bright_robot.mp3",
-    "media/voice/rvc/stackchan_rvc_thinking_neutral.mp3",
-    "media/voice/rvc/stackchan_rvc_safety_neutral.mp3"
+    "media/voice/rvc/README.md"
   )
   includedTools = @(
     "tools/flash_device.cmd",
@@ -1276,6 +1571,7 @@ $manifest = [ordered]@{
     "tools/verify_hardware_evidence.ps1",
     "tools/verify_consumer_promotion.cmd",
     "tools/verify_consumer_promotion.ps1",
+    "tools/test_consumer_promotion_contract.ps1",
     "tools/verify_published_release.cmd",
     "tools/verify_published_release.ps1",
     "tools/verify_architecture.cmd",
@@ -1690,10 +1986,10 @@ No-hardware simulation quick check:
 Voice audition quick check:
 
 - Run ``tools/open_voice_audition.cmd`` from the extracted package to open the local MP3 audition page.
-- Run ``tools/open_voice_audition.cmd -All`` to generate one local page with both Stackchan Spark and RVC MP3 audition samples.
+- Run ``tools/open_voice_audition.cmd -All`` only after supplying an authorized local RVC model and generating local audition output.
 - Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
-- RVC review copies ``stackchan_rvc_bright_robot.mp3``, ``stackchan_rvc_thinking_neutral.mp3``, and ``stackchan_rvc_safety_neutral.mp3`` are included in ``media/voice/rvc/`` and uploaded as release assets for browser playback. Run ``tools/open_voice_audition.cmd -Rvc`` or open ``media/voice/rvc/RVC_AUDITION.html`` for the local RVC audition page.
-- Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the checked-in RVC MP3 review page without regenerating the full RVC WAV set.
+- Optional RVC is bring-your-own-model and local-only. Release packages contain only ``media/voice/rvc/README.md``; model weights, indexes, converted audio, and RVC audition pages are forbidden.
+- Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the BYOM policy and absence of bundled RVC payloads.
 - These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
 
 Hardware validation is still required before consumer rollout:
@@ -1753,6 +2049,31 @@ $releaseAssetManifest = [ordered]@{
 }
 $releaseAssetManifest | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $outDir "release_assets.json") -Encoding UTF8
 
+function Assert-NoRestrictedVoicePayload {
+  param([Parameter(Mandatory = $true)][string]$RootPath)
+
+  $rootPrefix = [System.IO.Path]::GetFullPath($RootPath).TrimEnd('\') + '\'
+  $violations = @(
+    Get-ChildItem -LiteralPath $RootPath -File -Recurse | Where-Object {
+      $relative = $_.FullName.Substring($rootPrefix.Length).Replace('\', '/')
+      $extension = $_.Extension.ToLowerInvariant()
+      $allowedVisionModel = $relative -match '(?i)^(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
+      ($extension -in @('.pth', '.index')) -or
+      ($extension -eq '.onnx' -and -not $allowedVisionModel) -or
+      ($_.Name -match '(?i)weightsgg|weights\.gg') -or
+      ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$)') -or
+      ($_.Name -match '(?i)rvc.*\.(wav|mp3|html)$')
+    } | ForEach-Object {
+      $_.FullName.Substring($rootPrefix.Length).Replace('\', '/')
+    }
+  )
+  if ($violations.Count -gt 0) {
+    throw "Release package contains restricted RVC/model payloads: $($violations -join ', ')"
+  }
+}
+
+Assert-NoRestrictedVoicePayload -RootPath $outDir
+
 $hashLines = Get-ChildItem -LiteralPath $outDir -File -Recurse |
   Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
   Sort-Object FullName |
@@ -1771,10 +2092,46 @@ if (Test-Path -LiteralPath $zipPath) {
 if ($LASTEXITCODE -ne 0) {
   throw "Release ZIP creation failed with exit code $LASTEXITCODE"
 }
+$zipEntries = @(& tar.exe -tf $zipPath)
+if ($LASTEXITCODE -ne 0) {
+  throw "Release ZIP inspection failed with exit code $LASTEXITCODE"
+}
+$restrictedZipEntries = @($zipEntries | Where-Object {
+  $allowedVisionModel = $_ -match '(?i)(^|/)(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
+  $_ -match '(?i)(^|/)[^/]+\.(pth|index)$' -or
+  ($_ -match '(?i)(^|/)[^/]+\.onnx$' -and -not $allowedVisionModel) -or
+  $_ -match '(?i)weightsgg|weights\.gg' -or
+  $_ -match '(?i)(^|/)media/voice/rvc/(?!README\.md$).+' -or
+  $_ -match '(?i)(^|/)[^/]*rvc[^/]*\.(wav|mp3|html)$'
+})
+if ($restrictedZipEntries.Count -gt 0) {
+  throw "Release ZIP contains restricted RVC/model payloads: $($restrictedZipEntries -join ', ')"
+}
 $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
 "$zipHash  $(Split-Path -Leaf $zipPath)" | Set-Content -Path $zipSidecarPath -Encoding ASCII
+
+$packageVerifyLog = Join-Path $releaseOutputRoot "$Version-package-verify.log"
+$packageVerifyArgs = @(
+  "-NoProfile",
+  "-ExecutionPolicy", "Bypass",
+  "-File", (Join-Path $PSScriptRoot "verify_release_package.ps1"),
+  "-Version", $Version,
+  "-ZipPath", $zipPath,
+  "-ExpectedCommit", $commit
+)
+if ($AllowDirty) {
+  $packageVerifyArgs += "-AllowDirtyPackage"
+}
+$packageVerifyOutput = @(& $windowsPowerShell @packageVerifyArgs 2>&1)
+$packageVerifyExit = $LASTEXITCODE
+$packageVerifyOutput | ForEach-Object { [string]$_ } |
+  Set-Content -LiteralPath $packageVerifyLog -Encoding UTF8
+if ($packageVerifyExit -ne 0) {
+  throw "Release ZIP verification failed with exit code $packageVerifyExit. See $packageVerifyLog"
+}
 
 Write-Host "Release package:"
 Write-Host $outDir
 Write-Host $zipPath
 Write-Host $zipSidecarPath
+Write-Host $packageVerifyLog

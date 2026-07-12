@@ -56,16 +56,18 @@ class ReferenceBridgeTests(unittest.TestCase):
         self.assertNotIn("Short Circuit", prompt)
         self.assertNotIn("Number 5", prompt)
 
-    def test_memory_extracts_name_topics_and_physical_context(self):
+    def test_memory_extracts_name_and_topics_without_trusting_physical_claims(self):
         memory = BridgeMemory().remember_user_text("My name is Rob and I picked you up to check the servo voice.")
         self.assertEqual("Rob", memory.preferred_name)
         self.assertIn("servos", memory.recent_topics)
         self.assertIn("voice", memory.recent_topics)
-        self.assertIn("user picked Stackchan up", memory.physical_context)
+        self.assertEqual((), memory.physical_context)
         self.assertEqual(1, memory.turns_seen)
 
     def test_plan_turn_couples_memory_to_response(self):
-        memory = BridgeMemory(preferred_name="Rob")
+        memory = BridgeMemory(preferred_name="Rob").with_overrides(
+            physical_context=("user picked Stackchan up",)
+        )
         turn = plan_turn("I picked you up", memory, seq=12)
         self.assertEqual(12, turn.seq)
         self.assertEqual("happy", turn.intent)
@@ -104,13 +106,14 @@ class ReferenceBridgeTests(unittest.TestCase):
                 "memory_write": {
                     "user.name": "Rob",
                     "project.note": "voice tuning",
-                    "robot.physical_context": "room is dark",
                 },
                 "memory_forget": [],
             }
         )
 
-        starting = BridgeMemory().remember_user_text("My name is Rob.")
+        starting = BridgeMemory().remember_user_text("My name is Rob.").with_overrides(
+            physical_context=("room is dark",)
+        )
         turn, memory, result = turn_from_character_response(raw, starting, session="model", seq=33)
 
         self.assertTrue(result.ok, result.issues)

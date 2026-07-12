@@ -1,6 +1,12 @@
 import os
+import re
 
 Import("env")
+
+# Keep PlatformIO child tools, especially esptool's Unicode progress display,
+# independent of the Windows console's legacy code page.
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
 
 
 def optional(name):
@@ -16,6 +22,21 @@ cpp_defines = [
     ("STACKCHAN_ENABLE_WIFI_BRIDGE", 1),
 ]
 cc_flags = []
+pio_environment = env.subst("$PIOENV")
+
+private_release_values = {
+    name: optional(name)
+    for name in (
+        "STACKCHAN_WIFI_SSID",
+        "STACKCHAN_WIFI_PASSWORD",
+        "STACKCHAN_BRIDGE_HOST",
+        "STACKCHAN_BRIDGE_PORT",
+        "STACKCHAN_BRIDGE_PATH",
+        "STACKCHAN_PAIRING_SHORT_CODE",
+    )
+}
+if pio_environment == "stackchan_release_full" and any(private_release_values.values()):
+    raise RuntimeError("stackchan_release_full forbids embedded network, bridge, or pairing values")
 
 bridge_port = optional("STACKCHAN_BRIDGE_PORT")
 if bridge_port:
@@ -33,6 +54,12 @@ for name in (
     value = optional(name)
     if value:
         cc_flags.append(escaped_define_string(name, value))
+
+pairing_code = optional("STACKCHAN_PAIRING_SHORT_CODE")
+if pairing_code:
+    if re.fullmatch(r"[0-9]{6}", pairing_code) is None:
+        raise RuntimeError("STACKCHAN_PAIRING_SHORT_CODE must be exactly six ASCII digits")
+    cc_flags.append(escaped_define_string("STACKCHAN_PAIRING_SHORT_CODE", pairing_code))
 
 env.Append(
     CPPDEFINES=cpp_defines,

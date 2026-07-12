@@ -131,6 +131,10 @@ copy-edit-validate-build workflow, not a separate pack editor. The validator rem
 authority so community packs learn the same foundation rules that CI and release packages
 enforce.
 
+[CUSTOMIZING_THE_FACE.md](CUSTOMIZING_THE_FACE.md) extends that workflow with supported
+expression controls, advanced procedural face architecture, speech visemes, preview steps,
+and physical frame-time acceptance gates.
+
 ## Migration plan (small PRs, each shippable)
 
 Current implementation status: Spark now exists under `personas/spark` as the active

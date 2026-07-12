@@ -19,6 +19,45 @@ struct PowerCoordinatorInput {
   bool supplyBlocked = false;
 };
 
+struct MotionAudioActivity {
+  bool microphoneCaptureActive = false;
+  bool wakeTurnActive = false;
+  bool bridgeConversationBusy = false;
+  bool pendingBridgeOutput = false;
+  bool downlinkActive = false;
+  bool downlinkPlaybackActive = false;
+  bool bridgeAudioStreamActive = false;
+  bool audioOutputPlaybackActive = false;
+  bool speakerPowerActive = false;
+  bool speakerRunning = false;
+};
+
+class MotionAudioPreemptionGate {
+ public:
+  void reset();
+  bool update(const MotionAudioActivity& activity, uint32_t nowMs, uint32_t cooldownMs);
+
+  bool audioLoadActive() const {
+    return audioLoadActive_;
+  }
+
+  bool cooldownTailActive() const {
+    return cooldownTailActive_;
+  }
+
+  uint32_t microphoneCooldownClears() const {
+    return microphoneCooldownClears_;
+  }
+
+ private:
+  bool audioLoadActive_ = false;
+  bool preemptActive_ = false;
+  bool cooldownTailActive_ = false;
+  bool hasRecentAudioLoad_ = false;
+  uint32_t lastAudioLoadMs_ = 0;
+  uint32_t microphoneCooldownClears_ = 0;
+};
+
 struct PowerCoordinatorDecision {
   PowerOperatingMode mode = PowerOperatingMode::Boot;
   bool motionAllowed = false;
@@ -146,5 +185,6 @@ class PowerCoordinator {
 };
 
 const char* powerOperatingModeName(PowerOperatingMode mode);
+bool shouldPreemptMotionForAudio(const MotionAudioActivity& activity);
 
 }  // namespace stackchan

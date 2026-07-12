@@ -20,6 +20,7 @@ struct ActiveSpeakerTarget {
   float size = 0.0f;
   float confidence = 0.0f;
   bool audioMatched = false;
+  float audioDirectionError = 1.0f;
   bool heldForReply = false;
   uint32_t selectedAtMs = 0;
 };

@@ -271,6 +271,8 @@ ActuationTelemetry ActuationEngine::telemetry() const {
   if (outputSuppressed_ && outputSuppressStartedMs_ != 0) {
     telemetry.outputSuppressMs += millis() - outputSuppressStartedMs_;
   }
+  telemetry.lastPitchCommandDeg = lastPitchCommandDeg_;
+  telemetry.lastYawCommandDeg = lastYawCommandDeg_;
   telemetry.dutyResting = dutyResting_;
   telemetry.lastReason = lastReason_;
   return telemetry;
