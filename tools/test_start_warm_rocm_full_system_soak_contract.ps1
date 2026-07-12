@@ -12,7 +12,7 @@ $required = @(
   "camera_host_frame_requests", "camera_host_target_updates", "camera_host_auth_failures",
   "Final integration vision is not ready and advancing; motion was not enabled",
   "Stop-MotionAndThrow", "preflight-failure-motion-stop.json",
-  "Could not launch the soak runner", "RequireFinalIntegration"
+  "Could not launch the soak runner", "RequireFinalIntegration", "FirmwareSourceCommit",
   "ExpectedPmicVindpmMv", "pmic-input-policy-preflight-failure.json",
   "pmic_input_policy_not_applied"
 )

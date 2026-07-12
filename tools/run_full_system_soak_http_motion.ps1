@@ -37,6 +37,7 @@ param(
   [switch]$RequirePowerCoordinator,
   [switch]$RequirePowerForensics,
   [int]$ExpectedPmicVindpmMv = 0,
+  [string]$FirmwareSourceCommit = "",
   [switch]$RequireFinalIntegration,
   [switch]$RequireCameraCapture,
   [switch]$RequireCameraHostVision,
@@ -55,8 +56,19 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
-$SourceCommit = (& git rev-parse HEAD).Trim()
+$RunnerSourceCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
 $SourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 --untracked-files=normal) -join "`n"))
+if ([string]::IsNullOrWhiteSpace($FirmwareSourceCommit)) {
+  $FirmwareSourceCommit = $RunnerSourceCommit
+}
+$SourceCommit = $FirmwareSourceCommit.Trim().ToLowerInvariant()
+if ($SourceCommit -notmatch "^[0-9a-f]{40}$") {
+  throw "FirmwareSourceCommit must be a full 40-character Git commit SHA."
+}
+& git cat-file -e "$SourceCommit`^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0) {
+  throw "FirmwareSourceCommit is not available in this repository: $SourceCommit"
+}
 
 $minPowerVbusMvThreshold = $MinPowerVbusMv
 $minPowerVbusReportedMvThreshold = $MinPowerVbusReportedMv
@@ -1779,6 +1791,7 @@ $installedFirmwareSha256 = if ($latestOkRecord) { [string]$latestOkRecord.ota_ex
 if ($RequireFinalIntegration) {
   if ($SourceDirty) { $issues.Add("final_integration_source_worktree_dirty") }
   if ($SourceCommit -notmatch "^[0-9a-fA-F]{40}$") { $issues.Add("final_integration_source_commit_missing") }
+  if ($RunnerSourceCommit -notmatch "^[0-9a-fA-F]{40}$") { $issues.Add("final_integration_runner_source_commit_missing") }
   if ($installedFirmwareSha256 -notmatch "^[0-9a-fA-F]{64}$" -or
       -not [bool]$latestOkRecord.ota_current_app_confirmed) {
     $issues.Add("final_integration_firmware_identity_missing")
@@ -1791,6 +1804,8 @@ $summary = [ordered]@{
   schema = "stackchan.full-system-soak-summary.v1"
   sourceCommit = $SourceCommit
   sourceDirty = $SourceDirty
+  runnerSourceCommit = $RunnerSourceCommit
+  runnerSourceDirty = $SourceDirty
   installedFirmwareSha256 = $installedFirmwareSha256
   startedAt = $startedAt.ToString("o")
   endedAt = $endedAt.ToString("o")

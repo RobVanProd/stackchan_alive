@@ -14,6 +14,8 @@ foreach ($requiredPattern in @(
     'RequirePowerForensics',
     'power_forensics_not_armed',
     'ExpectedPmicVindpmMv',
+    'FirmwareSourceCommit',
+    'runnerSourceCommit',
     'pmic_input_policy_not_applied',
     'pmic_input_policy_io_failure_observed',
     'power_vbus_hard_floor_last_pmic_vsys_mv',
@@ -255,7 +257,7 @@ try {
   if ($finalIntegrationReady.exitCode -ne 0 -or $finalIntegrationReady.json.failed -ne 0) {
     throw "Expected final integration summary to pass: $($finalIntegrationReady.output)"
   }
-  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "external-imu-events", "self-motion-imu-events-accounted", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-capture-failures", "camera-host-response-write-failures", "camera-host-response-write-ratio", "camera-host-response-write-streak", "camera-host-auth-failures")) {
+  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "runner-source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "external-imu-events", "self-motion-imu-events-accounted", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-capture-failures", "camera-host-response-write-failures", "camera-host-response-write-ratio", "camera-host-response-write-streak", "camera-host-auth-failures")) {
     if (@($finalIntegrationReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
       throw "Expected final integration check $id to pass."
     }

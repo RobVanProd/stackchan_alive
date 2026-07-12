@@ -244,9 +244,12 @@ if ($summary) {
   if ($RequireFinalIntegration -or $summaryRequiresFinalIntegration) {
     $sourceCommit = [string]$summary.sourceCommit
     $sourceDirty = if ($summary.PSObject.Properties.Name -contains "sourceDirty") { [bool]$summary.sourceDirty } else { $true }
+    $runnerSourceCommit = if ($summary.PSObject.Properties.Name -contains "runnerSourceCommit") { [string]$summary.runnerSourceCommit } else { $sourceCommit }
+    $runnerSourceDirty = if ($summary.PSObject.Properties.Name -contains "runnerSourceDirty") { [bool]$summary.runnerSourceDirty } else { $sourceDirty }
     $installedFirmwareSha256 = [string]$summary.installedFirmwareSha256
     Add-Check "source-commit-pinned" ($(if ($sourceCommit -match "^[0-9a-fA-F]{40}$") { "pass" } else { "fail" })) "sourceCommit=$sourceCommit"
-    Add-Check "source-worktree-clean" ($(if (-not $sourceDirty) { "pass" } else { "fail" })) "sourceDirty=$sourceDirty"
+    Add-Check "runner-source-commit-pinned" ($(if ($runnerSourceCommit -match "^[0-9a-fA-F]{40}$") { "pass" } else { "fail" })) "runnerSourceCommit=$runnerSourceCommit"
+    Add-Check "source-worktree-clean" ($(if (-not $runnerSourceDirty) { "pass" } else { "fail" })) "runnerSourceDirty=$runnerSourceDirty"
     Add-Check "installed-firmware-pinned" ($(if ($installedFirmwareSha256 -match "^[0-9a-fA-F]{64}$") { "pass" } else { "fail" })) "installedFirmwareSha256=$installedFirmwareSha256"
     $latestIntegration = $summary.latestFinalIntegration
     $debugContractPassed = $null -ne $latestIntegration -and

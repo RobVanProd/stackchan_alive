@@ -486,6 +486,8 @@ $args = @(
   [string]$MinPowerVbusMv,
   "-MotionPowerSoftFloorMv",
   [string]$MotionPowerSoftFloorMv,
+  "-FirmwareSourceCommit",
+  $sourceCommit,
   "-EvidenceRoot",
   $EvidenceRoot
 )
