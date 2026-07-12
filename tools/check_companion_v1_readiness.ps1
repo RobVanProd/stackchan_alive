@@ -678,6 +678,12 @@ Test-TextEvidence `
   -RelativePaths @("tools/start_pc_brain.ps1") `
   -Patterns @("STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "selected_voice_tts.py", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")
 
+Test-AggregateTextEvidence `
+  -Id "pc-brain-trusted-facts" `
+  -Name "PC Brain deterministic trusted facts and silent production smoke" `
+  -RelativePaths @("bridge/local_facts.py", "bridge/trusted_facts_smoke.py", "bridge/test_local_facts.py", "bridge/test_trusted_facts_smoke.py", "docs/BRAIN_MODEL.md") `
+  -Patterns @("resolve_local_fact", "local_clock", "memory_recall", "stackchan.trusted-facts-smoke.v1", "modelInvocations", "audioPlayed", "passthroughCases", "trusted_facts_smoke.py")
+
 Test-TextEvidence `
   -Id "pc-brain-deploy-evidence-helper" `
   -Name "PC Brain deploy evidence collector" `

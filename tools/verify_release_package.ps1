@@ -197,6 +197,10 @@ $requiredFiles = @(
   "bridge/test_research_broker.py",
   "bridge/robot_embodiment.py",
   "bridge/test_robot_embodiment.py",
+  "bridge/local_facts.py",
+  "bridge/test_local_facts.py",
+  "bridge/trusted_facts_smoke.py",
+  "bridge/test_trusted_facts_smoke.py",
   "bridge/local_runner.py",
   "bridge/test_local_runner.py",
   "bridge/engine_probe.py",
@@ -636,6 +640,10 @@ $requiredFiles = @(
   "provenance/bridge/test_persona_pack.py",
   "provenance/bridge/reference_bridge.py",
   "provenance/bridge/test_reference_bridge.py",
+  "provenance/bridge/local_facts.py",
+  "provenance/bridge/test_local_facts.py",
+  "provenance/bridge/trusted_facts_smoke.py",
+  "provenance/bridge/test_trusted_facts_smoke.py",
   "provenance/bridge/local_runner.py",
   "provenance/bridge/test_local_runner.py",
   "provenance/bridge/engine_probe.py",
@@ -2988,7 +2996,7 @@ foreach ($pattern in @("curious", "earnest", "safety-conscious", "contractions",
 }
 
 $brainModelGuide = Get-Content -LiteralPath (Join-PackagePath "docs/BRAIN_MODEL.md") -Raw
-foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/character_red_team.py", "run_character_red_team.cmd", "dry-run-no-runner-configured", "summary.gate.ready", "bridge/engine_probe.py", "bridge/lan_smoke.py", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate", "ANDROID_COMPANION_SPEC.md")) {
+foreach ($pattern in @("google/gemma-4-E2B-it-qat-q4_0-gguf", "litert-community/gemma-4-E2B-it-litert-lm", "LiteRT-LM", "bridge/litert_lm_stackchan_wrapper.py", "bridge/litert_lm_contract_smoke.py", "run_litert_lm_smoke.cmd", "STACKCHAN_LITERT_LM_COMMAND", "bridge/character_harness.py", "bridge/character_red_team.py", "run_character_red_team.cmd", "dry-run-no-runner-configured", "summary.gate.ready", "bridge/engine_probe.py", "bridge/lan_smoke.py", "bridge/trusted_facts_smoke.py", "modelInvocations", "audioPlayed", "ENGINE_PROBE.md", "LITERT_LM_SMOKE.md/json", "LAN_SMOKE.md/json", "--model-response", "tokens per second", "Do not fine-tune first", "audio_format", "pcm16", "M5 speaker sink", "summary.candidate_gate", "recommended_profile", "--min-pass-rate", "ANDROID_COMPANION_SPEC.md")) {
   if ($brainModelGuide -notmatch [regex]::Escape($pattern)) {
     throw "BRAIN_MODEL.md missing expected model harness guidance: $pattern"
   }
