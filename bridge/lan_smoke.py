@@ -150,7 +150,9 @@ def make_handshake(host: str, port: int) -> bytes:
 def read_handshake_response(sock: socket.socket) -> str:
     data = bytearray()
     while b"\r\n\r\n" not in data:
-        chunk = sock.recv(4096)
+        # Do not consume a coalesced first WebSocket frame. This helper is also
+        # used by pc_brain_probe, whose next read expects the complete frame.
+        chunk = sock.recv(1)
         if not chunk:
             raise WebSocketProtocolError("server closed before handshake response")
         data.extend(chunk)

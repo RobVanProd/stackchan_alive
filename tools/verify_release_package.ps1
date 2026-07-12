@@ -1063,7 +1063,7 @@ if ($releaseWorkflowText -notmatch 'package_release\.ps1 -Version' -or
 }
 
 $firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
-foreach ($pattern in @("Verify bundled persona packs", "verify_persona_pack.py glow", "Compile native logic with Glow persona", "STACKCHAN_PERSONA: glow", "Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
+foreach ($pattern in @("Install bridge test dependencies", "sudo apt-get install -y ffmpeg", "python -m pip install -r bridge/requirements-vision.txt", "Verify bundled persona packs", "verify_persona_pack.py glow", "Compile native logic with Glow persona", "STACKCHAN_PERSONA: glow", "Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
   }

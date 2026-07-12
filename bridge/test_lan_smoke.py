@@ -1,12 +1,31 @@
 import os
+import socket
 import tempfile
 import unittest
 from pathlib import Path
 
-from lan_smoke import build_report, encode_client_frame, write_outputs
+from lan_service import read_ws_frame
+from lan_smoke import build_report, encode_client_frame, read_handshake_response, write_outputs
 
 
 class LanSmokeTests(unittest.TestCase):
+    def test_handshake_reader_preserves_coalesced_first_websocket_frame(self):
+        server, client = socket.socketpair()
+        try:
+            server.sendall(
+                b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n"
+                b"\x81\x02hi"
+            )
+            response = read_handshake_response(client)
+            opcode, payload = read_ws_frame(client)
+        finally:
+            server.close()
+            client.close()
+
+        self.assertIn("101 Switching Protocols", response)
+        self.assertEqual(0x1, opcode)
+        self.assertEqual(b"hi", payload)
+
     def test_client_frames_are_masked_for_server_protocol_path(self):
         frame = encode_client_frame(b"hi", opcode=0x1)
 
