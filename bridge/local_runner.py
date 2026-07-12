@@ -79,6 +79,14 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "memory_write": {},
         "memory_forget": [],
     },
+    "remember": {
+        "spoken_text": "Teal. I will remember that.",
+        "mode": "happy",
+        "earcon": "confirm",
+        "emotion": {"arousal": 0.0, "valence": 0.2},
+        "memory_write": {"user.favorite_color": "teal"},
+        "memory_forget": [],
+    },
     "forget": {
         "spoken_text": "Deleted. It is gone.",
         "mode": "concern",

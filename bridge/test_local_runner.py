@@ -53,6 +53,17 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertIn("Something feels uncertain.", result.raw_response)
         self.assertTrue(result.validation.ok, result.validation.issues)
 
+    def test_deterministic_remember_fallback_writes_the_required_safe_preference(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile("gemma4-e2b-gguf", case_name="remember")
+
+        self.assertFalse(result.configured_runner)
+        self.assertEqual(
+            {"user.favorite_color": "teal"},
+            result.validation.normalized["memory_write"],
+        )
+        self.assertTrue(result.validation.ok, result.validation.issues)
+
     def test_identity_fallback_uses_selected_persona_name(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):
             result = run_runner_profile("gemma4-e2b-gguf", case_name="question", persona_id="glow")

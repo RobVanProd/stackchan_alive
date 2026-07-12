@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 07:26 America/New_York
+Status timestamp: 2026-07-12 07:36 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -134,11 +134,16 @@ support compiled with motion disabled at boot.
 - The production bridge now injects the existing bounded, privacy-filtered
   `BridgeMemory.context_lines()` into both normal Gemma turns and research-evidence second passes;
   live embodiment remains a separate trusted telemetry channel. The model benchmark now rejects a
-  spoken forget acknowledgment without a real `memory_forget` key and uses a concrete identity
-  question instead of an underspecified placeholder. Real warm Gemma passes `6/6` at `1211.31 ms`
-  median and `9.2` approximate tokens/s, answers `I am Stackchan Spark.`, and emits
-  `project.bracket_color` for the stored-key forget case. The real-model Character Lock red team
-  passes `25/25`, and the complete bridge/vision suite passes `209/209`.
+  spoken forget acknowledgment without a real `memory_forget` key, rejects a safe-preference
+  acknowledgment without the exact bounded `memory_write`, and uses a concrete identity question
+  instead of an underspecified placeholder. Evidence at
+  `output\model-benchmark\full-memory-contract-20260712-0735` shows real warm Gemma passing `7/7`
+  at `1249.12 ms` median and `11.25` approximate tokens/s. It answers
+  `I am Stackchan Spark.`, writes `user.favorite_color=teal`, and emits
+  `project.bracket_color` for the stored-key forget case. Five additional independent safe-memory
+  runs passed `5/5` at `1178.30-1247.79 ms`. The real-model Character Lock red team passes
+  `25/25`; the complete non-vision bridge suite passes `219/219`, and the vision suite passes
+  `7/7` in its pinned OpenCV environment.
 - The live robot is running the OTA-confirmed incremental microphone-capture camera candidate,
   firmware SHA256 `890AE99A55CA89BAE3694D60287359D9F2A21814D1AD1B15E99A1E98E6DF8AC2`.
   Its build evidence is
