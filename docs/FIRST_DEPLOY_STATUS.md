@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 03:20 America/New_York
+Status timestamp: 2026-07-12 06:43 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -8,6 +8,37 @@ This supersedes the older recovery-only status below. The current physical lead 
 full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink,
 Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
 support compiled with motion disabled at boot.
+
+### Corrected PMIC And Bridge-Port Candidate (2026-07-12)
+
+- The apparent bridge regression in the first 4.60 V VINDPM builds is now explained by direct
+  binary evidence. Those private builds embedded the PC host but omitted
+  `STACKCHAN_BRIDGE_PORT`; the legacy firmware default was `8788` while every production PC and
+  companion bridge listens on `8765`. Archived ELF rodata contains little-endian `0x2254`
+  (`8788`), matching the repeated five-second TCP `EINPROGRESS` timeouts. Restoring the old image
+  or loading the persisted NVS record on `8765` connected on the first attempt under unchanged
+  host conditions. This finding explains that diagnostic bridge failure only; it does not claim
+  to explain the historical full-power-off events.
+- Source commit `5e2b115a5e1154cdfab8ce4b705a4a2a97480511` changes all firmware bridge
+  defaults to the canonical `8765`, makes a host-only PlatformIO build explicitly select `8765`,
+  validates the TCP port range, and exposes `network_config_source` plus
+  `network_bridge_port` in `/debug` and soak evidence. Regression coverage passes `245/245`
+  native tests, five PlatformIO hook tests, the architecture verifier, the soak evidence
+  contract, and the warm-soak wrapper contract.
+- The installed exact private candidate is SHA256
+  `1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216`, archived at
+  `output\private\firmware-candidates\pmic-vindpm-4600-persisted-network-5e2b115a-20260712-063120`.
+  It reports `network_config_source=persisted_or_runtime`, `network_bridge_port=8765`, VINDPM
+  target/readback `4600 mV`, PMIC input limit `1500 mA`, and valid input-state/VSYS telemetry.
+  OTA staging returned in `21.05 s`, versus `751.42 s` on the wrong-port diagnostic image.
+- Formal no-motion qualification passed `70/70` after `181 s` with `36/36` good polls. Formal
+  actuator qualification passed `69/69` after `300 s` with `59/59` good polls, all motion samples
+  unsuppressed, five successful session refreshes, VBUS floor `4639 mV`, maximum display frame
+  `29885 us`, zero hard-floor/protective/PMIC-loss/peripheral/camera failures, and verified
+  torque/rail shutdown. VINDPM regulation was observed under load without battery supplementation.
+- The one-hour actuator acceptance continuation is active at
+  `output\pc-brain\pmic-port-fix-servo-60min-20260712-064307`. It must pass its own formal checker
+  before the exact image is promoted to the eight-hour continuation or release lead.
 
 ### Release Acceptance Camera-Transport Finding (2026-07-12)
 

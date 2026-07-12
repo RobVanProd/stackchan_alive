@@ -1,6 +1,7 @@
 # Stackchan Power Blackout Forensics
 
-Status: PMIC input-policy candidate built; staged no-motion and actuator qualification pending.
+Status: corrected PMIC input-policy candidate installed; short no-motion and actuator gates pass;
+one-hour actuator qualification active.
 
 ## What The Evidence Says
 
@@ -63,6 +64,24 @@ This is a testable mitigation, not a root-cause claim. The strict wrapper refuse
 the 4.60 V readback and VSYS telemetry are valid, and it stops on any new PMIC input-policy read
 failure. Qualification order is no-motion, short actuator, 60-minute actuator, then eight-hour
 actuator only after each prior gate passes.
+
+The first private PMIC builds appeared to break the bridge, but the PMIC change was not the cause.
+Those builds embedded the bridge host without a port and therefore inherited the obsolete firmware
+default `8788`; the real bridge listens on `8765`. Archived ELF rodata proves the compiled port,
+and the resulting five-second TCP timeouts are reproduced in the saved diagnostics. An otherwise
+equivalent image that loaded the persisted NVS target connected on its first attempt. Source commit
+`5e2b115a5e1154cdfab8ce4b705a4a2a97480511` aligns every default with `8765` and records the
+configuration source and port in `/debug`. Do not use this resolved bridge-build defect as an
+explanation for any historical full-off event.
+
+The corrected exact image SHA256
+`1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216` passed a formal
+`181 s` no-motion gate (`70/70`) and a formal `300 s` actuator gate (`69/69`). During the actuator
+run VBUS reached `4639 mV`, VINDPM regulation engaged as designed, VSYS remained above the
+configured minimum-system threshold, and no battery supplementation, hard-floor event, PMIC
+protective/VBUS-loss event, reset, network loss, display breach, or peripheral failure occurred.
+This proves the policy is functioning over the short qualification window; it does not yet prove
+long-term stability or identify the universal cause of prior shutdowns.
 
 ## Instrumented Candidate
 

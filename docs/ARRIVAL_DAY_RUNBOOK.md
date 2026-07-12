@@ -41,6 +41,17 @@ The superseding uninstalled candidate adds separate camera capture/response-writ
 one bounded host retry; it must pass its own no-motion and actuator qualifications before a long
 soak.
 
+Current power-policy qualification note (2026-07-12): the installed private image is clean source
+commit `5e2b115a5e1154cdfab8ce4b705a4a2a97480511`, firmware SHA256
+`1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216`. It loads the saved NVS
+network target and `/debug` must report `network_config_source=persisted_or_runtime` plus
+`network_bridge_port=8765`. A prior PMIC diagnostic image inherited obsolete port `8788` because
+the private build embedded a host without a port; that wrong-port build defect caused its bridge
+timeouts and is not evidence of a PMIC or blackout fault. The corrected image passed formal
+no-motion `70/70` and five-minute actuator `69/69` checks. Its one-hour actuator qualification is
+active at `output\pc-brain\pmic-port-fix-servo-60min-20260712-064307`; do not call it the release
+lead until that run and the subsequent eight-hour continuation pass.
+
 When physical testing resumes, first validate a real face under diffuse light with motion off,
 then follow `docs\LOCAL_VISION.md` for the bounded wake/listen follow run. Confirm opposite bounded
 left/right direction telemetry before fresh servo clearance. If board orientation reverses the
