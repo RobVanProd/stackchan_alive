@@ -9,7 +9,9 @@ $required = @(
   "RequireFinalIntegration", "RequirePowerForensics", "requireCameraHostVision",
   "requireVerifiedMotionStop", "Assert-EvidenceIdentity", "source commit mismatch",
   "dirty source worktree", "same installed firmware SHA-256", "ExpectedFirmwareSourceCommit",
-  "Release commit:", "Firmware source commit:"
+  "Release commit:", "Firmware source commit:", "ActionsStatusPath",
+  "export_github_actions_status.ps1", "successful live GitHub Actions status",
+  "stackchan.github-actions-status.v1", "GitHub Actions evidence:"
 )
 foreach ($fragment in $required) {
   if (-not $source.Contains($fragment)) {

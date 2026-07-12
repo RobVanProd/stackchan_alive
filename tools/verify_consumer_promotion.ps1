@@ -13,6 +13,8 @@ param(
   [string]$ExternalAccountCiExceptionPath,
   [string]$ExpectedCommit,
   [string]$ExpectedFirmwareSourceCommit,
+  [string]$Repo = "RobVanProd/stackchan_alive",
+  [string]$ActionsStatusPath,
   [switch]$AllowExternalAccountCiBlock
 )
 
@@ -39,6 +41,7 @@ if ([string]::IsNullOrWhiteSpace($ExpectedFirmwareSourceCommit)) {
 }
 
 $cleanupDir = $null
+$actionsStatusTempDir = $null
 
 function Join-ResolvedPath {
   param(
@@ -369,7 +372,23 @@ try {
     throw "Expected prerelease readiness to document blocked consumer rollout before evidence review"
   }
 
-  $actionsStatus = Get-Content -LiteralPath (Join-ResolvedPath $packageRootPath "github_actions_status.json") -Raw | ConvertFrom-Json
+  if ([string]::IsNullOrWhiteSpace($ActionsStatusPath)) {
+    $actionsStatusTempDir = Join-Path ([System.IO.Path]::GetTempPath()) `
+      ("stackchan-promotion-actions-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $actionsStatusTempDir | Out-Null
+    $actionsExporter = Join-Path $PSScriptRoot "export_github_actions_status.ps1"
+    $actionsOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $actionsExporter `
+      -Repo $Repo -Version $Version -Commit $ExpectedCommit -OutputDir $actionsStatusTempDir 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "Unable to capture successful live GitHub Actions status for consumer promotion: $($actionsOutput | Out-String)"
+    }
+    $ActionsStatusPath = Join-Path $actionsStatusTempDir "github_actions_status.json"
+  }
+  $actionsStatus = Read-JsonFile $ActionsStatusPath
+  if ($actionsStatus.schema -ne "stackchan.github-actions-status.v1" -or
+      [string]$actionsStatus.commit -ne $ExpectedCommit) {
+    throw "GitHub Actions status does not match release commit $ExpectedCommit`: $ActionsStatusPath"
+  }
   $requiredWorkflowNames = @($actionsStatus.requiredWorkflows | ForEach-Object { [string]$_ })
   foreach ($workflowName in @("Firmware", "Release")) {
     if ($requiredWorkflowNames -notcontains $workflowName) {
@@ -410,7 +429,11 @@ try {
   if ($null -ne $ciException) {
     Write-Host "CI exception: $ExternalAccountCiExceptionPath"
   }
+  Write-Host "GitHub Actions evidence: $ActionsStatusPath"
 } finally {
+  if ($null -ne $actionsStatusTempDir) {
+    Remove-Item -LiteralPath $actionsStatusTempDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
   if ($null -ne $cleanupDir) {
     Remove-Item -LiteralPath $cleanupDir -Recurse -Force -ErrorAction SilentlyContinue
   }
