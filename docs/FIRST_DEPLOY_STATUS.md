@@ -333,11 +333,12 @@ support compiled with motion disabled at boot.
   `1` pending. The sole pending check is the required 28,800-second final soak; the longest clean
   evidence currently selected is the 7,203-second no-motion lock-safe run. Report:
   `output\current-lead\current-lead-reproducibility-latest\CURRENT_LEAD_REPRODUCIBILITY.json`.
-- Merge-readiness inspection confirms `origin/main` is already an ancestor of the working branch
-  (`0` commits needed from main, `144` branch commits ahead), so no upstream reconciliation is
-  currently pending. A content scan of all 742 tracked files found no occurrence of either private
-  OTA or camera-pairing secret. The final integration worktree remains intentionally uncommitted
-  until wake recovery, camera/touch/IMU hardware gates, and the final soak pass.
+- Historical merge-readiness inspection at this point confirmed `origin/main` was already an
+  ancestor of the working branch (`0` commits needed from main, `144` branch commits ahead), and a
+  content scan of all 742 tracked files found no occurrence of either private OTA or camera-pairing
+  secret. The worktree was intentionally uncommitted at that checkpoint. This note is superseded
+  by the clean public commits and exact-image launch candidate recorded at the top of this file;
+  only the terminal long-soak evidence and resulting release-documentation/package commit remain.
 - Release voice conversion is now explicitly BYOM and local-only. Model weights, indexes,
   converted RVC audio, and RVC audition pages were removed from the public tree and release asset
   contract, while restricted review material was preserved under `output\private`. The public

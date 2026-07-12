@@ -76,9 +76,10 @@ network target and `/debug` must report `network_config_source=persisted_or_runt
 `imu_external_events=0`. The preceding one-hour attempt stopped on an over-broad gate after a
 self-motion `shaken` event; the robot remained healthy, and that event is not a power or actuator
 failure. The installed image passed formal no-motion `71/71` and five-minute actuator `70/70`
-checks. Its one-hour actuator qualification is active at
-`output\pc-brain\imu-accounting-servo-60min-20260712-070606`; do not call it the release lead until
-that run and the subsequent exact-image eight-hour continuation pass.
+checks. Its historical one-hour actuator qualification began at
+`output\pc-brain\imu-accounting-servo-60min-20260712-070606` and was superseded by the later
+atomic-snapshot exact image identified in the current release note above. Do not resume or
+promote this older image; use the current exact SHA and evidence sequence.
 
 When host-only bridge, memory, test, or documentation commits follow an installed firmware build,
 pass the firmware commit explicitly to direct soaks, for example

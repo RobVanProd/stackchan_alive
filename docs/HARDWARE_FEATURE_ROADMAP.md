@@ -1,25 +1,27 @@
 # Stackchan Hardware Feature Roadmap
 
-This roadmap starts only after the current full-system firmware passes its 60-minute
-wall-powered servo acceptance run and is archived as the stable lead. New hardware is
-then added one bounded producer at a time so face, wake, bridge, voice, power, and motion
-remain independently recoverable.
+This roadmap records the bounded integration path used after the full-system firmware passed its
+60-minute wall-powered servo acceptance and was archived as a stable lead. Hardware producers were
+then added one at a time so face, wake, bridge, voice, power, and motion stayed independently
+recoverable. The status paragraphs distinguish current implementation from remaining promotion
+evidence; the numbered design bullets remain useful when adapting the software to another unit.
 
-Current status (2026-07-11): Gate 0 passed with the accepted power-coordinated 60-minute lead.
-The release-forensics/Voice V2 diagnostic build subsequently passed short motion-off, servo,
-complete streamed-audio, five-second conversation, and audio-driven mouth tests. The next
-candidate now compiles body RGB/touch and IMU into the release profile, with bounded telemetry,
-power-aware RGB, servo-self-motion filtering, and pickup/shake safety holds. Native firmware
-logic is 229/229, the complete bridge suite is 202/202, the release image builds at 53.0% RAM
-and 41.8% flash, and the camera-capture probe builds at 56.4% RAM and 42.7% flash. The host
-OpenCV worker passes 4/4 tests and its cascade loads on the isolated Windows runtime. The
-release candidate also carries a bounded robot heartbeat that lets the bridge give Gemma a
-fresh, allowlisted embodiment snapshot without another network poll. The body RGB flow has been
-physically accepted, touch and IMU events have been exercised, and the camera probe has physically
-initialized and completed a 174-frame authenticated host loop with zero capture or authentication
-failures. Real-face detection, active-speaker tracking, touch-zone label orientation, final IMU
-false-trigger thresholds, and all combined behavior remain unproven until the supervised sequence
-below passes.
+Current status (2026-07-12): Gates 0-5 are integrated in the private paired exact-image candidate
+identified in `FIRST_DEPLOY_STATUS.md`. That image passed formal no-motion, short actuator, and
+one-hour all-feature actuator qualifications; the one-hour result was `76/76` after `3601 s` with
+`706/706` good polls and zero reset, motion-timeout, power, camera, or terminal IMU failures. The
+corrected 28,800-second interaction-aware continuation is active and is not a pass until its
+terminal summary and formal checker complete.
+
+Wake, full reply audio, synchronized mouth motion, power-coordinated servos, flowing RGB, touch,
+pickup/orientation events, authenticated camera capture, YuNet face acquisition, and bounded
+horizontal following have all been exercised on the reference robot. The host bridge also carries
+a bounded allowlisted embodiment snapshot for Gemma. Remaining evidence is deliberately narrower:
+the ordered body-zone/gesture promotion report, the operator-approved wake/follow camera report,
+multi-person active-speaker selection, production voice provenance for any bundled voice, and the
+terminal eight-hour result. Phase 6 recognition and proximity behavior remain future work. The
+public Apache-2.0 package stays secret-free and BYOM; private pairing material and voice models are
+not release assets.
 
 ## Confirmed Hardware
 
@@ -77,9 +79,10 @@ under `output\firmware-candidates\forensics-validated-20260710-204449.zip`.
 ### Phase 1: Passive Hardware Inventory
 
 Implementation status: telemetry is present for body RGB/touch, IMU, camera capture, bridge,
-display, audio, motion, power, heap, and reset state. RGB/touch/IMU readiness and camera sensor
-initialization have been observed on the physical unit; the 30-minute passive acceptance soak is
-still pending.
+display, audio, motion, power, heap, and reset state. The current exact image kept RGB, touch, IMU,
+and camera capture/host vision ready throughout its formal one-hour all-feature actuator pass with
+zero terminal peripheral failures. A dedicated ordered body-sensor report remains a separate
+consumer-promotion artifact; its absence does not mean the integrated hardware has not run.
 
 - Add capability telemetry for the expected body and CoreS3 devices using the official
   StackChan BSP/M5Unified paths where compatible with this firmware.
@@ -92,11 +95,14 @@ still pending.
 
 ### Phase 2: IMU And Pickup Awareness
 
-Implementation status: a 25 Hz M5Unified IMU adapter now calibrates stationary gravity and
-publishes bounded pickup, putdown, tilt, and shake events. Recent meaningful servo commands
-activate a self-motion filter; ordinary servo motion cannot become a handling event, while an
-extreme impact can still request a safety hold. Threshold calibration and false-positive
-evidence are pending.
+Implementation status: a 25 Hz M5Unified IMU adapter calibrates stationary gravity and publishes
+bounded pickup, putdown, tilt, and shake events. Atomic M5Unified snapshots use yielding bounded
+retry backoff, isolated exhaustion accounting, and terminal failure only after three consecutive
+exhausted windows. Recent meaningful servo commands activate a self-motion filter; ordinary servo
+motion cannot become a handling event, while an extreme impact can still request a safety hold.
+The exact one-hour pass recorded zero read exhaustions and terminal failures, and real external
+handling events have been detected. The ordered pickup/tilt/putdown/shake promotion report remains
+pending.
 
 - Sample the IMU in a low-priority, bounded sensor task and calibrate stationary bias.
 - Produce `pickup`, `putdown`, `tilt`, `shake`, and orientation events through the existing
@@ -110,22 +116,18 @@ evidence are pending.
 
 ### Phase 3: Body Touch And RGB Feedback
 
-Implementation status: the candidate includes direct bounded drivers for the Si12T and body
-controller, front/middle/back tap, hold, release, and swipe interpretation, and a 12-LED
+Implementation status: the installed exact candidate includes direct bounded drivers for the Si12T
+and body controller, front/middle/back tap, hold, release, and swipe interpretation, and a 12-LED
 foundation renderer for mode, mood, speech envelope, touch, and microphone acknowledgement.
 Writes are change-only and capped at 20 Hz; normal channel brightness is capped at 52/255 and
-protected-mode brightness at 14/255. Mode and emotional base colors now crossfade independently
+protected-mode brightness at 14/255. Mode and emotional base colors crossfade independently
 from the responsive breathing, speech, touch, and wake overlays. Native coverage bounds every
 ordinary character-mode transition to a maximum 16-channel step per 50 ms frame; error/safety
-response remains intentionally faster. The operator accepted the flowing RGB transitions. Zone
-mapping and final combined power/soak evidence are pending. The next production candidate now
-publishes durable front/middle/back and tap/hold/forward-swipe/backward-swipe counters, plus the
-last decoded zone, gesture, and event timestamp through `/debug`. This makes the physical mapping
-gate independently auditable instead of inferring it from one aggregate touch count. The candidate
-passes 229/229 native logic tests and the `stackchan_release_forensics` build at 53.0% RAM and 41.8%
-flash; it has not been uploaded to the running robot. The exact uninstalled binary and triggering
-soak summary are preserved under
-`output\hardware-evidence\final-integration\rgb-i2c-retry-candidate-20260711-145737`.
+response remains intentionally faster. The operator accepted the flowing RGB transitions, and the
+exact one-hour integrated pass kept RGB and touch ready with zero terminal I/O failure. Durable
+front/middle/back and tap/hold/forward-swipe/backward-swipe counters plus the last decoded zone,
+gesture, and timestamp make the physical mapping gate independently auditable. The dedicated
+ordered zone/gesture report is still required for consumer promotion.
 
 - Map the three physical touch zones to named events after observing the actual body
   orientation; do not guess left/right labels in code.
@@ -139,15 +141,17 @@ soak summary are preserved under
 
 ### Phase 4: Camera Face Detection
 
-Implementation status: the camera profile configures the GC0308 at QVGA RGB565 with
+Implementation status: the current exact image configures the GC0308 at QVGA RGB565 with
 one PSRAM frame buffer and reuses the managed internal SCCB bus without releasing PMIC/audio
 devices. A paired diagnostic endpoint downsamples one frame to 160x120 grayscale. The local
 Windows worker detects up to four faces with OpenCV and returns only normalized boxes to the
 native-tested active-speaker tracker. Frames are not persisted. Physical initialization and capture
 timing are proven, and hash-pinned YuNet has physically acquired a real face across center, left,
 right, loss, and reacquisition positions. A supervised horizontal follow was visually accepted as
-correct but slow. Full wake/listen/reply following on the incremental-capture candidate and the
-60-minute camera-on combined-load gate remain pending. See `LOCAL_VISION.md`.
+correct but slow. Camera capture and host vision remained ready during the exact one-hour
+all-feature actuator pass; the corrected eight-hour run keeps a `300000 us` single-frame ceiling,
+zero new capture/authentication failures, and advancing paired frames/target updates strict. The
+dedicated operator camera report remains pending. See `LOCAL_VISION.md`.
 
 - Begin at low resolution and a conservative 5-10 FPS with fixed PSRAM frame buffers.
 - Detect face boxes locally and publish only bounded `x`, `y`, `size`, `confidence`, and
@@ -164,12 +168,13 @@ correct but slow. Full wake/listen/reply following on the incremental-capture ca
 Implementation status: bounded multi-face selection, microphone-azimuth matching, smoothing,
 target-switch resistance, confidence decay, and reply-time target hold are implemented and
 native-tested. The earlier generic audio adapter was mono and therefore could not provide physical
-azimuth. The camera candidate reuses the wake task's true interleaved ES7210 stereo capture and
+azimuth. The current image reuses the wake task's true interleaved ES7210 stereo capture and
 estimates a bounded direction from cross-channel sample delay. Physical single-person face
-acquisition and horizontal servo following are proven. The audio power handoff now preserves
-low-duty tracking during microphone capture, and dedicated wake capture is incremental so the
-intent task continues camera/gaze work while listening. A supervised visual pass through the full
-wake/listen/reply sequence and multi-person active-speaker selection remain unpassed.
+acquisition and horizontal servo following are proven. The audio power handoff preserves low-duty
+tracking during microphone capture, and dedicated wake capture is incremental so the intent task
+continues camera/gaze work while listening. A consistent operator-approved full wake/listen/reply
+follow report and multi-person active-speaker selection remain unpassed; the unattended soak proves
+service continuity and timing, not that behavioral gate.
 
 - Estimate sound direction from the dual microphones on-device and publish a bounded
   azimuth/confidence event. Validate the actual microphone geometry before assigning
@@ -184,6 +189,10 @@ wake/listen/reply sequence and multi-person active-speaker selection remain unpa
   stable active-speaker selection, and no motion during a safety hold.
 
 ### Phase 6: Opt-In Face Recognition And Fused Presence
+
+Implementation status: planned only. The current release detects and tracks faces but does not
+identify people, enroll identities, or depend on proximity behavior. Do not advertise recognition
+or proximity as a current feature.
 
 - Separate face detection (someone is present) from recognition (an enrolled person).
 - Run identity matching on the PC brain first unless measured CoreS3 evidence shows an
@@ -250,19 +259,21 @@ availability without inventing unavailable senses.
 
 ## Supervised Candidate Sequence
 
-1. Flash the release candidate with servos initially stopped and capture `/debug`.
-2. Confirm `body_rgb_ready`, `body_touch_ready`, `imu_ready`, and `imu_calibrated`, with camera
-   still disabled in the production image.
+1. Verify the exact installed firmware SHA/source binding and OTA confirmation with servos stopped,
+   then capture `/debug`. Do not rebuild or substitute another image mid-sequence.
+2. Confirm `body_rgb_ready`, `body_touch_ready`, `imu_ready`, `imu_calibrated`,
+   `camera_capture_ready`, and paired host-vision readiness in the same integrated image.
 3. Validate the two-tone wake cue and RGB microphone pulse without speaking or moving.
 4. Exercise front, middle, and back tap/hold/swipe while recording raw zone telemetry.
 5. With motion stopped, validate pickup, tilt, putdown, and shake safety hold.
 6. With body clear and servo risk confirmed, enable motion and prove ordinary animation does
    not create IMU handling events.
-7. Run voice, mouth, mood, RGB, touch, and motion together; enforce the existing 50 ms display,
-   68 C temperature, VBUS/PMIC, bridge, timeout, and reset gates.
-8. Only after that candidate passes, flash the camera probe, set a temporary six-digit pairing
-   code, and run the local vision worker. Prove capture with motion off before a separately
-   authorized active-speaker motion check. Do not promote the diagnostic image directly.
+7. Prove authenticated real-frame capture and YuNet target advancement with motion off, then run a
+   separately authorized bounded horizontal-follow check under diffuse light.
+8. Run wake/listen/reply, mouth, mood, RGB, touch, camera, and motion together; enforce the 50 ms
+   display, 68 C temperature, VBUS/PMIC, bridge, timeout, camera, and reset gates.
+9. Run the exact image through the one-hour actuator acceptance and 28,800-second all-feature soak,
+   then verify motion, servo rail, and torque are stopped.
 
 Capture the focused touch/IMU gate with `tools\body_sensor_validation.ps1`. Use a new evidence
 root and capture the required steps in the exact order printed by each command: baseline while
@@ -284,11 +295,14 @@ gate, 4.4 V VBUS floor, and motion/rail/torque off for every snapshot.
 The production soak must pass `-RequireFinalIntegration`. That profile requires PMIC schema
 `axp2101-v2`, valid untruncated `/debug` JSON, RGB/touch/IMU compiled and ready for every good
 poll, calibrated IMU, advancing RGB/touch/IMU counters, zero new peripheral I/O failures, zero
-unexpected IMU events, plus camera capture and authenticated host vision in the same release
-candidate. `-RequireFinalIntegration` therefore implies both `-RequireCameraCapture` and
-`-RequireCameraHostVision`: camera frames and paired target updates must advance with zero new
-capture, host-frame, or authentication failures, and maximum capture time must remain at or below
-250 ms. The camera-only profiles remain available for short diagnostic isolation runs.
+unexpected terminal IMU failures, plus camera capture and authenticated host vision in the same
+release candidate. Interaction-aware runs may explicitly allow accounted external handling events;
+that does not allow read failure or sustained exhaustion. `-RequireFinalIntegration` therefore
+implies both `-RequireCameraCapture` and `-RequireCameraHostVision`: camera frames and paired target
+updates must advance with zero new capture or authentication failures. The current exact-image
+characterization uses a `300000 us` maximum single capture after one healthy observed frame reached
+`268122 us`; this is separate from the unchanged `50000 us` display-frame limit. Camera-only
+profiles remain available for short diagnostic isolation runs.
 
 ## Evidence Required Per Phase
 
