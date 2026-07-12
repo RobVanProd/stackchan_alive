@@ -16,6 +16,8 @@ foreach ($requiredPattern in @(
     'RequireFinalIntegration',
     'final_integration_peripheral_not_ready',
     'final_integration_camera_not_ready',
+    'imu_read_retries',
+    'imu_read_recoveries',
     'RequireCameraCapture',
     'camera_capture_probe_not_ready',
     'RequireCameraHostVision',
@@ -202,6 +204,8 @@ try {
   $finalIntegrationSummary | Add-Member -NotePropertyName newBodyRgbWriteRetries -NotePropertyValue 2
   $finalIntegrationSummary | Add-Member -NotePropertyName newBodyRgbWriteRecoveries -NotePropertyValue 2
   $finalIntegrationSummary | Add-Member -NotePropertyName newBodyTouchReadFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadRetries -NotePropertyValue 3
+  $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadRecoveries -NotePropertyValue 3
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadFailures -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuEvents -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName cameraCaptureReadySamples -NotePropertyValue 959

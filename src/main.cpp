@@ -5320,6 +5320,12 @@ void printRuntimeStatus() {
   Serial.print(imu.calibrated ? 1 : 0);
   Serial.print(F(" imu_samples="));
   Serial.print(imu.samples);
+  Serial.print(F(" imu_read_retries="));
+  Serial.print(imu.readRetries);
+  Serial.print(F(" imu_read_recoveries="));
+  Serial.print(imu.readRecoveries);
+  Serial.print(F(" imu_read_failures="));
+  Serial.print(imu.readFailures);
   Serial.print(F(" imu_events="));
   Serial.print(imu.eventsPublished);
   Serial.print(F(" imu_picked_up="));
@@ -7598,6 +7604,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"imu_picked_up\":%s", imu.pickedUp ? "true" : "false");
   append(",\"imu_self_motion_filtered\":%s", imu.selfMotionFiltered ? "true" : "false");
   append(",\"imu_samples\":%lu", static_cast<unsigned long>(imu.samples));
+  append(",\"imu_read_retries\":%lu", static_cast<unsigned long>(imu.readRetries));
+  append(",\"imu_read_recoveries\":%lu", static_cast<unsigned long>(imu.readRecoveries));
   append(",\"imu_read_failures\":%lu", static_cast<unsigned long>(imu.readFailures));
   append(",\"imu_events\":%lu", static_cast<unsigned long>(imu.eventsPublished));
   append(",\"imu_self_motion_samples\":%lu", static_cast<unsigned long>(imu.selfMotionSamples));

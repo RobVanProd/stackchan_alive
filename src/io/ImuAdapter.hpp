@@ -12,6 +12,10 @@
 #define STACKCHAN_IMU_SAMPLE_PERIOD_MS 40
 #endif
 
+#ifndef STACKCHAN_IMU_READ_ATTEMPTS
+#define STACKCHAN_IMU_READ_ATTEMPTS 2
+#endif
+
 namespace stackchan {
 
 struct ImuSample {
@@ -30,6 +34,8 @@ struct ImuAdapterTelemetry {
   bool pickedUp = false;
   bool selfMotionFiltered = false;
   uint32_t samples = 0;
+  uint32_t readRetries = 0;
+  uint32_t readRecoveries = 0;
   uint32_t readFailures = 0;
   uint32_t eventsPublished = 0;
   uint32_t selfMotionSamples = 0;

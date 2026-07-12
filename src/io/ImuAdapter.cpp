@@ -198,12 +198,30 @@ bool ImuAdapter::poll(uint32_t nowMs, bool selfMotionActive, RobotEvent* eventOu
 
   ImuSample sample;
 #if STACKCHAN_IMU_HARDWARE_AVAILABLE
-  const bool accelOk = M5.Imu.getAccel(&sample.accelX, &sample.accelY, &sample.accelZ);
-  const bool gyroOk = M5.Imu.getGyro(&sample.gyroX, &sample.gyroY, &sample.gyroZ);
+  bool accelOk = false;
+  bool gyroOk = false;
+  uint8_t attempts = 0;
+  constexpr uint8_t kReadAttempts = STACKCHAN_IMU_READ_ATTEMPTS > 0
+      ? STACKCHAN_IMU_READ_ATTEMPTS
+      : 1;
+  while (attempts < kReadAttempts && (!accelOk || !gyroOk)) {
+    if (attempts > 0) {
+      ++telemetry_.readRetries;
+      delayMicroseconds(250);
+    }
+    if (!accelOk) {
+      accelOk = M5.Imu.getAccel(&sample.accelX, &sample.accelY, &sample.accelZ);
+    }
+    if (!gyroOk) {
+      gyroOk = M5.Imu.getGyro(&sample.gyroX, &sample.gyroY, &sample.gyroZ);
+    }
+    ++attempts;
+  }
   if (!accelOk || !gyroOk) {
     ++telemetry_.readFailures;
     return false;
   }
+  if (attempts > 1) ++telemetry_.readRecoveries;
 #else
   ++telemetry_.readFailures;
   return false;

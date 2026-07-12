@@ -323,6 +323,8 @@ $bodyRgbWriteFailuresBaseline = $null
 $bodyRgbWriteRetriesBaseline = $null
 $bodyRgbWriteRecoveriesBaseline = $null
 $bodyTouchReadFailuresBaseline = $null
+$imuReadRetriesBaseline = $null
+$imuReadRecoveriesBaseline = $null
 $imuReadFailuresBaseline = $null
 $imuEventsBaseline = $null
 $cameraCaptureFailuresBaseline = $null
@@ -525,6 +527,8 @@ try {
           imu_ready = Test-TrueValue (Get-ObjectProperty $j "imu_ready" $false)
           imu_calibrated = Test-TrueValue (Get-ObjectProperty $j "imu_calibrated" $false)
           imu_samples = Get-ObjectProperty $j "imu_samples" $null
+          imu_read_retries = Get-ObjectProperty $j "imu_read_retries" $null
+          imu_read_recoveries = Get-ObjectProperty $j "imu_read_recoveries" $null
           imu_read_failures = Get-ObjectProperty $j "imu_read_failures" $null
           imu_events = Get-ObjectProperty $j "imu_events" $null
           compiled_enable_camera = Get-ObjectProperty $j "compiled_enable_camera" $null
@@ -620,6 +624,8 @@ try {
         $bodyRgbWriteRetriesBaseline = $records[$records.Count - 1].body_rgb_write_retries
         $bodyRgbWriteRecoveriesBaseline = $records[$records.Count - 1].body_rgb_write_recoveries
         $bodyTouchReadFailuresBaseline = $records[$records.Count - 1].body_touch_read_failures
+        $imuReadRetriesBaseline = $records[$records.Count - 1].imu_read_retries
+        $imuReadRecoveriesBaseline = $records[$records.Count - 1].imu_read_recoveries
         $imuReadFailuresBaseline = $records[$records.Count - 1].imu_read_failures
         $imuEventsBaseline = $records[$records.Count - 1].imu_events
         $cameraCaptureFailuresBaseline = $records[$records.Count - 1].camera_capture_failures
@@ -1092,6 +1098,14 @@ $newBodyTouchReadFailures = if ($null -ne $bodyTouchReadFailuresBaseline -and $l
 $newImuReadFailures = if ($null -ne $imuReadFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.imu_read_failures) {
   [int64]$latestOkRecord.imu_read_failures - [int64]$imuReadFailuresBaseline
+} else { $null }
+$newImuReadRetries = if ($null -ne $imuReadRetriesBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_read_retries) {
+  [int64]$latestOkRecord.imu_read_retries - [int64]$imuReadRetriesBaseline
+} else { $null }
+$newImuReadRecoveries = if ($null -ne $imuReadRecoveriesBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_read_recoveries) {
+  [int64]$latestOkRecord.imu_read_recoveries - [int64]$imuReadRecoveriesBaseline
 } else { $null }
 $newImuEvents = if ($null -ne $imuEventsBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.imu_events) {
@@ -1625,6 +1639,8 @@ $summary = [ordered]@{
   bodyRgbWriteRetriesBaseline = $bodyRgbWriteRetriesBaseline
   bodyRgbWriteRecoveriesBaseline = $bodyRgbWriteRecoveriesBaseline
   bodyTouchReadFailuresBaseline = $bodyTouchReadFailuresBaseline
+  imuReadRetriesBaseline = $imuReadRetriesBaseline
+  imuReadRecoveriesBaseline = $imuReadRecoveriesBaseline
   imuReadFailuresBaseline = $imuReadFailuresBaseline
   imuEventsBaseline = $imuEventsBaseline
   cameraCaptureFailuresBaseline = $cameraCaptureFailuresBaseline
@@ -1634,6 +1650,8 @@ $summary = [ordered]@{
   newBodyRgbWriteRetries = $newBodyRgbWriteRetries
   newBodyRgbWriteRecoveries = $newBodyRgbWriteRecoveries
   newBodyTouchReadFailures = $newBodyTouchReadFailures
+  newImuReadRetries = $newImuReadRetries
+  newImuReadRecoveries = $newImuReadRecoveries
   newImuReadFailures = $newImuReadFailures
   newImuEvents = $newImuEvents
   newCameraCaptureFailures = $newCameraCaptureFailures
