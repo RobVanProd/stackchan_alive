@@ -104,7 +104,7 @@ pack compatible with every firmware build.
 **Sharing = a zip of the pack folder.** Import runs the verifier before the pack is
 usable; the release packager includes the active pack + its verification report so
 hardware evidence records exactly which persona was running. No marketplace
-infrastructure needed to start — a verified folder format that travels well *is* the MVP
+infrastructure is needed to start; a verified folder format that travels well *is* the MVP
 of sharing.
 
 ## Creator path
@@ -112,11 +112,13 @@ of sharing.
 The community path must stay simple:
 
 ```powershell
-.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author "Your Name"
+$author = Read-Host "Name or handle to credit"
+.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author $author
 ```
 
 That command copies `personas/spark` to `personas/nova`, rewrites only the identity fields,
-and validates the result. From there, a creator edits YAML and prompt text, then runs:
+and validates the result. Author credit is required and placeholder values are rejected. From
+there, a creator edits YAML and prompt text, then runs:
 
 ```powershell
 .\tools\verify_persona_pack.cmd nova --Json

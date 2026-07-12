@@ -88,6 +88,12 @@ class PersonaPackTests(unittest.TestCase):
             self.assertEqual("stackchan_test_bot", pack.voice["profile_id"])
             self.assertEqual([], validate_pack(pack))
 
+    def test_scaffold_persona_pack_requires_non_placeholder_author(self):
+        for author in (None, "", "  ", "TODO", "TBD", "Your Name", "Your Handle", "unknown", "unspecified"):
+            with self.subTest(author=author):
+                with self.assertRaisesRegex(PersonaPackError, "author"):
+                    scaffold_persona_pack("test-bot", author=author)
+
     def test_packaged_prompt_asset_manifest_deduplicates_runtime_assets(self):
         pack = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
         manifest = packaged_prompt_asset_manifest(pack)

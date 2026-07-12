@@ -2,7 +2,9 @@ param(
   [Parameter(Mandatory = $true, Position = 0)]
   [string]$Id,
   [string]$Name = "",
-  [string]$Author = "",
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
+  [string]$Author,
   [string]$FromPersona = "spark",
   [switch]$Json
 )
@@ -24,9 +26,7 @@ if (-not [string]::IsNullOrWhiteSpace($Name)) {
   $argsList += @("--name", $Name)
 }
 
-if (-not [string]::IsNullOrWhiteSpace($Author)) {
-  $argsList += @("--author", $Author)
-}
+$argsList += @("--author", $Author)
 
 if ($Json) {
   $argsList += "--json"

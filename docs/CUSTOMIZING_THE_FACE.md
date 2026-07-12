@@ -34,7 +34,8 @@ or add a second display loop.
 Create a persona by copying the validated reference pack:
 
 ```powershell
-.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author "Your Name"
+$author = Read-Host "Name or handle to credit"
+.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author $author
 ```
 
 Edit:

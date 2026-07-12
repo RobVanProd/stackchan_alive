@@ -11,11 +11,13 @@ contracts.
 Keep the creator path simple:
 
 ```powershell
-.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author "Your Name"
+$author = Read-Host "Name or handle to credit"
+.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author $author
 ```
 
 That command copies `personas/spark` to `personas/nova`, updates the pack identity fields,
-and immediately validates the new pack.
+and immediately validates the new pack. Author credit is required; blank values and common
+placeholders such as `TODO`, `TBD`, and `Your Name` are rejected before anything is copied.
 
 ## Design The Desk Companion
 

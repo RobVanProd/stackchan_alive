@@ -122,7 +122,11 @@ def scaffold_persona_pack(
     base = root or repo_root()
     new_id = normalize_persona_id(pack_id)
     name = str(display_name).strip() if display_name else default_persona_display_name(new_id)
-    pack_author = str(author).strip() if author else "TODO"
+    pack_author = " ".join(str(author or "").split())
+    if not pack_author:
+        raise PersonaPackError("Persona pack author is required; use a name or handle you want credited.")
+    if pack_author.casefold() in {"todo", "tbd", "your name", "your handle", "unknown", "unspecified"}:
+        raise PersonaPackError("Persona pack author must not be a placeholder; use a name or handle you want credited.")
     source_pack = load_and_validate_persona_pack(source_persona, root=base)
     destination = (base / "personas" / new_id).resolve()
     source_root = source_pack.root.resolve()

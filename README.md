@@ -190,7 +190,8 @@ Validate the bundled Character OS persona packs:
 Create a new persona from Spark, then edit the copied YAML:
 
 ```powershell
-.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author "Your Name"
+$author = Read-Host "Name or handle to credit"
+.\tools\create_persona_pack.cmd nova -Name "Stackchan Nova" -Author $author
 .\tools\verify_persona_pack.cmd nova --Json
 ```
 

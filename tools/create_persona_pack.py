@@ -19,7 +19,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Create a Stackchan persona pack by copying a template pack.")
     parser.add_argument("pack_id", help="New pack id, such as nova or workshop-bot.")
     parser.add_argument("--name", default="", help="Display name. Defaults to Stackchan <Title Case Id>.")
-    parser.add_argument("--author", default="", help="Author name written to pack.yaml. Defaults to TODO.")
+    parser.add_argument("--author", required=True, help="Author name or handle written to pack.yaml.")
     parser.add_argument("--from-persona", default=DEFAULT_PERSONA_ID, help="Template pack id or path. Defaults to spark.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable output.")
     return parser
@@ -40,7 +40,7 @@ def main() -> int:
         pack = scaffold_persona_pack(
             args.pack_id,
             display_name=args.name or None,
-            author=args.author or None,
+            author=args.author,
             source_persona=args.from_persona,
             root=REPO_ROOT,
         )
