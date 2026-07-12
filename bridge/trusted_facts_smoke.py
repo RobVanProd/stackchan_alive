@@ -22,16 +22,20 @@ ROUTED_CASES = (
     ("Give me the time please.", "local_clock"),
     ("What is today's date?", "local_clock"),
     ("Can you tell me what day it is?", "local_clock"),
+    ("Can you check today's date?", "local_clock"),
     ("What time zone are we in?", "local_clock"),
     ("Could you tell me our timezone?", "local_clock"),
     ("Do you remember my name?", "memory_recall"),
     ("Could you tell me who I am?", "memory_recall"),
     ("Do you remember my favorite color?", "memory_recall"),
+    ("What do you remember about my favorite color?", "memory_recall"),
     ("What did I tell you about the project codename?", "memory_recall"),
 )
 
 PASSTHROUGH_CASES = (
     "What time is it in Tokyo?",
+    "What day is it in Tokyo?",
+    "What is the date in London?",
     "I have a date tomorrow.",
     "Which time zone setting should I use?",
     "The movie starts at what time?",

@@ -25,12 +25,21 @@ class LocalFactTests(unittest.TestCase):
         self.assertIn("EDT", response["spoken_text"])
         self.assertEqual({}, response["memory_write"])
 
-    def test_remote_city_time_is_not_misreported_as_local_time(self):
-        self.assertIsNone(resolve_local_fact("What time is it in Tokyo?", BridgeMemory(), now=self.now))
+    def test_remote_city_clock_queries_are_not_misreported_as_local_facts(self):
+        phrases = (
+            "What time is it in Tokyo?",
+            "What day is it in Tokyo?",
+            "What is the date in London?",
+        )
+
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.assertIsNone(resolve_local_fact(phrase, BridgeMemory(), now=self.now))
 
     def test_unrelated_time_and_date_words_do_not_trigger_local_facts(self):
         phrases = (
             "I have a date tomorrow.",
+            "Can you check the date format?",
             "Which time zone setting should I use?",
             "The movie starts at what time?",
         )
@@ -63,6 +72,8 @@ class LocalFactTests(unittest.TestCase):
         cases = (
             ("Can you tell me what day it is?", "Sunday, July 12, 2026"),
             ("Current date please.", "Sunday, July 12, 2026"),
+            ("Can you check today's date?", "Sunday, July 12, 2026"),
+            ("Can I get the current date?", "Sunday, July 12, 2026"),
             ("What time zone is this?", "EDT"),
             ("Could you tell me our timezone?", "EDT"),
         )
@@ -88,6 +99,9 @@ class LocalFactTests(unittest.TestCase):
             "Do you remember who I am?",
             "Tell me my name.",
             "Could you tell me who I am?",
+            "What was my name?",
+            "Remind me what my name was.",
+            "What name did I give you?",
         )
 
         for phrase in phrases:
@@ -108,6 +122,26 @@ class LocalFactTests(unittest.TestCase):
         self.assertEqual("You told me your favorite color is teal.", user_fact.spoken_text)
         self.assertEqual("memory_recall", project_fact.tool)
         self.assertIn("Johnny Alive", project_fact.spoken_text)
+
+    def test_natural_durable_fact_recall_variants_bypass_model_inference(self):
+        memory = BridgeMemory().remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Remember the project codename is Johnny Alive.")
+        cases = (
+            ("What was my favorite color?", "teal"),
+            ("Do you remember what my favorite color was?", "teal"),
+            ("What do you remember about my favorite color?", "teal"),
+            ("Remind me what my favorite color is.", "teal"),
+            ("What is my favorite color again?", "teal"),
+            ("What do you remember about the project codename?", "Johnny Alive"),
+            ("Remind me what the project's codename was.", "Johnny Alive"),
+        )
+
+        for phrase, expected in cases:
+            with self.subTest(phrase=phrase):
+                result = resolve_local_fact(phrase, memory, now=self.now)
+                self.assertIsNotNone(result)
+                self.assertEqual("memory_recall", result.tool)
+                self.assertIn(expected, result.spoken_text)
 
     def test_unknown_generic_personal_question_still_reaches_the_model(self):
         self.assertIsNone(resolve_local_fact("What is my plan for tomorrow?", BridgeMemory(), now=self.now))

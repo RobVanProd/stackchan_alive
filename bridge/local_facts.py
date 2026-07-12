@@ -33,6 +33,9 @@ _DATE_QUERY = re.compile(
     r"what (?:day|date) is it|what day is today|"
     r"(?:can|could|would|will) you (?:please )?tell me "
     r"(?:what (?:day|date) it is|(?:today(?:'s)? |the )?(?:day|date))|"
+    r"(?:can|could|would|will) you (?:please )?(?:check|give me) "
+    r"(?:(?:today(?:'s)?|the|current) )(?:day|date)|"
+    r"can i (?:please )?(?:get|have) (?:(?:today(?:'s)?|the|current) )(?:day|date)|"
     r"tell me (?:what (?:day|date) it is|(?:today(?:'s)? |the )?(?:day|date))|"
     r"(?:today(?:'s)?|current) (?:day|date)(?: please)?"
     r")\b",
@@ -50,9 +53,18 @@ _TIMEZONE_QUERY = re.compile(
     re.IGNORECASE,
 )
 _REMOTE_TIME = re.compile(r"\btime\s+(?:is\s+it\s+)?in\s+(?!here\b|our\b|this\b|the\b)", re.IGNORECASE)
+_REMOTE_DATE = re.compile(
+    r"\b(?:day|date)\s+(?:is\s+it\s+)?in\s+(?!here\b|our\b|this\b|the\b)",
+    re.IGNORECASE,
+)
+_DATE_CONFIGURATION = re.compile(
+    r"\b(?:day|date)\s+(?:format|setting|field|style|parser)\b",
+    re.IGNORECASE,
+)
 _NAME_QUERY = re.compile(
     r"\b(?:"
-    r"what(?:'s| is) my name|what do you call me|who am i|"
+    r"what(?:'s| is| was) my name|what do you call me|who am i|"
+    r"what name did i (?:give|tell) you|remind me (?:what )?my name(?: is| was)?|"
     r"do you remember (?:my name|who i am)|"
     r"(?:can|could|would|will) you (?:please )?remember (?:my name|who i am)|"
     r"(?:can|could|would|will) you (?:please )?tell me (?:my name|who i am)|"
@@ -61,14 +73,21 @@ _NAME_QUERY = re.compile(
     re.IGNORECASE,
 )
 _USER_FACT_QUERIES = (
-    re.compile(r"^(?:what(?:'s| is)|tell me) my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^(?:what(?:'s| is| was)|tell me) my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
     re.compile(r"^do you remember my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
-    re.compile(r"^do you remember what my (?P<subject>.+?) is[?.!]*$", re.IGNORECASE),
+    re.compile(r"^do you remember what my (?P<subject>.+?) (?:is|was)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^what do you remember about my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^remind me (?:what )?my (?P<subject>.+?) (?:is|was)[?.!]*$", re.IGNORECASE),
     re.compile(r"^what did i (?:say|tell you) (?:about )?my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
 )
 _PROJECT_FACT_QUERIES = (
-    re.compile(r"^(?:what(?:'s| is)|tell me) (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^(?:what(?:'s| is| was)|tell me) (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
     re.compile(r"^do you remember (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^what do you remember about (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(
+        r"^remind me (?:what )?(?:the )?project(?:'s)? (?P<subject>.+?) (?:is|was)[?.!]*$",
+        re.IGNORECASE,
+    ),
     re.compile(r"^what did i (?:say|tell you) about (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
 )
 
@@ -116,6 +135,8 @@ def _explicit_fact_query(text: str) -> tuple[str, str, str] | None:
             subject = " ".join(match.group("subject").split()).strip(" .?!")
             if subject.lower().endswith((" is", " was")):
                 subject = subject.rsplit(" ", 1)[0]
+            if subject.lower().endswith(" again"):
+                subject = subject[:-6].rstrip()
             key = memory_fact_key(namespace, subject)
             if key and key not in {"user.name", "user.preferred_name"}:
                 return namespace, subject, key
@@ -139,7 +160,11 @@ def resolve_local_fact(
     else:
         local_now = now if now.tzinfo is not None else now.astimezone()
     asks_time = bool(_TIME_QUERY.search(text)) and not _REMOTE_TIME.search(text)
-    asks_date = bool(_DATE_QUERY.search(text))
+    asks_date = (
+        bool(_DATE_QUERY.search(text))
+        and not _REMOTE_DATE.search(text)
+        and not _DATE_CONFIGURATION.search(text)
+    )
     asks_timezone = bool(_TIMEZONE_QUERY.search(text))
     if asks_time or asks_date or asks_timezone:
         parts: list[str] = []
