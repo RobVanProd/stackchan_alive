@@ -31,6 +31,7 @@ param(
   [switch]$RequirePowerForensics,
   [int]$ExpectedPmicVindpmMv = 0,
   [switch]$RequireFinalIntegration,
+  [switch]$AllowExternalImuEvents,
   [switch]$AllowLegacyMotionTelemetry
 )
 
@@ -378,6 +379,7 @@ $preflight = [ordered]@{
     [bool]$after.power_forensics_irq_enable_succeeded -and
     [bool]$after.power_forensics_boot_status_valid
   finalIntegrationRequired = [bool]$RequireFinalIntegration
+  externalImuEventsAllowed = [bool]$AllowExternalImuEvents
   initialMotionStop = $initialStop
   sourceCommit = $sourceCommit
   sourceDirty = $sourceDirty
@@ -502,6 +504,9 @@ if ($ExpectedPmicVindpmMv -gt 0) {
 }
 if ($RequireFinalIntegration) {
   $args += "-RequireFinalIntegration"
+}
+if ($AllowExternalImuEvents) {
+  $args += "-AllowExternalImuEvents"
 }
 if ($NoSerial) {
   $args += "-NoSerial"

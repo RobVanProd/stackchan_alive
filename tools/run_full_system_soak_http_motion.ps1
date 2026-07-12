@@ -39,6 +39,7 @@ param(
   [int]$ExpectedPmicVindpmMv = 0,
   [string]$FirmwareSourceCommit = "",
   [switch]$RequireFinalIntegration,
+  [switch]$AllowExternalImuEvents,
   [switch]$RequireCameraCapture,
   [switch]$RequireCameraHostVision,
   [int]$MaxCameraCaptureUs = 250000,
@@ -1062,7 +1063,8 @@ try {
               $abortReason = "final_integration_imu_sustained_read_outage"
               break
             }
-            if ([int64]$latestRecord.imu_external_events -gt [int64]$imuExternalEventsBaseline) {
+            if (-not $AllowExternalImuEvents -and
+                [int64]$latestRecord.imu_external_events -gt [int64]$imuExternalEventsBaseline) {
               $abortReason = "external_imu_event_observed"
               break
             }
@@ -1750,7 +1752,7 @@ if ($RequireFinalIntegration) {
       [int64]$latestImuReadExhaustionsConsecutive -ne 0) {
     $issues.Add("final_integration_imu_read_exhaustion_unrecovered")
   }
-  if ($newImuExternalEvents -ne 0) {
+  if (-not $AllowExternalImuEvents -and $newImuExternalEvents -ne 0) {
     $issues.Add("external_imu_event_observed")
   }
 }
@@ -1870,6 +1872,7 @@ $summary = [ordered]@{
     requirePowerForensics = [bool]$RequirePowerForensics
     expectedPmicVindpmMv = $ExpectedPmicVindpmMv
     requireFinalIntegration = [bool]$RequireFinalIntegration
+    allowExternalImuEvents = [bool]$AllowExternalImuEvents
     requireCameraCapture = [bool]$RequireCameraCapture
     requireCameraHostVision = [bool]$RequireCameraHostVision
     maxCameraCaptureUs = $MaxCameraCaptureUs

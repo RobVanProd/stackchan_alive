@@ -22,6 +22,7 @@ foreach ($requiredPattern in @(
     'compiled_enable_pmic_input_telemetry',
     'network_tcp_connect_last_errno',
     'RequireFinalIntegration',
+    'AllowExternalImuEvents',
     'final_integration_peripheral_not_ready',
     'final_integration_camera_not_ready',
     'imu_read_retries',
@@ -48,13 +49,14 @@ function Invoke-Check {
     [switch]$NoMotionProfile,
     [switch]$RequirePowerForensics,
     [switch]$RequireFinalIntegration,
+    [switch]$AllowExternalImuEvents,
     [switch]$RequireCameraCapture,
     [switch]$RequireCameraHostVision
   )
   if ($RequireCameraHostVision) {
     $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 60 -NoMotionProfile -RequireCameraCapture -RequireCameraHostVision -RequireReady:$RequireReady -Json
   } elseif ($RequireFinalIntegration) {
-    $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 28800 -RequireFinalIntegration -RequireReady:$RequireReady -Json
+    $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 28800 -RequireFinalIntegration -AllowExternalImuEvents:$AllowExternalImuEvents -RequireReady:$RequireReady -Json
   } elseif ($RequireCameraCapture) {
     $output = & "tools\check_full_system_soak_evidence.ps1" -SummaryJsonPath $SummaryPath -MinDurationSeconds 60 -NoMotionProfile -RequireCameraCapture -RequireReady:$RequireReady -Json
   } elseif ($RequirePowerForensics) {
@@ -284,6 +286,13 @@ try {
   if ($finalIntegrationImuEvent.exitCode -eq 0 -or
       @($finalIntegrationImuEvent.json.checks | Where-Object { $_.id -eq "external-imu-events" -and $_.status -eq "fail" }).Count -ne 1) {
     throw "Expected external IMU event to fail final integration checker."
+  }
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName allowExternalImuEvents -NotePropertyValue $true
+  Write-Json $finalIntegrationImuEventPath $finalIntegrationSummary
+  $finalIntegrationImuEventAllowed = Invoke-Check -SummaryPath $finalIntegrationImuEventPath -RequireFinalIntegration -AllowExternalImuEvents
+  if ($finalIntegrationImuEventAllowed.exitCode -ne 0 -or
+      @($finalIntegrationImuEventAllowed.json.checks | Where-Object { $_.id -eq "external-imu-events" -and $_.status -eq "pass" }).Count -ne 1) {
+    throw "Expected accounted external IMU events to pass when explicitly allowed."
   }
 
   $cameraPath = Join-Path $tempRoot "camera-ready-summary.json"

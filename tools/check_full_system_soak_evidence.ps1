@@ -13,6 +13,7 @@ param(
   [switch]$NoMotionProfile,
   [switch]$RequirePowerForensics,
   [switch]$RequireFinalIntegration,
+  [switch]$AllowExternalImuEvents,
   [switch]$RequireCameraCapture,
   [switch]$RequireCameraHostVision,
   [switch]$RequireReady,
@@ -238,8 +239,12 @@ if ($summary) {
   }
 
   $summaryRequiresFinalIntegration = Has-StrictFlag $summary "requireFinalIntegration"
+  $summaryAllowsExternalImuEvents = Has-StrictFlag $summary "allowExternalImuEvents"
   if ($RequireFinalIntegration) {
     Add-Check "strict-requireFinalIntegration" ($(if ($summaryRequiresFinalIntegration) { "pass" } else { "fail" })) "requireFinalIntegration=$summaryRequiresFinalIntegration"
+  }
+  if ($AllowExternalImuEvents) {
+    Add-Check "strict-allowExternalImuEvents" ($(if ($summaryAllowsExternalImuEvents) { "pass" } else { "fail" })) "allowExternalImuEvents=$summaryAllowsExternalImuEvents"
   }
   if ($RequireFinalIntegration -or $summaryRequiresFinalIntegration) {
     $sourceCommit = [string]$summary.sourceCommit
@@ -269,12 +274,17 @@ if ($summary) {
     foreach ($counter in @(
         @{ id = "body-rgb-write-failures"; name = "newBodyRgbWriteFailures" },
         @{ id = "body-touch-read-failures"; name = "newBodyTouchReadFailures" },
-        @{ id = "imu-read-failures"; name = "newImuReadFailures" },
-        @{ id = "external-imu-events"; name = "newImuExternalEvents" }
+        @{ id = "imu-read-failures"; name = "newImuReadFailures" }
       )) {
       $delta = Get-IntValue $summary $counter.name -1
       Add-Check $counter.id ($(if ($delta -eq 0) { "pass" } else { "fail" })) "$($counter.name)=$delta expected=0"
     }
+    $externalImuEvents = Get-IntValue $summary "newImuExternalEvents" -1
+    $externalImuEventsAllowed = $AllowExternalImuEvents -or $summaryAllowsExternalImuEvents
+    Add-Check "external-imu-events" `
+      ($(if (($externalImuEventsAllowed -and $externalImuEvents -ge 0) -or
+             (-not $externalImuEventsAllowed -and $externalImuEvents -eq 0)) { "pass" } else { "fail" })) `
+      "newImuExternalEvents=$externalImuEvents allowed=$externalImuEventsAllowed"
     $selfMotionImuEvents = Get-IntValue $summary "newImuSelfMotionEvents" -1
     Add-Check "self-motion-imu-events-accounted" ($(if ($selfMotionImuEvents -ge 0) { "pass" } else { "fail" })) "newImuSelfMotionEvents=$selfMotionImuEvents expected>=0"
     if ($summary.PSObject.Properties.Name -contains "newImuReadExhaustions") {
