@@ -62,6 +62,11 @@ for name in (
         cc_flags.append(escaped_define_string(name, value))
 
 pairing_code = optional("STACKCHAN_PAIRING_SHORT_CODE")
+if pio_environment.startswith("stackchan_camera_probe") and not pairing_code:
+    raise RuntimeError(
+        f"{pio_environment} is a private paired-camera environment and requires "
+        "STACKCHAN_PAIRING_SHORT_CODE"
+    )
 if pairing_code:
     if re.fullmatch(r"[0-9]{6}", pairing_code) is None:
         raise RuntimeError("STACKCHAN_PAIRING_SHORT_CODE must be exactly six ASCII digits")

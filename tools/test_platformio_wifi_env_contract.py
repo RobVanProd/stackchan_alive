@@ -70,9 +70,20 @@ class PlatformioWifiEnvironmentContractTests(unittest.TestCase):
         self.assertIn("STACKCHAN_BRIDGE_HOST", flags)
         self.assertIn("STACKCHAN_PAIRING_SHORT_CODE", flags)
 
+    def test_private_camera_profiles_require_pairing_code(self):
+        for profile in (
+            "stackchan_camera_probe",
+            "stackchan_camera_probe_pmic_telemetry_only",
+            "stackchan_camera_probe_pmic_policy_only",
+            "stackchan_camera_probe_pmic_all_off",
+        ):
+            with self.subTest(profile=profile):
+                with self.assertRaisesRegex(RuntimeError, "requires STACKCHAN_PAIRING_SHORT_CODE"):
+                    run_hook(profile)
+
     def test_embedded_host_without_port_uses_canonical_bridge_port(self):
         fake = run_hook(
-            "stackchan_camera_probe",
+            "stackchan_wifi_uplink",
             {"STACKCHAN_BRIDGE_HOST": "192.168.1.10"},
         )
         self.assertIn(
