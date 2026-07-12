@@ -21,9 +21,6 @@ jobs:
       - name: Install tooling
         run: python -m pip install --upgrade pip platformio -r requirements-preview.txt
 
-      - name: Build firmware
-        run: pio run -e stackchan -e stackchan_servo_calibration
-
       - name: Run native logic tests
         run: pio test -e native_logic
 
@@ -39,7 +36,7 @@ jobs:
 
       - name: Package release
         shell: pwsh
-        run: ./tools/package_release.ps1 -Version "${{ github.ref_name }}" -SkipBuild
+        run: ./tools/package_release.ps1 -Version "${{ github.ref_name }}"
 
       - name: Verify release package
         shell: pwsh

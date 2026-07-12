@@ -1057,6 +1057,10 @@ foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contr
     throw "provenance/release.yml missing release asset contract upload logic: $pattern"
   }
 }
+if ($releaseWorkflowText -notmatch 'package_release\.ps1 -Version' -or
+    $releaseWorkflowText -match 'package_release\.ps1[^\r\n]*-SkipBuild') {
+  throw "provenance/release.yml must let package_release.ps1 build all required firmware profiles on a clean tag runner."
+}
 
 $firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
 foreach ($pattern in @("Verify bundled persona packs", "verify_persona_pack.py glow", "Compile native logic with Glow persona", "STACKCHAN_PERSONA: glow", "Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
