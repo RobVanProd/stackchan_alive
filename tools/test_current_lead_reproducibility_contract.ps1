@@ -2,6 +2,10 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Checker = Join-Path $RepoRoot "tools\check_current_lead_reproducibility.ps1"
+$checkerSource = Get-Content -LiteralPath $Checker -Raw
+if (-not $checkerSource.Contains('$leadArchiveLeaf = if ([string]::IsNullOrWhiteSpace($LeadArchivePath))')) {
+  throw "Current-lead checker must handle an unavailable auto-discovered archive without calling Split-Path on an empty path."
+}
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-current-lead-repro-" + [guid]::NewGuid().ToString("N"))
 $stage = Join-Path $tempRoot "stage"
 $sourceCommit = "b" * 40

@@ -251,6 +251,11 @@ if ($candidateSourceCommit) {
     "candidate=$candidateSourceCommit expected=$ExpectedFirmwareSourceCommit"
 }
 
+$leadArchiveLeaf = if ([string]::IsNullOrWhiteSpace($LeadArchivePath)) {
+  ""
+} else {
+  Split-Path $LeadArchivePath -Leaf
+}
 foreach ($doc in @(
     @{ id = "status-doc"; path = $StatusDocPath },
     @{ id = "runbook-doc"; path = $RunbookPath }
@@ -261,7 +266,7 @@ foreach ($doc in @(
   }
   $text = Get-Content -LiteralPath $doc.path -Raw
   Add-Check $doc.id "pass" $doc.path
-  foreach ($marker in @($ExpectedFirmwareSourceCommit, $ExpectedFirmwareSha256, (Split-Path $LeadArchivePath -Leaf))) {
+  foreach ($marker in @($ExpectedFirmwareSourceCommit, $ExpectedFirmwareSha256, $leadArchiveLeaf)) {
     if ([string]::IsNullOrWhiteSpace($marker)) { continue }
     $markerId = "$($doc.id)-marker-$($checks.Count)"
     Add-Check $markerId ($(if ($text -match [regex]::Escape($marker)) { "pass" } else { "fail" })) $marker
