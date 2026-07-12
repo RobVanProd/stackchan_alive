@@ -182,7 +182,14 @@ function Test-MicReadyRequired {
     return $false
   }
   $bridge = ([string]$Record.bridge).Trim().ToLowerInvariant()
-  return $bridge -ne "listening" -and $bridge -ne "responding"
+  $wakeCuePhase = ([string]$Record.wake_cue_phase).Trim().ToLowerInvariant()
+  $intentionalPause = [bool]$Record.sr_wake_audio_pause_requested -or
+    [bool]$Record.sr_wake_audio_paused -or
+    [bool]$Record.audio_stream_active -or
+    [bool]$Record.speaker_running -or
+    [bool]$Record.motion_audio_playback_active -or
+    ($wakeCuePhase -ne "" -and $wakeCuePhase -ne "idle")
+  return $bridge -ne "listening" -and $bridge -ne "responding" -and -not $intentionalPause
 }
 
 function Get-MaxConsecutiveFailedPolls {
@@ -669,6 +676,12 @@ try {
           network_tcp_connect_last_duration_ms = Get-ObjectProperty $j "network_tcp_connect_last_duration_ms" $null
           network_tcp_connect_max_duration_ms = Get-ObjectProperty $j "network_tcp_connect_max_duration_ms" $null
           bridge = [string](Get-ObjectProperty $j "bridge_state" "")
+          sr_wake_audio_pause_requested = Test-TrueValue (Get-ObjectProperty $j "sr_wake_audio_pause_requested" $false)
+          sr_wake_audio_paused = Test-TrueValue (Get-ObjectProperty $j "sr_wake_audio_paused" $false)
+          wake_cue_phase = [string](Get-ObjectProperty $j "wake_cue_phase" "")
+          audio_stream_active = Test-TrueValue (Get-ObjectProperty $j "audio_stream_active" $false)
+          speaker_running = Test-TrueValue (Get-ObjectProperty $j "speaker_running" $false)
+          motion_audio_playback_active = Test-TrueValue (Get-ObjectProperty $j "motion_audio_playback_active" $false)
           fps = Get-ObjectProperty $j "display_window_fps" $null
           max_us = Get-ObjectProperty $j "display_window_max_frame_us" $null
           slow = Get-ObjectProperty $j "display_window_slow_frames" $null
