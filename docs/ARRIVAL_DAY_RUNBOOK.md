@@ -895,10 +895,17 @@ new motion telemetry is missing, `chip_temp_c`/thermal guard fields are absent, 
 lead, also confirm `/debug` reports `motion_power_load_shed_mv=4550`,
 `motion_power_resume_mv=4700`, `motion_power_min_suppress_ms=20000`, and live PMU fields before
 starting a long soak.
-Before and after the supervised recovery attempt, run the current-lead reproducibility checker:
+Before terminal evidence exists, run the current-lead reproducibility checker with explicit paths.
+Do not let auto-discovery select a historical archive or soak:
 
 ```powershell
-.\tools\check_current_lead_reproducibility.cmd -Json
+.\tools\check_current_lead_reproducibility.cmd `
+  -LeadArchivePath output\private\current-lead\<future-current-lead>.zip `
+  -CandidateManifestPath output\private\firmware-candidates\<candidate>\manifest.json `
+  -SoakProgressPath output\pc-brain\<active-long-soak>\progress.json `
+  -ExpectedFirmwareSha256 <64-hex-firmware-sha256> `
+  -ExpectedFirmwareSourceCommit <40-hex-source-commit> `
+  -Json
 ```
 
 Before the soak is complete, pass the intended future archive path plus the active progress path.
