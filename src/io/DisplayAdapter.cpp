@@ -78,6 +78,12 @@ bool rectTouchesStaticText(const stackchan::DisplayRect& rect) {
   return rect.valid && rect.y + rect.h >= kStaticTextTop;
 }
 
+bool rectsOverlap(const stackchan::DisplayRect& a, const stackchan::DisplayRect& b) {
+  return a.valid && b.valid &&
+         a.x < b.x + b.w && b.x < a.x + a.w &&
+         a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
 stackchan::DisplayRect eyeBounds(const stackchan::EyeGeometry& eye) {
   const int32_t x = roundToInt(eye.cx - eye.width * 0.5f);
   const int32_t y = roundToInt(eye.cy - eye.height * 0.5f);
@@ -128,7 +134,28 @@ DisplayAdapter::~DisplayAdapter() {
 }
 
 void DisplayAdapter::markDirty(const DisplayRect& rect) {
-  dirty_ = unionRect(dirty_, rect);
+  if (!rect.valid) {
+    return;
+  }
+  DisplayRect merged = rect;
+  for (uint8_t i = 0; i < dirtyRectCount_;) {
+    if (!rectsOverlap(merged, dirtyRects_[i])) {
+      ++i;
+      continue;
+    }
+    merged = unionRect(merged, dirtyRects_[i]);
+    dirtyRects_[i] = dirtyRects_[--dirtyRectCount_];
+    i = 0;
+  }
+  if (dirtyRectCount_ < kMaxDirtyRects) {
+    dirtyRects_[dirtyRectCount_++] = merged;
+    return;
+  }
+  for (uint8_t i = 0; i < dirtyRectCount_; ++i) {
+    merged = unionRect(merged, dirtyRects_[i]);
+  }
+  dirtyRects_[0] = merged;
+  dirtyRectCount_ = 1;
 }
 
 void DisplayAdapter::clearCanvasRect(const DisplayRect& rect) {
@@ -147,8 +174,25 @@ void DisplayAdapter::drawStaticText() {
   canvas_->drawString("Stackchan: Alive", kStaticTextX, kStaticTextY);
 }
 
-void DisplayAdapter::pushDirtyRect() {
-  if (!dirty_.valid || canvas_ == nullptr) {
+bool DisplayAdapter::dirtyTouchesStaticText() const {
+  for (uint8_t i = 0; i < dirtyRectCount_; ++i) {
+    if (rectTouchesStaticText(dirtyRects_[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+uint32_t DisplayAdapter::dirtyPixelCount() const {
+  uint32_t pixels = 0;
+  for (uint8_t i = 0; i < dirtyRectCount_; ++i) {
+    pixels += static_cast<uint32_t>(dirtyRects_[i].w) * static_cast<uint32_t>(dirtyRects_[i].h);
+  }
+  return pixels;
+}
+
+void DisplayAdapter::pushDirtyRects() {
+  if (dirtyRectCount_ == 0 || canvas_ == nullptr) {
     return;
   }
   uint16_t* buffer = static_cast<uint16_t*>(canvas_->getBuffer());
@@ -157,11 +201,12 @@ void DisplayAdapter::pushDirtyRect() {
     return;
   }
 
-  const int32_t y = dirty_.y;
-  const int32_t h = dirty_.h;
-  M5.Display.setClipRect(dirty_.x, dirty_.y, dirty_.w, dirty_.h);
-  // Keep the canvas row stride at 320 pixels while clipping LCD writes to the changed columns.
-  M5.Display.pushImage(0, y, kScreenW, h, buffer + (y * kScreenW));
+  for (uint8_t i = 0; i < dirtyRectCount_; ++i) {
+    const DisplayRect& rect = dirtyRects_[i];
+    M5.Display.setClipRect(rect.x, rect.y, rect.w, rect.h);
+    // Keep the canvas row stride at 320 pixels while clipping LCD writes to changed columns.
+    M5.Display.pushImage(0, rect.y, kScreenW, rect.h, buffer + (rect.y * kScreenW));
+  }
   M5.Display.clearClipRect();
 }
 
@@ -194,7 +239,7 @@ bool DisplayAdapter::begin() {
   canvas_->pushSprite(0, 0);
 
   begun_ = true;
-  dirty_ = {};
+  dirtyRectCount_ = 0;
   previousLeftEye_ = {};
   previousRightEye_ = {};
   previousMouth_ = {};
@@ -222,7 +267,7 @@ void DisplayAdapter::clear() {
     return;
   }
   frameStartUs_ = micros();
-  dirty_ = {};
+  dirtyRectCount_ = 0;
   if (fullRefreshPending_) {
     canvas_->fillSprite(kBg);
     drawStaticText();
@@ -371,18 +416,17 @@ void DisplayAdapter::flush() {
   const uint32_t nowMs = millis();
   keepDisplayAwake(nowMs);
 
-  if (rectTouchesStaticText(dirty_)) {
+  if (dirtyTouchesStaticText()) {
     drawStaticText();
     markDirty(makeRect(0, kStaticTextTop, kScreenW, kStaticTextHeight));
   }
-  const uint32_t dirtyPixels = dirty_.valid
-      ? static_cast<uint32_t>(dirty_.w) * static_cast<uint32_t>(dirty_.h)
-      : 0;
+  const uint32_t dirtyPixels = dirtyPixelCount();
   telemetry_.lastDirtyPixels = dirtyPixels;
+  telemetry_.lastDirtyRegions = dirtyRectCount_;
   if (dirtyPixels > maxDirtyPixels_) {
     maxDirtyPixels_ = dirtyPixels;
   }
-  pushDirtyRect();
+  pushDirtyRects();
   fullRefreshPending_ = false;
   M5.Display.waitDisplay();
   frameCount_++;
@@ -395,6 +439,7 @@ void DisplayAdapter::flush() {
   telemetry_.avgFrameUs = static_cast<uint32_t>(avgFrameUs_);
   if (frameUs > maxFrameUs_) {
     maxFrameUs_ = frameUs;
+    maxFrameDirtyPixels_ = dirtyPixels;
   }
   if (frameUs > kFrameBudgetUs) {
     slowFrameCount_++;
@@ -411,6 +456,7 @@ void DisplayAdapter::flush() {
     telemetry_.windowSlowFrames = slowFrameCount_;
     telemetry_.windowMs = telemetryElapsedMs;
     telemetry_.windowMaxDirtyPixels = maxDirtyPixels_;
+    telemetry_.windowMaxFrameDirtyPixels = maxFrameDirtyPixels_;
     telemetry_.windowFps = fpsWindow;
     Serial.print(F("[display] frame_ms_avg="));
     Serial.print(avgMs, 2);
@@ -426,6 +472,7 @@ void DisplayAdapter::flush() {
     Serial.println(slowFrameCount_);
     maxFrameUs_ = 0;
     maxDirtyPixels_ = 0;
+    maxFrameDirtyPixels_ = 0;
     slowFrameCount_ = 0;
     windowFrameCount_ = 0;
   }

@@ -7848,6 +7848,9 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"display_last_dirty_pixels\":%lu", static_cast<unsigned long>(display.lastDirtyPixels));
   append(",\"display_window_max_dirty_pixels\":%lu",
          static_cast<unsigned long>(display.windowMaxDirtyPixels));
+  append(",\"display_window_max_frame_dirty_pixels\":%lu",
+         static_cast<unsigned long>(display.windowMaxFrameDirtyPixels));
+  append(",\"display_last_dirty_regions\":%u", static_cast<unsigned>(display.lastDirtyRegions));
   append(",\"display_window_fps\":%.2f", static_cast<double>(display.windowFps));
 #if defined(ARDUINO_ARCH_ESP32)
   append(",\"ota_enabled\":%s", ota.enabled ? "true" : "false");

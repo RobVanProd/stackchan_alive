@@ -19,6 +19,8 @@ struct DisplayTelemetry {
   uint32_t windowMs = 0;
   uint32_t lastDirtyPixels = 0;
   uint32_t windowMaxDirtyPixels = 0;
+  uint32_t windowMaxFrameDirtyPixels = 0;
+  uint8_t lastDirtyRegions = 0;
   float windowFps = 0.0f;
 };
 
@@ -50,10 +52,14 @@ class DisplayAdapter final : public IDisplay {
   void clearCanvasRect(const DisplayRect& rect);
   void drawStaticText();
   void keepDisplayAwake(uint32_t nowMs);
-  void pushDirtyRect();
+  void pushDirtyRects();
+  bool dirtyTouchesStaticText() const;
+  uint32_t dirtyPixelCount() const;
 
   detail::FaceCanvas* canvas_ = nullptr;
-  DisplayRect dirty_;
+  static constexpr uint8_t kMaxDirtyRects = 4;
+  DisplayRect dirtyRects_[kMaxDirtyRects];
+  uint8_t dirtyRectCount_ = 0;
   DisplayRect previousLeftEye_;
   DisplayRect previousRightEye_;
   DisplayRect previousMouth_;
@@ -65,6 +71,7 @@ class DisplayAdapter final : public IDisplay {
   uint32_t lastDisplayKeepAliveMs_ = 0;
   uint32_t maxFrameUs_ = 0;
   uint32_t maxDirtyPixels_ = 0;
+  uint32_t maxFrameDirtyPixels_ = 0;
   float avgFrameUs_ = 0.0f;
   bool begun_ = false;
   bool fullRefreshPending_ = true;

@@ -580,6 +580,10 @@ try {
           fps = Get-ObjectProperty $j "display_window_fps" $null
           max_us = Get-ObjectProperty $j "display_window_max_frame_us" $null
           slow = Get-ObjectProperty $j "display_window_slow_frames" $null
+          display_last_dirty_pixels = Get-ObjectProperty $j "display_last_dirty_pixels" $null
+          display_window_max_dirty_pixels = Get-ObjectProperty $j "display_window_max_dirty_pixels" $null
+          display_window_max_frame_dirty_pixels = Get-ObjectProperty $j "display_window_max_frame_dirty_pixels" $null
+          display_last_dirty_regions = Get-ObjectProperty $j "display_last_dirty_regions" $null
           wake_ready = Test-TrueValue (Get-ObjectProperty $j "sr_wake_sr_ready" $false)
           mic_ready = Test-TrueValue (Get-ObjectProperty $j "sr_wake_mic_ready" $false)
           speaker_ready = $speakerEnabled -and $null -ne $speakerVolume -and [int]$speakerVolume -gt 0
