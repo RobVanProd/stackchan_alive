@@ -46,7 +46,7 @@ enum class BridgeClientOutputType : uint8_t {
 struct BridgeClientConfig {
   const char* deviceId = "stackchan";
   const char* protocolVersion = "stackchan.bridge.v1";
-  uint16_t controlPort = 8788;
+  uint16_t controlPort = 8765;
   uint16_t audioSampleRate = 16000;
   uint32_t responseTimeoutMs = 2500;
   bool wakeWordGateRequired = true;

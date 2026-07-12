@@ -41,9 +41,15 @@ if pio_environment == "stackchan_release_full" and any(private_release_values.va
 bridge_port = optional("STACKCHAN_BRIDGE_PORT")
 if bridge_port:
     try:
-        cpp_defines.append(("STACKCHAN_BRIDGE_PORT", int(bridge_port)))
+        parsed_bridge_port = int(bridge_port)
     except ValueError as exc:
         raise RuntimeError("STACKCHAN_BRIDGE_PORT must be an integer") from exc
+    if parsed_bridge_port < 1 or parsed_bridge_port > 65535:
+        raise RuntimeError("STACKCHAN_BRIDGE_PORT must be between 1 and 65535")
+    cpp_defines.append(("STACKCHAN_BRIDGE_PORT", parsed_bridge_port))
+elif optional("STACKCHAN_BRIDGE_HOST"):
+    # Keep embedded-host lab builds aligned with the PC and companion bridge.
+    cpp_defines.append(("STACKCHAN_BRIDGE_PORT", 8765))
 
 for name in (
     "STACKCHAN_WIFI_SSID",

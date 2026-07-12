@@ -8043,6 +8043,13 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"compiled_enable_bridge_audio_uplink\":%d", STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK ? 1 : 0);
   append(",\"network_state\":\"%s\"", bridgeNetworkStateName(network.state));
   append(",\"network_error\":\"%s\"", network.lastError);
+  append(",\"network_config_source\":\"%s\"",
+         gRuntimeBridgeHost[0] != '\0'
+             ? "persisted_or_runtime"
+             : (STACKCHAN_BRIDGE_HOST[0] != '\0' ? "compiled" : "unconfigured"));
+  append(",\"network_bridge_port\":%u",
+         static_cast<unsigned int>(gRuntimeBridgeHost[0] != '\0' ? gRuntimeBridgePort
+                                                                  : STACKCHAN_BRIDGE_PORT));
   append(",\"network_tcp_connect_attempts\":%lu",
          static_cast<unsigned long>(gBridgeSocket.connectAttempts()));
   append(",\"network_tcp_connect_last_result\":%d", gBridgeSocket.lastConnectResult());

@@ -57,7 +57,7 @@ struct BenchPairingControl {
 struct BenchPairingTicketControl {
   char code[7] = {};
   char bridgeHost[64] = {};
-  uint16_t bridgePort = 8788;
+  uint16_t bridgePort = 8765;
   char bridgePath[64] = "/bridge";
   char endpointId[64] = {};
   char fingerprint[80] = {};
@@ -68,7 +68,7 @@ struct BenchWiFiProvisioningControl {
   char ssid[33] = {};
   char password[65] = {};
   char bridgeHost[64] = {};
-  uint16_t bridgePort = 8788;
+  uint16_t bridgePort = 8765;
   char bridgePath[64] = "/bridge";
 };
 

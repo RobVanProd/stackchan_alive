@@ -25,7 +25,7 @@ namespace stackchan {
 #endif
 
 #ifndef STACKCHAN_BRIDGE_PORT
-#define STACKCHAN_BRIDGE_PORT 8788
+#define STACKCHAN_BRIDGE_PORT 8765
 #endif
 
 #ifndef STACKCHAN_BRIDGE_PATH

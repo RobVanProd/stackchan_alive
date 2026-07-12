@@ -627,6 +627,8 @@ try {
           speaker_power_active = Test-TrueValue (Get-ObjectProperty $j "speaker_power_active" $false)
           network = [string](Get-ObjectProperty $j "network_state" "")
           network_error = Get-ObjectProperty $j "network_error" $null
+          network_config_source = Get-ObjectProperty $j "network_config_source" $null
+          network_bridge_port = Get-ObjectProperty $j "network_bridge_port" $null
           network_tcp_connect_attempts = Get-ObjectProperty $j "network_tcp_connect_attempts" $null
           network_tcp_connect_last_result = Get-ObjectProperty $j "network_tcp_connect_last_result" $null
           network_tcp_connect_last_errno = Get-ObjectProperty $j "network_tcp_connect_last_errno" $null

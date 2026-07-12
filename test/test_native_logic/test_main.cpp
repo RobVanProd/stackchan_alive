@@ -6050,6 +6050,20 @@ void test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured() {
   TEST_ASSERT_FALSE(session.enabled);
 }
 
+void test_bridge_defaults_use_canonical_companion_port() {
+  const BridgeClientConfig bridge;
+  const BridgeNetworkSessionConfig network;
+  const BridgeWiFiProvisioningConfig wifi;
+  const BenchPairingTicketControl ticket;
+  const BenchWiFiProvisioningControl provisioning;
+
+  TEST_ASSERT_EQUAL_UINT16(8765, bridge.controlPort);
+  TEST_ASSERT_EQUAL_UINT16(8765, network.port);
+  TEST_ASSERT_EQUAL_UINT16(8765, wifi.bridgePort);
+  TEST_ASSERT_EQUAL_UINT16(8765, ticket.bridgePort);
+  TEST_ASSERT_EQUAL_UINT16(8765, provisioning.bridgePort);
+}
+
 void test_bridge_wifi_provisioner_maps_config_to_network_session() {
   BridgeWiFiProvisioningConfig config;
   config.enabled = true;
@@ -7025,6 +7039,7 @@ int main() {
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_network_session_clears_stale_error_after_reconnect_handshake);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
+  RUN_TEST(test_bridge_defaults_use_canonical_companion_port);
   RUN_TEST(test_bridge_wifi_provisioner_maps_config_to_network_session);
   RUN_TEST(test_bridge_wifi_provisioner_schedules_retry_after_timeout);
   RUN_TEST(test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status);

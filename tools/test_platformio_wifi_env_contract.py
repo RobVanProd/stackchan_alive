@@ -70,6 +70,22 @@ class PlatformioWifiEnvironmentContractTests(unittest.TestCase):
         self.assertIn("STACKCHAN_BRIDGE_HOST", flags)
         self.assertIn("STACKCHAN_PAIRING_SHORT_CODE", flags)
 
+    def test_embedded_host_without_port_uses_canonical_bridge_port(self):
+        fake = run_hook(
+            "stackchan_camera_probe",
+            {"STACKCHAN_BRIDGE_HOST": "192.168.1.10"},
+        )
+        self.assertIn(
+            ("STACKCHAN_BRIDGE_PORT", 8765),
+            fake.append_calls[0]["CPPDEFINES"],
+        )
+
+    def test_bridge_port_must_be_in_tcp_range(self):
+        for value in ("0", "65536"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(RuntimeError, "between 1 and 65535"):
+                    run_hook("stackchan_camera_probe", {"STACKCHAN_BRIDGE_PORT": value})
+
 
 if __name__ == "__main__":
     unittest.main()

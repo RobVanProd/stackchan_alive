@@ -27,7 +27,7 @@ enum class BridgeNetworkSessionState : uint8_t {
 struct BridgeNetworkSessionConfig {
   bool enabled = false;
   const char* host = nullptr;
-  uint16_t port = 8788;
+  uint16_t port = 8765;
   const char* path = "/bridge";
   const char* secWebSocketKey = "c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==";
   uint32_t handshakeTimeoutMs = 3000;
