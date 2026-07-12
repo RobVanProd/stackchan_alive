@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 10:18 America/New_York
+Status timestamp: 2026-07-12 11:17 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -41,19 +41,32 @@ support compiled with motion disabled at boot.
   failure, sustained exhaustion, camera/authentication failure, power, thermal, display,
   bridge, audio, and actuator-invariant faults remain strict. Commit `5cbf2573` also records the
   installed firmware source separately from the newer host-runner source.
-- The replacement interaction-aware eight-hour run is active at
-  `output\pc-brain\release-interaction-aware-servo-8hr-20260712-101309`, runner PID `18724`.
-  It uses the exact installed firmware and normal paired YuNet service. Do not call this run
-  passed until `summary.json` reaches at least `28800 s` and the formal checker passes with
+- The first interaction-aware run at
+  `output\pc-brain\release-interaction-aware-servo-8hr-20260712-101309` stopped after `2524 s`
+  when one camera capture reached `268122 us` against the original `250000 us` single-frame
+  limit. This was not a blackout, reset, or power fault: boot count stayed at one, VBUS stayed at
+  or above `4878 mV`, maximum temperature was `67.5 C`, maximum display frame time was
+  `38412 us`, and camera capture failures, IMU failures/exhaustions, PMIC protective events, and
+  motion timeouts remained zero. Post-stop motion, rail, and torque were verified off.
+- The corrected interaction-aware eight-hour run is active at
+  `output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123`, runner PID
+  `19440`. It keeps camera readiness, advancing real YuNet frames/target updates, zero new capture
+  and authentication failures, and bounded host-write failures strict, while using a `300000 us`
+  single-frame ceiling and excluding firmware-reported intentional audio handoffs from required
+  mic-ready samples. A continuously visible human face is not required for an unattended soak.
+  Do not call this run passed until `summary.json` reaches at least `28800 s` and the formal
+  checker passes with
   `-RequireFinalIntegration -AllowExternalImuEvents -RequirePowerForensics
   -RequireCameraCapture -RequireCameraHostVision -RequireReady`.
 - The public `stackchan_release_full` build succeeds without private pairing material. Draft
-  `v0.2.0-rc1` packaging and independent ZIP verification pass with the public BYOM voice policy:
+  `v0.2.0-rc1` packaging and independent ZIP verification pass. The exact archive digest is
+  recorded beside the ZIP in `stackchan_alive_v0.2.0-rc1.zip.sha256`. The public BYOM voice policy
+  remains enforced:
   private firmware, Wi-Fi/OTA/camera credentials, pairing data, and local RVC models are excluded.
-  Regenerate the package after the final documentation commit so its manifest binds the published
-  source commit. The repository owner selected Apache-2.0 for the public source and secret-free
-  BYOM package. Production voice-source provenance remains unresolved, so do not bundle or present
-  the private voice model as a public release asset.
+  The repository owner selected Apache-2.0 for the public source and secret-free BYOM package.
+  Production voice-source provenance remains unresolved, so do not bundle or present the private
+  voice model as a public release asset. Regenerate after this status update so the manifest binds
+  the published documentation commit.
 
 ### Corrected PMIC And Bridge-Port Candidate (2026-07-12)
 

@@ -18,9 +18,13 @@ commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c`, SHA-256
 `c43e5ac1cf1718f61d5da35a37720a7c3e24ce9cd28dd6586521f50175708ea7`. Its formal one-hour
 actuator acceptance passed `76/76` after `3601 s` with `706/706` good polls, no IMU
 exhaustion/failure, no power/camera fault, VBUS floor `4916 mV`, maximum temperature `66.5 C`,
-and verified motion stop. The interaction-aware eight-hour continuation is active at
-`output\pc-brain\release-interaction-aware-servo-8hr-20260712-101309`; it is not a pass until its
-terminal summary and formal checker complete.
+and verified motion stop. The first interaction-aware continuation stopped after `2524 s` on one
+`268122 us` camera capture against an over-tight `250000 us` single-frame limit. Boot count stayed
+at one; there was no reset, power fault, capture failure, IMU failure, or motion timeout. The
+corrected continuation is active at
+`output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123`, runner PID
+`19440`, with a `300000 us` single-frame ceiling and all capture/readiness/transport safety gates
+still strict. It is not a pass until its terminal summary and formal checker complete.
 
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
