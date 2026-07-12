@@ -33,6 +33,7 @@ param(
   [int]$ExpectedPmicVindpmMv = 0,
   [string]$FirmwareSourceCommit = "",
   [switch]$RequireFinalIntegration,
+  [switch]$RequireStableCameraTarget,
   [switch]$AllowExternalImuEvents,
   [switch]$AllowLegacyMotionTelemetry
 )
@@ -314,7 +315,8 @@ if ($RequireFinalIntegration) {
     [int]$visionAfter.compiled_enable_camera_host_vision -eq 1 -and
     [bool]$visionAfter.camera_ready -and [bool]$visionAfter.camera_active -and
     [bool]$visionAfter.camera_capture_ready -and
-    [bool]$visionBefore.camera_target_valid -and [bool]$visionAfter.camera_target_valid -and
+    (-not $RequireStableCameraTarget -or
+      ([bool]$visionBefore.camera_target_valid -and [bool]$visionAfter.camera_target_valid)) -and
     $visionSocketRemote -eq $DeviceHost -and
     [int64]$visionAfter.camera_host_frame_requests -gt [int64]$visionBefore.camera_host_frame_requests -and
     [int64]$visionAfter.camera_host_target_updates -gt [int64]$visionBefore.camera_host_target_updates -and
@@ -336,7 +338,8 @@ if ($RequireFinalIntegration) {
       after = $visionAfter
       initialStop = $initialStop
     } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $visionFailurePath -Encoding UTF8
-    throw "Final integration vision is not ready and advancing; motion was not enabled. Start the paired vision worker and acquire a stable face. Evidence: $visionFailurePath"
+    $targetGuidance = if ($RequireStableCameraTarget) { " and acquire a stable face" } else { "" }
+    throw "Final integration vision is not ready and advancing; motion was not enabled. Start the paired vision worker$targetGuidance. Evidence: $visionFailurePath"
   }
 }
 $motionStart = Enable-MotionWithRetry -TimeoutSeconds 20 -RetrySeconds 3
@@ -414,7 +417,8 @@ $preflight = [ordered]@{
     [bool]$after.imu_calibrated -and [int]$after.compiled_enable_camera -eq 1 -and
     [int]$after.compiled_enable_camera_host_vision -eq 1 -and
     [bool]$after.camera_ready -and [bool]$after.camera_active -and
-    [bool]$after.camera_capture_ready -and [bool]$after.camera_target_valid
+    [bool]$after.camera_capture_ready -and
+    (-not $RequireStableCameraTarget -or [bool]$after.camera_target_valid)
   bridgeSocketRemote = $socketRemote
 }
 $preflight | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $preflightPath -Encoding UTF8
@@ -435,7 +439,7 @@ if ($RequirePowerForensics -and
 }
 
 if ($RequireFinalIntegration -and -not $preflight.finalIntegrationReady) {
-  Stop-MotionAndThrow "Final integration telemetry is not ready. Require PMIC v2, untruncated debug JSON, RGB/touch/IMU ready, calibrated IMU, active paired vision, and a stable camera target." $preflightPath
+  Stop-MotionAndThrow "Final integration telemetry is not ready. Require PMIC v2, untruncated debug JSON, RGB/touch/IMU ready, calibrated IMU, and active paired vision." $preflightPath
 }
 
 $stdout = Join-Path $evidencePath "soak_stdout.log"
