@@ -282,6 +282,7 @@ internal fun DesktopManagedPythonRuntimeStatus.toBrainSupervisorEvidenceJson() =
 internal fun driveBrainSupervisorTextTurn(port: Int, deviceId: String, seq: Int): BrainTurnEvidence {
     BrainRehearsalClient.connectWithRetry("ws://127.0.0.1:$port/bridge").use { client ->
         val startedAt = System.nanoTime()
+        val sessionHello = decodeControlMessage(client.nextText()) as BridgeHello
         client.send(encodeControlMessage(DeviceHello(deviceId = deviceId, capabilities = listOf("diagnostics"))))
         val hello = decodeControlMessage(client.nextText()) as BridgeHello
         client.send(encodeControlMessage(UtteranceStart(seq = seq, sampleRate = 16000)))
@@ -300,7 +301,8 @@ internal fun driveBrainSupervisorTextTurn(port: Int, deviceId: String, seq: Int)
                 break
             }
         }
-        val ok = hello.protocol == CompanionIdentity.protocol &&
+        val ok = sessionHello.protocol == CompanionIdentity.protocol &&
+            hello.protocol == CompanionIdentity.protocol &&
             thinking.seq == seq &&
             responseStart.seq == seq &&
             responseStart.text.isNotBlank() &&

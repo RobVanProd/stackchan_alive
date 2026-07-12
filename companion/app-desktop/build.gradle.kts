@@ -101,11 +101,15 @@ tasks.processResources {
 
     from(rootProject.layout.projectDirectory.dir("../bridge")) {
         include(
+            "bridge_memory.py",
             "character_harness.py",
             "lan_service.py",
+            "local_facts.py",
             "local_runner.py",
             "persona_pack.py",
             "reference_bridge.py",
+            "research_broker.py",
+            "robot_embodiment.py",
             "stt_adapter.py",
             "tts_adapter.py",
         )

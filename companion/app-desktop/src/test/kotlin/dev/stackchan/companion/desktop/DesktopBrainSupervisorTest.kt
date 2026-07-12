@@ -111,7 +111,11 @@ class DesktopBrainSupervisorTest {
         assertNotNull(script)
         assertTrue(Files.isRegularFile(script))
         assertTrue(Files.readString(script).contains("--runner-profile"))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("bridge_memory.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("local_facts.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("reference_bridge.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("research_broker.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("robot_embodiment.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("personas").resolve("spark").resolve("pack.yaml")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("data").resolve("voice_source_provenance.yaml")))
 
