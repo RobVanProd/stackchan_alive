@@ -17,6 +17,7 @@ foreach ($requiredPattern in @(
     'pmic_input_policy_not_applied',
     'pmic_input_policy_io_failure_observed',
     'power_vbus_hard_floor_last_pmic_vsys_mv',
+    'compiled_enable_pmic_input_telemetry',
     'RequireFinalIntegration',
     'final_integration_peripheral_not_ready',
     'final_integration_camera_not_ready',

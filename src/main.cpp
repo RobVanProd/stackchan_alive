@@ -284,12 +284,19 @@ static_assert(STACKCHAN_OTA_MIN_FREE_HEAP_BYTES >= 24576,
 #define STACKCHAN_PMIC_VINDPM_MV 0
 #endif
 
+#ifndef STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY
+#define STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY 1
+#endif
+
 static_assert(STACKCHAN_PMIC_VINDPM_MV == 0 ||
                   (STACKCHAN_PMIC_VINDPM_MV >= 3880 && STACKCHAN_PMIC_VINDPM_MV <= 5080),
               "AXP2101 VINDPM must be disabled or within its 3.88-5.08 V range");
 static_assert(STACKCHAN_PMIC_VINDPM_MV == 0 ||
                   ((STACKCHAN_PMIC_VINDPM_MV - 3880) % 80) == 0,
               "AXP2101 VINDPM must align to an 80 mV register step");
+static_assert(STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 0 ||
+                  STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 1,
+              "PMIC input telemetry must be disabled or enabled");
 
 #ifndef STACKCHAN_ENABLE_BODY_POWER_MONITOR
 #define STACKCHAN_ENABLE_BODY_POWER_MONITOR 0
@@ -2547,17 +2554,29 @@ bool configurePmicInputPolicy() {
   if (!STACKCHAN_BASE_USB_POWER_INPUT || STACKCHAN_PMIC_VINDPM_MV == 0) {
     return true;
   }
-  const uint8_t current = M5.In_I2C.readRegister8(
-      kAxp2101Address, 0x15, kAxp2101I2cFrequency);
+  uint8_t config[3] = {};
+  if (!M5.In_I2C.readRegister(
+          kAxp2101Address, 0x14, config, sizeof(config), kAxp2101I2cFrequency)) {
+    ++gPowerPmicConfigReadFailures;
+    return false;
+  }
+  const uint8_t current = config[1];
   const uint8_t desired = static_cast<uint8_t>(
       (current & 0xF0) | axp2101VindpmRegisterForMv(STACKCHAN_PMIC_VINDPM_MV));
   if (!M5.In_I2C.writeRegister8(
           kAxp2101Address, 0x15, desired, kAxp2101I2cFrequency)) {
     return false;
   }
-  const uint8_t readback = M5.In_I2C.readRegister8(
-      kAxp2101Address, 0x15, kAxp2101I2cFrequency);
-  return (readback & 0x0F) == (desired & 0x0F);
+  if (!M5.In_I2C.readRegister(
+          kAxp2101Address, 0x14, config, sizeof(config), kAxp2101I2cFrequency)) {
+    ++gPowerPmicConfigReadFailures;
+    return false;
+  }
+  gPowerPmicMinSystemRaw = config[0];
+  gPowerPmicVindpmRaw = config[1];
+  gPowerPmicInputCurrentLimitRaw = config[2];
+  gPowerPmicConfigValid = true;
+  return (config[1] & 0x0F) == (desired & 0x0F);
 #else
   return true;
 #endif
@@ -2658,7 +2677,9 @@ void initializeManagedPowerHardware(uint32_t nowMs) {
     gBatteryChargeConfigured = true;
     gAppliedChargeCurrentMa = STACKCHAN_CHARGE_CURRENT_MA;
   }
-  gPowerPmicVindpmConfigured = configurePmicInputPolicy();
+  const bool pmicInputPolicyReady = configurePmicInputPolicy();
+  gPowerPmicVindpmConfigured =
+      STACKCHAN_PMIC_VINDPM_MV > 0 && pmicInputPolicyReady;
 
   gPowerCoordinator.begin(gBaseInputModeConfigured,
                           STACKCHAN_CHARGE_CURRENT_MA,
@@ -2779,7 +2800,9 @@ bool samplePowerTelemetry(uint32_t nowMs, bool force) {
 
   gPowerTelemetryLastReadMs = nowMs;
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY
   samplePmicInputTelemetry();
+#endif
   const bool pmicVbusPresent = M5.Power.Axp2101.isVBUS();
   const bool pmicBatteryPresent = M5.Power.Axp2101.getBatState();
   const float pmicTemperatureC = M5.Power.Axp2101.getInternalTemperature();
@@ -7559,6 +7582,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
     append(",\"power_pmic_temp_max_c\":null");
   }
   append(",\"power_pmic_input_state_valid\":%s", gPowerPmicInputStateValid ? "true" : "false");
+  append(",\"compiled_enable_pmic_input_telemetry\":%d",
+         STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY);
   append(",\"power_pmic_status1_raw\":%u", static_cast<unsigned>(gPowerPmicStatus1Raw));
   append(",\"power_pmic_status2_raw\":%u", static_cast<unsigned>(gPowerPmicStatus2Raw));
   append(",\"power_pmic_input_current_limited\":%s",

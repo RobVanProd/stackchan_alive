@@ -501,6 +501,7 @@ try {
           power_pmic_vbus_loss_entries = Get-ObjectProperty $j "power_pmic_vbus_loss_entries" $null
           power_pmic_temp_c = Get-ObjectProperty $j "power_pmic_temp_c" $null
           power_pmic_input_state_valid = Test-TrueValue (Get-ObjectProperty $j "power_pmic_input_state_valid" $false)
+          compiled_enable_pmic_input_telemetry = Get-ObjectProperty $j "compiled_enable_pmic_input_telemetry" $null
           power_pmic_input_current_limited = Test-TrueValue (Get-ObjectProperty $j "power_pmic_input_current_limited" $false)
           power_pmic_input_current_limit_samples = Get-ObjectProperty $j "power_pmic_input_current_limit_samples" $null
           power_pmic_input_current_limit_entries = Get-ObjectProperty $j "power_pmic_input_current_limit_entries" $null
