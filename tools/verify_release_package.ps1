@@ -1401,6 +1401,18 @@ foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlI
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
 }
+$singleOwnerCalls = [ordered]@{
+  'updateBridgeNetwork\s*\(' = 2
+  'pollBridgeOutputs\s*\(' = 4
+  'pollBridgeDebugServer\s*\(' = 2
+  'ensureWakeSrStarted\s*\(' = 2
+}
+foreach ($entry in $singleOwnerCalls.GetEnumerator()) {
+  $actualCount = [regex]::Matches($mainText, $entry.Key).Count
+  if ($actualCount -ne $entry.Value) {
+    throw "provenance/src/main.cpp violates single-owner bridge runtime contract for $($entry.Key): expected $($entry.Value), found $actualCount"
+  }
+}
 foreach ($pattern in @("submitCapturedAudioWindowToBridgeUplink", "lastPcmWindow", "lastPcmSampleCount", "submitPcmChunk", "audioWindowsBefore")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing mic capture to uplink handoff support: $pattern"
