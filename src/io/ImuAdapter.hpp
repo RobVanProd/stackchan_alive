@@ -16,6 +16,10 @@
 #define STACKCHAN_IMU_READ_ATTEMPTS 5
 #endif
 
+#ifndef STACKCHAN_IMU_TERMINAL_EXHAUSTIONS
+#define STACKCHAN_IMU_TERMINAL_EXHAUSTIONS 3
+#endif
+
 namespace stackchan {
 
 struct ImuSample {
@@ -36,6 +40,10 @@ struct ImuAdapterTelemetry {
   uint32_t samples = 0;
   uint32_t readRetries = 0;
   uint32_t readRecoveries = 0;
+  uint32_t readExhaustions = 0;
+  uint32_t readExhaustionRecoveries = 0;
+  uint32_t consecutiveReadExhaustions = 0;
+  uint32_t maxConsecutiveReadExhaustions = 0;
   uint32_t readFailures = 0;
   uint32_t eventsPublished = 0;
   uint32_t selfMotionEvents = 0;
@@ -59,6 +67,58 @@ struct ImuAdapterTelemetry {
   float gravityY = 0.0f;
   float gravityZ = 1.0f;
 };
+
+struct ImuReadAttemptResult {
+  bool ok = false;
+  uint8_t attempts = 0;
+  uint8_t retries = 0;
+};
+
+constexpr uint32_t imuReadRetryBackoffMs(uint8_t retryNumber) {
+  return retryNumber == 0 ? 0u : (1u << (retryNumber > 4 ? 3 : retryNumber - 1));
+}
+
+template <typename ReadFn, typename WaitFn>
+ImuReadAttemptResult readImuSampleWithRetry(
+    uint8_t maxAttempts, ReadFn readSample, WaitFn waitBeforeRetry) {
+  ImuReadAttemptResult result;
+  if (maxAttempts == 0) maxAttempts = 1;
+  while (result.attempts < maxAttempts && !result.ok) {
+    if (result.attempts > 0) {
+      ++result.retries;
+      waitBeforeRetry(result.retries);
+    }
+    result.ok = readSample();
+    ++result.attempts;
+  }
+  return result;
+}
+
+inline void accountImuReadResult(
+    ImuAdapterTelemetry* telemetry,
+    const ImuReadAttemptResult& result,
+    uint8_t terminalExhaustions = STACKCHAN_IMU_TERMINAL_EXHAUSTIONS) {
+  if (telemetry == nullptr) return;
+  telemetry->readRetries += result.retries;
+  if (result.ok) {
+    if (result.attempts > 1) ++telemetry->readRecoveries;
+    if (telemetry->consecutiveReadExhaustions > 0) {
+      ++telemetry->readExhaustionRecoveries;
+      telemetry->consecutiveReadExhaustions = 0;
+    }
+    return;
+  }
+
+  ++telemetry->readExhaustions;
+  ++telemetry->consecutiveReadExhaustions;
+  if (telemetry->consecutiveReadExhaustions > telemetry->maxConsecutiveReadExhaustions) {
+    telemetry->maxConsecutiveReadExhaustions = telemetry->consecutiveReadExhaustions;
+  }
+  if (terminalExhaustions == 0) terminalExhaustions = 1;
+  if (telemetry->consecutiveReadExhaustions == terminalExhaustions) {
+    ++telemetry->readFailures;
+  }
+}
 
 class ImuGestureInterpreter {
  public:

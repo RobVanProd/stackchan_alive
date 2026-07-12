@@ -277,6 +277,15 @@ if ($summary) {
     }
     $selfMotionImuEvents = Get-IntValue $summary "newImuSelfMotionEvents" -1
     Add-Check "self-motion-imu-events-accounted" ($(if ($selfMotionImuEvents -ge 0) { "pass" } else { "fail" })) "newImuSelfMotionEvents=$selfMotionImuEvents expected>=0"
+    if ($summary.PSObject.Properties.Name -contains "newImuReadExhaustions") {
+      $imuExhaustions = Get-IntValue $summary "newImuReadExhaustions" -1
+      $imuExhaustionRecoveries = Get-IntValue $summary "newImuReadExhaustionRecoveries" -1
+      $imuMaxConsecutiveExhaustions = Get-IntValue $summary "maxImuReadExhaustionsConsecutive" -1
+      $imuLatestConsecutiveExhaustions = Get-IntValue $summary "latestImuReadExhaustionsConsecutive" -1
+      Add-Check "imu-read-exhaustions-accounted" ($(if ($imuExhaustions -ge 0 -and $imuExhaustionRecoveries -ge 0) { "pass" } else { "fail" })) "exhaustions=$imuExhaustions recoveries=$imuExhaustionRecoveries expected nonnegative"
+      Add-Check "imu-read-exhaustion-streak" ($(if ($imuMaxConsecutiveExhaustions -ge 0 -and $imuMaxConsecutiveExhaustions -lt 3) { "pass" } else { "fail" })) "maxConsecutive=$imuMaxConsecutiveExhaustions expected<3"
+      Add-Check "imu-read-exhaustion-recovered" ($(if ($imuLatestConsecutiveExhaustions -eq 0) { "pass" } else { "fail" })) "latestConsecutive=$imuLatestConsecutiveExhaustions expected=0"
+    }
     if ($summary.PSObject.Properties.Name -contains "newBodyRgbWriteRetries" -or
         $summary.PSObject.Properties.Name -contains "newBodyRgbWriteRecoveries") {
       $rgbRetries = Get-IntValue $summary "newBodyRgbWriteRetries" -1

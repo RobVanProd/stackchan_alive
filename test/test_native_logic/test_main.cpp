@@ -1825,6 +1825,58 @@ void test_imu_interpreter_keeps_single_extreme_impact_safety_while_stationary() 
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::Shaken), static_cast<int>(event.type));
 }
 
+void test_imu_read_retry_uses_yielding_exponential_backoff() {
+  uint8_t reads = 0;
+  uint8_t waits = 0;
+  uint32_t waitMs[4] = {};
+  const ImuReadAttemptResult result = readImuSampleWithRetry(
+      5,
+      [&reads]() { return ++reads == 3; },
+      [&waits, &waitMs](uint8_t retryNumber) {
+        waitMs[waits++] = imuReadRetryBackoffMs(retryNumber);
+      });
+
+  TEST_ASSERT_TRUE(result.ok);
+  TEST_ASSERT_EQUAL_UINT8(3, result.attempts);
+  TEST_ASSERT_EQUAL_UINT8(2, result.retries);
+  TEST_ASSERT_EQUAL_UINT8(2, waits);
+  TEST_ASSERT_EQUAL_UINT32(1, waitMs[0]);
+  TEST_ASSERT_EQUAL_UINT32(2, waitMs[1]);
+  TEST_ASSERT_EQUAL_UINT32(4, imuReadRetryBackoffMs(3));
+  TEST_ASSERT_EQUAL_UINT32(8, imuReadRetryBackoffMs(4));
+  TEST_ASSERT_EQUAL_UINT32(8, imuReadRetryBackoffMs(9));
+}
+
+void test_imu_read_accounting_requires_sustained_exhaustion_for_terminal_failure() {
+  ImuAdapterTelemetry telemetry;
+  ImuReadAttemptResult exhausted;
+  exhausted.attempts = 5;
+  exhausted.retries = 4;
+
+  accountImuReadResult(&telemetry, exhausted, 3);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.readExhaustions);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.consecutiveReadExhaustions);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.readFailures);
+
+  ImuReadAttemptResult recovered;
+  recovered.ok = true;
+  recovered.attempts = 2;
+  recovered.retries = 1;
+  accountImuReadResult(&telemetry, recovered, 3);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.readExhaustionRecoveries);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.consecutiveReadExhaustions);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.readRecoveries);
+  TEST_ASSERT_EQUAL_UINT32(5, telemetry.readRetries);
+
+  accountImuReadResult(&telemetry, exhausted, 3);
+  accountImuReadResult(&telemetry, exhausted, 3);
+  TEST_ASSERT_EQUAL_UINT32(0, telemetry.readFailures);
+  accountImuReadResult(&telemetry, exhausted, 3);
+  TEST_ASSERT_EQUAL_UINT32(1, telemetry.readFailures);
+  TEST_ASSERT_EQUAL_UINT32(3, telemetry.consecutiveReadExhaustions);
+  TEST_ASSERT_EQUAL_UINT32(3, telemetry.maxConsecutiveReadExhaustions);
+}
+
 uint32_t bodyRgbEnergy(const BodyRgbFrame& frame) {
   uint32_t total = 0;
   for (const BodyRgbColor& led : frame.leds) {
@@ -6882,6 +6934,8 @@ int main() {
   RUN_TEST(test_imu_interpreter_filters_ordinary_servo_motion);
   RUN_TEST(test_imu_interpreter_keeps_extreme_impact_safety_during_servo_motion);
   RUN_TEST(test_imu_interpreter_keeps_single_extreme_impact_safety_while_stationary);
+  RUN_TEST(test_imu_read_retry_uses_yielding_exponential_backoff);
+  RUN_TEST(test_imu_read_accounting_requires_sustained_exhaustion_for_terminal_failure);
   RUN_TEST(test_body_feedback_caps_brightness_and_protected_mode_load_sheds);
   RUN_TEST(test_body_feedback_mic_and_touch_events_create_visible_pulses);
   RUN_TEST(test_body_feedback_speech_envelope_animates_speaking_light);

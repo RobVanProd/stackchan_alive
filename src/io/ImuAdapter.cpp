@@ -198,32 +198,36 @@ bool ImuAdapter::poll(uint32_t nowMs, bool selfMotionActive, RobotEvent* eventOu
 
   ImuSample sample;
 #if STACKCHAN_IMU_HARDWARE_AVAILABLE
-  bool accelOk = false;
-  bool gyroOk = false;
-  uint8_t attempts = 0;
   constexpr uint8_t kReadAttempts = STACKCHAN_IMU_READ_ATTEMPTS > 0
       ? STACKCHAN_IMU_READ_ATTEMPTS
       : 1;
-  while (attempts < kReadAttempts && (!accelOk || !gyroOk)) {
-    if (attempts > 0) {
-      ++telemetry_.readRetries;
-      delayMicroseconds(250);
-    }
-    if (!accelOk) {
-      accelOk = M5.Imu.getAccel(&sample.accelX, &sample.accelY, &sample.accelZ);
-    }
-    if (!gyroOk) {
-      gyroOk = M5.Imu.getGyro(&sample.gyroX, &sample.gyroY, &sample.gyroZ);
-    }
-    ++attempts;
-  }
-  if (!accelOk || !gyroOk) {
-    ++telemetry_.readFailures;
+  m5::IMU_Class::imu_data_t imuData;
+  const ImuReadAttemptResult readResult = readImuSampleWithRetry(
+      kReadAttempts,
+      [&imuData]() {
+        constexpr uint8_t kRequiredSensors =
+            static_cast<uint8_t>(m5::IMU_Class::sensor_mask_accel) |
+            static_cast<uint8_t>(m5::IMU_Class::sensor_mask_gyro);
+        const uint8_t sensors = static_cast<uint8_t>(M5.Imu.update());
+        if ((sensors & kRequiredSensors) != kRequiredSensors) return false;
+        M5.Imu.getImuData(&imuData);
+        return true;
+      },
+      [](uint8_t retryNumber) { delay(imuReadRetryBackoffMs(retryNumber)); });
+  accountImuReadResult(&telemetry_, readResult);
+  if (!readResult.ok) {
     return false;
   }
-  if (attempts > 1) ++telemetry_.readRecoveries;
+  sample.accelX = imuData.accel.x;
+  sample.accelY = imuData.accel.y;
+  sample.accelZ = imuData.accel.z;
+  sample.gyroX = imuData.gyro.x;
+  sample.gyroY = imuData.gyro.y;
+  sample.gyroZ = imuData.gyro.z;
 #else
-  ++telemetry_.readFailures;
+  ImuReadAttemptResult readResult;
+  readResult.attempts = 1;
+  accountImuReadResult(&telemetry_, readResult, 1);
   return false;
 #endif
 

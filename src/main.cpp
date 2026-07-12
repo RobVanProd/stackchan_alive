@@ -5503,6 +5503,14 @@ void printRuntimeStatus() {
   Serial.print(imu.readRetries);
   Serial.print(F(" imu_read_recoveries="));
   Serial.print(imu.readRecoveries);
+  Serial.print(F(" imu_read_exhaustions="));
+  Serial.print(imu.readExhaustions);
+  Serial.print(F(" imu_read_exhaustion_recoveries="));
+  Serial.print(imu.readExhaustionRecoveries);
+  Serial.print(F(" imu_read_exhaustions_consecutive="));
+  Serial.print(imu.consecutiveReadExhaustions);
+  Serial.print(F(" imu_read_exhaustions_max_consecutive="));
+  Serial.print(imu.maxConsecutiveReadExhaustions);
   Serial.print(F(" imu_read_failures="));
   Serial.print(imu.readFailures);
   Serial.print(F(" imu_events="));
@@ -7860,6 +7868,13 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"imu_samples\":%lu", static_cast<unsigned long>(imu.samples));
   append(",\"imu_read_retries\":%lu", static_cast<unsigned long>(imu.readRetries));
   append(",\"imu_read_recoveries\":%lu", static_cast<unsigned long>(imu.readRecoveries));
+  append(",\"imu_read_exhaustions\":%lu", static_cast<unsigned long>(imu.readExhaustions));
+  append(",\"imu_read_exhaustion_recoveries\":%lu",
+         static_cast<unsigned long>(imu.readExhaustionRecoveries));
+  append(",\"imu_read_exhaustions_consecutive\":%lu",
+         static_cast<unsigned long>(imu.consecutiveReadExhaustions));
+  append(",\"imu_read_exhaustions_max_consecutive\":%lu",
+         static_cast<unsigned long>(imu.maxConsecutiveReadExhaustions));
   append(",\"imu_read_failures\":%lu", static_cast<unsigned long>(imu.readFailures));
   append(",\"imu_events\":%lu", static_cast<unsigned long>(imu.eventsPublished));
   append(",\"imu_self_motion_events\":%lu", static_cast<unsigned long>(imu.selfMotionEvents));

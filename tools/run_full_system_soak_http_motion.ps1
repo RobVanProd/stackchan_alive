@@ -350,6 +350,8 @@ $bodyRgbWriteRecoveriesBaseline = $null
 $bodyTouchReadFailuresBaseline = $null
 $imuReadRetriesBaseline = $null
 $imuReadRecoveriesBaseline = $null
+$imuReadExhaustionsBaseline = $null
+$imuReadExhaustionRecoveriesBaseline = $null
 $imuReadFailuresBaseline = $null
 $imuEventsBaseline = $null
 $imuSelfMotionEventsBaseline = $null
@@ -591,6 +593,10 @@ try {
           imu_samples = Get-ObjectProperty $j "imu_samples" $null
           imu_read_retries = Get-ObjectProperty $j "imu_read_retries" $null
           imu_read_recoveries = Get-ObjectProperty $j "imu_read_recoveries" $null
+          imu_read_exhaustions = Get-ObjectProperty $j "imu_read_exhaustions" $null
+          imu_read_exhaustion_recoveries = Get-ObjectProperty $j "imu_read_exhaustion_recoveries" $null
+          imu_read_exhaustions_consecutive = Get-ObjectProperty $j "imu_read_exhaustions_consecutive" $null
+          imu_read_exhaustions_max_consecutive = Get-ObjectProperty $j "imu_read_exhaustions_max_consecutive" $null
           imu_read_failures = Get-ObjectProperty $j "imu_read_failures" $null
           imu_events = Get-ObjectProperty $j "imu_events" $null
           imu_self_motion_events = Get-ObjectProperty $j "imu_self_motion_events" $null
@@ -721,6 +727,8 @@ try {
         $bodyTouchReadFailuresBaseline = $records[$records.Count - 1].body_touch_read_failures
         $imuReadRetriesBaseline = $records[$records.Count - 1].imu_read_retries
         $imuReadRecoveriesBaseline = $records[$records.Count - 1].imu_read_recoveries
+        $imuReadExhaustionsBaseline = $records[$records.Count - 1].imu_read_exhaustions
+        $imuReadExhaustionRecoveriesBaseline = $records[$records.Count - 1].imu_read_exhaustion_recoveries
         $imuReadFailuresBaseline = $records[$records.Count - 1].imu_read_failures
         $imuEventsBaseline = $records[$records.Count - 1].imu_events
         $imuSelfMotionEventsBaseline = $records[$records.Count - 1].imu_self_motion_events
@@ -1049,6 +1057,11 @@ try {
               $abortReason = "final_integration_io_failure_observed"
               break
             }
+            if ($null -ne $latestRecord.imu_read_exhaustions_consecutive -and
+                [int64]$latestRecord.imu_read_exhaustions_consecutive -ge 3) {
+              $abortReason = "final_integration_imu_sustained_read_outage"
+              break
+            }
             if ([int64]$latestRecord.imu_external_events -gt [int64]$imuExternalEventsBaseline) {
               $abortReason = "external_imu_event_observed"
               break
@@ -1293,6 +1306,23 @@ $newImuReadRetries = if ($null -ne $imuReadRetriesBaseline -and $latestOkRecord 
 $newImuReadRecoveries = if ($null -ne $imuReadRecoveriesBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.imu_read_recoveries) {
   [int64]$latestOkRecord.imu_read_recoveries - [int64]$imuReadRecoveriesBaseline
+} else { $null }
+$newImuReadExhaustions = if ($null -ne $imuReadExhaustionsBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_read_exhaustions) {
+  [int64]$latestOkRecord.imu_read_exhaustions - [int64]$imuReadExhaustionsBaseline
+} else { $null }
+$newImuReadExhaustionRecoveries = if ($null -ne $imuReadExhaustionRecoveriesBaseline -and
+    $latestOkRecord -and $null -ne $latestOkRecord.imu_read_exhaustion_recoveries) {
+  [int64]$latestOkRecord.imu_read_exhaustion_recoveries - [int64]$imuReadExhaustionRecoveriesBaseline
+} else { $null }
+$maxImuReadExhaustionsConsecutive = if (@($okRecords | Where-Object {
+      $null -ne $_.imu_read_exhaustions_consecutive
+    }).Count -gt 0) {
+  ($okRecords | Where-Object { $null -ne $_.imu_read_exhaustions_consecutive } |
+    Measure-Object -Property imu_read_exhaustions_consecutive -Maximum).Maximum
+} else { $null }
+$latestImuReadExhaustionsConsecutive = if ($latestOkRecord) {
+  $latestOkRecord.imu_read_exhaustions_consecutive
 } else { $null }
 $newImuEvents = if ($null -ne $imuEventsBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.imu_events) {
@@ -1712,6 +1742,14 @@ if ($RequireFinalIntegration) {
       $newImuReadFailures -ne 0) {
     $issues.Add("final_integration_io_failure_observed")
   }
+  if ($null -ne $maxImuReadExhaustionsConsecutive -and
+      [int64]$maxImuReadExhaustionsConsecutive -ge 3) {
+    $issues.Add("final_integration_imu_sustained_read_outage")
+  }
+  if ($null -ne $latestImuReadExhaustionsConsecutive -and
+      [int64]$latestImuReadExhaustionsConsecutive -ne 0) {
+    $issues.Add("final_integration_imu_read_exhaustion_unrecovered")
+  }
   if ($newImuExternalEvents -ne 0) {
     $issues.Add("external_imu_event_observed")
   }
@@ -1944,6 +1982,8 @@ $summary = [ordered]@{
   bodyTouchReadFailuresBaseline = $bodyTouchReadFailuresBaseline
   imuReadRetriesBaseline = $imuReadRetriesBaseline
   imuReadRecoveriesBaseline = $imuReadRecoveriesBaseline
+  imuReadExhaustionsBaseline = $imuReadExhaustionsBaseline
+  imuReadExhaustionRecoveriesBaseline = $imuReadExhaustionRecoveriesBaseline
   imuReadFailuresBaseline = $imuReadFailuresBaseline
   imuEventsBaseline = $imuEventsBaseline
   imuSelfMotionEventsBaseline = $imuSelfMotionEventsBaseline
@@ -1960,6 +2000,10 @@ $summary = [ordered]@{
   newBodyTouchReadFailures = $newBodyTouchReadFailures
   newImuReadRetries = $newImuReadRetries
   newImuReadRecoveries = $newImuReadRecoveries
+  newImuReadExhaustions = $newImuReadExhaustions
+  newImuReadExhaustionRecoveries = $newImuReadExhaustionRecoveries
+  maxImuReadExhaustionsConsecutive = $maxImuReadExhaustionsConsecutive
+  latestImuReadExhaustionsConsecutive = $latestImuReadExhaustionsConsecutive
   newImuReadFailures = $newImuReadFailures
   newImuEvents = $newImuEvents
   newImuSelfMotionEvents = $newImuSelfMotionEvents
