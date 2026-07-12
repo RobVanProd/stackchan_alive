@@ -14,44 +14,51 @@ no face sprite sheets or character-image assets in the runtime.
 
 ## Project Status
 
-Status as of July 2026: **device-ready prerelease scaffold, not consumer-ready**.
+Status as of July 12, 2026: **integrated physical release candidate under exact-image
+acceptance; not yet consumer-ready**.
 
 What is working in the repository now:
 
-- Procedural face runtime with authored expressions, blink/saccade/breathing layers, speech-reactive mouth motion, and preview artifacts.
-- Display-only, servo-calibration, and secret-free full-online firmware builds for `m5stack-cores3`.
-- Servo output disabled by default; servo flashing requires explicit operator acknowledgement.
-- Bench commands for ambient life, touch/proximity/IMU-style events, sound/noise events, face-position events, speech cues, and bridge replay.
-- Packaged prompt playback path, typed earcons, audio-output telemetry, and speech-envelope sidecars for lip sync.
-- P7 reference bridge scaffold with deterministic bridge frames, a versioned bounded host memory store with durable/recent separation and privacy filtering, character-lock validator, model-response validation, Gemma 4 E2B / LiteRT-LM model guidance, LiteRT-LM contract smoke, and a no-hardware virtual Stackchan simulator with a full fake mic/STT/model/TTS/speaker loop.
-- Spark and Glow persona packs under `personas/`, with bridge prompt loading, firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen, CI validation, and pack verification for the first swappable Character OS layer.
-- Model benchmark reports now include a candidate gate with per-profile blockers and a recommended fastest ready profile once a real runner clears the full prompt suite.
-- Character Lock red-team suite with 20+ adversarial turns, CI dry-run artifacts, and a `--require-runner` gate for the first real local model.
-- LAN bridge smoke report for the real local TCP/WebSocket path: handshake, text turn, fake mic upload, fake STT/TTS, PCM16 binary downlink, and endpoint-control messages for PC/mobile companion work.
-- Firmware-side WebSocket handshake/frame adapter, endpoint-control network response framing, socket-writer text and binary drain paths, wake-gated `BridgeAudioUplink` turn controller disabled by default, LAN session state machine, ESP32 `WiFiClient` socket adapter, compile-time Wi-Fi bridge provisioning config, boot-time network-session update hook, disabled-by-default M5 mic capture adapter, trusted-endpoint owner registry, endpoint-control adapter, trusted-endpoint persistence store, boot-time endpoint-store load/attach, runtime endpoint telemetry, and serial-bench endpoint-control responses for `stackchan.bridge.v1`, with native tests for masked client frames, server text frames, masked client response frames, text `utterance_start`/`utterance_end` queue/drain bounds, binary PCM uplink queue/drain bounds, wake-gate blocking, socket writes including partial writes/disconnects, LAN handshake/read/write/reconnect behavior, Wi-Fi provisioning/retry config, mic PCM-to-reflex events, PCM16 binary downlink chunks, endpoint hello/heartbeat/claim/release/list/forget messages, persistence save/load/clear, disconnect handling, owner handoff, and endpoint forgetting.
-- Android companion architecture contract for PC Brain Mode, Mobile Brain Mode, multi-endpoint handoff, trusted endpoint forgetting, and app-driven settings.
-- Pre-arrival simulation check that packages the virtual CoreS3/LAN/audio proxy, LAN smoke report, and engine readiness into `PREARRIVAL_SIM_CHECK.md/json`.
-- Release packaging, dependency provenance, local/share-page verification, hardware evidence packet tooling, and consumer-promotion gates.
+- Smooth procedural face runtime with authored expressions, blink, saccade, breathing, gaze life,
+  speech-reactive mouth motion, and a strict display-frame gate.
+- On-device wake phrase, microphone capture, wake/listen cues, local Wi-Fi bridge, Whisper STT,
+  Gemma 4 Character Lock, accelerated DirectML RVC voice, chunked speaker transport, and complete
+  mouth-synchronized replies.
+- Power-coordinated servo motion, ambient character movement, bounded camera following, and
+  seed-varied procedural nod/shake gestures for unambiguous yes/no replies.
+- Paired local camera capture and YuNet face detection plus instrumented body RGB, touch, IMU,
+  battery, PMIC, thermal, display, audio, network, and actuator state.
+- Confirmed OTA updates with candidate health confirmation and automatic rollback.
+- Versioned, bounded, privacy-filtered host memory with atomic persistence, relevant fact recall,
+  explicit forgetting, and deterministic local time/date/time-zone/name answers that do not rely
+  on Gemma choosing a tool.
+- Real-model benchmark and red-team gates, Spark and Glow persona packs, face/persona creator
+  guides, native and host tests, exact-binary soak evidence, private recovery archives, and
+  secret-free public packaging checks.
+- PC and Android companion contracts for local brain ownership, endpoint handoff, settings, and
+  trusted-endpoint removal. Continuous two-way conversation remains an explicitly post-release
+  v2 feature.
 
 What is still gated:
 
-- A final evidence packet bound to the exact release ZIP: mixed-load soak, power-cycle recovery,
-  target-speaker audio, and package verification. Earlier physical runs remain engineering evidence,
-  but cannot promote a later binary by implication.
-- PC/mobile owner failover evidence on the CoreS3. Configured robot Wi-Fi and the PC bridge are
-  operational on the current hardware.
-- Final touch-zone/gesture and IMU capture evidence. Body RGB is visually accepted; camera capture,
-  YuNet real-face acquisition, and bounded horizontal following are physically proven. Full visual
-  following through wake, listening, and reply remains pending on the incremental-capture candidate.
-- Production voice-source provenance. Current Stackchan Spark and RVC samples are review/prototype assets only.
-- A project license selected by the repository owner and added as a root license file.
-- Consumer rollout evidence for a tagged release after real hardware and production voice gates pass.
+- The exact paired candidate must complete its formal one-hour actuator acceptance and subsequent
+  eight-hour all-feature actuator soak. Evidence from another firmware SHA-256 cannot substitute.
+- The secret-free public build must be packaged and verified separately. Private paired firmware,
+  credentials, OTA material, camera pairing data, and local RVC models are never public assets.
+- PC/mobile owner failover and final consumer rollout evidence remain required for the companion
+  distribution path.
+- Production voice-source provenance and a project license selected by the repository owner remain
+  explicit distribution gates.
+- Final promotion requires the release package audit, current-lead reproducibility check, tagged
+  asset verification, and updated terminal evidence documents.
 
-See [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
-[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the promotion gates. The
-current implementation audit and persona-pack plan live in
-[docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) and
-[docs/PERSONA_PACKS.md](docs/PERSONA_PACKS.md).
+Start with [AGENTS.md](AGENTS.md) when using a coding agent. The authoritative current evidence is
+in [docs/FIRST_DEPLOY_STATUS.md](docs/FIRST_DEPLOY_STATUS.md), the exact hardware workflow is in
+[docs/ARRIVAL_DAY_RUNBOOK.md](docs/ARRIVAL_DAY_RUNBOOK.md), and promotion gates are in
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md). See
+[docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
+[docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the deliberately
+post-release natural-conversation plan.
 
 ## What This Is
 

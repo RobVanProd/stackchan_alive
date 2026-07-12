@@ -1085,19 +1085,24 @@ foreach ($pattern in @("01-system-overview.png", "02-firmware-task-architecture.
     throw "README.md missing architecture diagram reference: $pattern"
   }
 }
-foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.cmd -Json", "-RequireRunner")) {
+foreach ($pattern in @("Real-model benchmark and red-team gates", "run_character_red_team.cmd -Json", "-RequireRunner")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen", "verify_persona_pack.cmd glow --Json", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "Spark and Glow persona packs", "personas/glow", "verify_persona_pack.cmd glow --Json", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
-foreach ($pattern in @("disabled-by-default M5 mic capture adapter", "mic PCM-to-reflex events", "wake-gated PCM")) {
+foreach ($pattern in @("On-device wake phrase", "microphone capture", "wake-gated", "mouth-synchronized replies")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing mic capture status guidance: $pattern"
+  }
+}
+foreach ($pattern in @("integrated physical release candidate", "one-hour actuator acceptance", "eight-hour all-feature actuator soak", "exact paired candidate", "secret-free public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
+  if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
+    throw "README.md missing current release-candidate status or navigation: $pattern"
   }
 }
 
