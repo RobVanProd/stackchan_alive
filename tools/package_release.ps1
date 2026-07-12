@@ -1939,6 +1939,12 @@ Consumer rollout: blocked pending hardware validation
 
 ## Still Required Before Consumer Rollout
 
+These gates apply to this secret-free BYOM package and each recipient hardware configuration.
+The private paired reference robot is validated separately with exact-image evidence recorded in
+``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``. That reference evidence does
+not substitute for validating a recipient's power source, calibration, voice model, credentials,
+or assembled hardware.
+
 - [ ] Display-only flash with serial log, real photo/video, and 10-minute idle observation
 - [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff
 - [ ] Supervised servo calibration with yaw classification and calibration values
@@ -1974,7 +1980,13 @@ Consumer rollout: blocked pending hardware validation
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
-## Pending Device Evidence
+## Pending Package And Consumer Evidence
+
+This public package is a secret-free BYOM distribution. The private paired reference robot has
+separate exact-image physical evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
+``docs/ARRIVAL_DAY_RUNBOOK.md``. Those results demonstrate the reference integration, but they do
+not validate a recipient's assembled hardware, power path, calibration, credentials, or local
+voice model. The following package-level gates therefore remain explicit:
 
 - Display-only flash, visible procedural face, and 10-minute idle run.
 - Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff.
@@ -2028,7 +2040,13 @@ Voice audition quick check:
 - Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the BYOM policy and absence of bundled RVC payloads.
 - These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
 
-Hardware validation is still required before consumer rollout:
+Hardware validation is still required before consumer rollout. This list applies to the
+secret-free BYOM package and each recipient build. The repository's private paired reference robot
+is tracked separately through exact-image evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
+``docs/ARRIVAL_DAY_RUNBOOK.md``; that reference evidence does not validate another assembled unit,
+power path, calibration, credentials, or local voice model.
+
+Package and recipient gates:
 
 1. Display-only flash and 10-minute idle run.
 2. Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff.
