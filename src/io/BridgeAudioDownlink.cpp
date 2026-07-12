@@ -36,7 +36,7 @@ bool BridgeAudioDownlink::start(const BridgeAudioStream& stream, uint32_t nowMs)
   if (!telemetry_.ready) {
     return fail(kErrorNotReady);
   }
-  if (telemetry_.active) {
+  if (telemetry_.active || telemetry_.playbackActive || telemetry_.playbackCompletionPending) {
     return fail(kErrorNestedStream);
   }
 
@@ -116,6 +116,15 @@ bool BridgeAudioDownlink::end(const BridgeAudioStream& stream, uint32_t nowMs) {
   return true;
 }
 
+void BridgeAudioDownlink::update(uint32_t nowMs) {
+  (void)nowMs;
+  if (!telemetry_.playbackActive || !telemetry_.playbackAwaitingDrain || sink_ == nullptr ||
+      !sink_->isPlaybackDrained()) {
+    return;
+  }
+  completePlayback();
+}
+
 void BridgeAudioDownlink::abort(uint32_t nowMs, uint32_t reasonCode) {
   (void)nowMs;
   if (telemetry_.active) {
@@ -123,7 +132,28 @@ void BridgeAudioDownlink::abort(uint32_t nowMs, uint32_t reasonCode) {
   }
   stopPlayback(nowMs);
   clearActive();
+  telemetry_.playbackCompletionPending = false;
+  telemetry_.playbackCompletionSeq = 0;
   telemetry_.lastErrorCode = reasonCode;
+}
+
+bool BridgeAudioDownlink::peekPlaybackCompletion(uint32_t* seqOut) const {
+  if (!telemetry_.playbackCompletionPending) {
+    return false;
+  }
+  if (seqOut != nullptr) {
+    *seqOut = telemetry_.playbackCompletionSeq;
+  }
+  return true;
+}
+
+bool BridgeAudioDownlink::consumePlaybackCompletion() {
+  if (!telemetry_.playbackCompletionPending) {
+    return false;
+  }
+  telemetry_.playbackCompletionPending = false;
+  telemetry_.playbackCompletionSignals++;
+  return true;
 }
 
 bool BridgeAudioDownlink::isPlayablePcm16Format(const char* format) {
@@ -196,9 +226,22 @@ void BridgeAudioDownlink::finishPlayback(uint32_t nowMs) {
   if (sink_ != nullptr && !sink_->finish(nowMs)) {
     telemetry_.playbackErrors++;
     telemetry_.lastErrorCode = kErrorPlaybackFinish;
+    stopPlayback(nowMs);
+    return;
   }
+  telemetry_.playbackAwaitingDrain = true;
+  if (sink_ == nullptr || sink_->isPlaybackDrained()) {
+    completePlayback();
+  }
+}
+
+void BridgeAudioDownlink::completePlayback() {
   telemetry_.playbackActive = false;
+  telemetry_.playbackAwaitingDrain = false;
   telemetry_.playbackStops++;
+  telemetry_.playbackCompletions++;
+  telemetry_.playbackCompletionPending = true;
+  telemetry_.playbackCompletionSeq = telemetry_.lastSeq;
 }
 
 void BridgeAudioDownlink::stopPlayback(uint32_t nowMs) {
@@ -209,6 +252,7 @@ void BridgeAudioDownlink::stopPlayback(uint32_t nowMs) {
     sink_->stop(nowMs);
   }
   telemetry_.playbackActive = false;
+  telemetry_.playbackAwaitingDrain = false;
   telemetry_.playbackStops++;
 }
 

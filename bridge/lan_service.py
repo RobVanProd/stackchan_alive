@@ -981,6 +981,12 @@ class LanBridgeSession:
                 suppress_thinking=suppress_thinking,
                 frame_sink=frame_sink,
             )
+        if message_type == "playback_complete":
+            try:
+                seq = max(0, int(message.get("seq", 0)))
+            except (TypeError, ValueError):
+                return [error_frame("playback_complete_seq_invalid")]
+            return [{"type": "heartbeat", "playback_complete_seq": seq}]
         return [error_frame("unsupported_message", message_type)]
 
     def _owner_gate(self, message: dict[str, Any]) -> dict[str, object] | None:

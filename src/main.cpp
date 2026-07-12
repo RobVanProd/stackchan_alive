@@ -1359,6 +1359,10 @@ class M5SpeakerAudioSink : public AudioOutSpeakerSink, public BridgeAudioDownlin
     return ready_;
   }
 
+  bool isPlaybackDrained() const override {
+    return !audioPauseHeld_ && (!ready_ || M5.Speaker.isPlaying(kChannel) == 0);
+  }
+
   bool playDiagnosticTone(uint32_t frequency = 880, uint32_t durationMs = 700) {
     if (!ready_) {
       diagnosticToneFailed_++;
@@ -2032,6 +2036,23 @@ void serviceBridgeAudioTransportSafety(uint32_t nowMs) {
   }
   wasConnected = connected;
   initialized = true;
+}
+
+void queueBridgePlaybackCompletion(uint32_t nowMs) {
+  uint32_t seq = 0;
+  if (!gBridgeAudioDownlink.peekPlaybackCompletion(&seq)) {
+    return;
+  }
+  char frame[112] = {};
+  const int written = snprintf(frame,
+                               sizeof(frame),
+                               "{\"type\":\"playback_complete\",\"seq\":%lu,\"at_ms\":%lu}",
+                               static_cast<unsigned long>(seq),
+                               static_cast<unsigned long>(nowMs));
+  if (written > 0 && static_cast<size_t>(written) < sizeof(frame) &&
+      gBridgeNetworkSession.queueTextFrame(frame)) {
+    gBridgeAudioDownlink.consumePlaybackCompletion();
+  }
 }
 
 const __FlashStringHelper* firmwareMode() {
@@ -8148,6 +8169,16 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"bridge_downlink_playback_chunks\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackChunks));
   append(",\"bridge_downlink_playback_bytes\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackBytes));
   append(",\"bridge_downlink_playback_stops\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackStops));
+  append(",\"bridge_downlink_playback_awaiting_drain\":%s",
+         gBridgeAudioDownlink.telemetry().playbackAwaitingDrain ? "true" : "false");
+  append(",\"bridge_downlink_playback_completion_pending\":%s",
+         gBridgeAudioDownlink.telemetry().playbackCompletionPending ? "true" : "false");
+  append(",\"bridge_downlink_playback_completions\":%lu",
+         static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletions));
+  append(",\"bridge_downlink_playback_completion_signals\":%lu",
+         static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletionSignals));
+  append(",\"bridge_downlink_playback_completion_seq\":%lu",
+         static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackCompletionSeq));
   append(",\"bridge_downlink_playback_errors\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackErrors));
   append(",\"bridge_audio_safety_stops\":%lu", static_cast<unsigned long>(gBridgeAudioSafetyStops));
   append(",\"bridge_audio_disconnect_stops\":%lu", static_cast<unsigned long>(gBridgeAudioDisconnectStops));
@@ -9086,6 +9117,8 @@ void IntentTask(void* pv) {
     playMicActivationCueIfNeeded();
     const uint32_t speakerNowMs = millis();
     gSpeakerSink.service(speakerNowMs);
+    gBridgeAudioDownlink.update(speakerNowMs);
+    queueBridgePlaybackCompletion(speakerNowMs);
     if (gSpeakerSink.takeStreamWatchdogStop()) {
       stopBridgeAudioRuntime(speakerNowMs, BridgeAudioSafetyStopReason::StreamWatchdog);
     }

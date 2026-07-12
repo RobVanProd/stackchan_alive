@@ -189,6 +189,10 @@ downlink sink.
 - `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
 - `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. A `text` or `transcript` field bypasses STT and is useful for deterministic tests.
 - `cancel`: barge-in or local safety state interrupted playback.
+- `playback_complete`: firmware-confirmed speaker drain for one response sequence. The device
+  sends this only after the audio stream is complete, M5Speaker is idle, and the wake microphone
+  pause has been released. It is evidence for Conversation v2; v1 acknowledges it without opening
+  capture.
 
 Firmware transport note: the WebSocket writer has one-frame bounded text and binary queues,
 and the network session drains them as masked client frames. `BridgeAudioUplink` composes

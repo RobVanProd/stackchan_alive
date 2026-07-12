@@ -1129,6 +1129,16 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("audio_without_utterance", binary[0]["code"])
         self.assertEqual("audio_payload_invalid", invalid_audio[0]["code"])
 
+    def test_playback_complete_is_acknowledged_without_opening_capture(self):
+        session = LanBridgeSession(LanBridgeConfig())
+
+        frames = session.handle_text(
+            json.dumps({"type": "playback_complete", "seq": 44, "at_ms": 1234})
+        )
+
+        self.assertEqual([{"type": "heartbeat", "playback_complete_seq": 44}], frames)
+        self.assertFalse(session.audio.active)
+
 
 if __name__ == "__main__":
     unittest.main()

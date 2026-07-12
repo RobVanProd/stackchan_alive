@@ -76,6 +76,11 @@ def fixture_documents() -> dict[str, dict[str, Any]]:
             "seq": 41,
             "reason": "barge_in",
         },
+        "playback_complete.json": {
+            "type": "playback_complete",
+            "seq": 41,
+            "at_ms": 123456,
+        },
         "listening.json": _bridge_frame("listening"),
         "thinking.json": _bridge_frame("thinking"),
         "response_start.json": _bridge_frame("response_start"),

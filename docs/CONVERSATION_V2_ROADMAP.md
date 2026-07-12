@@ -72,9 +72,12 @@ firmware to its normal local face and wake behavior.
   time, real-time factor, and the three initial latency/completeness gates.
 - `bridge/conversation_latency_report.py --turn-log <turns.jsonl> --json --require-ready`
   summarizes p50/p95/max and refuses readiness when any audio turn misses or fails a gate.
-- The session core is intentionally not wired into `bridge/lan_service.py` yet. The next slice adds an
-  opt-in configuration flag, maps authoritative playback completion into `playback_completed()`,
-  and exports typed conversation state without changing the v0.2.0 one-wake/one-turn default.
+- Firmware playback accounting now stays active until M5Speaker is idle and its microphone pause
+  is released, then sends retry-safe `playback_complete` evidence. The LAN bridge acknowledges the
+  frame without opening capture, preserving the v0.2.0 one-wake/one-turn behavior.
+- The next slice adds an opt-in configuration flag, maps that authoritative frame into
+  `playback_completed()`, schedules the acoustic tail and reply capture, and exports typed
+  conversation state.
 
 ## Memory Model
 

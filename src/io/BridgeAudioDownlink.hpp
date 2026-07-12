@@ -12,6 +12,8 @@ struct BridgeAudioDownlinkTelemetry {
   bool playbackEnabled = false;
   bool playbackReady = false;
   bool playbackActive = false;
+  bool playbackAwaitingDrain = false;
+  bool playbackCompletionPending = false;
   uint32_t streamsStarted = 0;
   uint32_t streamsCompleted = 0;
   uint32_t streamsAborted = 0;
@@ -22,6 +24,9 @@ struct BridgeAudioDownlinkTelemetry {
   uint32_t playbackChunks = 0;
   uint32_t playbackBytes = 0;
   uint32_t playbackStops = 0;
+  uint32_t playbackCompletions = 0;
+  uint32_t playbackCompletionSignals = 0;
+  uint32_t playbackCompletionSeq = 0;
   uint32_t playbackUnsupported = 0;
   uint32_t playbackErrors = 0;
   uint32_t checksum = 0;
@@ -47,6 +52,7 @@ class BridgeAudioDownlinkSink {
   }
   virtual void stop(uint32_t nowMs) = 0;
   virtual bool isReady() const = 0;
+  virtual bool isPlaybackDrained() const { return true; }
 };
 
 class BridgeAudioDownlink {
@@ -55,7 +61,10 @@ class BridgeAudioDownlink {
   bool start(const BridgeAudioStream& stream, uint32_t nowMs);
   bool submitChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs);
   bool end(const BridgeAudioStream& stream, uint32_t nowMs);
+  void update(uint32_t nowMs);
   void abort(uint32_t nowMs, uint32_t reasonCode = 0);
+  bool peekPlaybackCompletion(uint32_t* seqOut) const;
+  bool consumePlaybackCompletion();
 
   const BridgeAudioDownlinkTelemetry& telemetry() const {
     return telemetry_;
@@ -68,6 +77,7 @@ class BridgeAudioDownlink {
   bool startPlayback(const BridgeAudioStream& stream, uint32_t nowMs);
   void submitPlaybackChunk(const BridgeAudioStreamChunk& chunk, uint32_t nowMs);
   void finishPlayback(uint32_t nowMs);
+  void completePlayback();
   void stopPlayback(uint32_t nowMs);
   void clearActive();
 
