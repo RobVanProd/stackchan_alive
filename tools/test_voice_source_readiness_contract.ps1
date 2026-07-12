@@ -123,7 +123,7 @@ function Write-ReadyVoiceSourceFiles {
   $sourceCommitLine = if ($OmitSourceCommit) { "" } else { "source_commit: $SourceCommit" }
   @"
 schema: stackchan.voice-source-provenance.v1
-status: production-source-approved
+status: production-source-released
 $sourceCommitLine
 rvc_candidate_base:
   status: $RvcStatus
@@ -132,6 +132,10 @@ production_source:
   provider: Owned studio voice session
   owner_or_consent_contact: Rob Van Productions
   license_or_consent_evidence: evidence/voice/production-consent.pdf
+  model_path: media/voice/rvc/model.pth
+  model_sha256: 1A8ADDFD670CD811D1AD1EEB9E9B4FF72C5D795B1123A23E86A0C41C1DD9BF1A
+  index_path: media/voice/rvc/model.index
+  index_sha256: DA0EDB00FB15E8CEEC135B261F32E5907BA570FF0D213BEF8267EB80AB167DC2
   commercial_device_use: allowed for Stackchan companion and robot device use
   generated_prompt_distribution: allowed for generated Stackchan prompts
   model_training_or_finetuning: allowed for project-owned model tuning only
@@ -145,53 +149,16 @@ rollout_gate: production-ready
 "@ | Set-Content -Path (Join-Path $Root "voice_source.yaml") -Encoding UTF8
 
   @"
-# Voice Source Provenance Template
+# Production Voice Release Record
 
-This completed record replaces the pending production voice source placeholders with a
-reviewed, project-owned source while preserving the original checklist language.
+Stackchan: Alive releases the exact DirectML RVC files used on the reference robot.
 
-## Current Prototype Status
+- Model: ``media/voice/rvc/model.pth``
+- Index: ``media/voice/rvc/model.index``
+- Runtime: DirectML RVC
+- Release record: created and owned by the repository owner, then released for public distribution
 
-- Status: production source approved
-- No soundboard clips were used as training, conversion, or reference audio.
-- No named character, actor, or celebrity voice was cloned.
-- No RVC character model or similar voice-conversion model was used.
-- Commercial/device use allowed: yes
-- real-device audio/video evidence: evidence/hardware/voice-demo.mp4
-
-## Production Source Record
-
-- Production voice source name: Stackchan Spark original session
-- Provider or owner: Owned studio voice session
-- Contact or account owner: Rob Van Productions
-- License, contract, or consent evidence path: evidence/voice/production-consent.pdf
-- License URL, order ID, or document ID: internal-consent-001
-- Permitted use: Stackchan companion and robot output
-- Commercial/device use allowed: yes
-- Offline/generated-prompt use allowed: yes
-- Model-training or fine-tuning use allowed: yes
-- Distribution of rendered WAV/MP3 prompts allowed: yes
-- Expiration, renewal, or usage limits: none
-- Reviewer: Contract Test
-- Review date: 2026-07-06
-
-## Source Material Attestation
-
-- [x] No soundboard clips were used as training, conversion, or reference audio.
-- [x] No named character, actor, or celebrity voice was cloned.
-- [x] No RVC character model or similar voice-conversion model was used.
-- [x] No copyrighted movie quotes or catchphrases are required for the persona.
-- [x] All scripts are original Stackchan lines or project-owned prompts.
-- [x] The source owner permits the generated artifacts and deployment target.
-
-## Acceptance Checks
-
-- [x] Intelligible through the target device speaker.
-- [x] Pleasant at normal room volume.
-- [x] Robot-like without direct character imitation.
-- [x] Friendly, curious, and concise during repeated use.
-- [x] Real-device audio/video evidence captured with the procedural face.
-- [x] tools/verify_hardware_evidence.cmd passes on the completed packet.
+Run ``tools/verify_tracked_rvc_assets.ps1`` before packaging.
 "@ | Set-Content -Path (Join-Path $Root "VOICE_TEMPLATE.md") -Encoding UTF8
 }
 
@@ -255,11 +222,11 @@ try {
   $staleRoot = New-TempEvidenceRoot
   Write-ReadyVoiceSourceFiles -Root $staleRoot -SourceCommit ("c" * 40)
   $staleResult = Invoke-VoiceSourceCheck -Root $repoRoot -VoiceSourceProvenancePath (Join-Path $staleRoot "voice_source.yaml") -TemplatePath (Join-Path $staleRoot "VOICE_TEMPLATE.md") -SourceCommit $sourceCommit -RequireProductionReady
-  if ([int]$staleResult.exitCode -eq 0) {
-    throw "Expected stale production voice-source provenance commit to fail."
+  if ([int]$staleResult.exitCode -ne 0) {
+    throw "Expected a fixed voice-source commit to remain valid across later package commits. Output:`n$($staleResult.text)"
   }
-  Assert-CheckStatus -Report $staleResult.report -Id "voice-source-provenance-commit-match" -Status "fail"
-  Write-Host "[ok] stale production voice-source provenance commit is rejected"
+  Assert-CheckStatus -Report $staleResult.report -Id "voice-source-provenance-commit-match" -Status "pass"
+  Write-Host "[ok] fixed voice-source commit remains valid across later package commits"
 
   $missingCommitRoot = New-TempEvidenceRoot
   Write-ReadyVoiceSourceFiles -Root $missingCommitRoot -SourceCommit $sourceCommit -OmitSourceCommit

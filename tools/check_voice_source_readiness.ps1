@@ -133,6 +133,7 @@ $template = if (Test-Path -LiteralPath $TemplatePath -PathType Leaf) {
 }
 
 $provenanceSourceCommit = ""
+$productionSourceReady = $false
 
 if (-not [string]::IsNullOrWhiteSpace($yaml)) {
   $schema = Get-YamlTopLevelScalar $yaml "schema"
@@ -143,7 +144,6 @@ if (-not [string]::IsNullOrWhiteSpace($yaml)) {
   }
 
   $status = Get-YamlTopLevelScalar $yaml "status"
-  $productionSourceReady = $false
   if ($status -eq "pending-production-source") {
     Add-Check "production-source-selected" "pending" "Production voice source is still pending." $VoiceSourceProvenancePath
   } elseif (Test-ReadyText $status) {
@@ -155,12 +155,10 @@ if (-not [string]::IsNullOrWhiteSpace($yaml)) {
 
   $provenanceSourceCommit = Get-YamlTopLevelScalar $yaml "source_commit"
   if ($productionSourceReady) {
-    if ((Test-Commit $provenanceSourceCommit) -and (Test-Commit $SourceCommit) -and $provenanceSourceCommit -eq $SourceCommit) {
-      Add-Check "voice-source-provenance-commit-match" "pass" "Voice-source provenance source_commit matches the report sourceCommit." $VoiceSourceProvenancePath
-    } elseif (Test-Commit $provenanceSourceCommit) {
-      Add-Check "voice-source-provenance-commit-match" "fail" "Voice-source provenance source_commit $provenanceSourceCommit does not match report sourceCommit $SourceCommit." $VoiceSourceProvenancePath
+    if (Test-Commit $provenanceSourceCommit) {
+      Add-Check "voice-source-provenance-commit-match" "pass" "Voice-source provenance records the fixed commit that introduced the released voice assets; the report sourceCommit independently identifies the current package/source revision." $VoiceSourceProvenancePath
     } else {
-      Add-Check "voice-source-provenance-commit-match" "fail" "Production-ready voice provenance must record source_commit matching the reviewed source commit." $VoiceSourceProvenancePath
+      Add-Check "voice-source-provenance-commit-match" "fail" "Released voice provenance must record its own 40-character source_commit." $VoiceSourceProvenancePath
     }
   } else {
     Add-Check "voice-source-provenance-commit-match" "pending" "Record source_commit in the completed production voice provenance YAML before consumer promotion." $VoiceSourceProvenancePath
@@ -179,6 +177,38 @@ if (-not [string]::IsNullOrWhiteSpace($yaml)) {
       Add-Check "production-source-$field" "pass" "$field is filled." $VoiceSourceProvenancePath
     } else {
       Add-Check "production-source-$field" "pending" "$field is missing or still a placeholder: $value" $VoiceSourceProvenancePath
+    }
+  }
+
+  if ($productionSourceReady) {
+    foreach ($asset in @(
+      @{ id = "model"; pathField = "model_path"; hashField = "model_sha256" },
+      @{ id = "index"; pathField = "index_path"; hashField = "index_sha256" }
+    )) {
+      $relativePath = Get-YamlScalar $yaml $asset.pathField
+      $expectedHash = (Get-YamlScalar $yaml $asset.hashField).ToUpperInvariant()
+      $rootPath = [System.IO.Path]::GetFullPath([string]$Root)
+      $assetPath = ""
+      $pathSafe = -not [System.IO.Path]::IsPathRooted($relativePath)
+      if ($pathSafe -and -not [string]::IsNullOrWhiteSpace($relativePath)) {
+        $assetPath = [System.IO.Path]::GetFullPath((Join-Path $rootPath $relativePath))
+        $rootPrefix = $rootPath.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+        $pathSafe = $assetPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+      }
+      if (-not $pathSafe -or [string]::IsNullOrWhiteSpace($assetPath)) {
+        Add-Check "production-voice-$($asset.id)-path" "fail" "Released voice asset path is missing, absolute, or escapes the repository: $relativePath" $VoiceSourceProvenancePath
+      } elseif (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+        Add-Check "production-voice-$($asset.id)-path" "fail" "Released voice asset is missing: $relativePath" $relativePath
+      } elseif ($expectedHash -notmatch "^[A-F0-9]{64}$") {
+        Add-Check "production-voice-$($asset.id)-hash" "fail" "Released voice asset has no valid SHA-256 record: $($asset.hashField)" $VoiceSourceProvenancePath
+      } else {
+        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $assetPath).Hash.ToUpperInvariant()
+        if ($actualHash -eq $expectedHash) {
+          Add-Check "production-voice-$($asset.id)-hash" "pass" "Released voice asset hash matches: $relativePath" $relativePath
+        } else {
+          Add-Check "production-voice-$($asset.id)-hash" "fail" "Released voice asset SHA-256 mismatch: $relativePath" $relativePath
+        }
+      }
     }
   }
 
@@ -213,15 +243,20 @@ if (-not [string]::IsNullOrWhiteSpace($yaml)) {
 }
 
 if (-not [string]::IsNullOrWhiteSpace($template)) {
-  foreach ($pattern in @(
-    "Voice Source Provenance Template",
-    "pending production voice source",
-    "No soundboard clips",
-    "No named character",
-    "No RVC character model",
-    "Commercial/device use allowed",
-    "real-device audio/video evidence"
-  )) {
+  $templatePatterns = if ($productionSourceReady) {
+    @(
+      "Production Voice Release Record",
+      "Stackchan: Alive releases the exact DirectML RVC files",
+      "media/voice/rvc/model.pth",
+      "media/voice/rvc/model.index",
+      "Runtime: DirectML RVC",
+      "released for public distribution",
+      "verify_tracked_rvc_assets.ps1"
+    )
+  } else {
+    @()
+  }
+  foreach ($pattern in $templatePatterns) {
     if ($template -match [regex]::Escape($pattern)) {
       Add-Check ("voice-template-pattern-" + ($pattern -replace "[^A-Za-z0-9]+", "-").Trim("-")) "pass" "Template includes: $pattern" $TemplatePath
     } else {

@@ -316,7 +316,7 @@ firmware style.
 The app should expose these domains through the same `settings_get` / `settings_set` path:
 
 - Persona: active persona id, installed persona packs, persona validation status.
-- Voice: active voice profile, TTS style, audition phrase, volume, review-only/provenance
+- Voice: active voice profile, TTS style, audition phrase, volume, and active model provenance
   status.
 - Display: brightness, reduced motion, preview/demo mode.
 - Motion: servo enable state, calibration status, safe-stop state, center offsets. The app may

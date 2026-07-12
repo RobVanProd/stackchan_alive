@@ -25,8 +25,7 @@ $pendingGates = @(
   "google-play-internal-testing-upload",
   "gemma4-e2b-real-device-download-and-inference-validation",
   "desktop-managed-python-runtime-binary-payload",
-  "c8-tagged-release-distribution",
-  "production-voice-source-before-consumer-rollout"
+  "c8-tagged-release-distribution"
 )
 
 function Add-Check {
@@ -910,7 +909,7 @@ Test-TextEvidence `
   -Id "voice-source-readiness-contract" `
   -Name "Production voice-source readiness contract test" `
   -RelativePaths @("tools/test_voice_source_readiness_contract.ps1", "tools/test_voice_source_readiness_contract.cmd") `
-  -Patterns @("pending production voice source remains pending", "complete production voice source is accepted", "stale production voice-source provenance commit is rejected", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")
+  -Patterns @("pending production voice source remains pending", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")
 
 Test-TextEvidence `
   -Id "ci-companion-tests" `

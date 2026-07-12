@@ -1,12 +1,15 @@
 schema: stackchan.voice-source-provenance.v1
 status: production-source-released
+source_commit: 996b7e4b2de0c529a0f0e508891dec33598bf935
 profile_id: stackchan_spark
-release_authorization:
-  authority: repository-owner
-  decision: approved-for-public-release
+release_record:
+  creator_and_owner: repository-owner
+  declaration: original-owner-released-for-public-distribution
   date: 2026-07-12
 production_source:
   provider: Stackchan Alive project owner
+  owner_or_consent_contact: repository-owner
+  license_or_consent_evidence: original-owner-public-release-declaration
   model_path: media/voice/rvc/model.pth
   model_sha256: 1A8ADDFD670CD811D1AD1EEB9E9B4FF72C5D795B1123A23E86A0C41C1DD9BF1A
   index_path: media/voice/rvc/model.index

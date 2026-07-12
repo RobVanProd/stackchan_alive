@@ -1600,7 +1600,7 @@ foreach ($pattern in @("stackchan.voice-source-readiness.v1", "pending-productio
 }
 
 $voiceSourceReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_voice_source_readiness_contract.ps1") -Raw
-foreach ($pattern in @("pending production voice source remains pending", "complete production voice source is accepted", "stale production voice-source provenance commit is rejected", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
+foreach ($pattern in @("pending production voice source remains pending", "complete production voice source is accepted", "fixed voice-source commit remains valid across later package commits", "missing production voice-source provenance commit is rejected", "unresolved RVC rights review prevents production voice-source readiness", "Voice source readiness contract tests passed")) {
   if ($voiceSourceReadinessContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_voice_source_readiness_contract.ps1 missing required voice-source readiness contract coverage: $pattern"
   }
@@ -3279,14 +3279,14 @@ foreach ($pattern in @("drowsy:", "yawn:", "surprise:", "picked_up:", "shaken:",
 }
 
 $voiceSourceTemplate = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md") -Raw
-foreach ($pattern in @("Production Voice Release Record", "media/voice/rvc/model.pth", "media/voice/rvc/model.index", "DirectML RVC", "repository-owner authorized public release")) {
+foreach ($pattern in @("Production Voice Release Record", "media/voice/rvc/model.pth", "media/voice/rvc/model.index", "DirectML RVC", "released for public distribution")) {
   if ($voiceSourceTemplate -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_SOURCE_PROVENANCE_TEMPLATE.md missing expected provenance guidance: $pattern"
   }
 }
 
 $voiceSourceProvenance = Get-Content -LiteralPath (Join-PackagePath "data/voice_source_provenance.yaml") -Raw
-foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: production-source-released", "approved-for-public-release", "media/voice/rvc/model.pth", "media/voice/rvc/model.index", "hardware_evidence_verification_pass", "rollout_gate: production-ready")) {
+foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: production-source-released", "original-owner-released-for-public-distribution", "media/voice/rvc/model.pth", "media/voice/rvc/model.index", "hardware_evidence_verification_pass", "rollout_gate: production-ready")) {
   if ($voiceSourceProvenance -notmatch [regex]::Escape($pattern)) {
     throw "voice_source_provenance.yaml missing expected policy: $pattern"
   }

@@ -11,7 +11,9 @@ Stackchan: Alive releases the exact DirectML RVC files used on the reference rob
 - Index bytes: `99428699`
 - Index SHA-256: `DA0EDB00FB15E8CEEC135B261F32E5907BA570FF0D213BEF8267EB80AB167DC2`
 - Runtime: DirectML RVC
-- Release decision: repository-owner authorized public release on 2026-07-12
+- Release record: created and owned by the repository owner, then released for public distribution
+  on 2026-07-12
+- Voice source commit: `996b7e4b2de0c529a0f0e508891dec33598bf935`
 
 ## Runtime Settings
 

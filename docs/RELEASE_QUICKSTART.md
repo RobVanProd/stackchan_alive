@@ -2,6 +2,48 @@
 
 Use this from an extracted release package when the device arrives.
 
+## First 30 Minutes
+
+Follow this once, in order. Stop at the first failed command or unexpected robot state; do not skip
+ahead to motion.
+
+1. Put Stackchan on a stable surface with the body clear. Leave servos unpowered.
+2. Open PowerShell in the extracted package and run the no-hardware check:
+
+   ```powershell
+   .\tools\run_hardware_simulation.cmd
+   ```
+
+3. Connect the CoreS3 USB data cable to the computer. Do not connect two power sources at once.
+4. Create the device packet, replacing the three placeholders:
+
+   ```powershell
+   .\tools\prepare_device_arrival.cmd -Port COM3 -Operator "Your Name" -DeviceId STACKCHAN-001
+   ```
+
+5. Open the newest `output\hardware-evidence\<packet-folder>` and run:
+
+   ```powershell
+   .\RUN_PACKAGE_VERIFY.cmd
+   .\RUN_DISPLAY_ONLY.cmd
+   ```
+
+6. Confirm one smooth, continuously animated face with no flicker, repeated black screen, reboot,
+   or unusual heat. If any appears, stop and preserve the packet logs.
+7. Run the non-motion face/audio demonstrations:
+
+   ```powershell
+   .\RUN_SPEECH_MOUTH_DEMO.cmd
+   .\RUN_SPEAK_ALL_INTENTS.cmd
+   ```
+
+8. Stop here unless a present operator has cleared the body and explicitly accepted servo risk.
+   Servo calibration starts with `RUN_SERVO_CALIBRATION.cmd -ConfirmServoRisk`; hardware validation
+   is still required for each assembled robot.
+
+The remaining sections are reference paths for bridge/model setup, companion packaging, remote
+review, evidence collection, and promotion. They are not part of the first safe boot.
+
 ## Before Connecting Hardware
 
 1. Install Python, PlatformIO, and GitHub CLI if this machine will verify or publish releases.
@@ -35,9 +77,10 @@ provenance, Android/desktop modules, CI hooks, and pending hardware gates:
 .\tools\check_companion_v1_readiness.cmd
 ```
 
-The expected source-ready state is `source-ready-pending-hardware`; physical robot,
-target-phone, C8 distribution, and production voice-source gates remain pending until
-their real evidence is captured.
+The historical source-only companion state is `source-ready-pending-hardware`. In the v0.2.0
+public release, the Stackchan Spark production voice source is released and hash-verified; target
+phone, C8 distribution, and per-device physical evidence remain separate gates for the platforms
+and hardware being claimed.
 
 Capture companion release evidence after APK or desktop package artifacts exist:
 
