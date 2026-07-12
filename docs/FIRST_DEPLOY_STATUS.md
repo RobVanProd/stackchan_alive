@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-11 23:13 America/New_York
+Status timestamp: 2026-07-12 00:32 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -8,6 +8,36 @@ This supersedes the older recovery-only status below. The current physical lead 
 full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink,
 Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
 support compiled with motion disabled at boot.
+
+### Integrated Soak And IMU Hardening Checkpoint (2026-07-12)
+
+- The clean prerelease package at source commit
+  `70ae35bfdd9af0923ed81210eda825fa2c7ea220` is
+  `output\release\stackchan_alive_prerelease-70ae35bf.zip`, SHA256
+  `D7761C3CA1EE2B6C5795089DA0C0F7B49F12651762279CB9BC3E2AD4BB039CA5`.
+  A fresh independent extraction verification passed when invoked with package version
+  `prerelease-70ae35bf`. This verifies the archive contract; it does not close the physical
+  release gates.
+- A strict no-motion full-firmware integration run at
+  `output\pc-brain\full-firmware-integrated-nomotion-2hr-20260712-002132` stopped after `88 s`.
+  All `18/18` endpoint polls succeeded, but `imu_read_failures` advanced from `1` to `2` after
+  roughly `282700` successful IMU samples, correctly tripping the zero-new-I/O-failures gate.
+  This was not the historical blackout signature: the robot remained online, bridge/network and
+  camera host vision stayed ready, motion/rail/torque stayed off, VBUS remained `4886-4928 mV`,
+  maximum chip temperature was `65.5 C`, maximum display frame time was `40998 us`, and there was
+  no reset, PMIC event, camera failure, or hard-floor entry.
+- A full-duration characterization rerun is active at
+  `output\pc-brain\full-firmware-integrated-characterization-2hr-20260712-002656`. It preserves
+  the same strict summary gates but does not abort on one isolated peripheral counter increase,
+  allowing the actual miss rate and all other subsystems to be measured over two hours. Serious
+  readiness, power, display, camera, bridge, or network loss remains monitor-stop territory.
+- Source checkpoint `2cbf59eaa65287be78bfe5d53291d0ba9bbfb87f` adds one bounded retry for only the
+  failed IMU accel/gyro read, plus separate retry and recovery counters. A hard failure is counted
+  only when that retry also fails. The retry path is capped at two attempts with a `250 us` pause,
+  so it cannot turn an I2C fault into an unbounded intent-loop stall. Native logic passes `239/239`,
+  the soak evidence contract passes, and the real `stackchan_release_full` embedded build succeeds
+  at `54.4%` RAM and `42.4%` flash. This source candidate is built but not flashed or physically
+  accepted yet.
 
 ### Final Integration Checkpoint (2026-07-11)
 

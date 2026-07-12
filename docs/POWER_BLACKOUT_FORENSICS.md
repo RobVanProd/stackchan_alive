@@ -21,6 +21,10 @@ root cause.
 - On 2026-07-10 the accepted firmware was still live after about 8.3 hours with motion, servo
   rail, and torque off; the bridge was ready, VBUS was 5.025 V, no PMIC VBUS-loss or hard-floor
   event had occurred, and the face window was about 29.4 ms.
+- On 2026-07-12 a strict integrated run stopped after one additional terminal IMU read miss
+  (`1 -> 2`) among roughly 282,700 successful samples. The robot remained online with stable
+  power, display, camera, bridge, and network telemetry. This is a separate peripheral-I/O
+  hardening finding and is not evidence for or against the historical full-off events.
 - A later live sample on 2026-07-10 observed one AXP2101 `battery_overvoltage` runtime IRQ. At
   23:29 EDT the same boot remained online at 11,081,507 ms uptime with reset reason `software`,
   bridge/network ready, motion/rail/torque off, VBUS 5.033 V, battery 4.099 V, and battery maximum
