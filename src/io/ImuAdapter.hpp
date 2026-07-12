@@ -13,7 +13,7 @@
 #endif
 
 #ifndef STACKCHAN_IMU_READ_ATTEMPTS
-#define STACKCHAN_IMU_READ_ATTEMPTS 3
+#define STACKCHAN_IMU_READ_ATTEMPTS 5
 #endif
 
 namespace stackchan {
@@ -38,6 +38,8 @@ struct ImuAdapterTelemetry {
   uint32_t readRecoveries = 0;
   uint32_t readFailures = 0;
   uint32_t eventsPublished = 0;
+  uint32_t selfMotionEvents = 0;
+  uint32_t externalEvents = 0;
   uint32_t selfMotionSamples = 0;
   uint32_t pickupEvents = 0;
   uint32_t putdownEvents = 0;

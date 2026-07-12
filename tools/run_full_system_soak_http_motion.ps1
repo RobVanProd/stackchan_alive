@@ -340,6 +340,8 @@ $imuReadRetriesBaseline = $null
 $imuReadRecoveriesBaseline = $null
 $imuReadFailuresBaseline = $null
 $imuEventsBaseline = $null
+$imuSelfMotionEventsBaseline = $null
+$imuExternalEventsBaseline = $null
 $cameraCaptureFailuresBaseline = $null
 $cameraHostFrameFailuresBaseline = $null
 $cameraHostCaptureFailuresBaseline = $null
@@ -426,6 +428,10 @@ try {
           motion_enabled_at_ms = Get-ObjectProperty $j "motion_enabled_at_ms" $null
           motion_last_update_ms = Get-ObjectProperty $j "motion_last_update_ms" $null
           motion_last_write_ms = Get-ObjectProperty $j "motion_last_write_ms" $null
+          motion_last_pitch_command_deg = Get-ObjectProperty $j "motion_last_pitch_command_deg" $null
+          motion_last_yaw_command_deg = Get-ObjectProperty $j "motion_last_yaw_command_deg" $null
+          motion_self_motion_active = Test-TrueValue (Get-ObjectProperty $j "motion_self_motion_active" $false)
+          motion_self_motion_until_ms = Get-ObjectProperty $j "motion_self_motion_until_ms" $null
           motion_enable_requests = Get-ObjectProperty $j "motion_enable_requests" $null
           motion_disable_requests = Get-ObjectProperty $j "motion_disable_requests" $null
           motion_enable_failures = Get-ObjectProperty $j "motion_enable_failures" $null
@@ -575,6 +581,15 @@ try {
           imu_read_recoveries = Get-ObjectProperty $j "imu_read_recoveries" $null
           imu_read_failures = Get-ObjectProperty $j "imu_read_failures" $null
           imu_events = Get-ObjectProperty $j "imu_events" $null
+          imu_self_motion_events = Get-ObjectProperty $j "imu_self_motion_events" $null
+          imu_external_events = Get-ObjectProperty $j "imu_external_events" $null
+          imu_last_event_ms = Get-ObjectProperty $j "imu_last_event_ms" $null
+          imu_last_event_type = Get-ObjectProperty $j "imu_last_event_type" $null
+          imu_last_event_self_motion = Test-TrueValue (Get-ObjectProperty $j "imu_last_event_self_motion" $false)
+          imu_last_event_strength = Get-ObjectProperty $j "imu_last_event_strength" $null
+          imu_last_event_jerk = Get-ObjectProperty $j "imu_last_event_jerk" $null
+          imu_last_event_accel_norm = Get-ObjectProperty $j "imu_last_event_accel_norm" $null
+          imu_last_event_gyro_norm = Get-ObjectProperty $j "imu_last_event_gyro_norm" $null
           compiled_enable_camera = Get-ObjectProperty $j "compiled_enable_camera" $null
           compiled_enable_camera_host_vision = Get-ObjectProperty $j "compiled_enable_camera_host_vision" $null
           camera_ready = Test-TrueValue (Get-ObjectProperty $j "camera_ready" $false)
@@ -696,6 +711,8 @@ try {
         $imuReadRecoveriesBaseline = $records[$records.Count - 1].imu_read_recoveries
         $imuReadFailuresBaseline = $records[$records.Count - 1].imu_read_failures
         $imuEventsBaseline = $records[$records.Count - 1].imu_events
+        $imuSelfMotionEventsBaseline = $records[$records.Count - 1].imu_self_motion_events
+        $imuExternalEventsBaseline = $records[$records.Count - 1].imu_external_events
         $cameraCaptureFailuresBaseline = $records[$records.Count - 1].camera_capture_failures
         $cameraHostFrameFailuresBaseline = $records[$records.Count - 1].camera_host_frame_failures
         $cameraHostCaptureFailuresBaseline = $records[$records.Count - 1].camera_host_capture_failures
@@ -1008,7 +1025,9 @@ try {
             if ($null -eq $bodyRgbWriteFailuresBaseline -or
                 $null -eq $bodyTouchReadFailuresBaseline -or
                 $null -eq $imuReadFailuresBaseline -or
-                $null -eq $imuEventsBaseline) {
+                $null -eq $imuEventsBaseline -or
+                $null -eq $imuSelfMotionEventsBaseline -or
+                $null -eq $imuExternalEventsBaseline) {
               $abortReason = "final_integration_counter_missing"
               break
             }
@@ -1018,8 +1037,8 @@ try {
               $abortReason = "final_integration_io_failure_observed"
               break
             }
-            if ([int64]$latestRecord.imu_events -gt [int64]$imuEventsBaseline) {
-              $abortReason = "unexpected_imu_event_observed"
+            if ([int64]$latestRecord.imu_external_events -gt [int64]$imuExternalEventsBaseline) {
+              $abortReason = "external_imu_event_observed"
               break
             }
           }
@@ -1266,6 +1285,14 @@ $newImuReadRecoveries = if ($null -ne $imuReadRecoveriesBaseline -and $latestOkR
 $newImuEvents = if ($null -ne $imuEventsBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.imu_events) {
   [int64]$latestOkRecord.imu_events - [int64]$imuEventsBaseline
+} else { $null }
+$newImuSelfMotionEvents = if ($null -ne $imuSelfMotionEventsBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_self_motion_events) {
+  [int64]$latestOkRecord.imu_self_motion_events - [int64]$imuSelfMotionEventsBaseline
+} else { $null }
+$newImuExternalEvents = if ($null -ne $imuExternalEventsBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.imu_external_events) {
+  [int64]$latestOkRecord.imu_external_events - [int64]$imuExternalEventsBaseline
 } else { $null }
 $newCameraCaptureFailures = if ($null -ne $cameraCaptureFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.camera_capture_failures) {
@@ -1673,8 +1700,8 @@ if ($RequireFinalIntegration) {
       $newImuReadFailures -ne 0) {
     $issues.Add("final_integration_io_failure_observed")
   }
-  if ($newImuEvents -ne 0) {
-    $issues.Add("unexpected_imu_event_observed")
+  if ($newImuExternalEvents -ne 0) {
+    $issues.Add("external_imu_event_observed")
   }
 }
 if ($RequireCameraCapture) {
@@ -1904,6 +1931,8 @@ $summary = [ordered]@{
   imuReadRecoveriesBaseline = $imuReadRecoveriesBaseline
   imuReadFailuresBaseline = $imuReadFailuresBaseline
   imuEventsBaseline = $imuEventsBaseline
+  imuSelfMotionEventsBaseline = $imuSelfMotionEventsBaseline
+  imuExternalEventsBaseline = $imuExternalEventsBaseline
   cameraCaptureFailuresBaseline = $cameraCaptureFailuresBaseline
   cameraHostFrameFailuresBaseline = $cameraHostFrameFailuresBaseline
   cameraHostCaptureFailuresBaseline = $cameraHostCaptureFailuresBaseline
@@ -1918,6 +1947,8 @@ $summary = [ordered]@{
   newImuReadRecoveries = $newImuReadRecoveries
   newImuReadFailures = $newImuReadFailures
   newImuEvents = $newImuEvents
+  newImuSelfMotionEvents = $newImuSelfMotionEvents
+  newImuExternalEvents = $newImuExternalEvents
   newCameraCaptureFailures = $newCameraCaptureFailures
   newCameraHostFrameFailures = $newCameraHostFrameFailures
   newCameraHostCaptureFailures = $newCameraHostCaptureFailures

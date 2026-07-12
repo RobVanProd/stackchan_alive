@@ -241,6 +241,11 @@ bool ImuAdapter::poll(uint32_t nowMs, bool selfMotionActive, RobotEvent* eventOu
   if (!published) return false;
 
   ++telemetry_.eventsPublished;
+  if (selfMotionActive) {
+    ++telemetry_.selfMotionEvents;
+  } else {
+    ++telemetry_.externalEvents;
+  }
   telemetry_.lastEventMs = nowMs;
   telemetry_.lastEventType = static_cast<uint8_t>(eventOut->type);
   telemetry_.lastEventSelfMotion = selfMotionActive;

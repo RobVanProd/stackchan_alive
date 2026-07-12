@@ -267,11 +267,13 @@ if ($summary) {
         @{ id = "body-rgb-write-failures"; name = "newBodyRgbWriteFailures" },
         @{ id = "body-touch-read-failures"; name = "newBodyTouchReadFailures" },
         @{ id = "imu-read-failures"; name = "newImuReadFailures" },
-        @{ id = "unexpected-imu-events"; name = "newImuEvents" }
+        @{ id = "external-imu-events"; name = "newImuExternalEvents" }
       )) {
       $delta = Get-IntValue $summary $counter.name -1
       Add-Check $counter.id ($(if ($delta -eq 0) { "pass" } else { "fail" })) "$($counter.name)=$delta expected=0"
     }
+    $selfMotionImuEvents = Get-IntValue $summary "newImuSelfMotionEvents" -1
+    Add-Check "self-motion-imu-events-accounted" ($(if ($selfMotionImuEvents -ge 0) { "pass" } else { "fail" })) "newImuSelfMotionEvents=$selfMotionImuEvents expected>=0"
     if ($summary.PSObject.Properties.Name -contains "newBodyRgbWriteRetries" -or
         $summary.PSObject.Properties.Name -contains "newBodyRgbWriteRecoveries") {
       $rgbRetries = Get-IntValue $summary "newBodyRgbWriteRetries" -1

@@ -7862,12 +7862,15 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"imu_read_recoveries\":%lu", static_cast<unsigned long>(imu.readRecoveries));
   append(",\"imu_read_failures\":%lu", static_cast<unsigned long>(imu.readFailures));
   append(",\"imu_events\":%lu", static_cast<unsigned long>(imu.eventsPublished));
+  append(",\"imu_self_motion_events\":%lu", static_cast<unsigned long>(imu.selfMotionEvents));
+  append(",\"imu_external_events\":%lu", static_cast<unsigned long>(imu.externalEvents));
   append(",\"imu_self_motion_samples\":%lu", static_cast<unsigned long>(imu.selfMotionSamples));
   append(",\"imu_pickup_events\":%lu", static_cast<unsigned long>(imu.pickupEvents));
   append(",\"imu_putdown_events\":%lu", static_cast<unsigned long>(imu.putdownEvents));
   append(",\"imu_shake_events\":%lu", static_cast<unsigned long>(imu.shakeEvents));
   append(",\"imu_tilt_events\":%lu", static_cast<unsigned long>(imu.tiltEvents));
   append(",\"imu_last_event_type\":%u", static_cast<unsigned>(imu.lastEventType));
+  append(",\"imu_last_event_ms\":%lu", static_cast<unsigned long>(imu.lastEventMs));
   append(",\"imu_last_event_self_motion\":%s", imu.lastEventSelfMotion ? "true" : "false");
   append(",\"imu_last_event_strength\":%.3f", static_cast<double>(imu.lastEventStrength));
   append(",\"imu_last_event_jerk\":%.3f", static_cast<double>(imu.lastEventJerk));

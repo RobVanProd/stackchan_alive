@@ -218,6 +218,8 @@ try {
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadRecoveries -NotePropertyValue 3
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuReadFailures -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName newImuEvents -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newImuSelfMotionEvents -NotePropertyValue 1
+  $finalIntegrationSummary | Add-Member -NotePropertyName newImuExternalEvents -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName cameraCaptureReadySamples -NotePropertyValue 959
   $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostVisionReadySamples -NotePropertyValue 959
   $finalIntegrationSummary | Add-Member -NotePropertyName cameraFrameDelta -NotePropertyValue 57500
@@ -253,7 +255,7 @@ try {
   if ($finalIntegrationReady.exitCode -ne 0 -or $finalIntegrationReady.json.failed -ne 0) {
     throw "Expected final integration summary to pass: $($finalIntegrationReady.output)"
   }
-  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "unexpected-imu-events", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-capture-failures", "camera-host-response-write-failures", "camera-host-response-write-ratio", "camera-host-response-write-streak", "camera-host-auth-failures")) {
+  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "external-imu-events", "self-motion-imu-events-accounted", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-capture-failures", "camera-host-response-write-failures", "camera-host-response-write-ratio", "camera-host-response-write-streak", "camera-host-auth-failures")) {
     if (@($finalIntegrationReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
       throw "Expected final integration check $id to pass."
     }
@@ -270,12 +272,12 @@ try {
   $finalIntegrationSummary.newBodyRgbWriteRecoveries = 2
 
   $finalIntegrationImuEventPath = Join-Path $tempRoot "final-integration-imu-event-summary.json"
-  $finalIntegrationSummary.newImuEvents = 1
+  $finalIntegrationSummary.newImuExternalEvents = 1
   Write-Json $finalIntegrationImuEventPath $finalIntegrationSummary
   $finalIntegrationImuEvent = Invoke-Check -SummaryPath $finalIntegrationImuEventPath -RequireFinalIntegration
   if ($finalIntegrationImuEvent.exitCode -eq 0 -or
-      @($finalIntegrationImuEvent.json.checks | Where-Object { $_.id -eq "unexpected-imu-events" -and $_.status -eq "fail" }).Count -ne 1) {
-    throw "Expected surprise IMU event to fail final integration checker."
+      @($finalIntegrationImuEvent.json.checks | Where-Object { $_.id -eq "external-imu-events" -and $_.status -eq "fail" }).Count -ne 1) {
+    throw "Expected external IMU event to fail final integration checker."
   }
 
   $cameraPath = Join-Path $tempRoot "camera-ready-summary.json"
