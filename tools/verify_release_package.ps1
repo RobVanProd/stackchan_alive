@@ -3551,5 +3551,10 @@ if ($cleanupDir) {
   if (-not $resolvedCleanup.StartsWith($resolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to clean unexpected verification directory: $resolvedCleanup"
   }
-  Remove-Item -LiteralPath $resolvedCleanup -Recurse -Force
+  $cleanupFileSystemPath = if ($env:OS -eq "Windows_NT" -and -not $resolvedCleanup.StartsWith("\\?\")) {
+    "\\?\$resolvedCleanup"
+  } else {
+    $resolvedCleanup
+  }
+  [System.IO.Directory]::Delete($cleanupFileSystemPath, $true)
 }
