@@ -60,6 +60,17 @@ The state machine lives on the host, but the robot must expose enough typed stat
 capture, speaker, and RGB behavior observable. A host crash or bridge loss always returns the
 firmware to its normal local face and wake behavior.
 
+### Implementation Status
+
+- `bridge/conversation_session.py` now implements the deterministic host conversation lease,
+  acoustic-tail reply window, exit/timeout closure, turn limit, bridge-loss cleanup, and explicit
+  barge-in cancellation actions.
+- `bridge/test_conversation_session.py` verifies those transitions and confirms the session
+  snapshot contains no motion authority.
+- The core is intentionally not wired into `bridge/lan_service.py` yet. The next slice adds an
+  opt-in configuration flag, maps authoritative playback completion into `playback_completed()`,
+  and exports typed conversation state without changing the v0.2.0 one-wake/one-turn default.
+
 ## Memory Model
 
 - Keep the current privacy-filtered `BridgeMemory` durable facts as the source of familiarity.

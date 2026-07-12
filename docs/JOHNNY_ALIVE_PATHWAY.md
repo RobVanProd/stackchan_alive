@@ -2,204 +2,106 @@
 
 Source roadmap: `origin/claude/interactive-features-roadmap-mmj5u4:docs/johnnyalive_pathway.md`.
 
-This is the current `main`-branch execution path. The source roadmap branch is older than
-`main`, so it is used as a planning reference only. Do not merge that branch directly into
-implementation branches without checking for regressions against current firmware, bridge,
-voice, evidence, and release tooling.
+This document now describes the post-`v0.2.0` hardware baseline. The source roadmap branch is a
+historical planning reference only; do not merge it over current firmware, bridge, safety, voice,
+or release code.
 
 ## North Star
 
-Stackchan: Alive is the character OS layer for Stackchan hardware. It should make a small
-tabletop robot feel like it notices, reacts, listens, thinks, and answers in character. The
-core rule is layered aliveness: fast reflexes first, deeper understanding later, and no
-frozen dead states.
+Stackchan Alive is a local-first character OS for a small desk companion that notices, reacts,
+listens, thinks, remembers appropriate facts, and answers in character. Fast deterministic
+reflexes belong on the robot. Speech, Gemma, research, and privacy-filtered memory belong on the
+host. The model never owns actuator, power, pairing, or OTA authority.
 
-Latency targets from the roadmap remain active:
+Active latency targets:
 
-- Reflex face response: under 150 ms.
-- Orient to sound: under 400 ms.
-- Wake acknowledgment: under 500 ms.
-- End of user speech to first response audio on LAN: under 2.5 s, with visible thinking while waiting.
+- reflex face response under 150 ms
+- orient to a salient person or sound under 400 ms
+- wake acknowledgement under 500 ms
+- visible response to a completed utterance under 300 ms
+- first audible LAN reply under 3 seconds on the warm local path
+- complete TTS/RVC rendering faster than real time with zero truncation
 
-## Current Status
+## Release Baseline
 
-| Phase | Status on `main` | Next evidence or work |
+`v0.2.0` is the public Apache-2.0 release from commit
+`996b7e4b2de0c529a0f0e508891dec33598bf935`. The package includes guarded autonomous motion in the
+full firmware and the exact production DirectML RVC model/index. The reference robot evidence and
+the owner's release decision are recorded in `FIRST_DEPLOY_STATUS.md`; evidence from another
+firmware SHA or assembled unit is not interchangeable.
+
+Working on real hardware:
+
+- smooth procedural face, expression state, RGB choreography, and synchronized speech mouth
+- on-device wake phrase and wake-gated microphone capture
+- local Whisper to Gemma 4 to DirectML RVC speech over the LAN bridge
+- touch, pickup/orientation IMU behavior, power coordination, thermal limits, and forensic counters
+- paired camera capture, host YuNet face detection, and face-follow motion
+- rollback-safe LAN OTA and local-first recovery behavior
+- privacy-filtered durable memory, trusted local facts, bounded local research, and two persona packs
+
+## Visitor Test
+
+| Step | Current result | Remaining work |
 |---|---|---|
-| P1 Ambient life | Implemented in firmware/preview path with face animation artifacts and reduced-motion handling. | Real hardware idle evidence remains required before consumer promotion. |
-| P2 Physical senses | Bench commands and emotion/safety responses exist for touch, proximity, pickup, shake, putdown, and tilt. | Real touch/proximity/IMU adapters and hardware video evidence. |
-| P3 Sound awareness | Bench sound/noise events, saliency fixtures, disabled-by-default M5 mic capture adapter, and latency telemetry path exist. | Real mic-enabled CoreS3 capture and on-device direction evidence. |
-| P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
-| P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
-| P6 Voice | Production DirectML RVC, earcons, complete speaker playback, and synchronized mouth motion are working on hardware. | Conversation v2 and barge-in polish. |
-| P7 Brain bridge | Firmware bridge parser, native-tested WebSocket frame adapter, native-tested endpoint-control response framing, native-tested socket-writer drain path for queued endpoint responses, native-tested LAN session loop, ESP32 `WiFiClient` socket adapter, boot-wired compile-time Wi-Fi bridge provisioning hook, native-tested trusted-endpoint owner registry, native-tested endpoint-control adapter, native-tested trusted-endpoint persistence store, boot-time endpoint-store load/attach, runtime endpoint telemetry, serial-bench endpoint-control responses, deterministic host bridge, memory store, privacy model, model guide, character harness, character red-team dry-run harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, LAN bridge smoke report, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal, and combined pre-arrival simulation check exist. | Add real configured Wi-Fi credentials/bridge host and live PC/mobile handoff evidence; run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, run the red-team suite with a configured real runner, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
-| P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
+| 1. Stackchan notices a visitor before they speak. | Partial. Camera presence and face boxes exist, but there is no always-available near-field presence input. | Bring up the confirmed LTR-553 proximity/ambient-light sensor and route presence through bounded reflex events. |
+| 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. | Add the conversation-v2 reply window, echo guard, barge-in, and session-only recent turns. |
+| 3. Stackchan moves naturally while listening and replying. | Pass for coordinated face, RGB, mouth, and guarded servos. | Tighten active-speaker orientation and perceived-latency choreography. |
+| 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. | Add an embodied energy response without weakening power or motion safety. |
+| 5. Stackchan notices departure, searches, and sighs. | Not implemented. | Add person-loss confidence, bounded search choreography, and a local sigh/settle response. |
 
-The post-stability peripheral sequence, including the confirmed body touch/RGB hardware,
-IMU pickup/orientation behavior, camera face tracking, active-speaker orientation, and
-opt-in face recognition, is defined in
-[HARDWARE_FEATURE_ROADMAP.md](HARDWARE_FEATURE_ROADMAP.md). It begins only after the current
-full-system firmware passes and is archived as the stable lead.
+## Phase Status
 
-## Current P7 Sequence
+| Phase | Status after `v0.2.0` | Next evidence or work |
+|---|---|---|
+| P1 Ambient life | Working on hardware: procedural face, blink/saccade/breathing, mode transitions, RGB flow, reduced motion, and guarded autonomous body motion. | Continue character-motion tuning without exceeding the strict 50 ms display gate. |
+| P2 Physical senses | Touch, RGB, and IMU pickup/orientation are implemented and exercised on hardware. | Implement LTR-553 proximity and ambient-light input; keep microSD optional. |
+| P3 Sound awareness | Dual-mic capture and on-device wake work on hardware. | Add evidence-backed sound-direction estimation and fuse it with camera confidence. |
+| P4 Wake/commands | On-device wake, acknowledgement cues, bounded capture, bridge uplink, and local fallback are working. | Conversation v2 must preserve wake-gated entry and deterministic close conditions. |
+| P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. | Improve tracking speed, active-speaker selection, and person-loss choreography. |
+| P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, and phrase streaming work on hardware. | Instrument end-to-end stage timing and add interruption-safe barge-in. |
+| P7 Brain bridge | Real Wi-Fi bridge, Whisper, Gemma 4, local research, trusted facts, privacy-filtered memory, production voice, and recovery tooling are integrated. | Improve memory retrieval relevance and expose typed live robot state to the character prompt. |
+| P8 Continuity | Started: durable filtered facts, persona packs, robot embodiment telemetry, and camera continuity exist. | Conversation sessions, persona hot-swap, person loss, energy state, and community pack discovery. |
 
-P7 is the active software track because it can advance without waiting on device hardware.
-Keep each item independently shippable and package-verified.
+## Sequenced Post-Release Work
 
-1. Model-response bridge path.
-   - The reference bridge accepts Character Lock JSON from a local model or fixture.
-   - The character harness validates and normalizes it.
-   - Safe `memory_write` and `memory_forget` fields update the tiny bridge memory store.
-   - The normalized `spoken_text` and `mode` render through `stackchan.bridge.v1`.
+1. Conversation v2 and barge-in.
+   - One onboard wake opens one typed conversation lease.
+   - Confirmed playback completion plus an acoustic tail opens a bounded reply window.
+   - At most one follow-up may be pending; no hidden transcript backlog.
+   - Exit phrase, silence, bridge loss, safety state, owner loss, or turn limit closes the session.
+   - A conversation lease never grants or refreshes actuator motion.
 
-2. Local runner wrapper.
-   - `bridge/local_runner.py` exposes the primary GGUF target, mobile LiteRT-LM target, and
-     fallback E4B target through one prompt-suite wrapper.
-   - Real runner commands can be supplied by CLI or environment variable and report elapsed
-     milliseconds plus approximate tokens per second.
-   - When no runner is configured, the wrapper emits deterministic valid Character Lock JSON
-     so bridge demos and firmware bench replay remain repeatable.
-   - `bridge/litert_lm_contract_smoke.py` and `tools/run_litert_lm_smoke.cmd` verify the
-     two-layer mobile runner contract before a real LiteRT-LM engine is installed.
-   - `bridge/engine_probe.py` checks local model, STT, and TTS command readiness and writes
-     `engine_probe.json` plus `ENGINE_PROBE.md`. An `unconfigured` report is a setup finding,
-     not model speed evidence.
-   - `bridge/model_benchmark.py` runs the prompt suite across profiles and writes
-     `model_benchmark.json` plus `MODEL_BENCHMARK.md`.
-   - The benchmark report now writes `summary.candidate_gate`, including per-profile
-     blockers, `ready_profiles`, and `recommended_profile`, so the fastest small model is a
-     recorded decision rather than a manual read of raw rows.
-   - Next: install/run the selected Gemma 4 E2B target on the host, re-run the engine probe
-     with `--run-model-smoke`, and record a non-dry-run benchmark with speed and Character
-     Lock pass evidence.
+2. LTR-553 proximity and ambient light.
+   - Add a deterministic I2C adapter, readiness/failure telemetry, and native tests.
+   - Use proximity for fast presence reflexes and ambient light for display/RGB adaptation.
+   - Do not infer identity from proximity and do not make it a boot dependency.
 
-3. LAN bridge loop.
-   - `bridge/lan_service.py` runs a local WebSocket service around the same frame schema.
-   - It accepts control frames: `hello`, `utterance_start`, `utterance_end`, `heartbeat`, and
-     `cancel`.
-   - It accepts bounded binary PCM frames after `utterance_start`, reports upload telemetry,
-     and clears raw PCM at `utterance_end`.
-   - Audio-only turns can use a configured local STT command that receives raw signed 16-bit
-     mono PCM on stdin and returns transcript text or JSON. If no STT command is configured,
-     `utterance_end` still accepts explicit `text` or `transcript` for deterministic tests.
-   - On transcript-backed or STT-backed `utterance_end`, the service runs the local runner
-     wrapper, validates Character Lock JSON, applies host memory, and streams normalized
-     `thinking`, `response_start`, `audio`, and `response_end` frames.
-   - `bridge/lan_smoke.py` and `tools/run_lan_smoke.cmd` write `LAN_SMOKE.md/json` by
-     exercising the actual local TCP/WebSocket handshake, a transcript-backed text turn, a
-     fake mic PCM upload, fake STT/TTS, and a PCM16 binary downlink sequence with
-     deterministic engines. This is the LAN bridge smoke report gate for PRs before the
-     unit arrives.
-   - A configured local TTS command can receive response text on stdin and replace the
-     deterministic mouth beats with returned TTS metadata.
-   - If the TTS command returns `audio_b64`, the TTS adapter canonicalizes playable PCM
-     payloads to `pcm16`, decodes valid uncompressed WAV payloads to signed 16-bit mono PCM,
-     and the LAN service sends stream metadata plus binary WebSocket chunks. Firmware parses
-     the stream metadata, copies the current chunk into a bounded `BridgeClient` buffer
-     exposed through bridge outputs, feeds it to the downlink consumer, and accounts chunk
-     payloads for telemetry.
-   - The downlink consumer can now hand accepted decoded PCM16 chunks to the M5 speaker sink
-     when speaker hardware is enabled. Unsupported formats are still transported and counted,
-     but they do not claim firmware speaker playback.
-   - Selecting/measuring real STT/TTS engines and collecting real-device speaker evidence
-     remain the next P7 bridge gates.
-   - Do not move real-time face or motion ownership off firmware.
+3. Perceived latency and person awareness.
+   - Record wake, capture end, STT, model, research, TTS first audio, playback start, and completion.
+   - Begin face/RGB/body acknowledgement within 300 ms while deeper work continues.
+   - Fuse camera and sound confidence, then add bounded search-and-sigh behavior after person loss.
 
-4. Dynamic TTS sidecar path.
-   - Bridge streams response text plus TTS-derived envelope/viseme timing.
-   - Firmware keeps using the existing mouth-envelope path.
-   - Binary audio transport to firmware has a LAN scaffold; generated audio can travel as
-     chunks and firmware keeps the current accepted chunk payload available to the output
-     handler/downlink consumer. The host TTS adapter decodes valid uncompressed WAV payloads
-     to PCM16 for playback. Decoded PCM16 chunks can be submitted to the M5 speaker sink when
-     hardware speaker output is enabled; unsupported formats are still accounted but not
-     played.
-   - The production RVC files are published and hash-verified.
+4. Embodied energy and platform work.
+   - Map honest PMIC/battery state into sleepy/charging/ready character state.
+   - Add runtime persona hot-swap, a community pack index, OTA stable/beta channels, and a linear
+     first-30-minutes quickstart.
 
-5. Virtual hardware proxy.
-   - `bridge/hardware_simulator.py` consumes reference, LAN, and binary audio-downlink
-     bridge frames and produces firmware-like serial logs plus JSON telemetry.
-   - The default simulator run includes `conversation-rehearsal`, which drives virtual wake
-     input through the LAN bridge path, checks first-audio latency against the 2.5 s budget,
-     verifies mouth frames, and returns to `Ready`.
-   - It also includes `conversation-tts-downlink`, which uses a fake WAV-producing local TTS
-     command to verify bridge-side WAV-to-PCM16 normalization, binary downlink framing,
-     virtual M5 speaker handoff counters, mouth activity, and return to `Ready`.
-   - It also includes `conversation-audio-loop`, which uploads bounded fake mic PCM, runs a
-     fake local STT command, exercises the Character Lock/model response path, generates fake
-     WAV TTS, normalizes it to PCM16 downlink audio, checks virtual speaker counters, and
-     returns to `Ready`.
-   - The LAN smoke report includes `thinking-latency`, which sends `thinking` immediately on
-     `utterance_end`, delays fake TTS, and records per-frame timing so visible thinking is
-     proven before slow spoken output finishes.
-   - The default simulator run also includes `arrival-rehearsal`, which models virtual
-     CoreS3 display ticks, label persistence, tap/hold/BtnA/BtnB/BtnC input mapping, motion
-     safety toggles, PCM16 speaker handoff counters, mouth-display activity, and power-cycle
-     recovery before the physical unit arrives.
-   - It also includes `bridge-kill-recovery`, which aborts an in-flight TTS stream after a
-     bridge error, emits one offline fallback prompt, reconnects, speaks a recovery turn, and
-     returns to `Ready` without a timeout or parse failure.
-   - The `audio-downlink` and `arrival-rehearsal` scenarios now exercise the 4096-byte
-     firmware chunk limit with a synthetic decoded PCM16 5000-byte downlink split into
-     4096-byte and 904-byte chunks.
-   - Simulator JSON and serial-like `[runtime]` logs now include firmware-mirrored
-     `bridge_downlink_*` and `bridge_downlink_playback_*` counters, giving arrival-day
-     hardware runs a direct no-hardware baseline for downlink streams, completions, chunks,
-     bytes, unsupported playback formats, and errors.
-   - The `audio-downlink-unsupported` scenario proves a non-PCM16 container is transported
-     and accounted without claiming virtual speaker playback.
-   - Native firmware tests now enforce the same recovery contract: bridge `error` and
-     timeout paths clear open audio-stream state before accepting the next bridge session.
-   - `offline-command-fallback` keeps the virtual bridge disconnected while CoreS3 input and
-     P4-style command-map events still request packaged prompts, animate the mouth/display,
-     and return to idle.
-   - `tools/run_hardware_simulation.cmd` writes repeatable reports under
-     `output/hardware-sim/`.
-   - Evidence packets include `RUN_HARDWARE_SIM_BASELINE.cmd`, which writes the same
-     no-hardware proxy report under `simulation/hardware-sim/latest/` for pre-arrival
-     comparison without satisfying hardware evidence gates.
-   - Evidence packets also include `RUN_SIM_HARDWARE_COMPARE.cmd`, which writes
-     `SIM_HARDWARE_COMPARE.md/json` after real display, speech-mouth, speak-all, and bridge
-     replay logs exist. It compares serial markers and bridge counters against the simulator
-     baseline as an advisory diagnostic, not as promotion evidence.
-   - `tools/run_prearrival_sim_check.cmd` writes `PREARRIVAL_SIM_CHECK.md/json` so the
-     fastest pre-arrival proxy combines virtual hardware status, LAN bridge smoke report,
-     and engine-readiness status.
-   - Add `-RunModelBenchmark` after a real runner command is configured to include the full
-     model benchmark candidate gate inside the same pre-arrival report.
-   - GitHub Actions runs the bridge tests, engine readiness probe, LAN bridge smoke report,
-     simulator, and pre-arrival check in the `bridge-tests` job, then uploads engine-probe,
-     lan-bridge-smoke, hardware-simulation, and prearrival-simulation-check artifacts for
-     each PR/push.
-   - This catches bridge ordering, conversation timing, LAN visible-thinking latency, LAN
-     STT/TTS audio-loop ordering, LAN TTS downlink, timeout, mouth-frame, input-mapping,
-     offline command fallback,
-     reboot-recovery, bridge-kill recovery, and binary stream regressions before the physical
-     device arrives. It does not
-     replace real display, speaker, mic, camera, touch, IMU,
-     servo, heat, power, or soak evidence.
-   - Hardware-level simulator options remain secondary: Wokwi can run ESP32-S3 / M5Stack
-     CoreS3-style Arduino or ESP-IDF sketches, and Espressif QEMU can help with low-level
-     ESP-IDF CPU/memory/peripheral debugging, but neither currently replaces this repo's
-     maintained virtual Stackchan proxy for the full bridge/display/audio/servo evidence
-     path.
+## Evidence Rules
 
-6. End-to-end demo gate.
-   - Wake or bench start, listen, visible thinking, in-character spoken response, lip-sync,
-     graceful return to ambient life.
-   - Bridge kill test proves in-character recovery with no freeze or reboot.
-
-## Documentation Rules
-
-- Keep this document updated when a roadmap phase changes status or the next PR changes.
-- Keep `docs/BRAIN_MODEL.md` aligned with model targets and harness gates.
-- Keep `docs/CHARACTER_LOCK.md` aligned with the validator and bridge response schema.
-- Keep `docs/BRIDGE_PROTOCOL.md` aligned with firmware-accepted frame fields.
-- Package and verify every new path document so extracted releases carry the same next steps.
+- Keep observed facts separate from hypotheses, especially for black screens, resets, voltage,
+  thermal behavior, and network probe timeouts.
+- Preserve the exact firmware SHA for every physical qualification.
+- Use fast contributor gates for ordinary host/persona changes: native tests, bridge tests,
+  simulator, and short smoke. Reserve full exact-image physical soak gates for release promotion.
+- Never turn an isolated HTTP timeout into a robot failure when live debug recovers and the bridge
+  socket remains established.
 
 ## Non-Negotiables
 
-- No direct actuator writes from sensors or bridge code. Everything flows through the existing event/frame path.
-- No hardcoded network secrets.
-- No audio leaves the device outside a wake-gated bridge session.
-- No named character cloning, catchphrases, soundboard training, or unapproved RVC production use.
-- No consumer-ready promotion until hardware evidence and production voice-source gates pass.
+- No direct actuator writes from sensors, the bridge, or Gemma.
+- No hardcoded secrets or raw private recordings in release artifacts.
+- No audio leaves the device outside a wake or active reply-window lease.
+- No persistent raw transcript history by default.
+- No proximity, camera, microSD, network, or model dependency may freeze the local face.
+- No display change may weaken the strict 50 ms frame gate.

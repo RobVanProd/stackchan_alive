@@ -3244,7 +3244,7 @@ foreach ($pattern in @("Stackchan Companion Privacy Policy", "dev.stackchan.comp
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw
-foreach ($pattern in @("Johnny Alive Pathway", "Current Status", "Current P7 Sequence", "Model-response bridge path", "character red-team dry-run harness", "configured real runner", "Local runner wrapper", "LiteRT-LM", "tools/run_litert_lm_smoke.cmd", "engine readiness probe", "summary.candidate_gate", "recommended_profile", "LAN bridge smoke report", "disabled-by-default M5 mic capture adapter", "native-tested endpoint-control response framing", "native-tested socket-writer drain path", "native-tested LAN session loop", "boot-wired compile-time Wi-Fi bridge provisioning hook", "real configured Wi-Fi credentials/bridge host", "native-tested trusted-endpoint persistence store", "boot-time endpoint-store load/attach", "WiFiClient", "LAN bridge loop", "Hardware-level simulator options", "Documentation Rules", "No consumer-ready promotion")) {
+foreach ($pattern in @("Johnny Alive Pathway", "hardware baseline", "Release Baseline", "996b7e4b2de0c529a0f0e508891dec33598bf935", "Visitor Test", "LTR-553", "on-device wake phrase", "DirectML RVC", "YuNet", "privacy-filtered durable memory", "Phase Status", "P8 Continuity", "Sequenced Post-Release Work", "typed conversation lease", "Perceived latency", "persona hot-swap", "Evidence Rules", "Non-Negotiables", "strict 50 ms frame gate")) {
   if ($johnnyAlivePathway -notmatch [regex]::Escape($pattern)) {
     throw "JOHNNY_ALIVE_PATHWAY.md missing expected roadmap guidance: $pattern"
   }
