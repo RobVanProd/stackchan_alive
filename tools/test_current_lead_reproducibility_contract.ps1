@@ -6,6 +6,9 @@ $checkerSource = Get-Content -LiteralPath $Checker -Raw
 if (-not $checkerSource.Contains('$leadArchiveLeaf = if ([string]::IsNullOrWhiteSpace($LeadArchivePath))')) {
   throw "Current-lead checker must handle an unavailable auto-discovered archive without calling Split-Path on an empty path."
 }
+if (-not $checkerSource.Contains('$terminalArtifactsPending =')) {
+  throw "Current-lead checker must distinguish expected preterminal archive gaps from terminal failures."
+}
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-current-lead-repro-" + [guid]::NewGuid().ToString("N"))
 $stage = Join-Path $tempRoot "stage"
 $sourceCommit = "b" * 40
@@ -107,6 +110,57 @@ try {
     )) {
     $check = @($result.checks | Where-Object { $_.id -eq $id })[0]
     if ($null -eq $check -or $check.status -ne "pass") { throw "Expected $id to pass." }
+  }
+
+  $pendingArchive = Join-Path $tempRoot "pending-terminal-archive.zip"
+  $pendingProgress = Join-Path $tempRoot "active-soak\progress.json"
+  $pendingOutput = & $Checker `
+    -LeadArchivePath $pendingArchive `
+    -CandidateManifestPath $candidate `
+    -SoakProgressPath $pendingProgress `
+    -StatusDocPath $statusDoc `
+    -RunbookPath $runbook `
+    -ReportDir (Join-Path $tempRoot "pending-report") `
+    -MinSoakDurationSeconds 28800 `
+    -SkipLive `
+    -Json
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host ($pendingOutput | Out-String)
+    throw "Expected missing preterminal archive/summary/formal artifacts to remain pending."
+  }
+  $pendingResult = $pendingOutput | ConvertFrom-Json
+  if ($pendingResult.status -ne "current-lead-reproducible-pending") {
+    throw "Expected preterminal status to be pending, got $($pendingResult.status)."
+  }
+  if ($pendingResult.failed -ne 0) {
+    throw "Expected zero failed preterminal checks, got $($pendingResult.failed)."
+  }
+  $pendingArchiveChecks = @($pendingResult.checks | Where-Object {
+      $_.status -eq "pending" -and
+      ([string]$_.detail -match [regex]::Escape((Split-Path $pendingArchive -Leaf)))
+    })
+  if ($pendingArchiveChecks.Count -lt 3) {
+    throw "Expected archive plus both documentation markers to remain pending before terminal evidence."
+  }
+
+  $terminalMissingOutput = & $Checker `
+    -LeadArchivePath $pendingArchive `
+    -CandidateManifestPath $candidate `
+    -SoakSummaryPath $summary `
+    -FormalCheckPath $formal `
+    -StatusDocPath $statusDoc `
+    -RunbookPath $runbook `
+    -ReportDir (Join-Path $tempRoot "terminal-missing-report") `
+    -MinSoakDurationSeconds 28800 `
+    -SkipLive `
+    -Json
+  if ($LASTEXITCODE -eq 0) {
+    throw "Expected a missing current-lead archive to fail once terminal evidence exists."
+  }
+  $terminalMissingResult = $terminalMissingOutput | ConvertFrom-Json
+  $terminalArchiveCheck = @($terminalMissingResult.checks | Where-Object { $_.id -eq "lead-archive" })[0]
+  if ($null -eq $terminalArchiveCheck -or $terminalArchiveCheck.status -ne "fail") {
+    throw "Expected terminal lead-archive check to fail when the archive is missing."
   }
 
   $badHashArchive = Join-Path $tempRoot "bad-hash.zip"

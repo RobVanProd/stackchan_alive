@@ -144,6 +144,21 @@ function Get-ArchiveManifestValue {
   return [string]$value
 }
 
+if ([string]::IsNullOrWhiteSpace($SoakProgressPath) -and [string]::IsNullOrWhiteSpace($SoakSummaryPath)) {
+  $SoakProgressPath = Find-LatestSoakEvidence
+}
+if ([string]::IsNullOrWhiteSpace($SoakSummaryPath) -and -not [string]::IsNullOrWhiteSpace($SoakProgressPath)) {
+  $SoakSummaryPath = Join-Path (Split-Path $SoakProgressPath -Parent) "summary.json"
+}
+if ([string]::IsNullOrWhiteSpace($FormalCheckPath) -and -not [string]::IsNullOrWhiteSpace($SoakSummaryPath)) {
+  $FormalCheckPath = Join-Path (Split-Path $SoakSummaryPath -Parent) "formal-check.json"
+}
+$terminalArtifactsPending =
+  [string]::IsNullOrWhiteSpace($SoakSummaryPath) -or
+  -not (Test-Path -LiteralPath $SoakSummaryPath -PathType Leaf) -or
+  [string]::IsNullOrWhiteSpace($FormalCheckPath) -or
+  -not (Test-Path -LiteralPath $FormalCheckPath -PathType Leaf)
+
 $candidateManifest = $null
 if (-not [string]::IsNullOrWhiteSpace($CandidateManifestPath)) {
   if (Test-Path -LiteralPath $CandidateManifestPath -PathType Leaf) {
@@ -166,7 +181,8 @@ $archiveManifest = $null
 $archiveFirmwareSha256 = ""
 $archiveSourceCommit = ""
 if ([string]::IsNullOrWhiteSpace($LeadArchivePath) -or -not (Test-Path -LiteralPath $LeadArchivePath -PathType Leaf)) {
-  Add-Check "lead-archive" "fail" "Missing current-lead archive: $LeadArchivePath"
+  $archiveStatus = if ($terminalArtifactsPending) { "pending" } else { "fail" }
+  Add-Check "lead-archive" $archiveStatus "Missing current-lead archive: $LeadArchivePath"
 } else {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $archiveItem = Get-Item -LiteralPath $LeadArchivePath
@@ -269,18 +285,16 @@ foreach ($doc in @(
   foreach ($marker in @($ExpectedFirmwareSourceCommit, $ExpectedFirmwareSha256, $leadArchiveLeaf)) {
     if ([string]::IsNullOrWhiteSpace($marker)) { continue }
     $markerId = "$($doc.id)-marker-$($checks.Count)"
-    Add-Check $markerId ($(if ($text -match [regex]::Escape($marker)) { "pass" } else { "fail" })) $marker
+    $markerPresent = $text -match [regex]::Escape($marker)
+    $markerStatus = if ($markerPresent) {
+      "pass"
+    } elseif ($terminalArtifactsPending -and $marker -eq $leadArchiveLeaf) {
+      "pending"
+    } else {
+      "fail"
+    }
+    Add-Check $markerId $markerStatus $marker
   }
-}
-
-if ([string]::IsNullOrWhiteSpace($SoakProgressPath) -and [string]::IsNullOrWhiteSpace($SoakSummaryPath)) {
-  $SoakProgressPath = Find-LatestSoakEvidence
-}
-if ([string]::IsNullOrWhiteSpace($SoakSummaryPath) -and -not [string]::IsNullOrWhiteSpace($SoakProgressPath)) {
-  $SoakSummaryPath = Join-Path (Split-Path $SoakProgressPath -Parent) "summary.json"
-}
-if ([string]::IsNullOrWhiteSpace($FormalCheckPath) -and -not [string]::IsNullOrWhiteSpace($SoakSummaryPath)) {
-  $FormalCheckPath = Join-Path (Split-Path $SoakSummaryPath -Parent) "formal-check.json"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($SoakSummaryPath) -and (Test-Path -LiteralPath $SoakSummaryPath -PathType Leaf)) {

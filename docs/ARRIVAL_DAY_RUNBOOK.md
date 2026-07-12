@@ -901,13 +901,21 @@ Before and after the supervised recovery attempt, run the current-lead reproduci
 .\tools\check_current_lead_reproducibility.cmd -Json
 ```
 
-Before the soak is complete it should report `current-lead-reproducible-pending-soak` with
-zero failed checks. After a successful overnight run, rerun it with the completed
-`summary.json`; the status must become `current-lead-reproducible-ready` before this lead is
-treated as final:
+Before the soak is complete, pass the intended future archive path plus the active progress path.
+The checker should report `current-lead-reproducible-pending` with zero failed checks: the missing
+archive, its two documentation markers, terminal summary, and formal check are pending artifacts,
+not robot failures. Once terminal summary and formal evidence exist, a missing archive or marker
+becomes a hard failure. After a successful overnight run, rerun with the completed archive and
+`summary.json`; the status must become `current-lead-reproducible-ready` before this lead is treated
+as final:
 
 ```powershell
-.\tools\check_current_lead_reproducibility.cmd -SoakSummaryPath <soak-evidence-root>\summary.json -RequireReady -Json
+.\tools\check_current_lead_reproducibility.cmd `
+  -LeadArchivePath output\private\current-lead\stackchan-current-lead-<id>.zip `
+  -SoakSummaryPath <soak-evidence-root>\summary.json `
+  -FormalCheckPath <soak-evidence-root>\formal-check.json `
+  -RequireReady `
+  -Json
 ```
 After flashing, check `/debug` for:
 
