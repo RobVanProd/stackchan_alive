@@ -3002,6 +3002,31 @@ void test_actuation_reports_only_meaningful_command_motion_to_imu_filter() {
   TEST_ASSERT_TRUE(engine.telemetry().selfMotionActive);
 
   setFakeArduinoTime(1000, 1000000);
+  TEST_ASSERT_TRUE(engine.telemetry().selfMotionActive);
+
+  setFakeArduinoTime(1300, 1300000);
+  TEST_ASSERT_FALSE(engine.telemetry().selfMotionActive);
+}
+
+void test_actuation_keeps_imu_filter_active_while_servo_settles_after_stop() {
+  RobotConfig config;
+  FakeActuator actuator;
+  setFakeArduinoTime(100, 100000);
+  ActuationEngine engine(config);
+  engine.begin(&actuator);
+
+  RobotFrame target = makeNeutralFrame();
+  target.emotion.focus = 1.0f;
+  target.motion.yawMode = YawMode::Angle;
+  target.motion.pitchDeg = 8.0f;
+  target.motion.yawDeg = 12.0f;
+  engine.update(target, 110000);
+
+  setFakeArduinoTime(200, 200000);
+  engine.setEnabled(false);
+  TEST_ASSERT_TRUE(engine.telemetry().selfMotionActive);
+
+  setFakeArduinoTime(1300, 1300000);
   TEST_ASSERT_FALSE(engine.telemetry().selfMotionActive);
 }
 
@@ -6817,6 +6842,7 @@ int main() {
   RUN_TEST(test_actuation_disable_stops_and_suppresses_writes_until_resumed);
   RUN_TEST(test_actuation_output_suppression_releases_actuator_without_disabling_motion);
   RUN_TEST(test_actuation_reports_only_meaningful_command_motion_to_imu_filter);
+  RUN_TEST(test_actuation_keeps_imu_filter_active_while_servo_settles_after_stop);
   RUN_TEST(test_actuation_session_timeout_uses_millis_across_micros_wrap);
   RUN_TEST(test_actuation_session_refresh_extends_timeout_without_disabling_failsafe);
   RUN_TEST(test_stackchan_servo_stop_returns_tracked_axes_to_neutral);

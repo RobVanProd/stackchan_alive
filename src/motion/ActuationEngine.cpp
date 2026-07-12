@@ -228,13 +228,20 @@ void ActuationEngine::update(const RobotFrame& target, uint32_t nowUs) {
   }
   hasLastCommand_ = true;
   if (commandMoved) {
-    selfMotionUntilMs_ = nowMs + STACKCHAN_SERVO_OUTPUT_PERIOD_MS + 250u;
+    selfMotionUntilMs_ =
+        nowMs + STACKCHAN_SERVO_OUTPUT_PERIOD_MS + STACKCHAN_SERVO_SELF_MOTION_SETTLE_MS;
   }
 }
 
 void ActuationEngine::stopActuator(const char* reason) {
   lastReason_ = reason != nullptr ? reason : "stopped";
-  selfMotionUntilMs_ = 0;
+  if (hasLastCommand_) {
+    const uint32_t settleUntilMs = millis() + STACKCHAN_SERVO_SELF_MOTION_SETTLE_MS;
+    if (selfMotionUntilMs_ == 0 ||
+        static_cast<int32_t>(settleUntilMs - selfMotionUntilMs_) > 0) {
+      selfMotionUntilMs_ = settleUntilMs;
+    }
+  }
   hasLastCommand_ = false;
   if (actuator_ != nullptr && actuatorReady_) {
     stopCalls_++;
