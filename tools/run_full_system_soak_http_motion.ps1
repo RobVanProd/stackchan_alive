@@ -626,6 +626,12 @@ try {
           servo_torque_enabled = Test-TrueValue (Get-ObjectProperty $j "servo_torque_enabled" $false)
           speaker_power_active = Test-TrueValue (Get-ObjectProperty $j "speaker_power_active" $false)
           network = [string](Get-ObjectProperty $j "network_state" "")
+          network_error = Get-ObjectProperty $j "network_error" $null
+          network_tcp_connect_attempts = Get-ObjectProperty $j "network_tcp_connect_attempts" $null
+          network_tcp_connect_last_result = Get-ObjectProperty $j "network_tcp_connect_last_result" $null
+          network_tcp_connect_last_errno = Get-ObjectProperty $j "network_tcp_connect_last_errno" $null
+          network_tcp_connect_last_duration_ms = Get-ObjectProperty $j "network_tcp_connect_last_duration_ms" $null
+          network_tcp_connect_max_duration_ms = Get-ObjectProperty $j "network_tcp_connect_max_duration_ms" $null
           bridge = [string](Get-ObjectProperty $j "bridge_state" "")
           fps = Get-ObjectProperty $j "display_window_fps" $null
           max_us = Get-ObjectProperty $j "display_window_max_frame_us" $null

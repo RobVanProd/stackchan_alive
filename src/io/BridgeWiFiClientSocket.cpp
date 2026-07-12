@@ -1,10 +1,24 @@
 #include "io/BridgeWiFiClientSocket.hpp"
 
+#include <cerrno>
+
 namespace stackchan {
 
 namespace {
 constexpr int32_t kBridgeTcpConnectTimeoutMs = 5000;
 constexpr uint32_t kBridgeTcpIoTimeoutMs = 1000;
+}
+
+void BridgeWiFiClientSocket::noteConnectResult(int result,
+                                               int errorCode,
+                                               uint32_t startedAtMs) {
+  ++connectAttempts_;
+  lastConnectResult_ = result;
+  lastConnectErrno_ = result != 0 ? 0 : errorCode;
+  lastConnectDurationMs_ = millis() - startedAtMs;
+  if (lastConnectDurationMs_ > maxConnectDurationMs_) {
+    maxConnectDurationMs_ = lastConnectDurationMs_;
+  }
 }
 
 bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
@@ -16,13 +30,18 @@ bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
   delay(20);
   client_ = WiFiClient {};
   client_.setTimeout(kBridgeTcpIoTimeoutMs);
+  const uint32_t startedAtMs = millis();
   IPAddress address;
   if (address.fromString(host)) {
     Serial.print(F("[wifi-socket] connect mode=ip host="));
     Serial.print(host);
     Serial.print(F(" port="));
     Serial.println(port);
-    const bool ok = client_.connect(address, port, kBridgeTcpConnectTimeoutMs);
+    errno = 0;
+    const int result = client_.connect(address, port, kBridgeTcpConnectTimeoutMs);
+    const int errorCode = errno;
+    const bool ok = result != 0;
+    noteConnectResult(result, errorCode, startedAtMs);
     if (ok) {
       client_.setNoDelay(true);
     }
@@ -34,7 +53,11 @@ bool BridgeWiFiClientSocket::connect(const char* host, uint16_t port) {
   Serial.print(host);
   Serial.print(F(" port="));
   Serial.println(port);
-  const bool ok = client_.connect(host, port, kBridgeTcpConnectTimeoutMs);
+  errno = 0;
+  const int result = client_.connect(host, port, kBridgeTcpConnectTimeoutMs);
+  const int errorCode = errno;
+  const bool ok = result != 0;
+  noteConnectResult(result, errorCode, startedAtMs);
   if (ok) {
     client_.setNoDelay(true);
   }

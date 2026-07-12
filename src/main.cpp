@@ -8043,6 +8043,14 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"compiled_enable_bridge_audio_uplink\":%d", STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK ? 1 : 0);
   append(",\"network_state\":\"%s\"", bridgeNetworkStateName(network.state));
   append(",\"network_error\":\"%s\"", network.lastError);
+  append(",\"network_tcp_connect_attempts\":%lu",
+         static_cast<unsigned long>(gBridgeSocket.connectAttempts()));
+  append(",\"network_tcp_connect_last_result\":%d", gBridgeSocket.lastConnectResult());
+  append(",\"network_tcp_connect_last_errno\":%d", gBridgeSocket.lastConnectErrno());
+  append(",\"network_tcp_connect_last_duration_ms\":%lu",
+         static_cast<unsigned long>(gBridgeSocket.lastConnectDurationMs()));
+  append(",\"network_tcp_connect_max_duration_ms\":%lu",
+         static_cast<unsigned long>(gBridgeSocket.maxConnectDurationMs()));
   append(",\"bridge_state\":\"%s\"", bridgeStateName(bridge.state));
   append(",\"bridge_uplink_ready\":%s", uplink.ready ? "true" : "false");
   append(",\"bridge_uplink_enabled\":%s", uplink.enabled ? "true" : "false");
