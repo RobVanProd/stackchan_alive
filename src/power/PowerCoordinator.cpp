@@ -4,6 +4,38 @@
 
 namespace stackchan {
 
+uint8_t axp2101VindpmRegisterForMv(uint16_t millivolts) {
+  if (millivolts <= 3880) {
+    return 0;
+  }
+  if (millivolts >= 5080) {
+    return 15;
+  }
+  return static_cast<uint8_t>((millivolts - 3880 + 40) / 80);
+}
+
+uint16_t axp2101VindpmMvFromRegister(uint8_t registerValue) {
+  return static_cast<uint16_t>(3880 + (registerValue & 0x0F) * 80);
+}
+
+uint16_t axp2101InputCurrentLimitMaFromRegister(uint8_t registerValue) {
+  static constexpr uint16_t kInputCurrentLimitsMa[] = {100, 500, 900, 1000, 1500, 2000, 0, 0};
+  return kInputCurrentLimitsMa[registerValue & 0x07];
+}
+
+const char* axp2101BatteryDirectionName(uint8_t status2) {
+  switch ((status2 >> 5) & 0x03) {
+    case 0:
+      return "standby";
+    case 1:
+      return "charging";
+    case 2:
+      return "discharging";
+    default:
+      return "reserved";
+  }
+}
+
 const char* powerOperatingModeName(PowerOperatingMode mode) {
   switch (mode) {
     case PowerOperatingMode::Boot:
@@ -76,6 +108,7 @@ void PowerFloorTracker::begin(uint16_t hardFloorMv) {
   telemetry_.lastHardFloorConfirmVbusMv = -1;
   telemetry_.lastHardFloorBatteryMv = -1;
   telemetry_.lastHardFloorConfirmBatteryMv = -1;
+  telemetry_.lastHardFloorPmicVsysMv = -1;
 }
 
 bool PowerFloorTracker::update(const PowerFloorSample& sample, uint32_t nowMs) {
@@ -123,6 +156,11 @@ bool PowerFloorTracker::update(const PowerFloorSample& sample, uint32_t nowMs) {
   telemetry_.lastHardFloorServoRailEnabled = sample.servoRailEnabled;
   telemetry_.lastHardFloorServoTorqueEnabled = sample.servoTorqueEnabled;
   telemetry_.lastHardFloorSpeakerPowerActive = sample.speakerPowerActive;
+  telemetry_.lastHardFloorPmicInputCurrentLimited = sample.pmicInputCurrentLimited;
+  telemetry_.lastHardFloorPmicVindpmActive = sample.pmicVindpmActive;
+  telemetry_.lastHardFloorPmicBatteryDischarging = sample.pmicBatteryDischarging;
+  telemetry_.lastHardFloorPmicVsysValid = sample.pmicVsysValid;
+  telemetry_.lastHardFloorPmicVsysMv = sample.pmicVsysValid ? sample.pmicVsysMv : -1;
   return entered;
 }
 

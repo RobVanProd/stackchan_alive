@@ -36,6 +36,7 @@ param(
   [switch]$RequireRvcWorker,
   [switch]$RequirePowerCoordinator,
   [switch]$RequirePowerForensics,
+  [int]$ExpectedPmicVindpmMv = 0,
   [switch]$RequireFinalIntegration,
   [switch]$RequireCameraCapture,
   [switch]$RequireCameraHostVision,
@@ -59,6 +60,11 @@ $SourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 -
 
 $minPowerVbusMvThreshold = $MinPowerVbusMv
 $minPowerVbusReportedMvThreshold = $MinPowerVbusReportedMv
+if ($ExpectedPmicVindpmMv -ne 0 -and
+    ($ExpectedPmicVindpmMv -lt 3880 -or $ExpectedPmicVindpmMv -gt 5080 -or
+      (($ExpectedPmicVindpmMv - 3880) % 80) -ne 0)) {
+  throw "ExpectedPmicVindpmMv must be 0 or an 80 mV step from 3880 through 5080."
+}
 
 function Invoke-RobotEndpoint {
   param([string]$Path, [int]$TimeoutSeconds = 2)
@@ -323,6 +329,9 @@ $powerForensicsRuntimeEventsBaseline = $null
 $powerForensicsProtectiveEventsBaseline = $null
 $powerForensicsReadFailuresBaseline = $null
 $powerForensicsClearFailuresBaseline = $null
+$pmicInputStateReadFailuresBaseline = $null
+$pmicConfigReadFailuresBaseline = $null
+$powerVsysReadFailuresBaseline = $null
 $bodyRgbWriteFailuresBaseline = $null
 $bodyRgbWriteRetriesBaseline = $null
 $bodyRgbWriteRecoveriesBaseline = $null
@@ -482,10 +491,37 @@ try {
           power_vbus_hard_floor_last_servo_rail_enabled = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_servo_rail_enabled" $false)
           power_vbus_hard_floor_last_servo_torque_enabled = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_servo_torque_enabled" $false)
           power_vbus_hard_floor_last_speaker_power_active = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_speaker_power_active" $false)
+          power_vbus_hard_floor_last_pmic_input_current_limited = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_pmic_input_current_limited" $false)
+          power_vbus_hard_floor_last_pmic_vindpm_active = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_pmic_vindpm_active" $false)
+          power_vbus_hard_floor_last_pmic_battery_discharging = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_pmic_battery_discharging" $false)
+          power_vbus_hard_floor_last_pmic_vsys_valid = Test-TrueValue (Get-ObjectProperty $j "power_vbus_hard_floor_last_pmic_vsys_valid" $false)
+          power_vbus_hard_floor_last_pmic_vsys_mv = Get-ObjectProperty $j "power_vbus_hard_floor_last_pmic_vsys_mv" $null
           power_pmic_vbus_present = Get-ObjectProperty $j "power_pmic_vbus_present" $null
           power_pmic_vbus_transitions = Get-ObjectProperty $j "power_pmic_vbus_transitions" $null
           power_pmic_vbus_loss_entries = Get-ObjectProperty $j "power_pmic_vbus_loss_entries" $null
           power_pmic_temp_c = Get-ObjectProperty $j "power_pmic_temp_c" $null
+          power_pmic_input_state_valid = Test-TrueValue (Get-ObjectProperty $j "power_pmic_input_state_valid" $false)
+          power_pmic_input_current_limited = Test-TrueValue (Get-ObjectProperty $j "power_pmic_input_current_limited" $false)
+          power_pmic_input_current_limit_samples = Get-ObjectProperty $j "power_pmic_input_current_limit_samples" $null
+          power_pmic_input_current_limit_entries = Get-ObjectProperty $j "power_pmic_input_current_limit_entries" $null
+          power_pmic_vindpm_active = Test-TrueValue (Get-ObjectProperty $j "power_pmic_vindpm_active" $false)
+          power_pmic_vindpm_samples = Get-ObjectProperty $j "power_pmic_vindpm_samples" $null
+          power_pmic_vindpm_entries = Get-ObjectProperty $j "power_pmic_vindpm_entries" $null
+          power_pmic_battery_direction = Get-ObjectProperty $j "power_pmic_battery_direction" $null
+          power_pmic_battery_supplement_samples = Get-ObjectProperty $j "power_pmic_battery_supplement_samples" $null
+          power_pmic_battery_supplement_entries = Get-ObjectProperty $j "power_pmic_battery_supplement_entries" $null
+          power_pmic_input_state_read_failures = Get-ObjectProperty $j "power_pmic_input_state_read_failures" $null
+          power_pmic_config_valid = Test-TrueValue (Get-ObjectProperty $j "power_pmic_config_valid" $false)
+          power_pmic_vindpm_target_mv = Get-ObjectProperty $j "power_pmic_vindpm_target_mv" $null
+          power_pmic_vindpm_configured = Test-TrueValue (Get-ObjectProperty $j "power_pmic_vindpm_configured" $false)
+          power_pmic_vindpm_config_mv = Get-ObjectProperty $j "power_pmic_vindpm_config_mv" $null
+          power_pmic_input_current_limit_config_ma = Get-ObjectProperty $j "power_pmic_input_current_limit_config_ma" $null
+          power_pmic_config_read_failures = Get-ObjectProperty $j "power_pmic_config_read_failures" $null
+          power_vsys_valid = Test-TrueValue (Get-ObjectProperty $j "power_vsys_valid" $false)
+          power_vsys_mv = Get-ObjectProperty $j "power_vsys_mv" $null
+          power_vsys_min_mv = Get-ObjectProperty $j "power_vsys_min_mv" $null
+          power_vsys_max_mv = Get-ObjectProperty $j "power_vsys_max_mv" $null
+          power_vsys_read_failures = Get-ObjectProperty $j "power_vsys_read_failures" $null
           power_forensics_enabled = Test-TrueValue (Get-ObjectProperty $j "power_forensics_enabled" $false)
           power_forensics_schema = [string](Get-ObjectProperty $j "power_forensics_schema" "")
           power_forensics_irq_enable_succeeded = Test-TrueValue (Get-ObjectProperty $j "power_forensics_irq_enable_succeeded" $false)
@@ -636,6 +672,12 @@ try {
         $powerForensicsClearFailuresBaseline = $records[$records.Count - 1].power_forensics_clear_failures
       }
       if ($records.Count -gt 0 -and $records[$records.Count - 1].ok -and
+          $null -eq $pmicInputStateReadFailuresBaseline) {
+        $pmicInputStateReadFailuresBaseline = $records[$records.Count - 1].power_pmic_input_state_read_failures
+        $pmicConfigReadFailuresBaseline = $records[$records.Count - 1].power_pmic_config_read_failures
+        $powerVsysReadFailuresBaseline = $records[$records.Count - 1].power_vsys_read_failures
+      }
+      if ($records.Count -gt 0 -and $records[$records.Count - 1].ok -and
           $null -eq $bodyRgbWriteFailuresBaseline) {
         $bodyRgbWriteFailuresBaseline = $records[$records.Count - 1].body_rgb_write_failures
         $bodyRgbWriteRetriesBaseline = $records[$records.Count - 1].body_rgb_write_retries
@@ -714,6 +756,26 @@ try {
         } else { $null }
         latestPowerBatteryMv = if ($records.Count -gt 0 -and $records[$records.Count - 1].ok) {
           $records[$records.Count - 1].power_battery_mv
+        } else { $null }
+        pmicInputTelemetrySamples = @($records | Where-Object { $_.ok -and $_.power_pmic_input_state_valid }).Count
+        pmicInputStateReadFailuresBaseline = $pmicInputStateReadFailuresBaseline
+        pmicConfigReadFailuresBaseline = $pmicConfigReadFailuresBaseline
+        powerVsysReadFailuresBaseline = $powerVsysReadFailuresBaseline
+        maxPmicInputCurrentLimitEntries = if (@($records | Where-Object { $_.ok -and $null -ne $_.power_pmic_input_current_limit_entries }).Count -gt 0) {
+          (@($records | Where-Object { $_.ok -and $null -ne $_.power_pmic_input_current_limit_entries }) |
+            Measure-Object -Property power_pmic_input_current_limit_entries -Maximum).Maximum
+        } else { $null }
+        maxPmicVindpmEntries = if (@($records | Where-Object { $_.ok -and $null -ne $_.power_pmic_vindpm_entries }).Count -gt 0) {
+          (@($records | Where-Object { $_.ok -and $null -ne $_.power_pmic_vindpm_entries }) |
+            Measure-Object -Property power_pmic_vindpm_entries -Maximum).Maximum
+        } else { $null }
+        maxPmicBatterySupplementEntries = if (@($records | Where-Object { $_.ok -and $null -ne $_.power_pmic_battery_supplement_entries }).Count -gt 0) {
+          (@($records | Where-Object { $_.ok -and $null -ne $_.power_pmic_battery_supplement_entries }) |
+            Measure-Object -Property power_pmic_battery_supplement_entries -Maximum).Maximum
+        } else { $null }
+        minPowerVsysMv = if (@($records | Where-Object { $_.ok -and $_.power_vsys_valid -and $null -ne $_.power_vsys_mv }).Count -gt 0) {
+          (@($records | Where-Object { $_.ok -and $_.power_vsys_valid -and $null -ne $_.power_vsys_mv }) |
+            Measure-Object -Property power_vsys_mv -Minimum).Minimum
         } else { $null }
         bridgeReadySamples = @($records | Where-Object { $_.ok -and $_.bridge -eq "ready" }).Count
         bridgeHealthySamples = @($records | Where-Object { $_.ok -and (Test-BridgeHealthyState $_.bridge) }).Count
@@ -880,6 +942,35 @@ try {
                 [int64]$powerForensicsClearFailuresBaseline) {
               $abortReason = "power_forensics_io_failure_observed"
               break
+            }
+            if ($ExpectedPmicVindpmMv -gt 0) {
+              if (-not $latestRecord.power_pmic_input_state_valid -or
+                  -not $latestRecord.power_pmic_config_valid -or
+                  -not $latestRecord.power_pmic_vindpm_configured -or
+                  [int]$latestRecord.power_pmic_vindpm_target_mv -ne $ExpectedPmicVindpmMv -or
+                  [int]$latestRecord.power_pmic_vindpm_config_mv -ne $ExpectedPmicVindpmMv -or
+                  -not $latestRecord.power_vsys_valid) {
+                $abortReason = "pmic_input_policy_not_applied"
+                break
+              }
+              if ($null -eq $pmicInputStateReadFailuresBaseline -or
+                  $null -eq $pmicConfigReadFailuresBaseline -or
+                  $null -eq $powerVsysReadFailuresBaseline -or
+                  $null -eq $latestRecord.power_pmic_input_state_read_failures -or
+                  $null -eq $latestRecord.power_pmic_config_read_failures -or
+                  $null -eq $latestRecord.power_vsys_read_failures) {
+                $abortReason = "pmic_input_policy_telemetry_missing"
+                break
+              }
+              if ([int64]$latestRecord.power_pmic_input_state_read_failures -gt
+                    [int64]$pmicInputStateReadFailuresBaseline -or
+                  [int64]$latestRecord.power_pmic_config_read_failures -gt
+                    [int64]$pmicConfigReadFailuresBaseline -or
+                  [int64]$latestRecord.power_vsys_read_failures -gt
+                    [int64]$powerVsysReadFailuresBaseline) {
+                $abortReason = "pmic_input_policy_io_failure_observed"
+                break
+              }
             }
           }
         }
@@ -1429,6 +1520,24 @@ $maxPowerVbusRejectedSamples = if (@($okRecords | Where-Object { $null -ne $_.po
   (@($okRecords | Where-Object { $null -ne $_.power_vbus_rejected_samples }) |
     Measure-Object -Property power_vbus_rejected_samples -Maximum).Maximum
 } else { $null }
+$pmicInputRecords = @($okRecords | Where-Object { $_.power_pmic_input_state_valid })
+$latestPmicInputRecord = $pmicInputRecords | Select-Object -Last 1
+$maxPmicInputCurrentLimitEntries = if ($pmicInputRecords.Count -gt 0) {
+  ($pmicInputRecords | Measure-Object -Property power_pmic_input_current_limit_entries -Maximum).Maximum
+} else { $null }
+$maxPmicVindpmEntries = if ($pmicInputRecords.Count -gt 0) {
+  ($pmicInputRecords | Measure-Object -Property power_pmic_vindpm_entries -Maximum).Maximum
+} else { $null }
+$maxPmicBatterySupplementEntries = if ($pmicInputRecords.Count -gt 0) {
+  ($pmicInputRecords | Measure-Object -Property power_pmic_battery_supplement_entries -Maximum).Maximum
+} else { $null }
+$vsysRecords = @($okRecords | Where-Object { $_.power_vsys_valid -and $null -ne $_.power_vsys_mv })
+$minPowerVsysMv = if ($vsysRecords.Count -gt 0) {
+  ($vsysRecords | Measure-Object -Property power_vsys_mv -Minimum).Minimum
+} else { $null }
+$maxPowerVsysMv = if ($vsysRecords.Count -gt 0) {
+  ($vsysRecords | Measure-Object -Property power_vsys_mv -Maximum).Maximum
+} else { $null }
 $latestPowerForensicsRecord = @($okRecords | Where-Object { $_.power_forensics_enabled }) | Select-Object -Last 1
 $latestPowerForensicsRuntimeEvents = if ($latestPowerForensicsRecord) {
   $latestPowerForensicsRecord.power_forensics_runtime_event_polls
@@ -1514,6 +1623,32 @@ if ($RequirePowerForensics) {
   }
   if ($null -ne $newPowerForensicsProtectiveEvents -and $newPowerForensicsProtectiveEvents -gt 0) {
     $issues.Add("power_forensics_protective_event_observed")
+  }
+  if ($ExpectedPmicVindpmMv -gt 0) {
+    if ($null -eq $latestPmicInputRecord -or
+        -not $latestPmicInputRecord.power_pmic_config_valid -or
+        -not $latestPmicInputRecord.power_pmic_vindpm_configured -or
+        [int]$latestPmicInputRecord.power_pmic_vindpm_target_mv -ne $ExpectedPmicVindpmMv -or
+        [int]$latestPmicInputRecord.power_pmic_vindpm_config_mv -ne $ExpectedPmicVindpmMv -or
+        -not $latestPmicInputRecord.power_vsys_valid) {
+      $issues.Add("pmic_input_policy_not_applied")
+    }
+    if ($null -eq $pmicInputStateReadFailuresBaseline -or
+        $null -eq $pmicConfigReadFailuresBaseline -or
+        $null -eq $powerVsysReadFailuresBaseline -or
+        $null -eq $latestPmicInputRecord -or
+        $null -eq $latestPmicInputRecord.power_pmic_input_state_read_failures -or
+        $null -eq $latestPmicInputRecord.power_pmic_config_read_failures -or
+        $null -eq $latestPmicInputRecord.power_vsys_read_failures) {
+      $issues.Add("pmic_input_policy_telemetry_missing")
+    } elseif ([int64]$latestPmicInputRecord.power_pmic_input_state_read_failures -gt
+                [int64]$pmicInputStateReadFailuresBaseline -or
+              [int64]$latestPmicInputRecord.power_pmic_config_read_failures -gt
+                [int64]$pmicConfigReadFailuresBaseline -or
+              [int64]$latestPmicInputRecord.power_vsys_read_failures -gt
+                [int64]$powerVsysReadFailuresBaseline) {
+      $issues.Add("pmic_input_policy_io_failure_observed")
+    }
   }
 }
 if ($RequireFinalIntegration) {
@@ -1644,6 +1779,7 @@ $summary = [ordered]@{
     requireRvcWorker = [bool]$RequireRvcWorker
     requirePowerCoordinator = [bool]$RequirePowerCoordinator
     requirePowerForensics = [bool]$RequirePowerForensics
+    expectedPmicVindpmMv = $ExpectedPmicVindpmMv
     requireFinalIntegration = [bool]$RequireFinalIntegration
     requireCameraCapture = [bool]$RequireCameraCapture
     requireCameraHostVision = [bool]$RequireCameraHostVision
@@ -1725,6 +1861,16 @@ $summary = [ordered]@{
   latestPowerChargingState = $latestPowerChargingState
   maxPowerReadFailures = $maxPowerReadFailures
   maxPowerVbusRejectedSamples = $maxPowerVbusRejectedSamples
+  pmicInputTelemetrySamples = $pmicInputRecords.Count
+  maxPmicInputCurrentLimitEntries = $maxPmicInputCurrentLimitEntries
+  maxPmicVindpmEntries = $maxPmicVindpmEntries
+  maxPmicBatterySupplementEntries = $maxPmicBatterySupplementEntries
+  minPowerVsysMv = $minPowerVsysMv
+  maxPowerVsysMv = $maxPowerVsysMv
+  latestPmicInput = $latestPmicInputRecord
+  pmicInputStateReadFailuresBaseline = $pmicInputStateReadFailuresBaseline
+  pmicConfigReadFailuresBaseline = $pmicConfigReadFailuresBaseline
+  powerVsysReadFailuresBaseline = $powerVsysReadFailuresBaseline
   powerForensicsRuntimeEventsBaseline = $powerForensicsRuntimeEventsBaseline
   latestPowerForensicsRuntimeEvents = $latestPowerForensicsRuntimeEvents
   newPowerForensicsRuntimeEvents = $newPowerForensicsRuntimeEvents

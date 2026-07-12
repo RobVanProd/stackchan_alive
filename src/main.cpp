@@ -280,6 +280,17 @@ static_assert(STACKCHAN_OTA_MIN_FREE_HEAP_BYTES >= 24576,
 #define STACKCHAN_LOW_INPUT_CHARGE_CURRENT_MA 0
 #endif
 
+#ifndef STACKCHAN_PMIC_VINDPM_MV
+#define STACKCHAN_PMIC_VINDPM_MV 0
+#endif
+
+static_assert(STACKCHAN_PMIC_VINDPM_MV == 0 ||
+                  (STACKCHAN_PMIC_VINDPM_MV >= 3880 && STACKCHAN_PMIC_VINDPM_MV <= 5080),
+              "AXP2101 VINDPM must be disabled or within its 3.88-5.08 V range");
+static_assert(STACKCHAN_PMIC_VINDPM_MV == 0 ||
+                  ((STACKCHAN_PMIC_VINDPM_MV - 3880) % 80) == 0,
+              "AXP2101 VINDPM must align to an 80 mV register step");
+
 #ifndef STACKCHAN_ENABLE_BODY_POWER_MONITOR
 #define STACKCHAN_ENABLE_BODY_POWER_MONITOR 0
 #endif
@@ -690,6 +701,32 @@ bool gPowerPmicBatteryPresent = false;
 bool gPowerPmicTemperatureValid = false;
 float gPowerPmicTemperatureC = 0.0f;
 float gPowerPmicTemperatureMaxC = 0.0f;
+bool gPowerPmicInputStateValid = false;
+uint8_t gPowerPmicStatus1Raw = 0;
+uint8_t gPowerPmicStatus2Raw = 0;
+bool gPowerPmicInputCurrentLimited = false;
+bool gPowerPmicVindpmActive = false;
+uint8_t gPowerPmicBatteryDirection = 0;
+uint8_t gPowerPmicChargeStatus = 0;
+uint32_t gPowerPmicInputCurrentLimitSamples = 0;
+uint32_t gPowerPmicInputCurrentLimitEntries = 0;
+uint32_t gPowerPmicVindpmSamples = 0;
+uint32_t gPowerPmicVindpmEntries = 0;
+uint32_t gPowerPmicBatterySupplementSamples = 0;
+uint32_t gPowerPmicBatterySupplementEntries = 0;
+uint32_t gPowerPmicInputStateReadFailures = 0;
+bool gPowerPmicConfigValid = false;
+uint8_t gPowerPmicMinSystemRaw = 0;
+uint8_t gPowerPmicVindpmRaw = 0;
+uint8_t gPowerPmicInputCurrentLimitRaw = 0;
+bool gPowerPmicVindpmConfigured = false;
+uint32_t gPowerPmicConfigReadFailures = 0;
+bool gPowerVsysValid = false;
+int16_t gPowerVsysMv = -1;
+int16_t gPowerVsysMinMv = 0;
+int16_t gPowerVsysMaxMv = 0;
+uint32_t gPowerVsysSamples = 0;
+uint32_t gPowerVsysReadFailures = 0;
 bool gPowerBatteryValid = false;
 int16_t gPowerBatteryMv = -1;
 int16_t gPowerBatteryMinMv = 0;
@@ -2502,6 +2539,108 @@ void pollPmicPowerForensics(uint32_t nowMs) {
 }
 #endif
 
+constexpr uint8_t kAxp2101Address = 0x34;
+constexpr uint32_t kAxp2101I2cFrequency = 400000;
+
+bool configurePmicInputPolicy() {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  if (!STACKCHAN_BASE_USB_POWER_INPUT || STACKCHAN_PMIC_VINDPM_MV == 0) {
+    return true;
+  }
+  const uint8_t current = M5.In_I2C.readRegister8(
+      kAxp2101Address, 0x15, kAxp2101I2cFrequency);
+  const uint8_t desired = static_cast<uint8_t>(
+      (current & 0xF0) | axp2101VindpmRegisterForMv(STACKCHAN_PMIC_VINDPM_MV));
+  if (!M5.In_I2C.writeRegister8(
+          kAxp2101Address, 0x15, desired, kAxp2101I2cFrequency)) {
+    return false;
+  }
+  const uint8_t readback = M5.In_I2C.readRegister8(
+      kAxp2101Address, 0x15, kAxp2101I2cFrequency);
+  return (readback & 0x0F) == (desired & 0x0F);
+#else
+  return true;
+#endif
+}
+
+void samplePmicInputTelemetry() {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  uint8_t status[2] = {};
+  if (M5.In_I2C.readRegister(
+          kAxp2101Address, 0x00, status, sizeof(status), kAxp2101I2cFrequency)) {
+    const bool wasCurrentLimited = gPowerPmicInputCurrentLimited;
+    const bool wasVindpmActive = gPowerPmicVindpmActive;
+    const bool wasSupplementing = gPowerPmicInputStateValid &&
+                                  gPowerPmicBatteryDirection == 2 &&
+                                  (gPowerPmicStatus1Raw & 0x20) != 0;
+    gPowerPmicStatus1Raw = status[0];
+    gPowerPmicStatus2Raw = status[1];
+    gPowerPmicInputCurrentLimited = (status[0] & 0x01) != 0;
+    gPowerPmicVindpmActive = (status[1] & 0x08) != 0;
+    gPowerPmicBatteryDirection = static_cast<uint8_t>((status[1] >> 5) & 0x03);
+    gPowerPmicChargeStatus = static_cast<uint8_t>(status[1] & 0x07);
+    const bool supplementing = gPowerPmicBatteryDirection == 2 && (status[0] & 0x20) != 0;
+    if (gPowerPmicInputCurrentLimited) {
+      ++gPowerPmicInputCurrentLimitSamples;
+      if (!gPowerPmicInputStateValid || !wasCurrentLimited) {
+        ++gPowerPmicInputCurrentLimitEntries;
+      }
+    }
+    if (gPowerPmicVindpmActive) {
+      ++gPowerPmicVindpmSamples;
+      if (!gPowerPmicInputStateValid || !wasVindpmActive) {
+        ++gPowerPmicVindpmEntries;
+      }
+    }
+    if (supplementing) {
+      ++gPowerPmicBatterySupplementSamples;
+      if (!wasSupplementing) {
+        ++gPowerPmicBatterySupplementEntries;
+      }
+    }
+    gPowerPmicInputStateValid = true;
+  } else {
+    ++gPowerPmicInputStateReadFailures;
+  }
+
+  uint8_t config[3] = {};
+  if (M5.In_I2C.readRegister(
+          kAxp2101Address, 0x14, config, sizeof(config), kAxp2101I2cFrequency)) {
+    gPowerPmicMinSystemRaw = config[0];
+    gPowerPmicVindpmRaw = config[1];
+    gPowerPmicInputCurrentLimitRaw = config[2];
+    if (STACKCHAN_PMIC_VINDPM_MV > 0) {
+      gPowerPmicVindpmConfigured =
+          (config[1] & 0x0F) == axp2101VindpmRegisterForMv(STACKCHAN_PMIC_VINDPM_MV);
+    }
+    gPowerPmicConfigValid = true;
+  } else {
+    ++gPowerPmicConfigReadFailures;
+  }
+
+  uint8_t vsys[2] = {};
+  if (M5.In_I2C.readRegister(
+          kAxp2101Address, 0x3A, vsys, sizeof(vsys), kAxp2101I2cFrequency)) {
+    const int16_t millivolts = static_cast<int16_t>(((vsys[0] & 0x3F) << 8) | vsys[1]);
+    if (millivolts >= 2500 && millivolts <= 6000) {
+      gPowerVsysMv = millivolts;
+      if (!gPowerVsysValid || millivolts < gPowerVsysMinMv) {
+        gPowerVsysMinMv = millivolts;
+      }
+      if (!gPowerVsysValid || millivolts > gPowerVsysMaxMv) {
+        gPowerVsysMaxMv = millivolts;
+      }
+      gPowerVsysValid = true;
+      ++gPowerVsysSamples;
+    } else {
+      ++gPowerVsysReadFailures;
+    }
+  } else {
+    ++gPowerVsysReadFailures;
+  }
+#endif
+}
+
 void initializeManagedPowerHardware(uint32_t nowMs) {
 #if defined(ARDUINO_ARCH_ESP32)
   if (STACKCHAN_BASE_USB_POWER_INPUT) {
@@ -2519,6 +2658,7 @@ void initializeManagedPowerHardware(uint32_t nowMs) {
     gBatteryChargeConfigured = true;
     gAppliedChargeCurrentMa = STACKCHAN_CHARGE_CURRENT_MA;
   }
+  gPowerPmicVindpmConfigured = configurePmicInputPolicy();
 
   gPowerCoordinator.begin(gBaseInputModeConfigured,
                           STACKCHAN_CHARGE_CURRENT_MA,
@@ -2551,7 +2691,11 @@ void initializeManagedPowerHardware(uint32_t nowMs) {
   Serial.print(F(" charge_current_ma="));
   Serial.print(STACKCHAN_CHARGE_CURRENT_MA);
   Serial.print(F(" body_monitor="));
-  Serial.println(gBodyPowerMonitorReady ? 1 : 0);
+  Serial.print(gBodyPowerMonitorReady ? 1 : 0);
+  Serial.print(F(" vindpm_target_mv="));
+  Serial.print(STACKCHAN_PMIC_VINDPM_MV);
+  Serial.print(F(" vindpm_configured="));
+  Serial.println(gPowerPmicVindpmConfigured ? 1 : 0);
 #else
   (void)nowMs;
   gPowerCoordinator.begin(false, 0, 0, 0);
@@ -2635,6 +2779,7 @@ bool samplePowerTelemetry(uint32_t nowMs, bool force) {
 
   gPowerTelemetryLastReadMs = nowMs;
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
+  samplePmicInputTelemetry();
   const bool pmicVbusPresent = M5.Power.Axp2101.isVBUS();
   const bool pmicBatteryPresent = M5.Power.Axp2101.getBatState();
   const float pmicTemperatureC = M5.Power.Axp2101.getInternalTemperature();
@@ -2741,6 +2886,11 @@ bool samplePowerTelemetry(uint32_t nowMs, bool force) {
   floorSample.servoRailEnabled = servoPower.railEnabled;
   floorSample.servoTorqueEnabled = servoPower.torqueEnabled;
   floorSample.speakerPowerActive = gSpeakerSink.speakerPowerActive() != 0;
+  floorSample.pmicInputCurrentLimited = gPowerPmicInputCurrentLimited;
+  floorSample.pmicVindpmActive = gPowerPmicVindpmActive;
+  floorSample.pmicBatteryDischarging = gPowerPmicBatteryDirection == 2;
+  floorSample.pmicVsysValid = gPowerVsysValid;
+  floorSample.pmicVsysMv = gPowerVsysMv;
   if (gPowerFloorTracker.update(floorSample, nowMs)) {
     Serial.print(F("[power] hard_floor_entry=1 vbus_mv="));
     Serial.print(vbusMv);
@@ -2749,7 +2899,13 @@ bool samplePowerTelemetry(uint32_t nowMs, bool force) {
     Serial.print(F(" body_bus_v="));
     Serial.print(gBodyPowerTelemetryValid ? gBodyPowerBusV : -1.0f, 3);
     Serial.print(F(" body_current_ma="));
-    Serial.println(gBodyPowerTelemetryValid ? gBodyPowerCurrentMa : 0.0f, 1);
+    Serial.print(gBodyPowerTelemetryValid ? gBodyPowerCurrentMa : 0.0f, 1);
+    Serial.print(F(" vsys_mv="));
+    Serial.print(gPowerVsysValid ? gPowerVsysMv : -1);
+    Serial.print(F(" vindpm="));
+    Serial.print(gPowerPmicVindpmActive ? 1 : 0);
+    Serial.print(F(" input_limited="));
+    Serial.println(gPowerPmicInputCurrentLimited ? 1 : 0);
   }
   gPowerTelemetryValid = true;
   ++gPowerTelemetrySamples;
@@ -7402,6 +7558,56 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
     append(",\"power_pmic_temp_c\":null");
     append(",\"power_pmic_temp_max_c\":null");
   }
+  append(",\"power_pmic_input_state_valid\":%s", gPowerPmicInputStateValid ? "true" : "false");
+  append(",\"power_pmic_status1_raw\":%u", static_cast<unsigned>(gPowerPmicStatus1Raw));
+  append(",\"power_pmic_status2_raw\":%u", static_cast<unsigned>(gPowerPmicStatus2Raw));
+  append(",\"power_pmic_input_current_limited\":%s",
+         gPowerPmicInputCurrentLimited ? "true" : "false");
+  append(",\"power_pmic_input_current_limit_samples\":%lu",
+         static_cast<unsigned long>(gPowerPmicInputCurrentLimitSamples));
+  append(",\"power_pmic_input_current_limit_entries\":%lu",
+         static_cast<unsigned long>(gPowerPmicInputCurrentLimitEntries));
+  append(",\"power_pmic_vindpm_active\":%s", gPowerPmicVindpmActive ? "true" : "false");
+  append(",\"power_pmic_vindpm_samples\":%lu",
+         static_cast<unsigned long>(gPowerPmicVindpmSamples));
+  append(",\"power_pmic_vindpm_entries\":%lu",
+         static_cast<unsigned long>(gPowerPmicVindpmEntries));
+  append(",\"power_pmic_battery_direction\":\"%s\"",
+         axp2101BatteryDirectionName(gPowerPmicStatus2Raw));
+  append(",\"power_pmic_charge_status\":%u", static_cast<unsigned>(gPowerPmicChargeStatus));
+  append(",\"power_pmic_battery_supplement_samples\":%lu",
+         static_cast<unsigned long>(gPowerPmicBatterySupplementSamples));
+  append(",\"power_pmic_battery_supplement_entries\":%lu",
+         static_cast<unsigned long>(gPowerPmicBatterySupplementEntries));
+  append(",\"power_pmic_input_state_read_failures\":%lu",
+         static_cast<unsigned long>(gPowerPmicInputStateReadFailures));
+  append(",\"power_pmic_config_valid\":%s", gPowerPmicConfigValid ? "true" : "false");
+  append(",\"power_pmic_min_system_config_mv\":%u",
+         static_cast<unsigned>(3200 + (gPowerPmicMinSystemRaw & 0x07) * 100));
+  append(",\"power_pmic_vindpm_target_mv\":%u",
+         static_cast<unsigned>(STACKCHAN_PMIC_VINDPM_MV));
+  append(",\"power_pmic_vindpm_configured\":%s",
+         gPowerPmicVindpmConfigured ? "true" : "false");
+  append(",\"power_pmic_vindpm_config_mv\":%u",
+         static_cast<unsigned>(axp2101VindpmMvFromRegister(gPowerPmicVindpmRaw)));
+  append(",\"power_pmic_input_current_limit_config_ma\":%u",
+         static_cast<unsigned>(axp2101InputCurrentLimitMaFromRegister(
+             gPowerPmicInputCurrentLimitRaw)));
+  append(",\"power_pmic_config_read_failures\":%lu",
+         static_cast<unsigned long>(gPowerPmicConfigReadFailures));
+  append(",\"power_vsys_valid\":%s", gPowerVsysValid ? "true" : "false");
+  if (gPowerVsysValid) {
+    append(",\"power_vsys_mv\":%d", gPowerVsysMv);
+    append(",\"power_vsys_min_mv\":%d", gPowerVsysMinMv);
+    append(",\"power_vsys_max_mv\":%d", gPowerVsysMaxMv);
+  } else {
+    append(",\"power_vsys_mv\":null");
+    append(",\"power_vsys_min_mv\":null");
+    append(",\"power_vsys_max_mv\":null");
+  }
+  append(",\"power_vsys_samples\":%lu", static_cast<unsigned long>(gPowerVsysSamples));
+  append(",\"power_vsys_read_failures\":%lu",
+         static_cast<unsigned long>(gPowerVsysReadFailures));
   append(",\"power_battery_valid\":%s", gPowerBatteryValid ? "true" : "false");
   if (gPowerBatteryValid) {
     append(",\"power_battery_mv\":%d", gPowerBatteryMv);
@@ -7466,6 +7672,16 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          powerFloor.lastHardFloorServoTorqueEnabled ? "true" : "false");
   append(",\"power_vbus_hard_floor_last_speaker_power_active\":%s",
          powerFloor.lastHardFloorSpeakerPowerActive ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_pmic_input_current_limited\":%s",
+         powerFloor.lastHardFloorPmicInputCurrentLimited ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_pmic_vindpm_active\":%s",
+         powerFloor.lastHardFloorPmicVindpmActive ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_pmic_battery_discharging\":%s",
+         powerFloor.lastHardFloorPmicBatteryDischarging ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_pmic_vsys_valid\":%s",
+         powerFloor.lastHardFloorPmicVsysValid ? "true" : "false");
+  append(",\"power_vbus_hard_floor_last_pmic_vsys_mv\":%d",
+         powerFloor.lastHardFloorPmicVsysMv);
   append(",\"power_base_input_mode\":%s", gBaseInputModeConfigured ? "true" : "false");
   append(",\"power_external_output_enabled\":%s", gExternalOutputEnabled ? "true" : "false");
   append(",\"power_charge_configured\":%s", gBatteryChargeConfigured ? "true" : "false");

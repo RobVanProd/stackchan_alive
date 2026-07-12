@@ -13,6 +13,8 @@ $required = @(
   "Final integration vision is not ready and advancing; motion was not enabled",
   "Stop-MotionAndThrow", "preflight-failure-motion-stop.json",
   "Could not launch the soak runner", "RequireFinalIntegration"
+  "ExpectedPmicVindpmMv", "pmic-input-policy-preflight-failure.json",
+  "pmic_input_policy_not_applied"
 )
 foreach ($fragment in $required) {
   if (-not $source.Contains($fragment)) {

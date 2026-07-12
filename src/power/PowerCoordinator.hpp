@@ -111,6 +111,11 @@ struct PowerFloorSample {
   bool servoRailEnabled = false;
   bool servoTorqueEnabled = false;
   bool speakerPowerActive = false;
+  bool pmicInputCurrentLimited = false;
+  bool pmicVindpmActive = false;
+  bool pmicBatteryDischarging = false;
+  bool pmicVsysValid = false;
+  int16_t pmicVsysMv = -1;
 };
 
 struct PowerFloorTelemetry {
@@ -135,6 +140,11 @@ struct PowerFloorTelemetry {
   bool lastHardFloorServoRailEnabled = false;
   bool lastHardFloorServoTorqueEnabled = false;
   bool lastHardFloorSpeakerPowerActive = false;
+  bool lastHardFloorPmicInputCurrentLimited = false;
+  bool lastHardFloorPmicVindpmActive = false;
+  bool lastHardFloorPmicBatteryDischarging = false;
+  bool lastHardFloorPmicVsysValid = false;
+  int16_t lastHardFloorPmicVsysMv = -1;
 };
 
 class PowerFloorTracker {
@@ -186,5 +196,9 @@ class PowerCoordinator {
 
 const char* powerOperatingModeName(PowerOperatingMode mode);
 bool shouldPreemptMotionForAudio(const MotionAudioActivity& activity);
+uint8_t axp2101VindpmRegisterForMv(uint16_t millivolts);
+uint16_t axp2101VindpmMvFromRegister(uint8_t registerValue);
+uint16_t axp2101InputCurrentLimitMaFromRegister(uint8_t registerValue);
+const char* axp2101BatteryDirectionName(uint8_t status2);
 
 }  // namespace stackchan

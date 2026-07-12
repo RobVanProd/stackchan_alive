@@ -2792,6 +2792,11 @@ void test_power_floor_tracker_records_confirmed_event_context() {
   low.servoRailEnabled = false;
   low.servoTorqueEnabled = false;
   low.speakerPowerActive = false;
+  low.pmicInputCurrentLimited = true;
+  low.pmicVindpmActive = true;
+  low.pmicBatteryDischarging = true;
+  low.pmicVsysValid = true;
+  low.pmicVsysMv = 3650;
   TEST_ASSERT_TRUE(tracker.update(low, 200));
 
   PowerFloorTelemetry telemetry = tracker.telemetry();
@@ -2809,6 +2814,29 @@ void test_power_floor_tracker_records_confirmed_event_context() {
   TEST_ASSERT_TRUE(telemetry.lastHardFloorMotionRequested);
   TEST_ASSERT_FALSE(telemetry.lastHardFloorServoRailEnabled);
   TEST_ASSERT_FALSE(telemetry.lastHardFloorServoTorqueEnabled);
+  TEST_ASSERT_TRUE(telemetry.lastHardFloorPmicInputCurrentLimited);
+  TEST_ASSERT_TRUE(telemetry.lastHardFloorPmicVindpmActive);
+  TEST_ASSERT_TRUE(telemetry.lastHardFloorPmicBatteryDischarging);
+  TEST_ASSERT_TRUE(telemetry.lastHardFloorPmicVsysValid);
+  TEST_ASSERT_EQUAL_INT16(3650, telemetry.lastHardFloorPmicVsysMv);
+}
+
+void test_axp2101_input_policy_encodes_documented_limits() {
+  TEST_ASSERT_EQUAL_UINT8(0, axp2101VindpmRegisterForMv(3800));
+  TEST_ASSERT_EQUAL_UINT8(6, axp2101VindpmRegisterForMv(4360));
+  TEST_ASSERT_EQUAL_UINT8(9, axp2101VindpmRegisterForMv(4600));
+  TEST_ASSERT_EQUAL_UINT8(15, axp2101VindpmRegisterForMv(5200));
+  TEST_ASSERT_EQUAL_UINT16(3880, axp2101VindpmMvFromRegister(0));
+  TEST_ASSERT_EQUAL_UINT16(4600, axp2101VindpmMvFromRegister(9));
+  TEST_ASSERT_EQUAL_UINT16(5080, axp2101VindpmMvFromRegister(0xFF));
+  TEST_ASSERT_EQUAL_UINT16(100, axp2101InputCurrentLimitMaFromRegister(0));
+  TEST_ASSERT_EQUAL_UINT16(1500, axp2101InputCurrentLimitMaFromRegister(4));
+  TEST_ASSERT_EQUAL_UINT16(2000, axp2101InputCurrentLimitMaFromRegister(5));
+  TEST_ASSERT_EQUAL_UINT16(0, axp2101InputCurrentLimitMaFromRegister(6));
+  TEST_ASSERT_EQUAL_STRING("standby", axp2101BatteryDirectionName(0x00));
+  TEST_ASSERT_EQUAL_STRING("charging", axp2101BatteryDirectionName(0x20));
+  TEST_ASSERT_EQUAL_STRING("discharging", axp2101BatteryDirectionName(0x40));
+  TEST_ASSERT_EQUAL_STRING("reserved", axp2101BatteryDirectionName(0x60));
 }
 
 void test_power_floor_tracker_counts_entries_not_every_low_sample() {
@@ -6901,6 +6929,7 @@ int main() {
   RUN_TEST(test_power_coordinator_holds_derated_charge_after_load);
   RUN_TEST(test_power_floor_tracker_records_confirmed_event_context);
   RUN_TEST(test_power_floor_tracker_counts_entries_not_every_low_sample);
+  RUN_TEST(test_axp2101_input_policy_encodes_documented_limits);
   RUN_TEST(test_power_forensics_preserves_boot_mask_and_prioritizes_protection);
   RUN_TEST(test_power_forensics_records_runtime_event_context_and_each_cause);
   RUN_TEST(test_power_forensics_ignores_empty_polls_and_counts_read_failures);

@@ -29,6 +29,7 @@ param(
   [switch]$BodyClear,
   [switch]$ConfirmServoRisk,
   [switch]$RequirePowerForensics,
+  [int]$ExpectedPmicVindpmMv = 0,
   [switch]$RequireFinalIntegration,
   [switch]$AllowLegacyMotionTelemetry
 )
@@ -41,6 +42,12 @@ Set-Location $RepoRoot
 if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
   $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
   $EvidenceRoot = "output\pc-brain\full-system-soak-warm-rocm-servo-$stamp"
+}
+
+if ($ExpectedPmicVindpmMv -ne 0 -and
+    ($ExpectedPmicVindpmMv -lt 3880 -or $ExpectedPmicVindpmMv -gt 5080 -or
+      (($ExpectedPmicVindpmMv - 3880) % 80) -ne 0)) {
+  throw "ExpectedPmicVindpmMv must be 0 or an 80 mV step from 3880 through 5080."
 }
 
 if (-not $OperatorPresent -or -not $BodyClear -or -not $ConfirmServoRisk) {
@@ -254,6 +261,23 @@ if ($RequirePowerForensics -and
   } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $forensicsFailurePath -Encoding UTF8
   throw "PMIC power forensics is not armed; motion was not enabled. Flash stackchan_release_forensics and verify /debug. Evidence: $forensicsFailurePath."
 }
+if ($ExpectedPmicVindpmMv -gt 0 -and
+    (-not [bool]$before.power_pmic_input_state_valid -or
+     -not [bool]$before.power_pmic_config_valid -or
+     -not [bool]$before.power_pmic_vindpm_configured -or
+     [int]$before.power_pmic_vindpm_target_mv -ne $ExpectedPmicVindpmMv -or
+     [int]$before.power_pmic_vindpm_config_mv -ne $ExpectedPmicVindpmMv -or
+     -not [bool]$before.power_vsys_valid)) {
+  $inputPolicyFailurePath = Join-Path $evidencePath "pmic-input-policy-preflight-failure.json"
+  [ordered]@{
+    schema = "stackchan.pmic-input-policy-preflight-failure.v1"
+    capturedAt = (Get-Date).ToString("o")
+    reason = "pmic_input_policy_not_applied"
+    expectedVindpmMv = $ExpectedPmicVindpmMv
+    before = $before
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $inputPolicyFailurePath -Encoding UTF8
+  throw "PMIC input policy is not applied; motion was not enabled. Evidence: $inputPolicyFailurePath."
+}
 $visionBefore = $null
 $visionAfter = $null
 $visionSocketRemote = $null
@@ -349,6 +373,7 @@ $preflight = [ordered]@{
   after = $after
   motionTelemetryPresent = $motionTelemetryPresent
   powerForensicsRequired = [bool]$RequirePowerForensics
+  expectedPmicVindpmMv = $ExpectedPmicVindpmMv
   powerForensicsArmed = [bool]$after.power_forensics_enabled -and
     [bool]$after.power_forensics_irq_enable_succeeded -and
     [bool]$after.power_forensics_boot_status_valid
@@ -469,6 +494,9 @@ if (-not $AllowLegacyMotionTelemetry) {
 }
 if ($RequirePowerForensics) {
   $args += "-RequirePowerForensics"
+}
+if ($ExpectedPmicVindpmMv -gt 0) {
+  $args += @("-ExpectedPmicVindpmMv", [string]$ExpectedPmicVindpmMv)
 }
 if ($RequireFinalIntegration) {
   $args += "-RequireFinalIntegration"

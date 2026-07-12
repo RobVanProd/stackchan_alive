@@ -1,6 +1,6 @@
 # Stackchan Power Blackout Forensics
 
-Status: flashed diagnostic lead; short wall/no-motion/servo qualification passed; untouched failure capture pending.
+Status: PMIC input-policy candidate built; staged no-motion and actuator qualification pending.
 
 ## What The Evidence Says
 
@@ -32,10 +32,37 @@ root cause.
   because the robot did not reset or go offline. The older v1 telemetry allowed a later
   `vbus_insert` to overwrite the protective event's snapshot, so its exact event-time load and
   voltage context is unavailable.
+- On 2026-07-12 the exact `e6b80f32` release candidate ran 2,702 seconds with 529/529 successful
+  polls before the strict runner stopped it for a confirmed 4.397 V board-reported VBUS floor.
+  The PMIC still reported VBUS present, and there was no reset, bridge/network loss, display or
+  thermal breach, PMIC VBUS-loss transition, or protective IRQ. VBUS, battery voltage, and the
+  independent body-bus measurement fell together. The coordinator removed servo rail and torque,
+  but the rails continued falling for about 35 seconds before the hard-floor event. Several
+  minutes after verified motion stop, VBUS had recovered to 4.882-4.921 V and the configured
+  700 mA charge current was restored. This is a sustained correlated sag signature; it does not
+  identify whether the source, cable, base, board, battery path, or load interaction is the cause.
 
 The correct statement is: there are confirmed historical full-off events plus separate transient
 HTTP latency events. Neither the motors, the PC USB source, the wall source, heat, nor firmware
 task starvation has enough evidence to be named the universal cause.
+
+## Current Input-Policy Experiment
+
+The AXP2101 datasheet defines VINDPM at register `0x15` in 80 mV steps from 3.88 V to
+5.08 V. Its documented default is 4.36 V. When VBUS reaches VINDPM, the charger reduces charge
+current before the battery supplements the system load. That default is below this project's
+4.40 V hard evidence floor, so it can react too late for the strict release gate.
+
+The current paired candidate sets and verifies VINDPM at 4.60 V while leaving the documented
+1.5 A input-current limit unchanged. This is intentionally conservative: it changes when charging
+yields, not the maximum current requested from the external source. It also records PMIC voltage
+regulation, input-current limiting, battery direction/supplement, configuration readback, and VSYS
+voltage in every strict soak poll and hard-floor snapshot.
+
+This is a testable mitigation, not a root-cause claim. The strict wrapper refuses motion unless
+the 4.60 V readback and VSYS telemetry are valid, and it stops on any new PMIC input-policy read
+failure. Qualification order is no-motion, short actuator, 60-minute actuator, then eight-hour
+actuator only after each prior gate passes.
 
 ## Instrumented Candidate
 
