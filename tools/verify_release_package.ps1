@@ -830,7 +830,8 @@ $retiredRvcSharePatterns = @(
   "stackchan_rvc_bright_robot_less_static.wav", "RVC_AUDITIONS.md",
   "RVC Voice Auditions", "RVC MP3 Readme", "RVC_AUDITION.html",
   "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3",
-  "stackchan_rvc_safety_neutral.mp3"
+  "stackchan_rvc_safety_neutral.mp3", "Voice Source Gate",
+  "RVC Candidate Base", "candidate-pending-rights-review"
 )
 foreach ($pattern in @(".zip.sha256", "Get-FileHash", "ZIP SHA256", "Wait-LocalUrlReady", "PublicUrlReadyWaitSeconds", "Wait-PublicUrlReady", "Find-CloudflarePublicUrl", "publicUrlReady", "Stop-ExistingShare", "Remove-ShareRoot", "Test-TcpPortAvailable", "Test-SharePortAvailable", "Find-AvailableTcpPort", "Requested share port", "Get-LanShareUrls", "Get-ShareLanDiagnosticsForBind", "Test-ShareUrlsFromHost", "OPEN_LOCAL_SHARE.cmd", "Write-OpenLocalShareHelper", "OpenLocal", "Invoke-OpenLocalShare", "openLocalRequested", "LAN_TROUBLESHOOTING.md", "share_probe_report.json", "stackchan.share-probe-report.v1", "hostProbeResults", "Assert-BindAddressAvailable", "Same-network URL candidates", "loopbackUrl", "lanUrls", "ROLLOUT_STATUS.md", "ROLLOUT_STATUS.json", "Next Action", "rolloutNextAction", "rolloutNextCommand", "ActionsStatusPath", "Pending Promotion Gates", "promotionGateItems", "hardwareGates", "requiredEvidence", "Do not mark this release consumer-ready", "Face Phase A", "phase_a_idle_10s.gif", "phase_a_blink_filmstrip_50ms.png", "phase_a_unlabeled_expression_sheet.png", "Face Phase B", "phase_b_unlabeled_expression_sheet.png", "procedural eye-corner cuts", "two-curve open mouth", "authored L0 pose keys", "Face Phase C", "phase_c_idle_10s.gif", "autonomic blink", "saccade jumps", "breathing offset", "Face Phase D", "phase_d_idle_to_listen_filmstrip_50ms.png", "phase_d_think_to_speak_filmstrip_50ms.png", "phase_d_idle_to_sleep_filmstrip_50ms.png", "transition choreography", "anticipation", "channel lag", "Face Phase E", "phase_e_speech_reactive_6s.gif", "speech envelope sidecar", "viseme-lite", "tools/verify_face_phase_e.ps1", "Arrival-Day Evidence Loop", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "speech envelope mouth demo", "RUN_PROGRESS_CHECK.cmd", "RUN_EVIDENCE_VERIFY.cmd", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "Hardware Audio Evidence", "AUDIO_REVIEW.md", "real-device speaker sample", "Generated source WAVs alone do not count", "Dependency Provenance", "dependency_lock.json", "Voice Source Gate", "VOICE_SOURCE_PROVENANCE_TEMPLATE.md", "voice_source_provenance.yaml", "RVC Candidate Base", "voice_rvc_base.yaml", "candidate-pending-rights-review", "tools/verify_rvc_voice_base.ps1", "RVC Voice Auditions", "stackchan_rvc_neutral.wav", "stackchan_rvc_bright_robot.wav", "stackchan_rvc_bright_robot_less_static.wav", "voice/rvc/README.md", "RVC MP3 Readme", "RVC_AUDITION.html", "RVC_AUDITIONS.md", "stackchan_rvc_bright_robot.mp3", "stackchan_rvc_thinking_neutral.mp3", "stackchan_rvc_safety_neutral.mp3")) {
   if ($retiredRvcSharePatterns -contains $pattern) { continue }
@@ -3166,14 +3167,14 @@ foreach ($pattern in @("model.pth", "model.index", "private paired reference rob
 if ($releaseNotes -notmatch "READINESS_REPORT.md") {
   throw "RELEASE_NOTES.md missing readiness report reference"
 }
-foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "sim-vs-hardware comparison", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "model.pth", "model.index", "SHA-256", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
+foreach ($pattern in @("No-hardware simulation quick check", "tools/run_prearrival_sim_check.cmd", "PREARRIVAL_SIM_CHECK.md/json", "nested LAN smoke report", "tools/run_prearrival_sim_check.cmd -RunModelBenchmark -Json", "model-benchmark-candidate", "tools/run_lan_smoke.cmd", "LAN_SMOKE.md/json", "run_litert_lm_smoke.cmd", "LITERT_LM_SMOKE.md/json", "summary.candidate_gate", "recommended_profile", "tools/run_character_red_team.cmd -Json", "tools/run_character_red_team.cmd -RequireRunner -Json", "RUN_SIM_HARDWARE_COMPARE.cmd", "SIM_HARDWARE_COMPARE.md/json", "Voice audition quick check", "tools/open_voice_audition.cmd", "tools/open_voice_audition.cmd -All", "tools/verify_tracked_rvc_assets.cmd", "model.pth", "model.index", "SHA-256", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
   if ($releaseNotes -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_NOTES.md missing voice audition guidance: $pattern"
   }
 }
 
 $voiceGuide = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_PERSONALITY.md") -Raw
-foreach ($pattern in @("Stackchan Spark", "must not clone", "soundboard clips", "RVC character models", "licensed neutral TTS voice", "persona/EarconSynth", "io/SpeechAdapter", "io/AudioOut", "generated firmware WAV playback", "mouth-frame streaming", "M5 speaker carrier fallback", "barge-in ducking", "[speech_audio]", 'typed `SpeechEarcon`', "no allocation", "output/voice_auditions/", "media/voice/rvc/README.md", "Acceptance Criteria")) {
+foreach ($pattern in @("Stackchan Spark", "released Stackchan RVC voice", "soundboard clips", "model.pth", "model.index", "production voice files", "persona/EarconSynth", "io/SpeechAdapter", "io/AudioOut", "generated firmware WAV playback", "mouth-frame streaming", "M5 speaker carrier fallback", "barge-in ducking", "[speech_audio]", 'typed `SpeechEarcon`', "no allocation", "output/voice_auditions/", "Acceptance Criteria")) {
   if ($voiceGuide -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_PERSONALITY.md missing expected voice guardrail: $pattern"
   }
@@ -3257,7 +3258,7 @@ foreach ($pattern in @("stackchan.bridge.v1", "stackchan.bridge-endpoints.v1", "
 }
 
 $privacyModel = Get-Content -LiteralPath (Join-PackagePath "docs/PRIVACY.md") -Raw
-foreach ($pattern in @("wake-word gated", "Audio leaves the device", "local/LAN-first", "no hardcoded secrets", "preferred_name", "recent_topics", "physical_context", "bridge_messages", "bridge_timeouts", "degrade offline", "VOICE_PERSONALITY.md", "RVC")) {
+foreach ($pattern in @("wake-word gated", "Audio leaves the device", "local/LAN-first", "no hardcoded secrets", "preferred_name", "recent_topics", "physical_context", "bridge_messages", "bridge_timeouts", "degrade offline", "public production RVC hashes", "Raw microphone recordings")) {
   if ($privacyModel -notmatch [regex]::Escape($pattern)) {
     throw "PRIVACY.md missing expected privacy boundary: $pattern"
   }

@@ -68,7 +68,7 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - No hardcoded secrets in firmware, bridge source, or packaged release artifacts.
 - Serial counters for `bridge_messages`, `bridge_outputs`, `bridge_parse_errors`, `bridge_audio_streams`, `bridge_audio_stream_bytes`, `bridge_audio_stream_bytes_received`, `bridge_audio_stream_chunks`, `bridge_audio_stream_errors`, `bridge_uplink_enabled`, `bridge_uplink_active`, `bridge_uplink_gate_blocks`, `bridge_uplink_queue_failures`, `bridge_wake_gate_open`, `bridge_wake_gate_turn_active`, `bridge_wake_gate_opens`, `bridge_wake_gate_completed`, `bridge_downlink_streams`, `bridge_downlink_chunks`, `bridge_downlink_bytes`, `bridge_downlink_errors`, `bridge_downlink_playback_starts`, `bridge_downlink_playback_chunks`, `bridge_downlink_playback_bytes`, `bridge_downlink_playback_unsupported`, `bridge_downlink_playback_errors`, and `bridge_timeouts`.
 - Timeout recovery that clears `bridge_active` and returns the face to local behavior.
-- Voice-source status showing RVC review assets and production voice gates are still separated.
+- Voice-source status showing the exact public production RVC hashes while raw microphone recordings and generated conversation audio remain local.
 - Camera evidence showing paired requests, zero authentication failures, no frame persistence,
   bounded face-box output, and camera/host-vision endpoints absent from the production image.
 
