@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 07:36 America/New_York
+Status timestamp: 2026-07-12 10:18 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -8,6 +8,52 @@ This supersedes the older recovery-only status below. The current physical lead 
 full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink,
 Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
 support compiled with motion disabled at boot.
+
+### Launch Candidate And Active Long Soak (2026-07-12)
+
+- The installed exact paired candidate is firmware SHA-256
+  `c43e5ac1cf1718f61d5da35a37720a7c3e24ce9cd28dd6586521f50175708ea7`, built from clean firmware
+  source commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c`. It uses atomic M5Unified IMU snapshots,
+  yielding bounded retry backoff, isolated exhaustion accounting, and a terminal failure only
+  after three consecutive exhausted read windows. OTA reports the expected SHA and confirms the
+  running app. Motion, servo rail, and torque remain disabled at boot.
+- Exact-image no-motion and actuator qualifications passed formally before the long run. The
+  one-hour actuator acceptance at
+  `output\pc-brain\imu-read-recovery-paired-servo-60min-20260712-0835` passed `76/76` checks after
+  `3601 s`: `706/706` good polls, `706/706` motion samples, zero failed polls, zero IMU read
+  exhaustions/failures, zero power or camera faults, VBUS floor `4916 mV`, maximum temperature
+  `66.5 C`, exact source/SHA binding, and verified motion stop.
+- The first eight-hour launch at
+  `output\pc-brain\imu-read-recovery-paired-servo-8hr-20260712-093902` is invalid device evidence:
+  its host runner was mistakenly given an RVC `/health` URL and appended a second health path.
+  The robot and real RVC worker were healthy, motion was safely stopped, and
+  `launch-classification.json` preserves the configuration error.
+- The next attempt at
+  `output\pc-brain\imu-read-recovery-paired-servo-8hr-20260712-094145` stopped after `895 s`
+  because the operator picked up the robot and the old final-integration policy treated two
+  correctly detected external IMU interaction events as fatal. All `176/176` polls succeeded;
+  there was no IMU read failure/exhaustion, blackout, reset, power fault, camera failure, or
+  motion timeout. VBUS stayed at or above `4907 mV`, maximum temperature was `66.5 C`, maximum
+  display frame time was `41864 us`, and motion stop verified. This is interaction
+  characterization evidence, not a robot failure.
+- Host-runner commit `6a90a8fb` separates external interaction from peripheral-health policy.
+  External pickup/touch/tilt/shake events remain counted and visible, while terminal IMU read
+  failure, sustained exhaustion, camera/authentication failure, power, thermal, display,
+  bridge, audio, and actuator-invariant faults remain strict. Commit `5cbf2573` also records the
+  installed firmware source separately from the newer host-runner source.
+- The replacement interaction-aware eight-hour run is active at
+  `output\pc-brain\release-interaction-aware-servo-8hr-20260712-101309`, runner PID `18724`.
+  It uses the exact installed firmware and normal paired YuNet service. Do not call this run
+  passed until `summary.json` reaches at least `28800 s` and the formal checker passes with
+  `-RequireFinalIntegration -AllowExternalImuEvents -RequirePowerForensics
+  -RequireCameraCapture -RequireCameraHostVision -RequireReady`.
+- The public `stackchan_release_full` build succeeds without private pairing material. Draft
+  `v0.2.0-rc1` packaging and independent ZIP verification pass with the public BYOM voice policy:
+  private firmware, Wi-Fi/OTA/camera credentials, pairing data, and local RVC models are excluded.
+  Regenerate the package after the final documentation commit so its manifest binds the published
+  source commit. Production voice-source provenance and the owner-selected repository license
+  remain explicit distribution decisions; do not describe the repository as consumer-ready while
+  either is unresolved.
 
 ### Corrected PMIC And Bridge-Port Candidate (2026-07-12)
 

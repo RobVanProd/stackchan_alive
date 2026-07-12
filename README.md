@@ -41,9 +41,11 @@ What is working in the repository now:
 
 What is still gated:
 
-- The exact paired candidate must complete its formal one-hour actuator acceptance and subsequent
-  eight-hour all-feature actuator soak. Evidence from another firmware SHA-256 cannot substitute.
-- The secret-free public build must be packaged and verified separately. Private paired firmware,
+- The exact paired candidate passed its formal one-hour actuator acceptance. Its interaction-aware
+  eight-hour all-feature actuator soak is active; it must finish and pass the formal checker before
+  that long-duration gate is claimed. Evidence from another firmware SHA-256 cannot substitute.
+- The secret-free public build and BYOM release package have passed independent verification. A
+  final package is regenerated after the terminal documentation commit. Private paired firmware,
   credentials, OTA material, camera pairing data, and local RVC models are never public assets.
 - PC/mobile owner failover and final consumer rollout evidence remain required for the companion
   distribution path.

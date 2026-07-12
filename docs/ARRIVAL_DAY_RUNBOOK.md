@@ -13,7 +13,30 @@ Use this when the physical Stackchan device arrives. Keep this release as a devi
   camera validation can wait.
 - Know the serial port, for example `COM3`.
 
-Current lab note (2026-07-11): the live robot is running the OTA-confirmed incremental-capture
+Current exact-image release note (2026-07-12): the installed private paired firmware is source
+commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c`, SHA-256
+`c43e5ac1cf1718f61d5da35a37720a7c3e24ce9cd28dd6586521f50175708ea7`. Its formal one-hour
+actuator acceptance passed `76/76` after `3601 s` with `706/706` good polls, no IMU
+exhaustion/failure, no power/camera fault, VBUS floor `4916 mV`, maximum temperature `66.5 C`,
+and verified motion stop. The interaction-aware eight-hour continuation is active at
+`output\pc-brain\release-interaction-aware-servo-8hr-20260712-101309`; it is not a pass until its
+terminal summary and formal checker complete.
+
+External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
+interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
+checker. This does not relax IMU health: terminal read failures, three consecutive exhausted read
+windows, and an unrecovered exhaustion at run end remain fatal. The earlier `895 s` attempt at
+`output\pc-brain\imu-read-recovery-paired-servo-8hr-20260712-094145` stopped only because the
+operator picked up the robot and the old harness rejected two external events; all `176/176`
+polls were good, power/display/camera/network remained inside gates, and motion stop verified.
+Do not diagnose that run as a blackout or robot failure.
+
+Public release artifacts use the secret-free `stackchan_release_full` profile and BYOM voice
+policy. Never package the private paired firmware, Wi-Fi/OTA/camera credentials, pairing files,
+or local RVC models. Rebuild and independently verify the ZIP after the final source/documentation
+commit so its manifest commit matches GitHub.
+
+Historical lab note (2026-07-11): the live robot was running the OTA-confirmed incremental-capture
 camera candidate, firmware SHA256
 `890AE99A55CA89BAE3694D60287359D9F2A21814D1AD1B15E99A1E98E6DF8AC2`. Its private rollback
 archive is recorded in `docs\FIRST_DEPLOY_STATUS.md`. Confirm
@@ -30,7 +53,7 @@ If recovery is genuinely required, use the exact current private rollback archiv
 The guarded archived-app flasher verifies its manifest, byte count, and SHA256 while preserving
 NVS/Wi-Fi. Motion remains disabled at boot.
 
-Current release-acceptance note (2026-07-12): the installed private image is source commit
+Historical release-acceptance note (2026-07-12): the installed private image was source commit
 `dae9065bb08cd0ca50f49b29e2d0cbcff0f9b882`, firmware SHA256
 `28172C6BF20BDCB14803DBC93B6FB477456877DBE5D5893D3E8F0FAE3BFB2AD3`. Its latest strict
 actuator run stopped after `1287 s` on one incomplete camera HTTP response write, with `252/252`
@@ -41,7 +64,7 @@ The superseding uninstalled candidate adds separate camera capture/response-writ
 one bounded host retry; it must pass its own no-motion and actuator qualifications before a long
 soak.
 
-Current power/IMU qualification note (2026-07-12): the installed private image is clean source
+Historical power/IMU qualification note (2026-07-12): the installed private image was clean source
 commit `fd07b62a81460f9066f67bc6955f57f1e3b8971a`, firmware SHA256
 `4F7B02616E8CC42C3066F732A4E899717129049AFE95051F996C600FB7E02BF2`. It loads the saved NVS
 network target and `/debug` must report `network_config_source=persisted_or_runtime` plus
