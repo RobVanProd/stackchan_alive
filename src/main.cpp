@@ -7956,6 +7956,36 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(bodyPeripheral.touchSwipeForwardEvents));
   append(",\"body_touch_swipe_backward_events\":%lu",
          static_cast<unsigned long>(bodyPeripheral.touchSwipeBackwardEvents));
+  append(",\"compiled_enable_proximity_ambient\":%d",
+         STACKCHAN_ENABLE_PROXIMITY_AMBIENT ? 1 : 0);
+  append(",\"proximity_ambient_ready\":%s",
+         bodyPeripheral.proximityAmbientReady ? "true" : "false");
+  append(",\"proximity_ambient_samples\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityAmbientSamples));
+  append(",\"proximity_ambient_read_retries\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityAmbientReadRetries));
+  append(",\"proximity_ambient_read_recoveries\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityAmbientReadRecoveries));
+  append(",\"proximity_ambient_read_failures\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityAmbientReadFailures));
+  append(",\"proximity_ambient_consecutive_failures\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityAmbientConsecutiveFailures));
+  append(",\"proximity_ambient_max_consecutive_failures\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityAmbientMaxConsecutiveFailures));
+  append(",\"proximity_raw\":%u", bodyPeripheral.proximityRaw);
+  append(",\"proximity_saturated\":%s",
+         bodyPeripheral.proximitySaturated ? "true" : "false");
+  append(",\"proximity_near\":%s", bodyPeripheral.proximityNear ? "true" : "false");
+  append(",\"proximity_approach_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityApproachEvents));
+  append(",\"proximity_departure_events\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.proximityDepartureEvents));
+  append(",\"proximity_last_event_ms\":%lu",
+         static_cast<unsigned long>(bodyPeripheral.lastProximityEventMs));
+  append(",\"ambient_channel0_raw\":%u", bodyPeripheral.ambientChannel0Raw);
+  append(",\"ambient_channel1_raw\":%u", bodyPeripheral.ambientChannel1Raw);
+  append(",\"ambient_combined_raw\":%u", bodyPeripheral.ambientCombinedRaw);
+  append(",\"proximity_ambient_status\":%u", bodyPeripheral.proximityAmbientStatus);
   append(",\"motion_requested\":%s", gMotionRequested ? "true" : "false");
   append(",\"motion_autonomous\":%s", gAutonomousMotionRequested ? "true" : "false");
   append(",\"motion_enabled\":%s", gActuation.isEnabled() ? "true" : "false");
@@ -9047,6 +9077,10 @@ void IntentTask(void* pv) {
       gIntent.applyEvent(bodyTouchEvent, CharacterMode::React);
       gBodyFeedback.notifyTouch(
           bodyTouchInteraction.zone, bodyTouchEvent.strength, bodyTouchEvent.timestampMs);
+    }
+    RobotEvent userNearEvent;
+    if (gBodyPeripheral.pollProximityAmbient(loopMs, &userNearEvent)) {
+      gIntent.applyEvent(userNearEvent, CharacterMode::React);
     }
     pollBridgeOutputs(millis());
     playMicActivationCueIfNeeded();

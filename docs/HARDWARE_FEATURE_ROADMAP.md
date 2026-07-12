@@ -6,22 +6,23 @@ then added one at a time so face, wake, bridge, voice, power, and motion stayed 
 recoverable. The status paragraphs distinguish current implementation from remaining promotion
 evidence; the numbered design bullets remain useful when adapting the software to another unit.
 
-Current status (2026-07-12): Gates 0-5 are integrated in the private paired exact-image candidate
-identified in `FIRST_DEPLOY_STATUS.md`. That image passed formal no-motion, short actuator, and
+Current status (2026-07-12): Gates 0-5 shipped in the Apache-2.0 `v0.2.0` release identified in
+`FIRST_DEPLOY_STATUS.md`. The exact release image passed formal no-motion, short actuator, and
 one-hour all-feature actuator qualifications; the one-hour result was `76/76` after `3601 s` with
 `706/706` good polls and zero reset, motion-timeout, power, camera, or terminal IMU failures. The
-corrected 28,800-second interaction-aware continuation is active and is not a pass until its
-terminal summary and formal checker complete.
+owner accepted the subsequent interaction-aware run after more than five hours and explicitly
+waived the remaining duration for `v0.2.0`; it is release evidence, not a formal eight-hour pass.
 
 Wake, full reply audio, synchronized mouth motion, power-coordinated servos, flowing RGB, touch,
 pickup/orientation events, authenticated camera capture, YuNet face acquisition, and bounded
 horizontal following have all been exercised on the reference robot. The host bridge also carries
 a bounded allowlisted embodiment snapshot for Gemma. Remaining evidence is deliberately narrower:
 the ordered body-zone/gesture promotion report, the operator-approved wake/follow camera report,
-multi-person active-speaker selection, production voice hash tracking, and the
-terminal eight-hour result. Phase 6 recognition and proximity behavior remain future work. The
-public Apache-2.0 package excludes private pairing material while the active voice models are
-not release assets.
+multi-person active-speaker selection and production voice hash tracking. Phase 6 recognition
+and calibrated proximity behavior remain future work. Post-release `main` now contains a bounded
+LTR-553 raw proximity/ambient-light adapter, but it is not physically calibrated or promoted as a
+presence feature. The public Apache-2.0 package excludes private pairing material and includes the
+owner-authorized active production voice model and index.
 
 ## Confirmed Hardware
 
@@ -82,7 +83,10 @@ Implementation status: telemetry is present for body RGB/touch, IMU, camera capt
 display, audio, motion, power, heap, and reset state. The current exact image kept RGB, touch, IMU,
 and camera capture/host vision ready throughout its formal one-hour all-feature actuator pass with
 zero terminal peripheral failures. A dedicated ordered body-sensor report remains a separate
-consumer-promotion artifact; its absence does not mean the integrated hardware has not run.
+consumer-promotion artifact; its absence does not mean the integrated hardware has not run. The
+post-release LTR-553 adapter adds raw proximity and ALS channel values, saturation, readiness,
+retry, recovery, and failure accounting. It builds successfully but remains unflashed and its
+near/far thresholds are disabled until desk measurements establish a defensible calibration.
 
 - Add capability telemetry for the expected body and CoreS3 devices using the official
   StackChan BSP/M5Unified paths where compatible with this firmware.
@@ -190,9 +194,11 @@ service continuity and timing, not that behavioral gate.
 
 ### Phase 6: Opt-In Face Recognition And Fused Presence
 
-Implementation status: planned only. The current release detects and tracks faces but does not
-identify people, enroll identities, or depend on proximity behavior. Do not advertise recognition
-or proximity as a current feature.
+Implementation status: identity recognition and fused-presence behavior are planned only. The
+current release detects and tracks faces but does not identify people or enroll identities. A
+post-release telemetry-only LTR-553 driver exists, but it does not yet emit presence behavior or
+claim calibrated ambient lux. Do not advertise recognition or proximity behavior as a current
+feature until physical calibration and qualification are complete.
 
 - Separate face detection (someone is present) from recognition (an enrolled person).
 - Run identity matching on the PC brain first unless measured CoreS3 evidence shows an

@@ -27,7 +27,16 @@ constexpr uint8_t kRgbLedCount = 12;
 constexpr uint8_t kRgbWriteAttempts = 2;
 constexpr uint32_t kRgbPeriodMs = 50;
 constexpr uint32_t kTouchPeriodMs = 30;
+constexpr uint32_t kProximityAmbientPeriodMs = 100;
 constexpr uint32_t kPeripheralRetryMs = 5000;
+constexpr uint8_t kProximityAmbientReadAttempts = 2;
+constexpr uint8_t kProximityAmbientTerminalFailures = 3;
+constexpr uint8_t kLtr553AlsControlRegister = 0x80;
+constexpr uint8_t kLtr553PsControlRegister = 0x81;
+constexpr uint8_t kLtr553PsLedRegister = 0x82;
+constexpr uint8_t kLtr553PsPulseRegister = 0x83;
+constexpr uint8_t kLtr553PsRateRegister = 0x84;
+constexpr uint8_t kLtr553AlsRateRegister = 0x85;
 
 float touchZoneX(BodyTouchZone zone) {
   if (zone == BodyTouchZone::Front) {
@@ -56,12 +65,16 @@ float touchGestureY(BodyTouchGesture gesture) {
 bool BodyPeripheralAdapter::begin(uint32_t nowMs) {
   telemetry_ = BodyPeripheralTelemetry {};
   touchInterpreter_.reset();
+  presenceFilter_.reset();
   hasLastFrame_ = false;
   lastRetryMs_ = nowMs;
+  lastProximityAmbientRetryMs_ = nowMs;
   ++telemetry_.beginAttempts;
   telemetry_.rgbReady = !telemetry_.rgbEnabled || initializeRgb();
   telemetry_.touchReady = !telemetry_.touchEnabled || initializeTouch();
-  return telemetry_.rgbReady && telemetry_.touchReady;
+  telemetry_.proximityAmbientReady =
+      !telemetry_.proximityAmbientEnabled || initializeProximityAmbient();
+  return telemetry_.rgbReady && telemetry_.touchReady && telemetry_.proximityAmbientReady;
 }
 
 bool BodyPeripheralAdapter::initializeRgb() {
@@ -109,6 +122,33 @@ bool BodyPeripheralAdapter::initializeTouch() {
   return ok;
 #else
   return STACKCHAN_ENABLE_BODY_TOUCH == 0;
+#endif
+}
+
+bool BodyPeripheralAdapter::initializeProximityAmbient() {
+#if STACKCHAN_BODY_HAS_M5_I2C && STACKCHAN_ENABLE_PROXIMITY_AMBIENT
+  if (!M5.In_I2C.isEnabled() || !M5.In_I2C.scanID(kLtr553Address, kBodyI2cFrequency)) {
+    return false;
+  }
+  bool ok = M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553AlsControlRegister, 0x18, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553PsControlRegister, 0x00, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553PsLedRegister, 0x3C, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553PsPulseRegister, 0x01, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553PsRateRegister, 0x00, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553AlsRateRegister, 0x03, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553AlsControlRegister, 0x19, kBodyI2cFrequency);
+  ok &= M5.In_I2C.writeRegister8(
+      kLtr553Address, kLtr553PsControlRegister, 0x02, kBodyI2cFrequency);
+  return ok;
+#else
+  return STACKCHAN_ENABLE_PROXIMITY_AMBIENT == 0;
 #endif
 }
 
@@ -271,6 +311,99 @@ bool BodyPeripheralAdapter::pollTouch(uint32_t nowMs,
   eventOut->x = touchZoneX(interaction.zone);
   eventOut->y = touchGestureY(interaction.gesture);
   eventOut->z = interaction.intensity / 3.0f;
+  return true;
+}
+
+bool BodyPeripheralAdapter::pollProximityAmbient(uint32_t nowMs, RobotEvent* eventOut) {
+  if (!telemetry_.proximityAmbientEnabled) {
+    return false;
+  }
+  if (!telemetry_.proximityAmbientReady) {
+    if (nowMs - lastProximityAmbientRetryMs_ < kPeripheralRetryMs) {
+      return false;
+    }
+    lastProximityAmbientRetryMs_ = nowMs;
+    ++telemetry_.beginAttempts;
+    telemetry_.proximityAmbientReady = initializeProximityAmbient();
+    if (!telemetry_.proximityAmbientReady) {
+      return false;
+    }
+  }
+  if (telemetry_.lastProximityAmbientReadMs != 0 &&
+      nowMs - telemetry_.lastProximityAmbientReadMs < kProximityAmbientPeriodMs) {
+    return false;
+  }
+  telemetry_.lastProximityAmbientReadMs = nowMs;
+
+#if STACKCHAN_BODY_HAS_M5_I2C && STACKCHAN_ENABLE_PROXIMITY_AMBIENT
+  uint8_t registers[kLtr553SampleRegisterCount] = {};
+  bool readOk = false;
+  for (uint8_t attempt = 0; attempt < kProximityAmbientReadAttempts; ++attempt) {
+    if (attempt > 0) {
+      ++telemetry_.proximityAmbientReadRetries;
+    }
+    readOk = M5.In_I2C.readRegister(kLtr553Address,
+                                    kLtr553SampleStartRegister,
+                                    registers,
+                                    sizeof(registers),
+                                    kBodyI2cFrequency);
+    if (readOk) {
+      if (attempt > 0) {
+        ++telemetry_.proximityAmbientReadRecoveries;
+      }
+      break;
+    }
+  }
+  ProximityAmbientSample sample;
+  if (!readOk || !decodeLtr553Sample(registers, sizeof(registers), &sample)) {
+    ++telemetry_.proximityAmbientReadFailures;
+    ++telemetry_.proximityAmbientConsecutiveFailures;
+    telemetry_.proximityAmbientMaxConsecutiveFailures =
+        max(telemetry_.proximityAmbientMaxConsecutiveFailures,
+            telemetry_.proximityAmbientConsecutiveFailures);
+    if (telemetry_.proximityAmbientConsecutiveFailures >= kProximityAmbientTerminalFailures) {
+      telemetry_.proximityAmbientReady = false;
+      presenceFilter_.reset();
+      telemetry_.proximityNear = false;
+    }
+    return false;
+  }
+#else
+  const ProximityAmbientSample sample;
+#endif
+
+  telemetry_.proximityAmbientConsecutiveFailures = 0;
+  telemetry_.proximityRaw = sample.proximityRaw;
+  telemetry_.ambientChannel0Raw = sample.ambientChannel0Raw;
+  telemetry_.ambientChannel1Raw = sample.ambientChannel1Raw;
+  telemetry_.ambientCombinedRaw = sample.ambientCombinedRaw;
+  telemetry_.proximityAmbientStatus = sample.status;
+  telemetry_.proximitySaturated = sample.proximitySaturated;
+  ++telemetry_.proximityAmbientSamples;
+
+  if (sample.proximitySaturated) {
+    return false;
+  }
+  const PresenceTransition transition = presenceFilter_.update(sample.proximityRaw);
+  telemetry_.proximityNear = presenceFilter_.near();
+  if (transition == PresenceTransition::Departed) {
+    ++telemetry_.proximityDepartureEvents;
+    telemetry_.lastProximityEventMs = nowMs;
+    return false;
+  }
+  if (transition != PresenceTransition::Approached || eventOut == nullptr) {
+    return false;
+  }
+
+  ++telemetry_.proximityApproachEvents;
+  telemetry_.lastProximityEventMs = nowMs;
+  eventOut->type = EventType::UserNear;
+  eventOut->timestampMs = nowMs;
+  eventOut->strength = constrain(sample.proximityRaw / 2047.0f, 0.2f, 1.0f);
+  eventOut->hasPayload = true;
+  eventOut->x = static_cast<float>(sample.proximityRaw);
+  eventOut->y = static_cast<float>(sample.ambientCombinedRaw);
+  eventOut->z = 0.0f;
   return true;
 }
 

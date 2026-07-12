@@ -25,6 +25,7 @@
 #include "io/BridgeWiFiProvisioner.hpp"
 #include "io/BridgeWiFiProvisioningStore.hpp"
 #include "io/BodyTouch.hpp"
+#include "io/ProximityAmbient.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/CameraHostProtocol.hpp"
 #include "io/ImuAdapter.hpp"
@@ -1732,6 +1733,49 @@ void test_body_touch_interpreter_emits_one_hold_per_contact() {
   TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchGesture::Hold), static_cast<int>(hold.gesture));
   TEST_ASSERT_EQUAL(static_cast<int>(BodyTouchZone::Front), static_cast<int>(hold.zone));
   TEST_ASSERT_FALSE(interpreter.update({3, 0, 0}, 950).valid());
+}
+
+void test_ltr553_sample_decode_preserves_raw_channels_and_saturation() {
+  const uint8_t registers[kLtr553SampleRegisterCount] = {
+      0x34, 0x12,  // ALS channel 1
+      0x78, 0x56,  // ALS channel 0
+      0x0D,        // status
+      0xAB, 0x85,  // saturated proximity, raw high bits are 0x05
+  };
+  ProximityAmbientSample sample;
+  TEST_ASSERT_TRUE(decodeLtr553Sample(registers, sizeof(registers), &sample));
+  TEST_ASSERT_EQUAL_UINT16(0x1234, sample.ambientChannel1Raw);
+  TEST_ASSERT_EQUAL_UINT16(0x5678, sample.ambientChannel0Raw);
+  TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>((0x1234U + 0x5678U) / 2U),
+                           sample.ambientCombinedRaw);
+  TEST_ASSERT_EQUAL_UINT16(0x05AB, sample.proximityRaw);
+  TEST_ASSERT_EQUAL_UINT8(0x0D, sample.status);
+  TEST_ASSERT_TRUE(sample.proximitySaturated);
+  TEST_ASSERT_FALSE(decodeLtr553Sample(registers, 6, &sample));
+  TEST_ASSERT_FALSE(decodeLtr553Sample(nullptr, sizeof(registers), &sample));
+}
+
+void test_presence_filter_requires_hysteresis_and_can_be_disabled() {
+  PresenceFilter filter({600, 450, 2, 3});
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::None),
+                    static_cast<int>(filter.update(650)));
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::Approached),
+                    static_cast<int>(filter.update(700)));
+  TEST_ASSERT_TRUE(filter.near());
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::None),
+                    static_cast<int>(filter.update(500)));
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::None),
+                    static_cast<int>(filter.update(400)));
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::None),
+                    static_cast<int>(filter.update(420)));
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::Departed),
+                    static_cast<int>(filter.update(430)));
+  TEST_ASSERT_FALSE(filter.near());
+
+  PresenceFilter disabled;
+  TEST_ASSERT_EQUAL(static_cast<int>(PresenceTransition::None),
+                    static_cast<int>(disabled.update(2047)));
+  TEST_ASSERT_FALSE(disabled.near());
 }
 
 void calibrateImu(ImuGestureInterpreter* interpreter, uint32_t* nowMs) {
@@ -6930,6 +6974,8 @@ int main() {
   RUN_TEST(test_body_touch_interpreter_emits_zone_tap_on_release);
   RUN_TEST(test_body_touch_interpreter_detects_forward_and_backward_swipes);
   RUN_TEST(test_body_touch_interpreter_emits_one_hold_per_contact);
+  RUN_TEST(test_ltr553_sample_decode_preserves_raw_channels_and_saturation);
+  RUN_TEST(test_presence_filter_requires_hysteresis_and_can_be_disabled);
   RUN_TEST(test_imu_interpreter_detects_pickup_then_putdown);
   RUN_TEST(test_imu_interpreter_filters_ordinary_servo_motion);
   RUN_TEST(test_imu_interpreter_keeps_extreme_impact_safety_during_servo_motion);

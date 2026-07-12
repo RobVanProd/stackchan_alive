@@ -1,8 +1,9 @@
 # Stackchan Power Blackout Forensics
 
-Status: the current exact-image candidate passed short no-motion, short actuator, and one-hour
-actuator qualification; its eight-hour all-feature actuator continuation is active. Historical
-full-off root cause remains unidentified.
+Status: the `v0.2.0` exact-image candidate passed short no-motion, short actuator, and one-hour
+actuator qualification. Its later all-feature actuator continuation ran for more than five hours
+before the owner ended the gate and accepted it for release; that is not a formal eight-hour pass.
+Historical full-off root cause remains unidentified.
 
 ## What The Evidence Says
 
@@ -100,10 +101,11 @@ atomic M5Unified IMU snapshots, bounded yielding retries, isolated exhaustion ac
 terminal failure only after three consecutive exhausted read windows. It passed its exact-image
 formal one-hour actuator acceptance (`76/76`) after `3601 s` with `706/706` successful polls and
 zero IMU exhaustion or terminal read failure. Its interaction-aware eight-hour all-feature
-continuation is active at
-`output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123`. These results
-strengthen the current mitigation evidence; they do not identify a universal cause for historical
-full-off events, and the long run is not a pass until its terminal summary and formal checker pass.
+continuation at
+`output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123` ran for more than
+five hours before the owner ended the gate and accepted the evidence for `v0.2.0`. These results
+strengthen the current mitigation evidence; they do not constitute a formal eight-hour pass and
+do not identify a universal cause for historical full-off events.
 
 ## Instrumented Candidate
 

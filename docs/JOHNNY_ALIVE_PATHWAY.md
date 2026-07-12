@@ -44,7 +44,7 @@ Working on real hardware:
 
 | Step | Current result | Remaining work |
 |---|---|---|
-| 1. Stackchan notices a visitor before they speak. | Partial. Camera presence and face boxes exist, but there is no always-available near-field presence input. | Bring up the confirmed LTR-553 proximity/ambient-light sensor and route presence through bounded reflex events. |
+| 1. Stackchan notices a visitor before they speak. | Partial. Camera presence and face boxes exist. Post-release `main` can read raw LTR-553 proximity/light telemetry, but presence behavior is deliberately disabled. | Measure the physical sensor, set hysteretic thresholds, and qualify the bounded reflex without making it a boot dependency. |
 | 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. | Add the conversation-v2 reply window, echo guard, barge-in, and session-only recent turns. |
 | 3. Stackchan moves naturally while listening and replying. | Pass for coordinated face, RGB, mouth, and guarded servos. | Tighten active-speaker orientation and perceived-latency choreography. |
 | 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. | Add an embodied energy response without weakening power or motion safety. |
@@ -55,7 +55,7 @@ Working on real hardware:
 | Phase | Status after `v0.2.0` | Next evidence or work |
 |---|---|---|
 | P1 Ambient life | Working on hardware: procedural face, blink/saccade/breathing, mode transitions, RGB flow, reduced motion, and guarded autonomous body motion. | Continue character-motion tuning without exceeding the strict 50 ms display gate. |
-| P2 Physical senses | Touch, RGB, and IMU pickup/orientation are implemented and exercised on hardware. | Implement LTR-553 proximity and ambient-light input; keep microSD optional. |
+| P2 Physical senses | Touch, RGB, and IMU pickup/orientation are exercised on hardware. A telemetry-first LTR-553 adapter, failure accounting, and native tests are implemented after `v0.2.0`. | Flash and measure raw proximity/light values, calibrate presence hysteresis, and keep microSD optional. |
 | P3 Sound awareness | Dual-mic capture and on-device wake work on hardware. | Add evidence-backed sound-direction estimation and fuse it with camera confidence. |
 | P4 Wake/commands | On-device wake, acknowledgement cues, bounded capture, bridge uplink, and local fallback are working. | Conversation v2 must preserve wake-gated entry and deterministic close conditions. |
 | P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. | Improve tracking speed, active-speaker selection, and person-loss choreography. |
@@ -73,8 +73,10 @@ Working on real hardware:
    - A conversation lease never grants or refreshes actuator motion.
 
 2. LTR-553 proximity and ambient light.
-   - Add a deterministic I2C adapter, readiness/failure telemetry, and native tests.
-   - Use proximity for fast presence reflexes and ambient light for display/RGB adaptation.
+   - Done in post-release source: deterministic I2C adapter, readiness/failure telemetry, raw
+     proximity/ALS accounting, and native tests.
+   - Next: collect physical desk measurements before enabling hysteretic proximity reflexes or
+     calibrated display/RGB adaptation.
    - Do not infer identity from proximity and do not make it a boot dependency.
 
 3. Perceived latency and person awareness.

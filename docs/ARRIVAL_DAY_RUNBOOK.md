@@ -1,6 +1,8 @@
 # Stackchan Arrival-Day Runbook
 
-Use this when the physical Stackchan device arrives. Keep this release as a device-ready prerelease until every evidence gate below is complete.
+Use this when bringing up a physical Stackchan device from the public `v0.2.0` release. Treat any
+locally rebuilt or post-release firmware as a new candidate until its applicable evidence gates
+below are complete.
 
 ## 0. Bench Setup
 
@@ -21,10 +23,11 @@ exhaustion/failure, no power/camera fault, VBUS floor `4916 mV`, maximum tempera
 and verified motion stop. The first interaction-aware continuation stopped after `2524 s` on one
 `268122 us` camera capture against an over-tight `250000 us` single-frame limit. Boot count stayed
 at one; there was no reset, power fault, capture failure, IMU failure, or motion timeout. The
-corrected continuation is active at
+corrected continuation at
 `output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123`, runner PID
-`19440`, with a `300000 us` single-frame ceiling and all capture/readiness/transport safety gates
-still strict. It is not a pass until its terminal summary and formal checker complete.
+`19440`, ran for more than five hours with a `300000 us` single-frame ceiling before the owner
+ended the release gate and explicitly waived its remaining duration. Preserve that evidence as an
+accepted release run, not a formal eight-hour pass.
 
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
@@ -37,8 +40,9 @@ Do not diagnose that run as a blackout or robot failure.
 
 Public release artifacts use the `stackchan_release_full` profile and bundled production voice
 policy. Never package the private paired firmware, Wi-Fi/OTA/camera credentials, pairing files,
-or local RVC models. Rebuild and independently verify the ZIP after the final source/documentation
-commit so its manifest commit matches GitHub.
+or unapproved local model variants. The owner-authorized production RVC model and index are public
+release assets. Rebuild and independently verify the ZIP after a future release commit so its
+manifest commit matches GitHub.
 
 Historical lab note (2026-07-11): the live robot was running the OTA-confirmed incremental-capture
 camera candidate, firmware SHA256
