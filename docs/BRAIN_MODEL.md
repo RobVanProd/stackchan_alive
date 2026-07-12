@@ -106,6 +106,16 @@ records `local_clock` or `memory_recall` in the turn log, and never writes memor
 another city's time is deliberately left to the normal research/model path rather than being
 misreported as local time.
 
+Run the silent production-memory smoke after restarting the PC brain. It does not call Gemma or
+play audio, and it reports only whether a preferred name is present rather than printing it:
+
+```powershell
+python bridge/trusted_facts_smoke.py --memory-file output/pc-brain/latest/memory.json --json
+```
+
+The release result must report `ready: true`, `modelInvocations: 0`, `audioPlayed: false`, and no
+issues. Remote-city time and unrelated time/date wording remain passthrough cases.
+
 When local research is enabled, Gemma may request one `web_search` or `web_fetch` round. The
 bridge also recognizes an explicit user request to search, browse, look something up, or obtain
 fresh public information. If Gemma returns an ordinary answer instead of a tool request, that
