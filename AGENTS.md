@@ -69,6 +69,10 @@ smoke does not prove long-term physical stability. The exact installed binary mu
 qualification and soak; do not transfer evidence from a different SHA-256.
 The trusted-facts smoke must remain silent (`modelInvocations: 0`, `audioPlayed: false`) and must
 not print stored fact values; it proves routing and privacy shape, not conversational voice output.
+Live soak JSON uses same-directory atomic replacement. A concurrent Windows reader may receive a
+brief sharing violation during the swap, so monitoring code must retry read/parse failures for a
+short bounded interval. Never classify one unreadable `progress.json` or `polls.json` snapshot as a
+robot failure; use repeated endpoint, process, bridge-socket, and runtime evidence.
 `stackchan_release_full` is the secret-free public build. Per-device `stackchan_camera_probe` or
 `stackchan_release_forensics` builds require explicit private OTA/pairing configuration and must
 never be substituted into a public package or GitHub release asset.

@@ -773,6 +773,12 @@ serial telemetry for CoreS3 PMU VBUS voltage, battery voltage, battery level, ch
 min/max rail readings, and PMU read failures. The soak harness records those fields plus host
 COM-port presence into `polls.json`, `progress.json`, and `summary.json`.
 
+Current runners publish these JSON files by same-directory atomic replacement so readers cannot
+observe a truncated document. On Windows, a reader can still receive a brief sharing violation
+during the swap. Monitoring scripts and agents must retry read/parse failures over a short bounded
+interval and must not classify one unreadable file snapshot as a robot outage. Confirm repeated
+HTTP/debug failure, process state, and bridge-socket state before making a runtime claim.
+
 The first PMU-instrumented servo investigation at
 `output\pc-brain\full-system-soak-instrumented-power-usb-servo-70min-20260709-105111` did not
 prove the root cause of the earlier dropouts, but it did capture a useful fact: servo motion

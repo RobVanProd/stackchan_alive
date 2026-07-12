@@ -228,15 +228,40 @@ function Write-JsonWithRetry {
   )
 
   $json = $Value | ConvertTo-Json -Depth $Depth
-  for ($attempt = 1; $attempt -le [math]::Max(1, $Attempts); $attempt++) {
-    try {
-      $json | Set-Content -LiteralPath $Path -Encoding UTF8
-      return
-    } catch {
-      if ($attempt -ge $Attempts) {
-        throw
+  $absolutePath = [System.IO.Path]::GetFullPath($Path)
+  $directory = [System.IO.Path]::GetDirectoryName($absolutePath)
+  $leaf = [System.IO.Path]::GetFileName($absolutePath)
+  $writeId = "$PID.$([guid]::NewGuid().ToString('N'))"
+  $tempPath = Join-Path $directory (".$leaf.tmp.$writeId")
+  $backupPath = Join-Path $directory (".$leaf.bak.$writeId")
+  $utf8WithBom = New-Object System.Text.UTF8Encoding($true)
+
+  try {
+    [System.IO.File]::WriteAllText($tempPath, $json, $utf8WithBom)
+    for ($attempt = 1; $attempt -le [math]::Max(1, $Attempts); $attempt++) {
+      try {
+        if ([System.IO.File]::Exists($absolutePath)) {
+          [System.IO.File]::Replace($tempPath, $absolutePath, $backupPath, $true)
+        } else {
+          [System.IO.File]::Move($tempPath, $absolutePath)
+        }
+        return
+      } catch {
+        if ($attempt -ge $Attempts) {
+          throw
+        }
+        Start-Sleep -Milliseconds $DelayMilliseconds
       }
-      Start-Sleep -Milliseconds $DelayMilliseconds
+    }
+  } finally {
+    foreach ($cleanupPath in @($tempPath, $backupPath)) {
+      try {
+        if ([System.IO.File]::Exists($cleanupPath)) {
+          [System.IO.File]::Delete($cleanupPath)
+        }
+      } catch {
+        # Cleanup must not replay or mask a successful atomic publication.
+      }
     }
   }
 }

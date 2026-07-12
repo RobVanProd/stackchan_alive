@@ -8,6 +8,12 @@ foreach ($requiredPattern in @(
     '\[int\]\$PollTimeoutSeconds = 4',
     '\[double\]\$MaxFailedPollRatio = 0\.01',
     'function Write-JsonWithRetry',
+    '\[System\.IO\.File\]::WriteAllText',
+    '\[System\.IO\.File\]::Replace',
+    '\[System\.IO\.File\]::Move',
+    '\[System\.IO\.File\]::Delete',
+    '\.tmp\.',
+    '\.bak\.',
     'function Invoke-VerifiedMotionStop',
     'failed_poll_ratio_exceeded',
     'motion_stop_not_verified',
@@ -39,6 +45,16 @@ foreach ($requiredPattern in @(
   if ($runnerSource -notmatch $requiredPattern) {
     throw "Soak runner safety contract missing pattern: $requiredPattern"
   }
+}
+
+$writeFunctionStart = $runnerSource.IndexOf('function Write-JsonWithRetry')
+$writeFunctionEnd = $runnerSource.IndexOf('function Invoke-VerifiedMotionStop')
+if ($writeFunctionStart -lt 0 -or $writeFunctionEnd -le $writeFunctionStart) {
+  throw 'Could not isolate Write-JsonWithRetry for atomic-write verification.'
+}
+$writeFunctionSource = $runnerSource.Substring($writeFunctionStart, $writeFunctionEnd - $writeFunctionStart)
+if ($writeFunctionSource -match 'Set-Content\s+-LiteralPath\s+\$Path') {
+  throw 'Write-JsonWithRetry must not truncate the live JSON path before replacement.'
 }
 
 function Write-Json {
