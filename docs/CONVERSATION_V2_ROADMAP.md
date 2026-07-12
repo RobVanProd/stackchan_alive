@@ -21,6 +21,31 @@ Stackchan should reuse those patterns, not Vector-specific SDK actions, robot lo
 code, or unbounded memory. Stackchan's existing bridge owner, wake gate, `PowerCoordinator`,
 motion session, camera pairing, and Character Lock remain the authority.
 
+The 2026-07-12 source audit used upstream commit
+[`234d1144ff84a5e0d45bd6849cd7c1def8f64935`](https://github.com/RobVanProd/pip-vector-autonomy/commit/234d1144ff84a5e0d45bd6849cd7c1def8f64935).
+That repository currently states that no license is granted for reuse or derivative works. This
+roadmap therefore records independently implementable architecture observations only; do not copy
+its source into a Stackchan release unless its owner adds compatible licensing.
+
+### Stackchan-Specific Adaptation
+
+- Pip estimates speech duration from word count before reopening its listener. Stackchan already
+  has authoritative `audio_stream_end`, speaker-idle, playback-stop, and microphone-pause
+  telemetry. Reopen capture only after confirmed playback completion plus a measured acoustic
+  tail; do not use a word-count timer as the primary gate.
+- Pip's listener queue can retain up to 20 pending transcripts and drops the oldest when full.
+  Stackchan should allow at most one pending follow-up for the active session. A transcript that
+  arrives while `THINKING` or `SPEAKING` is either an explicit barge-in cancellation or a rejected
+  busy event, never hidden backlog.
+- Pip persists recent raw user/assistant turns. Stackchan must keep its stronger privacy rule:
+  bounded active-session context may live in memory, but raw transcripts are not durable memory.
+  Only schema-validated, privacy-filtered facts survive session close.
+- Pip serializes Ollama calls with an async lock. Stackchan should preserve one host brain owner and
+  one generation at a time across robot voice, desktop, and mobile endpoints, with owner loss
+  cancelling the in-flight turn.
+- Pip periodically touches a robot control reservation while engaged. Stackchan should instead
+  renew only its typed conversation lease; that lease never grants or refreshes actuator motion.
+
 ## Proposed State Machine
 
 1. `IDLE`: onboard wake word is required. No host conversation microphone window is open.
