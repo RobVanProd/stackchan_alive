@@ -14,23 +14,49 @@ if TYPE_CHECKING:
 
 
 _TIME_QUERY = re.compile(
-    r"\b(?:what(?:'s| is) (?:the )?(?:current |local )?time|what time is it|"
-    r"do you know what time it is|tell me (?:the )?time|time right now)\b",
+    r"\b(?:"
+    r"what(?:'s| is) (?:the )?(?:current |local )?time(?: right now)?|"
+    r"what time (?:is it|do you have)|"
+    r"do you (?:know what time it is|have (?:the )?time)|"
+    r"(?:can|could|would|will) you (?:please )?tell me "
+    r"(?:what time it is|(?:the |current |local )?time)|"
+    r"tell me (?:what time it is|(?:the |current |local )?time)|"
+    r"(?:the )?(?:current|local) time(?: right now)?(?: please)?|"
+    r"time right now"
+    r")\b",
     re.IGNORECASE,
 )
 _DATE_QUERY = re.compile(
-    r"\b(?:what(?:'s| is) (?:today(?:'s)? date|the date|today)|"
-    r"what (?:day|date) is it|what day is today|tell me (?:today(?:'s)? date|the date))\b",
+    r"\b(?:"
+    r"what(?:'s| is) (?:today(?:'s)? date|the date|today)|"
+    r"what (?:day|date) is it|what day is today|"
+    r"(?:can|could|would|will) you (?:please )?tell me "
+    r"(?:what (?:day|date) it is|(?:today(?:'s)? |the )?(?:day|date))|"
+    r"tell me (?:what (?:day|date) it is|(?:today(?:'s)? |the )?(?:day|date))|"
+    r"(?:today(?:'s)?|current) (?:day|date)(?: please)?"
+    r")\b",
     re.IGNORECASE,
 )
 _TIMEZONE_QUERY = re.compile(
-    r"\b(?:what(?:'s| is) (?:the |our )?(?:local )?time ?zone|"
-    r"(?:what|which) time ?zone (?:are we|am i) in|tell me (?:the |our )?time ?zone)\b",
+    r"\b(?:"
+    r"what(?:'s| is) (?:the |our |this )?(?:local )?time ?zone|"
+    r"(?:what|which) time ?zone is (?:this|it)|"
+    r"(?:what|which) time ?zone (?:are we|am i) in|"
+    r"(?:can|could|would|will) you (?:please )?tell me (?:the |our |this )?time ?zone|"
+    r"tell me (?:the |our |this )?time ?zone|"
+    r"(?:the |our |this |local )time ?zone(?: please)?"
+    r")\b",
     re.IGNORECASE,
 )
 _REMOTE_TIME = re.compile(r"\btime\s+(?:is\s+it\s+)?in\s+(?!here\b|our\b|this\b|the\b)", re.IGNORECASE)
 _NAME_QUERY = re.compile(
-    r"\b(?:what(?:'s| is) my name|do you remember my name|what do you call me|who am i)\b",
+    r"\b(?:"
+    r"what(?:'s| is) my name|what do you call me|who am i|"
+    r"do you remember (?:my name|who i am)|"
+    r"(?:can|could|would|will) you (?:please )?remember (?:my name|who i am)|"
+    r"(?:can|could|would|will) you (?:please )?tell me (?:my name|who i am)|"
+    r"tell me (?:my name|who i am)"
+    r")\b",
     re.IGNORECASE,
 )
 

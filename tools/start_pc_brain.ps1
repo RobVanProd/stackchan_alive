@@ -23,6 +23,8 @@ param(
   [switch]$RequireAudioWakePhrase,
   [switch]$AllowAudioWithoutWakePhrase,
   [switch]$DeterministicRunner,
+  [switch]$EnableResearch,
+  [string]$SearxngUrl = "http://127.0.0.1:8080",
   [switch]$EnableAudioDownlink,
   [switch]$Once,
   [switch]$Background,
@@ -125,6 +127,13 @@ if (-not $DeterministicRunner) {
   $ArgsList += @(
     "--runner-command", $RunnerCommand,
     "--require-runner"
+  )
+}
+
+if ($EnableResearch) {
+  $ArgsList += @(
+    "--enable-research",
+    "--searxng-url", $SearxngUrl
   )
 }
 

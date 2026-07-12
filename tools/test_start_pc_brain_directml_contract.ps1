@@ -3,6 +3,8 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $launcherPath = Join-Path $PSScriptRoot "start_pc_brain_directml.ps1"
 $text = Get-Content -LiteralPath $launcherPath -Raw
+$baseLauncherPath = Join-Path $PSScriptRoot "start_pc_brain.ps1"
+$baseText = Get-Content -LiteralPath $baseLauncherPath -Raw
 
 $tokens = $null
 $parseErrors = $null
@@ -28,6 +30,10 @@ foreach ($required in @(
   "start_voice_v2_directml_worker.ps1",
   "stackchan.rvc-directml-worker.health.v1",
   "rvc_production_tts_client.py",
+  "[switch]`$EnableResearch",
+  "[string]`$SearxngUrl",
+  "-EnableResearch -SearxngUrl",
+  "researchEnabled = [bool]`$EnableResearch",
   "-StreamTtsPhrases",
   "-EnableAudioDownlink",
   "-DownlinkAudioChunkBytes 4096",
@@ -57,6 +63,17 @@ if ($workerReadyIndex -lt 0 -or $stopIndex -lt $workerReadyIndex) {
 
 if ($text -match "Get-CimInstance Win32_Process\s*\|\s*Stop-Process") {
   throw "Launcher must not broadly stop every discovered process."
+}
+
+foreach ($required in @(
+  "[switch]`$EnableResearch",
+  "[string]`$SearxngUrl",
+  '"--enable-research"',
+  '"--searxng-url", $SearxngUrl'
+)) {
+  if (-not $baseText.Contains($required)) {
+    throw "Base PC brain launcher missing research contract token: $required"
+  }
 }
 
 Write-Host "DirectML PC brain launcher contract tests passed."

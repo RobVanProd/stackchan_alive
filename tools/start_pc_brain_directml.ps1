@@ -4,6 +4,8 @@ param(
   [int]$WorkerPort = 5059,
   [int]$ReconnectTimeoutSeconds = 90,
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
+  [switch]$EnableResearch,
+  [string]$SearxngUrl = "http://127.0.0.1:8080",
   [string]$EvidenceRoot = "",
   [switch]$RepairMemory,
   [switch]$StopWarmRocmWorker,
@@ -100,6 +102,7 @@ if ($RepairMemory) {
 $env:STACKCHAN_RVC_DIRECTML_WORKER_URL = $WorkerUrl
 $bridgeStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_pc_brain.ps1")).Path.Replace("'", "''")
 $escapedMemoryFile = $MemoryFile.Replace("'", "''")
+$escapedSearxngUrl = $SearxngUrl.Replace("'", "''")
 $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; `$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
   "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
@@ -107,6 +110,9 @@ $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'Silen
   "-TtsVoice 'stackchan-rvc-directml-v2' " +
   "-TtsPhraseMaxChars 96 -DownlinkAudioChunkBytes 4096 " +
   "-DownlinkBinaryFrameDelayMs 70 -DownlinkTextFrameDelayMs 40"
+if ($EnableResearch) {
+  $bridgeScript += " -EnableResearch -SearxngUrl '$escapedSearxngUrl'"
+}
 $bridgeChild = Invoke-EncodedChildPowerShell -ScriptBody $bridgeScript `
   -StdoutPath (Join-Path $EvidencePath "bridge-start.txt") `
   -StderrPath (Join-Path $EvidencePath "bridge-start.err.log")
@@ -179,6 +185,8 @@ $Result = [ordered]@{
   workerDevice = $WorkerHealth.device
   workerMethod = $WorkerHealth.method
   streamTtsPhrases = $true
+  researchEnabled = [bool]$EnableResearch
+  searxngUrl = if ($EnableResearch) { $SearxngUrl } else { $null }
   ttsCommand = "python bridge\rvc_production_tts_client.py"
   memoryMaintenance = $MemoryReport
   robotNetwork = $Debug.network_state

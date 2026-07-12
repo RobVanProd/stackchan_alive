@@ -1,7 +1,9 @@
 # Local Research Tooling
 
-Status: bounded bridge broker and one-round Gemma integration implemented; live local SearXNG
-deployment and voice/research soak remain pending.
+Status: bounded bridge broker, one-round Gemma integration, and production-launch switches are
+implemented. A live local SearXNG deployment and voice/research soak remain pending. As of the
+2026-07-12 release audit, no service was listening on the expected loopback port `8080`; do not
+describe web research as production-ready until the acceptance gates below pass.
 
 ## Decision
 
@@ -108,6 +110,16 @@ Start the PC bridge with research enabled only after a loopback SearXNG instance
 ```powershell
 python bridge\lan_service.py --enable-research --searxng-url http://127.0.0.1:8080
 ```
+
+The production DirectML launcher exposes the same opt-in without changing its default:
+
+```powershell
+.\tools\start_pc_brain_directml.ps1 -EnableResearch `
+  -SearxngUrl http://127.0.0.1:8080 -Json
+```
+
+Omitting `-EnableResearch` leaves the release voice bridge exactly as qualified. Enabling it does
+not install or start SearXNG; the operator must first deploy and bind that service to loopback.
 
 `research_broker.py` requires SearXNG itself to resolve exclusively to loopback. Public page
 fetches require HTTPS and reject non-global DNS answers before each request and redirect. The

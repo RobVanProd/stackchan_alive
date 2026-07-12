@@ -198,10 +198,22 @@ class LanServiceTests(unittest.TestCase):
             )
             with patch("lan_service.run_runner_profile") as runner:
                 time_frames = session.handle_text(
-                    json.dumps({"type": "utterance_end", "seq": 13, "text": "What time is it?"})
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 13,
+                            "text": "Can you tell me what time it is?",
+                        }
+                    )
                 )
                 name_frames = session.handle_text(
-                    json.dumps({"type": "utterance_end", "seq": 14, "text": "What is my name?"})
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 14,
+                            "text": "Could you tell me who I am?",
+                        }
+                    )
                 )
             records = [json.loads(line) for line in turn_log.read_text(encoding="utf-8").splitlines()]
 
