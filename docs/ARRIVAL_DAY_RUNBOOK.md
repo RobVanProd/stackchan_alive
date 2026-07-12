@@ -53,6 +53,13 @@ checks. Its one-hour actuator qualification is active at
 `output\pc-brain\imu-accounting-servo-60min-20260712-070606`; do not call it the release lead until
 that run and the subsequent exact-image eight-hour continuation pass.
 
+When host-only bridge, memory, test, or documentation commits follow an installed firmware build,
+pass the firmware commit explicitly to direct soaks, for example
+`-FirmwareSourceCommit fd07b62a81460f9066f67bc6955f57f1e3b8971a`. New summaries keep that value
+in `sourceCommit` beside the installed firmware SHA and record the monitoring checkout separately
+as `runnerSourceCommit`. Never bind an installed firmware SHA to a later host-only commit merely
+because that commit was `HEAD` when the soak started.
+
 When physical testing resumes, first validate a real face under diffuse light with motion off,
 then follow `docs\LOCAL_VISION.md` for the bounded wake/listen follow run. Confirm opposite bounded
 left/right direction telemetry before fresh servo clearance. If board orientation reverses the
