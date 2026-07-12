@@ -1,20 +1,24 @@
 [CmdletBinding()]
 param(
-  [string]$ArchivePath = "media/voice/rvc/stackchan_voice_weightsgg_model.zip",
+  [string]$SourceDirectory = "media/voice/rvc",
   [string]$Destination = "output/voice_sources/stackchan_rvc_base/model"
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$archive = Join-Path $repoRoot $ArchivePath
+$sourcePath = Join-Path $repoRoot $SourceDirectory
 $destinationPath = Join-Path $repoRoot $Destination
 
-if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
-  throw "Missing bundled RVC archive: $archive. Run 'git lfs pull' and retry."
+$sourceModel = Join-Path $sourcePath "model.pth"
+$sourceIndex = Join-Path $sourcePath "model.index"
+if (-not (Test-Path -LiteralPath $sourceModel -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $sourceIndex -PathType Leaf)) {
+  throw "Missing bundled RVC model files under $sourcePath. Run 'git lfs pull' and retry."
 }
 
 New-Item -ItemType Directory -Force -Path $destinationPath | Out-Null
-Expand-Archive -LiteralPath $archive -DestinationPath $destinationPath -Force
+Copy-Item -LiteralPath $sourceModel -Destination (Join-Path $destinationPath "model.pth") -Force
+Copy-Item -LiteralPath $sourceIndex -Destination (Join-Path $destinationPath "model.index") -Force
 
 $model = Join-Path $destinationPath "model.pth"
 $index = Join-Path $destinationPath "model.index"

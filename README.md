@@ -49,8 +49,8 @@ What is still gated:
   credentials, OTA material, camera pairing data, and local RVC models are never public assets.
 - PC/mobile owner failover and final consumer rollout evidence remain required for the companion
   distribution path.
-- The Stackchan RVC voice archive is included under `media/voice/rvc/` through Git LFS. Its
-  original metadata is preserved in the archive; see the adjacent model notice before reuse.
+- The exact RVC `model.pth` and `model.index` used by the production DirectML worker are included
+  under `media/voice/rvc/` through Git LFS.
 - Final promotion requires the release package audit, current-lead reproducibility check, tagged
   asset verification, and updated terminal evidence documents.
 
@@ -128,9 +128,8 @@ Prototype voice auditions:
 - Open an operator-generated RVC page with `tools/open_voice_audition.cmd -Rvc`
 - Open a combined page with `tools/open_voice_audition.cmd -All` after generating authorized local RVC samples
 
-The release includes the Stackchan RVC archive at
-`media/voice/rvc/stackchan_voice_weightsgg_model.zip`. Install it into the ignored runtime tree
-before starting the DirectML worker:
+The release includes the exact active production RVC model and index under `media/voice/rvc/`.
+Install that pair into the ignored runtime tree before starting the DirectML worker:
 
 ```powershell
 .\tools\install_bundled_rvc_voice.ps1
