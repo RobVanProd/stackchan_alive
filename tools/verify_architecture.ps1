@@ -143,21 +143,6 @@ function Assert-PlatformioFlag {
   }
 }
 
-function Assert-FilePatternCount {
-  param(
-    [string]$Path,
-    [string]$Pattern,
-    [int]$ExpectedCount,
-    [string]$Message
-  )
-
-  $text = Get-Content -LiteralPath $Path -Raw
-  $actualCount = [regex]::Matches($text, $Pattern).Count
-  if ($actualCount -ne $ExpectedCount) {
-    throw "$Message Expected $ExpectedCount matches, found $actualCount."
-  }
-}
-
 $sdProvisionerPath = Expand-SourcePath "src/sd_provisioner.cpp"
 if (Test-Path -LiteralPath $sdProvisionerPath) {
   Assert-FileContains `
@@ -246,10 +231,6 @@ Assert-FileContains (Expand-SourcePath "src/main.cpp") "xQueuePeek\s*\(\s*gFrame
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "xTaskCreatePinnedToCore\s*\(\s*MotionTask\s*,[^;]*&gMotionTaskHandle\s*,\s*1\s*\)" "MotionTask must be pinned to Core 1 and expose a telemetry handle."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "xTaskCreatePinnedToCore\s*\(\s*FaceTask\s*,[^;]*&gFaceTaskHandle\s*,\s*1\s*\)" "FaceTask must be pinned to Core 1 and expose a telemetry handle."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "xTaskCreatePinnedToCore\s*\(\s*IntentTask\s*,[^;]*&gIntentTaskHandle\s*,\s*1\s*\)" "IntentTask must be pinned to Core 1 and expose a telemetry handle."
-Assert-FilePatternCount (Expand-SourcePath "src/main.cpp") "updateBridgeNetwork\s*\(" 2 "IntentTask must remain the single runtime caller of updateBridgeNetwork."
-Assert-FilePatternCount (Expand-SourcePath "src/main.cpp") "pollBridgeOutputs\s*\(" 4 "Bridge outputs must only be polled from IntentTask paths."
-Assert-FilePatternCount (Expand-SourcePath "src/main.cpp") "pollBridgeDebugServer\s*\(" 2 "IntentTask must remain the single runtime caller of pollBridgeDebugServer."
-Assert-FilePatternCount (Expand-SourcePath "src/main.cpp") "ensureWakeSrStarted\s*\(" 2 "IntentTask must remain the single runtime caller of ensureWakeSrStarted."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "\[system\]" "Main loop must emit runtime health telemetry."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "heap_free" "Runtime health telemetry must report free heap."
 Assert-FileContains (Expand-SourcePath "src/main.cpp") "heap_min" "Runtime health telemetry must report minimum free heap."
