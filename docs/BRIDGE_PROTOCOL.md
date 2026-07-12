@@ -212,6 +212,11 @@ Example:
 ## Bridge To Device
 
 - `hello`: bridge accepted the session.
+- `conversation_reply_window`: opt-in Conversation v2 request to reopen the existing wake-cue,
+  RGB, microphone-pause, and bounded audio-uplink path after authoritative speaker drain. `seq`
+  identifies the completed response, `open_after_ms` is bounded to 0-2000 ms, and `window_ms` is
+  bounded to 1000-30000 ms. Firmware retries while audio/wake is temporarily busy, expires at the
+  deadline, and cancels on bridge loss. The frame carries no actuator or power authority.
 - `endpoint_hello_result`: endpoint trust/capability registration result.
 - `owner_status`: active brain owner, owner kind, health state, and trusted endpoint count.
 - `trusted_endpoints_result`: trusted endpoint registry snapshot.

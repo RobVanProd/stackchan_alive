@@ -1073,6 +1073,12 @@ class LanBridgeSession:
                 if seq == 0 or seq != self.conversation_response_seq:
                     return [error_frame("playback_complete_seq_mismatch", str(seq))]
                 transition = self.conversation.playback_completed(now_ms())
+                frame = {
+                    "type": "conversation_reply_window",
+                    "seq": seq,
+                    "open_after_ms": self.config.conversation_acoustic_tail_ms,
+                    "window_ms": self.config.conversation_reply_window_ms,
+                }
                 frame.update(self._conversation_payload(transition))
             return [frame]
         return [error_frame("unsupported_message", message_type)]

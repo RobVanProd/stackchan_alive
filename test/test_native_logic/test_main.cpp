@@ -25,6 +25,7 @@
 #include "io/BridgeWiFiProvisioner.hpp"
 #include "io/BridgeWiFiProvisioningStore.hpp"
 #include "io/BodyTouch.hpp"
+#include "io/ConversationReplyWindow.hpp"
 #include "io/ProximityAmbient.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/CameraHostProtocol.hpp"
@@ -4070,6 +4071,87 @@ void test_bridge_client_rejects_binary_without_audio_stream() {
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Error), static_cast<int>(bridge.telemetry().state));
 }
 
+void test_conversation_reply_window_schedules_starts_and_wraps_safely() {
+  ConversationReplyWindow window;
+  ConversationReplyWindowRequest request;
+  request.seq = 41;
+  request.openAfterMs = 250;
+  request.windowMs = 8000;
+
+  TEST_ASSERT_TRUE(window.schedule(request, 1000));
+  TEST_ASSERT_TRUE(window.telemetry().pending);
+  TEST_ASSERT_EQUAL_UINT32(1250, window.telemetry().opensAtMs);
+  TEST_ASSERT_EQUAL_UINT32(9250, window.telemetry().expiresAtMs);
+  TEST_ASSERT_FALSE(window.due(1249));
+  TEST_ASSERT_TRUE(window.due(1250));
+  TEST_ASSERT_TRUE(window.markStarted(1250));
+  TEST_ASSERT_FALSE(window.telemetry().pending);
+  TEST_ASSERT_EQUAL_UINT32(1, window.telemetry().started);
+
+  request.seq = 42;
+  request.openAfterMs = 500;
+  request.windowMs = 1000;
+  TEST_ASSERT_TRUE(window.schedule(request, UINT32_MAX - 249));
+  TEST_ASSERT_FALSE(window.due(249));
+  TEST_ASSERT_TRUE(window.due(250));
+  TEST_ASSERT_TRUE(window.markStarted(250));
+  TEST_ASSERT_EQUAL_UINT32(2, window.telemetry().started);
+}
+
+void test_conversation_reply_window_rejects_bad_or_nested_requests_and_expires() {
+  ConversationReplyWindow window;
+  ConversationReplyWindowRequest request;
+  request.seq = 7;
+  request.windowMs = 8000;
+  TEST_ASSERT_TRUE(window.schedule(request, 100));
+  TEST_ASSERT_FALSE(window.schedule(request, 101));
+  TEST_ASSERT_EQUAL_UINT32(1, window.telemetry().rejected);
+  TEST_ASSERT_FALSE(window.markExpired(8099));
+  TEST_ASSERT_TRUE(window.markExpired(8100));
+  TEST_ASSERT_EQUAL_UINT32(1, window.telemetry().expired);
+
+  request.seq = 0;
+  TEST_ASSERT_FALSE(window.schedule(request, 9000));
+  request.seq = 8;
+  request.openAfterMs = 2001;
+  TEST_ASSERT_FALSE(window.schedule(request, 9000));
+  request.openAfterMs = 0;
+  request.windowMs = 999;
+  TEST_ASSERT_FALSE(window.schedule(request, 9000));
+  request.windowMs = 30001;
+  TEST_ASSERT_FALSE(window.schedule(request, 9000));
+  TEST_ASSERT_EQUAL_UINT32(5, window.telemetry().rejected);
+}
+
+void test_bridge_client_parses_bounded_conversation_reply_window() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  TEST_ASSERT_TRUE(bridge.submitControlLine(
+      "{\"type\":\"conversation_reply_window\",\"seq\":41,\"open_after_ms\":250,\"window_ms\":8000}",
+      140));
+
+  BridgeClientOutput output;
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ReplyWindow),
+                    static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(41, output.replyWindow.seq);
+  TEST_ASSERT_EQUAL_UINT32(250, output.replyWindow.openAfterMs);
+  TEST_ASSERT_EQUAL_UINT32(8000, output.replyWindow.windowMs);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().replyWindowsReceived);
+  TEST_ASSERT_EQUAL_UINT32(0, bridge.telemetry().replyWindowsRejected);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready),
+                    static_cast<int>(bridge.telemetry().state));
+
+  TEST_ASSERT_FALSE(bridge.submitControlLine(
+      "{\"type\":\"conversation_reply_window\",\"seq\":0,\"open_after_ms\":0,\"window_ms\":8000}",
+      150));
+  TEST_ASSERT_TRUE(bridge.poll(&output));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::Error),
+                    static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_STRING("conversation_reply_window_invalid", output.error);
+  TEST_ASSERT_EQUAL_UINT32(1, bridge.telemetry().replyWindowsRejected);
+}
+
 void test_bridge_client_treats_wake_phrase_rejection_as_recoverable() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -7130,6 +7212,9 @@ int main() {
   RUN_TEST(test_speech_adapter_scales_earcon_with_arousal);
   RUN_TEST(test_speech_planner_avoids_character_clone_markers);
   RUN_TEST(test_bridge_client_accepts_session_hello);
+  RUN_TEST(test_conversation_reply_window_schedules_starts_and_wraps_safely);
+  RUN_TEST(test_conversation_reply_window_rejects_bad_or_nested_requests_and_expires);
+  RUN_TEST(test_bridge_client_parses_bounded_conversation_reply_window);
   RUN_TEST(test_bridge_client_maps_thinking_and_response_events);
   RUN_TEST(test_bridge_client_accepts_all_character_lock_intents);
   RUN_TEST(test_serial_bridge_response_preserves_attend_intent);

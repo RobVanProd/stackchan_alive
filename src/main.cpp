@@ -617,6 +617,7 @@ static_assert(STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 0 ||
 #include "io/BodyPeripheralAdapter.hpp"
 #include "io/CameraAdapter.hpp"
 #include "io/CameraHostProtocol.hpp"
+#include "io/ConversationReplyWindow.hpp"
 #include "io/DisplayAdapter.hpp"
 #include "io/ImuAdapter.hpp"
 #include "io/LanOtaServer.hpp"
@@ -675,6 +676,7 @@ M5MicAudioCaptureSource gAudioCaptureSource;
 AudioOut gAudioOut;
 BridgeAudioDownlink gBridgeAudioDownlink;
 BridgeAudioUplink gBridgeAudioUplink;
+ConversationReplyWindow gConversationReplyWindow;
 SpeechAdapter gSpeechAdapter;
 BridgeClient gBridge;
 BridgeEndpointRegistry gBridgeEndpointRegistry;
@@ -2005,6 +2007,7 @@ bool bridgeAudioRuntimeHeld() {
 
 bool stopBridgeAudioRuntime(uint32_t nowMs, BridgeAudioSafetyStopReason reason) {
   const bool held = bridgeAudioRuntimeHeld();
+  gConversationReplyWindow.cancel(nowMs);
   gBridgeAudioDownlink.abort(nowMs, 100u + static_cast<uint32_t>(reason));
   gAudioOut.cancel();
   gSpeakerSink.stop(nowMs);
@@ -2031,8 +2034,11 @@ void serviceBridgeAudioTransportSafety(uint32_t nowMs) {
   static bool wasConnected = false;
   const bool connected =
       gBridgeNetworkSession.telemetry().state == BridgeNetworkSessionState::Connected;
-  if (initialized && wasConnected && !connected && bridgeAudioRuntimeHeld()) {
-    stopBridgeAudioRuntime(nowMs, BridgeAudioSafetyStopReason::TransportDisconnected);
+  if (initialized && wasConnected && !connected) {
+    gConversationReplyWindow.cancel(nowMs);
+    if (bridgeAudioRuntimeHeld()) {
+      stopBridgeAudioRuntime(nowMs, BridgeAudioSafetyStopReason::TransportDisconnected);
+    }
   }
   wasConnected = connected;
   initialized = true;
@@ -2310,6 +2316,8 @@ const __FlashStringHelper* bridgeOutputTypeName(BridgeClientOutputType type) {
       return F("audio_stream_end");
     case BridgeClientOutputType::ResponseEnd:
       return F("response_end");
+    case BridgeClientOutputType::ReplyWindow:
+      return F("conversation_reply_window");
     case BridgeClientOutputType::Error:
       return F("error");
     case BridgeClientOutputType::None:
@@ -4833,6 +4841,55 @@ void serviceDedicatedWakeCapture(uint32_t nowMs) {
     finishDedicatedWakeCaptureSession(false);
   }
 }
+
+bool beginConversationReplyCapture(uint32_t seq, uint32_t nowMs) {
+  if (gWakeMwwInteractionLatched || !wakeMwwInteractionReadyForWake(nowMs)) {
+    return false;
+  }
+
+  RobotEvent event;
+  event.type = EventType::WakeWord;
+  event.timestampMs = nowMs;
+  event.strength = 1.0f;
+  if (!gWakeCueSequence.begin(nowMs)) {
+    return false;
+  }
+
+  gWakeMwwInteractionLatched = true;
+  gWakeMwwInteractionLatchedAtMs = nowMs;
+  suppressWakeMwwDetections(nowMs, 900);
+  gWakeMwwPendingCaptureEvent = event;
+  gWakeMwwPendingCaptureEventReady = true;
+  gIntent.applyEvent(event, CharacterMode::Listen);
+  gBodyFeedback.notifyMicActivated(nowMs);
+#if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
+  Serial.print(F("[conversation] reply_capture_scheduled=1 response_seq="));
+  Serial.print(seq);
+  Serial.print(F(" at_ms="));
+  Serial.println(nowMs);
+#else
+  (void)seq;
+#endif
+  return true;
+}
+
+void serviceConversationReplyWindow(uint32_t nowMs) {
+  if (!gConversationReplyWindow.telemetry().pending) {
+    return;
+  }
+  if (gConversationReplyWindow.expired(nowMs)) {
+    gConversationReplyWindow.markExpired(nowMs);
+    return;
+  }
+  if (!gConversationReplyWindow.due(nowMs)) {
+    return;
+  }
+
+  const uint32_t seq = gConversationReplyWindow.telemetry().seq;
+  if (beginConversationReplyCapture(seq, nowMs)) {
+    gConversationReplyWindow.markStarted(nowMs);
+  }
+}
 #endif
 
 void writeWakeWavLe16(uint8_t* dst, uint16_t value) {
@@ -5811,6 +5868,17 @@ void printRuntimeStatus() {
   Serial.print(bridge.audioStreamErrors);
   Serial.print(F(" bridge_audio_stream_active="));
   Serial.print(bridge.audioStreamActive ? 1 : 0);
+  Serial.print(F(" bridge_reply_windows_received="));
+  Serial.print(bridge.replyWindowsReceived);
+  Serial.print(F(" bridge_reply_windows_rejected="));
+  Serial.print(bridge.replyWindowsRejected);
+  const ConversationReplyWindowTelemetry& replyWindow = gConversationReplyWindow.telemetry();
+  Serial.print(F(" conversation_reply_window_pending="));
+  Serial.print(replyWindow.pending ? 1 : 0);
+  Serial.print(F(" conversation_reply_window_started="));
+  Serial.print(replyWindow.started);
+  Serial.print(F(" conversation_reply_window_expired="));
+  Serial.print(replyWindow.expired);
   const BridgeWiFiProvisioningTelemetry& wifi = gBridgeWiFi.telemetry();
   Serial.print(F(" bridge_wifi_ready="));
   Serial.print(wifi.ready ? 1 : 0);
@@ -6815,6 +6883,9 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   if (seq == 0) {
     seq = output.streamChunk.seq;
   }
+  if (seq == 0) {
+    seq = output.replyWindow.seq;
+  }
   Serial.print(seq);
   Serial.print(F(" at_ms="));
   Serial.print(nowMs);
@@ -6872,6 +6943,12 @@ void printBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   if (output.type == BridgeClientOutputType::SessionReady) {
     Serial.print(F(" session="));
     Serial.print(output.sessionId);
+  }
+  if (output.type == BridgeClientOutputType::ReplyWindow) {
+    Serial.print(F(" open_after_ms="));
+    Serial.print(output.replyWindow.openAfterMs);
+    Serial.print(F(" window_ms="));
+    Serial.print(output.replyWindow.windowMs);
   }
   if (output.type == BridgeClientOutputType::Error) {
     Serial.print(F(" code="));
@@ -7044,6 +7121,20 @@ void requestMotionSafetyHold(const RobotEvent& event) {
 
 void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   printBridgeOutput(output, nowMs);
+
+  if (output.type == BridgeClientOutputType::ReplyWindow) {
+    ConversationReplyWindowRequest request;
+    request.seq = output.replyWindow.seq;
+    request.openAfterMs = output.replyWindow.openAfterMs;
+    request.windowMs = output.replyWindow.windowMs;
+#if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+    gConversationReplyWindow.schedule(request, nowMs);
+#else
+    (void)request;
+    gConversationReplyWindow.cancel(nowMs);
+#endif
+    return;
+  }
 
   if (output.type == BridgeClientOutputType::Event ||
       output.type == BridgeClientOutputType::ResponseEnd ||
@@ -8165,6 +8256,28 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"mww_uplink_submit_failed\":%lu", static_cast<unsigned long>(gWakeMwwUplinkSubmitFailed));
 #endif
   append(",\"audio_stream_active\":%s", bridge.audioStreamActive ? "true" : "false");
+  const ConversationReplyWindowTelemetry& replyWindow = gConversationReplyWindow.telemetry();
+  append(",\"bridge_reply_windows_received\":%lu",
+         static_cast<unsigned long>(bridge.replyWindowsReceived));
+  append(",\"bridge_reply_windows_rejected\":%lu",
+         static_cast<unsigned long>(bridge.replyWindowsRejected));
+  append(",\"conversation_reply_window_pending\":%s", replyWindow.pending ? "true" : "false");
+  append(",\"conversation_reply_window_requests\":%lu",
+         static_cast<unsigned long>(replyWindow.requests));
+  append(",\"conversation_reply_window_rejected\":%lu",
+         static_cast<unsigned long>(replyWindow.rejected));
+  append(",\"conversation_reply_window_started\":%lu",
+         static_cast<unsigned long>(replyWindow.started));
+  append(",\"conversation_reply_window_expired\":%lu",
+         static_cast<unsigned long>(replyWindow.expired));
+  append(",\"conversation_reply_window_cancelled\":%lu",
+         static_cast<unsigned long>(replyWindow.cancelled));
+  append(",\"conversation_reply_window_seq\":%lu",
+         static_cast<unsigned long>(replyWindow.seq));
+  append(",\"conversation_reply_window_opens_at_ms\":%lu",
+         static_cast<unsigned long>(replyWindow.opensAtMs));
+  append(",\"conversation_reply_window_expires_at_ms\":%lu",
+         static_cast<unsigned long>(replyWindow.expiresAtMs));
   append(",\"bridge_downlink_playback_starts\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackStarts));
   append(",\"bridge_downlink_playback_chunks\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackChunks));
   append(",\"bridge_downlink_playback_bytes\":%lu", static_cast<unsigned long>(gBridgeAudioDownlink.telemetry().playbackBytes));
@@ -9123,6 +9236,7 @@ void IntentTask(void* pv) {
       stopBridgeAudioRuntime(speakerNowMs, BridgeAudioSafetyStopReason::StreamWatchdog);
     }
 #if STACKCHAN_HAS_MWW_WAKE_PROBE && STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
+    serviceConversationReplyWindow(millis());
     serviceDedicatedWakeCapture(millis());
 #endif
 

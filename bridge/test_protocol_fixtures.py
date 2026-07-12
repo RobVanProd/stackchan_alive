@@ -23,6 +23,7 @@ KNOWN_TYPES = {
     "cancel",
     "capability_update",
     "claim_brain",
+    "conversation_reply_window",
     "diagnostics_request",
     "diagnostics_snapshot",
     "endpoint_hello",
@@ -57,6 +58,7 @@ REQUIRED_FIELDS = {
     "cancel": {"seq", "reason"},
     "capability_update": {"endpoint_id", "capabilities"},
     "claim_brain": {"endpoint_id", "reason"},
+    "conversation_reply_window": {"seq", "open_after_ms", "window_ms"},
     "diagnostics_request": {"domains"},
     "diagnostics_snapshot": {"bridge"},
     "endpoint_hello": {

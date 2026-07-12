@@ -81,6 +81,12 @@ def fixture_documents() -> dict[str, dict[str, Any]]:
             "seq": 41,
             "at_ms": 123456,
         },
+        "conversation_reply_window.json": {
+            "type": "conversation_reply_window",
+            "seq": 41,
+            "open_after_ms": 250,
+            "window_ms": 8000,
+        },
         "listening.json": _bridge_frame("listening"),
         "thinking.json": _bridge_frame("thinking"),
         "response_start.json": _bridge_frame("response_start"),

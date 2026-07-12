@@ -73,15 +73,21 @@ firmware to its normal local face and wake behavior.
 - `bridge/conversation_latency_report.py --turn-log <turns.jsonl> --json --require-ready`
   summarizes p50/p95/max and refuses readiness when any audio turn misses or fails a gate.
 - Firmware playback accounting now stays active until M5Speaker is idle and its microphone pause
-  is released, then sends retry-safe `playback_complete` evidence. The LAN bridge acknowledges the
+  is released, then sends retry-safe `playback_complete` evidence. Default v1 acknowledges the
   frame without opening capture, preserving the v0.2.0 one-wake/one-turn behavior.
 - `bridge/lan_service.py --conversation-v2` now maps the first utterance, matching authoritative
   playback completion, acoustic-tail state, bounded follow-up, exit phrases, turn limit, and
   failure cleanup into the session core. It requires configured TTS/downlink and remains off by
   default.
-- The next slice adds the firmware reply-capture command after the acoustic tail and makes model
-  generation/playback cancellation genuinely concurrent. Until those pass, the opt-in host state
-  is a rehearsal path rather than a promoted two-way conversation feature.
+- With `--conversation-v2`, authoritative playback completion now produces a bounded
+  `conversation_reply_window` command. Firmware validates it, schedules it with wrap-safe timing,
+  and reuses the proven mic cue, RGB, microphone pause, fixed capture, and wake-gated uplink path;
+  bridge loss cancels a pending window. Native and host tests cover parsing, bounds, expiry, and
+  host transitions. The source path remains opt-in and unpromoted until it passes exact-image
+  hardware qualification.
+- The remaining core slice is voice-activity-ended capture plus genuinely concurrent cancellation
+  of in-flight model generation/playback. The current reply capture is still fixed-length, so it
+  proves turn-taking but is not yet natural barge-in.
 
 ## Memory Model
 

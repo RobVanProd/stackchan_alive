@@ -95,7 +95,7 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
   telemetry_.inboundMessages++;
   telemetry_.lastMessageMs = nowMs;
 
-  char type[24] = {};
+  char type[32] = {};
   if (!readStringField(jsonLine, "type", type, sizeof(type))) {
     return failParse("missing_type");
   }
@@ -252,6 +252,26 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     telemetry_.state = BridgeClientState::Ready;
     output.type = BridgeClientOutputType::ResponseEnd;
     output.event.type = EventType::ResponseEnded;
+    queueOutput(output);
+    return true;
+  }
+
+  if (std::strcmp(type, "conversation_reply_window") == 0) {
+    uint32_t openAfterMs = 0;
+    uint32_t windowMs = 0;
+    const bool valid = seq != 0 && readUintField(jsonLine, "open_after_ms", &openAfterMs) &&
+                       readUintField(jsonLine, "window_ms", &windowMs) &&
+                       openAfterMs <= 2000 && windowMs >= 1000 && windowMs <= 30000;
+    if (!valid) {
+      telemetry_.replyWindowsRejected++;
+      return failParse("conversation_reply_window_invalid");
+    }
+    telemetry_.state = BridgeClientState::Ready;
+    telemetry_.replyWindowsReceived++;
+    output.type = BridgeClientOutputType::ReplyWindow;
+    output.replyWindow.seq = seq;
+    output.replyWindow.openAfterMs = openAfterMs;
+    output.replyWindow.windowMs = windowMs;
     queueOutput(output);
     return true;
   }

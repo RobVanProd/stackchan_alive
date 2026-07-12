@@ -40,6 +40,7 @@ enum class BridgeClientOutputType : uint8_t {
   AudioStreamChunk,
   AudioStreamEnd,
   ResponseEnd,
+  ReplyWindow,
   Error,
 };
 
@@ -89,6 +90,12 @@ struct BridgeAudioStreamChunk {
   const uint8_t* payload = nullptr;
 };
 
+struct BridgeReplyWindow {
+  uint32_t seq = 0;
+  uint32_t openAfterMs = 0;
+  uint32_t windowMs = 0;
+};
+
 struct BridgeClientOutput {
   BridgeClientOutputType type = BridgeClientOutputType::None;
   RobotEvent event;
@@ -96,6 +103,7 @@ struct BridgeClientOutput {
   BridgeAudioChunk audio;
   BridgeAudioStream stream;
   BridgeAudioStreamChunk streamChunk;
+  BridgeReplyWindow replyWindow;
   char sessionId[kBridgeSessionIdMax] = {};
   char error[kBridgeErrorMax] = {};
 };
@@ -120,6 +128,8 @@ struct BridgeClientTelemetry {
   uint32_t audioStreamErrors = 0;
   uint32_t audioStreamChecksum = 0;
   bool audioStreamActive = false;
+  uint32_t replyWindowsReceived = 0;
+  uint32_t replyWindowsRejected = 0;
   uint32_t lastSeq = 0;
   uint32_t lastMessageMs = 0;
 };
