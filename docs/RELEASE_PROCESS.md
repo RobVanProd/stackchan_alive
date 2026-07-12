@@ -36,6 +36,61 @@ after Android APK or desktop package artifacts are built. It writes
 status from `apksigner`; use `-RequireArtifacts` when the signed release APK and desktop
 packages are required for promotion.
 
+## Exact Tested Lead Versus Public Package
+
+Keep two release artifacts distinct:
+
+- The **private current-lead archive** binds the exact per-device firmware binary to its source
+  commit, OTA confirmation, short qualifications, production voice proof, and long soak. The
+  binary may contain hashed or compiled deployment configuration, so this archive stays under
+  `output/private/` and must never be uploaded to GitHub or copied into a public package.
+- The **public release package** contains the secret-free `stackchan_release_full` binary and
+  source. It contains no Wi-Fi credentials, pairing code, shared OTA token, private RVC model,
+  or converted private voice payload. It is deliberately not byte-identical to a paired private
+  image.
+
+Do not transfer exact-binary hardware evidence between those artifacts. A private profile may
+exercise the same source plus extra diagnostic load, but that is compatibility evidence, not
+proof that a different SHA-256 was physically soaked. If a public binary is described as
+hardware-accepted, flash and provision that exact binary and collect evidence under its own hash.
+
+After the exact candidate has passed all required runs, create its private recovery/evidence
+archive with explicit roots:
+
+```powershell
+.\tools\archive_current_lead.cmd `
+  -CandidateRoot output\private\firmware-candidates\<candidate> `
+  -NoMotionEvidenceRoot output\pc-brain\<no-motion> `
+  -ShortActuatorEvidenceRoot output\pc-brain\<short-actuator> `
+  -HourEvidenceRoot output\pc-brain\<hour> `
+  -VoiceProofRoot output\pc-brain\<voice-proof> `
+  -LongSoakEvidenceRoot output\pc-brain\<long-soak> `
+  -Json
+```
+
+The archiver refuses mismatched firmware/source evidence, non-passing formal checks, missing
+source snapshots, plaintext OTA/pairing/Wi-Fi secret files, and private voice-model payloads. It
+assembles through a short temporary path so deeply nested evidence remains reliable on Windows.
+
+Then verify that the exact archive, candidate manifest, terminal soak, docs, and optional live
+runtime agree:
+
+```powershell
+.\tools\check_current_lead_reproducibility.cmd `
+  -LeadArchivePath output\private\current-lead\stackchan-current-lead-<id>.zip `
+  -CandidateManifestPath output\private\firmware-candidates\<candidate>\manifest.json `
+  -SoakSummaryPath output\pc-brain\<long-soak>\summary.json `
+  -FormalCheckPath output\pc-brain\<long-soak>\formal-check.json `
+  -MinSoakDurationSeconds 28800 `
+  -RequireReady `
+  -Json
+```
+
+Run `tools/test_archive_current_lead_contract.cmd` and
+`tools/test_current_lead_reproducibility_contract.cmd` before relying on these helpers. The
+checker no longer guesses from historical archive names or treats an actuator run as a failed
+passive no-motion watch.
+
 Before flashing or publishing, run the no-hardware preflight:
 
 ```powershell

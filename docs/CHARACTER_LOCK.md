@@ -139,6 +139,13 @@ Field rules:
 | `memory_write` | object | keys restricted to allowlisted namespaces: `user.*`, `project.*`; values must comply with section 4. `robot.*` is reserved for trusted runtime telemetry and cannot be authored by the model |
 | `memory_forget` | array | keys or key prefixes to delete immediately |
 
+The model does not author motor commands or a gesture field. After validation, the host derives
+`none`, `affirm`, or `deny` only from unambiguous leading response semantics. A direct leading
+"yes" can request `affirm`; a direct leading "no" can request `deny`; phrases such as "no
+problem" remain `none`. Firmware then layers a short, seed-varied procedural nod or head shake
+over the current idle/camera pose and settles back to that pose. The gesture cannot bypass motion,
+power, thermal, pickup, session, or servo-rail safety authority.
+
 Validator behavior before anything reaches the device:
 
 - unknown `mode` or `earcon` downgrades to `speak` / `none`
