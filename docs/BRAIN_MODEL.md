@@ -83,6 +83,19 @@ nor an environment variable is set, the wrapper emits a fixed valid Character Lo
 for the selected prompt case. That fallback is only a bridge/harness stabilizer; it is not a
 model benchmark.
 
+The production LAN bridge passes two separate trusted context channels into this runner:
+
+- `memory_lines` comes from `BridgeMemory.context_lines()`. It contains only bounded,
+  privacy-filtered `user.*` and `project.*` facts plus counters; secrets, health, finance,
+  relationship, third-party, and raw-audio content never enter this view.
+- `embodiment_lines` comes from typed live robot telemetry. It is explicitly data rather than
+  instructions and cannot authorize hardware control.
+
+Both the first model turn and a research-evidence second pass receive the same current memory and
+embodiment boundaries. A forget request must emit the exact matching allowed key shown in current
+memory (or an allowed namespace prefix); a spoken deletion claim with an empty `memory_forget`
+fails the model benchmark.
+
 Use one of these command sources to run a real local model:
 
 - `--command "<runner command>"`

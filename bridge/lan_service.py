@@ -1289,6 +1289,7 @@ class LanBridgeSession:
                     user_text=user_text,
                     research_tools_enabled=self.config.research_enabled,
                     embodiment_lines=self.robot_embodiment.prompt_lines(),
+                    memory_lines=tuple(self.memory.context_lines()),
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [error_frame("runner_error", str(exc))]
@@ -1334,6 +1335,7 @@ class LanBridgeSession:
                             user_text=evidence_user_text,
                             research_tools_enabled=False,
                             embodiment_lines=self.robot_embodiment.prompt_lines(),
+                            memory_lines=tuple(self.memory.context_lines()),
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                         return [error_frame("runner_error", str(exc))]

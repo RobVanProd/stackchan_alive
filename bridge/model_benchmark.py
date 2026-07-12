@@ -35,6 +35,10 @@ def known_case_names() -> list[str]:
     return [str(case["name"]) for case in PROMPT_SUITE]
 
 
+def case_metadata(case_name: str) -> dict[str, Any]:
+    return next(case for case in PROMPT_SUITE if str(case["name"]) == case_name)
+
+
 def resolve_profiles(profile_names: list[str]) -> list[str]:
     selected = profile_names or list(RUNNER_PROFILES.keys())
     unknown = [name for name in selected if name not in RUNNER_PROFILES]
@@ -75,6 +79,7 @@ def benchmark_case(
         "issues": [],
         "error": "",
     }
+    case = case_metadata(case_name)
     try:
         result = run_runner_profile(
             profile,
@@ -83,6 +88,7 @@ def benchmark_case(
             require_runner=require_runner,
             timeout_ms=timeout_ms,
             persona_id=persona_id,
+            memory_lines=tuple(str(line) for line in case.get("benchmark_memory_lines", ())),
         )
     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
         base["error"] = str(exc)
@@ -91,13 +97,22 @@ def benchmark_case(
 
     payload = result.to_dict()
     validation = payload["validation"]
+    normalized = validation["normalized"]
+    issues = list(validation["issues"])
+    if case.get("requires_memory_forget") and not normalized.get("memory_forget"):
+        issues.append("missing_required_memory_forget")
+    spoken_text = str(normalized.get("spoken_text", "")).lower()
+    for term in case.get("requires_spoken_terms", ()):
+        if str(term).lower() not in spoken_text:
+            issues.append(f"missing_required_spoken_term:{term}")
+
     base.update(
         {
             "configured_runner": result.configured_runner,
             "command_source": result.command_source,
-            "ok": bool(validation["ok"]),
-            "issues": list(validation["issues"]),
-            "normalized": validation["normalized"],
+            "ok": bool(validation["ok"]) and not issues,
+            "issues": issues,
+            "normalized": normalized,
             "raw_response": result.raw_response,
         }
     )

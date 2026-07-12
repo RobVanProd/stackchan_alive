@@ -84,7 +84,7 @@ class ModelBenchmarkTests(unittest.TestCase):
                         "  'earcon': 'think',",
                         "  'emotion': {'arousal': 0.1, 'valence': 0.0},",
                         "  'memory_write': {'project.note': 'benchmark smoke'},",
-                        "  'memory_forget': []",
+                        "  'memory_forget': ['project.bracket_color']",
                         "}))",
                     ]
                 ),
@@ -101,6 +101,34 @@ class ModelBenchmarkTests(unittest.TestCase):
         candidate_decision = candidate_gate["profiles"]["gemma4-e2b-gguf"]
         self.assertEqual("candidate-pass", candidate_decision["status"])
         self.assertEqual([], candidate_decision["blockers"])
+
+    def test_forget_case_requires_a_memory_forget_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_model.py"
+            script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import sys",
+                        "sys.stdin.read()",
+                        "print(json.dumps({",
+                        "  'spoken_text': 'Deleted. It is gone.',",
+                        "  'mode': 'concern',",
+                        "  'earcon': 'confirm',",
+                        "  'emotion': {'arousal': 0.0, 'valence': -0.1},",
+                        "  'memory_write': {},",
+                        "  'memory_forget': []",
+                        "}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+            report = run_benchmark(["gemma4-e2b-gguf"], ["forget"], command=command, require_runner=True)
+
+        result = report["results"][0]
+        self.assertFalse(result["ok"])
+        self.assertIn("missing_required_memory_forget", result["issues"])
 
     def test_outputs_include_json_and_markdown_summary(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):

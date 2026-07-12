@@ -96,6 +96,28 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn("clone_or_alive_claim", result.issues)
         self.assertIn("stacked_exclamation", result.issues)
 
+    def test_generic_helpdesk_language_is_flagged(self):
+        for spoken_text in (
+            "I am ready to assist you today.",
+            "I am here to assist you.",
+            "How may I help?",
+            "I am at your service.",
+        ):
+            with self.subTest(spoken_text=spoken_text):
+                raw = json.dumps(
+                    {
+                        "spoken_text": spoken_text,
+                        "mode": "speak",
+                        "earcon": "none",
+                        "emotion": {"arousal": 0.1, "valence": 0.1},
+                        "memory_write": {},
+                        "memory_forget": [],
+                    }
+                )
+                result = validate_response(raw)
+                self.assertFalse(result.ok)
+                self.assertIn("assistant_speak", result.issues)
+
     def test_memory_policy_drops_forbidden_keys_and_values(self):
         raw = json.dumps(
             {

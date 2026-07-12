@@ -53,6 +53,13 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertIn("Something feels uncertain.", result.raw_response)
         self.assertTrue(result.validation.ok, result.validation.issues)
 
+    def test_identity_fallback_uses_selected_persona_name(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile("gemma4-e2b-gguf", case_name="question", persona_id="glow")
+
+        self.assertEqual("I am Stackchan Glow.", result.validation.normalized["spoken_text"])
+        self.assertTrue(result.validation.ok, result.validation.issues)
+
     def test_require_runner_fails_when_no_command_is_configured(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):
             with self.assertRaises(RunnerConfigurationError):
@@ -118,6 +125,18 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertIn("Answer every explicitly asked part", result.prompt)
         self.assertIn("Do not recite unrelated telemetry", result.prompt)
         self.assertIn("User/context: How are you feeling?", result.prompt)
+
+    def test_bounded_memory_lines_are_injected_into_the_persona_prompt(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="forget",
+                memory_lines=("turns_seen: 12", "approved_fact project.bracket_color: blue"),
+            )
+
+        self.assertIn("Current local memory:", result.prompt)
+        self.assertIn("- turns_seen: 12", result.prompt)
+        self.assertIn("- approved_fact project.bracket_color: blue", result.prompt)
 
     def test_reference_bridge_can_render_runner_fallback_to_bench(self):
         script = Path(__file__).with_name("reference_bridge.py")

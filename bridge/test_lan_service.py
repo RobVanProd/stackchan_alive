@@ -33,6 +33,7 @@ from lan_service import (
     serve,
     websocket_accept_value,
 )
+from bridge_memory import BridgeMemory
 from reference_bridge import PROTOCOL, load_bridge_memory
 from stt_adapter import STT_COMMAND_ENV
 from tts_adapter import TTS_COMMAND_ENV
@@ -748,6 +749,12 @@ class LanServiceTests(unittest.TestCase):
                     turn_log_file=turn_log,
                 )
             )
+            session.memory = BridgeMemory().apply_character_memory(
+                {
+                    "memory_write": {"project.bracket_color": "blue"},
+                    "memory_forget": [],
+                }
+            )
             session.handle_text(
                 json.dumps(
                     {
@@ -767,6 +774,10 @@ class LanServiceTests(unittest.TestCase):
                 )
             self.assertEqual("Tell me something.", run_runner.call_args.kwargs["user_text"])
             self.assertIn("mode: listening", run_runner.call_args.kwargs["embodiment_lines"])
+            self.assertIn(
+                "approved_fact project.bracket_color: blue",
+                run_runner.call_args.kwargs["memory_lines"],
+            )
             record = json.loads(turn_log.read_text(encoding="utf-8").splitlines()[0])
 
         self.assertEqual([], returned)
