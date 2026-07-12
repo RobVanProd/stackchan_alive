@@ -83,6 +83,30 @@ function Assert-File {
   }
 }
 
+function Assert-LocalMarkdownLinks {
+  param([string]$RelativePath)
+
+  $documentPath = Join-PackagePath $RelativePath
+  $documentDir = Split-Path $documentPath -Parent
+  $text = Get-Content -LiteralPath $documentPath -Raw
+  foreach ($match in [regex]::Matches($text, '\[[^\]]+\]\(([^)]+)\)')) {
+    $target = $match.Groups[1].Value.Trim().Trim('<', '>')
+    if (-not $target -or $target -match '^(?:https?://|mailto:|#)' -or $target -match '[<>]') {
+      continue
+    }
+    $pathPart = (($target -split '#', 2)[0] -split '\?', 2)[0]
+    if (-not $pathPart) { continue }
+    $decoded = [System.Uri]::UnescapeDataString($pathPart)
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $documentDir $decoded))
+    if (-not $candidate.StartsWith($packageRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "$RelativePath contains a local link outside the package: $target"
+    }
+    if (-not (Test-Path -LiteralPath $candidate)) {
+      throw "$RelativePath contains a broken local link: $target"
+    }
+  }
+}
+
 function Assert-Bytes {
   param(
     [string]$RelativePath,
@@ -120,6 +144,8 @@ function Assert-Mp3File {
 }
 
 $requiredFiles = @(
+  "README.md",
+  "AGENTS.md",
   "DEPENDENCIES.md",
   "THIRD_PARTY_NOTICES.md",
   "third_party_licenses/files.json",
@@ -149,6 +175,7 @@ $requiredFiles = @(
   "docs/store-assets/play/README.md",
   "docs/BRAIN_MODEL.md",
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
+  "docs/CONVERSATION_V2_ROADMAP.md",
   "docs/CHARACTER_LOCK.md",
   "docs/CREATING_PERSONAS.md",
   "docs/CUSTOMIZING_THE_FACE.md",
@@ -719,6 +746,10 @@ foreach ($file in $requiredFiles) {
   Assert-File $file
 }
 
+foreach ($document in @("README.md", "AGENTS.md", "docs/README.md", "docs/CONVERSATION_V2_ROADMAP.md")) {
+  Assert-LocalMarkdownLinks $document
+}
+
 $visionModelRelativePath = "bridge/models/face_detection_yunet_2023mar.onnx"
 $visionModelPath = Join-PackagePath $visionModelRelativePath
 $visionModel = Get-Item -LiteralPath $visionModelPath
@@ -1040,30 +1071,54 @@ foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEA
   }
 }
 
-$repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -Raw
+$repoReadmeText = Get-Content -LiteralPath (Join-PackagePath "README.md") -Raw
+if ($repoReadmeText -match '\]\(docs/media/') {
+  throw "README.md still points at source-only docs/media paths instead of packaged media paths"
+}
 foreach ($pattern in @("media/voice/rvc", "bring-your-own-model", "No model", "converted sample", "open_voice_audition.cmd -All")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
-    throw "docs/README.md missing RVC audition discoverability guidance: $pattern"
+    throw "README.md missing RVC audition discoverability guidance: $pattern"
   }
 }
 foreach ($pattern in @("01-system-overview.png", "02-firmware-task-architecture.png", "03-persona-engine.png", "04-face-runtime.png", "05-motion-servo-safety.png", "06-brain-bridge-protocol.png", "08-io-abstraction-builds.png")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
-    throw "docs/README.md missing architecture diagram reference: $pattern"
+    throw "README.md missing architecture diagram reference: $pattern"
   }
 }
 foreach ($pattern in @("Character Lock red-team suite", "run_character_red_team.cmd -Json", "-RequireRunner")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
-    throw "docs/README.md missing character red-team guidance: $pattern"
+    throw "README.md missing character red-team guidance: $pattern"
   }
 }
 foreach ($pattern in @("Stackchan: Alive is a character OS", "personas/glow", "firmware speech-line, earcon, behavior, expression, and packaged-prompt codegen", "verify_persona_pack.cmd glow --Json", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
-    throw "docs/README.md missing Character OS persona-pack guidance: $pattern"
+    throw "README.md missing Character OS persona-pack guidance: $pattern"
   }
 }
 foreach ($pattern in @("disabled-by-default M5 mic capture adapter", "mic PCM-to-reflex events", "wake-gated PCM")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
-    throw "docs/README.md missing mic capture status guidance: $pattern"
+    throw "README.md missing mic capture status guidance: $pattern"
+  }
+}
+
+$agentGuideText = Get-Content -LiteralPath (Join-PackagePath "AGENTS.md") -Raw
+foreach ($pattern in @("FIRST_DEPLOY_STATUS.md", "POWER_BLACKOUT_FORENSICS.md", "CUSTOMIZING_THE_FACE.md", "CONVERSATION_V2_ROADMAP.md", "exact installed binary", "motion-stop")) {
+  if ($agentGuideText -notmatch [regex]::Escape($pattern)) {
+    throw "AGENTS.md missing agent navigation or hardware-safety guidance: $pattern"
+  }
+}
+
+$docsIndexText = Get-Content -LiteralPath (Join-PackagePath "docs/README.md") -Raw
+foreach ($pattern in @("../AGENTS.md", "BRAIN_MODEL.md", "CUSTOMIZING_THE_FACE.md", "LOCAL_VISION.md", "RELEASE_PROCESS.md", "CONVERSATION_V2_ROADMAP.md")) {
+  if ($docsIndexText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/README.md missing documentation index entry: $pattern"
+  }
+}
+
+$conversationV2Text = Get-Content -LiteralPath (Join-PackagePath "docs/CONVERSATION_V2_ROADMAP.md") -Raw
+foreach ($pattern in @("post-release feature", "REPLY_WINDOW", "echo guard", "privacy-filtered", "under 3 seconds", "zero truncation")) {
+  if ($conversationV2Text -notmatch [regex]::Escape($pattern)) {
+    throw "docs/CONVERSATION_V2_ROADMAP.md missing bounded v2 architecture or acceptance guidance: $pattern"
   }
 }
 
@@ -2460,6 +2515,18 @@ if ($manifest.androidPlayFeatureGraphic -ne "docs/store-assets/play/feature-grap
 
 if ($manifest.companionCrossPlatformPlan -ne "docs/COMPANION_CROSS_PLATFORM_PLAN.md") {
   throw "Manifest companionCrossPlatformPlan mismatch: $($manifest.companionCrossPlatformPlan)"
+}
+
+if ($manifest.conversationV2Roadmap -ne "docs/CONVERSATION_V2_ROADMAP.md") {
+  throw "Manifest conversationV2Roadmap mismatch: $($manifest.conversationV2Roadmap)"
+}
+
+if ($manifest.agentGuide -ne "AGENTS.md") {
+  throw "Manifest agentGuide mismatch: $($manifest.agentGuide)"
+}
+
+if ($manifest.docsIndex -ne "docs/README.md") {
+  throw "Manifest docsIndex mismatch: $($manifest.docsIndex)"
 }
 
 if ($manifest.androidCompanionSource -ne "provenance/companion") {

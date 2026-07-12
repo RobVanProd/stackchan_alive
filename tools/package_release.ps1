@@ -403,7 +403,17 @@ foreach ($file in $voiceRvcFiles) {
   Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
 }
 
-Copy-Item -LiteralPath "README.md" -Destination $docsDir
+Copy-Item -LiteralPath "README.md" -Destination $outDir
+Copy-Item -LiteralPath "AGENTS.md" -Destination $outDir
+Copy-Item -LiteralPath "docs/README.md" -Destination $docsDir
+$packageReadmePath = Join-Path $outDir "README.md"
+$packageReadmeText = [System.IO.File]::ReadAllText($packageReadmePath)
+$packageReadmeText = $packageReadmeText.Replace("](docs/media/", "](media/")
+[System.IO.File]::WriteAllText(
+  $packageReadmePath,
+  $packageReadmeText,
+  (New-Object System.Text.UTF8Encoding($false))
+)
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_SPEC.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_RELEASE.md" -Destination $docsDir
@@ -411,6 +421,7 @@ Copy-Item -LiteralPath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" -Destination $
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/CONVERSATION_V2_ROADMAP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CHARACTER_LOCK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CREATING_PERSONAS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CUSTOMIZING_THE_FACE.md" -Destination $docsDir
@@ -1318,7 +1329,10 @@ $manifest = [ordered]@{
   androidPlayIcon = "docs/store-assets/play/icon-512.png"
   androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
+  conversationV2Roadmap = "docs/CONVERSATION_V2_ROADMAP.md"
   androidCompanionSource = "provenance/companion"
+  agentGuide = "AGENTS.md"
+  docsIndex = "docs/README.md"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"
   faceCustomizationGuide = "docs/CUSTOMIZING_THE_FACE.md"

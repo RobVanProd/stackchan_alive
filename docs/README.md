@@ -1,5 +1,6 @@
 # Docs
 
+- `../AGENTS.md`: coding-agent entry point, ownership boundaries, physical-hardware invariants, and evidence-first verification rules.
 - `DEVICE_BRINGUP.md`: hardware-arrival flashing, evidence, and safety flow.
 - `HARDWARE_SIMULATION.md`: no-hardware virtual Stackchan proxy, pre-arrival simulation check, and sim-vs-hardware comparison workflow.
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
