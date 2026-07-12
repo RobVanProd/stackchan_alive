@@ -1,6 +1,10 @@
 # Production Readiness
 
-Current status: Stackchan: Alive character OS scaffold is device-ready, not hardware-certified.
+Current status (2026-07-12): the integrated physical release candidate has passed exact-image
+no-motion, actuator, voice, camera, body-sensor, OTA, and one-hour acceptance gates. Its corrected
+eight-hour all-feature actuator soak is still active. The Apache-2.0 source repository and
+secret-free BYOM package may be shared as a developer prerelease, but consumer promotion remains
+gated on the terminal soak evidence and the distribution requirements below.
 
 ## Proven Now
 
@@ -41,29 +45,49 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Servo-enabled flashing requires an explicit `-ConfirmServoRisk` operator acknowledgment.
 - Display rendering uses the M5 display backend, not a stub.
 - Preview media can be generated without hardware.
+- The exact installed paired firmware passed a formally checked one-hour actuator acceptance with
+  every poll and motion sample good, no reset, timeout, power, camera, or peripheral fault, and a
+  verified motion stop. The exact SHA-256 and evidence root are recorded in
+  `FIRST_DEPLOY_STATUS.md`.
+- Physical wake, Whisper/Gemma/RVC reply transport, complete speaker playback, synchronized mouth
+  motion, bounded camera following, power-coordinated servos, RGB behavior, touch, IMU interaction,
+  and LAN OTA rollback/confirmation have all been exercised on the real robot.
+- Deterministic trusted facts and explicit memory operations answer local time/date/name and
+  approved remembered facts without depending on Gemma to choose a tool. Generic conversation is
+  not silently promoted into durable memory.
+- Unambiguous yes/no replies produce seed-varied procedural nod or head-shake gestures while
+  preserving the single-writer actuator boundary.
 
-## Not Proven Until Device Arrives
+## Still Required Before Consumer Promotion
 
-- Actual yaw mode and feedback behavior.
-- Servo pin mapping on the specific body revision.
-- Mechanical limits under load.
-- Long-running thermal and power behavior.
-- Physical acceptance of body RGB/touch, IMU, and paired camera/host vision in one integrated
-  release candidate. The camera-only profile remains diagnostic. Proximity is not implemented.
+- Formal completion of the corrected 28,800-second all-feature actuator soak against the exact
+  installed firmware SHA-256. Shorter passes and evidence from another image cannot substitute.
+- Terminal documentation and package regeneration after that formal soak result, followed by a
+  downloaded-asset audit against the published release.
+- Consumer-distribution production voice provenance. The public package intentionally remains
+  BYOM and excludes private RVC weights, indexes, converted assets, credentials, and pairing data.
+- PC/mobile owner failover and target-store distribution evidence for whichever companion targets
+  are presented as consumer-ready. These do not block sharing the source/BYOM developer release.
 - Real LiteRT-LM/mobile runner speed and memory behavior.
+- Proximity behavior is not implemented and must not be advertised.
 
 ## Consumer Rollout Gate
 
-Do not call this consumer-ready until the physical device passes:
+Do not call this consumer-ready until all of these are evidenced for the release commit:
 
-1. Display-only flash and 10-minute idle run.
-2. Servo-enabled supervised motion test.
-3. Yaw classification and calibration.
-4. 30-minute mixed idle/listen/speak soak.
-5. Recovery test after USB power cycle.
-6. Documented firmware version and calibration values.
-7. Hardware evidence packet with the tested release ZIP and successful `logs/package_verify.log`.
-8. Completed production voice-source provenance and real-device speaker evidence.
-9. `tools/verify_consumer_promotion.ps1` passes for the release package and evidence packet.
+1. Exact source commit, installed firmware SHA-256, packaged binaries, and physical evidence agree.
+2. Display, wake, microphone, bridge, brain, voice conversion, complete speaker playback, mouth
+   motion, servos, camera following, RGB, touch, and IMU gates pass on the integrated candidate.
+3. Power-cycle, OTA confirmation/rollback, actuator stop, power, thermal, and display recovery
+   evidence pass without unsupported root-cause claims.
+4. The formally checked one-hour actuator acceptance and 28,800-second all-feature soak pass.
+5. The tested release ZIP is independently extracted and verified, with a matching
+   `logs/package_verify.log`, manifest commit, and published-asset SHA-256.
+6. Production voice-source provenance is complete for any bundled production voice. A BYOM-only
+   developer package must remain clearly labeled and contain no private voice assets.
+7. Required companion target, owner-failover, privacy, and store/distribution evidence is complete
+   for every platform advertised as consumer-ready.
+8. `tools/verify_consumer_promotion.ps1` passes for the exact release package and evidence packet.
 
-Until those are done, this repository is production-shaped and test-ready, but not field-proven.
+Until those are done, describe the repository as a physically validated developer release
+candidate, not a consumer-certified product.
