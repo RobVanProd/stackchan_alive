@@ -49,8 +49,8 @@ What is still gated:
   credentials, OTA material, camera pairing data, and local RVC models are never public assets.
 - PC/mobile owner failover and final consumer rollout evidence remain required for the companion
   distribution path.
-- Production voice-source provenance remains an explicit distribution gate for bundling the
-  private voice model. The source repository and secret-free BYOM package are Apache-2.0 licensed.
+- The Stackchan RVC voice archive is included under `media/voice/rvc/` through Git LFS. Its
+  original metadata is preserved in the archive; see the adjacent model notice before reuse.
 - Final promotion requires the release package audit, current-lead reproducibility check, tagged
   asset verification, and updated terminal evidence documents.
 
@@ -128,9 +128,16 @@ Prototype voice auditions:
 - Open an operator-generated RVC page with `tools/open_voice_audition.cmd -Rvc`
 - Open a combined page with `tools/open_voice_audition.cmd -All` after generating authorized local RVC samples
 
-RVC is bring-your-own-model and local-only. No model, index, converted sample, or RVC audition
-page is distributed; `media/voice/rvc` contains policy only and generated output stays under
-the ignored `output/voice_auditions/` tree.
+The release includes the Stackchan RVC archive at
+`media/voice/rvc/stackchan_voice_weightsgg_model.zip`. Install it into the ignored runtime tree
+before starting the DirectML worker:
+
+```powershell
+.\tools\install_bundled_rvc_voice.ps1
+```
+
+Converted samples and audition pages remain local under the ignored `output/voice_auditions/`
+tree.
 
 ## Privacy Boundary
 

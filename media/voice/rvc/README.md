@@ -1,12 +1,18 @@
-# Optional Local RVC
+# Included Stackchan RVC Voice
 
-Stackchan supports a user-supplied RVC model for local voice conversion. No RVC model,
-index, converted WAV, converted MP3, or audition page is distributed with the repository,
-release ZIP, or published release assets.
+The release includes `stackchan_voice_weightsgg_model.zip` through Git LFS. The archive contains
+`model.pth`, `model.index`, and its original `metadata.json` without modification.
 
-The operator must supply a model they are authorized to use and keep it outside the release
-tree. Local review output belongs under `output/voice_auditions/`, which is ignored by Git.
-The application and release scripts must never copy that output into a package automatically.
+Install it into the ignored local runtime tree:
 
-The historical Weights.gg candidate remains recorded in `data/voice_rvc_base.yaml` as
-review-only provenance evidence. It is not an approved production source and is not bundled.
+```powershell
+.\tools\install_bundled_rvc_voice.ps1
+```
+
+The production DirectML worker then uses:
+
+- `output/voice_sources/stackchan_rvc_base/model/model.pth`
+- `output/voice_sources/stackchan_rvc_base/model/model.index`
+
+Generated WAV/MP3 files and audition pages remain local under `output/voice_auditions/` and are
+not committed. See `MODEL_NOTICE.md` for the archive's preserved provenance metadata.
