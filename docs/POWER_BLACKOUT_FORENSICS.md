@@ -74,14 +74,23 @@ equivalent image that loaded the persisted NVS target connected on its first att
 configuration source and port in `/debug`. Do not use this resolved bridge-build defect as an
 explanation for any historical full-off event.
 
-The corrected exact image SHA256
-`1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216` passed a formal
-`181 s` no-motion gate (`70/70`) and a formal `300 s` actuator gate (`69/69`). During the actuator
-run VBUS reached `4639 mV`, VINDPM regulation engaged as designed, VSYS remained above the
-configured minimum-system threshold, and no battery supplementation, hard-floor event, PMIC
-protective/VBUS-loss event, reset, network loss, display breach, or peripheral failure occurred.
-This proves the policy is functioning over the short qualification window; it does not yet prove
-long-term stability or identify the universal cause of prior shutdowns.
+The first corrected-port image, SHA256
+`1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216`, passed formal no-motion and
+short actuator gates. Its one-hour continuation stopped after `154 s` because the old checker
+treated an IMU `shaken` event as fatal even though preserved telemetry classifies it as
+`self_motion=true`. No reset, power, bridge, display, camera, motion-session, or actuator-safety
+failure accompanied that stop.
+
+The installed superseding image, source commit `fd07b62a81460f9066f67bc6955f57f1e3b8971a` and
+SHA256 `4F7B02616E8CC42C3066F732A4E899717129049AFE95051F996C600FB7E02BF2`, separates self-motion from
+external IMU events and retains terminal read failures as strict faults. It passed a formal
+180-second no-motion gate (`71/71`) and formal 300-second actuator gate (`70/70`); the actuator run
+had `59/59` good and unsuppressed motion samples, VBUS floor `4973 mV`, maximum display frame
+`29618 us`, and no terminal/external IMU, battery-supplement, hard-floor, PMIC protective/VBUS-loss,
+reset, network, camera, or peripheral failure. Its exact-image one-hour continuation is active at
+`output\pc-brain\imu-accounting-servo-60min-20260712-070606`. These results prove the policy and
+event accounting over the short gates; they do not yet prove long-term stability or identify the
+universal cause of prior shutdowns.
 
 ## Instrumented Candidate
 

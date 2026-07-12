@@ -41,16 +41,17 @@ The superseding uninstalled candidate adds separate camera capture/response-writ
 one bounded host retry; it must pass its own no-motion and actuator qualifications before a long
 soak.
 
-Current power-policy qualification note (2026-07-12): the installed private image is clean source
-commit `5e2b115a5e1154cdfab8ce4b705a4a2a97480511`, firmware SHA256
-`1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216`. It loads the saved NVS
+Current power/IMU qualification note (2026-07-12): the installed private image is clean source
+commit `fd07b62a81460f9066f67bc6955f57f1e3b8971a`, firmware SHA256
+`4F7B02616E8CC42C3066F732A4E899717129049AFE95051F996C600FB7E02BF2`. It loads the saved NVS
 network target and `/debug` must report `network_config_source=persisted_or_runtime` plus
-`network_bridge_port=8765`. A prior PMIC diagnostic image inherited obsolete port `8788` because
-the private build embedded a host without a port; that wrong-port build defect caused its bridge
-timeouts and is not evidence of a PMIC or blackout fault. The corrected image passed formal
-no-motion `70/70` and five-minute actuator `69/69` checks. Its one-hour actuator qualification is
-active at `output\pc-brain\pmic-port-fix-servo-60min-20260712-064307`; do not call it the release
-lead until that run and the subsequent eight-hour continuation pass.
+`network_bridge_port=8765`, VINDPM target/readback `4600 mV`, `imu_read_failures=0`, and
+`imu_external_events=0`. The preceding one-hour attempt stopped on an over-broad gate after a
+self-motion `shaken` event; the robot remained healthy, and that event is not a power or actuator
+failure. The installed image passed formal no-motion `71/71` and five-minute actuator `70/70`
+checks. Its one-hour actuator qualification is active at
+`output\pc-brain\imu-accounting-servo-60min-20260712-070606`; do not call it the release lead until
+that run and the subsequent exact-image eight-hour continuation pass.
 
 When physical testing resumes, first validate a real face under diffuse light with motion off,
 then follow `docs\LOCAL_VISION.md` for the bounded wake/listen follow run. Confirm opposite bounded

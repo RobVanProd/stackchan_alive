@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 06:43 America/New_York
+Status timestamp: 2026-07-12 07:26 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -25,20 +25,31 @@ support compiled with motion disabled at boot.
   `network_bridge_port` in `/debug` and soak evidence. Regression coverage passes `245/245`
   native tests, five PlatformIO hook tests, the architecture verifier, the soak evidence
   contract, and the warm-soak wrapper contract.
-- The installed exact private candidate is SHA256
-  `1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216`, archived at
-  `output\private\firmware-candidates\pmic-vindpm-4600-persisted-network-5e2b115a-20260712-063120`.
-  It reports `network_config_source=persisted_or_runtime`, `network_bridge_port=8765`, VINDPM
-  target/readback `4600 mV`, PMIC input limit `1500 mA`, and valid input-state/VSYS telemetry.
-  OTA staging returned in `21.05 s`, versus `751.42 s` on the wrong-port diagnostic image.
-- Formal no-motion qualification passed `70/70` after `181 s` with `36/36` good polls. Formal
-  actuator qualification passed `69/69` after `300 s` with `59/59` good polls, all motion samples
-  unsuppressed, five successful session refreshes, VBUS floor `4639 mV`, maximum display frame
-  `29885 us`, zero hard-floor/protective/PMIC-loss/peripheral/camera failures, and verified
-  torque/rail shutdown. VINDPM regulation was observed under load without battery supplementation.
-- The one-hour actuator acceptance continuation is active at
-  `output\pc-brain\pmic-port-fix-servo-60min-20260712-064307`. It must pass its own formal checker
-  before the exact image is promoted to the eight-hour continuation or release lead.
+- The first corrected-port image, SHA256
+  `1649537EF829C8B5068A20D94383B453698EBB1C95BB2831E64745822684D216`, passed its short power and
+  actuator gates. Its one-hour run at
+  `output\pc-brain\pmic-port-fix-servo-60min-20260712-064307` stopped after `154 s` only because
+  the old acceptance rule treated every IMU event as fatal. Preserved forensics classify the
+  event as `shaken`, `self_motion=true`; there was no reset, power, bridge, display, motion-session,
+  camera, or actuator-safety failure. Do not present this as a failed robot or firmware run.
+- Source commit `fd07b62a81460f9066f67bc6955f57f1e3b8971a` separates self-motion IMU events from external
+  events, records last-event timing/forensics, permits accounted self-motion during actuator
+  acceptance, and increases the bounded read path to five attempts. Terminal IMU read failures
+  and external events remain strict failures.
+- The installed superseding private image is SHA256
+  `4F7B02616E8CC42C3066F732A4E899717129049AFE95051F996C600FB7E02BF2`, archived at
+  `output\private\firmware-candidates\pmic-port-imu-accounting-fd07b62a-20260712-065503`. It uses
+  persisted NVS network configuration on port `8765`, VINDPM target/readback `4600 mV`, the same
+  `1500 mA` input limit, and boots with motion disabled.
+- The exact image passed the 180-second no-motion qualification at
+  `output\pc-brain\imu-accounting-nomotion-3min-20260712-065626` with `36/36` good polls and a
+  formal `71/71` result. It then passed the 300-second actuator qualification at
+  `output\pc-brain\imu-accounting-servo-5min-20260712-070001` with `59/59` good polls, every motion
+  sample unsuppressed, VBUS floor `4973 mV`, maximum frame `29618 us`, no terminal/external IMU
+  event, and a formal `70/70` result.
+- The exact-image one-hour actuator acceptance is active at
+  `output\pc-brain\imu-accounting-servo-60min-20260712-070606`. It must pass its terminal summary
+  and formal checker before the same image advances to the eight-hour continuation or release lead.
 
 ### Release Acceptance Camera-Transport Finding (2026-07-12)
 
