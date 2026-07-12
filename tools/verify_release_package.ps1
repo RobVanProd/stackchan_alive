@@ -148,6 +148,7 @@ $requiredFiles = @(
   "AGENTS.md",
   "CONTRIBUTING.md",
   "SECURITY.md",
+  "CODE_OF_CONDUCT.md",
   "LICENSE",
   "DEPENDENCIES.md",
   "THIRD_PARTY_NOTICES.md",
@@ -765,7 +766,7 @@ foreach ($pattern in @(
   }
 }
 
-foreach ($document in @("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "docs/README.md", "docs/CONVERSATION_V2_ROADMAP.md")) {
+foreach ($document in @("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "docs/README.md", "docs/CONVERSATION_V2_ROADMAP.md")) {
   Assert-LocalMarkdownLinks $document
 }
 
@@ -780,6 +781,13 @@ $securityPolicyText = Get-Content -LiteralPath (Join-PackagePath "SECURITY.md") 
 foreach ($pattern in @("private vulnerability reporting", "latest published prerelease", "unexpected motion", "rotate or revoke", "Git history")) {
   if ($securityPolicyText -notmatch [regex]::Escape($pattern)) {
     throw "SECURITY.md missing vulnerability-response guidance: $pattern"
+  }
+}
+
+$codeOfConductText = Get-Content -LiteralPath (Join-PackagePath "CODE_OF_CONDUCT.md") -Raw
+foreach ($pattern in @("Expected Behavior", "Unacceptable Behavior", "private information", "unsafe actuator", "Reporting And Enforcement")) {
+  if ($codeOfConductText -notmatch [regex]::Escape($pattern)) {
+    throw "CODE_OF_CONDUCT.md missing community-safety guidance: $pattern"
   }
 }
 
@@ -2573,6 +2581,10 @@ if ($manifest.contributorGuide -ne "CONTRIBUTING.md") {
 
 if ($manifest.securityPolicy -ne "SECURITY.md") {
   throw "Manifest securityPolicy mismatch: $($manifest.securityPolicy)"
+}
+
+if ($manifest.codeOfConduct -ne "CODE_OF_CONDUCT.md") {
+  throw "Manifest codeOfConduct mismatch: $($manifest.codeOfConduct)"
 }
 
 if ($manifest.projectLicense -ne "Apache-2.0") {

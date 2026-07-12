@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible software, firmware, documentation, or hardware-integration defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, pairing data, private firmware, raw recordings, camera frames, or private model assets. Report security and privacy vulnerabilities through SECURITY.md.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest repeatable sequence, including the command or interaction.
+      placeholder: |
+        1. Build or start ...
+        2. Send or perform ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: identity
+    attributes:
+      label: Version and identity
+      description: Commit, release, firmware environment, firmware SHA-256, host OS, and hardware model when relevant. Redact private configuration.
+    validations:
+      required: true
+  - type: dropdown
+    id: motion
+    attributes:
+      label: Physical motion state
+      description: What was the actuator state when this occurred?
+      options:
+        - No physical hardware was involved
+        - Motion was disabled and rail/torque were off
+        - Motion was enabled with an operator present and body clear
+        - Unexpected or unsafe motion occurred
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Include relevant logs, counters, screenshots, or checker output after removing secrets and private media.
+  - type: textarea
+    id: interpretation
+    attributes:
+      label: Facts and hypotheses
+      description: List directly observed facts separately from possible explanations.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Public-report safety
+      options:
+        - label: I removed credentials, pairing/OTA material, private firmware, raw audio/camera data, local memory, and private model assets.
+          required: true

@@ -371,4 +371,5 @@ pairing material, local models, and other untracked assets are not part of the l
 distribution. Keep PRs small, testable, and aligned with the roadmap in
 [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md). Read
 [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and use the private process in
-[SECURITY.md](SECURITY.md) for security or privacy reports.
+[SECURITY.md](SECURITY.md) for security or privacy reports. Participation is governed by
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

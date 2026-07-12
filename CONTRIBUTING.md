@@ -12,6 +12,7 @@ implementation rather than release paperwork added later.
 3. Use [docs/ARRIVAL_DAY_RUNBOOK.md](docs/ARRIVAL_DAY_RUNBOOK.md) for hardware work and
    [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for promotion claims.
 4. Report security or privacy defects through [SECURITY.md](SECURITY.md), not a public issue.
+5. Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) in project spaces.
 
 Open a focused issue before a large architectural change. Small bug fixes and documentation
 corrections can go directly to a focused pull request.

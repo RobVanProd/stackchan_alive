@@ -407,6 +407,7 @@ Copy-Item -LiteralPath "README.md" -Destination $outDir
 Copy-Item -LiteralPath "AGENTS.md" -Destination $outDir
 Copy-Item -LiteralPath "CONTRIBUTING.md" -Destination $outDir
 Copy-Item -LiteralPath "SECURITY.md" -Destination $outDir
+Copy-Item -LiteralPath "CODE_OF_CONDUCT.md" -Destination $outDir
 Copy-Item -LiteralPath "LICENSE" -Destination $outDir
 Copy-Item -LiteralPath "docs/README.md" -Destination $docsDir
 $packageReadmePath = Join-Path $outDir "README.md"
@@ -1342,6 +1343,7 @@ $manifest = [ordered]@{
   agentGuide = "AGENTS.md"
   contributorGuide = "CONTRIBUTING.md"
   securityPolicy = "SECURITY.md"
+  codeOfConduct = "CODE_OF_CONDUCT.md"
   docsIndex = "docs/README.md"
   brainModelGuide = "docs/BRAIN_MODEL.md"
   characterLock = "docs/CHARACTER_LOCK.md"

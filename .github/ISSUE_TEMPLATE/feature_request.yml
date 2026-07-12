@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a bounded addition to the Character OS, firmware, bridge, tools, or documentation
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User need
+      description: What user experience or engineering problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest complete behavior, including degraded/offline behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: ownership
+    attributes:
+      label: Ownership and safety boundaries
+      description: Which component owns the behavior, and how are actuator, power, camera, microphone, memory, and network authority constrained?
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Acceptance evidence
+      description: What tests, measurements, physical observations, and failure cases would prove this works?
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This proposal does not require private credentials, unlicensed models/media, or weakening an existing safety or privacy gate.
+          required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/RobVanProd/stackchan_alive/security/advisories/new
+    about: Report security or privacy vulnerabilities without exposing sensitive details publicly.

@@ -3,6 +3,7 @@
 - `../AGENTS.md`: coding-agent entry point, ownership boundaries, physical-hardware invariants, and evidence-first verification rules.
 - `../CONTRIBUTING.md`: contribution scope, test expectations, hardware evidence, and private-asset rules.
 - `../SECURITY.md`: private vulnerability reporting, supported code, and urgent actuator/secret response.
+- `../CODE_OF_CONDUCT.md`: respectful collaboration, privacy, safety, and enforcement expectations.
 - `DEVICE_BRINGUP.md`: hardware-arrival flashing, evidence, and safety flow.
 - `HARDWARE_SIMULATION.md`: no-hardware virtual Stackchan proxy, pre-arrival simulation check, and sim-vs-hardware comparison workflow.
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
