@@ -1304,6 +1304,99 @@ void test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, settled.face.pupilX);
 }
 
+void test_gaze_tracker_searches_sighs_and_cancels_on_reacquisition() {
+  GazeTracker tracker;
+  tracker.reset(0);
+
+  RobotEvent seen;
+  seen.type = EventType::FaceDetected;
+  seen.timestampMs = 100;
+  seen.strength = 1.0f;
+  seen.hasPayload = true;
+  seen.x = 0.65f;
+  seen.y = -0.10f;
+  seen.z = 0.70f;
+  tracker.applyEvent(seen);
+  RobotFrame tracked = makeNeutralFrame();
+  tracker.apply(tracked, 150, false);
+
+  RobotEvent lost;
+  lost.type = EventType::FaceLost;
+  lost.timestampMs = 900;
+  lost.strength = 1.0f;
+  tracker.applyEvent(lost);
+  TEST_ASSERT_EQUAL_UINT32(1, tracker.telemetry().lossEvents);
+
+  RobotFrame searching = makeNeutralFrame();
+  searching.mode = CharacterMode::Idle;
+  tracker.apply(searching, 3000, false);
+  TEST_ASSERT_EQUAL(static_cast<int>(PersonLossPhase::Search),
+                    static_cast<int>(tracker.telemetry().lossPhase));
+  TEST_ASSERT_EQUAL_UINT32(1, tracker.telemetry().searchEntries);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.01f, fabsf(tracker.telemetry().yawOffsetDeg));
+
+  RobotFrame sighing = makeNeutralFrame();
+  sighing.mode = CharacterMode::Idle;
+  const float neutralEyeOpen = sighing.face.eyeOpen;
+  const float neutralMouthSmile = sighing.face.mouthSmile;
+  tracker.apply(sighing, 8500, false);
+  TEST_ASSERT_EQUAL(static_cast<int>(PersonLossPhase::Sigh),
+                    static_cast<int>(tracker.telemetry().lossPhase));
+  TEST_ASSERT_EQUAL_UINT32(1, tracker.telemetry().sighEntries);
+  TEST_ASSERT_LESS_THAN_FLOAT(neutralEyeOpen, sighing.face.eyeOpen);
+  TEST_ASSERT_LESS_THAN_FLOAT(neutralMouthSmile, sighing.face.mouthSmile);
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, sighing.motion.pitchDeg);
+
+  seen.timestampMs = 8700;
+  seen.x = -0.20f;
+  tracker.applyEvent(seen);
+  TEST_ASSERT_EQUAL(static_cast<int>(PersonLossPhase::None),
+                    static_cast<int>(tracker.telemetry().lossPhase));
+  TEST_ASSERT_EQUAL_UINT32(1, tracker.telemetry().reacquisitions);
+  TEST_ASSERT_EQUAL_STRING("none", personLossPhaseName(tracker.telemetry().lossPhase));
+}
+
+void test_gaze_tracker_person_loss_respects_reduced_motion_and_stale_frames() {
+  RobotEvent seen;
+  seen.type = EventType::FaceDetected;
+  seen.timestampMs = 100;
+  seen.strength = 1.0f;
+  seen.hasPayload = true;
+  seen.x = 0.55f;
+  seen.y = 0.0f;
+  seen.z = 0.75f;
+
+  GazeTracker fullTracker;
+  fullTracker.reset(0);
+  fullTracker.applyEvent(seen);
+  RobotFrame fullTracked = makeNeutralFrame();
+  fullTracker.apply(fullTracked, 150, false);
+
+  RobotFrame fullSigh = makeNeutralFrame();
+  fullSigh.mode = CharacterMode::Idle;
+  const float neutralMouthSmile = fullSigh.face.mouthSmile;
+  fullTracker.apply(fullSigh, 8900, false);
+  TEST_ASSERT_EQUAL(static_cast<int>(PersonLossPhase::Sigh),
+                    static_cast<int>(fullTracker.telemetry().lossPhase));
+  TEST_ASSERT_EQUAL_UINT32(1, fullTracker.telemetry().lossEvents);
+  TEST_ASSERT_FALSE(fullTracker.telemetry().tracking);
+
+  GazeTracker reducedTracker;
+  reducedTracker.reset(0);
+  reducedTracker.applyEvent(seen);
+  RobotFrame reducedTracked = makeNeutralFrame();
+  reducedTracker.apply(reducedTracked, 150, true);
+
+  RobotFrame reducedSigh = makeNeutralFrame();
+  reducedSigh.mode = CharacterMode::Idle;
+  reducedTracker.apply(reducedSigh, 8900, true);
+  TEST_ASSERT_GREATER_THAN_FLOAT(
+      fabsf(reducedSigh.motion.pitchDeg) * 2.0f, fabsf(fullSigh.motion.pitchDeg));
+  TEST_ASSERT_GREATER_THAN_FLOAT(
+      fabsf(neutralMouthSmile - reducedSigh.face.mouthSmile) * 2.0f,
+      fabsf(neutralMouthSmile - fullSigh.face.mouthSmile));
+}
+
 void test_intent_engine_tracks_face_position_payload() {
   IntentEngine engine;
   engine.begin();
@@ -7129,6 +7222,8 @@ int main() {
   RUN_TEST(test_gaze_tracker_vertical_follow_is_bounded_and_returns_without_snap);
   RUN_TEST(test_gaze_tracker_prevents_windup_while_motion_output_is_off);
   RUN_TEST(test_gaze_tracker_face_lost_holds_then_decays_last_seen_direction);
+  RUN_TEST(test_gaze_tracker_searches_sighs_and_cancels_on_reacquisition);
+  RUN_TEST(test_gaze_tracker_person_loss_respects_reduced_motion_and_stale_frames);
   RUN_TEST(test_intent_engine_tracks_face_position_payload);
   RUN_TEST(test_camera_adapter_publishes_clamped_face_detection);
   RUN_TEST(test_camera_adapter_publishes_face_lost_event);

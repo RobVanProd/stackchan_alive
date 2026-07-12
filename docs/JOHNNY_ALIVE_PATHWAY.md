@@ -48,7 +48,7 @@ Working on real hardware:
 | 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. Post-release source now includes an opt-in, bounded reply-window command that reuses the proven cue/RGB/capture/uplink path. | Qualify that exact image on hardware, then add voice-activity-ended capture, echo rejection, concurrent barge-in, and session-only recent turns. |
 | 3. Stackchan moves naturally while listening and replying. | Pass for coordinated face, RGB, mouth, and guarded servos. | Tighten active-speaker orientation and perceived-latency choreography. |
 | 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. | Add an embodied energy response without weakening power or motion safety. |
-| 5. Stackchan notices departure, searches, and sighs. | Not implemented. | Add person-loss confidence, bounded search choreography, and a local sigh/settle response. |
+| 5. Stackchan notices departure, searches, and sighs. | Implemented in post-release source as a bounded hold, two-sided search, procedural visual/body sigh, settle, and immediate reacquisition cancel path. | Qualify the exact image with real camera loss/reacquisition and tune timing from observed behavior. |
 
 ## Phase Status
 
@@ -58,10 +58,10 @@ Working on real hardware:
 | P2 Physical senses | Touch, RGB, and IMU pickup/orientation are exercised on hardware. A telemetry-first LTR-553 adapter, failure accounting, and native tests are implemented after `v0.2.0`. | Flash and measure raw proximity/light values, calibrate presence hysteresis, and keep microSD optional. |
 | P3 Sound awareness | Dual-mic capture and on-device wake work on hardware. | Add evidence-backed sound-direction estimation and fuse it with camera confidence. |
 | P4 Wake/commands | On-device wake, acknowledgement cues, bounded capture, bridge uplink, and local fallback are working. Opt-in Conversation v2 now has a tested host-to-firmware reply-window command with expiry and disconnect cancellation. | Physically qualify the opt-in path while preserving wake-gated entry and deterministic close conditions. |
-| P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. | Improve tracking speed, active-speaker selection, and person-loss choreography. |
+| P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. Post-release source adds deterministic person-loss phase telemetry and bounded search/sigh/settle choreography. | Physically qualify departure/reacquisition, then improve tracking speed and active-speaker selection. |
 | P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, phrase streaming, and normalized per-stage latency evidence work. | Add voice-activity-ended follow-up capture and interruption-safe concurrent barge-in. |
 | P7 Brain bridge | Real Wi-Fi bridge, Whisper, Gemma 4, local research, trusted facts, privacy-filtered memory, production voice, and recovery tooling are integrated. | Improve memory retrieval relevance and expose typed live robot state to the character prompt. |
-| P8 Continuity | Started: durable filtered facts, persona packs, robot embodiment telemetry, and camera continuity exist. | Conversation sessions, persona hot-swap, person loss, energy state, and community pack discovery. |
+| P8 Continuity | Started: durable filtered facts, persona packs, robot embodiment telemetry, camera continuity, and source-level person-loss choreography exist. | Conversation sessions, persona hot-swap, energy state, and community pack discovery. |
 
 ## Sequenced Post-Release Work
 
@@ -87,7 +87,10 @@ Working on real hardware:
 3. Perceived latency and person awareness.
    - Record wake, capture end, STT, model, research, TTS first audio, playback start, and completion.
    - Begin face/RGB/body acknowledgement within 300 ms while deeper work continues.
-   - Fuse camera and sound confidence, then add bounded search-and-sigh behavior after person loss.
+   - Done in post-release source: camera loss enters observable hold/search/sigh/settle phases,
+     freezes internal motion targets when actuator output is unavailable, and cancels immediately
+     on face reacquisition.
+   - Next: qualify it on hardware and fuse sound confidence into the search direction.
 
 4. Embodied energy and platform work.
    - Map honest PMIC/battery state into sleepy/charging/ready character state.

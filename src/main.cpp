@@ -8148,6 +8148,17 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"camera_gaze_presence\":%.3f", static_cast<double>(gaze.presence));
   append(",\"camera_gaze_yaw_offset_deg\":%.3f", static_cast<double>(gaze.yawOffsetDeg));
   append(",\"camera_gaze_pitch_offset_deg\":%.3f", static_cast<double>(gaze.pitchOffsetDeg));
+  append(",\"camera_person_loss_phase\":\"%s\"", personLossPhaseName(gaze.lossPhase));
+  append(",\"camera_person_loss_phase_started_at_ms\":%lu",
+         static_cast<unsigned long>(gaze.lossPhaseStartedAtMs));
+  append(",\"camera_person_loss_events\":%lu",
+         static_cast<unsigned long>(gaze.lossEvents));
+  append(",\"camera_person_loss_searches\":%lu",
+         static_cast<unsigned long>(gaze.searchEntries));
+  append(",\"camera_person_loss_sighs\":%lu",
+         static_cast<unsigned long>(gaze.sighEntries));
+  append(",\"camera_person_reacquisitions\":%lu",
+         static_cast<unsigned long>(gaze.reacquisitions));
   append(",\"motion_self_motion_active\":%s", motion.selfMotionActive ? "true" : "false");
   append(",\"motion_self_motion_until_ms\":%lu",
          static_cast<unsigned long>(motion.selfMotionUntilMs));

@@ -7,6 +7,16 @@
 
 namespace stackchan {
 
+enum class PersonLossPhase : uint8_t {
+  None,
+  Hold,
+  Search,
+  Sigh,
+  Settle,
+};
+
+const char* personLossPhaseName(PersonLossPhase phase);
+
 struct GazeTrackerTelemetry {
   float targetX = 0.0f;
   float targetY = 0.0f;
@@ -15,8 +25,14 @@ struct GazeTrackerTelemetry {
   float yawOffsetDeg = 0.0f;
   float pitchOffsetDeg = 0.0f;
   uint32_t lastAppliedAtMs = 0;
+  uint32_t lossPhaseStartedAtMs = 0;
+  uint32_t lossEvents = 0;
+  uint32_t searchEntries = 0;
+  uint32_t sighEntries = 0;
+  uint32_t reacquisitions = 0;
   bool motionOutputActive = true;
   bool tracking = false;
+  PersonLossPhase lossPhase = PersonLossPhase::None;
 };
 
 class GazeTracker {
@@ -35,9 +51,11 @@ class GazeTracker {
   uint32_t lastSeenMs_ = 0;
   uint32_t lostAtMs_ = 0;
   uint32_t lastApplyMs_ = 0;
+  float lostYawOffsetDeg_ = 0.0f;
   bool motionOutputActive_ = true;
   bool hasFixation_ = false;
 
+  void setLossPhase(PersonLossPhase phase, uint32_t nowMs);
   static float approach(float value, float target, float amount);
 };
 
