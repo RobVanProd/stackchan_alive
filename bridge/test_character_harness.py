@@ -196,6 +196,9 @@ class CharacterHarnessTests(unittest.TestCase):
 
     def test_prompt_suite_and_profiles_cover_mobile_target(self):
         self.assertGreaterEqual(len(PROMPT_SUITE), 5)
+        remember = next(case for case in PROMPT_SUITE if case["name"] == "remember")
+        self.assertTrue(remember["requires_memory_write"])
+        self.assertEqual({"user.favorite_color": "teal"}, remember["required_memory_write"])
         self.assertIn("gemma4-e2b-litert-lm", MODEL_PROFILES)
         prompt = build_prompt(PROMPT_SUITE[0])
         self.assertIn("Return only one JSON object", prompt)

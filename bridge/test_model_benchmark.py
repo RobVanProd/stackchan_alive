@@ -83,7 +83,7 @@ class ModelBenchmarkTests(unittest.TestCase):
                         "  'mode': 'think',",
                         "  'earcon': 'think',",
                         "  'emotion': {'arousal': 0.1, 'valence': 0.0},",
-                        "  'memory_write': {'project.note': 'benchmark smoke'},",
+                        "  'memory_write': {'project.note': 'benchmark smoke', 'user.favorite_color': 'teal'},",
                         "  'memory_forget': ['project.bracket_color']",
                         "}))",
                     ]
@@ -129,6 +129,63 @@ class ModelBenchmarkTests(unittest.TestCase):
         result = report["results"][0]
         self.assertFalse(result["ok"])
         self.assertIn("missing_required_memory_forget", result["issues"])
+
+    def test_remember_case_requires_a_memory_write_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_model.py"
+            script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import sys",
+                        "sys.stdin.read()",
+                        "print(json.dumps({",
+                        "  'spoken_text': 'I will remember that.',",
+                        "  'mode': 'happy',",
+                        "  'earcon': 'confirm',",
+                        "  'emotion': {'arousal': 0.0, 'valence': 0.2},",
+                        "  'memory_write': {},",
+                        "  'memory_forget': []",
+                        "}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+            report = run_benchmark(["gemma4-e2b-gguf"], ["remember"], command=command, require_runner=True)
+
+        result = report["results"][0]
+        self.assertFalse(result["ok"])
+        self.assertIn("missing_required_memory_write", result["issues"])
+        self.assertIn("missing_required_memory_write_value:user.favorite_color", result["issues"])
+
+    def test_remember_case_accepts_a_safe_memory_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_model.py"
+            script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import sys",
+                        "sys.stdin.read()",
+                        "print(json.dumps({",
+                        "  'spoken_text': 'Teal. I will remember that.',",
+                        "  'mode': 'happy',",
+                        "  'earcon': 'confirm',",
+                        "  'emotion': {'arousal': 0.0, 'valence': 0.2},",
+                        "  'memory_write': {'user.favorite_color': 'teal'},",
+                        "  'memory_forget': []",
+                        "}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+            report = run_benchmark(["gemma4-e2b-gguf"], ["remember"], command=command, require_runner=True)
+
+        result = report["results"][0]
+        self.assertTrue(result["ok"], result["issues"])
+        self.assertEqual({"user.favorite_color": "teal"}, result["normalized"]["memory_write"])
 
     def test_outputs_include_json_and_markdown_summary(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):

@@ -99,6 +99,11 @@ def benchmark_case(
     validation = payload["validation"]
     normalized = validation["normalized"]
     issues = list(validation["issues"])
+    if case.get("requires_memory_write") and not normalized.get("memory_write"):
+        issues.append("missing_required_memory_write")
+    for key, value in case.get("required_memory_write", {}).items():
+        if normalized.get("memory_write", {}).get(key) != value:
+            issues.append(f"missing_required_memory_write_value:{key}")
     if case.get("requires_memory_forget") and not normalized.get("memory_forget"):
         issues.append("missing_required_memory_forget")
     spoken_text = str(normalized.get("spoken_text", "")).lower()

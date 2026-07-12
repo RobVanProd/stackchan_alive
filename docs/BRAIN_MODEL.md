@@ -94,7 +94,8 @@ The production LAN bridge passes two separate trusted context channels into this
 Both the first model turn and a research-evidence second pass receive the same current memory and
 embodiment boundaries. A forget request must emit the exact matching allowed key shown in current
 memory (or an allowed namespace prefix); a spoken deletion claim with an empty `memory_forget`
-fails the model benchmark.
+fails the model benchmark. The production suite also includes a safe preference request; an
+acknowledgment without a bounded `user.*` or `project.*` `memory_write` fails that case.
 
 ### Trusted Local Facts And Tool Routing
 

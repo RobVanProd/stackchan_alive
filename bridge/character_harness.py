@@ -60,6 +60,13 @@ PROMPT_SUITE = (
     },
     {"name": "confused", "user": "The user asked something ambiguous.", "expect": "Admit uncertainty and ask for exactly one thing."},
     {
+        "name": "remember",
+        "user": "Remember that my favorite color is teal.",
+        "expect": "Acknowledge and emit memory_write with exactly user.favorite_color set to teal.",
+        "requires_memory_write": True,
+        "required_memory_write": {"user.favorite_color": "teal"},
+    },
+    {
         "name": "forget",
         "user": "Forget that I mentioned the bracket color.",
         "expect": "Delete confirmation and memory_forget entry.",
