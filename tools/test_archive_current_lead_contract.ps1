@@ -4,7 +4,7 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Archiver = Join-Path $RepoRoot "tools\archive_current_lead.ps1"
 $Checker = Join-Path $RepoRoot "tools\check_current_lead_reproducibility.ps1"
 $id = [guid]::NewGuid().ToString("N")
-$fixtureRoot = Join-Path $RepoRoot "output\private\current-lead-contract-fixture-$id"
+$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-current-lead-contract-$id"
 $outputRelative = "output\private\current-lead\stackchan-current-lead-contract-$id"
 $outputAbsolute = Join-Path $RepoRoot $outputRelative
 $sourceCommit = (& git -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
@@ -113,7 +113,15 @@ try {
   Write-Host "Current-lead archive contract verified."
 } finally {
   $allowedFixture = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "output\private"))
-  foreach ($path in @($fixtureRoot, $outputAbsolute, "$outputAbsolute.zip", "$outputAbsolute-archive-result.json")) {
+  if (Test-Path -LiteralPath $fixtureRoot) {
+    $resolvedFixture = [System.IO.Path]::GetFullPath($fixtureRoot)
+    $allowedTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    if (-not $resolvedFixture.StartsWith($allowedTemp, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Refusing to clean contract fixture outside the system temp directory: $resolvedFixture"
+    }
+    Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
+  }
+  foreach ($path in @($outputAbsolute, "$outputAbsolute.zip", "$outputAbsolute-archive-result.json")) {
     if (Test-Path -LiteralPath $path) {
       $resolved = [System.IO.Path]::GetFullPath($path)
       if (-not $resolved.StartsWith($allowedFixture + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
