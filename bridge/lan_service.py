@@ -1291,6 +1291,9 @@ class LanBridgeSession:
             return [error_frame("wake_phrase_required", "audio transcript did not contain Stackchan") | audio_summary]
         if user_text:
             self.memory = self.memory.remember_user_text(user_text)
+            # Persist transcript-owned facts before model/TTS work so an explicit
+            # remember request survives a later runner or audio failure.
+            self._save_memory()
 
         requested_case = str(message.get("runner_case", "")).strip()
         runner_summary: dict[str, object] = {}

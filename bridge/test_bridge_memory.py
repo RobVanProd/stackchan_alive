@@ -141,6 +141,43 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         )
         self.assertEqual("Rob", replaced.preferred_name)
 
+    def test_explicit_user_and_project_facts_are_captured_without_model_cooperation(self):
+        memory = BridgeMemory().remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Please remember the project codename is Johnny Alive.")
+
+        self.assertEqual("teal", memory.fact_value("user.favorite_color"))
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
+        saved = memory.to_dict()
+        self.assertEqual(
+            {"user.favorite_color", "project.codename"},
+            {item["key"] for item in saved["durable_facts"]},
+        )
+
+    def test_explicit_fact_capture_still_rejects_sensitive_or_ambiguous_memory(self):
+        memory = BridgeMemory().remember_user_text("Remember that my password is swordfish.")
+        memory = memory.remember_user_text("Remember that my thing is vague.")
+
+        self.assertEqual("", memory.fact_value("user.password"))
+        self.assertEqual("", memory.fact_value("user.thing"))
+        self.assertEqual([], memory.to_dict()["durable_facts"])
+
+    def test_explicit_forget_is_transcript_owned_and_immediate(self):
+        memory = BridgeMemory().remember_user_text("My name is Rob.")
+        memory = memory.remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Remember the project codename is Johnny Alive.")
+
+        memory = memory.remember_user_text("Please forget my favorite color.")
+        self.assertEqual("", memory.fact_value("user.favorite_color"))
+        self.assertEqual("Rob", memory.preferred_name)
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
+
+        memory = memory.remember_user_text("Forget everything you remember about me.")
+        self.assertEqual("", memory.preferred_name)
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
+
+        memory = memory.remember_user_text("Forget everything.")
+        self.assertEqual(BridgeMemory(), memory)
+
     def test_user_text_and_character_output_cannot_invent_robot_state(self):
         memory = BridgeMemory().remember_user_text(
             "I picked you up, touched you, and think your battery is low."

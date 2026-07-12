@@ -15,7 +15,7 @@ class TrustedFactsSmokeTests(unittest.TestCase):
         self.assertFalse(report["audioPlayed"])
         self.assertEqual(len(ROUTED_CASES), report["routedCases"])
         self.assertEqual(len(PASSTHROUGH_CASES), report["passthroughCases"])
-        self.assertEqual({"local_clock": 7, "memory_recall": 2}, report["routes"])
+        self.assertEqual({"local_clock": 10, "memory_recall": 4}, report["routes"])
         self.assertTrue(report["preferredNamePresent"])
 
     def test_unknown_preferred_name_is_an_honest_ready_response(self):

@@ -57,6 +57,7 @@ Run the narrow tests for the code touched, then the relevant broad gates:
 ```powershell
 pio test -e native_logic
 python -m unittest discover -s bridge -p "test_*.py"
+python bridge/trusted_facts_smoke.py --memory-file output/pc-brain/latest/memory.json --json
 pio run -e stackchan_release_full
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_full_system_soak_evidence_contract.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_current_lead_reproducibility_contract.ps1
@@ -66,6 +67,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_archive_curre
 Use `tools/check_full_system_soak_evidence.ps1` for completed hardware runs. A build or short
 smoke does not prove long-term physical stability. The exact installed binary must pass its own
 qualification and soak; do not transfer evidence from a different SHA-256.
+The trusted-facts smoke must remain silent (`modelInvocations: 0`, `audioPlayed: false`) and must
+not print stored fact values; it proves routing and privacy shape, not conversational voice output.
 `stackchan_release_full` is the secret-free public build. Per-device `stackchan_camera_probe` or
 `stackchan_release_forensics` builds require explicit private OTA/pairing configuration and must
 never be substituted into a public package or GitHub release asset.

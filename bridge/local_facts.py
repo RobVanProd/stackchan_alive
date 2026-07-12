@@ -7,10 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from bridge_memory import BridgeMemory
+from bridge_memory import BridgeMemory, memory_fact_key
 
 
 _TIME_QUERY = re.compile(
@@ -20,9 +17,13 @@ _TIME_QUERY = re.compile(
     r"do you (?:know what time it is|have (?:the )?time)|"
     r"(?:can|could|would|will) you (?:please )?tell me "
     r"(?:what time it is|(?:the |current |local )?time)|"
+    r"(?:can|could|would|will) you (?:please )?(?:check|give me) "
+    r"(?:the |current |local )?time|"
+    r"can i (?:please )?(?:get|have) (?:the |current |local )?time|"
     r"tell me (?:what time it is|(?:the |current |local )?time)|"
+    r"(?:check|give me) (?:the |current |local )?time(?: please)?|"
     r"(?:the )?(?:current|local) time(?: right now)?(?: please)?|"
-    r"time right now"
+    r"time right now|time please"
     r")\b",
     re.IGNORECASE,
 )
@@ -59,6 +60,17 @@ _NAME_QUERY = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_USER_FACT_QUERIES = (
+    re.compile(r"^(?:what(?:'s| is)|tell me) my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^do you remember my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^do you remember what my (?P<subject>.+?) is[?.!]*$", re.IGNORECASE),
+    re.compile(r"^what did i (?:say|tell you) (?:about )?my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+)
+_PROJECT_FACT_QUERIES = (
+    re.compile(r"^(?:what(?:'s| is)|tell me) (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^do you remember (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(r"^what did i (?:say|tell you) about (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +104,22 @@ def _clock_text(now: datetime) -> str:
 def _timezone_text(now: datetime) -> str:
     name = " ".join(str(now.tzname() or "local time").split())
     return name if name else "local time"
+
+
+def _explicit_fact_query(text: str) -> tuple[str, str, str] | None:
+    clean = re.sub(r"^(?:hey\s+)?stackchan[, ]+", "", text.strip(), flags=re.IGNORECASE)
+    for namespace, patterns in (("user", _USER_FACT_QUERIES), ("project", _PROJECT_FACT_QUERIES)):
+        for pattern in patterns:
+            match = pattern.fullmatch(clean)
+            if match is None:
+                continue
+            subject = " ".join(match.group("subject").split()).strip(" .?!")
+            if subject.lower().endswith((" is", " was")):
+                subject = subject.rsplit(" ", 1)[0]
+            key = memory_fact_key(namespace, subject)
+            if key and key not in {"user.name", "user.preferred_name"}:
+                return namespace, subject, key
+    return None
 
 
 def resolve_local_fact(
@@ -135,6 +163,24 @@ def resolve_local_fact(
         return LocalFactResult(
             tool="memory_recall",
             spoken_text="I do not know what you want me to call you yet.",
+            mode="concern",
+            valence=-0.08,
+        )
+
+    fact_query = _explicit_fact_query(text)
+    if fact_query is not None:
+        namespace, subject, key = fact_query
+        value = memory.fact_value(key)
+        explicit_recall = bool(re.search(r"\bremember\b|\bwhat did i (?:say|tell you)\b", text, re.IGNORECASE))
+        if not value and not explicit_recall:
+            return None
+        owner = "your" if namespace == "user" else "the project's"
+        if value:
+            spoken = f"You told me {owner} {subject} is {value}."
+            return LocalFactResult(tool="memory_recall", spoken_text=spoken, mode="happy", valence=0.16)
+        return LocalFactResult(
+            tool="memory_recall",
+            spoken_text=f"I do not remember {owner} {subject} yet.",
             mode="concern",
             valence=-0.08,
         )

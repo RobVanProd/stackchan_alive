@@ -35,6 +35,7 @@ from lan_service import (
     websocket_accept_value,
 )
 from bridge_memory import BridgeMemory
+from local_runner import RunnerExecutionError
 from reference_bridge import PROTOCOL, load_bridge_memory
 from stt_adapter import STT_COMMAND_ENV
 from tts_adapter import TTS_COMMAND_ENV
@@ -450,6 +451,45 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("thinking", frames[0]["type"])
         self.assertEqual("Rob", loaded.preferred_name)
         self.assertIn("bridge", loaded.recent_topics)
+
+    def test_explicit_memory_persists_even_when_runner_fails_after_capture(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory_file = Path(temp_dir) / "memory.json"
+            session = LanBridgeSession(LanBridgeConfig(memory_file=memory_file))
+            with patch("lan_service.run_runner_profile", side_effect=RunnerExecutionError("offline")):
+                frames = session.handle_text(
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 10,
+                            "text": "Remember that my favorite color is teal.",
+                        }
+                    )
+                )
+            loaded = load_bridge_memory(memory_file)
+
+        self.assertEqual("runner_error", frames[0]["code"])
+        self.assertEqual("teal", loaded.fact_value("user.favorite_color"))
+
+    def test_explicit_forget_persists_even_when_runner_fails_after_deletion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory_file = Path(temp_dir) / "memory.json"
+            seed = BridgeMemory().remember_user_text("Remember that my favorite color is teal.")
+            session = LanBridgeSession(LanBridgeConfig(memory_file=memory_file), memory=seed)
+            with patch("lan_service.run_runner_profile", side_effect=RunnerExecutionError("offline")):
+                frames = session.handle_text(
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 11,
+                            "text": "Forget my favorite color.",
+                        }
+                    )
+                )
+            loaded = load_bridge_memory(memory_file)
+
+        self.assertEqual("runner_error", frames[0]["code"])
+        self.assertEqual("", loaded.fact_value("user.favorite_color"))
 
     def test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript(self):
         with patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False):

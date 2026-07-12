@@ -100,11 +100,24 @@ acknowledgment without a bounded `user.*` or `project.*` `memory_write` fails th
 ### Trusted Local Facts And Tool Routing
 
 Deterministic host facts do not depend on Gemma deciding to call a tool. Before inference,
-`bridge/local_facts.py` recognizes direct questions about the host-local time, date, time zone,
-and the user's remembered preferred name. It returns validated Character Lock JSON immediately,
-records `local_clock` or `memory_recall` in the turn log, and never writes memory. A request for
-another city's time is deliberately left to the normal research/model path rather than being
-misreported as local time.
+`bridge/local_facts.py` recognizes natural direct questions about the host-local time, date, time
+zone, the user's remembered preferred name, and exact approved `user.*` / `project.*` facts. It
+returns validated Character Lock JSON immediately, records `local_clock` or `memory_recall` in the
+turn log, and never asks Gemma to infer those facts. A request for another city's time is
+deliberately left to the normal research/model path rather than being misreported as local time.
+
+Explicit opt-in memory is transcript-owned as well. Phrases shaped like `Remember that my favorite
+color is teal` and `Remember the project codename is Johnny Alive` are sanitized into bounded
+`user.favorite_color` and `project.codename` records before model or TTS work begins. They are
+atomically persisted immediately, so a later inference or audio failure cannot lose the request.
+The same privacy denylist still rejects credentials, health, finance, relationships, third-party
+data, contact details, and raw audio. Generic conversation is not auto-memorized, and an unknown
+generic personal question still reaches the model; only an explicit recall request receives a
+deterministic honest `I do not remember ... yet` response.
+Explicit `forget my <subject>`, `forget the project <subject>`, `forget everything you remember
+about me`, and `forget everything` requests delete their exact bounded scope before inference and
+are persisted immediately. The model may still phrase the spoken confirmation, but it is not the
+deletion authority.
 
 Run the silent production-memory smoke after restarting the PC brain. It does not call Gemma or
 play audio, and it reports only whether a preferred name is present rather than printing it:
@@ -114,7 +127,9 @@ python bridge/trusted_facts_smoke.py --memory-file output/pc-brain/latest/memory
 ```
 
 The release result must report `ready: true`, `modelInvocations: 0`, `audioPlayed: false`, and no
-issues. Remote-city time and unrelated time/date wording remain passthrough cases.
+issues. The smoke covers clock variants, known/unknown recall, and passthrough guards. Remote-city
+time, unrelated time/date wording, and unknown generic personal questions remain passthrough
+cases.
 
 When local research is enabled, Gemma may request one `web_search` or `web_fetch` round. The
 bridge also recognizes an explicit user request to search, browse, look something up, or obtain

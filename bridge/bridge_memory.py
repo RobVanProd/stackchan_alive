@@ -108,6 +108,37 @@ _QUERY_STOP_WORDS = {
     "it", "me", "my", "of", "on", "please", "remember", "tell", "that", "the", "to", "what",
     "when", "where", "which", "who", "you",
 }
+_FACT_SUBJECT_STOP_WORDS = {"a", "an", "the", "that", "this"}
+_EXPLICIT_USER_FACT_RE = re.compile(
+    r"\b(?:please\s+)?remember(?:\s+that)?\s+my\s+"
+    r"(?P<subject>[A-Za-z][A-Za-z0-9 _-]{0,39}?)\s+is\s+"
+    r"(?P<value>[^\r\n]{1,96}?)\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_PROJECT_FACT_RE = re.compile(
+    r"\b(?:please\s+)?remember(?:\s+that)?\s+(?:the\s+)?project(?:'s)?\s+"
+    r"(?P<subject>[A-Za-z][A-Za-z0-9 _-]{0,39}?)\s+is\s+"
+    r"(?P<value>[^\r\n]{1,96}?)\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_USER_FORGET_RE = re.compile(
+    r"^(?:please\s+)?forget(?:\s+about)?\s+my\s+"
+    r"(?P<subject>[A-Za-z][A-Za-z0-9 _-]{0,39}?)\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_PROJECT_FORGET_RE = re.compile(
+    r"^(?:please\s+)?forget(?:\s+about)?\s+(?:the\s+)?project(?:'s)?\s+"
+    r"(?P<subject>[A-Za-z][A-Za-z0-9 _-]{0,39}?)\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_USER_FORGET_ALL_RE = re.compile(
+    r"^(?:please\s+)?forget everything (?:you (?:know|remember) )?about me\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_FORGET_ALL_RE = re.compile(
+    r"^(?:please\s+)?forget (?:everything|all memories)\s*[.!?]*$",
+    re.IGNORECASE,
+)
 
 
 def _utc_now() -> str:
@@ -284,6 +315,23 @@ def _query_terms(value: object) -> set[str]:
         for token in re.findall(r"[a-z0-9]+", str(value).lower())
         if len(token) > 1 and token not in _QUERY_STOP_WORDS
     }
+
+
+def memory_fact_key(namespace: str, subject: object) -> str:
+    """Build a bounded memory key from an explicit user-owned fact subject."""
+
+    clean_namespace = str(namespace).strip().lower()
+    if clean_namespace not in {"user", "project"}:
+        return ""
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", str(subject).lower())
+        if token not in _FACT_SUBJECT_STOP_WORDS
+    ]
+    slug = "_".join(tokens)[: max(0, MAX_MEMORY_KEY_CHARS - len(clean_namespace) - 1)].strip("_")
+    if not slug or slug in {"fact", "thing", "information", "memory"}:
+        return ""
+    return f"{clean_namespace}.{slug}"
 
 
 def _rank_for_prompt(record: MemoryRecord, query_terms: set[str]) -> tuple[int, int, float, str]:
@@ -591,6 +639,25 @@ class BridgeMemory:
         preferred_name = self.preferred_name
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
+        if _EXPLICIT_FORGET_ALL_RE.fullmatch(text):
+            return BridgeMemory()
+        if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(text):
+            preferred_name = ""
+            durable = tuple(record for record in durable if not record.key.startswith("user."))
+        else:
+            user_forget = _EXPLICIT_USER_FORGET_RE.fullmatch(text)
+            project_forget = _EXPLICIT_PROJECT_FORGET_RE.fullmatch(text)
+            if user_forget is not None:
+                forget_key = memory_fact_key("user", user_forget.group("subject"))
+                if forget_key in _NAME_KEYS:
+                    preferred_name = ""
+                    durable = tuple(record for record in durable if record.key not in _NAME_KEYS)
+                elif forget_key:
+                    durable = tuple(record for record in durable if record.key != forget_key)
+            elif project_forget is not None:
+                forget_key = memory_fact_key("project", project_forget.group("subject"))
+                if forget_key:
+                    durable = tuple(record for record in durable if record.key != forget_key)
         match = re.search(
             r"\b(?:my name is|call me|you can call me|i am called|i'm called)\s+"
             r"([A-Za-z][A-Za-z0-9_-]{1,20})",
@@ -601,6 +668,17 @@ class BridgeMemory:
         if observed_name and _safe_value("user.preferred_name", observed_name):
             preferred_name = observed_name
             durable = _upsert_durable(durable, "user.preferred_name", preferred_name, 0.9, now=now)
+
+        fact_match = _EXPLICIT_USER_FACT_RE.search(text)
+        fact_namespace = "user"
+        if fact_match is None:
+            fact_match = _EXPLICIT_PROJECT_FACT_RE.search(text)
+            fact_namespace = "project"
+        if fact_match is not None:
+            fact_key = memory_fact_key(fact_namespace, fact_match.group("subject"))
+            fact_value = _memory_scalar(fact_match.group("value"))
+            if fact_key not in _NAME_KEYS and fact_value and _safe_value(fact_key, fact_value):
+                durable = _upsert_durable(durable, fact_key, fact_value, 0.85, now=now)
 
         topics = list(self.recent_topics)
         lowered = text.lower()
@@ -624,6 +702,24 @@ class BridgeMemory:
             _durable_facts=durable,
             _recent_context=recent,
         )
+
+    def fact_value(self, key: str) -> str:
+        """Return one exact approved durable fact without exposing the whole store."""
+
+        clean_key = _clean_key(key)
+        if not clean_key.startswith(("user.", "project.")):
+            return ""
+        now = _utc_now()
+        durable = self._canonical_durable(now=now)
+        matched = next((record for record in reversed(durable) if record.key == clean_key), None)
+        if matched is None:
+            return ""
+        object.__setattr__(
+            self,
+            "_durable_facts",
+            tuple(replace(record, last_used_at=now) if record.key == clean_key else record for record in durable),
+        )
+        return matched.value
 
     def context_lines(self, query: str = "") -> list[str]:
         lines = [f"turns_seen: {self.turns_seen}"]

@@ -46,6 +46,10 @@ class LocalFactTests(unittest.TestCase):
             "Could you tell me the current time?",
             "What time do you have?",
             "Current time please.",
+            "Can you check the time?",
+            "Can I get the time?",
+            "Give me the time please.",
+            "Time please.",
         )
 
         for phrase in phrases:
@@ -92,6 +96,27 @@ class LocalFactTests(unittest.TestCase):
                 self.assertIsNotNone(result)
                 self.assertEqual("memory_recall", result.tool)
                 self.assertIn("Rob", result.spoken_text)
+
+    def test_explicit_durable_facts_are_recalled_without_model_inference(self):
+        memory = BridgeMemory().remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Remember the project codename is Johnny Alive.")
+
+        user_fact = resolve_local_fact("What is my favorite color?", memory, now=self.now)
+        project_fact = resolve_local_fact("Do you remember the project codename?", memory, now=self.now)
+
+        self.assertEqual("memory_recall", user_fact.tool)
+        self.assertEqual("You told me your favorite color is teal.", user_fact.spoken_text)
+        self.assertEqual("memory_recall", project_fact.tool)
+        self.assertIn("Johnny Alive", project_fact.spoken_text)
+
+    def test_unknown_generic_personal_question_still_reaches_the_model(self):
+        self.assertIsNone(resolve_local_fact("What is my plan for tomorrow?", BridgeMemory(), now=self.now))
+
+    def test_explicit_unknown_recall_is_honest_and_deterministic(self):
+        result = resolve_local_fact("Do you remember my favorite color?", BridgeMemory(), now=self.now)
+
+        self.assertEqual("memory_recall", result.tool)
+        self.assertIn("do not remember", result.spoken_text)
 
 
 if __name__ == "__main__":

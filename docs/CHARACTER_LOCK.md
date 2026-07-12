@@ -99,6 +99,13 @@ Reference frequency: greeting the user by name is always allowed. Beyond that, a
 The bridge injects only the bounded, privacy-filtered, query-ranked
 `BridgeMemory.context_lines(user_text)` view into the model prompt. Identity remains available;
 at most eight other facts are supplied, and only supplied records have their usage time refreshed.
+Explicit `remember that my <subject> is <value>` and `remember the project <subject> is <value>`
+requests are captured deterministically from the wake-gated transcript before inference, using the
+same namespace, length, and privacy filters. Exact approved-fact questions are answered by the
+trusted host route without depending on the model to notice its memory context. Generic speech is
+never promoted to durable memory merely because it sounds personal.
+Explicit exact-key, user-namespace, and all-memory forget phrases are applied and atomically saved
+before inference; the model is responsible only for a truthful short confirmation after deletion.
 For a forget request, the response must put the matching displayed `user.*` or
 `project.*` key (or the requested allowed namespace prefix) in `memory_forget`; speaking a deletion
 confirmation while emitting an empty array is a failed turn.
