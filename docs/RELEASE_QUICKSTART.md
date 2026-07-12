@@ -483,7 +483,8 @@ For speech-reactive mouth bench tests from an actual WAV, generate a 50 Hz sidec
 
 Inside a generated evidence packet, `RUN_SPEECH_MOUTH_DEMO.cmd` does this automatically for the copied lead RVC audition and writes the generated sidecar under `speech/`. Run `RUN_SPEAK_ALL_INTENTS.cmd` next to capture `logs/speak_all_intents_serial.log` with every packaged speech intent, earcon, and `[audio_out]` handoff.
 
-The packet copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json` from the verified release package. Review those reports before promotion; they should stay blocked until the production voice source and RVC rights gates are explicitly cleared.
+The packet copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json` from the
+verified release package. Review them to confirm the production voice hashes.
 
 Before promotion review, complete the audio evidence record generated in the packet:
 
@@ -493,17 +494,15 @@ notepad .\AUDIO_REVIEW.md
 
 Save at least one real-device speaker recording under `audio\`. The strict verifier accepts `.wav`, `.mp3`, `.m4a`, `.aac`, `.mp4`, `.mov`, or `.webm`, but generated source WAVs alone do not count as target-speaker evidence.
 
-Before consumer promotion, review the generated voice-source status report:
+Review the generated production voice status report:
 
 ```powershell
 notepad .\VOICE_SOURCE_STATUS.md
 notepad .\RVC_VOICE_BASE_STATUS.md
 ```
 
-That report must move from `blocked-pending-production-voice-source` to production-ready
-before a non-prerelease rollout. The completed voice provenance YAML must include a
-`source_commit` matching the reviewed build; run
-`tools\test_voice_source_readiness_contract.cmd` before trusting the gate.
+The report records the exact production model/index hashes. Run
+`tools\verify_tracked_rvc_assets.ps1` before publishing the package.
 
 ## Promotion Evidence
 
@@ -534,6 +533,7 @@ If documentation or host-only release commits were made after the exact firmware
 run `tools\verify_consumer_promotion.cmd` directly and pass both `-ExpectedCommit` for the package
 and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence.
 
-That final gate also requires successful GitHub Actions status and completed production voice-source provenance. If GitHub Actions is still blocked by account billing, spending limits, or pre-runner allocation, treat the release as hardware-validated locally but not consumer-promoted until the account issue is resolved or a completed `docs\CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json` copy is passed with `-ExternalAccountCiExceptionPath`. The checked-in template and generated drafts are deliberately unapproved: approval fields are `TBD` and every proof boolean is `false`. Use `.\tools\new_ci_account_block_exception.cmd -ActionsStatusPath output\release\<version>\github_actions_status.json -OutPath output\ci-exceptions\<version>\CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json` to draft the pinned exception from the observed CI report, then fill the approval fields and flip each proof boolean only after that gate passes.
+That final gate also records GitHub Actions status. If hosted jobs cannot start because of account
+billing or runner allocation, preserve the local verification report and publish the limitation.
 
 Hardware validation is still required before promoting this prerelease to a consumer rollout.

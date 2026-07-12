@@ -393,12 +393,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $voiceRvcFiles = @(
-  "media/voice/rvc/README.md"
+  "media/voice/rvc/README.md",
+  "media/voice/rvc/model.pth",
+  "media/voice/rvc/model.index"
 )
 
 foreach ($file in $voiceRvcFiles) {
   if (-not (Test-Path -LiteralPath $file)) {
-    throw "Missing public RVC BYOM policy: $file"
+    throw "Missing production RVC release asset: $file"
   }
   Copy-Item -LiteralPath $file -Destination $voiceRvcMediaDir
 }
@@ -1443,7 +1445,9 @@ $manifest = [ordered]@{
     "media/voice/sidecars/stackchan_spark_safety.speech_envelope.json",
     "media/voice/VOICE_SAMPLES.md",
     "media/voice/VOICE_AUDITION.html",
-    "media/voice/rvc/README.md"
+    "media/voice/rvc/README.md",
+    "media/voice/rvc/model.pth",
+    "media/voice/rvc/model.index"
   )
   includedTools = @(
     "tools/flash_device.cmd",

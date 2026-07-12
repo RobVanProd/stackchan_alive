@@ -288,4 +288,4 @@ output.
   packaged prompts still work. Open binary audio streams are discarded during recovery, so
   stale stream metadata cannot block the next bridge session. Runtime telemetry reports
   `bridge_timeouts` so evidence logs can prove the stalled-session recovery path ran.
-- Dynamic voice assets remain subject to `docs/VOICE_PERSONALITY.md` and production voice-source provenance.
+- Dynamic voice assets must remain traceable to the selected persona and recorded by hash.

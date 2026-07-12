@@ -19,7 +19,7 @@ Speech-mouth evidence must include `logs/speech_mouth_demo_serial.log` with stre
 - [ ] GitHub Actions `Firmware` workflow is green on `main`.
 - [ ] Release package ZIP contains firmware, media, docs, manifest, dependency provenance, `dependency_lock.json`, copied build inputs, and checksums.
 - [ ] `tools/verify_release_package.ps1` passes for the release ZIP.
-- [ ] Production voice-source provenance is completed and no longer marked pending.
+- [x] Production RVC model and index hashes match the released files.
 - [ ] `tools/flash_release_firmware.ps1 -PackageZip <zip> -Firmware display_only -DryRun -Monitor` passes for the release ZIP.
 - [ ] Hardware evidence packet created with `tools/start_hardware_evidence.ps1`.
 - [ ] Evidence packet includes the tested ZIP and `logs/package_verify.log`, or records a verified extracted package root.

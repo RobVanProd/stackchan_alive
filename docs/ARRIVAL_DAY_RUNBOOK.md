@@ -35,7 +35,7 @@ operator picked up the robot and the old harness rejected two external events; a
 polls were good, power/display/camera/network remained inside gates, and motion stop verified.
 Do not diagnose that run as a blackout or robot failure.
 
-Public release artifacts use the secret-free `stackchan_release_full` profile and BYOM voice
+Public release artifacts use the `stackchan_release_full` profile and bundled production voice
 policy. Never package the private paired firmware, Wi-Fi/OTA/camera credentials, pairing files,
 or local RVC models. Rebuild and independently verify the ZIP after the final source/documentation
 commit so its manifest commit matches GitHub.
@@ -1329,9 +1329,11 @@ Expected evidence:
 - audio sample is intelligible through the device speaker
 - no clipping, distortion, playback dropout, or excessive delay
 
-The evidence packet copies the current lead RVC audition into `reference_audio/`. For this prerelease direction, the lead is `RVC Bright Robot` with pitch 2, index 0.62, RMS mix 0.72, and protect 0.28. This remains review-only voice evidence; production voice-source provenance is still required before consumer rollout.
+The evidence packet copies the current lead RVC audition into `reference_audio/`. The production
+direction is `RVC Bright Robot` with pitch 2, index 0.62, RMS mix 0.72, and protect 0.28.
 
-The packet also copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json` from the verified release package. Treat these as the authoritative voice gate reports during bring-up; they should remain blocked until a licensed or owned production voice source and RVC rights review are cleared.
+The packet also copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json`; use them
+to confirm the production model and index hashes.
 
 Import the speaker recording into the packet. Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` files are stored under `audio/`:
 
@@ -1374,7 +1376,7 @@ Only after strict evidence verification passes:
 This still requires:
 
 - successful GitHub Actions status, unless an explicit `stackchan.ci-account-block-exception.v1` JSON account-block exception is recorded for the exact release commit
-- completed production voice-source provenance
+- verified production voice hashes
 - completed `AUDIO_REVIEW.md` with real-device speaker evidence
 
 ## Current Release Limits
@@ -1382,4 +1384,4 @@ This still requires:
 - Current hosted samples are review-only Stackchan Spark Synth samples.
 - Production voice source remains pending.
 - GitHub Actions may be externally blocked by account billing or spending-limit state.
-- No consumer rollout until hardware evidence, production voice provenance, and CI/account state are resolved.
+- Hardware evidence and CI/account state remain independently visible during rollout.

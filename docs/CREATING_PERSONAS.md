@@ -68,7 +68,7 @@ character or foundation rules.
 Do not loosen the foundation rules. The validator rejects wider response caps, unsafe
 memory prefixes, missing safety lines, clone markers, bad prompt slots, and missing
 packaged prompts. If `voice.yaml` points at packaged prompt audio, `pack.yaml` must also
-declare `provenance.voice_policy` pointing at a `stackchan.voice-source-provenance.v1`
+declare `provenance.voice_policy` pointing at the pack's voice asset record
 record. Review-only prototype audio may pass validation, but it must be documented; an
 undocumented voice source fails.
 
@@ -286,8 +286,8 @@ include:
 - Edited YAML and prompt files.
 - A clean `verify_persona_pack` result.
 - A red-team report for the persona.
-- Voice-source provenance for any shipped voice assets.
+- Voice file names and hashes for any shipped voice assets.
 
 Prototype packs may point at the bundled Spark prompt WAVs while the character is being
 designed. Production packs that ship new audio need licensed or owned source material and
-must pass the voice provenance gate.
+must pass voice asset hash verification.

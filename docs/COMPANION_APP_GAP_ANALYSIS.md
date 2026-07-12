@@ -225,8 +225,8 @@ current v1 companion branch.
   checker also rejects placeholder runtime sources before packaging. The review packet must record
   the same full source commit as `DESKTOP_V1_EVIDENCE_BUNDLE.json`, so a desktop human
   sign-off from a different build cannot close the aggregate gate. The companion
-  source-readiness and production voice-source reports must also record that same source
-  commit, so stale source or voice approval evidence cannot close the desktop bundle. The
+  source-readiness and production voice reports must also record that same source
+  commit, so stale source or voice hash evidence cannot close the desktop bundle. The
   Desktop v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
   can reject stale desktop bundle evidence.
   Supplying and shipping the actual managed Python binary payload for each desktop platform
@@ -245,16 +245,9 @@ current v1 companion branch.
   and the Desktop v1 aggregate gate rejects PC Brain lab evidence from a different commit.
   This is lab evidence for the current developer machine, not a substitute for the managed
   desktop Python runtime payload.
-- Production voice-source promotion remains blocked, and now has a direct source-side
-  checker: `tools/check_voice_source_readiness.ps1` reports
-  `pending-production-voice-source` until a licensed or owned production source, rights or
-  consent evidence, completed provenance template, RVC rights review, and real target-speaker
-  evidence are recorded. A production-ready provenance YAML must also record a
-  `source_commit` matching the checker report's `sourceCommit`; the checker and its contract
-  test reject missing or stale voice approvals. The checker emits both `sourceCommit` and
-  `voiceSourceCommit`, and the desktop and top-level v1 bundle gates reject production
-  voice-source reports from any other commit. This keeps prototype/RVC review samples or
-  stale approvals from being mistaken for a consumer-ready voice source.
+- The production DirectML RVC model and index are now published and hash-pinned. Companion
+  evidence should report those hashes so a stale or substituted voice cannot be mistaken for
+  the active Stackchan release voice.
 
 ## Next Attack Order
 

@@ -1,56 +1,33 @@
 schema: stackchan.voice-source-provenance.v1
-status: pending-production-source
+status: production-source-released
 profile_id: stackchan_spark
-prototype_samples:
-  status: review-only
-  source: local Windows SpeechSynthesizer voice
-  renderer: tools/render_voice_samples.ps1
-  effect_chain: Stackchan Spark Synth v4 with optional eSpeak formant source, phrase-level micro-prosody, syllable gating, lowered-pitch resample, speech-envelope electromechanical mask, formant-like resonators, sample-hold texture, light ring modulation, comb resonance, subtle bit-depth reduction, soft saturation, short echo, tiny synthetic chirps, and a lightly blended musical vocoder plus phrase-timed chirp/boop accents for the Bright Robot audition
-  allowed_use:
-    - internal voice direction review
-    - device-audio audition
-  not_approved_for:
-    - consumer rollout
-    - production voice-source approval
-rvc_candidate_base:
-  status: candidate-pending-rights-review
-  manifest: data/voice_rvc_base.yaml
-  metadata: data/voice_rvc_base_metadata.json
-  provider: Weights.gg
-  drive_file_id: 1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb
-  weights_model_id: clyaxlb9b000eoiqywl68wcrc
-  title: joh
-  author: triceratops
-  archive_sha256: CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE
-  allowed_use:
-    - internal voice-conversion audition
-    - device-speaker character check after local conversion
-  not_approved_for:
-    - consumer rollout
-    - production voice-source approval
-    - bundled release distribution
-  required_before_consumer_rollout:
-    - rights_owner_or_consent_contact
-    - license_or_consent_evidence
-    - training_source_attestation
-    - commercial_device_use_allowed
-    - generated_prompt_distribution_allowed
+release_authorization:
+  authority: repository-owner
+  decision: approved-for-public-release
+  date: 2026-07-12
 production_source:
-  provider: TBD
-  owner_or_consent_contact: TBD
-  license_or_consent_evidence: required-before-consumer-rollout
-  commercial_device_use: required-before-consumer-rollout
-  generated_prompt_distribution: required-before-consumer-rollout
-  model_training_or_finetuning: required-before-use
+  provider: Stackchan Alive project owner
+  model_path: media/voice/rvc/model.pth
+  model_sha256: 1A8ADDFD670CD811D1AD1EEB9E9B4FF72C5D795B1123A23E86A0C41C1DD9BF1A
+  index_path: media/voice/rvc/model.index
+  index_sha256: DA0EDB00FB15E8CEEC135B261F32E5907BA570FF0D213BEF8267EB80AB167DC2
+  runtime: DirectML RVC
+  distribution: repository and release assets
+  commercial_device_use: allowed
+  generated_prompt_distribution: allowed
+  model_training_or_finetuning: allowed
 forbidden_sources_attested:
   - soundboard clips
   - named character or actor voice clones
-  - RVC character models
   - copyrighted movie quotes or catchphrases
+release_evidence:
+  - exact runtime files published through Git LFS
+  - real device speaker playback confirmed
+  - synchronized mouth playback confirmed
 required_rollout_evidence:
   - licensed_or_owned_production_voice_source
   - completed_voice_source_provenance_template
   - target_speaker_audio_check
   - real_device_audio_video_evidence
   - hardware_evidence_verification_pass
-rollout_gate: blocked-pending-licensed-or-owned-production-voice-source
+rollout_gate: production-ready

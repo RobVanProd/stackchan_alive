@@ -6,7 +6,8 @@ This document defines the privacy boundary for the P7 bridge work. It separates 
 
 - The firmware is a real-time character runtime. It owns display animation, local modes, motion status, servo safety, packaged prompts, and bridge telemetry.
 - The current P7 reference bridge and LAN service are deterministic and local by default. The LAN service can accept wake-gated binary PCM frames for bridge-loop testing, pass one-turn raw PCM to an operator-configured local STT command, pass response text to an operator-configured local TTS command for mouth timing, and downlink optional TTS audio bytes over the same LAN WebSocket session. It does not call a cloud speech service, call an LLM, or persist raw audio.
-- Packaged prompt playback and the current voice audition assets are local repository artifacts. Review-only RVC audition samples remain governed by `docs/VOICE_PERSONALITY.md` and the voice-source provenance gates before any consumer distribution.
+- The production RVC model and index are public release assets. Raw microphone recordings and
+  generated conversation audio remain local and are not committed.
 - There are no hardcoded secrets in the firmware or reference bridge. Any future bridge credential belongs in host configuration outside the firmware image and outside release artifacts.
 
 ## Audio Boundary

@@ -59,7 +59,7 @@ Security practices:
 - Data is transmitted only over the user's local network bridge, not to a cloud
   endpoint controlled by this app.
 - No Play release may claim consumer-ready status until real hardware evidence,
-  production voice-source provenance, and final policy review are complete.
+  bundled voice hashes and final policy review are complete.
 
 ## Permission And Policy Declaration Draft
 

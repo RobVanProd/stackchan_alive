@@ -333,7 +333,7 @@ Foundation-locked settings:
 - Wake-gated audio must stay enforced once a microphone exists.
 - Servo movement must still require firmware-side arming and safety limits.
 - Memory writes and forgets must still pass the Character Lock validator.
-- Review-only RVC or voice assets must not be presented as production-approved.
+- The companion reports the active RVC file hashes and runtime health.
 
 ## Android App Surfaces
 
@@ -349,7 +349,7 @@ Minimum screens:
 - Persona: active persona pack, installed packs, validation result, creator instructions link.
 - Persona library: import a validated persona pack and export the active persona pack on
   Android and desktop, without including logs, transcripts, or private memory.
-- Voice: audition phrase, voice profile, volume, TTS/RVC status, provenance warning.
+- Voice: audition phrase, voice profile, volume, TTS/RVC status, and active model hash.
 - Settings: display, motion-safe controls, bridge policy, privacy/memory reset.
 - Diagnostics: logs, heartbeat state, audio stream counters, model latency, export evidence.
 

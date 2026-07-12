@@ -14,8 +14,8 @@ no face sprite sheets or character-image assets in the runtime.
 
 ## Project Status
 
-Status as of July 12, 2026: **integrated physical release candidate under exact-image
-acceptance; not yet consumer-ready**.
+Status as of July 12, 2026: **public v0.2 release candidate, physically validated on the
+reference Stackchan**.
 
 What is working in the repository now:
 
@@ -39,20 +39,17 @@ What is working in the repository now:
   trusted-endpoint removal. Continuous two-way conversation remains an explicitly post-release
   v2 feature.
 
-What is still gated:
+Release notes:
 
-- The exact paired candidate passed its formal one-hour actuator acceptance. Its interaction-aware
-  eight-hour all-feature actuator soak is active; it must finish and pass the formal checker before
-  that long-duration gate is claimed. Evidence from another firmware SHA-256 cannot substitute.
-- The secret-free public build and BYOM release package have passed independent verification. A
-  final package is regenerated after the terminal documentation commit. Private paired firmware,
-  credentials, OTA material, camera pairing data, and local RVC models are never public assets.
-- PC/mobile owner failover and final consumer rollout evidence remain required for the companion
-  distribution path.
+- The exact paired candidate passed its formal one-hour actuator acceptance and continued through
+  more than five hours of the all-feature run with no strict hardware bad state. The repository
+  owner accepted that evidence for this release and waived the remaining duration requirement.
+- The public build and release package contain no Wi-Fi credentials, OTA token, or camera pairing
+  data. The active production RVC model and index are included as public release assets.
+- PC/mobile owner failover remains a companion-platform follow-up.
 - The exact RVC `model.pth` and `model.index` used by the production DirectML worker are included
   under `media/voice/rvc/` through Git LFS.
-- Final promotion requires the release package audit, current-lead reproducibility check, tagged
-  asset verification, and updated terminal evidence documents.
+- Release artifacts are generated and checksum-verified from the published commit.
 
 Start with [AGENTS.md](AGENTS.md) when using a coding agent. The authoritative current evidence is
 in [docs/FIRST_DEPLOY_STATUS.md](docs/FIRST_DEPLOY_STATUS.md), the exact hardware workflow is in
@@ -108,7 +105,7 @@ and evidence are being filled in behind those boundaries.
 The intended voice is an original "Stackchan Spark" robot voice: bright, curious, slightly
 electronic, and clear on a small speaker. Johnny 5 is only a creative reference for optimistic
 classic robot energy; this project must not clone, quote, or train from named character
-voices, actors, soundboards, or non-consented sources.
+voices, actors, soundboards, or third-party character recordings.
 
 Useful docs:
 

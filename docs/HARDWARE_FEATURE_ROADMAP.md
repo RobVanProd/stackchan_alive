@@ -18,9 +18,9 @@ pickup/orientation events, authenticated camera capture, YuNet face acquisition,
 horizontal following have all been exercised on the reference robot. The host bridge also carries
 a bounded allowlisted embodiment snapshot for Gemma. Remaining evidence is deliberately narrower:
 the ordered body-zone/gesture promotion report, the operator-approved wake/follow camera report,
-multi-person active-speaker selection, production voice provenance for any bundled voice, and the
+multi-person active-speaker selection, production voice hash tracking, and the
 terminal eight-hour result. Phase 6 recognition and proximity behavior remain future work. The
-public Apache-2.0 package stays secret-free and BYOM; private pairing material and voice models are
+public Apache-2.0 package excludes private pairing material while the active voice models are
 not release assets.
 
 ## Confirmed Hardware

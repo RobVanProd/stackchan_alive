@@ -346,6 +346,14 @@ static_assert(STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 0 ||
 #define STACKCHAN_MOTION_POWER_CHARGE_BACKED_CURRENT_MA 0
 #endif
 
+#ifndef STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT
+#define STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT 0
+#endif
+
+#ifndef STACKCHAN_AUTONOMOUS_MOTION_REFRESH_MS
+#define STACKCHAN_AUTONOMOUS_MOTION_REFRESH_MS 300000
+#endif
+
 #ifndef STACKCHAN_FACE_TASK_PRIORITY
 #define STACKCHAN_FACE_TASK_PRIORITY 2
 #endif
@@ -624,6 +632,13 @@ static_assert(STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 0 ||
 #include "power/PowerForensics.hpp"
 #include "wake/WakeCueSequence.hpp"
 
+static_assert(STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT == 0 || STACKCHAN_MOTION_ENABLED_AT_BOOT != 0,
+              "Autonomous boot motion requires motion requested at boot");
+static_assert(STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT == 0 ||
+                  STACKCHAN_MOTION_SESSION_TIMEOUT_MS == 0 ||
+                  STACKCHAN_AUTONOMOUS_MOTION_REFRESH_MS < STACKCHAN_MOTION_SESSION_TIMEOUT_MS,
+              "Autonomous motion refresh must precede the motion session timeout");
+
 #if __has_include("FirmwareVoiceAssets.hpp")
 #include "FirmwareVoiceAssets.hpp"
 #define STACKCHAN_HAS_FIRMWARE_VOICE_ASSETS 1
@@ -799,6 +814,7 @@ PowerFloorTracker gPowerFloorTracker;
 PmicPowerForensics gPmicPowerForensics;
 #endif
 volatile bool gMotionRequested = STACKCHAN_MOTION_ENABLED_AT_BOOT != 0;
+volatile bool gAutonomousMotionRequested = STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT != 0;
 bool gMotionAudioPlaybackActive = false;
 bool gMotionAudioPreemptActive = false;
 MotionAudioPreemptionGate gMotionAudioPreemptionGate;
@@ -7941,6 +7957,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"body_touch_swipe_backward_events\":%lu",
          static_cast<unsigned long>(bodyPeripheral.touchSwipeBackwardEvents));
   append(",\"motion_requested\":%s", gMotionRequested ? "true" : "false");
+  append(",\"motion_autonomous\":%s", gAutonomousMotionRequested ? "true" : "false");
   append(",\"motion_enabled\":%s", gActuation.isEnabled() ? "true" : "false");
   append(",\"servo_power_allowed\":%s", servoPower.powerAllowed ? "true" : "false");
   append(",\"servo_rail_enabled\":%s", servoPower.railEnabled ? "true" : "false");
@@ -7975,6 +7992,8 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"motion_session_timeouts\":%lu", static_cast<unsigned long>(motion.sessionTimeouts));
   append(",\"motion_stop_calls\":%lu", static_cast<unsigned long>(motion.stopCalls));
   append(",\"motion_session_timeout_ms\":%lu", static_cast<unsigned long>(STACKCHAN_MOTION_SESSION_TIMEOUT_MS));
+  append(",\"motion_autonomous_refresh_ms\":%lu",
+         static_cast<unsigned long>(STACKCHAN_AUTONOMOUS_MOTION_REFRESH_MS));
   append(",\"motion_duty_active_ms\":%lu", static_cast<unsigned long>(STACKCHAN_MOTION_DUTY_ACTIVE_MS));
   append(",\"motion_duty_rest_ms\":%lu", static_cast<unsigned long>(STACKCHAN_MOTION_DUTY_REST_MS));
   append(",\"motion_duty_resting\":%s", motion.dutyResting ? "true" : "false");
@@ -8027,6 +8046,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(STACKCHAN_MOTION_POWER_MIN_SUPPRESS_MS));
 #endif
   append(",\"motion_enabled_at_boot\":%d", STACKCHAN_MOTION_ENABLED_AT_BOOT ? 1 : 0);
+  append(",\"motion_autonomous_at_boot\":%d", STACKCHAN_AUTONOMOUS_MOTION_AT_BOOT ? 1 : 0);
   append(",\"debug_tone_request\":%s", (speakerToneRequest || micToneRequest) ? "true" : "false");
   append(",\"debug_tone_accepted\":%s", toneRequestAccepted ? "true" : "false");
   append(",\"debug_wake_reset_request\":%s", wakeResetRequest ? "true" : "false");
@@ -8623,6 +8643,9 @@ void applyMotionControlInput() {
   while (gMotionControlQueue != nullptr && xQueueReceive(gMotionControlQueue, &input, 0) == pdTRUE) {
     if (input.hasMotionEnable) {
       const bool renewActiveSession = input.motionEnabled && gMotionRequested && gActuation.isEnabled();
+      if (!input.motionEnabled || !gMotionRequested) {
+        gAutonomousMotionRequested = false;
+      }
       gMotionRequested = input.motionEnabled;
       if (renewActiveSession) {
         const bool refreshed = gActuation.refreshSession();
@@ -8799,8 +8822,18 @@ void MotionTask(void* pv) {
       }
       if (gActuation.isEnabled()) {
         gActuation.setOutputSuppressed(false, powerDecision.reason);
+        if (gAutonomousMotionRequested && !thermalSuppressed && !powerSuppressed && !audioSuppressed) {
+          const ActuationTelemetry motion = gActuation.telemetry();
+          const uint32_t sessionBaseMs = motion.sessionRefreshedAtMs != 0
+                                             ? motion.sessionRefreshedAtMs
+                                             : motion.enabledAtMs;
+          if (sessionBaseMs != 0 && nowMs - sessionBaseMs >= STACKCHAN_AUTONOMOUS_MOTION_REFRESH_MS) {
+            gActuation.refreshSession();
+          }
+        }
       } else {
         gMotionRequested = false;
+        gAutonomousMotionRequested = false;
         gServo.setPowerAllowed(false);
       }
     } else {
@@ -8814,6 +8847,7 @@ void MotionTask(void* pv) {
     gActuation.update(target, micros());
     if (enabledBeforeUpdate && !gActuation.isEnabled()) {
       gMotionRequested = false;
+      gAutonomousMotionRequested = false;
       gServo.setPowerAllowed(false);
     }
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(gConfig.timing.motionPeriodMs));

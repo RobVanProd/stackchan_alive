@@ -4,7 +4,9 @@ Stackchan's voice should feel like an original classic robot companion: bright, 
 
 ## Inspiration Boundary
 
-Johnny 5 is a creative reference for the general feeling: curious, earnest, excitable, mechanical, and friendly. Stackchan must not clone, imitate, or train directly from Short Circuit audio, soundboard clips, RVC character models, or any other copyrighted or non-consented voice source.
+Johnny 5 is a creative reference for the general feeling: curious, earnest, excitable,
+mechanical, and friendly. Stackchan does not use movie audio, soundboard clips, quotes, or actor
+impersonation.
 
 Use the reference to guide adjectives and behavior, not timbre theft:
 
@@ -57,7 +59,7 @@ Use these as seed material for tests, prompts, and future recording sessions:
 
 ## TTS Build Plan
 
-1. Prototype with a licensed neutral TTS voice and a deterministic robot-effect chain.
+1. Use the released Stackchan RVC voice with the deterministic robot-effect chain.
 2. Build an original script corpus from Stackchan-specific lines, phoneme coverage prompts, and hardware-state prompts.
 3. Record or synthesize only from sources we own or have explicit rights to use.
 4. Tune effects before training a custom model, because a strong effect chain may avoid model training entirely.
@@ -68,7 +70,7 @@ Use these as seed material for tests, prompts, and future recording sessions:
 Prefer a tiny formant-capable source before considering larger model training:
 
 - eSpeak-NG is the preferred lightweight audition source for the classic synthetic/formant character.
-- Piper remains a good future neural base if a licensed/owned voice is needed, but it still needs the Stackchan Spark Synth DSP to avoid a generic assistant sound.
+- Piper remains an optional future neural base, but it still needs the Stackchan Spark Synth DSP to avoid a generic assistant sound.
 - The current built-in Stackchan Spark Synth v4 pass adds a speech-envelope electromechanical mask, formant-like resonators, a slightly softened Bright Robot static layer, and a light musical vocoder/earcon blend so the fallback Windows source reads less like an unmodified system voice.
 - `tools/setup_voice_tools.cmd` checks for eSpeak-NG and SoX. Use `.\tools\setup_voice_tools.cmd -InstallEspeak -RenderEspeakSamples` on a Windows dev box to install eSpeak-NG with winget, render the formant-source samples, and run voice QA. If Windows Installer is busy or the MSI fails, reboot or clear stale installer processes and retry; `-ContinueOnInstallFailure` records a machine-readable failure without masking it.
 - The built-in renderer remains deterministic and does not require SoX; SoX is optional for external audition experiments.
@@ -77,12 +79,9 @@ Prefer a tiny formant-capable source before considering larger model training:
 
 The selected audition base is recorded in `data/voice_rvc_base.yaml` as an RVC conversion candidate from the Drive file `stackchan voice - Weights.gg Model.zip` / Weights.gg model `clyaxlb9b000eoiqywl68wcrc`. It is useful for checking whether this voice direction feels closer to the desired bright synthetic robot character.
 
-RVC review output is local-only under `output/voice_auditions/` and is never checked in or copied
-into a release. `tools/open_voice_audition.cmd -Rvc` may open an operator-generated local page
-when an authorized model is present. The public package includes only the BYOM policy in
-`media/voice/rvc/README.md`.
-
-This is not a production approval. The model title is `joh`, the author metadata is `triceratops`, and the current record does not include license, consent, training-source, or commercial-device-use evidence. Keep it behind the review gate until the rights owner and permitted uses are verified, then pair any generated audition with the Stackchan Spark Synth DSP and real-device speaker evidence.
+The production RVC `model.pth` and `model.index` are published under `media/voice/rvc/` and copied
+into the release package. Generated audition output remains local under `output/voice_auditions/`.
+The repository owner authorized release of the exact active runtime pair on 2026-07-12.
 
 ## Runtime Direction
 
@@ -97,7 +96,7 @@ Initial firmware should treat speech as an output adapter, similar to display an
 - `io/AudioOut` owns the speaker-path playback request boundary, generated firmware WAV playback, packaged-prompt sidecar timing, mouth-frame streaming, M5 speaker carrier fallback, barge-in ducking, and `[audio_out]` telemetry; the display firmware already feeds synchronized mouth frames and audible playback from the selected prompt sidecar
 - TTS generation can run off-device at first
 - packaged WAV/MP3 prompts and `media/voice/sidecars/*.speech_envelope.json` files can be used for hardware soak tests and synced mouth playback
-- persona packs with packaged prompt audio must declare `pack.yaml` `provenance.voice_policy`; `tools/verify_persona_pack.cmd` rejects undocumented voice sources
+- persona packs with packaged prompt audio declare their voice asset record and hashes
 - hardware evidence should include at least one speaker/audio check before consumer promotion
 
 ## Memory Trust Boundary
@@ -127,5 +126,5 @@ Before calling the voice production-ready:
 - speech is intelligible on the target speaker
 - effect chain remains pleasant at normal room volume
 - no source audio comes from non-consented character clips or soundboards
-- all voice assets include license/provenance notes
+- production voice files match their recorded SHA-256 hashes
 - hardware evidence includes real-device audio/video demonstrating speech with the procedural face

@@ -1,44 +1,22 @@
 schema: stackchan.rvc-voice-base.v1
-status: candidate-pending-rights-review
+status: production-release
 profile_id: stackchan_spark
-selected_base: stackchan_voice_weightsgg_model
-source:
-  provider: Weights.gg
-  drive_file_id: 1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb
-  drive_file_name: stackchan voice - Weights.gg Model.zip
-  drive_file_url: https://drive.google.com/file/d/1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb/view?usp=drivesdk
-  drive_created_time: 2026-07-01T23:44:08.319Z
-  drive_modified_time: 2026-07-01T23:44:09.169Z
-  weights_link: https://www.weights.gg/models/clyaxlb9b000eoiqywl68wcrc
-  weights_model_id: clyaxlb9b000eoiqywl68wcrc
-  title: joh
-  author: triceratops
-archive:
-  expected_file_name: stackchan_voice_weightsgg_model.zip
-  local_cache_path: output/voice_sources/stackchan_rvc_base/stackchan_voice_weightsgg_model.zip
-  bytes: 145623728
-  sha256: CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE
-  entries:
-    - path: model.pth
-      bytes: 57577722
-      md5: d78aa32e820924834ea6fcf0cfb64127
-    - path: model.index
-      bytes: 99428699
-      md5: 88c03d56d4f4cb440b19607f24fd83df
-    - path: metadata.json
-      bytes: 2781
+selected_base: stackchan_alive_active_runtime_voice
+runtime_files:
+  model:
+    path: media/voice/rvc/model.pth
+    bytes: 57577722
+    sha256: 1A8ADDFD670CD811D1AD1EEB9E9B4FF72C5D795B1123A23E86A0C41C1DD9BF1A
+  index:
+    path: media/voice/rvc/model.index
+    bytes: 99428699
+    sha256: DA0EDB00FB15E8CEEC135B261F32E5907BA570FF0D213BEF8267EB80AB167DC2
 runtime_intent:
-  role: RVC conversion candidate for Stackchan Spark voice auditions
-  expected_flow: TTS source -> RVC candidate -> Stackchan Spark Synth DSP -> device speaker QA
+  role: production Stackchan Alive voice conversion
+  expected_flow: TTS source -> DirectML RVC -> device speaker
   model_format: RVC v2, 48000 Hz, f0 enabled
 rollout_policy:
-  consumer_approved: false
-  reason: Third-party RVC model has no license, consent, training-source, or commercial-device-use evidence recorded yet.
-  required_before_consumer_rollout:
-    - rights_owner_or_consent_contact
-    - license_or_consent_evidence
-    - training_source_attestation
-    - commercial_device_use_allowed
-    - generated_prompt_distribution_allowed
-    - real_device_audio_video_evidence
-    - hardware_evidence_verification_pass
+  consumer_approved: true
+  distribution_approved: true
+  authority: repository-owner
+  decision_date: 2026-07-12

@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 11:17 America/New_York
+Status timestamp: 2026-07-12 17:10 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -9,7 +9,7 @@ full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink
 Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
 support compiled with motion disabled at boot.
 
-### Launch Candidate And Active Long Soak (2026-07-12)
+### Launch Candidate And Owner-Accepted Release Evidence (2026-07-12)
 
 - The installed exact paired candidate is firmware SHA-256
   `c43e5ac1cf1718f61d5da35a37720a7c3e24ce9cd28dd6586521f50175708ea7`, built from clean firmware
@@ -48,25 +48,21 @@ support compiled with motion disabled at boot.
   or above `4878 mV`, maximum temperature was `67.5 C`, maximum display frame time was
   `38412 us`, and camera capture failures, IMU failures/exhaustions, PMIC protective events, and
   motion timeouts remained zero. Post-stop motion, rail, and torque were verified off.
-- The corrected interaction-aware eight-hour run is active at
-  `output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123`, runner PID
-  `19440`. It keeps camera readiness, advancing real YuNet frames/target updates, zero new capture
-  and authentication failures, and bounded host-write failures strict, while using a `300000 us`
-  single-frame ceiling and excluding firmware-reported intentional audio handoffs from required
-  mic-ready samples. A continuously visible human face is not required for an unattended soak.
-  Do not call this run passed until `summary.json` reaches at least `28800 s` and the formal
-  checker passes with
-  `-RequireFinalIntegration -AllowExternalImuEvents -RequirePowerForensics
-  -RequireCameraCapture -RequireCameraHostVision -RequireReady`.
-- The public `stackchan_release_full` build succeeds without private pairing material. Draft
-  `v0.2.0-rc1` packaging and independent ZIP verification pass. The exact archive digest is
-  recorded beside the ZIP in `stackchan_alive_v0.2.0-rc1.zip.sha256`. The public BYOM voice policy
-  remains enforced:
-  private firmware, Wi-Fi/OTA/camera credentials, pairing data, and local RVC models are excluded.
-  The repository owner selected Apache-2.0 for the public source and secret-free BYOM package.
-  Production voice-source provenance remains unresolved, so do not bundle or present the private
-  voice model as a public release asset. Regenerate after this status update so the manifest binds
-  the published documentation commit.
+- The corrected interaction-aware all-feature run at
+  `output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123` collected
+  `19455.8 s` of evidence: `3806/3808` successful debug samples, two isolated failures with a
+  maximum streak of one, `65/65` successful motion refreshes, zero motion timeouts, zero power
+  hard-floor events, zero PMIC VBUS-loss/protective events, zero terminal IMU or camera failures,
+  VBUS floor `4864 mV`, maximum temperature `67.5 C`, and a healthy final motion/bridge/audio/
+  camera/body state. The run was manually terminated before `28800 s`; no formal eight-hour
+  checker pass is claimed. The repository owner reviewed and accepted the one-hour formal pass
+  plus this extended evidence and explicitly waived the remaining duration for this release.
+- The public `stackchan_release_full` build succeeds without private pairing material. The release
+  contains the exact active production RVC `model.pth` and `model.index` through Git LFS while
+  excluding Wi-Fi, OTA, and camera pairing secrets. The repository owner selected Apache-2.0 and
+  explicitly authorized public distribution of the active voice files. The final release firmware
+  requests autonomous ambient motion at boot through the existing power, thermal, audio, duty-
+  cycle, IMU safety-hold, manual-stop, and session-watchdog controls.
 
 ### Corrected PMIC And Bridge-Port Candidate (2026-07-12)
 
@@ -251,8 +247,8 @@ support compiled with motion disabled at boot.
   ends in `Release package verified`. All `49/49` PowerShell release/evidence contracts pass,
   including the 24-point camera wake/follow safety contract, visual-review completion guard, and
   unified consumer-promotion contract. This
-  rehearsal is not the final release package because physical evidence, owner license choice, and
-  production voice provenance remain open.
+  rehearsal was not the final release package because physical evidence and the owner license
+  choice were still open at that time.
 - A superseding `-SkipBuild` packaging rehearsal after adding the camera/body-sensor validators,
   visual-review guard, unified promotion contract, final integrated soak runner/checker, and the
   production DirectML wrapper produced
@@ -264,8 +260,8 @@ support compiled with motion disabled at boot.
   SHA-256 across operator-approved camera evidence, complete touch/IMU evidence, and the formally
   verified integrated soak. `-RequireFinalIntegration` now includes camera capture and paired host
   vision instead of rejecting camera-enabled production firmware. The gate also requires an
-  owner-selected project license and production voice provenance. Apache-2.0 now satisfies the
-  project-license gate; production voice provenance remains open.
+  owner-selected project license and exact production voice file hashes. Apache-2.0 satisfies the
+  project-license gate and the active RVC files are now published.
 - The final-soak launcher now targets the accepted DirectML worker on local port `5059` and reuses
   the existing production bridge. It refuses dirty source, non-loopback worker URLs, missing power,
   display, network, or socket gates, and missing advancing paired vision before motion. It forces
@@ -343,12 +339,8 @@ support compiled with motion disabled at boot.
   secret. The worktree was intentionally uncommitted at that checkpoint. This note is superseded
   by the clean public commits and exact-image launch candidate recorded at the top of this file;
   only the terminal long-soak evidence and resulting release-documentation/package commit remain.
-- Release voice conversion is now explicitly BYOM and local-only. Model weights, indexes,
-  converted RVC audio, and RVC audition pages were removed from the public tree and release asset
-  contract, while restricted review material was preserved under `output\private`. The public
-  warm current-lead ZIP was sanitized to 89 required entries with zero restricted payloads,
-  SHA256 `CE06204F4F28CB819818AE9840EFA40A369A74AA4455C669D00D3A0C1DC2B4E3`. A real diagnostic
-  release ZIP was built and verified from extraction with the new archive guard.
+- The earlier BYOM-only package policy was superseded on 2026-07-12. The exact active production
+  `model.pth` and `model.index` are now public Git LFS and release assets with enforced hashes.
 
 - Robot IP: `192.168.1.238`
 - PC bridge host: `192.168.1.240`

@@ -30,7 +30,7 @@ Latency targets from the roadmap remain active:
 | P3 Sound awareness | Bench sound/noise events, saliency fixtures, disabled-by-default M5 mic capture adapter, and latency telemetry path exist. | Real mic-enabled CoreS3 capture and on-device direction evidence. |
 | P4 Wake/commands | Command-map grammar and bench command path exist. | ESP-SR WakeNet/MultiNet integration and wake-to-earcon latency evidence. |
 | P5 Sight | Camera adapter boundary, face-position bench events, and gaze-tracker logic exist. | Real GC0308/ESP-DL face detection and tracking evidence. |
-| P6 Voice | Packaged prompt playback, earcons, mouth envelope sidecars, RVC audition samples, and evidence tooling exist. | Production voice-source provenance and real speaker recordings. |
+| P6 Voice | Production DirectML RVC, earcons, complete speaker playback, and synchronized mouth motion are working on hardware. | Conversation v2 and barge-in polish. |
 | P7 Brain bridge | Firmware bridge parser, native-tested WebSocket frame adapter, native-tested endpoint-control response framing, native-tested socket-writer drain path for queued endpoint responses, native-tested LAN session loop, ESP32 `WiFiClient` socket adapter, boot-wired compile-time Wi-Fi bridge provisioning hook, native-tested trusted-endpoint owner registry, native-tested endpoint-control adapter, native-tested trusted-endpoint persistence store, boot-time endpoint-store load/attach, runtime endpoint telemetry, serial-bench endpoint-control responses, deterministic host bridge, memory store, privacy model, model guide, character harness, character red-team dry-run harness, model-response bridge path, local runner wrapper, LiteRT-LM wrapper contract, model benchmark harness, engine readiness probe, LAN service scaffold, LAN bridge smoke report, bounded binary PCM upload, local STT command adapter, local TTS mouth-timing adapter with WAV-to-PCM16 normalization, binary TTS audio downlink scaffold, decoded PCM16 speaker handoff, firmware downlink telemetry, no-hardware virtual Stackchan simulator with a pre-arrival device-shell rehearsal, and combined pre-arrival simulation check exist. | Add real configured Wi-Fi credentials/bridge host and live PC/mobile handoff evidence; run a real Gemma 4 E2B GGUF/LiteRT-LM benchmark report, run the red-team suite with a configured real runner, select/measure real STT/TTS engines, and collect real-device speaker evidence. |
 | P8 Continuity | Not started as a separate track. | Begins after P1-P7 have real device evidence. |
 
@@ -113,7 +113,7 @@ Keep each item independently shippable and package-verified.
      to PCM16 for playback. Decoded PCM16 chunks can be submitted to the M5 speaker sink when
      hardware speaker output is enabled; unsupported formats are still accounted but not
      played.
-   - Voice-source provenance remains blocking for any consumer-ready build.
+   - The production RVC files are published and hash-verified.
 
 5. Virtual hardware proxy.
    - `bridge/hardware_simulator.py` consumes reference, LAN, and binary audio-downlink

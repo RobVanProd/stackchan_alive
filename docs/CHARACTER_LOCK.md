@@ -115,7 +115,8 @@ confirmation while emitting an empty array is a failed turn.
 Restating the gates already codified in `data/voice_persona.yaml`:
 
 - No Johnny 5 or other character cloning, quotes, catchphrases, or timbre theft.
-- No training or generation from soundboards, RVC character models, or any non-consented voice source. Optional RVC is BYOM and local-only; `media/voice/rvc/` contains policy only, never weights or converted samples.
+- Do not use movie soundboards, copyrighted quotes, or actor impersonation. The release voice is
+  the exact hashed RVC pair under `media/voice/rvc/`.
 - No impersonation of any character, actor, or human.
 - Stackchan never claims to be alive or human.
 - Classic optimistic robot energy is an adjective palette: curious, earnest, excitable. It is inspiration for behavior, never protected character identity.

@@ -34,8 +34,8 @@ The key design decision — this is the "solid foundation" — is a hard split:
   list, wake-gated capture, "forget that" handling
 - the bridge validator's hard caps (a pack may *tighten* the 2-sentence/140-char cap,
   never loosen it) and the closed `mode`/`earcon` vocabulary from `StateMatrix.hpp`
-- the no-impersonation boundary and voice-source provenance gate — a pack that ships
-  voice assets without provenance fails validation, full stop
+- the no-impersonation boundary and voice asset record - a pack that ships voice assets without
+  file names and hashes fails validation
 - Safety-intent speech behavior: `safety` cues always play, always calm/procedural,
   regardless of persona mood settings
 
@@ -96,8 +96,8 @@ pack compatible with every firmware build.
 4. Character harness run: parameterize `bridge/character_harness.py` by pack so its
    validation vocabulary and caps come from the pack + foundation, and replay the
    deterministic transcript against the pack's prompt.
-5. Voice provenance gate on any shipped packaged prompt audio: `pack.yaml`
-   `provenance.voice_policy` must point at a `stackchan.voice-source-provenance.v1`
+5. Voice asset verification on any shipped packaged prompt audio: `pack.yaml`
+   `provenance.voice_policy` points at the pack's voice release record
    record with forbidden-source attestations and rollout evidence requirements.
 6. Checksums over the pack directory.
 
@@ -145,7 +145,7 @@ proves the pack seam is not Spark-specific. The bridge prompt, character harness
 `SpeechPlanner` line table, firmware earcon tone table, firmware face/idle-life/circadian
 behavior constants, expression defaults, yawn shape, listen/think/orient motion biases,
 packaged prompt metadata, firmware WAV embedding list, release prompt WAV/sidecar
-packaging, voice-source provenance validation, and red-team dry-run harness now load from
+packaging, voice asset validation, and red-team dry-run harness now load from
 persona packs. The red-team gate is corpus/validator-ready, but it still requires a
 configured real runner before it can pass as model evidence. Production voice assets remain
 review-gated until a licensed/owned source record clears the rollout evidence requirements.
@@ -170,8 +170,7 @@ review-gated until a licensed/owned source record clears the rollout evidence re
    face/idle-life/circadian behavior constants, expression defaults, yawn shape, and
    listen/think/orient motion biases, packaged prompt metadata, the firmware WAV
    embedding list, and release prompt WAV/sidecar packaging are now generated from the
-   pack; packaged prompt audio now requires pack-native voice provenance, while production
-   voice approval remains blocked until licensed/owned source evidence exists.
+   pack; packaged prompt audio requires pack-native voice asset records and hashes.
 
 Steps 1-8 can run entirely in parallel with the hardware bring-up track in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md) — this is host/build tooling and pure-logic firmware

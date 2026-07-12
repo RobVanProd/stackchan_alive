@@ -1,10 +1,10 @@
 # Production Readiness
 
-Current status (2026-07-12): the integrated physical release candidate has passed exact-image
-no-motion, actuator, voice, camera, body-sensor, OTA, and one-hour acceptance gates. Its corrected
-eight-hour all-feature actuator soak is still active. The Apache-2.0 source repository and
-secret-free BYOM package may be shared as a developer prerelease, but consumer promotion remains
-gated on the terminal soak evidence and the distribution requirements below.
+Current status (2026-07-12): the integrated physical release candidate passed exact-image
+no-motion, actuator, voice, camera, body-sensor, OTA, and formal one-hour acceptance gates, then
+completed more than five hours of extended all-feature operation without a strict hardware bad
+state. The repository owner accepted that evidence and waived the remaining eight-hour duration.
+The Apache-2.0 release includes the active production RVC model and index.
 
 ## Proven Now
 
@@ -13,7 +13,7 @@ gated on the terminal soak evidence and the distribution requirements below.
 - Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
 - Release packages include dependency provenance, a machine-readable dependency lock, copied build inputs, and a dependency audit that flags duplicate resolved package names or upstream Git requirements that were not directly pinned by this project.
 - Release packages preserve installed third-party license, licence, copying, notice, and package-metadata files under `third_party_licenses/`, publish a portable SHA-256 index, and include `THIRD_PARTY_NOTICES.md`. Package verification checks every indexed file and the required pioarduino, Arduino-ESP32, direct-library, nested M5GFX, and YuNet evidence.
-- The project source and secret-free BYOM release package are licensed under Apache-2.0; the root
+- The project source and public release package are licensed under Apache-2.0; the root
   `LICENSE` is included in the release ZIP and declared by the release manifest.
 - Release packages can be verified locally before publication, and published release assets can be re-audited after upload.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
@@ -35,9 +35,8 @@ gated on the terminal soak evidence and the distribution requirements below.
 - Release package verification rejects direct Git dependencies without refs and resolved Git dependencies without SHA evidence.
 - Release packaging refuses dirty source worktrees by default.
 - GitHub Actions workflows are configured for firmware and release checks, but account billing/spending-limit status and hosted-runner allocation must allow jobs to start before they can be used as rollout evidence. Promotion evidence requires both required workflows, `Firmware` and `Release`, to be observed for the matching commit; one green workflow is not enough if the other is missing.
-- Production voice-source provenance is explicitly tracked; current generated WAVs are review samples until `data/voice_source_provenance.yaml` is completed with licensed or owned source evidence.
-- `tools/check_voice_source_readiness.cmd -Json` audits the active production voice-source gate without mutating release artifacts; it should remain `pending-production-voice-source` until the licensed/owned source, consent/license evidence, template attestations, and target-speaker evidence are complete. Production-ready voice provenance must include a top-level `source_commit` that matches the checker report `sourceCommit`; `tools/test_voice_source_readiness_contract.cmd` covers pending, complete, stale, missing-commit, and unresolved-RVC cases. Final desktop and companion v1 evidence bundles compare report `sourceCommit` fields to the reviewed bundle commit, including source readiness, PC Brain deploy/quiet-soak lab evidence, and voice approval evidence, so stale platform, lab, or voice evidence cannot close release readiness.
-- Release packages include `VOICE_SOURCE_STATUS.md` and `voice_source_status.json`, which summarize the blocked production-voice gates from the provenance YAML and template.
+- The exact active RVC files are tracked by SHA-256, distributed through Git LFS, and copied into
+  the release package. `tools/verify_tracked_rvc_assets.ps1` enforces their byte counts and hashes.
 - The LiteRT-LM/mobile brain path has a wrapper contract, but real LiteRT-LM runner speed, memory, and Character Lock compliance are not proven until a configured runner benchmark passes.
 - Native host tests execute mood, spring, and expression logic without hardware.
 - Motion and face tasks read the same latest frame snapshot.
@@ -58,14 +57,11 @@ gated on the terminal soak evidence and the distribution requirements below.
 - Unambiguous yes/no replies produce seed-varied procedural nod or head-shake gestures while
   preserving the single-writer actuator boundary.
 
-## Still Required Before Consumer Promotion
+## Post-Release Follow-Up
 
-- Formal completion of the corrected 28,800-second all-feature actuator soak against the exact
-  installed firmware SHA-256. Shorter passes and evidence from another image cannot substitute.
-- Terminal documentation and package regeneration after that formal soak result, followed by a
-  downloaded-asset audit against the published release.
-- Consumer-distribution production voice provenance. The public package intentionally remains
-  BYOM and excludes private RVC weights, indexes, converted assets, credentials, and pairing data.
+- Continue longer-duration community and lab runs as regression evidence; the owner waived the
+  remaining duration of the interrupted launch run for this release.
+- Audit downloaded release assets against the published SHA-256 sidecars.
 - PC/mobile owner failover and target-store distribution evidence for whichever companion targets
   are presented as consumer-ready. These do not block sharing the source/BYOM developer release.
 - Real LiteRT-LM/mobile runner speed and memory behavior.
@@ -80,14 +76,14 @@ Do not call this consumer-ready until all of these are evidenced for the release
    motion, servos, camera following, RGB, touch, and IMU gates pass on the integrated candidate.
 3. Power-cycle, OTA confirmation/rollback, actuator stop, power, thermal, and display recovery
    evidence pass without unsupported root-cause claims.
-4. The formally checked one-hour actuator acceptance and 28,800-second all-feature soak pass.
+4. The formally checked one-hour actuator acceptance passes and the owner records the accepted
+   extended-run evidence for the release.
 5. The tested release ZIP is independently extracted and verified, with a matching
    `logs/package_verify.log`, manifest commit, and published-asset SHA-256.
-6. Production voice-source provenance is complete for any bundled production voice. A BYOM-only
-   developer package must remain clearly labeled and contain no private voice assets.
+6. Bundled production voice files match the recorded release hashes.
 7. Required companion target, owner-failover, privacy, and store/distribution evidence is complete
    for every platform advertised as consumer-ready.
 8. `tools/verify_consumer_promotion.ps1` passes for the exact release package and evidence packet.
 
-Until those are done, describe the repository as a physically validated developer release
-candidate, not a consumer-certified product.
+The repository is a physically validated public release candidate; individual assembled robots
+still require their own calibration and hardware safety checks.

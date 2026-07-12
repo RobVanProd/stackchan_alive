@@ -11,8 +11,8 @@ This project can produce a pre-device review release now and a hardware-validate
 The package is written under `output/release/<version>/` and includes safe display-only,
 servo-calibration, and secret-free full-online firmware binaries; preview media; an expression
 QA sheet; a root `QUICKSTART.md`; readiness docs; generated readiness reports; the active
-persona pack under `personas/spark`; `persona_pack_status.json`; voice-source provenance
-template; companion C6 brain-supervision evidence under `companion/evidence/`; the local
+persona pack under `personas/spark`; `persona_pack_status.json`; production voice file hashes;
+companion C6 brain-supervision evidence under `companion/evidence/`; the local
 vision worker and hash-pinned YuNet model; face-customization guidance; dependency provenance;
 a machine-readable dependency lock; a dependency audit; the project Apache-2.0 `LICENSE`;
 copied third-party license/notice files
@@ -167,7 +167,7 @@ To audit the active production voice-source gate without generating package arti
 .\tools\check_voice_source_readiness.cmd -Json
 ```
 
-This should report `pending-production-voice-source` for prerelease work until a licensed or owned production voice source, consent/license evidence, completed provenance template, and target-speaker evidence are recorded. A production-ready provenance YAML must include `source_commit` matching the source commit passed to the checker, so stale voice approvals cannot be reused on a later build. Use `-RequireProductionReady` only for consumer-promotion checks that must fail while the voice source is still pending.
+This reports the released production voice state and verifies the active model/index record.
 
 To prepare the optional formant-source audition toolchain and rerender using eSpeak-NG when available:
 
@@ -223,7 +223,8 @@ Before promoting a prerelease, verify the completed hardware evidence packet:
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
 ```
 
-Then run the full consumer-promotion gate, which composes package verification, hardware evidence verification, GitHub Actions status, and production voice-source provenance:
+Then run the full release gate, which composes package verification, hardware evidence
+verification, GitHub Actions status, and production voice hash verification:
 
 ```powershell
 .\tools\verify_consumer_promotion.cmd `
@@ -283,7 +284,8 @@ For a single post-publish operator summary, run:
 
 The audit wraps the published-release verifier, refreshes GitHub Actions status, exports rollout status without requiring hardware evidence, and writes `RELEASE_AUDIT.md/json` under `output/release-audit/<version>/`. The publish helper runs the same audit with `-UploadToRelease` so the audit files are attached to the GitHub release after upload verification.
 
-Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression sheet, video, GIF, voice samples, voice-source provenance gate, release notes, readiness report, and checksums:
+Stage a local handoff page with direct links to the ZIP, ZIP SHA256 sidecar, image, expression
+sheet, video, GIF, voice samples, voice hash report, release notes, readiness report, and checksums:
 
 ```powershell
 .\tools\share_release.cmd -Version <version>
@@ -297,7 +299,9 @@ If `cloudflared` is not installed, add `-DownloadCloudflared` to place a local c
 From an extracted release package, `tools/share_release.cmd` can infer the version from `release_manifest.json` and creates a temporary ZIP under `output/share/<version>/`.
 When the quick tunnel URL is available, the script prints the public `trycloudflare.com` URL, writes it to `output/share/<version>/PUBLIC_URL.txt`, writes process and URL state to `share_status.json`, and keeps the local server plus tunnel running in hidden background processes. For `-Lan`, use the first printed same-network URL unless the machine is on a VPN-only or isolated network. A local-only share is acceptable for same-machine or LAN review after `verify_share_release.cmd` passes; the evidence packet writes the pinned URL to `share/VERIFIED_URL.txt`.
 For a no-server static integrity check, run `tools/verify_share_release.cmd -Version <version> -Offline` after `tools/share_release.cmd -Version <version> -NoServe`. This writes `share_static_verification_report.json` with an `offline-static:` URL marker; it proves the share folder contents and hashes, but it is not hosted-media evidence because no URL was probed.
-Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending a public tunnel URL; omit `-RequirePublicUrl` for local or LAN review. It checks the handoff page plus the preview PNG, expression sheet, MP4, GIF, voice samples, voice-source provenance files, readiness report, readiness JSON, ZIP, ZIP SHA256 sidecar, and package checksums over HTTP.
+Run `tools/verify_share_release.cmd -Version <version> -RequirePublicUrl` before sending a public
+tunnel URL; omit `-RequirePublicUrl` for local or LAN review. It checks the handoff page plus the
+preview media, production voice hashes, readiness report, ZIP, sidecar, and package checksums.
 Run `output/share/<version>/STOP_SHARING.cmd` or `tools/stop_share.cmd -Version <version>` to stop the local server and tunnel. If several old local shares are still running, `tools/stop_share.cmd -All` scans `output/share`, verifies each recorded PID still belongs to a share process, and stops the matching servers without trusting stale PID files blindly.
 
 Use prerelease tags until the physical device has passed the rollout gates in `docs/PRODUCTION_READINESS.md`.
