@@ -48,10 +48,11 @@ $restrictedVoicePayloads = @(
     $relative = $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
     $extension = $_.Extension.ToLowerInvariant()
     $allowedVisionModel = $relative -match '(?i)^(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
-    ($extension -in @('.pth', '.index')) -or
+    $allowedProductionVoice = $relative -match '(?i)^media/voice/rvc/(model\.pth|model\.index)$'
+    (($extension -in @('.pth', '.index')) -and -not $allowedProductionVoice) -or
     ($extension -eq '.onnx' -and -not $allowedVisionModel) -or
     ($_.Name -match '(?i)weightsgg|weights\.gg') -or
-    ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$).+') -or
+    ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$|model\.pth$|model\.index$).+') -or
     ($_.Name -match '(?i)rvc.*\.(wav|mp3|html)$')
   } | ForEach-Object {
     $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
@@ -1584,7 +1585,7 @@ foreach ($pattern in @("scoop/apps/mingw/current/bin", "scoop/apps/gcc/current/b
 }
 
 $voiceSourceStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_voice_source_status.ps1") -Raw
-foreach ($pattern in @("stackchan.voice-source-status.v1", "blocked-pending-production-voice-source", "production-source-ready", "candidate-pending-rights-review", "VOICE_SOURCE_STATUS.md", "voice_source_status.json", "FailOnBlocked")) {
+foreach ($pattern in @("stackchan.voice-source-status.v1", "production-source-ready", "production-model-hash", "production-index-hash", "VOICE_SOURCE_STATUS.md", "voice_source_status.json")) {
   if ($voiceSourceStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_voice_source_status.ps1 missing required voice-source status logic: $pattern"
   }
@@ -1605,7 +1606,7 @@ foreach ($pattern in @("pending production voice source remains pending", "compl
 }
 
 $rvcBaseStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_rvc_voice_base_status.ps1") -Raw
-foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "local-archive-verified-review-only", "manifest-recorded-review-only", "distributionApproved", "consumerApproved", "candidate remains review-only", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md")) {
+foreach ($pattern in @("stackchan.rvc-voice-base-status.v1", "production-release-verified", "distributionApproved", "consumerApproved", "model-hash", "index-hash", "rvc_voice_base_status.json", "RVC_VOICE_BASE_STATUS.md")) {
   if ($rvcBaseStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_rvc_voice_base_status.ps1 missing required RVC base status logic: $pattern"
   }
@@ -3270,14 +3271,14 @@ foreach ($pattern in @("drowsy:", "yawn:", "surprise:", "picked_up:", "shaken:",
 }
 
 $voiceSourceTemplate = Get-Content -LiteralPath (Join-PackagePath "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md") -Raw
-foreach ($pattern in @("Voice Source Provenance Template", "pending production voice source", "No soundboard clips", "No named character", "No RVC character model", "Commercial/device use allowed", "real-device audio/video evidence")) {
+foreach ($pattern in @("Production Voice Release Record", "media/voice/rvc/model.pth", "media/voice/rvc/model.index", "DirectML RVC", "repository-owner authorized public release")) {
   if ($voiceSourceTemplate -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_SOURCE_PROVENANCE_TEMPLATE.md missing expected provenance guidance: $pattern"
   }
 }
 
 $voiceSourceProvenance = Get-Content -LiteralPath (Join-PackagePath "data/voice_source_provenance.yaml") -Raw
-foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: pending-production-source", "review-only", "required-before-consumer-rollout", "soundboard clips", "RVC character models", "rvc_candidate_base", "candidate-pending-rights-review", "voice_rvc_base.yaml", "hardware_evidence_verification_pass", "blocked-pending-licensed-or-owned-production-voice-source")) {
+foreach ($pattern in @("schema: stackchan.voice-source-provenance.v1", "status: production-source-released", "approved-for-public-release", "media/voice/rvc/model.pth", "media/voice/rvc/model.index", "hardware_evidence_verification_pass", "rollout_gate: production-ready")) {
   if ($voiceSourceProvenance -notmatch [regex]::Escape($pattern)) {
     throw "voice_source_provenance.yaml missing expected policy: $pattern"
   }
@@ -3305,7 +3306,7 @@ foreach ($field in @("riskAccepted", "localReleaseVerificationPassed", "strictHa
 }
 
 $voiceSourceStatusMarkdown = Get-Content -LiteralPath (Join-PackagePath "VOICE_SOURCE_STATUS.md") -Raw
-foreach ($pattern in @("Voice Source Status", "blocked-pending-production-voice-source", "production-source-selected", "rvc-candidate-rights-review", "voice_source_status.json")) {
+foreach ($pattern in @("Voice Source Status", "production-source-ready", "Blocked gates: 0", "voice_source_status.json")) {
   if ($voiceSourceStatusMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "VOICE_SOURCE_STATUS.md missing expected voice-source status text: $pattern"
   }
@@ -3321,25 +3322,27 @@ if ($voiceSourceStatusJson.provenancePath -ne "data/voice_source_provenance.yaml
 if ($voiceSourceStatusJson.templatePath -ne "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md") {
   throw "voice_source_status.json templatePath must be package-relative: $($voiceSourceStatusJson.templatePath)"
 }
-if ($voiceSourceStatusJson.status -ne "blocked-pending-production-voice-source") {
-  throw "voice_source_status.json should keep current package blocked pending production voice source: $($voiceSourceStatusJson.status)"
+if ($voiceSourceStatusJson.status -ne "production-source-ready") {
+  throw "voice_source_status.json status mismatch: $($voiceSourceStatusJson.status)"
 }
-if ([int]$voiceSourceStatusJson.blockedGateCount -lt 1) {
-  throw "voice_source_status.json should report at least one blocked voice-source gate"
+if ([int]$voiceSourceStatusJson.blockedGateCount -ne 0) {
+  throw "voice_source_status.json should report zero blocked voice gates"
 }
-foreach ($gate in @("production-source-selected", "rvc-candidate-rights-review", "rollout-gate-open")) {
-  $match = @($voiceSourceStatusJson.gates | Where-Object { $_.gate -eq $gate -and $_.status -eq "blocked" })
+foreach ($gate in @("production-model-hash", "production-index-hash", "owner-release-decision", "target-speaker-playback")) {
+  $match = @($voiceSourceStatusJson.gates | Where-Object { $_.gate -eq $gate -and $_.status -eq "pass" })
   if ($match.Count -ne 1) {
-    throw "voice_source_status.json missing blocked gate: $gate"
+    throw "voice_source_status.json missing passing gate: $gate"
   }
 }
 
-& (Join-PackagePath "tools/verify_rvc_voice_base.ps1") -ManifestPath (Join-PackagePath "data/voice_rvc_base.yaml") -MetadataPath (Join-PackagePath "data/voice_rvc_base_metadata.json")
+& (Join-PackagePath "tools/verify_tracked_rvc_assets.ps1") -VoiceRoot (Join-PackagePath "media/voice/rvc")
 
-Assert-File "RVC_VOICE_BASE_STATUS.md" 500
+Assert-File "media/voice/rvc/model.pth" 57577722
+Assert-File "media/voice/rvc/model.index" 99428699
+Assert-File "RVC_VOICE_BASE_STATUS.md" 200
 Assert-File "rvc_voice_base_status.json" 500
 $rvcBaseStatusMarkdown = Get-Content -LiteralPath (Join-PackagePath "RVC_VOICE_BASE_STATUS.md") -Raw
-foreach ($pattern in @("RVC Voice Base Status", "Drive file ID: 1I5A2kfTDE-VPWVo_cGIRRObkGv5w9Spb", "Weights.gg", "Consumer approved: False", "Distribution approved: False", "clear the production voice-source gate", "rvc_voice_base_status.json")) {
+foreach ($pattern in @("RVC Voice Base Status", "production-release-verified", "Consumer release: yes", "Distribution: yes", "rvc_voice_base_status.json")) {
   if ($rvcBaseStatusMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "RVC_VOICE_BASE_STATUS.md missing expected RVC base status text: $pattern"
   }
@@ -3348,14 +3351,15 @@ $rvcBaseStatusJson = Get-Content -LiteralPath (Join-PackagePath "rvc_voice_base_
 if ($rvcBaseStatusJson.schema -ne "stackchan.rvc-voice-base-status.v1") {
   throw "rvc_voice_base_status.json schema mismatch: $($rvcBaseStatusJson.schema)"
 }
-if ($rvcBaseStatusJson.status -notin @("local-archive-verified-review-only", "manifest-recorded-review-only")) {
+if ($rvcBaseStatusJson.status -ne "production-release-verified") {
   throw "rvc_voice_base_status.json status mismatch: $($rvcBaseStatusJson.status)"
 }
-if ($rvcBaseStatusJson.consumerApproved -ne $false -or $rvcBaseStatusJson.distributionApproved -ne $false) {
-  throw "rvc_voice_base_status.json must keep RVC base unapproved for consumer distribution"
+if ($rvcBaseStatusJson.consumerApproved -ne $true -or $rvcBaseStatusJson.distributionApproved -ne $true) {
+  throw "rvc_voice_base_status.json must mark the production voice released"
 }
-if ($rvcBaseStatusJson.expectedArchive.sha256 -ne "CA0BFE7A889D81532A449307057718BF83B343BD09D6B69CAF2DFB79450EF9AE") {
-  throw "rvc_voice_base_status.json expected archive SHA mismatch: $($rvcBaseStatusJson.expectedArchive.sha256)"
+if ($rvcBaseStatusJson.model.sha256 -ne "1A8ADDFD670CD811D1AD1EEB9E9B4FF72C5D795B1123A23E86A0C41C1DD9BF1A" -or
+    $rvcBaseStatusJson.index.sha256 -ne "DA0EDB00FB15E8CEEC135B261F32E5907BA570FF0D213BEF8267EB80AB167DC2") {
+  throw "rvc_voice_base_status.json production voice hashes do not match"
 }
 
 $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.json") -Raw | ConvertFrom-Json

@@ -1852,7 +1852,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "voice-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, warm-slow and bright-robot WAV variants, plus MP3 quick auditions" },
     [ordered]@{ gate = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ gate = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
-    [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; review-only until production voice-source rights clear" },
+    [ordered]@{ gate = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; production file hashes verified" },
     [ordered]@{ gate = "character-red-team-dry-run"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json; real gate still requires a configured model runner" },
     [ordered]@{ gate = "companion-c6-brain-supervision-evidence"; status = "pass"; evidence = "companion/evidence/c6-evidence/EVIDENCE.json plus C6 brain supervisor, GUI rehearsal, and diagnostics exports" },
     [ordered]@{ gate = "expression-sheet-present"; status = "pass"; evidence = "media/stackchan_alive_expression_sheet.png" },
@@ -1897,7 +1897,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "voice-review-samples-present"; status = "pass"; evidence = "media/voice/stackchan_spark_greeting.wav, media/voice/stackchan_spark_thinking.wav, media/voice/stackchan_spark_safety.wav, warm-slow and bright-robot WAV variants, plus MP3 quick auditions" },
     [ordered]@{ requirement = "voice-source-provenance-template-present"; status = "pass"; evidence = "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md and data/voice_source_provenance.yaml" },
     [ordered]@{ requirement = "voice-source-status-report-present"; status = "pass"; evidence = "VOICE_SOURCE_STATUS.md and voice_source_status.json" },
-    [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; confirms review-only RVC base cache/hash status when available" },
+    [ordered]@{ requirement = "rvc-voice-base-status-report-present"; status = "pass"; evidence = "RVC_VOICE_BASE_STATUS.md and rvc_voice_base_status.json; production file hashes verified" },
     [ordered]@{ requirement = "character-red-team-dry-run-present"; status = "pass"; evidence = "character-red-team/CHARACTER_RED_TEAM.md and character_red_team.json" },
     [ordered]@{ requirement = "companion-c6-brain-supervision-evidence"; status = "pass"; evidence = "companion/evidence/c6-evidence/EVIDENCE.json plus C6 brain supervisor, GUI rehearsal, and diagnostics exports" },
     [ordered]@{ requirement = "arrival-tools-present"; status = "pass"; evidence = "tools/prepare_device_arrival.cmd, tools/start_hardware_evidence.cmd, tools/check_hardware_evidence_progress.cmd, tools/verify_hardware_evidence.cmd" },
@@ -1949,7 +1949,7 @@ Consumer rollout: blocked pending hardware validation
 
 ## Still Required Before Consumer Rollout
 
-These gates apply to this secret-free BYOM package and each recipient hardware configuration.
+These gates apply to this public package and each recipient hardware configuration.
 The private paired reference robot is validated separately with exact-image evidence recorded in
 ``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``. That reference evidence does
 not substitute for validating a recipient's power source, calibration, voice model, credentials,
@@ -1992,7 +1992,7 @@ Consumer rollout: blocked pending hardware validation
 
 ## Pending Package And Consumer Evidence
 
-This public package is a secret-free BYOM distribution. The private paired reference robot has
+This public package includes the production voice. The private paired reference robot has
 separate exact-image physical evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
 ``docs/ARRIVAL_DAY_RUNBOOK.md``. Those results demonstrate the reference integration, but they do
 not validate a recipient's assembled hardware, power path, calibration, credentials, or local
@@ -2047,11 +2047,11 @@ Voice audition quick check:
 - Run ``tools/open_voice_audition.cmd -All`` only after supplying an authorized local RVC model and generating local audition output.
 - Published prereleases upload ``stackchan_spark_audition_bright_robot_greeting.mp3`` and ``stackchan_spark_thinking.mp3`` as standalone release assets for one-click review.
 - Optional RVC is bring-your-own-model and local-only. Release packages contain only ``media/voice/rvc/README.md``; model weights, indexes, converted audio, and RVC audition pages are forbidden.
-- Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the BYOM policy and absence of bundled RVC payloads.
-- These are prototype voice-direction samples; consumer rollout still requires licensed or owned production voice-source provenance.
+- Run ``tools/verify_tracked_rvc_assets.cmd`` to verify the bundled production RVC hashes.
+- The exact active production model and index are included under ``media/voice/rvc``.
 
 Hardware validation is still required before consumer rollout. This list applies to the
-secret-free BYOM package and each recipient build. The repository's private paired reference robot
+public package and each recipient build. The repository's private paired reference robot
 is tracked separately through exact-image evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
 ``docs/ARRIVAL_DAY_RUNBOOK.md``; that reference evidence does not validate another assembled unit,
 power path, calibration, credentials, or local voice model.
@@ -2122,10 +2122,11 @@ function Assert-NoRestrictedVoicePayload {
       $relative = $_.FullName.Substring($rootPrefix.Length).Replace('\', '/')
       $extension = $_.Extension.ToLowerInvariant()
       $allowedVisionModel = $relative -match '(?i)^(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
-      ($extension -in @('.pth', '.index')) -or
+      $allowedProductionVoice = $relative -match '(?i)^media/voice/rvc/(model\.pth|model\.index)$'
+      (($extension -in @('.pth', '.index')) -and -not $allowedProductionVoice) -or
       ($extension -eq '.onnx' -and -not $allowedVisionModel) -or
       ($_.Name -match '(?i)weightsgg|weights\.gg') -or
-      ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$)') -or
+      ($relative -match '(?i)(^|/)media/voice/rvc/(?!README\.md$|model\.pth$|model\.index$)') -or
       ($_.Name -match '(?i)rvc.*\.(wav|mp3|html)$')
     } | ForEach-Object {
       $_.FullName.Substring($rootPrefix.Length).Replace('\', '/')
@@ -2162,10 +2163,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 $restrictedZipEntries = @($zipEntries | Where-Object {
   $allowedVisionModel = $_ -match '(?i)(^|/)(provenance/)?bridge/models/face_detection_yunet_2023mar\.onnx$'
-  $_ -match '(?i)(^|/)[^/]+\.(pth|index)$' -or
+  $allowedProductionVoice = $_ -match '(?i)(^|/)media/voice/rvc/(model\.pth|model\.index)$'
+  ($_.Trim() -match '(?i)(^|/)[^/]+\.(pth|index)$' -and -not $allowedProductionVoice) -or
   ($_ -match '(?i)(^|/)[^/]+\.onnx$' -and -not $allowedVisionModel) -or
   $_ -match '(?i)weightsgg|weights\.gg' -or
-  $_ -match '(?i)(^|/)media/voice/rvc/(?!README\.md$).+' -or
+  $_ -match '(?i)(^|/)media/voice/rvc/(?!README\.md$|model\.pth$|model\.index$).+' -or
   $_ -match '(?i)(^|/)[^/]*rvc[^/]*\.(wav|mp3|html)$'
 })
 if ($restrictedZipEntries.Count -gt 0) {

@@ -514,7 +514,7 @@ Quick MP3 copies:
 - ``stackchan_spark_thinking.mp3``: browser-friendly copy of the Thinking sample
 - The renderer refreshes these MP3 copies from the WAVs with the bundled preview ffmpeg path, so release packages do not carry stale audition audio.
 
-Rollout note: these WAV and MP3 files are for direction review. Before consumer promotion, the voice source still needs a licensed or owned production source and real-device speaker evidence.
+Rollout note: these WAV and MP3 files are quick auditions; the production DirectML RVC files are published separately under `media/voice/rvc/`.
 "@ | Set-Content -Path (Join-Path $outputPath "VOICE_SAMPLES.md") -Encoding UTF8
 
   @"
