@@ -238,6 +238,20 @@ or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
 stream chunks, `audio` mouth frames, and `response_end` frames back to the client.
 
+When the service runs with `--turn-log-file output\pc-brain\latest\turns.jsonl`, each completed
+turn includes normalized `stackchan.conversation-latency.v1` evidence for capture, STT, brain,
+text-ready, first-audio, TTS rendering, audio duration, total time, real-time factor, and
+truncation. Summarize the initial conversational gates with:
+
+```powershell
+python bridge\conversation_latency_report.py --turn-log output\pc-brain\latest\turns.jsonl --json --require-ready
+```
+
+`--require-ready` returns a failure until at least one audio turn is fully measured and every
+measured turn has first audio under three seconds, TTS rendering faster than real time, and zero
+truncation. These are host/bridge timings; robot playback-completion evidence remains a separate
+wire/device gate.
+
 Run the optional local camera detector only with the isolated camera diagnostic firmware:
 
 ```powershell

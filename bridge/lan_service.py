@@ -48,6 +48,7 @@ from research_broker import (
 )
 from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
+from conversation_latency import build_conversation_latency_record
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -462,6 +463,7 @@ class AudioUpload:
     chunks: int = 0
     truncated: bool = False
     buffer: bytearray = field(default_factory=bytearray)
+    started_at_monotonic: float = 0.0
 
     def start(self, sample_rate: object = DEFAULT_SAMPLE_RATE) -> None:
         self.clear()
@@ -471,12 +473,14 @@ class AudioUpload:
             parsed_rate = DEFAULT_SAMPLE_RATE
         self.sample_rate = max(8000, min(48000, parsed_rate))
         self.active = True
+        self.started_at_monotonic = time.perf_counter()
 
     def clear(self) -> None:
         self.active = False
         self.bytes_received = 0
         self.chunks = 0
         self.truncated = False
+        self.started_at_monotonic = 0.0
         self.buffer.clear()
 
     def append(self, payload: bytes, max_bytes: int) -> None:
@@ -501,7 +505,7 @@ class AudioUpload:
         return int((self.bytes_received / 2) / self.sample_rate * 1000)
 
     def summary(self) -> dict[str, object]:
-        return {
+        summary: dict[str, object] = {
             "audio_bytes": self.bytes_received,
             "audio_stored_bytes": self.stored_bytes,
             "audio_chunks": self.chunks,
@@ -509,6 +513,12 @@ class AudioUpload:
             "audio_duration_ms": self.duration_ms,
             "audio_truncated": self.truncated,
         }
+        if self.started_at_monotonic > 0.0:
+            summary["audio_capture_elapsed_ms"] = round(
+                (time.perf_counter() - self.started_at_monotonic) * 1000.0,
+                2,
+            )
+        return summary
 
     def finish_and_clear(self) -> dict[str, object]:
         summary = self.summary()
@@ -861,6 +871,7 @@ class LanBridgeSession:
         tts_error: str,
         audio_evidence_log: dict[str, object],
         turn_started: float,
+        response_text_ready_ms: float,
     ) -> None:
         record: dict[str, object] = {
             "schema": "stackchan.lan-turn-summary.v1",
@@ -886,7 +897,18 @@ class LanBridgeSession:
         record.update(runner_summary)
         record.update(tts_summary)
         record.update(audio_evidence_log)
-        record["turn_elapsed_ms"] = round((time.perf_counter() - turn_started) * 1000.0, 2)
+        turn_elapsed_ms = (time.perf_counter() - turn_started) * 1000.0
+        record["turn_elapsed_ms"] = round(turn_elapsed_ms, 2)
+        record.update(
+            build_conversation_latency_record(
+                audio_summary=audio_summary,
+                stt_summary=stt_log,
+                brain_summary=runner_summary,
+                tts_summary=tts_summary,
+                response_text_ready_ms=response_text_ready_ms,
+                turn_total_ms=turn_elapsed_ms,
+            )
+        )
         self._append_turn_log(record)
 
     def handle_text(
@@ -1393,6 +1415,7 @@ class LanBridgeSession:
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))
+        response_text_ready_ms = (time.perf_counter() - turn_started) * 1000.0
         if (
             self.config.stream_tts_phrases
             and self.config.tts_command
@@ -1419,6 +1442,7 @@ class LanBridgeSession:
                 tts_error=tts_error,
                 audio_evidence_log=audio_evidence_log,
                 turn_started=turn_started,
+                response_text_ready_ms=response_text_ready_ms,
             )
             return frames
         tts_summary: dict[str, object] = {}
@@ -1454,6 +1478,10 @@ class LanBridgeSession:
                 tts_summary[f"tts_{key}"] = value
             if tts.audio_data:
                 tts_summary["tts_audio_payload_bytes"] = len(tts.audio_data)
+                tts_summary["tts_first_audio_ms"] = round(
+                    (time.perf_counter() - turn_started) * 1000.0,
+                    2,
+                )
                 if self.config.disable_audio_downlink:
                     tts_summary["tts_audio_downlink_disabled"] = True
                 else:
@@ -1509,6 +1537,7 @@ class LanBridgeSession:
             tts_error=tts_error,
             audio_evidence_log=audio_evidence_log,
             turn_started=turn_started,
+            response_text_ready_ms=response_text_ready_ms,
         )
         return prefix_errors + frames
 

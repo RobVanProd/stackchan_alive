@@ -67,7 +67,12 @@ firmware to its normal local face and wake behavior.
   barge-in cancellation actions.
 - `bridge/test_conversation_session.py` verifies those transitions and confirms the session
   snapshot contains no motion authority.
-- The core is intentionally not wired into `bridge/lan_service.py` yet. The next slice adds an
+- `bridge/lan_service.py` now writes `stackchan.conversation-latency.v1` stage evidence for
+  capture, STT, brain work, text readiness, first audio, TTS rendering, audio duration, total turn
+  time, real-time factor, and the three initial latency/completeness gates.
+- `bridge/conversation_latency_report.py --turn-log <turns.jsonl> --json --require-ready`
+  summarizes p50/p95/max and refuses readiness when any audio turn misses or fails a gate.
+- The session core is intentionally not wired into `bridge/lan_service.py` yet. The next slice adds an
   opt-in configuration flag, maps authoritative playback completion into `playback_completed()`,
   and exports typed conversation state without changing the v0.2.0 one-wake/one-turn default.
 
