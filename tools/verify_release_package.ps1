@@ -1135,7 +1135,7 @@ foreach ($pattern in @("Real-model benchmark and red-team gates", "run_character
     throw "README.md missing character red-team guidance: $pattern"
   }
 }
-foreach ($pattern in @("Stackchan: Alive is a character OS", "Spark and Glow persona packs", "personas/glow", "verify_persona_pack.cmd glow --Json", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md")) {
+foreach ($pattern in @("Stackchan: Alive is a character OS", "Spark and Glow persona packs", "personas/glow", "verify_persona_pack.cmd glow --Json", "create_persona_pack.cmd nova", "Name or handle to credit", "CREATING_PERSONAS.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing Character OS persona-pack guidance: $pattern"
   }
@@ -1173,14 +1173,14 @@ foreach ($pattern in @("post-release feature", "REPLY_WINDOW", "echo guard", "pr
 }
 
 $creatingPersonasText = Get-Content -LiteralPath (Join-PackagePath "docs/CREATING_PERSONAS.md") -Raw
-foreach ($pattern in @("create_persona_pack.cmd nova", "copy-edit-validate-build", "verify_persona_pack.cmd nova --Json", "run_character_red_team.cmd -Persona nova -Json", "STACKCHAN_PERSONA", "voice provenance gate")) {
+foreach ($pattern in @("create_persona_pack.cmd nova", "Name or handle to credit", "Author credit is required", "placeholders", "copy-edit-validate-build", "verify_persona_pack.cmd nova --Json", "run_character_red_team.cmd -Persona nova -Json", "STACKCHAN_PERSONA", "voice provenance gate")) {
   if ($creatingPersonasText -notmatch [regex]::Escape($pattern)) {
     throw "docs/CREATING_PERSONAS.md missing creator path guidance: $pattern"
   }
 }
 
 $personaPacksText = Get-Content -LiteralPath (Join-PackagePath "docs/PERSONA_PACKS.md") -Raw
-foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "packaged prompt metadata", "firmware WAV embedding list", "Speech lines, earcon params", "create_persona_pack.cmd nova", "CREATING_PERSONAS.md", "copy-edit-validate-build")) {
+foreach ($pattern in @("red-team dry-run harness", "configured real runner", "codegen coverage", "personas/glow", "quieter second pack", "firmware earcon tone table", "firmware face/idle-life/circadian", "expression defaults", "listen/think/orient motion biases", "packaged prompt metadata", "firmware WAV embedding list", "Speech lines, earcon params", "create_persona_pack.cmd nova", "Name or handle to credit", "Author credit is required", "placeholder values are rejected", "CREATING_PERSONAS.md", "copy-edit-validate-build")) {
   if ($personaPacksText -notmatch [regex]::Escape($pattern)) {
     throw "docs/PERSONA_PACKS.md missing persona red-team status: $pattern"
   }
@@ -2573,6 +2573,27 @@ if ($manifest.conversationV2Roadmap -ne "docs/CONVERSATION_V2_ROADMAP.md") {
 
 if ($manifest.agentGuide -ne "AGENTS.md") {
   throw "Manifest agentGuide mismatch: $($manifest.agentGuide)"
+}
+
+$personaCreatorPythonText = Get-Content -LiteralPath (Join-PackagePath "tools/create_persona_pack.py") -Raw
+foreach ($pattern in @('"--author"', "required=True", "author=args.author")) {
+  if ($personaCreatorPythonText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/create_persona_pack.py missing required author contract: $pattern"
+  }
+}
+
+$personaPackLibraryText = Get-Content -LiteralPath (Join-PackagePath "bridge/persona_pack.py") -Raw
+foreach ($pattern in @("Persona pack author is required", "Persona pack author must not be a placeholder", '"todo"', '"your name"')) {
+  if ($personaPackLibraryText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/persona_pack.py missing author provenance guard: $pattern"
+  }
+}
+
+$personaCreatorPowerShellText = Get-Content -LiteralPath (Join-PackagePath "tools/create_persona_pack.ps1") -Raw
+foreach ($pattern in @('[Parameter(Mandatory = $true)]', '[ValidateNotNullOrEmpty()]', '$argsList += @("--author", $Author)')) {
+  if ($personaCreatorPowerShellText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/create_persona_pack.ps1 missing required author contract: $pattern"
+  }
 }
 
 if ($manifest.contributorGuide -ne "CONTRIBUTING.md") {
