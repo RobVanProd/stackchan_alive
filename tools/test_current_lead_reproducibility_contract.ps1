@@ -1,140 +1,139 @@
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-Set-Location $RepoRoot
-
-function New-TextFile {
-  param([string]$Path, [string]$Text = "ok")
-  New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent) | Out-Null
-  Set-Content -LiteralPath $Path -Value $Text -Encoding UTF8
-}
-
-function New-ArchiveFromStage {
-  param([string]$Stage, [string]$ZipPath)
-  if (Test-Path -LiteralPath $ZipPath) {
-    Remove-Item -LiteralPath $ZipPath -Force
-  }
-  Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $ZipPath -CompressionLevel Optimal
-}
-
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Checker = Join-Path $RepoRoot "tools\check_current_lead_reproducibility.ps1"
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-current-lead-repro-" + [guid]::NewGuid().ToString("N"))
-$warmStage = Join-Path $tempRoot "warm-stage"
-$candidateStage = Join-Path $tempRoot "candidate-stage"
-$warmZip = Join-Path $tempRoot "stackchan-full-online-warm-rocm-lead-20260708-101400.zip"
-$candidateZip = Join-Path $tempRoot "stackchan-motion-timing-fix-candidate-20260708-101400.zip"
-$reportDir = Join-Path $tempRoot "report"
-$watchPath = Join-Path $tempRoot "progress.json"
-$soakPath = Join-Path $tempRoot "summary.json"
+$stage = Join-Path $tempRoot "stage"
+$sourceCommit = "b" * 40
+
+function Write-Utf8File {
+  param([string]$Path, [string]$Text)
+  New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent) | Out-Null
+  [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function New-TestArchive {
+  param([string]$Path, [switch]$BadHash, [switch]$MissingSource)
+  if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path $stage | Out-Null
+  $firmware = [byte[]](0..255)
+  $candidatePath = Join-Path $stage "candidate\firmware.bin"
+  New-Item -ItemType Directory -Force -Path (Split-Path $candidatePath -Parent) | Out-Null
+  [System.IO.File]::WriteAllBytes($candidatePath, $firmware)
+  $actualHash = (Get-FileHash -LiteralPath $candidatePath -Algorithm SHA256).Hash
+  if (-not $MissingSource) { Write-Utf8File (Join-Path $stage "source\source.zip") "source" }
+  Write-Utf8File (Join-Path $stage "evidence\long-soak\summary.json") "{}"
+  Write-Utf8File (Join-Path $stage "evidence\long-soak\formal-check.json") "{}"
+  $manifestHash = if ($BadHash) { "0" * 64 } else { $actualHash }
+  [ordered]@{
+    schema = "stackchan.current-lead-archive.v1"
+    firmwareSha256 = $manifestHash
+    sourceCommit = $sourceCommit
+  } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage "manifest.json") -Encoding UTF8
+  @([ordered]@{ path = "candidate/firmware.bin"; bytes = $firmware.Length; sha256 = $actualHash }) |
+    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage "files.json") -Encoding UTF8
+  if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+  Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $Path
+  return $actualHash
+}
 
 try {
-  $warmEntries = @(
-    "bridge/lan_service.py",
-    "bridge/lan_smoke.py",
-    "bridge/rvc_tts_client.py",
-    "bridge/rvc_worker_service.py",
-    "bridge/test_lan_service.py",
-    "bridge/test_lan_smoke.py",
-    "docs/BRIDGE_PROTOCOL.md",
-    "docs/FIRST_DEPLOY_STATUS.md",
-    "docs/ARRIVAL_DAY_RUNBOOK.md",
-    "firmware/firmware.bin",
-    "tools/start_rvc_worker.ps1",
-    "tools/start_warm_rocm_full_system_soak.ps1",
-    "tools/start_motion_timing_candidate_recovery_soak.ps1",
-    "tools/finalize_interrupted_full_system_soak.ps1",
-    "tools/finalize_interrupted_full_system_soak.cmd",
-    "tools/check_full_system_soak_evidence.ps1",
-    "tools/test_motion_timing_candidate_recovery_soak_contract.ps1",
-    "logs/test-motion-timing-candidate-recovery-soak-contract.log",
-    "CURRENT_LEAD.md",
-    "CURRENT_LEAD_MANIFEST.json"
-  )
-  foreach ($entry in $warmEntries) {
-    New-TextFile -Path (Join-Path $warmStage $entry)
-  }
+  New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
+  $archive = Join-Path $tempRoot "stackchan-current-lead-contract.zip"
+  $actualHash = New-TestArchive -Path $archive
+  $candidate = Join-Path $tempRoot "candidate-manifest.json"
+  [ordered]@{
+    schema = "stackchan.private-conversation-soak-hardening-candidate.v1"
+    firmware_sha256 = $actualHash
+    source_commit = $sourceCommit
+  } | ConvertTo-Json | Set-Content -LiteralPath $candidate -Encoding UTF8
 
-  $candidateEntries = @(
-    "docs/FIRST_DEPLOY_STATUS.md",
-    "docs/ARRIVAL_DAY_RUNBOOK.md",
-    "firmware/firmware.bin",
-    "src/motion/ActuationEngine.cpp",
-    "src/motion/ActuationEngine.hpp",
-    "src/main.cpp",
-    "tools/start_warm_rocm_full_system_soak.ps1",
-    "tools/start_motion_timing_candidate_recovery_soak.ps1",
-    "tools/finalize_interrupted_full_system_soak.ps1",
-    "tools/finalize_interrupted_full_system_soak.cmd",
-    "tools/test_motion_timing_candidate_recovery_soak_contract.ps1",
-    "logs/test-motion-timing-candidate-recovery-soak-contract.log",
-    "CANDIDATE_STATUS.md",
-    "CANDIDATE_MANIFEST.json"
-  )
-  foreach ($entry in $candidateEntries) {
-    New-TextFile -Path (Join-Path $candidateStage $entry)
-  }
+  $summary = Join-Path $tempRoot "summary.json"
+  [ordered]@{
+    schema = "stackchan.full-system-soak-summary.v1"
+    status = "pass"
+    issues = @()
+    durationSeconds = 28800
+    installedFirmwareSha256 = $actualHash
+    sourceCommit = $sourceCommit
+  } | ConvertTo-Json | Set-Content -LiteralPath $summary -Encoding UTF8
+  $formal = Join-Path $tempRoot "formal-check.json"
+  [ordered]@{
+    schema = "stackchan.full-system-soak-evidence-check.v1"
+    status = "full-system-soak-ready"
+    passed = 70
+    failed = 0
+    pending = 0
+  } | ConvertTo-Json | Set-Content -LiteralPath $formal -Encoding UTF8
+  $statusDoc = Join-Path $tempRoot "FIRST_DEPLOY_STATUS.md"
+  $runbook = Join-Path $tempRoot "ARRIVAL_DAY_RUNBOOK.md"
+  $markers = "$actualHash`n$sourceCommit`n$(Split-Path $archive -Leaf)`n"
+  Write-Utf8File $statusDoc $markers
+  Write-Utf8File $runbook $markers
+  $reportDir = Join-Path $tempRoot "report"
 
-  New-ArchiveFromStage -Stage $warmStage -ZipPath $warmZip
-  New-ArchiveFromStage -Stage $candidateStage -ZipPath $candidateZip
-
-  New-TextFile -Path $watchPath -Text (@{
-      schema = "stackchan.full-system-soak-progress.v1"
-      records = 3
-      failedPolls = 0
-      motionRefreshes = 0
-    } | ConvertTo-Json -Depth 4)
-  New-TextFile -Path $soakPath -Text (@{
-      schema = "stackchan.full-system-soak-summary.v1"
-      status = "pass"
-      durationSeconds = 28800
-      issues = @()
-    } | ConvertTo-Json -Depth 4)
-
-  $okOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tools\check_current_lead_reproducibility.ps1" `
-    -WarmArchivePath $warmZip `
-    -CandidateArchivePath $candidateZip `
+  $output = & $Checker `
+    -LeadArchivePath $archive `
+    -CandidateManifestPath $candidate `
+    -SoakSummaryPath $summary `
+    -FormalCheckPath $formal `
+    -StatusDocPath $statusDoc `
+    -RunbookPath $runbook `
     -ReportDir $reportDir `
-    -PassiveWatchProgressPath $watchPath `
-    -SoakSummaryPath $soakPath `
+    -MinSoakDurationSeconds 28800 `
     -SkipLive `
     -Json
   if ($LASTEXITCODE -ne 0) {
-    throw "Expected reproducibility checker to pass artifact contract: $okOutput"
+    Write-Host ($output | Out-String)
+    throw "Expected exact-lead contract fixture to pass without -RequireReady."
   }
-  $ok = $okOutput | ConvertFrom-Json
-  if ($ok.status -ne "current-lead-reproducible-pending-soak") {
-    throw "Expected pending-soak with -SkipLive, got $($ok.status)."
-  }
-  foreach ($id in @("warm-entries", "candidate-entries", "passive-watch-no-motion", "strict-soak-summary")) {
-    $check = @($ok.checks | Where-Object { $_.id -eq $id })[0]
-    if ($null -eq $check -or $check.status -ne "pass") {
-      throw "Expected $id to pass."
-    }
+  $result = $output | ConvertFrom-Json
+  if ($result.schema -ne "stackchan.current-lead-reproducibility.v2") { throw "Unexpected schema: $($result.schema)" }
+  if ($result.status -ne "current-lead-reproducible-pending") { throw "SkipLive should leave only live checks pending." }
+  if ($result.failed -ne 0) { throw "Expected zero failed checks, got $($result.failed)." }
+  foreach ($id in @(
+      "lead-archive-entries",
+      "lead-archive-firmware-hash",
+      "lead-archive-file-index",
+      "archive-expected-source-match",
+      "strict-soak-summary",
+      "strict-soak-firmware-match",
+      "strict-soak-source-match",
+      "strict-soak-formal-check"
+    )) {
+    $check = @($result.checks | Where-Object { $_.id -eq $id })[0]
+    if ($null -eq $check -or $check.status -ne "pass") { throw "Expected $id to pass." }
   }
 
-  $badWarmStage = Join-Path $tempRoot "bad-warm-stage"
-  Copy-Item -LiteralPath $warmStage -Destination $badWarmStage -Recurse
-  Remove-Item -LiteralPath (Join-Path $badWarmStage "tools\start_motion_timing_candidate_recovery_soak.ps1") -Force
-  $badWarmZip = Join-Path $tempRoot "bad-warm.zip"
-  New-ArchiveFromStage -Stage $badWarmStage -ZipPath $badWarmZip
-
-  $badOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tools\check_current_lead_reproducibility.ps1" `
-    -WarmArchivePath $badWarmZip `
-    -CandidateArchivePath $candidateZip `
-    -ReportDir (Join-Path $tempRoot "bad-report") `
-    -PassiveWatchProgressPath $watchPath `
-    -SoakSummaryPath $soakPath `
+  $badHashArchive = Join-Path $tempRoot "bad-hash.zip"
+  [void](New-TestArchive -Path $badHashArchive -BadHash)
+  & $Checker `
+    -LeadArchivePath $badHashArchive `
+    -CandidateManifestPath $candidate `
+    -SoakSummaryPath $summary `
+    -FormalCheckPath $formal `
+    -StatusDocPath $statusDoc `
+    -RunbookPath $runbook `
+    -ReportDir (Join-Path $tempRoot "bad-hash-report") `
     -SkipLive `
-    -Json
-  if ($LASTEXITCODE -eq 0) {
-    throw "Expected missing warm archive entry to fail."
-  }
-  $bad = $badOutput | ConvertFrom-Json
-  $badCheck = @($bad.checks | Where-Object { $_.id -eq "warm-entries" })[0]
-  if ($null -eq $badCheck -or $badCheck.status -ne "fail") {
-    throw "Expected warm-entries to fail for missing recovery wrapper."
-  }
-} finally {
-  Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-}
+    -Json | Out-Null
+  if ($LASTEXITCODE -eq 0) { throw "Expected a manifest/firmware archive hash mismatch to fail." }
 
-Write-Host "Current lead reproducibility contract tests passed."
+  $missingSourceArchive = Join-Path $tempRoot "missing-source.zip"
+  [void](New-TestArchive -Path $missingSourceArchive -MissingSource)
+  & $Checker `
+    -LeadArchivePath $missingSourceArchive `
+    -CandidateManifestPath $candidate `
+    -SoakSummaryPath $summary `
+    -FormalCheckPath $formal `
+    -StatusDocPath $statusDoc `
+    -RunbookPath $runbook `
+    -ReportDir (Join-Path $tempRoot "missing-source-report") `
+    -SkipLive `
+    -Json | Out-Null
+  if ($LASTEXITCODE -eq 0) { throw "Expected a missing source snapshot to fail." }
+
+  Write-Host "Current-lead reproducibility v2 contract verified."
+} finally {
+  if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force }
+}

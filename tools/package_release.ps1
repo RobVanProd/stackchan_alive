@@ -605,6 +605,14 @@ $releaseTools = @(
   "tools/start_production_full_system_soak.ps1",
   "tools/check_full_system_soak_evidence.ps1",
   "tools/test_full_system_soak_evidence_contract.ps1",
+  "tools/check_current_lead_reproducibility.cmd",
+  "tools/check_current_lead_reproducibility.ps1",
+  "tools/test_current_lead_reproducibility_contract.cmd",
+  "tools/test_current_lead_reproducibility_contract.ps1",
+  "tools/archive_current_lead.cmd",
+  "tools/archive_current_lead.ps1",
+  "tools/test_archive_current_lead_contract.cmd",
+  "tools/test_archive_current_lead_contract.ps1",
   "tools/test_start_warm_rocm_full_system_soak_contract.ps1",
   "tools/test_start_production_full_system_soak_contract.ps1",
   "tools/camera_follow_wake_validation.ps1",
@@ -1329,6 +1337,10 @@ $manifest = [ordered]@{
   productionFinalSoakWrapper = "tools/start_production_full_system_soak.ps1"
   finalSoakChecker = "tools/check_full_system_soak_evidence.ps1"
   finalSoakCheckerContract = "tools/test_full_system_soak_evidence_contract.ps1"
+  currentLeadChecker = "tools/check_current_lead_reproducibility.ps1"
+  currentLeadCheckerContract = "tools/test_current_lead_reproducibility_contract.ps1"
+  currentLeadArchiver = "tools/archive_current_lead.ps1"
+  currentLeadArchiverContract = "tools/test_archive_current_lead_contract.ps1"
   finalSoakWrapperContract = "tools/test_start_warm_rocm_full_system_soak_contract.ps1"
   productionFinalSoakWrapperContract = "tools/test_start_production_full_system_soak_contract.ps1"
   cameraFollowWakeValidator = "tools/camera_follow_wake_validation.ps1"

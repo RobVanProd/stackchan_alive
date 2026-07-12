@@ -360,6 +360,14 @@ $requiredFiles = @(
   "tools/start_production_full_system_soak.ps1",
   "tools/check_full_system_soak_evidence.ps1",
   "tools/test_full_system_soak_evidence_contract.ps1",
+  "tools/check_current_lead_reproducibility.cmd",
+  "tools/check_current_lead_reproducibility.ps1",
+  "tools/test_current_lead_reproducibility_contract.cmd",
+  "tools/test_current_lead_reproducibility_contract.ps1",
+  "tools/archive_current_lead.cmd",
+  "tools/archive_current_lead.ps1",
+  "tools/test_archive_current_lead_contract.cmd",
+  "tools/test_archive_current_lead_contract.ps1",
   "tools/test_start_warm_rocm_full_system_soak_contract.ps1",
   "tools/test_start_production_full_system_soak_contract.ps1",
   "tools/camera_follow_wake_validation.ps1",
@@ -2510,6 +2518,18 @@ if ($manifest.finalSoakChecker -ne "tools/check_full_system_soak_evidence.ps1") 
 }
 if ($manifest.finalSoakCheckerContract -ne "tools/test_full_system_soak_evidence_contract.ps1") {
   throw "Manifest finalSoakCheckerContract mismatch: $($manifest.finalSoakCheckerContract)"
+}
+if ($manifest.currentLeadChecker -ne "tools/check_current_lead_reproducibility.ps1") {
+  throw "Manifest currentLeadChecker mismatch: $($manifest.currentLeadChecker)"
+}
+if ($manifest.currentLeadCheckerContract -ne "tools/test_current_lead_reproducibility_contract.ps1") {
+  throw "Manifest currentLeadCheckerContract mismatch: $($manifest.currentLeadCheckerContract)"
+}
+if ($manifest.currentLeadArchiver -ne "tools/archive_current_lead.ps1") {
+  throw "Manifest currentLeadArchiver mismatch: $($manifest.currentLeadArchiver)"
+}
+if ($manifest.currentLeadArchiverContract -ne "tools/test_archive_current_lead_contract.ps1") {
+  throw "Manifest currentLeadArchiverContract mismatch: $($manifest.currentLeadArchiverContract)"
 }
 if ($manifest.finalSoakWrapperContract -ne "tools/test_start_warm_rocm_full_system_soak_contract.ps1") {
   throw "Manifest finalSoakWrapperContract mismatch: $($manifest.finalSoakWrapperContract)"
