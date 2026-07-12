@@ -146,6 +146,7 @@ function Assert-Mp3File {
 $requiredFiles = @(
   "README.md",
   "AGENTS.md",
+  "LICENSE",
   "DEPENDENCIES.md",
   "THIRD_PARTY_NOTICES.md",
   "third_party_licenses/files.json",
@@ -747,6 +748,19 @@ $requiredFiles = @(
 
 foreach ($file in $requiredFiles) {
   Assert-File $file
+}
+
+$projectLicenseText = Get-Content -LiteralPath (Join-PackagePath "LICENSE") -Raw
+foreach ($pattern in @(
+    "Apache License",
+    "Version 2.0, January 2004",
+    "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
+    "Grant of Patent License",
+    "END OF TERMS AND CONDITIONS"
+  )) {
+  if ($projectLicenseText -notmatch [regex]::Escape($pattern)) {
+    throw "Project LICENSE is not the expected Apache-2.0 text: missing $pattern"
+  }
 }
 
 foreach ($document in @("README.md", "AGENTS.md", "docs/README.md", "docs/CONVERSATION_V2_ROADMAP.md")) {
@@ -2531,6 +2545,14 @@ if ($manifest.conversationV2Roadmap -ne "docs/CONVERSATION_V2_ROADMAP.md") {
 
 if ($manifest.agentGuide -ne "AGENTS.md") {
   throw "Manifest agentGuide mismatch: $($manifest.agentGuide)"
+}
+
+if ($manifest.projectLicense -ne "Apache-2.0") {
+  throw "Manifest projectLicense mismatch: $($manifest.projectLicense)"
+}
+
+if ($manifest.projectLicenseFile -ne "LICENSE") {
+  throw "Manifest projectLicenseFile mismatch: $($manifest.projectLicenseFile)"
 }
 
 if ($manifest.docsIndex -ne "docs/README.md") {

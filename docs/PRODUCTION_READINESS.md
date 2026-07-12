@@ -9,6 +9,8 @@ Current status: Stackchan: Alive character OS scaffold is device-ready, not hard
 - Runtime dependency pins are declared in `platformio.ini`; release packages record resolved transitive versions.
 - Release packages include dependency provenance, a machine-readable dependency lock, copied build inputs, and a dependency audit that flags duplicate resolved package names or upstream Git requirements that were not directly pinned by this project.
 - Release packages preserve installed third-party license, licence, copying, notice, and package-metadata files under `third_party_licenses/`, publish a portable SHA-256 index, and include `THIRD_PARTY_NOTICES.md`. Package verification checks every indexed file and the required pioarduino, Arduino-ESP32, direct-library, nested M5GFX, and YuNet evidence.
+- The project source and secret-free BYOM release package are licensed under Apache-2.0; the root
+  `LICENSE` is included in the release ZIP and declared by the release manifest.
 - Release packages can be verified locally before publication, and published release assets can be re-audited after upload.
 - Release packages include flash, verification, and hardware evidence-capture helpers.
 - Hardware evidence packets include a media importer that validates phone photos/videos/audio and records SHA256 hashes in `media_manifest.json`.

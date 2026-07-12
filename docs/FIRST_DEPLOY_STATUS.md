@@ -51,9 +51,9 @@ support compiled with motion disabled at boot.
   `v0.2.0-rc1` packaging and independent ZIP verification pass with the public BYOM voice policy:
   private firmware, Wi-Fi/OTA/camera credentials, pairing data, and local RVC models are excluded.
   Regenerate the package after the final documentation commit so its manifest binds the published
-  source commit. Production voice-source provenance and the owner-selected repository license
-  remain explicit distribution decisions; do not describe the repository as consumer-ready while
-  either is unresolved.
+  source commit. The repository owner selected Apache-2.0 for the public source and secret-free
+  BYOM package. Production voice-source provenance remains unresolved, so do not bundle or present
+  the private voice model as a public release asset.
 
 ### Corrected PMIC And Bridge-Port Candidate (2026-07-12)
 
@@ -247,7 +247,8 @@ support compiled with motion disabled at boot.
   SHA-256 across operator-approved camera evidence, complete touch/IMU evidence, and the formally
   verified integrated soak. `-RequireFinalIntegration` now includes camera capture and paired host
   vision instead of rejecting camera-enabled production firmware. The gate also requires an
-  owner-selected project license and production voice provenance, both still open decisions.
+  owner-selected project license and production voice provenance. Apache-2.0 now satisfies the
+  project-license gate; production voice provenance remains open.
 - The final-soak launcher now targets the accepted DirectML worker on local port `5059` and reuses
   the existing production bridge. It refuses dirty source, non-loopback worker URLs, missing power,
   display, network, or socket gates, and missing advancing paired vision before motion. It forces

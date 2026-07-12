@@ -14,7 +14,8 @@ QA sheet; a root `QUICKSTART.md`; readiness docs; generated readiness reports; t
 persona pack under `personas/spark`; `persona_pack_status.json`; voice-source provenance
 template; companion C6 brain-supervision evidence under `companion/evidence/`; the local
 vision worker and hash-pinned YuNet model; face-customization guidance; dependency provenance;
-a machine-readable dependency lock; a dependency audit; copied third-party license/notice files
+a machine-readable dependency lock; a dependency audit; the project Apache-2.0 `LICENSE`;
+copied third-party license/notice files
 with a portable SHA-256 index; copied build inputs; flash helpers;
 promotion verifiers; a manifest that names the readiness/media/voice/persona/companion
 evidence artifacts; and SHA256 checksums.

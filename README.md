@@ -49,8 +49,8 @@ What is still gated:
   credentials, OTA material, camera pairing data, and local RVC models are never public assets.
 - PC/mobile owner failover and final consumer rollout evidence remain required for the companion
   distribution path.
-- Production voice-source provenance and a project license selected by the repository owner remain
-  explicit distribution gates.
+- Production voice-source provenance remains an explicit distribution gate for bundling the
+  private voice model. The source repository and secret-free BYOM package are Apache-2.0 licensed.
 - Final promotion requires the release package audit, current-lead reproducibility check, tagged
   asset verification, and updated terminal evidence documents.
 
@@ -351,7 +351,9 @@ This repository is now public for development visibility. Treat Stackchan: Alive
 software: expect hardware-specific tuning, evidence gates, and safety review before real-world
 use.
 
-No project license file is declared yet. Until one is added, do not assume redistribution or
-commercial-use rights beyond normal public repository viewing and contribution discussion.
-Keep PRs small, testable, and aligned with the roadmap in
+Stackchan: Alive is licensed under the
+[Apache License 2.0](LICENSE), which permits personal and commercial use, modification, and
+redistribution under its attribution, notice, patent, and other terms. Private device credentials,
+pairing material, local models, and other untracked assets are not part of the licensed repository
+distribution. Keep PRs small, testable, and aligned with the roadmap in
 [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md).

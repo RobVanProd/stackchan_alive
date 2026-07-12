@@ -405,6 +405,7 @@ foreach ($file in $voiceRvcFiles) {
 
 Copy-Item -LiteralPath "README.md" -Destination $outDir
 Copy-Item -LiteralPath "AGENTS.md" -Destination $outDir
+Copy-Item -LiteralPath "LICENSE" -Destination $outDir
 Copy-Item -LiteralPath "docs/README.md" -Destination $docsDir
 $packageReadmePath = Join-Path $outDir "README.md"
 $packageReadmeText = [System.IO.File]::ReadAllText($packageReadmePath)
@@ -1317,6 +1318,8 @@ $manifest = [ordered]@{
   dependencyLock = "dependency_lock.json"
   thirdPartyNotices = "THIRD_PARTY_NOTICES.md"
   thirdPartyLicenseIndex = "third_party_licenses/files.json"
+  projectLicense = "Apache-2.0"
+  projectLicenseFile = "LICENSE"
   readinessReport = "READINESS_REPORT.md"
   readinessReportJson = "readiness_report.json"
   ciStatusReport = "GITHUB_ACTIONS_STATUS.md"
