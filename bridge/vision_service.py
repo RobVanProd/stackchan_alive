@@ -41,6 +41,8 @@ class VisionStats:
     faces_observed: int = 0
     max_fetch_ms: float = 0.0
     max_detect_ms: float = 0.0
+    transport_retries: int = 0
+    transport_recoveries: int = 0
     last_error: str = ""
 
 
@@ -199,10 +201,24 @@ class CameraVisionService:
                 raise RuntimeError(f"robot HTTP status {response.status}")
             return response.read(MAX_FRAME_BYTES + 1)
 
+    def _get_with_retry(self, path: str, timeout: float) -> bytes:
+        for attempt in range(2):
+            try:
+                payload = self._get(path, timeout)
+                if attempt > 0:
+                    self.stats.transport_recoveries += 1
+                return payload
+            except (OSError, RuntimeError, urllib.error.URLError):
+                if attempt > 0:
+                    raise
+                self.stats.transport_retries += 1
+                time.sleep(0.05)
+        raise RuntimeError("vision transport retry exhausted")
+
     def step(self, timeout: float = 4.0) -> list[FaceTarget]:
         try:
             started = time.perf_counter()
-            payload = self._get(f"/camera-gray.pgm?p={self.pairing_code}", timeout)
+            payload = self._get_with_retry(f"/camera-gray.pgm?p={self.pairing_code}", timeout)
             self.stats.max_fetch_ms = max(
                 self.stats.max_fetch_ms, (time.perf_counter() - started) * 1000.0
             )
@@ -212,7 +228,7 @@ class CameraVisionService:
             self.stats.max_detect_ms = max(
                 self.stats.max_detect_ms, (time.perf_counter() - detect_started) * 1000.0
             )
-            self._get(encode_face_targets(self.pairing_code, faces), timeout)
+            self._get_with_retry(encode_face_targets(self.pairing_code, faces), timeout)
             self.stats.frames += 1
             self.stats.target_updates += 1
             self.stats.faces_observed += len(faces)

@@ -145,6 +145,10 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     if (readStringField(jsonLine, "intent", intent, sizeof(intent))) {
       output.response.intent = intentFromString(intent);
     }
+    char gesture[16] = {};
+    if (readStringField(jsonLine, "gesture", gesture, sizeof(gesture))) {
+      output.response.gesture = gestureFromString(gesture);
+    }
     readFloatField(jsonLine, "arousal", &output.response.arousal);
     readFloatField(jsonLine, "valence", &output.response.valence);
     output.response.arousal = clamp01(output.response.arousal);
@@ -474,6 +478,19 @@ SpeechIntent BridgeClient::intentFromString(const char* value) {
   if (std::strcmp(value, "safety") == 0) return SpeechIntent::Safety;
   if (std::strcmp(value, "error") == 0) return SpeechIntent::Error;
   return SpeechIntent::Speak;
+}
+
+ResponseGesture BridgeClient::gestureFromString(const char* value) {
+  if (value == nullptr) {
+    return ResponseGesture::None;
+  }
+  if (std::strcmp(value, "affirm") == 0 || std::strcmp(value, "nod") == 0) {
+    return ResponseGesture::Affirm;
+  }
+  if (std::strcmp(value, "deny") == 0 || std::strcmp(value, "shake") == 0) {
+    return ResponseGesture::Deny;
+  }
+  return ResponseGesture::None;
 }
 
 AudioOutViseme BridgeClient::visemeFromString(const char* value) {

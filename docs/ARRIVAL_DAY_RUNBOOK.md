@@ -30,6 +30,17 @@ If recovery is genuinely required, use the exact current private rollback archiv
 The guarded archived-app flasher verifies its manifest, byte count, and SHA256 while preserving
 NVS/Wi-Fi. Motion remains disabled at boot.
 
+Current release-acceptance note (2026-07-12): the installed private image is source commit
+`dae9065bb08cd0ca50f49b29e2d0cbcff0f9b882`, firmware SHA256
+`28172C6BF20BDCB14803DBC93B6FB477456877DBE5D5893D3E8F0FAE3BFB2AD3`. Its latest strict
+actuator run stopped after `1287 s` on one incomplete camera HTTP response write, with `252/252`
+successful robot polls and no reset, power, thermal, display, motion-session, capture,
+authentication, or IMU gate failure. Do not diagnose that event as a blackout or camera failure.
+The exact facts and evidence root are recorded at the top of `docs\FIRST_DEPLOY_STATUS.md`.
+The superseding uninstalled candidate adds separate camera capture/response-write telemetry and
+one bounded host retry; it must pass its own no-motion and actuator qualifications before a long
+soak.
+
 When physical testing resumes, first validate a real face under diffuse light with motion off,
 then follow `docs\LOCAL_VISION.md` for the bounded wake/listen follow run. Confirm opposite bounded
 left/right direction telemetry before fresh servo clearance. If board orientation reverses the

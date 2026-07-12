@@ -26,6 +26,7 @@ from lan_service import (
     encode_ws_frame,
     encode_ws_text,
     is_identity_question,
+    explicit_research_request,
     mouth_frame_for_audio_window,
     prompt_case_for_text,
     read_ws_frame,
@@ -187,6 +188,36 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("I am Stackchan.", response_start["text"])
         self.assertEqual("identity", records[0]["runner_case"])
         self.assertEqual("I am Stackchan.", records[0]["response_text"])
+
+    def test_local_time_and_memory_recall_bypass_the_model(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(
+                LanBridgeConfig(turn_log_file=turn_log),
+                memory=BridgeMemory(preferred_name="Rob"),
+            )
+            with patch("lan_service.run_runner_profile") as runner:
+                time_frames = session.handle_text(
+                    json.dumps({"type": "utterance_end", "seq": 13, "text": "What time is it?"})
+                )
+                name_frames = session.handle_text(
+                    json.dumps({"type": "utterance_end", "seq": 14, "text": "What is my name?"})
+                )
+            records = [json.loads(line) for line in turn_log.read_text(encoding="utf-8").splitlines()]
+
+        runner.assert_not_called()
+        time_response = next(frame for frame in time_frames if isinstance(frame, dict) and frame["type"] == "response_start")
+        name_response = next(frame for frame in name_frames if isinstance(frame, dict) and frame["type"] == "response_start")
+        self.assertRegex(time_response["text"], r"It is \d{1,2}:\d{2} (?:AM|PM)\.")
+        self.assertEqual("You asked me to call you Rob.", name_response["text"])
+        self.assertEqual(["local_clock", "memory_recall"], [record["local_fact_tool"] for record in records])
+
+    def test_explicit_research_fallback_is_bounded_and_rejects_sensitive_queries(self):
+        request = explicit_research_request("Please search the web for the latest Stackchan release")
+        self.assertEqual("web_search", request["name"])
+        self.assertEqual(4, request["arguments"]["max_results"])
+        self.assertIsNone(explicit_research_request("Search the web for my API key"))
+        self.assertIsNone(explicit_research_request("Tell me a joke"))
 
     def test_stackchan_wake_phrase_matches_common_stt_variants(self):
         self.assertTrue(contains_stackchan_wake_phrase("Hey Stackchan"))

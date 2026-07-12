@@ -6833,6 +6833,7 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
 
   if (output.type == BridgeClientOutputType::ResponseStart) {
     gIntent.applyEvent(output.event, CharacterMode::Speak);
+    gIntent.startResponseGesture(output.response.gesture, output.response.seq, nowMs);
     gBridgeWakeGate.applyEvent(output.event, nowMs);
     gAudioOut.cancel();
     gBridgeLocalSpeechSuppressedUntilMs = nowMs + 120000u;
@@ -7562,6 +7563,18 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(camera.hostFrameRequests));
   append(",\"camera_host_frame_failures\":%lu",
          static_cast<unsigned long>(camera.hostFrameFailures));
+  append(",\"camera_host_capture_failures\":%lu",
+         static_cast<unsigned long>(camera.hostCaptureFailures));
+  append(",\"camera_host_response_write_attempts\":%lu",
+         static_cast<unsigned long>(camera.hostResponseWriteAttempts));
+  append(",\"camera_host_response_write_successes\":%lu",
+         static_cast<unsigned long>(camera.hostResponseWriteSuccesses));
+  append(",\"camera_host_response_write_failures\":%lu",
+         static_cast<unsigned long>(camera.hostResponseWriteFailures));
+  append(",\"camera_host_response_write_consecutive_failures\":%lu",
+         static_cast<unsigned long>(camera.hostResponseWriteConsecutiveFailures));
+  append(",\"camera_host_response_write_max_consecutive_failures\":%lu",
+         static_cast<unsigned long>(camera.hostResponseWriteMaxConsecutiveFailures));
   append(",\"camera_host_target_updates\":%lu",
          static_cast<unsigned long>(camera.hostTargetUpdates));
   append(",\"camera_host_auth_failures\":%lu",
@@ -8092,9 +8105,7 @@ void serveCameraGrayFrame(WiFiClient& client, const char* requestTarget) {
                                            reinterpret_cast<const uint8_t*>(pgmHeader),
                                            static_cast<size_t>(pgmHeaderLength));
   const bool frameWritten = headerWritten && writeHttpBody(client, gray, frame.length);
-  if (!frameWritten) {
-    gCamera.noteHostFrameFailure();
-  }
+  gCamera.noteHostFrameResponse(frameWritten);
   delay(1);
   client.stop();
 }

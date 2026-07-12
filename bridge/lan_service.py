@@ -46,6 +46,7 @@ from research_broker import (
     evidence_prompt,
     source_urls,
 )
+from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -67,6 +68,17 @@ STACKCHAN_WAKE_PHRASE = re.compile(
 )
 IDENTITY_QUESTION = re.compile(
     r"\b(?:what(?:'s| is)\s+(?:your|ur)\s+name|who\s+(?:are|r)\s+you|your\s+name)\b",
+    flags=re.IGNORECASE,
+)
+EXPLICIT_RESEARCH_REQUEST = re.compile(
+    r"\b(?:search(?: the)? web|search online|look (?:it|this|that|.+?) up|browse(?: the)? web|"
+    r"find (?:it|this|that|.+?) online|latest (?:news|information|release|version)|"
+    r"current (?:news|weather|price|score))\b",
+    flags=re.IGNORECASE,
+)
+SENSITIVE_RESEARCH_TEXT = re.compile(
+    r"\b(?:password|passcode|api key|private key|credit card|bank account|social security|"
+    r"medical|diagnosis|phone number|email address|home address)\b",
     flags=re.IGNORECASE,
 )
 
@@ -397,7 +409,8 @@ class BridgeControlState:
             },
             "research": {
                 "enabled": config.research_enabled,
-                "tools": ["web_search", "web_fetch"] if config.research_enabled else [],
+                "tools": ["local_clock", "memory_recall"]
+                + (["web_search", "web_fetch"] if config.research_enabled else []),
             },
             "audio": {
                 "sample_rate": DEFAULT_SAMPLE_RATE,
@@ -705,6 +718,15 @@ def identity_character_response() -> str:
     )
 
 
+def explicit_research_request(text: str) -> dict[str, object] | None:
+    query = " ".join(str(text or "").split())
+    if not query or len(query) > 240 or SENSITIVE_RESEARCH_TEXT.search(query):
+        return None
+    if not EXPLICIT_RESEARCH_REQUEST.search(query):
+        return None
+    return {"name": "web_search", "arguments": {"query": query, "max_results": 4}}
+
+
 def contains_stackchan_wake_phrase(text: str) -> bool:
     return bool(STACKCHAN_WAKE_PHRASE.search(" ".join(str(text or "").split())))
 
@@ -854,6 +876,7 @@ class LanBridgeSession:
             "runner_case": runner_case,
             "response_text": turn.text,
             "response_intent": turn.intent,
+            "response_gesture": turn.gesture,
             "tts_voice": str(tts_summary.get("tts_voice", "")),
             "tts_audio_payload_bytes": int(tts_summary.get("tts_audio_payload_bytes", 0)),
             "tts_error": tts_error,
@@ -1272,7 +1295,14 @@ class LanBridgeSession:
         requested_case = str(message.get("runner_case", "")).strip()
         runner_summary: dict[str, object] = {}
         research_result: dict[str, object] | None = None
-        if not requested_case and is_identity_question(user_text):
+        local_fact = resolve_local_fact(user_text, self.memory) if not requested_case else None
+        if local_fact is not None:
+            runner_case = "local_fact"
+            raw_response = local_fact.character_response()
+            runner_summary["runner_command_source"] = f"trusted_{local_fact.tool}"
+            runner_summary["runner_elapsed_ms"] = 0.0
+            runner_summary["local_fact_tool"] = local_fact.tool
+        elif not requested_case and is_identity_question(user_text):
             runner_case = "identity"
             raw_response = identity_character_response()
             runner_summary["runner_command_source"] = "local_identity"
@@ -1289,7 +1319,7 @@ class LanBridgeSession:
                     user_text=user_text,
                     research_tools_enabled=self.config.research_enabled,
                     embodiment_lines=self.robot_embodiment.prompt_lines(),
-                    memory_lines=tuple(self.memory.context_lines()),
+                    memory_lines=tuple(self.memory.context_lines(user_text)),
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [error_frame("runner_error", str(exc))]
@@ -1306,6 +1336,12 @@ class LanBridgeSession:
                 except ResearchPolicyError as exc:
                     tool_request = {"name": "invalid", "arguments": {}}
                     runner_summary["research_error"] = str(exc)
+                if tool_request is None:
+                    tool_request = explicit_research_request(user_text)
+                    if tool_request is not None:
+                        runner_summary["research_routing"] = "explicit_user_request"
+                else:
+                    runner_summary["research_routing"] = "model_request"
                 if tool_request is not None:
                     if self.research_broker is None:
                         research_result = {
@@ -1335,7 +1371,7 @@ class LanBridgeSession:
                             user_text=evidence_user_text,
                             research_tools_enabled=False,
                             embodiment_lines=self.robot_embodiment.prompt_lines(),
-                            memory_lines=tuple(self.memory.context_lines()),
+                            memory_lines=tuple(self.memory.context_lines(user_text)),
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                         return [error_frame("runner_error", str(exc))]

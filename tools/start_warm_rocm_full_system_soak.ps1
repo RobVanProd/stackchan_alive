@@ -12,6 +12,10 @@ param(
   [int]$MinPowerVbusReportedMv = 4400,
   [int]$MotionPowerSoftFloorMv = 4550,
   [int]$MaxDisplayFrameUs = 50000,
+  [int]$MaxCameraHostResponseWriteFailures = 20,
+  [double]$MaxCameraHostResponseWriteFailureRatio = 0.001,
+  [int]$MinCameraHostResponseWriteAttemptsForRatio = 100,
+  [int]$MaxCameraHostResponseWriteConsecutiveFailures = 1,
   [int]$MaxFailedPolls = 0,
   [double]$MaxFailedPollRatio = 0.01,
   [int]$MinPollsForFailedRatio = 100,
@@ -274,7 +278,13 @@ if ($RequireFinalIntegration) {
     $visionSocketRemote -eq $DeviceHost -and
     [int64]$visionAfter.camera_host_frame_requests -gt [int64]$visionBefore.camera_host_frame_requests -and
     [int64]$visionAfter.camera_host_target_updates -gt [int64]$visionBefore.camera_host_target_updates -and
-    [int64]$visionAfter.camera_host_frame_failures -eq [int64]$visionBefore.camera_host_frame_failures -and
+    (Has-JsonProperty $visionAfter "camera_host_capture_failures") -and
+    (Has-JsonProperty $visionAfter "camera_host_response_write_attempts") -and
+    (Has-JsonProperty $visionAfter "camera_host_response_write_failures") -and
+    (Has-JsonProperty $visionAfter "camera_host_response_write_max_consecutive_failures") -and
+    [int64]$visionAfter.camera_host_capture_failures -eq [int64]$visionBefore.camera_host_capture_failures -and
+    [int64]$visionAfter.camera_host_response_write_max_consecutive_failures -le
+      $MaxCameraHostResponseWriteConsecutiveFailures -and
     [int64]$visionAfter.camera_host_auth_failures -eq [int64]$visionBefore.camera_host_auth_failures
   if (-not $visionPreflightReady) {
     $visionFailurePath = Join-Path $evidencePath "vision-preflight-failure.json"
@@ -413,6 +423,14 @@ $args = @(
   [string]$MaxAllowedChipTempC,
   "-MaxDisplayFrameUs",
   [string]$MaxDisplayFrameUs,
+  "-MaxCameraHostResponseWriteFailures",
+  [string]$MaxCameraHostResponseWriteFailures,
+  "-MaxCameraHostResponseWriteFailureRatio",
+  [string]$MaxCameraHostResponseWriteFailureRatio,
+  "-MinCameraHostResponseWriteAttemptsForRatio",
+  [string]$MinCameraHostResponseWriteAttemptsForRatio,
+  "-MaxCameraHostResponseWriteConsecutiveFailures",
+  [string]$MaxCameraHostResponseWriteConsecutiveFailures,
   "-RequireMotion",
   "-RequireNoMotionTimeouts",
   "-RequireBridgeSocket",

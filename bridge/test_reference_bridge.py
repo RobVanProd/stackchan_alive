@@ -13,6 +13,7 @@ from reference_bridge import (
     plan_turn,
     render_bench,
     render_jsonl,
+    response_gesture_for_text,
     reset_bridge_memory,
     save_bridge_memory,
     turn_from_character_response,
@@ -174,6 +175,27 @@ class ReferenceBridgeTests(unittest.TestCase):
         frames = list(bridge_frames(BridgeTurn(intent="safety", valence=-0.72)))
         response = next(frame for frame in frames if frame["type"] == "response_start")
         self.assertEqual(-0.72, response["valence"])
+
+    def test_yes_and_no_responses_emit_semantic_head_gestures(self):
+        self.assertEqual("affirm", response_gesture_for_text("Yes, that is correct."))
+        self.assertEqual("deny", response_gesture_for_text("No, I cannot do that."))
+        self.assertEqual("none", response_gesture_for_text("No problem. I can help."))
+        self.assertEqual("none", response_gesture_for_text("I am Stackchan."))
+
+        raw = json.dumps(
+            {
+                "spoken_text": "Yes, I remember that.",
+                "mode": "happy",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        turn = turn_from_character_response(raw, BridgeMemory(), seq=51)[0]
+        response = next(frame for frame in bridge_frames(turn) if frame["type"] == "response_start")
+        self.assertEqual("affirm", turn.gesture)
+        self.assertEqual("affirm", response["gesture"])
 
     def test_malformed_character_response_still_renders_fallback(self):
         turn, memory, result = turn_from_character_response("{not json", BridgeMemory(preferred_name="Rob"), seq=45)

@@ -44,6 +44,12 @@ enum class SpeechEarcon : uint8_t {
   Safety,
 };
 
+enum class ResponseGesture : uint8_t {
+  None,
+  Affirm,
+  Deny,
+};
+
 struct SpeechCue {
   SpeechIntent intent = SpeechIntent::None;
   const char* text = "";

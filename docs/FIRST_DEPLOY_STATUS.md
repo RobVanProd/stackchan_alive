@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 00:32 America/New_York
+Status timestamp: 2026-07-12 03:20 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -8,6 +8,36 @@ This supersedes the older recovery-only status below. The current physical lead 
 full-online CoreS3 firmware with smooth face, bot-local wake, Whisper STT uplink,
 Gemma 4 PC brain, warm PC-side RVC voice conversion, M5 speaker downlink, and servo
 support compiled with motion disabled at boot.
+
+### Release Acceptance Camera-Transport Finding (2026-07-12)
+
+- The exact installed private candidate at source commit
+  `dae9065bb08cd0ca50f49b29e2d0cbcff0f9b882`, firmware SHA256
+  `28172C6BF20BDCB14803DBC93B6FB477456877DBE5D5893D3E8F0FAE3BFB2AD3`, ran the strict
+  actuator-enabled final-integration soak at
+  `output\pc-brain\release-acceptance-final-servo-60min-20260712-022700` for `1287 s`.
+  All `252/252` polls succeeded. Motion was sampled on every poll, no motion-session timeout
+  occurred, VBUS stayed at or above `4815 mV`, maximum chip temperature was `67.5 C`, maximum
+  display frame time was `37450 us`, and there was no reset, PMIC protective/VBUS-loss event,
+  hard-floor event, camera capture failure, camera authentication failure, or IMU event above the
+  run baseline.
+- The runner stopped because the aggregate `camera_host_frame_failures` counter advanced once.
+  Adjacent records show camera requests, captures, and target updates continued. Source-path
+  inspection shows this exact counter combination represents an interrupted HTTP PGM response
+  write: `camera_capture_failures` stayed zero, while the response body did not finish before the
+  bounded write loop ended. That can occur on client disconnect or the three-second write deadline;
+  the evidence does not distinguish between them and
+  does not support classifying the event as a robot freeze, blackout, camera failure, or power
+  failure. The runner verified motion-stop, and a post-stop snapshot is preserved as
+  `post-stop-forensics.json` in the evidence root.
+- The candidate worktree now separates host capture failures from response-write transport
+  failures, records attempts/successes/failures/current and maximum streak, retries one host vision
+  transport miss after `50 ms`, and keeps true capture/authentication failures fail-fast. The soak
+  gate permits only a bounded recovered response-write rate: at most `20` failures, no more than
+  `0.1%` after `100` attempts, and never a streak above one. This work passes `243/243` native
+  tests, `218/218` bridge tests, the soak evidence contract, PowerShell parse checks, and the full
+  private camera firmware build at `56.5%` RAM and `42.9%` flash. It is not the installed lead
+  until committed, archived, OTA-confirmed, and qualified against its own SHA256.
 
 ### Integrated Soak And IMU Hardening Checkpoint (2026-07-12)
 

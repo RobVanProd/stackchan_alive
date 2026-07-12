@@ -34,6 +34,12 @@ struct CameraAdapterTelemetry {
   uint32_t lastFrameChecksum = 0;
   uint32_t hostFrameRequests = 0;
   uint32_t hostFrameFailures = 0;
+  uint32_t hostCaptureFailures = 0;
+  uint32_t hostResponseWriteAttempts = 0;
+  uint32_t hostResponseWriteSuccesses = 0;
+  uint32_t hostResponseWriteFailures = 0;
+  uint32_t hostResponseWriteConsecutiveFailures = 0;
+  uint32_t hostResponseWriteMaxConsecutiveFailures = 0;
   uint32_t hostTargetUpdates = 0;
   uint32_t hostAuthFailures = 0;
   uint32_t eventsPublished = 0;
@@ -95,7 +101,7 @@ class CameraAdapter {
   bool serviceCaptureProbe(uint32_t nowMs);
   bool poll(RobotEvent* eventOut);
   void noteHostAuthFailure();
-  void noteHostFrameFailure();
+  void noteHostFrameResponse(bool success);
   void noteHostTargetUpdate();
 
   const CameraAdapterTelemetry& telemetry() const {

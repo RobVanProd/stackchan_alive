@@ -10,6 +10,7 @@ from bridge_memory import (
     LEGACY_MEMORY_SCHEMA_VERSION,
     MAX_DURABLE_FACTS,
     MAX_MEMORY_ITEMS,
+    MAX_PROMPT_FACTS,
     MAX_RECENT_CONTEXT,
     MEMORY_SCHEMA,
     MEMORY_SCHEMA_VERSION,
@@ -210,6 +211,39 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         self.assertLessEqual(len(saved["recent_context"]), MAX_RECENT_CONTEXT)
         self.assertLessEqual(len(memory.recent_topics), MAX_MEMORY_ITEMS)
         self.assertLessEqual(len(memory.physical_context), MAX_MEMORY_ITEMS)
+
+    def test_prompt_context_ranks_query_matching_facts_inside_the_bound(self):
+        memory = BridgeMemory()
+        for index in range(12):
+            memory = memory.apply_character_memory(
+                {"memory_write": {f"project.fact_{index}": f"unrelated note {index}"}}
+            )
+        memory = memory.apply_character_memory(
+            {"memory_write": {"project.servo_bracket_color": "the servo bracket is teal"}}
+        )
+
+        lines = memory.context_lines("What color is the servo bracket?")
+        facts = [line for line in lines if line.startswith("approved_fact ")]
+
+        self.assertLessEqual(len(facts), 8)
+        self.assertTrue(any("servo_bracket_color" in line and "teal" in line for line in facts))
+
+    def test_prompt_context_can_select_relevant_recent_context_over_durable_fill(self):
+        memory = BridgeMemory()
+        for index in range(MAX_PROMPT_FACTS + 2):
+            memory = memory.apply_character_memory(
+                {"memory_write": {f"project.fact_{index}": f"unrelated durable note {index}"}}
+            )
+        memory = memory.with_overrides(
+            physical_context=("beside the blue launch notebook",)
+        )
+
+        lines = memory.context_lines("Where are you beside the blue launch notebook?")
+
+        self.assertTrue(
+            any("beside the blue launch notebook" in line for line in lines),
+            lines,
+        )
 
     def test_privacy_policy_rejects_sensitive_and_raw_content(self):
         memory = BridgeMemory().remember_user_text(

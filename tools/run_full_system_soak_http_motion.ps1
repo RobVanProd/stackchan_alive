@@ -40,6 +40,10 @@ param(
   [switch]$RequireCameraCapture,
   [switch]$RequireCameraHostVision,
   [int]$MaxCameraCaptureUs = 250000,
+  [int]$MaxCameraHostResponseWriteFailures = 20,
+  [double]$MaxCameraHostResponseWriteFailureRatio = 0.001,
+  [int]$MinCameraHostResponseWriteAttemptsForRatio = 100,
+  [int]$MaxCameraHostResponseWriteConsecutiveFailures = 1,
   [switch]$RequirePmicVbusStable,
   [switch]$RequireNoNewHardFloorEvents,
   [switch]$RequireManagedChargePolicy,
@@ -329,6 +333,9 @@ $imuReadFailuresBaseline = $null
 $imuEventsBaseline = $null
 $cameraCaptureFailuresBaseline = $null
 $cameraHostFrameFailuresBaseline = $null
+$cameraHostCaptureFailuresBaseline = $null
+$cameraHostResponseWriteAttemptsBaseline = $null
+$cameraHostResponseWriteFailuresBaseline = $null
 $cameraHostAuthFailuresBaseline = $null
 $motionStopResult = $null
 
@@ -542,6 +549,12 @@ try {
           camera_max_capture_us = Get-ObjectProperty $j "camera_max_capture_us" $null
           camera_host_frame_requests = Get-ObjectProperty $j "camera_host_frame_requests" $null
           camera_host_frame_failures = Get-ObjectProperty $j "camera_host_frame_failures" $null
+          camera_host_capture_failures = Get-ObjectProperty $j "camera_host_capture_failures" $null
+          camera_host_response_write_attempts = Get-ObjectProperty $j "camera_host_response_write_attempts" $null
+          camera_host_response_write_successes = Get-ObjectProperty $j "camera_host_response_write_successes" $null
+          camera_host_response_write_failures = Get-ObjectProperty $j "camera_host_response_write_failures" $null
+          camera_host_response_write_consecutive_failures = Get-ObjectProperty $j "camera_host_response_write_consecutive_failures" $null
+          camera_host_response_write_max_consecutive_failures = Get-ObjectProperty $j "camera_host_response_write_max_consecutive_failures" $null
           camera_host_target_updates = Get-ObjectProperty $j "camera_host_target_updates" $null
           camera_host_auth_failures = Get-ObjectProperty $j "camera_host_auth_failures" $null
           power_battery_mv = Get-ObjectProperty $j "power_battery_mv" $null
@@ -634,6 +647,9 @@ try {
         $imuEventsBaseline = $records[$records.Count - 1].imu_events
         $cameraCaptureFailuresBaseline = $records[$records.Count - 1].camera_capture_failures
         $cameraHostFrameFailuresBaseline = $records[$records.Count - 1].camera_host_frame_failures
+        $cameraHostCaptureFailuresBaseline = $records[$records.Count - 1].camera_host_capture_failures
+        $cameraHostResponseWriteAttemptsBaseline = $records[$records.Count - 1].camera_host_response_write_attempts
+        $cameraHostResponseWriteFailuresBaseline = $records[$records.Count - 1].camera_host_response_write_failures
         $cameraHostAuthFailuresBaseline = $records[$records.Count - 1].camera_host_auth_failures
       }
 
@@ -938,18 +954,50 @@ try {
               break
             }
             if ($null -eq $cameraHostFrameFailuresBaseline -or
+                $null -eq $cameraHostCaptureFailuresBaseline -or
+                $null -eq $cameraHostResponseWriteAttemptsBaseline -or
+                $null -eq $cameraHostResponseWriteFailuresBaseline -or
                 $null -eq $cameraHostAuthFailuresBaseline -or
                 $null -eq $latestRecord.camera_host_frame_requests -or
-                $null -eq $latestRecord.camera_host_target_updates) {
+                $null -eq $latestRecord.camera_host_target_updates -or
+                $null -eq $latestRecord.camera_host_response_write_consecutive_failures -or
+                $null -eq $latestRecord.camera_host_response_write_max_consecutive_failures) {
               $abortReason = "camera_host_vision_counter_missing"
               break
             }
-            if ([int64]$latestRecord.camera_host_frame_failures -gt [int64]$cameraHostFrameFailuresBaseline) {
-              $abortReason = "camera_host_frame_failure_observed"
+            if ([int64]$latestRecord.camera_host_capture_failures -gt [int64]$cameraHostCaptureFailuresBaseline) {
+              $abortReason = "camera_host_capture_failure_observed"
               break
             }
             if ([int64]$latestRecord.camera_host_auth_failures -gt [int64]$cameraHostAuthFailuresBaseline) {
               $abortReason = "camera_host_auth_failure_observed"
+              break
+            }
+            $newResponseWriteFailures =
+              [int64]$latestRecord.camera_host_response_write_failures -
+              [int64]$cameraHostResponseWriteFailuresBaseline
+            $newResponseWriteAttempts =
+              [int64]$latestRecord.camera_host_response_write_attempts -
+              [int64]$cameraHostResponseWriteAttemptsBaseline
+            $responseWriteFailureRatio = if ($newResponseWriteAttempts -gt 0) {
+              $newResponseWriteFailures / [double]$newResponseWriteAttempts
+            } else { 0.0 }
+            if ([int64]$latestRecord.camera_host_response_write_consecutive_failures -gt
+                $MaxCameraHostResponseWriteConsecutiveFailures -or
+                [int64]$latestRecord.camera_host_response_write_max_consecutive_failures -gt
+                $MaxCameraHostResponseWriteConsecutiveFailures) {
+              $abortReason = "camera_host_response_write_streak_exceeded"
+              break
+            }
+            if ($MaxCameraHostResponseWriteFailures -ge 0 -and
+                $newResponseWriteFailures -gt $MaxCameraHostResponseWriteFailures) {
+              $abortReason = "camera_host_response_write_failure_limit_exceeded"
+              break
+            }
+            if ($MaxCameraHostResponseWriteFailureRatio -gt 0 -and
+                $newResponseWriteAttempts -ge $MinCameraHostResponseWriteAttemptsForRatio -and
+                $responseWriteFailureRatio -gt $MaxCameraHostResponseWriteFailureRatio) {
+              $abortReason = "camera_host_response_write_failure_ratio_exceeded"
               break
             }
           }
@@ -1055,7 +1103,11 @@ $cameraHostVisionReadySamples = @($okRecords | Where-Object {
     -not $_.debug_response_truncated -and
     [int]$_.compiled_enable_camera_host_vision -eq 1 -and
     $null -ne $_.camera_host_frame_requests -and
-    $null -ne $_.camera_host_target_updates
+    $null -ne $_.camera_host_target_updates -and
+    $null -ne $_.camera_host_capture_failures -and
+    $null -ne $_.camera_host_response_write_attempts -and
+    $null -ne $_.camera_host_response_write_failures -and
+    $null -ne $_.camera_host_response_write_max_consecutive_failures
   }).Count
 $bodyRgbFrameDelta = if ($firstOkRecord -and $latestOkRecord -and
     $null -ne $firstOkRecord.body_rgb_frames -and $null -ne $latestOkRecord.body_rgb_frames) {
@@ -1122,6 +1174,33 @@ $newCameraCaptureFailures = if ($null -ne $cameraCaptureFailuresBaseline -and $l
 $newCameraHostFrameFailures = if ($null -ne $cameraHostFrameFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.camera_host_frame_failures) {
   [int64]$latestOkRecord.camera_host_frame_failures - [int64]$cameraHostFrameFailuresBaseline
+} else { $null }
+$newCameraHostCaptureFailures = if ($null -ne $cameraHostCaptureFailuresBaseline -and $latestOkRecord -and
+    $null -ne $latestOkRecord.camera_host_capture_failures) {
+  [int64]$latestOkRecord.camera_host_capture_failures - [int64]$cameraHostCaptureFailuresBaseline
+} else { $null }
+$cameraHostResponseWriteAttemptDelta = if ($null -ne $cameraHostResponseWriteAttemptsBaseline -and
+    $latestOkRecord -and $null -ne $latestOkRecord.camera_host_response_write_attempts) {
+  [int64]$latestOkRecord.camera_host_response_write_attempts -
+    [int64]$cameraHostResponseWriteAttemptsBaseline
+} else { $null }
+$newCameraHostResponseWriteFailures = if ($null -ne $cameraHostResponseWriteFailuresBaseline -and
+    $latestOkRecord -and $null -ne $latestOkRecord.camera_host_response_write_failures) {
+  [int64]$latestOkRecord.camera_host_response_write_failures -
+    [int64]$cameraHostResponseWriteFailuresBaseline
+} else { $null }
+$cameraHostResponseWriteFailureRatio = if ($null -ne $cameraHostResponseWriteAttemptDelta -and
+    [int64]$cameraHostResponseWriteAttemptDelta -gt 0 -and
+    $null -ne $newCameraHostResponseWriteFailures) {
+  [math]::Round(
+    [int64]$newCameraHostResponseWriteFailures / [double][int64]$cameraHostResponseWriteAttemptDelta,
+    6)
+} else { 0.0 }
+$maxCameraHostResponseWriteConsecutiveFailuresObserved = if (@($okRecords | Where-Object {
+      $null -ne $_.camera_host_response_write_max_consecutive_failures
+    }).Count -gt 0) {
+  (@($okRecords | Where-Object { $null -ne $_.camera_host_response_write_max_consecutive_failures }) |
+    Measure-Object -Property camera_host_response_write_max_consecutive_failures -Maximum).Maximum
 } else { $null }
 $newCameraHostAuthFailures = if ($null -ne $cameraHostAuthFailuresBaseline -and $latestOkRecord -and
     $null -ne $latestOkRecord.camera_host_auth_failures) {
@@ -1479,11 +1558,30 @@ if ($RequireCameraHostVision) {
   if ($null -eq $cameraHostTargetUpdateDelta -or $cameraHostTargetUpdateDelta -le 0) {
     $issues.Add("camera_host_target_updates_not_advancing")
   }
-  if ($newCameraHostFrameFailures -ne 0) {
-    $issues.Add("camera_host_frame_failure_observed")
+  if ($newCameraHostCaptureFailures -ne 0) {
+    $issues.Add("camera_host_capture_failure_observed")
   }
   if ($newCameraHostAuthFailures -ne 0) {
     $issues.Add("camera_host_auth_failure_observed")
+  }
+  if ($null -eq $cameraHostResponseWriteAttemptDelta -or
+      $null -eq $newCameraHostResponseWriteFailures -or
+      $null -eq $maxCameraHostResponseWriteConsecutiveFailuresObserved) {
+    $issues.Add("camera_host_response_write_telemetry_missing")
+  } else {
+    if ($MaxCameraHostResponseWriteFailures -ge 0 -and
+        [int64]$newCameraHostResponseWriteFailures -gt $MaxCameraHostResponseWriteFailures) {
+      $issues.Add("camera_host_response_write_failure_limit_exceeded")
+    }
+    if ($MaxCameraHostResponseWriteFailureRatio -gt 0 -and
+        [int64]$cameraHostResponseWriteAttemptDelta -ge $MinCameraHostResponseWriteAttemptsForRatio -and
+        [double]$cameraHostResponseWriteFailureRatio -gt $MaxCameraHostResponseWriteFailureRatio) {
+      $issues.Add("camera_host_response_write_failure_ratio_exceeded")
+    }
+    if ([int64]$maxCameraHostResponseWriteConsecutiveFailuresObserved -gt
+        $MaxCameraHostResponseWriteConsecutiveFailures) {
+      $issues.Add("camera_host_response_write_streak_exceeded")
+    }
   }
 }
 if ($MaxAllowedChipTempC -gt 0 -and $maxChipTempC -ne $null -and [double]$maxChipTempC -gt $MaxAllowedChipTempC) {
@@ -1550,6 +1648,10 @@ $summary = [ordered]@{
     requireCameraCapture = [bool]$RequireCameraCapture
     requireCameraHostVision = [bool]$RequireCameraHostVision
     maxCameraCaptureUs = $MaxCameraCaptureUs
+    maxCameraHostResponseWriteFailures = $MaxCameraHostResponseWriteFailures
+    maxCameraHostResponseWriteFailureRatio = $MaxCameraHostResponseWriteFailureRatio
+    minCameraHostResponseWriteAttemptsForRatio = $MinCameraHostResponseWriteAttemptsForRatio
+    maxCameraHostResponseWriteConsecutiveFailures = $MaxCameraHostResponseWriteConsecutiveFailures
     requirePmicVbusStable = [bool]$RequirePmicVbusStable
     requireNoNewHardFloorEvents = [bool]$RequireNoNewHardFloorEvents
     requireManagedChargePolicy = [bool]$RequireManagedChargePolicy
@@ -1649,6 +1751,9 @@ $summary = [ordered]@{
   imuEventsBaseline = $imuEventsBaseline
   cameraCaptureFailuresBaseline = $cameraCaptureFailuresBaseline
   cameraHostFrameFailuresBaseline = $cameraHostFrameFailuresBaseline
+  cameraHostCaptureFailuresBaseline = $cameraHostCaptureFailuresBaseline
+  cameraHostResponseWriteAttemptsBaseline = $cameraHostResponseWriteAttemptsBaseline
+  cameraHostResponseWriteFailuresBaseline = $cameraHostResponseWriteFailuresBaseline
   cameraHostAuthFailuresBaseline = $cameraHostAuthFailuresBaseline
   newBodyRgbWriteFailures = $newBodyRgbWriteFailures
   newBodyRgbWriteRetries = $newBodyRgbWriteRetries
@@ -1660,6 +1765,11 @@ $summary = [ordered]@{
   newImuEvents = $newImuEvents
   newCameraCaptureFailures = $newCameraCaptureFailures
   newCameraHostFrameFailures = $newCameraHostFrameFailures
+  newCameraHostCaptureFailures = $newCameraHostCaptureFailures
+  cameraHostResponseWriteAttemptDelta = $cameraHostResponseWriteAttemptDelta
+  newCameraHostResponseWriteFailures = $newCameraHostResponseWriteFailures
+  cameraHostResponseWriteFailureRatio = $cameraHostResponseWriteFailureRatio
+  maxCameraHostResponseWriteConsecutiveFailures = $maxCameraHostResponseWriteConsecutiveFailuresObserved
   newCameraHostAuthFailures = $newCameraHostAuthFailures
   maxCameraCaptureUsObserved = $maxCameraCaptureUsObserved
   latestFinalIntegration = $latestOkRecord

@@ -218,7 +218,9 @@ Example:
 - `capability_update_result`: updated endpoint capabilities.
 - `listening`: bridge is receiving user speech.
 - `thinking`: bridge is processing; firmware emits `ThinkingStarted`.
-- `response_start`: response metadata is ready; firmware emits `ResponseStarted`.
+- `response_start`: response metadata is ready; firmware emits `ResponseStarted`. Optional
+  `gesture` is `none`, `affirm`, or `deny`; firmware layers a short seeded procedural nod or
+  shake over the existing idle/camera pose and then settles back to that pose.
 - `audio_stream_start`: optional metadata for a following binary TTS audio downlink.
 - Binary WebSocket frame: optional raw TTS audio chunk. Format is declared by the preceding
   `audio_stream_start` frame. Firmware accepts chunks up to 4096 bytes, copies the chunk
@@ -249,7 +251,7 @@ Example response:
 
 ```json
 {"type":"thinking","seq":41}
-{"type":"response_start","seq":41,"intent":"happy","arousal":0.62,"valence":0.72,"text":"Hello. I am awake and looking."}
+{"type":"response_start","seq":41,"intent":"happy","gesture":"affirm","arousal":0.62,"valence":0.72,"text":"Yes. I am awake and looking."}
 {"type":"audio_stream_start","seq":41,"format":"pcm16","sample_rate":22050,"audio_bytes":4096,"chunk_bytes":4096,"chunks":1}
 <binary WebSocket frame: decoded signed 16-bit mono PCM>
 {"type":"audio_stream_end","seq":41,"audio_bytes":4096,"chunks":1}

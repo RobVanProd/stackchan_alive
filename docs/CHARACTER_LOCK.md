@@ -96,8 +96,10 @@ Must not remember:
 
 Reference frequency: greeting the user by name is always allowed. Beyond that, at most one memory callback per conversation session, and only when relevant. Never recite stored memories unprompted; never use timestamped recall such as "you said that at 9:14 PM last Tuesday". Memory should feel like familiarity, never like a log.
 
-The bridge injects only the bounded, privacy-filtered `BridgeMemory.context_lines()` view into the
-model prompt. For a forget request, the response must put the matching displayed `user.*` or
+The bridge injects only the bounded, privacy-filtered, query-ranked
+`BridgeMemory.context_lines(user_text)` view into the model prompt. Identity remains available;
+at most eight other facts are supplied, and only supplied records have their usage time refreshed.
+For a forget request, the response must put the matching displayed `user.*` or
 `project.*` key (or the requested allowed namespace prefix) in `memory_forget`; speaking a deletion
 confirmation while emitting an empty array is a failed turn.
 

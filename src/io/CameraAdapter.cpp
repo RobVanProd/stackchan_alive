@@ -145,12 +145,14 @@ bool CameraAdapter::captureGray160(uint8_t* destination,
   ++telemetry_.hostFrameRequests;
   if (destination == nullptr || frameOut == nullptr) {
     ++telemetry_.hostFrameFailures;
+    ++telemetry_.hostCaptureFailures;
     return false;
   }
   const uint32_t startedUs = micros();
   CameraFrameView source;
   if (!captureFrame(&source)) {
     ++telemetry_.hostFrameFailures;
+    ++telemetry_.hostCaptureFailures;
     return false;
   }
 #if STACKCHAN_CAMERA_CAPTURE_AVAILABLE
@@ -162,6 +164,7 @@ bool CameraAdapter::captureGray160(uint8_t* destination,
       outputHeight == 0 || outputLength > capacity || source.length < sourceLength) {
     releaseFrame(&source);
     ++telemetry_.hostFrameFailures;
+    ++telemetry_.hostCaptureFailures;
     return false;
   }
 
@@ -203,6 +206,7 @@ bool CameraAdapter::captureGray160(uint8_t* destination,
 #else
   releaseFrame(&source);
   ++telemetry_.hostFrameFailures;
+  ++telemetry_.hostCaptureFailures;
   return false;
 #endif
 }
@@ -330,8 +334,19 @@ void CameraAdapter::noteHostAuthFailure() {
   ++telemetry_.hostAuthFailures;
 }
 
-void CameraAdapter::noteHostFrameFailure() {
+void CameraAdapter::noteHostFrameResponse(bool success) {
+  ++telemetry_.hostResponseWriteAttempts;
+  if (success) {
+    ++telemetry_.hostResponseWriteSuccesses;
+    telemetry_.hostResponseWriteConsecutiveFailures = 0;
+    return;
+  }
   ++telemetry_.hostFrameFailures;
+  ++telemetry_.hostResponseWriteFailures;
+  ++telemetry_.hostResponseWriteConsecutiveFailures;
+  telemetry_.hostResponseWriteMaxConsecutiveFailures =
+      max(telemetry_.hostResponseWriteMaxConsecutiveFailures,
+          telemetry_.hostResponseWriteConsecutiveFailures);
 }
 
 void CameraAdapter::noteHostTargetUpdate() {

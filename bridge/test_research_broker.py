@@ -182,6 +182,75 @@ class ResearchBrokerTests(unittest.TestCase):
         self.assertEqual(["https://example.com/release"], response["citations"])
         self.assertNotIn("Public release evidence", json.dumps(session.memory.to_dict()))
 
+    def test_explicit_search_request_forces_research_when_model_does_not_request_tool(self):
+        class FakeBroker:
+            def execute(self, request):
+                self.request = request
+                return {
+                    "schema": "stackchan.research.v1",
+                    "tool": "web_search",
+                    "query": request["arguments"]["query"],
+                    "results": [
+                        {
+                            "title": "Current release",
+                            "url": "https://example.com/current",
+                            "excerpt": "Current public evidence",
+                        }
+                    ],
+                }
+
+        ordinary_answer = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "I am not sure.",
+                    "mode": "concern",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": -0.1},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=8.0,
+            approx_tokens_per_sec=20.0,
+        )
+        grounded_answer = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "The current release is documented.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.1},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=9.0,
+            approx_tokens_per_sec=21.0,
+        )
+        broker = FakeBroker()
+        session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True, disable_audio_downlink=True),
+            research_broker=broker,
+        )
+        with patch("lan_service.run_runner_profile", side_effect=[ordinary_answer, grounded_answer]) as runner:
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 10,
+                        "text": "Search the web for the latest Stackchan release",
+                    }
+                )
+            )
+
+        self.assertEqual(2, runner.call_count)
+        self.assertEqual("web_search", broker.request["name"])
+        self.assertIn("latest Stackchan release", broker.request["arguments"]["query"])
+        response = next(frame for frame in frames if isinstance(frame, dict) and frame.get("type") == "response_start")
+        self.assertEqual(["https://example.com/current"], response["citations"])
+
 
 if __name__ == "__main__":
     unittest.main()

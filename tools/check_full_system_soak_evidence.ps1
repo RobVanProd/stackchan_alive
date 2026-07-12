@@ -316,8 +316,26 @@ if ($summary) {
     Add-Check "camera-host-frame-requests" ($(if ($requestDelta -gt 0) { "pass" } else { "fail" })) "cameraHostFrameRequestDelta=$requestDelta expected>0"
     $targetDelta = Get-IntValue $summary "cameraHostTargetUpdateDelta" -1
     Add-Check "camera-host-target-updates" ($(if ($targetDelta -gt 0) { "pass" } else { "fail" })) "cameraHostTargetUpdateDelta=$targetDelta expected>0"
-    $frameFailures = Get-IntValue $summary "newCameraHostFrameFailures" -1
-    Add-Check "camera-host-frame-failures" ($(if ($frameFailures -eq 0) { "pass" } else { "fail" })) "newCameraHostFrameFailures=$frameFailures expected=0"
+    $captureFailures = Get-IntValue $summary "newCameraHostCaptureFailures" -1
+    Add-Check "camera-host-capture-failures" ($(if ($captureFailures -eq 0) { "pass" } else { "fail" })) "newCameraHostCaptureFailures=$captureFailures expected=0"
+    $responseAttempts = Get-IntValue $summary "cameraHostResponseWriteAttemptDelta" -1
+    $responseFailures = Get-IntValue $summary "newCameraHostResponseWriteFailures" -1
+    $responseFailureRatio = Get-DoubleValue $summary "cameraHostResponseWriteFailureRatio" -1.0
+    $responseMaxFailures = Get-StrictIntValue $summary "maxCameraHostResponseWriteFailures" -1
+    $responseMaxRatio = Get-StrictDoubleValue $summary "maxCameraHostResponseWriteFailureRatio" -1.0
+    $responseMinAttempts = Get-StrictIntValue $summary "minCameraHostResponseWriteAttemptsForRatio" 100
+    $responseMaxConsecutive = Get-StrictIntValue $summary "maxCameraHostResponseWriteConsecutiveFailures" 1
+    $responseObservedConsecutive = Get-IntValue $summary "maxCameraHostResponseWriteConsecutiveFailures" -1
+    $responseCountPassed = $responseFailures -ge 0 -and $responseMaxFailures -ge 0 -and
+      $responseFailures -le $responseMaxFailures
+    Add-Check "camera-host-response-write-failures" ($(if ($responseCountPassed) { "pass" } else { "fail" })) "failures=$responseFailures max=$responseMaxFailures attempts=$responseAttempts"
+    $responseRatioPassed = $responseAttempts -ge 0 -and $responseFailureRatio -ge 0 -and
+      ($responseAttempts -lt $responseMinAttempts -or
+       ($responseMaxRatio -gt 0 -and $responseFailureRatio -le $responseMaxRatio))
+    Add-Check "camera-host-response-write-ratio" ($(if ($responseRatioPassed) { "pass" } else { "fail" })) "ratio=$responseFailureRatio max=$responseMaxRatio attempts=$responseAttempts minAttempts=$responseMinAttempts"
+    $responseStreakPassed = $responseObservedConsecutive -ge 0 -and
+      $responseObservedConsecutive -le $responseMaxConsecutive
+    Add-Check "camera-host-response-write-streak" ($(if ($responseStreakPassed) { "pass" } else { "fail" })) "maxConsecutive=$responseObservedConsecutive max=$responseMaxConsecutive"
     $authFailures = Get-IntValue $summary "newCameraHostAuthFailures" -1
     Add-Check "camera-host-auth-failures" ($(if ($authFailures -eq 0) { "pass" } else { "fail" })) "newCameraHostAuthFailures=$authFailures expected=0"
   }

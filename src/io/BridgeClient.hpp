@@ -55,6 +55,7 @@ struct BridgeClientConfig {
 struct BridgeResponseChunk {
   uint32_t seq = 0;
   SpeechIntent intent = SpeechIntent::Speak;
+  ResponseGesture gesture = ResponseGesture::None;
   float arousal = 0.45f;
   float valence = 0.45f;
   char text[kBridgeTextMax] = {};
@@ -147,6 +148,7 @@ class BridgeClient {
   static bool readFloatField(const char* line, const char* key, float* out);
   static bool readBoolField(const char* line, const char* key, bool* out);
   static SpeechIntent intentFromString(const char* value);
+  static ResponseGesture gestureFromString(const char* value);
   static AudioOutViseme visemeFromString(const char* value);
   static float clamp01(float value);
   static uint16_t clampDuration(uint32_t value);

@@ -1429,6 +1429,21 @@ void test_command_map_accepts_bench_tokens_matching_yaml_keys() {
                     static_cast<int>(CommandMap::fromToken("dance")));
 }
 
+void test_camera_adapter_separates_recovered_host_response_write_failures() {
+  CameraAdapter camera;
+  camera.noteHostFrameResponse(false);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().hostFrameFailures);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().hostResponseWriteFailures);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().hostResponseWriteConsecutiveFailures);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().hostResponseWriteMaxConsecutiveFailures);
+
+  camera.noteHostFrameResponse(true);
+  TEST_ASSERT_EQUAL_UINT32(2, camera.telemetry().hostResponseWriteAttempts);
+  TEST_ASSERT_EQUAL_UINT32(1, camera.telemetry().hostResponseWriteSuccesses);
+  TEST_ASSERT_EQUAL_UINT32(0, camera.telemetry().hostResponseWriteConsecutiveFailures);
+  TEST_ASSERT_EQUAL_UINT32(0, camera.telemetry().hostCaptureFailures);
+}
+
 void test_stereo_direction_estimates_opposite_sample_delays() {
   constexpr size_t kFrames = 224;
   int16_t signal[kFrames] = {};
@@ -1639,6 +1654,39 @@ void test_intent_engine_wake_acknowledgement_nod_settles() {
   const RobotFrame nod = engine.update(500);
   const RobotFrame settled = engine.update(1300);
   TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, fabsf(nod.motion.pitchDeg - settled.motion.pitchDeg));
+}
+
+void test_intent_engine_layers_varied_yes_no_response_gestures() {
+  IntentEngine baseline;
+  baseline.begin();
+  baseline.setDemoEnabled(false, 0);
+  const RobotFrame base = baseline.update(360);
+
+  IntentEngine affirmA;
+  affirmA.begin();
+  affirmA.setDemoEnabled(false, 0);
+  affirmA.startResponseGesture(ResponseGesture::Affirm, 41, 100);
+  const RobotFrame nodA = affirmA.update(360);
+
+  IntentEngine affirmB;
+  affirmB.begin();
+  affirmB.setDemoEnabled(false, 0);
+  affirmB.startResponseGesture(ResponseGesture::Affirm, 42, 100);
+  const RobotFrame nodB = affirmB.update(360);
+
+  IntentEngine deny;
+  deny.begin();
+  deny.setDemoEnabled(false, 0);
+  deny.startResponseGesture(ResponseGesture::Deny, 43, 100);
+  const RobotFrame shake = deny.update(360);
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.35f, fabsf(nodA.motion.pitchDeg - base.motion.pitchDeg));
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.35f, fabsf(shake.motion.yawDeg - base.motion.yawDeg));
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.02f, fabsf(nodA.motion.pitchDeg - nodB.motion.pitchDeg));
+
+  const RobotFrame nodSettled = affirmA.update(1200);
+  const RobotFrame baseSettled = baseline.update(1200);
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, baseSettled.motion.pitchDeg, nodSettled.motion.pitchDeg);
 }
 
 void test_body_touch_raw_decodes_physical_front_middle_back_order() {
@@ -3662,7 +3710,7 @@ void test_bridge_client_maps_thinking_and_response_events() {
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Thinking), static_cast<int>(bridge.telemetry().state));
 
   TEST_ASSERT_TRUE(bridge.submitControlLine(
-      "{\"type\":\"response_start\",\"seq\":41,\"intent\":\"happy\",\"arousal\":0.62,\"valence\":0.72,"
+      "{\"type\":\"response_start\",\"seq\":41,\"intent\":\"happy\",\"gesture\":\"affirm\",\"arousal\":0.62,\"valence\":0.72,"
       "\"text\":\"Hello. I am awake.\"}",
       260));
   TEST_ASSERT_TRUE(bridge.poll(&output));
@@ -3670,6 +3718,7 @@ void test_bridge_client_maps_thinking_and_response_events() {
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::ResponseStarted), static_cast<int>(output.event.type));
   TEST_ASSERT_EQUAL_UINT32(41, output.response.seq);
   TEST_ASSERT_EQUAL(static_cast<int>(SpeechIntent::Happy), static_cast<int>(output.response.intent));
+  TEST_ASSERT_EQUAL(static_cast<int>(ResponseGesture::Affirm), static_cast<int>(output.response.gesture));
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.62f, output.response.arousal);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.72f, output.response.valence);
   TEST_ASSERT_TRUE(output.event.hasPayload);
@@ -6782,6 +6831,7 @@ int main() {
   RUN_TEST(test_intent_engine_orients_toward_sound_event);
   RUN_TEST(test_intent_engine_uses_bridge_response_mood_for_face_and_motion);
   RUN_TEST(test_intent_engine_wake_acknowledgement_nod_settles);
+  RUN_TEST(test_intent_engine_layers_varied_yes_no_response_gestures);
   RUN_TEST(test_body_touch_raw_decodes_physical_front_middle_back_order);
   RUN_TEST(test_body_touch_interpreter_emits_zone_tap_on_release);
   RUN_TEST(test_body_touch_interpreter_detects_forward_and_backward_swipes);
@@ -6805,6 +6855,7 @@ int main() {
   RUN_TEST(test_intent_engine_tracks_face_position_payload);
   RUN_TEST(test_camera_adapter_publishes_clamped_face_detection);
   RUN_TEST(test_camera_adapter_publishes_face_lost_event);
+  RUN_TEST(test_camera_adapter_separates_recovered_host_response_write_failures);
   RUN_TEST(test_active_speaker_tracker_uses_audio_to_choose_among_faces);
   RUN_TEST(test_active_speaker_tracker_holds_target_while_robot_replies);
   RUN_TEST(test_active_speaker_tracker_requires_spatial_agreement_for_audio_match);

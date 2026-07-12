@@ -14,6 +14,7 @@ class IntentEngine {
   void begin();
   void applyEvent(const RobotEvent& event, CharacterMode mode);
   void queueSpeechCue(const SpeechCue& cue, uint32_t nowMs);
+  void startResponseGesture(ResponseGesture gesture, uint32_t seed, uint32_t nowMs);
   void applyCircadian(uint8_t hourOfDay);
   void applyAmbient(float lux, uint8_t hourOfDay);
   void setDemoEnabled(bool enabled, uint32_t nowMs);
@@ -55,12 +56,18 @@ class IntentEngine {
   EventType lastEventType_ = EventType::Boot;
   SpeechIntent lastSpeechIntent_ = SpeechIntent::None;
   SpeechCue activeSpeech_;
+  ResponseGesture responseGesture_ = ResponseGesture::None;
+  uint32_t responseGestureStartedMs_ = 0;
+  uint16_t responseGestureDurationMs_ = 0;
+  float responseGestureAmplitudeDeg_ = 0.0f;
+  float responseGestureCycles_ = 0.0f;
 
   void injectDemoEvents(uint32_t nowMs);
   void updateSpeechCue(uint32_t nowMs);
   void activateSpeechCue(const SpeechCue& cue, uint32_t nowMs);
   MotionTargets motionForMode(uint32_t nowMs) const;
   void applySoundOrientation(RobotFrame& frame, uint32_t nowMs) const;
+  void applyResponseGesture(RobotFrame& frame, uint32_t nowMs);
 };
 
 }  // namespace stackchan

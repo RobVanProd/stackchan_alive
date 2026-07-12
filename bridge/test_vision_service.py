@@ -1,11 +1,14 @@
 from pathlib import Path
 import tempfile
 import unittest
+import urllib.error
+from unittest.mock import patch
 
 import numpy as np
 
 from vision_service import (
     FaceTarget,
+    CameraVisionService,
     OpenCvYuNetDetector,
     YUNET_MODEL_PATH,
     YUNET_SCORE_THRESHOLD,
@@ -76,6 +79,27 @@ class VisionServiceTests(unittest.TestCase):
             bad_model.write_bytes(b"not an onnx model")
             with self.assertRaises(RuntimeError):
                 verify_yunet_model(bad_model)
+
+    def test_camera_service_retries_one_transport_miss_and_records_recovery(self) -> None:
+        class Detector:
+            @staticmethod
+            def detect(frame):
+                self.assertEqual((2, 4), frame.shape)
+                return []
+
+        service = CameraVisionService("http://127.0.0.1:8789", "123456", Detector())
+        pgm = b"P5\n4 2\n255\n" + bytes(range(8))
+        with patch.object(
+            service,
+            "_get",
+            side_effect=[urllib.error.URLError("transient"), pgm, b'{"ok":true}'],
+        ):
+            self.assertEqual([], service.step())
+
+        self.assertEqual(1, service.stats.transport_retries)
+        self.assertEqual(1, service.stats.transport_recoveries)
+        self.assertEqual(0, service.stats.frame_failures)
+        self.assertEqual(1, service.stats.frames)
 
 
 if __name__ == "__main__":

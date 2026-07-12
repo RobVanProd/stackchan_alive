@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -25,6 +26,14 @@ DEFAULT_PERSONA = load_and_validate_persona_pack(DEFAULT_PERSONA_ID)
 BRIDGE_SYSTEM_PROMPT = DEFAULT_PERSONA.bridge_system_prompt()
 
 Viseme = Literal["neutral", "ah", "oh", "ee"]
+ResponseGesture = Literal["none", "affirm", "deny"]
+
+_AFFIRM_RESPONSE = re.compile(r"^(?:yes|yeah|yep|correct|absolutely|certainly|definitely)\b", re.IGNORECASE)
+_DENY_RESPONSE = re.compile(
+    r"^(?:no|nope|not\b|i (?:cannot|can not|do not|will not|am not)\b|that is not\b)",
+    re.IGNORECASE,
+)
+_NO_PROBLEM = re.compile(r"^no (?:problem|worries|trouble)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -43,6 +52,7 @@ class BridgeTurn:
     text: str = DEFAULT_TEXT
     arousal: float = 0.55
     valence: float = 0.60
+    gesture: ResponseGesture = "none"
     citations: tuple[str, ...] = ()
     beats: tuple[AudioBeat, ...] = (
         AudioBeat(0.18, "neutral", 60),
@@ -59,6 +69,17 @@ def clamp01(value: float) -> float:
 
 def clamp_signed(value: float) -> float:
     return max(-1.0, min(1.0, float(value)))
+
+
+def response_gesture_for_text(text: object) -> ResponseGesture:
+    clean = " ".join(str(text or "").strip().split()).lstrip("\"'([{ ")
+    if not clean or _NO_PROBLEM.search(clean):
+        return "none"
+    if _AFFIRM_RESPONSE.search(clean):
+        return "affirm"
+    if _DENY_RESPONSE.search(clean):
+        return "deny"
+    return "none"
 
 
 def emotion_baseline_for_mode(mode: str) -> tuple[float, float]:
@@ -139,13 +160,15 @@ def turn_from_character_response(
     base_arousal, base_valence = emotion_baseline_for_mode(mode)
     arousal = clamp01(base_arousal + float(emotion.get("arousal", 0.0)))
     valence = clamp_signed(base_valence + float(emotion.get("valence", 0.0)))
+    spoken_text = str(normalized.get("spoken_text", DEFAULT_TEXT))
     turn = BridgeTurn(
         session=session,
         seq=max(1, int(seq)),
         intent=mode,
-        text=str(normalized.get("spoken_text", DEFAULT_TEXT)),
+        text=spoken_text,
         arousal=arousal,
         valence=valence,
+        gesture=response_gesture_for_text(spoken_text),
     )
     return turn, updated_memory, result
 
@@ -162,6 +185,7 @@ def bridge_frames(turn: BridgeTurn) -> Iterator[dict[str, object]]:
         "intent": turn.intent,
         "arousal": round(clamp01(turn.arousal), 2),
         "valence": round(clamp_signed(turn.valence), 2),
+        "gesture": turn.gesture,
         "text": turn.text,
     }
     if turn.citations:

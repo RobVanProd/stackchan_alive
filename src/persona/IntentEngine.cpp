@@ -11,6 +11,7 @@ namespace stackchan {
 namespace {
 constexpr uint32_t kSpeechCueHoldMs = 650;
 constexpr uint32_t kIdleSpeechCooldownMs = 12000;
+constexpr float kPi = 3.1415927f;
 }
 
 void IntentEngine::begin() {
@@ -31,6 +32,11 @@ void IntentEngine::begin() {
   lastEventType_ = EventType::Boot;
   lastSpeechIntent_ = SpeechIntent::None;
   activeSpeech_ = SpeechCue {};
+  responseGesture_ = ResponseGesture::None;
+  responseGestureStartedMs_ = 0;
+  responseGestureDurationMs_ = 0;
+  responseGestureAmplitudeDeg_ = 0.0f;
+  responseGestureCycles_ = 0.0f;
   idleLife_.reset(lastUpdateMs_);
   gaze_.reset(lastUpdateMs_);
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
@@ -63,6 +69,26 @@ void IntentEngine::queueSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
   // during the same update tick.
   lastSpeechMode_ = mode_;
   lastSpeechIntent_ = cue.intent;
+}
+
+void IntentEngine::startResponseGesture(ResponseGesture gesture, uint32_t seed, uint32_t nowMs) {
+  responseGesture_ = gesture;
+  responseGestureStartedMs_ = nowMs;
+  const uint32_t mixed = seed * 1664525u + 1013904223u;
+  const float variant = static_cast<float>((mixed >> 16) & 0xffu) / 255.0f;
+  if (gesture == ResponseGesture::Affirm) {
+    responseGestureDurationMs_ = static_cast<uint16_t>(620u + (mixed % 181u));
+    responseGestureAmplitudeDeg_ = 2.3f + variant * 1.0f;
+    responseGestureCycles_ = 1.0f + variant * 0.18f;
+  } else if (gesture == ResponseGesture::Deny) {
+    responseGestureDurationMs_ = static_cast<uint16_t>(780u + (mixed % 241u));
+    responseGestureAmplitudeDeg_ = 3.6f + variant * 1.4f;
+    responseGestureCycles_ = 1.35f + variant * 0.25f;
+  } else {
+    responseGestureDurationMs_ = 0;
+    responseGestureAmplitudeDeg_ = 0.0f;
+    responseGestureCycles_ = 0.0f;
+  }
 }
 
 void IntentEngine::applyCircadian(uint8_t hourOfDay) {
@@ -102,6 +128,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   idleLife_.apply(frame, nowMs, reducedMotion_);
   applySoundOrientation(frame, nowMs);
   gaze_.apply(frame, nowMs, reducedMotion_);
+  applyResponseGesture(frame, nowMs);
   if (nowMs < activeSpeechUntilMs_ && activeSpeech_.shouldSpeak()) {
     frame.speech = activeSpeech_;
     frame.speechSeq = speechSeq_;
@@ -222,6 +249,29 @@ void IntentEngine::applySoundOrientation(RobotFrame& frame, uint32_t nowMs) cons
   frame.face.faceX += gaze * 3.0f;
   if (frame.motion.yawMode == YawMode::Angle) {
     frame.motion.yawDeg += gaze * generated_persona::kSoundDirectionYawBiasDeg;
+  }
+}
+
+void IntentEngine::applyResponseGesture(RobotFrame& frame, uint32_t nowMs) {
+  if (responseGesture_ == ResponseGesture::None || responseGestureDurationMs_ == 0 ||
+      nowMs < responseGestureStartedMs_) {
+    return;
+  }
+  const uint32_t elapsedMs = nowMs - responseGestureStartedMs_;
+  if (elapsedMs >= responseGestureDurationMs_) {
+    responseGesture_ = ResponseGesture::None;
+    return;
+  }
+
+  const float progress = static_cast<float>(elapsedMs) / responseGestureDurationMs_;
+  const float envelope = sinf(progress * kPi);
+  const float wave = sinf(progress * 2.0f * kPi * responseGestureCycles_);
+  const float motionScale = reducedMotion_ ? generated_persona::kReducedMotionScale : 1.0f;
+  const float offset = wave * envelope * responseGestureAmplitudeDeg_ * motionScale;
+  if (responseGesture_ == ResponseGesture::Affirm) {
+    frame.motion.pitchDeg -= offset;
+  } else if (responseGesture_ == ResponseGesture::Deny && frame.motion.yawMode == YawMode::Angle) {
+    frame.motion.yawDeg += offset;
   }
 }
 

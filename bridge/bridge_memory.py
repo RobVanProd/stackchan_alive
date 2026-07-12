@@ -19,6 +19,7 @@ LEGACY_MEMORY_SCHEMA_VERSION = 2
 MAX_MEMORY_ITEMS = 4
 MAX_DURABLE_FACTS = 24
 MAX_RECENT_CONTEXT = 8
+MAX_PROMPT_FACTS = 8
 MAX_MEMORY_VALUE_CHARS = 96
 MAX_MEMORY_KEY_CHARS = 64
 MAX_TURNS_SEEN = 2_147_483_647
@@ -102,6 +103,11 @@ _PRIVATE_VALUE_RE = re.compile(
     r"(?<!\d)(?:\+?1[ .-]?)?(?:\(?\d{3}\)?[ .-]?)\d{3}[ .-]\d{4}(?!\d)|"
     r"(?<!\d)(?:\d[ -]*?){13,19}(?!\d))"
 )
+_QUERY_STOP_WORDS = {
+    "a", "about", "am", "an", "and", "are", "can", "do", "does", "for", "i", "in", "is",
+    "it", "me", "my", "of", "on", "please", "remember", "tell", "that", "the", "to", "what",
+    "when", "where", "which", "who", "you",
+}
 
 
 def _utc_now() -> str:
@@ -270,6 +276,25 @@ def _bounded_recent(records: Iterable[MemoryRecord]) -> tuple[MemoryRecord, ...]
         items = [item for item in items if (item.key, item.value) != (record.key, record.value)]
         items.append(record)
     return tuple(items[-MAX_RECENT_CONTEXT:])
+
+
+def _query_terms(value: object) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", str(value).lower())
+        if len(token) > 1 and token not in _QUERY_STOP_WORDS
+    }
+
+
+def _rank_for_prompt(record: MemoryRecord, query_terms: set[str]) -> tuple[int, int, float, str]:
+    key_terms = _query_terms(record.key.replace(".", " "))
+    value_terms = _query_terms(record.value)
+    return (
+        len(query_terms & value_terms),
+        len(query_terms & key_terms),
+        record.importance,
+        record.updated_at,
+    )
 
 
 def _upsert_durable(
@@ -600,22 +625,52 @@ class BridgeMemory:
             _recent_context=recent,
         )
 
-    def context_lines(self) -> list[str]:
+    def context_lines(self, query: str = "") -> list[str]:
         lines = [f"turns_seen: {self.turns_seen}"]
         if self.preferred_name:
             lines.append(f"preferred_name: {self.preferred_name}")
         now = _utc_now()
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
-        object.__setattr__(self, "_durable_facts", tuple(replace(record, last_used_at=now) for record in durable))
-        object.__setattr__(self, "_recent_context", tuple(replace(record, last_used_at=now) for record in recent))
-        for record in durable:
-            if record.key not in _NAME_KEYS:
-                lines.append(f"approved_fact {record.key}: {record.value}")
-        if self.recent_topics:
-            lines.append("recent_topics: " + ", ".join(self.recent_topics))
-        if self.physical_context:
-            lines.append("physical_context: " + ", ".join(self.physical_context))
+        query_terms = _query_terms(query)
+        candidates = [
+            (record, "durable") for record in durable if record.key not in _NAME_KEYS
+        ] + [(record, "recent") for record in recent]
+        selected = sorted(
+            candidates,
+            key=lambda item: (_rank_for_prompt(item[0], query_terms), item[1] == "durable"),
+            reverse=True,
+        )[:MAX_PROMPT_FACTS]
+        selected_durable = tuple(record for record, source in selected if source == "durable")
+        selected_recent = tuple(record for record, source in selected if source == "recent")
+        selected_durable_keys = {record.key for record in selected_durable}
+        selected_recent_ids = {(record.key, record.value) for record in selected_recent}
+        object.__setattr__(
+            self,
+            "_durable_facts",
+            tuple(
+                replace(record, last_used_at=now) if record.key in selected_durable_keys else record
+                for record in durable
+            ),
+        )
+        object.__setattr__(
+            self,
+            "_recent_context",
+            tuple(
+                replace(record, last_used_at=now)
+                if (record.key, record.value) in selected_recent_ids
+                else record
+                for record in recent
+            ),
+        )
+        for record in selected_durable:
+            lines.append(f"approved_fact {record.key}: {record.value}")
+        selected_topics = [record.value for record in selected_recent if record.key.startswith("project.")]
+        selected_physical = [record.value for record in selected_recent if record.key.startswith("robot.")]
+        if selected_topics:
+            lines.append("recent_topics: " + ", ".join(selected_topics))
+        if selected_physical:
+            lines.append("physical_context: " + ", ".join(selected_physical))
         return lines
 
 

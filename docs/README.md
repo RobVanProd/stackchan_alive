@@ -3,6 +3,7 @@
 - `DEVICE_BRINGUP.md`: hardware-arrival flashing, evidence, and safety flow.
 - `HARDWARE_SIMULATION.md`: no-hardware virtual Stackchan proxy, pre-arrival simulation check, and sim-vs-hardware comparison workflow.
 - `BRAIN_MODEL.md`: P7 Gemma 4 E2B model targets and character harness gate.
+- `CONVERSATION_V2_ROADMAP.md`: explicitly post-release engaged two-way conversation, echo guard, memory, tool, and acceptance plan.
 - `COMPANION_CROSS_PLATFORM_PLAN.md`: Android/desktop companion build, distribution, and C0-C8 gate plan.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
 - `CUSTOMIZING_THE_FACE.md`: persona-safe expression tuning and advanced procedural eye, mouth, transition, viseme, preview, and performance workflow.

@@ -196,6 +196,10 @@ try {
   $finalIntegrationSummary.strict | Add-Member -NotePropertyName requireCameraCapture -NotePropertyValue $true
   $finalIntegrationSummary.strict | Add-Member -NotePropertyName requireCameraHostVision -NotePropertyValue $true
   $finalIntegrationSummary.strict | Add-Member -NotePropertyName maxCameraCaptureUs -NotePropertyValue 250000
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName maxCameraHostResponseWriteFailures -NotePropertyValue 20
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName maxCameraHostResponseWriteFailureRatio -NotePropertyValue 0.001
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName minCameraHostResponseWriteAttemptsForRatio -NotePropertyValue 100
+  $finalIntegrationSummary.strict | Add-Member -NotePropertyName maxCameraHostResponseWriteConsecutiveFailures -NotePropertyValue 1
   $finalIntegrationSummary | Add-Member -NotePropertyName finalIntegrationReadySamples -NotePropertyValue 959
   $finalIntegrationSummary | Add-Member -NotePropertyName bodyRgbFrameDelta -NotePropertyValue 575000
   $finalIntegrationSummary | Add-Member -NotePropertyName bodyTouchSampleDelta -NotePropertyValue 860000
@@ -214,7 +218,12 @@ try {
   $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostFrameRequestDelta -NotePropertyValue 57500
   $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostTargetUpdateDelta -NotePropertyValue 57500
   $finalIntegrationSummary | Add-Member -NotePropertyName newCameraCaptureFailures -NotePropertyValue 0
-  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostFrameFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostFrameFailures -NotePropertyValue 1
+  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostCaptureFailures -NotePropertyValue 0
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostResponseWriteAttemptDelta -NotePropertyValue 57500
+  $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostResponseWriteFailures -NotePropertyValue 1
+  $finalIntegrationSummary | Add-Member -NotePropertyName cameraHostResponseWriteFailureRatio -NotePropertyValue 0.000017
+  $finalIntegrationSummary | Add-Member -NotePropertyName maxCameraHostResponseWriteConsecutiveFailures -NotePropertyValue 1
   $finalIntegrationSummary | Add-Member -NotePropertyName newCameraHostAuthFailures -NotePropertyValue 0
   $finalIntegrationSummary | Add-Member -NotePropertyName maxCameraCaptureUsObserved -NotePropertyValue 81000
   $finalIntegrationSummary | Add-Member -NotePropertyName latestFinalIntegration -NotePropertyValue ([pscustomobject]@{
@@ -238,7 +247,7 @@ try {
   if ($finalIntegrationReady.exitCode -ne 0 -or $finalIntegrationReady.json.failed -ne 0) {
     throw "Expected final integration summary to pass: $($finalIntegrationReady.output)"
   }
-  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "unexpected-imu-events", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-frame-failures", "camera-host-auth-failures")) {
+  foreach ($id in @("strict-requireFinalIntegration", "source-commit-pinned", "source-worktree-clean", "installed-firmware-pinned", "final-integration-debug-contract", "final-integration-ready", "body-rgb-frames", "body-touch-samples", "imu-samples", "body-rgb-write-failures", "body-rgb-retry-accounting", "body-touch-read-failures", "imu-read-failures", "unexpected-imu-events", "production-camera-enabled", "camera-capture-ready", "camera-frames", "camera-capture-failures", "camera-capture-time", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-capture-failures", "camera-host-response-write-failures", "camera-host-response-write-ratio", "camera-host-response-write-streak", "camera-host-auth-failures")) {
     if (@($finalIntegrationReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
       throw "Expected final integration check $id to pass."
     }
@@ -295,10 +304,19 @@ try {
   $cameraVisionPath = Join-Path $tempRoot "camera-host-vision-ready-summary.json"
   $cameraVisionSummary = Get-Content -LiteralPath $cameraPath -Raw | ConvertFrom-Json
   $cameraVisionSummary.strict | Add-Member -NotePropertyName requireCameraHostVision -NotePropertyValue $true
+  $cameraVisionSummary.strict | Add-Member -NotePropertyName maxCameraHostResponseWriteFailures -NotePropertyValue 20
+  $cameraVisionSummary.strict | Add-Member -NotePropertyName maxCameraHostResponseWriteFailureRatio -NotePropertyValue 0.001
+  $cameraVisionSummary.strict | Add-Member -NotePropertyName minCameraHostResponseWriteAttemptsForRatio -NotePropertyValue 100
+  $cameraVisionSummary.strict | Add-Member -NotePropertyName maxCameraHostResponseWriteConsecutiveFailures -NotePropertyValue 1
   $cameraVisionSummary | Add-Member -NotePropertyName cameraHostVisionReadySamples -NotePropertyValue 959
   $cameraVisionSummary | Add-Member -NotePropertyName cameraHostFrameRequestDelta -NotePropertyValue 58
   $cameraVisionSummary | Add-Member -NotePropertyName cameraHostTargetUpdateDelta -NotePropertyValue 58
-  $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostFrameFailures -NotePropertyValue 0
+  $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostFrameFailures -NotePropertyValue 1
+  $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostCaptureFailures -NotePropertyValue 0
+  $cameraVisionSummary | Add-Member -NotePropertyName cameraHostResponseWriteAttemptDelta -NotePropertyValue 58
+  $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostResponseWriteFailures -NotePropertyValue 1
+  $cameraVisionSummary | Add-Member -NotePropertyName cameraHostResponseWriteFailureRatio -NotePropertyValue 0.017241
+  $cameraVisionSummary | Add-Member -NotePropertyName maxCameraHostResponseWriteConsecutiveFailures -NotePropertyValue 1
   $cameraVisionSummary | Add-Member -NotePropertyName newCameraHostAuthFailures -NotePropertyValue 0
   Write-Json $cameraVisionPath $cameraVisionSummary
   $cameraVisionReady = Invoke-Check -SummaryPath $cameraVisionPath -RequireCameraHostVision -RequireReady
@@ -306,7 +324,7 @@ try {
       $cameraVisionReady.json.profile -ne "camera-host-vision") {
     throw "Expected camera host vision summary to pass: $($cameraVisionReady.output)"
   }
-  foreach ($id in @("strict-requireCameraHostVision", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-frame-failures", "camera-host-auth-failures")) {
+  foreach ($id in @("strict-requireCameraHostVision", "camera-host-vision-ready", "camera-host-frame-requests", "camera-host-target-updates", "camera-host-capture-failures", "camera-host-response-write-failures", "camera-host-response-write-ratio", "camera-host-response-write-streak", "camera-host-auth-failures")) {
     if (@($cameraVisionReady.json.checks | Where-Object { $_.id -eq $id -and $_.status -eq "pass" }).Count -ne 1) {
       throw "Expected camera host vision check $id to pass."
     }

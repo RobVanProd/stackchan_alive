@@ -96,6 +96,27 @@ embodiment boundaries. A forget request must emit the exact matching allowed key
 memory (or an allowed namespace prefix); a spoken deletion claim with an empty `memory_forget`
 fails the model benchmark.
 
+### Trusted Local Facts And Tool Routing
+
+Deterministic host facts do not depend on Gemma deciding to call a tool. Before inference,
+`bridge/local_facts.py` recognizes direct questions about the host-local time, date, time zone,
+and the user's remembered preferred name. It returns validated Character Lock JSON immediately,
+records `local_clock` or `memory_recall` in the turn log, and never writes memory. A request for
+another city's time is deliberately left to the normal research/model path rather than being
+misreported as local time.
+
+When local research is enabled, Gemma may request one `web_search` or `web_fetch` round. The
+bridge also recognizes an explicit user request to search, browse, look something up, or obtain
+fresh public information. If Gemma returns an ordinary answer instead of a tool request, that
+explicit request forces one bounded `web_search` round. Sensitive-looking queries are not
+auto-routed. Web evidence is labeled untrusted, receives one grounded second pass, carries source
+URLs in `response_start`, and cannot write or delete memory.
+
+`BridgeMemory.context_lines(user_text)` ranks durable and recent facts against the current query,
+keeps identity available, injects at most eight non-identity records, and refreshes `last_used_at`
+only for records actually supplied to the model. This prevents unrelated facts from crowding out
+the item the user is asking Stackchan to remember.
+
 Use one of these command sources to run a real local model:
 
 - `--command "<runner command>"`

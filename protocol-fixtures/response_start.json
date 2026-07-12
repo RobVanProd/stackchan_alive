@@ -1,5 +1,6 @@
 {
   "arousal": 0.55,
+  "gesture": "none",
   "intent": "happy",
   "seq": 41,
   "text": "Hello. I am awake and looking.",
