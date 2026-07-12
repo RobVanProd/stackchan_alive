@@ -30,6 +30,7 @@ param(
   [switch]$ConfirmServoRisk,
   [switch]$RequirePowerForensics,
   [int]$ExpectedPmicVindpmMv = 0,
+  [string]$FirmwareSourceCommit = "",
   [switch]$RequireFinalIntegration,
   [switch]$AllowExternalImuEvents,
   [switch]$AllowLegacyMotionTelemetry
@@ -207,14 +208,27 @@ $initialStop = Stop-MotionVerified
 if (-not $initialStop.verified) {
   throw "Could not verify motion, servo rail, and torque off before soak preflight. Evidence root: $evidencePath"
 }
-$sourceCommit = (& git rev-parse HEAD).Trim()
+$runnerSourceCommit = (& git rev-parse HEAD).Trim()
 $sourceDirty = -not [string]::IsNullOrWhiteSpace(((& git status --porcelain=v1 --untracked-files=normal) -join "`n"))
-if ($RequireFinalIntegration -and ($sourceDirty -or $sourceCommit -notmatch "^[0-9a-fA-F]{40}$")) {
+$sourceCommit = if ([string]::IsNullOrWhiteSpace($FirmwareSourceCommit)) {
+  $runnerSourceCommit
+} else {
+  $FirmwareSourceCommit.Trim().ToLowerInvariant()
+}
+if ($sourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+  throw "FirmwareSourceCommit must be a full 40-character Git commit SHA."
+}
+& git cat-file -e "$sourceCommit`^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0) {
+  throw "FirmwareSourceCommit is not available in this repository: $sourceCommit"
+}
+if ($RequireFinalIntegration -and ($sourceDirty -or $runnerSourceCommit -notmatch "^[0-9a-fA-F]{40}$")) {
   $sourceFailurePath = Join-Path $evidencePath "source-identity-preflight-failure.json"
   [ordered]@{
     schema = "stackchan.final-integration-source-preflight-failure.v1"
     capturedAt = (Get-Date).ToString("o")
     sourceCommit = $sourceCommit
+    runnerSourceCommit = $runnerSourceCommit
     sourceDirty = $sourceDirty
     initialStop = $initialStop
   } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $sourceFailurePath -Encoding UTF8
@@ -382,6 +396,7 @@ $preflight = [ordered]@{
   externalImuEventsAllowed = [bool]$AllowExternalImuEvents
   initialMotionStop = $initialStop
   sourceCommit = $sourceCommit
+  runnerSourceCommit = $runnerSourceCommit
   sourceDirty = $sourceDirty
   runtimePreflightReady = $runtimePreflightReady
   preflightSocketRemote = $preflightSocketRemote
