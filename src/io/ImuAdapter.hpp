@@ -13,7 +13,7 @@
 #endif
 
 #ifndef STACKCHAN_IMU_READ_ATTEMPTS
-#define STACKCHAN_IMU_READ_ATTEMPTS 2
+#define STACKCHAN_IMU_READ_ATTEMPTS 3
 #endif
 
 namespace stackchan {
