@@ -263,6 +263,17 @@ Physical acceptance requires a real heartbeat reaching the production bridge and
 conversation that correctly reflects a changed state such as pickup, charging, or camera
 availability without inventing unavailable senses.
 
+Post-release source also implements a read-only embodied-energy layer. Valid battery percentage
+enters `low` at 20% and `critical` at 10%; recovery requires 25% and 15% respectively so a noisy
+reading cannot flap the character. Valid charging plus external power takes priority as
+`charging`; invalid telemetry is `unknown`. The state smoothly biases fatigue, arousal, valence,
+and focus before face/motion composition, but it never forces Sleep mode and has no path into
+charging, rail, servo, speaker, thermal, or power-floor policy. `/debug` exposes state, transition
+and entry counters, interpreted battery percentage, source flags, and the active fatigue/arousal
+biases. The bridge heartbeat carries only the allowlisted state label to the expiring Gemma
+embodiment context. This source has native and public-build qualification only until the exact
+image is installed and physically observed through charge/discharge transitions.
+
 ## Supervised Candidate Sequence
 
 1. Verify the exact installed firmware SHA/source binding and OTA confirmation with servos stopped,

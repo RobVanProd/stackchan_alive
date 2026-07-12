@@ -7336,7 +7336,7 @@ void updateBridgeNetwork(uint32_t nowMs) {
       (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= kBridgeHeartbeatIntervalMs)) {
     char heartbeat[896] = {};
     char chipTempJson[96] = {};
-    char embodimentJson[384] = {};
+    char embodimentJson[448] = {};
 #if defined(ARDUINO_ARCH_ESP32)
     sampleChipTemperature(nowMs, false);
     formatChipTemperatureJson(chipTempJson, sizeof(chipTempJson));
@@ -7348,6 +7348,7 @@ void updateBridgeNetwork(uint32_t nowMs) {
     const ImuAdapterTelemetry& imu = gImu.telemetry();
     const CameraAdapterTelemetry& camera = gCamera.telemetry();
     const BodyPeripheralTelemetry& body = gBodyPeripheral.telemetry();
+    const EmbodiedEnergyTelemetry& energy = gIntent.energyTelemetry();
     const bool cameraTargetFresh = camera.lastSize > 0.0f &&
                                    nowMs - camera.lastEventMs < 3000;
     snprintf(
@@ -7355,7 +7356,8 @@ void updateBridgeNetwork(uint32_t nowMs) {
         sizeof(embodimentJson),
         ",\"robot_mode\":%u,\"emotion_arousal\":%.2f,\"emotion_valence\":%.2f,"
         "\"emotion_focus\":%.2f,\"emotion_fatigue\":%.2f,\"external_power\":%d,"
-        "\"battery_percent\":%ld,\"charging_state\":%ld,\"motion_enabled\":%d,"
+        "\"battery_percent\":%ld,\"charging_state\":%ld,\"energy_state\":\"%s\","
+        "\"motion_enabled\":%d,"
         "\"speaker_active\":%d,\"imu_picked_up\":%d,\"imu_gravity_x\":%.2f,"
         "\"imu_gravity_y\":%.2f,\"imu_gravity_z\":%.2f,\"touch_ready\":%d,"
         "\"camera_enabled\":%d,\"camera_active\":%d,\"camera_target_fresh\":%d",
@@ -7367,6 +7369,7 @@ void updateBridgeNetwork(uint32_t nowMs) {
         gPowerPmicVbusPresentValid && gPowerPmicVbusPresent ? 1 : 0,
         static_cast<long>(gPowerBatteryLevel),
         static_cast<long>(gPowerChargingState),
+        embodiedEnergyStateName(energy.state),
         gActuation.isEnabled() ? 1 : 0,
         gSpeakerSink.speakerRunning() ? 1 : 0,
         imu.pickedUp ? 1 : 0,
@@ -7441,6 +7444,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
 #endif
   const ActuationTelemetry motion = gActuation.telemetry();
   const GazeTrackerTelemetry& gaze = gIntent.gazeTelemetry();
+  const EmbodiedEnergyTelemetry& energy = gIntent.energyTelemetry();
   const PowerCoordinatorTelemetry powerCoordinator = gPowerCoordinator.telemetry();
   const PowerFloorTelemetry powerFloor = gPowerFloorTracker.telemetry();
   const ServoPowerTelemetry servoPower = gServo.powerTelemetry();
@@ -8159,6 +8163,26 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(gaze.sighEntries));
   append(",\"camera_person_reacquisitions\":%lu",
          static_cast<unsigned long>(gaze.reacquisitions));
+  append(",\"character_energy_state\":\"%s\"", embodiedEnergyStateName(energy.state));
+  append(",\"character_energy_state_started_at_ms\":%lu",
+         static_cast<unsigned long>(energy.stateStartedAtMs));
+  append(",\"character_energy_transitions\":%lu",
+         static_cast<unsigned long>(energy.transitions));
+  append(",\"character_energy_charging_entries\":%lu",
+         static_cast<unsigned long>(energy.chargingEntries));
+  append(",\"character_energy_low_entries\":%lu",
+         static_cast<unsigned long>(energy.lowEntries));
+  append(",\"character_energy_critical_entries\":%lu",
+         static_cast<unsigned long>(energy.criticalEntries));
+  append(",\"character_energy_battery_percent\":%d", energy.batteryPercent);
+  append(",\"character_energy_input_valid\":%s", energy.inputValid ? "true" : "false");
+  append(",\"character_energy_charging\":%s", energy.charging ? "true" : "false");
+  append(",\"character_energy_external_power\":%s",
+         energy.externalPower ? "true" : "false");
+  append(",\"character_energy_fatigue_bias\":%.3f",
+         static_cast<double>(energy.fatigueBias));
+  append(",\"character_energy_arousal_bias\":%.3f",
+         static_cast<double>(energy.arousalBias));
   append(",\"motion_self_motion_active\":%s", motion.selfMotionActive ? "true" : "false");
   append(",\"motion_self_motion_until_ms\":%lu",
          static_cast<unsigned long>(motion.selfMotionUntilMs));
@@ -9252,6 +9276,17 @@ void IntentTask(void* pv) {
 #endif
 
     const ServoPowerTelemetry intentServoPower = gServo.powerTelemetry();
+    EmbodiedEnergyInput energyInput;
+    energyInput.telemetryValid = gPowerTelemetryValid;
+    energyInput.batteryPercentValid = gPowerBatteryLevel >= 0 && gPowerBatteryLevel <= 100;
+    energyInput.batteryPercent = energyInput.batteryPercentValid
+                                     ? static_cast<uint8_t>(gPowerBatteryLevel)
+                                     : 0;
+    energyInput.charging = gPowerChargingState == 1;
+    energyInput.externalPower = gPowerPmicVbusPresentValid
+                                    ? gPowerPmicVbusPresent
+                                    : (gPowerVbusValid && gPowerVbusMv >= 2500);
+    gIntent.setEmbodiedEnergy(energyInput, millis());
     gIntent.setMotionOutputActive(
         gActuation.isEnabled() && !gActuation.outputSuppressed() && intentServoPower.railEnabled,
         millis());

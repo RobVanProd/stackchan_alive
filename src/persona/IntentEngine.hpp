@@ -1,6 +1,7 @@
 #pragma once
 
 #include "face/ExpressionMapper.hpp"
+#include "persona/EmbodiedEnergy.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/GazeTracker.hpp"
 #include "persona/IdleLife.hpp"
@@ -17,6 +18,9 @@ class IntentEngine {
   void startResponseGesture(ResponseGesture gesture, uint32_t seed, uint32_t nowMs);
   void applyCircadian(uint8_t hourOfDay);
   void applyAmbient(float lux, uint8_t hourOfDay);
+  void setEmbodiedEnergy(const EmbodiedEnergyInput& input, uint32_t nowMs) {
+    energy_.updateInput(input, nowMs);
+  }
   void setDemoEnabled(bool enabled, uint32_t nowMs);
   void setReducedMotion(bool enabled);
   void setMotionOutputActive(bool active, uint32_t nowMs) {
@@ -31,10 +35,14 @@ class IntentEngine {
   const GazeTrackerTelemetry& gazeTelemetry() const {
     return gaze_.telemetry();
   }
+  const EmbodiedEnergyTelemetry& energyTelemetry() const {
+    return energy_.telemetry();
+  }
   RobotFrame update(uint32_t nowMs);
 
  private:
   EmotionModel emotion_;
+  EmbodiedEnergy energy_;
   ExpressionMapper expression_;
   GazeTracker gaze_;
   IdleLife idleLife_;
@@ -65,7 +73,7 @@ class IntentEngine {
   void injectDemoEvents(uint32_t nowMs);
   void updateSpeechCue(uint32_t nowMs);
   void activateSpeechCue(const SpeechCue& cue, uint32_t nowMs);
-  MotionTargets motionForMode(uint32_t nowMs) const;
+  MotionTargets motionForMode(uint32_t nowMs, const EmotionalProfile& emotion) const;
   void applySoundOrientation(RobotFrame& frame, uint32_t nowMs) const;
   void applyResponseGesture(RobotFrame& frame, uint32_t nowMs);
 };

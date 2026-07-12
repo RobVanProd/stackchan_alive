@@ -20,6 +20,7 @@ ROBOT_MODES = {
     8: "error",
 }
 DEFAULT_MAX_AGE_SECONDS = 15.0
+ENERGY_STATES = {"unknown", "ready", "charging", "low", "critical"}
 
 
 def _bounded_float(value: object, minimum: float, maximum: float) -> float | None:
@@ -96,6 +97,10 @@ class RobotEmbodimentState:
         elif charging_state == 2:
             power += "; charge complete or idle"
         lines.append(f"power: {power}")
+
+        energy_state = str(heartbeat.get("energy_state", "")).strip().lower()
+        if energy_state in ENERGY_STATES:
+            lines.append(f"embodied energy: {energy_state}")
 
         held = _flag(heartbeat.get("imu_picked_up"))
         lines.append(

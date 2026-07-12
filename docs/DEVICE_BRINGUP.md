@@ -220,6 +220,12 @@ An optional strength value in `[0.0, 1.0]` may follow mode/event commands, for e
 
 The same bench path also listens to CoreS3 inputs: screen tap = React/UserTouched, screen hold = Listen/UserNear, BtnA = Listen, BtnB = Think, and BtnC = Speak. These input events log the same `[control]` telemetry as serial commands.
 
+Post-release energy-aware source reports `character_energy_state`, state start/transition and
+charging/low/critical entry counters, interpreted battery percentage, validated input/source
+flags, and active fatigue/arousal biases in `/debug`. Entry thresholds are 20% low and 10%
+critical; recovery thresholds are 25% and 15%. Treat these as character telemetry only. They do
+not replace the Power Coordinator, VBUS floor, PMIC forensics, or motion/speaker safety fields.
+
 To quickly exercise the speech-reactive mouth path after display-only firmware is running, use the host helper:
 
 ```powershell

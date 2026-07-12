@@ -193,6 +193,10 @@ downlink sink.
   sends this only after the audio stream is complete, M5Speaker is idle, and the wake microphone
   pause has been released. It is evidence for Conversation v2; v1 acknowledges it without opening
   capture.
+- `heartbeat`: bounded runtime and embodiment facts. Post-release source adds allowlisted
+  `energy_state` values `unknown`, `ready`, `charging`, `low`, and `critical`. The host accepts
+  only those literal values before adding the state to Gemma's short-lived embodiment context;
+  it never forwards arbitrary heartbeat text into the prompt.
 
 Firmware transport note: the WebSocket writer has one-frame bounded text and binary queues,
 and the network session drains them as masked client frames. `BridgeAudioUplink` composes

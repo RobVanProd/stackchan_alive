@@ -42,6 +42,7 @@
 #include "persona/BodyFeedback.hpp"
 #include "persona/CommandMap.hpp"
 #include "persona/EarconSynth.hpp"
+#include "persona/EmbodiedEnergy.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/GazeTracker.hpp"
 #include "persona/IdleLife.hpp"
@@ -1089,6 +1090,106 @@ void test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking() {
   TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, frame.face.faceX);
   TEST_ASSERT_LESS_THAN_FLOAT(-1.0f, frame.motion.yawDeg);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.08f, frame.motion.pitchDeg);
+}
+
+void test_embodied_energy_classifies_with_hysteresis_and_charging_priority() {
+  EmbodiedEnergy energy;
+  energy.reset(0);
+
+  EmbodiedEnergyInput input;
+  input.telemetryValid = true;
+  input.batteryPercentValid = true;
+  input.batteryPercent = 20;
+  energy.updateInput(input, 100);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Low),
+                    static_cast<int>(energy.telemetry().state));
+  TEST_ASSERT_EQUAL_UINT32(1, energy.telemetry().lowEntries);
+
+  input.batteryPercent = 23;
+  energy.updateInput(input, 200);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Low),
+                    static_cast<int>(energy.telemetry().state));
+
+  input.batteryPercent = 25;
+  energy.updateInput(input, 300);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Ready),
+                    static_cast<int>(energy.telemetry().state));
+
+  input.batteryPercent = 10;
+  energy.updateInput(input, 400);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Critical),
+                    static_cast<int>(energy.telemetry().state));
+  input.batteryPercent = 12;
+  energy.updateInput(input, 500);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Critical),
+                    static_cast<int>(energy.telemetry().state));
+  input.batteryPercent = 15;
+  energy.updateInput(input, 600);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Low),
+                    static_cast<int>(energy.telemetry().state));
+
+  input.batteryPercent = 8;
+  input.charging = true;
+  input.externalPower = true;
+  energy.updateInput(input, 700);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Charging),
+                    static_cast<int>(energy.telemetry().state));
+  TEST_ASSERT_EQUAL_UINT32(1, energy.telemetry().chargingEntries);
+  TEST_ASSERT_EQUAL_STRING("charging", embodiedEnergyStateName(energy.telemetry().state));
+}
+
+void test_embodied_energy_shapes_smoothly_and_rejects_invalid_input() {
+  EmotionalProfile base;
+  EmbodiedEnergy energy;
+  energy.reset(0);
+
+  EmbodiedEnergyInput critical;
+  critical.telemetryValid = true;
+  critical.batteryPercentValid = true;
+  critical.batteryPercent = 6;
+  energy.updateInput(critical, 100);
+  EmotionalProfile shaped = base;
+  for (int i = 0; i < 100; ++i) {
+    shaped = energy.shape(base, 0.1f);
+  }
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.50f, shaped.fatigue);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.15f, shaped.arousal);
+  TEST_ASSERT_LESS_THAN_FLOAT(base.focus, shaped.focus);
+
+  EmbodiedEnergy invalidEnergy;
+  invalidEnergy.reset(0);
+  EmbodiedEnergyInput invalid;
+  invalid.telemetryValid = false;
+  invalid.batteryPercentValid = true;
+  invalid.batteryPercent = 0;
+  invalidEnergy.updateInput(invalid, 100);
+  const EmotionalProfile unchanged = invalidEnergy.shape(base, 0.1f);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Unknown),
+                    static_cast<int>(invalidEnergy.telemetry().state));
+  TEST_ASSERT_FALSE(invalidEnergy.telemetry().inputValid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, base.fatigue, unchanged.fatigue);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, base.arousal, unchanged.arousal);
+}
+
+void test_intent_engine_embodied_energy_never_forces_sleep_mode() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+
+  EmbodiedEnergyInput input;
+  input.telemetryValid = true;
+  input.batteryPercentValid = true;
+  input.batteryPercent = 5;
+  engine.setEmbodiedEnergy(input, 0);
+
+  RobotFrame frame;
+  for (uint32_t nowMs = 100; nowMs <= 6000; nowMs += 100) {
+    frame = engine.update(nowMs);
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Idle), static_cast<int>(frame.mode));
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.45f, frame.emotion.fatigue);
+  TEST_ASSERT_EQUAL(static_cast<int>(EmbodiedEnergyState::Critical),
+                    static_cast<int>(engine.energyTelemetry().state));
 }
 
 void test_gaze_tracker_reduced_motion_dampens_face_tracking() {
@@ -7151,6 +7252,9 @@ int main() {
   RUN_TEST(test_ambient_dark_night_increases_fatigue);
   RUN_TEST(test_ambient_bright_day_reduces_fatigue_and_lifts_arousal);
   RUN_TEST(test_circadian_evening_raises_fatigue_and_morning_recovers);
+  RUN_TEST(test_embodied_energy_classifies_with_hysteresis_and_charging_priority);
+  RUN_TEST(test_embodied_energy_shapes_smoothly_and_rejects_invalid_input);
+  RUN_TEST(test_intent_engine_embodied_energy_never_forces_sleep_mode);
   RUN_TEST(test_physical_events_shape_emotion);
   RUN_TEST(test_audio_events_shape_attention_and_startle);
   RUN_TEST(test_mood_decay_returns_toward_baseline);

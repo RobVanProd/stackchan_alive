@@ -47,7 +47,7 @@ Working on real hardware:
 | 1. Stackchan notices a visitor before they speak. | Partial. Camera presence and face boxes exist. Post-release `main` can read raw LTR-553 proximity/light telemetry, but presence behavior is deliberately disabled. | Measure the physical sensor, set hysteretic thresholds, and qualify the bounded reflex without making it a boot dependency. |
 | 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. Post-release source now includes an opt-in, bounded reply-window command that reuses the proven cue/RGB/capture/uplink path. | Qualify that exact image on hardware, then add voice-activity-ended capture, echo rejection, concurrent barge-in, and session-only recent turns. |
 | 3. Stackchan moves naturally while listening and replying. | Pass for coordinated face, RGB, mouth, and guarded servos. | Tighten active-speaker orientation and perceived-latency choreography. |
-| 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. | Add an embodied energy response without weakening power or motion safety. |
+| 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. Post-release source also shapes character energy from validated battery/charge state without power authority. | Physically qualify the exact energy-aware image across charging and battery thresholds. |
 | 5. Stackchan notices departure, searches, and sighs. | Implemented in post-release source as a bounded hold, two-sided search, procedural visual/body sigh, settle, and immediate reacquisition cancel path. | Qualify the exact image with real camera loss/reacquisition and tune timing from observed behavior. |
 
 ## Phase Status
@@ -61,7 +61,7 @@ Working on real hardware:
 | P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. Post-release source adds deterministic person-loss phase telemetry and bounded search/sigh/settle choreography. | Physically qualify departure/reacquisition, then improve tracking speed and active-speaker selection. |
 | P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, phrase streaming, and normalized per-stage latency evidence work. | Add voice-activity-ended follow-up capture and interruption-safe concurrent barge-in. |
 | P7 Brain bridge | Real Wi-Fi bridge, Whisper, Gemma 4, local research, trusted facts, privacy-filtered memory, production voice, and recovery tooling are integrated. | Improve memory retrieval relevance and expose typed live robot state to the character prompt. |
-| P8 Continuity | Started: durable filtered facts, persona packs, robot embodiment telemetry, camera continuity, and source-level person-loss choreography exist. | Conversation sessions, persona hot-swap, energy state, and community pack discovery. |
+| P8 Continuity | Started: durable filtered facts, persona packs, robot embodiment telemetry, camera continuity, source-level person-loss choreography, and hysteretic embodied-energy state exist. | Conversation qualification, persona hot-swap, and community pack discovery. |
 
 ## Sequenced Post-Release Work
 
@@ -93,7 +93,10 @@ Working on real hardware:
    - Next: qualify it on hardware and fuse sound confidence into the search direction.
 
 4. Embodied energy and platform work.
-   - Map honest PMIC/battery state into sleepy/charging/ready character state.
+   - Done in post-release source: map validated battery percentage and charging/external-power
+     state into hysteretic `unknown`/`ready`/`charging`/`low`/`critical` character energy, share
+     only the allowlisted label with Gemma, and keep all power/safety authority out of the model.
+   - Next: physically qualify charge/discharge threshold transitions on the exact image.
    - Add runtime persona hot-swap, a community pack index, OTA stable/beta channels, and a linear
      first-30-minutes quickstart.
 

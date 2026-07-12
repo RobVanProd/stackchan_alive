@@ -39,6 +39,7 @@ void IntentEngine::begin() {
   responseGestureCycles_ = 0.0f;
   idleLife_.reset(lastUpdateMs_);
   gaze_.reset(lastUpdateMs_);
+  energy_.reset(lastUpdateMs_);
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
 }
 
@@ -122,8 +123,8 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   frame.seq = ++seq_;
   frame.timestampMs = nowMs;
   frame.mode = mode_;
-  frame.emotion = emotion_.profile();
-  frame.motion = motionForMode(nowMs);
+  frame.emotion = energy_.shape(emotion_.profile(), dt);
+  frame.motion = motionForMode(nowMs, frame.emotion);
   frame.face = expression_.map(frame.emotion, mode_);
   idleLife_.apply(frame, nowMs, reducedMotion_);
   applySoundOrientation(frame, nowMs);
@@ -195,10 +196,9 @@ void IntentEngine::activateSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
   speechSeq_++;
 }
 
-MotionTargets IntentEngine::motionForMode(uint32_t nowMs) const {
+MotionTargets IntentEngine::motionForMode(uint32_t nowMs, const EmotionalProfile& emotion) const {
   MotionTargets motion;
   const float t = nowMs * 0.001f;
-  const EmotionalProfile& emotion = emotion_.profile();
   const float motionScale = reducedMotion_ ? generated_persona::kReducedMotionScale : 1.0f;
   const float energy = constrain(emotion.arousal, 0.0f, 1.0f);
   const float focus = constrain(emotion.focus, 0.0f, 1.0f);
