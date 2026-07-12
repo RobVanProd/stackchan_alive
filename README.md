@@ -329,8 +329,21 @@ Verify completed evidence before promotion:
 
 ```powershell
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
-.\tools\verify_consumer_promotion.cmd -PackageZip output\release\stackchan_alive_<version>.zip -EvidenceRoot output\hardware-evidence\<packet-folder>
+.\tools\verify_consumer_promotion.cmd `
+  -Version <version> `
+  -PackageZip output\release\stackchan_alive_<version>.zip `
+  -EvidenceRoot output\hardware-evidence\<packet-folder> `
+  -ExpectedCommit <release-commit> `
+  -ExpectedFirmwareSourceCommit <tested-firmware-source-commit> `
+  -CameraFollowSummaryPath <camera-summary.json> `
+  -BodySensorReportPath <body-sensor-report.json> `
+  -FullSystemSoakSummaryPath <full-soak-summary.json> `
+  -MinFinalSoakDurationSeconds 28800
 ```
+
+The release commit and tested firmware source commit are normally identical. Keep them separate
+when documentation or host-only release commits are made after the exact firmware image is flashed;
+the package must match the release commit, while physical evidence must match the firmware source.
 
 Release details live in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md). Arrival-day
 operator instructions live in [docs/DEVICE_BRINGUP.md](docs/DEVICE_BRINGUP.md) and

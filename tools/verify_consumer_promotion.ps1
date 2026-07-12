@@ -12,6 +12,7 @@ param(
   [int]$MinFinalSoakDurationSeconds = 3600,
   [string]$ExternalAccountCiExceptionPath,
   [string]$ExpectedCommit,
+  [string]$ExpectedFirmwareSourceCommit,
   [switch]$AllowExternalAccountCiBlock
 )
 
@@ -32,6 +33,9 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
   $ExpectedCommit = (git rev-parse HEAD).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($ExpectedFirmwareSourceCommit)) {
+  $ExpectedFirmwareSourceCommit = $ExpectedCommit
 }
 
 $cleanupDir = $null
@@ -92,9 +96,9 @@ function Assert-ProjectLicenseReady {
 }
 
 function Assert-EvidenceIdentity {
-  param($Record, [string]$Label, [string]$ExpectedCommit)
-  if ([string]$Record.sourceCommit -ne $ExpectedCommit) {
-    throw "$Label source commit mismatch: expected $ExpectedCommit, got $($Record.sourceCommit)"
+  param($Record, [string]$Label, [string]$ExpectedFirmwareSourceCommit)
+  if ([string]$Record.sourceCommit -ne $ExpectedFirmwareSourceCommit) {
+    throw "$Label firmware source commit mismatch: expected $ExpectedFirmwareSourceCommit, got $($Record.sourceCommit)"
   }
   if ([bool]$Record.sourceDirty) {
     throw "$Label was captured from a dirty source worktree"
@@ -107,7 +111,7 @@ function Assert-EvidenceIdentity {
 }
 
 function Assert-CameraFollowReady {
-  param([string]$Path, [string]$ExpectedCommit)
+  param([string]$Path, [string]$ExpectedFirmwareSourceCommit)
   $summary = Read-JsonFile $Path
   if ($summary.schema -ne "stackchan.camera-follow-wake-validation.v1" -or
       $summary.status -ne "pass" -or $summary.visualVerdict -ne "pass" -or
@@ -122,12 +126,12 @@ function Assert-CameraFollowReady {
   }
   return [pscustomobject]@{
     record = $summary
-    firmwareSha256 = Assert-EvidenceIdentity $summary "Camera wake/follow evidence" $ExpectedCommit
+    firmwareSha256 = Assert-EvidenceIdentity $summary "Camera wake/follow evidence" $ExpectedFirmwareSourceCommit
   }
 }
 
 function Assert-BodySensorReady {
-  param([string]$Path, [string]$ExpectedCommit)
+  param([string]$Path, [string]$ExpectedFirmwareSourceCommit)
   $report = Read-JsonFile $Path
   if ($report.schema -ne "stackchan.body-sensor-validation-report.v1" -or
       $report.status -ne "pass" -or [int]$report.failed -ne 0) {
@@ -135,12 +139,12 @@ function Assert-BodySensorReady {
   }
   return [pscustomobject]@{
     record = $report
-    firmwareSha256 = Assert-EvidenceIdentity $report "Body touch/IMU evidence" $ExpectedCommit
+    firmwareSha256 = Assert-EvidenceIdentity $report "Body touch/IMU evidence" $ExpectedFirmwareSourceCommit
   }
 }
 
 function Assert-FinalSoakReady {
-  param([string]$Path, [string]$ExpectedCommit, [int]$MinDurationSeconds)
+  param([string]$Path, [string]$ExpectedFirmwareSourceCommit, [int]$MinDurationSeconds)
   $summary = Read-JsonFile $Path
   if ($summary.schema -ne "stackchan.full-system-soak-summary.v1" -or
       $summary.status -ne "pass" -or [int]$summary.durationSeconds -lt $MinDurationSeconds) {
@@ -170,7 +174,7 @@ function Assert-FinalSoakReady {
   return [pscustomobject]@{
     record = $summary
     check = $check
-    firmwareSha256 = Assert-EvidenceIdentity $summary "Final integrated soak evidence" $ExpectedCommit
+    firmwareSha256 = Assert-EvidenceIdentity $summary "Final integrated soak evidence" $ExpectedFirmwareSourceCommit
   }
 }
 
@@ -347,9 +351,9 @@ try {
       throw "Consumer promotion requires -$($requiredEvidence.name)."
     }
   }
-  $cameraEvidence = Assert-CameraFollowReady $CameraFollowSummaryPath $ExpectedCommit
-  $bodyEvidence = Assert-BodySensorReady $BodySensorReportPath $ExpectedCommit
-  $soakEvidence = Assert-FinalSoakReady $FullSystemSoakSummaryPath $ExpectedCommit $MinFinalSoakDurationSeconds
+  $cameraEvidence = Assert-CameraFollowReady $CameraFollowSummaryPath $ExpectedFirmwareSourceCommit
+  $bodyEvidence = Assert-BodySensorReady $BodySensorReportPath $ExpectedFirmwareSourceCommit
+  $soakEvidence = Assert-FinalSoakReady $FullSystemSoakSummaryPath $ExpectedFirmwareSourceCommit $MinFinalSoakDurationSeconds
   $firmwareHashes = @(@($cameraEvidence.firmwareSha256, $bodyEvidence.firmwareSha256, $soakEvidence.firmwareSha256) | Select-Object -Unique)
   if ($firmwareHashes.Count -ne 1) {
     throw "Camera, body-sensor, and final-soak evidence do not reference the same installed firmware SHA-256"
@@ -398,7 +402,8 @@ try {
 
   Write-Host "Consumer promotion gate verified:"
   Write-Host "Release: $Version"
-  Write-Host "Commit: $ExpectedCommit"
+  Write-Host "Release commit: $ExpectedCommit"
+  Write-Host "Firmware source commit: $ExpectedFirmwareSourceCommit"
   Write-Host "Package: $packageRootPath"
   Write-Host "Evidence: $EvidenceRoot"
   Write-Host "Installed firmware SHA256: $($firmwareHashes[0])"

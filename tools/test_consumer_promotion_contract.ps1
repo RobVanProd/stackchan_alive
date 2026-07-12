@@ -8,11 +8,24 @@ $required = @(
   "FullSystemSoakSummaryPath", "Assert-FinalSoakReady", "MinFinalSoakDurationSeconds",
   "RequireFinalIntegration", "RequirePowerForensics", "requireCameraHostVision",
   "requireVerifiedMotionStop", "Assert-EvidenceIdentity", "source commit mismatch",
-  "dirty source worktree", "same installed firmware SHA-256"
+  "dirty source worktree", "same installed firmware SHA-256", "ExpectedFirmwareSourceCommit",
+  "Release commit:", "Firmware source commit:"
 )
 foreach ($fragment in $required) {
   if (-not $source.Contains($fragment)) {
     throw "Consumer promotion contract missing fragment: $fragment"
+  }
+}
+
+$identityBindings = @(
+  '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPackage -Version $Version -PackageRoot $packageRootPath -ExpectedCommit $ExpectedCommit',
+  '$cameraEvidence = Assert-CameraFollowReady $CameraFollowSummaryPath $ExpectedFirmwareSourceCommit',
+  '$bodyEvidence = Assert-BodySensorReady $BodySensorReportPath $ExpectedFirmwareSourceCommit',
+  '$soakEvidence = Assert-FinalSoakReady $FullSystemSoakSummaryPath $ExpectedFirmwareSourceCommit $MinFinalSoakDurationSeconds'
+)
+foreach ($binding in $identityBindings) {
+  if (-not $source.Contains($binding)) {
+    throw "Consumer promotion identity binding missing: $binding"
   }
 }
 Write-Output "Consumer promotion contract verified."

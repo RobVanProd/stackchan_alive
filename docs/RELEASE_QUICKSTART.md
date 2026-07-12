@@ -529,6 +529,11 @@ After that passes, run the full consumer promotion gate:
 .\RUN_CONSUMER_PROMOTION_CHECK.cmd
 ```
 
+The generated command assumes the package commit and tested firmware source commit are identical.
+If documentation or host-only release commits were made after the exact firmware image was flashed,
+run `tools\verify_consumer_promotion.cmd` directly and pass both `-ExpectedCommit` for the package
+and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence.
+
 That final gate also requires successful GitHub Actions status and completed production voice-source provenance. If GitHub Actions is still blocked by account billing, spending limits, or pre-runner allocation, treat the release as hardware-validated locally but not consumer-promoted until the account issue is resolved or a completed `docs\CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json` copy is passed with `-ExternalAccountCiExceptionPath`. The checked-in template and generated drafts are deliberately unapproved: approval fields are `TBD` and every proof boolean is `false`. Use `.\tools\new_ci_account_block_exception.cmd -ActionsStatusPath output\release\<version>\github_actions_status.json -OutPath output\ci-exceptions\<version>\CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json` to draft the pinned exception from the observed CI report, then fill the approval fields and flip each proof boolean only after that gate passes.
 
 Hardware validation is still required before promoting this prerelease to a consumer rollout.

@@ -226,8 +226,22 @@ Before promoting a prerelease, verify the completed hardware evidence packet:
 Then run the full consumer-promotion gate, which composes package verification, hardware evidence verification, GitHub Actions status, and production voice-source provenance:
 
 ```powershell
-.\tools\verify_consumer_promotion.cmd -Version <version> -PackageZip output\release\stackchan_alive_<version>.zip -EvidenceRoot output\hardware-evidence\<packet-folder>
+.\tools\verify_consumer_promotion.cmd `
+  -Version <version> `
+  -PackageZip output\release\stackchan_alive_<version>.zip `
+  -EvidenceRoot output\hardware-evidence\<packet-folder> `
+  -ExpectedCommit <release-commit> `
+  -ExpectedFirmwareSourceCommit <tested-firmware-source-commit> `
+  -CameraFollowSummaryPath <camera-summary.json> `
+  -BodySensorReportPath <body-sensor-report.json> `
+  -FullSystemSoakSummaryPath <full-soak-summary.json> `
+  -MinFinalSoakDurationSeconds 28800
 ```
+
+`-ExpectedCommit` pins the public package, CI, and any CI exception to the release commit.
+`-ExpectedFirmwareSourceCommit` independently pins camera, body-sensor, and final-soak evidence to
+the source used for the installed firmware. They default to the same value, but must be supplied
+separately when documentation or host-only changes follow the exact physical firmware build.
 
 The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. The `-AllowExternalAccountCiBlock` switch exists only for an explicit account-billing or pre-runner allocation outage exception and must be paired with `-ExternalAccountCiExceptionPath docs/CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json` after that JSON is copied, completed, and approved for the exact release commit. The checked-in template is intentionally not approval-ready: its approval fields are `TBD` and every proof boolean is `false`. To start from the observed CI report, run `.\tools\new_ci_account_block_exception.cmd -ActionsStatusPath output\release\<version>\github_actions_status.json -OutPath output\ci-exceptions\<version>\CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json`; the generated draft is also intentionally unapproved until the matching gate is genuinely satisfied.
 The GitHub Actions status report records the required workflow set. For normal release promotion, both `Firmware` and `Release` must be present for the matching commit; a missing required workflow is a blocker even if another workflow succeeded.
