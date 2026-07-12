@@ -46,6 +46,16 @@ verifies the model SHA-256 before use; model source and MIT license provenance a
 
 ## Supervised Physical Run
 
+### Eye-Safe Lighting
+
+YuNet does not require a bright lamp aimed at the operator. Use ordinary diffuse room light or
+indirect reflected light, keep lamps out of the operator's direct line of sight, and avoid staring
+into a phone light, work light, or exposed high-output LED. Do not increase illumination merely to
+force a detector lock; first move within 2-4 feet, face the camera, reduce backlighting, and let the
+camera exposure settle. Pause the run immediately for eye discomfort, afterimages, headache, or
+visual strain. Resume only after the operator feels recovered, with softer lighting and a short
+motion-off acquisition check before any servo test.
+
 1. Stop motion and confirm servo rail and torque are off.
 2. Use `stackchan_release_full` for a public serial install or `stackchan_camera_probe` for a
    private token-enabled OTA lab image, only after the shorter integration check passes.

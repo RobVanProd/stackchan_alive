@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-11 22:31 America/New_York
+Status timestamp: 2026-07-11 22:53 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -11,6 +11,24 @@ support compiled with motion disabled at boot.
 
 ### Final Integration Checkpoint (2026-07-11)
 
+- Clean prerelease source checkpoint `c3b06e6cb0d73afc34db7338418a1a0de6341a09`
+  passes native logic `239/239`, bridge/vision `205/205`, both production and camera-probe
+  firmware builds, and PowerShell/Python syntax checks. The clean full package
+  `output\release\stackchan_alive_prerelease-c3b06e6c.zip` is `42,743,713` bytes with SHA256
+  `F1399E75E1CE649F23C8A7C473BC94DB243DB79C77FC5FD4E40F4F430C596C66`; an independent
+  extraction verifier ended in `Release package verified`. It remains a diagnostic prerelease,
+  not a consumer release, until the physical and owner-decision gates below pass.
+- After fetching the current remote, `origin/main` remained the exact merge base. The companion
+  branch was `145` commits ahead and `0` behind main, so final integration remains eligible for a
+  fast-forward merge. No push or merge has been performed.
+- A clean commit-pinned touch/IMU baseline was captured at
+  `output\hardware-evidence\final-integration\body-sensor-validation-20260711-225025`. Touch and
+  IMU were ready/calibrated with motion, servo rail, and torque off. The interactive touch-zone,
+  gesture, pickup, tilt, putdown, and shake steps remain pending.
+- Physical camera validation is paused after the operator experienced eye strain from an overly
+  bright test light. Future acquisition uses diffuse room or reflected light only, never a bright
+  source aimed at the operator. Eye discomfort ends the run immediately; release timing never
+  overrides that rule.
 - The live robot is running the OTA-confirmed incremental microphone-capture camera candidate,
   firmware SHA256 `890AE99A55CA89BAE3694D60287359D9F2A21814D1AD1B15E99A1E98E6DF8AC2`.
   Its build evidence is

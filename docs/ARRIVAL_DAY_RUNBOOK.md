@@ -8,45 +8,33 @@ Use this when the physical Stackchan device arrives. Keep this release as a devi
 - Keep display-only firmware first; do not start servo calibration first.
 - Use a stable USB-C power source.
 - Have a camera ready for display, speaker, and motion evidence.
+- Use diffuse room light for face detection. Never aim a bright lamp, phone light, work light, or
+  exposed high-output LED into the operator's eyes. Stop immediately for discomfort or afterimages;
+  camera validation can wait.
 - Know the serial port, for example `COM3`.
 
-Current lab note (2026-07-11): the live robot is temporarily on an OTA-disabled diagnostic image
-after wake isolation. Reinstall the archived `stackchan_release_forensics` candidate from
-`output\hardware-evidence\final-integration\wake-zero-init-verified-ota-candidate-20260711-160828`
-by the shared UTF-8 serial flasher before relying on OTA. Confirm
-`sr_wake_mww_arenas_zero_initialized=true` in `/debug`, reset the wake counters once, then
-physically pass one wake/name turn. The candidate uses zero-initialized TFLite tensor and resource
-arenas because the current boot is pinned at probability 1 while historical accepted runs of the
-same model reached 255 at comparable microphone levels. Treat this as a testable cause hypothesis
-until that physical turn passes. A controlled host replay also showed that short robot-microphone
-captures from the current boot score poorly even when replayed through the exact host copy of the
-embedded frontend and model, so acoustic capture remains a separate live hypothesis. After the
-flash, verify the arena invariant, call `/wake-reset` once, capture one correctly timed wake phrase,
+Current lab note (2026-07-11): the live robot is running the OTA-confirmed incremental-capture
+camera candidate, firmware SHA256
+`890AE99A55CA89BAE3694D60287359D9F2A21814D1AD1B15E99A1E98E6DF8AC2`. Its private rollback
+archive is recorded in `docs\FIRST_DEPLOY_STATUS.md`. Confirm
+`sr_wake_mww_arenas_zero_initialized=true` in `/debug`, call `/wake-reset` once only when a fresh
+wake check is required, capture one correctly timed wake phrase,
 and compare the on-device probability with the host-model result before changing cutoff, gain, or
-microphone channel. Keep motion off during the recovery flash.
+microphone channel. Keep motion off during this check.
 
-Use the exact archived application rather than rebuilding the dirty worktree:
+Routine continuation does **not** require another flash: the current camera candidate is already
+installed and OTA-confirmed. The earlier `wake-zero-init-verified` and
+`camera-stereo-speaker-follow` images are historical diagnostic checkpoints, not the current lead.
+If recovery is genuinely required, use the exact current private rollback archive recorded in
+`docs\FIRST_DEPLOY_STATUS.md`; never rebuild a private recovery image from an unreviewed worktree.
+The guarded archived-app flasher verifies its manifest, byte count, and SHA256 while preserving
+NVS/Wi-Fi. Motion remains disabled at boot.
 
-```powershell
-.\tools\flash_archived_app.cmd `
-  -CandidateManifestPath output\hardware-evidence\final-integration\wake-zero-init-verified-ota-candidate-20260711-160828\manifest.json `
-  -Port COM4 `
-  -ExpectedSha256 298cdd4a07476b33cb75f07c4cf4162e539d64b972b75f4384a9dc7e934e0cc1 `
-  -ConfirmServoRisk
-```
-
-The guarded flasher verifies the manifest, byte count, and SHA256, writes the canonical OTA
-`boot_app0.bin` selector at `0xe000`, and writes the exact archived app at `0x10000`. It preserves
-NVS/Wi-Fi and the existing partition table. Motion is disabled at boot; do not call
-`/motion-resume` during wake recovery.
-
-After that wake/name turn passes, use LAN OTA for the prepared camera diagnostic at
-`output\hardware-evidence\final-integration\camera-stereo-speaker-follow-candidate-20260711-163359`.
-Do not install the camera image first: preserve the production wake result as a separate gate and
-rollback point. Validate a real face with motion off, then speak from physical left and right and
-confirm opposite bounded direction telemetry before requesting fresh servo clearance. The camera
-profile alone may invert the direction sign if board orientation requires it; never compensate by
-swapping face coordinates or changing the production wake channel.
+When physical testing resumes, first validate a real face under diffuse light with motion off,
+then follow `docs\LOCAL_VISION.md` for the bounded wake/listen follow run. Confirm opposite bounded
+left/right direction telemetry before fresh servo clearance. If board orientation reverses the
+direction sign, change only the camera-profile direction setting; never swap face coordinates or
+change the production wake channel.
 
 ### Optional 64 GB microSD
 
