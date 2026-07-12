@@ -111,7 +111,6 @@ bool ImuGestureInterpreter::update(
   if (selfMotionActive) {
     motionSinceMs_ = 0;
     stationarySinceMs_ = 0;
-    shakeHits_ = 0;
   } else if (stationary) {
     motionSinceMs_ = 0;
     if (stationarySinceMs_ == 0) stationarySinceMs_ = nowMs;
@@ -128,7 +127,7 @@ bool ImuGestureInterpreter::update(
       shakeHits_ = 0;
     }
     ++shakeHits_;
-    const uint8_t requiredHits = extremeImpact ? 1 : 2;
+    const uint8_t requiredHits = extremeImpact && !selfMotionActive ? 1 : 2;
     if (shakeHits_ >= requiredHits && (lastShakeMs_ == 0 || nowMs - lastShakeMs_ >= 2000)) {
       lastShakeMs_ = nowMs;
       shakeHits_ = 0;

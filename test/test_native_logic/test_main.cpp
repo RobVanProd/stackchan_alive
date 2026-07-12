@@ -1757,7 +1757,23 @@ void test_imu_interpreter_keeps_extreme_impact_safety_during_servo_motion() {
   impact.gyroZ = 500.0f;
   RobotEvent event;
   nowMs += 40;
+  TEST_ASSERT_FALSE(interpreter.update(impact, true, nowMs, &event));
+  nowMs += 40;
   TEST_ASSERT_TRUE(interpreter.update(impact, true, nowMs, &event));
+  TEST_ASSERT_EQUAL(static_cast<int>(EventType::Shaken), static_cast<int>(event.type));
+}
+
+void test_imu_interpreter_keeps_single_extreme_impact_safety_while_stationary() {
+  ImuGestureInterpreter interpreter;
+  uint32_t nowMs = 0;
+  interpreter.reset(nowMs);
+  calibrateImu(&interpreter, &nowMs);
+
+  ImuSample impact;
+  impact.gyroZ = 500.0f;
+  RobotEvent event;
+  nowMs += 40;
+  TEST_ASSERT_TRUE(interpreter.update(impact, false, nowMs, &event));
   TEST_ASSERT_EQUAL(static_cast<int>(EventType::Shaken), static_cast<int>(event.type));
 }
 
@@ -6773,6 +6789,7 @@ int main() {
   RUN_TEST(test_imu_interpreter_detects_pickup_then_putdown);
   RUN_TEST(test_imu_interpreter_filters_ordinary_servo_motion);
   RUN_TEST(test_imu_interpreter_keeps_extreme_impact_safety_during_servo_motion);
+  RUN_TEST(test_imu_interpreter_keeps_single_extreme_impact_safety_while_stationary);
   RUN_TEST(test_body_feedback_caps_brightness_and_protected_mode_load_sheds);
   RUN_TEST(test_body_feedback_mic_and_touch_events_create_visible_pulses);
   RUN_TEST(test_body_feedback_speech_envelope_animates_speaking_light);
