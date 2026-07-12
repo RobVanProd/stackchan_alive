@@ -7613,6 +7613,12 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"imu_putdown_events\":%lu", static_cast<unsigned long>(imu.putdownEvents));
   append(",\"imu_shake_events\":%lu", static_cast<unsigned long>(imu.shakeEvents));
   append(",\"imu_tilt_events\":%lu", static_cast<unsigned long>(imu.tiltEvents));
+  append(",\"imu_last_event_type\":%u", static_cast<unsigned>(imu.lastEventType));
+  append(",\"imu_last_event_self_motion\":%s", imu.lastEventSelfMotion ? "true" : "false");
+  append(",\"imu_last_event_strength\":%.3f", static_cast<double>(imu.lastEventStrength));
+  append(",\"imu_last_event_jerk\":%.3f", static_cast<double>(imu.lastEventJerk));
+  append(",\"imu_last_event_accel_norm\":%.3f", static_cast<double>(imu.lastEventAccelNorm));
+  append(",\"imu_last_event_gyro_norm\":%.3f", static_cast<double>(imu.lastEventGyroNorm));
   append(",\"imu_accel_norm\":%.3f", static_cast<double>(imu.accelNorm));
   append(",\"imu_gyro_norm\":%.3f", static_cast<double>(imu.gyroNorm));
   append(",\"imu_gravity_x\":%.3f", static_cast<double>(imu.gravityX));

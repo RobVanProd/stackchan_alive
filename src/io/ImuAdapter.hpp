@@ -45,6 +45,12 @@ struct ImuAdapterTelemetry {
   uint32_t tiltEvents = 0;
   uint32_t lastSampleMs = 0;
   uint32_t lastEventMs = 0;
+  uint8_t lastEventType = 0;
+  bool lastEventSelfMotion = false;
+  float lastEventStrength = 0.0f;
+  float lastEventJerk = 0.0f;
+  float lastEventAccelNorm = 1.0f;
+  float lastEventGyroNorm = 0.0f;
   float accelNorm = 1.0f;
   float gyroNorm = 0.0f;
   float gravityX = 0.0f;
@@ -61,6 +67,7 @@ class ImuGestureInterpreter {
   bool pickedUp() const { return pickedUp_; }
   float accelNorm() const { return accelNorm_; }
   float gyroNorm() const { return gyroNorm_; }
+  float jerk() const { return jerk_; }
   float gravityX() const { return gravityX_; }
   float gravityY() const { return gravityY_; }
   float gravityZ() const { return gravityZ_; }
@@ -90,6 +97,7 @@ class ImuGestureInterpreter {
   float lastTiltStrength_ = 0.0f;
   float accelNorm_ = 1.0f;
   float gyroNorm_ = 0.0f;
+  float jerk_ = 0.0f;
 };
 
 class ImuAdapter {

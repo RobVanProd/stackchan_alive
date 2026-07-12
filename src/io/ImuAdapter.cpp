@@ -57,6 +57,7 @@ void ImuGestureInterpreter::reset(uint32_t nowMs) {
   lastTiltStrength_ = 0.0f;
   accelNorm_ = 1.0f;
   gyroNorm_ = 0.0f;
+  jerk_ = 0.0f;
 }
 
 bool ImuGestureInterpreter::emit(
@@ -77,7 +78,7 @@ bool ImuGestureInterpreter::update(
     const ImuSample& sample, bool selfMotionActive, uint32_t nowMs, RobotEvent* eventOut) {
   accelNorm_ = vectorNorm(sample.accelX, sample.accelY, sample.accelZ);
   gyroNorm_ = vectorNorm(sample.gyroX, sample.gyroY, sample.gyroZ);
-  const float jerk = vectorNorm(
+  jerk_ = vectorNorm(
       sample.accelX - lastAccelX_, sample.accelY - lastAccelY_, sample.accelZ - lastAccelZ_);
   lastAccelX_ = sample.accelX;
   lastAccelY_ = sample.accelY;
@@ -96,7 +97,7 @@ bool ImuGestureInterpreter::update(
   }
 
   const bool normStable = accelNorm_ >= 0.82f && accelNorm_ <= 1.18f;
-  const bool stationary = normStable && gyroNorm_ < 12.0f && jerk < 0.10f;
+  const bool stationary = normStable && gyroNorm_ < 12.0f && jerk_ < 0.10f;
 
   if (!calibrated_ && stationary && !selfMotionActive) {
     constexpr float kCalibrationAlpha = 0.10f;
@@ -119,8 +120,8 @@ bool ImuGestureInterpreter::update(
     if (motionSinceMs_ == 0) motionSinceMs_ = nowMs;
   }
 
-  const bool extremeImpact = jerk > 1.75f || gyroNorm_ > 450.0f;
-  const bool ordinaryShake = !selfMotionActive && (jerk > 0.65f || gyroNorm_ > 170.0f);
+  const bool extremeImpact = jerk_ > 1.75f || gyroNorm_ > 450.0f;
+  const bool ordinaryShake = !selfMotionActive && (jerk_ > 0.65f || gyroNorm_ > 170.0f);
   if (extremeImpact || ordinaryShake) {
     if (shakeWindowStartedMs_ == 0 || nowMs - shakeWindowStartedMs_ > 500) {
       shakeWindowStartedMs_ = nowMs;
@@ -131,7 +132,7 @@ bool ImuGestureInterpreter::update(
     if (shakeHits_ >= requiredHits && (lastShakeMs_ == 0 || nowMs - lastShakeMs_ >= 2000)) {
       lastShakeMs_ = nowMs;
       shakeHits_ = 0;
-      const float strength = clamp01((jerk + gyroNorm_ / 250.0f) * 0.55f);
+      const float strength = clamp01((jerk_ + gyroNorm_ / 250.0f) * 0.55f);
       return emit(EventType::Shaken, strength, nowMs, eventOut);
     }
   }
@@ -241,6 +242,12 @@ bool ImuAdapter::poll(uint32_t nowMs, bool selfMotionActive, RobotEvent* eventOu
 
   ++telemetry_.eventsPublished;
   telemetry_.lastEventMs = nowMs;
+  telemetry_.lastEventType = static_cast<uint8_t>(eventOut->type);
+  telemetry_.lastEventSelfMotion = selfMotionActive;
+  telemetry_.lastEventStrength = eventOut->strength;
+  telemetry_.lastEventJerk = interpreter_.jerk();
+  telemetry_.lastEventAccelNorm = interpreter_.accelNorm();
+  telemetry_.lastEventGyroNorm = interpreter_.gyroNorm();
   switch (eventOut->type) {
     case EventType::PickedUp: ++telemetry_.pickupEvents; break;
     case EventType::PutDown: ++telemetry_.putdownEvents; break;
