@@ -7839,6 +7839,9 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"speaker_tone_failed\":%lu", static_cast<unsigned long>(gSpeakerSink.diagnosticToneFailed()));
   append(",\"display_window_max_frame_us\":%lu", static_cast<unsigned long>(display.windowMaxFrameUs));
   append(",\"display_window_slow_frames\":%lu", static_cast<unsigned long>(display.windowSlowFrames));
+  append(",\"display_last_dirty_pixels\":%lu", static_cast<unsigned long>(display.lastDirtyPixels));
+  append(",\"display_window_max_dirty_pixels\":%lu",
+         static_cast<unsigned long>(display.windowMaxDirtyPixels));
   append(",\"display_window_fps\":%.2f", static_cast<double>(display.windowFps));
 #if defined(ARDUINO_ARCH_ESP32)
   append(",\"ota_enabled\":%s", ota.enabled ? "true" : "false");

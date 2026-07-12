@@ -147,7 +147,7 @@ void DisplayAdapter::drawStaticText() {
   canvas_->drawString("Stackchan: Alive", kStaticTextX, kStaticTextY);
 }
 
-void DisplayAdapter::pushDirtyStrip() {
+void DisplayAdapter::pushDirtyRect() {
   if (!dirty_.valid || canvas_ == nullptr) {
     return;
   }
@@ -159,7 +159,10 @@ void DisplayAdapter::pushDirtyStrip() {
 
   const int32_t y = dirty_.y;
   const int32_t h = dirty_.h;
+  M5.Display.setClipRect(dirty_.x, dirty_.y, dirty_.w, dirty_.h);
+  // Keep the canvas row stride at 320 pixels while clipping LCD writes to the changed columns.
   M5.Display.pushImage(0, y, kScreenW, h, buffer + (y * kScreenW));
+  M5.Display.clearClipRect();
 }
 
 bool DisplayAdapter::begin() {
@@ -372,7 +375,14 @@ void DisplayAdapter::flush() {
     drawStaticText();
     markDirty(makeRect(0, kStaticTextTop, kScreenW, kStaticTextHeight));
   }
-  pushDirtyStrip();
+  const uint32_t dirtyPixels = dirty_.valid
+      ? static_cast<uint32_t>(dirty_.w) * static_cast<uint32_t>(dirty_.h)
+      : 0;
+  telemetry_.lastDirtyPixels = dirtyPixels;
+  if (dirtyPixels > maxDirtyPixels_) {
+    maxDirtyPixels_ = dirtyPixels;
+  }
+  pushDirtyRect();
   fullRefreshPending_ = false;
   M5.Display.waitDisplay();
   frameCount_++;
@@ -400,6 +410,7 @@ void DisplayAdapter::flush() {
     telemetry_.windowMaxFrameUs = maxFrameUs_;
     telemetry_.windowSlowFrames = slowFrameCount_;
     telemetry_.windowMs = telemetryElapsedMs;
+    telemetry_.windowMaxDirtyPixels = maxDirtyPixels_;
     telemetry_.windowFps = fpsWindow;
     Serial.print(F("[display] frame_ms_avg="));
     Serial.print(avgMs, 2);
@@ -414,6 +425,7 @@ void DisplayAdapter::flush() {
     Serial.print(F(" slow_frames="));
     Serial.println(slowFrameCount_);
     maxFrameUs_ = 0;
+    maxDirtyPixels_ = 0;
     slowFrameCount_ = 0;
     windowFrameCount_ = 0;
   }
