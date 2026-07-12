@@ -73,6 +73,20 @@ class ConversationSessionTests(unittest.TestCase):
         self.assertEqual(ConversationPhase.IDLE, self.session.phase)
         self.assertEqual("bridge_lost", result.reason)
 
+    def test_turn_failure_and_cancel_close_through_cooldown(self) -> None:
+        self.session.wake(0)
+        self.session.utterance_committed(10, "Question")
+        failed = self.session.turn_failed(20, "runner error")
+        self.assertEqual("runner error", failed.reason)
+        self.assertEqual(ConversationPhase.COOLDOWN, self.session.phase)
+        self.session.tick(120)
+        self.assertEqual(ConversationPhase.IDLE, self.session.phase)
+
+        self.session.wake(200)
+        cancelled = self.session.cancel(210, "owner cancelled")
+        self.assertEqual("owner cancelled", cancelled.reason)
+        self.assertEqual(ConversationPhase.COOLDOWN, self.session.phase)
+
     def test_snapshot_exposes_conversation_only_not_motion_authority(self) -> None:
         self.session.wake(100, "pc-brain")
         snapshot = self.session.snapshot(250)

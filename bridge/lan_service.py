@@ -49,6 +49,7 @@ from research_broker import (
 from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 from conversation_latency import build_conversation_latency_record
+from conversation_session import ConversationConfig, ConversationPhase, ConversationSession
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -452,6 +453,11 @@ class LanBridgeConfig:
     auto_turn_text: str = ""
     research_enabled: bool = False
     searxng_url: str = "http://127.0.0.1:8080"
+    conversation_v2_enabled: bool = False
+    conversation_reply_window_ms: int = 8_000
+    conversation_acoustic_tail_ms: int = 250
+    conversation_cooldown_ms: int = 300
+    conversation_max_turns: int = 12
     once: bool = False
 
 
@@ -769,9 +775,64 @@ class LanBridgeSession:
         self.next_seq = 1
         self.audio = AudioUpload()
         self.robot_embodiment = RobotEmbodimentState()
+        self.conversation: ConversationSession | None = None
+        self.conversation_response_seq = 0
+        if config.conversation_v2_enabled:
+            if not config.tts_command or config.disable_audio_downlink:
+                raise ValueError(
+                    "conversation v2 requires configured TTS and audio downlink for playback confirmation"
+                )
+            self.conversation = ConversationSession(
+                ConversationConfig(
+                    reply_window_ms=config.conversation_reply_window_ms,
+                    acoustic_tail_ms=config.conversation_acoustic_tail_ms,
+                    cooldown_ms=config.conversation_cooldown_ms,
+                    max_turns=config.conversation_max_turns,
+                )
+            )
         self.research_broker = research_broker
         if self.research_broker is None and config.research_enabled:
             self.research_broker = ResearchBroker(ResearchBrokerConfig(searxng_url=config.searxng_url))
+
+    def _conversation_payload(self, transition=None, *, observed_ms: int | None = None) -> dict[str, object]:
+        if self.conversation is None:
+            return {}
+        current_ms = now_ms() if observed_ms is None else int(observed_ms)
+        payload: dict[str, object] = {
+            "conversation_v2_enabled": True,
+            **self.conversation.snapshot(current_ms),
+        }
+        if transition is not None:
+            payload["conversation_actions"] = list(transition.actions)
+            payload["conversation_reason"] = transition.reason
+        return payload
+
+    def _conversation_heartbeat(self, transition=None, *, observed_ms: int | None = None) -> dict[str, object]:
+        return {"type": "heartbeat", **self._conversation_payload(transition, observed_ms=observed_ms)}
+
+    def _begin_conversation_capture(self, owner_id: str) -> dict[str, object] | None:
+        if self.conversation is None:
+            return None
+        current_ms = now_ms()
+        self.conversation.tick(current_ms)
+        if self.conversation.phase == ConversationPhase.IDLE:
+            self.conversation.wake(current_ms, owner_id)
+        elif self.conversation.phase in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
+            self.conversation.barge_in(current_ms)
+        transition = self.conversation.utterance_started(current_ms)
+        if "reject_utterance" in transition.actions:
+            return error_frame("conversation_capture_closed", transition.reason)
+        return None
+
+    def _conversation_failure(self, code: str, detail: str) -> dict[str, object]:
+        frame = error_frame(code, detail)
+        if self.conversation is not None:
+            if self.conversation.phase in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
+                transition = self.conversation.turn_failed(now_ms(), code)
+            else:
+                transition = self.conversation.cancel(now_ms(), code)
+            frame.update(self._conversation_payload(transition))
+        return frame
 
     @staticmethod
     def _tool_request(raw_response: str) -> dict[str, object] | None:
@@ -928,17 +989,28 @@ class LanBridgeSession:
         message_type = str(message.get("type", "")).strip().lower()
         if message_type == "hello":
             self.session = str(message.get("session") or message.get("device_id") or self.session)[:48]
-            return [{"type": "hello", "protocol": PROTOCOL, "session": self.session}]
+            return [
+                {
+                    "type": "hello",
+                    "protocol": PROTOCOL,
+                    "session": self.session,
+                    **self._conversation_payload(),
+                }
+            ]
         if message_type == "endpoint_hello":
             frame = self.control_state.register_endpoint(message)
             self.endpoint_id = str(frame.get("endpoint_id", self.endpoint_id)) if frame.get("type") != "error" else self.endpoint_id
             return [frame]
         if message_type == "heartbeat":
             self.robot_embodiment.update(message)
+            conversation_transition = None
+            if self.conversation is not None:
+                conversation_transition = self.conversation.tick(now_ms())
             endpoint_id = self.control_state.touch_endpoint(message.get("endpoint_id") or self.endpoint_id)
             frame: dict[str, object] = {"type": "heartbeat", "active_brain_owner": self.control_state.active_brain_owner}
             if endpoint_id:
                 frame["endpoint_id"] = endpoint_id
+            frame.update(self._conversation_payload(conversation_transition))
             return [frame]
         if message_type == "claim_brain":
             return [self.control_state.claim_brain(message)]
@@ -955,17 +1027,27 @@ class LanBridgeSession:
         if message_type == "settings_set":
             return [self.control_state.settings_set(message)]
         if message_type == "diagnostics_request":
-            return [self.control_state.diagnostics_snapshot(self.config)]
+            frame = self.control_state.diagnostics_snapshot(self.config)
+            frame.update(self._conversation_payload())
+            return [frame]
         if message_type == "capability_update":
             return [self._handle_capability_update(message)]
         if message_type == "utterance_start":
             owner_error = self._owner_gate(message)
             if owner_error is not None:
                 return [owner_error]
+            conversation_error = self._begin_conversation_capture(
+                normalize_endpoint_id(message.get("endpoint_id") or self.endpoint_id)
+            )
+            if conversation_error is not None:
+                return [conversation_error]
             self.audio.start(message.get("sample_rate", DEFAULT_SAMPLE_RATE))
-            return [{"type": "listening", **self.audio.summary()}]
+            return [{"type": "listening", **self.audio.summary(), **self._conversation_payload()}]
         if message_type == "cancel":
             self.audio.clear()
+            if self.conversation is not None:
+                transition = self.conversation.cancel(now_ms(), str(message.get("reason") or "cancelled"))
+                return [self._conversation_heartbeat(transition)]
             return [error_frame("cancelled")]
         if message_type == "utterance_audio":
             owner_error = self._owner_gate(message)
@@ -986,7 +1068,13 @@ class LanBridgeSession:
                 seq = max(0, int(message.get("seq", 0)))
             except (TypeError, ValueError):
                 return [error_frame("playback_complete_seq_invalid")]
-            return [{"type": "heartbeat", "playback_complete_seq": seq}]
+            frame: dict[str, object] = {"type": "heartbeat", "playback_complete_seq": seq}
+            if self.conversation is not None:
+                if seq == 0 or seq != self.conversation_response_seq:
+                    return [error_frame("playback_complete_seq_mismatch", str(seq))]
+                transition = self.conversation.playback_completed(now_ms())
+                frame.update(self._conversation_payload(transition))
+            return [frame]
         return [error_frame("unsupported_message", message_type)]
 
     def _owner_gate(self, message: dict[str, Any]) -> dict[str, object] | None:
@@ -1255,7 +1343,12 @@ class LanBridgeSession:
         audio_summary.update(audio_evidence_log)
         stt_log: dict[str, object] = {}
         if not has_audio and not user_text:
-            return [error_frame("empty_utterance", "utterance_end had no audio or transcript") | audio_summary]
+            return [
+                self._conversation_failure(
+                    "empty_utterance", "utterance_end had no audio or transcript"
+                )
+                | audio_summary
+            ]
         if has_audio and not user_text:
             try:
                 stt = transcribe_pcm(
@@ -1273,7 +1366,7 @@ class LanBridgeSession:
                     detail=detail,
                 )
                 return [
-                    error_frame(
+                    self._conversation_failure(
                         "stt_not_implemented",
                         detail,
                     )
@@ -1286,7 +1379,7 @@ class LanBridgeSession:
                     code="stt_error",
                     detail=str(exc),
                 )
-                return [error_frame("stt_error", str(exc)) | audio_summary]
+                return [self._conversation_failure("stt_error", str(exc)) | audio_summary]
             user_text = stt.transcript
             audio_summary["stt_elapsed_ms"] = round(stt.elapsed_ms, 2)
             audio_summary["stt_command_source"] = stt.command_source
@@ -1299,7 +1392,10 @@ class LanBridgeSession:
                 stt_log["stt_raw_transcript"] = stt.raw_transcript
             if stt.transcript_normalized:
                 stt_log["stt_transcript_normalized"] = True
-        if has_audio and self.config.require_audio_wake_phrase and not contains_stackchan_wake_phrase(user_text):
+        require_wake_phrase = self.config.require_audio_wake_phrase and (
+            self.conversation is None or self.conversation.turns == 0
+        )
+        if has_audio and require_wake_phrase and not contains_stackchan_wake_phrase(user_text):
             rejected_log: dict[str, object] = {
                 "schema": "stackchan.lan-turn-summary.v1",
                 "generated_at": utc_timestamp(),
@@ -1316,7 +1412,16 @@ class LanBridgeSession:
             rejected_log.update(stt_log)
             rejected_log.update(audio_evidence_log)
             self._append_turn_log(rejected_log)
-            return [error_frame("wake_phrase_required", "audio transcript did not contain Stackchan") | audio_summary]
+            return [
+                self._conversation_failure(
+                    "wake_phrase_required", "audio transcript did not contain Stackchan"
+                )
+                | audio_summary
+            ]
+        if self.conversation is not None:
+            transition = self.conversation.utterance_committed(now_ms(), user_text)
+            if "begin_generation" not in transition.actions:
+                return [self._conversation_heartbeat(transition)]
         if user_text:
             self.memory = self.memory.remember_user_text(user_text)
             # Persist transcript-owned facts before model/TTS work so an explicit
@@ -1353,7 +1458,7 @@ class LanBridgeSession:
                     memory_lines=tuple(self.memory.context_lines(user_text)),
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-                return [error_frame("runner_error", str(exc))]
+                return [self._conversation_failure("runner_error", str(exc))]
             raw_response = runner.raw_response
             runner_summary["runner_command_source"] = runner.command_source
             if runner.elapsed_ms is not None:
@@ -1405,7 +1510,7 @@ class LanBridgeSession:
                             memory_lines=tuple(self.memory.context_lines(user_text)),
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-                        return [error_frame("runner_error", str(exc))]
+                        return [self._conversation_failure("runner_error", str(exc))]
                     raw_response = self._clear_research_memory_writes(researched.raw_response)
                     runner_summary["research_tool"] = str(research_result.get("tool", ""))
                     runner_summary["research_source_urls"] = list(source_urls(research_result))
@@ -1421,6 +1526,11 @@ class LanBridgeSession:
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))
+        if self.conversation is not None:
+            transition = self.conversation.response_started(now_ms())
+            if "reject_response" in transition.actions:
+                return [self._conversation_failure("conversation_response_rejected", transition.reason)]
+            self.conversation_response_seq = seq
         response_text_ready_ms = (time.perf_counter() - turn_started) * 1000.0
         if (
             self.config.stream_tts_phrases
@@ -1433,6 +1543,8 @@ class LanBridgeSession:
                 validation_issues=list(validation.issues),
                 frame_sink=frame_sink,
             )
+            if tts_error and self.conversation is not None:
+                self.conversation.turn_failed(now_ms(), "tts_error")
             self._save_memory()
             self._append_completed_turn_log(
                 seq=seq,
@@ -1496,6 +1608,8 @@ class LanBridgeSession:
             pass
         except (TtsExecutionError, ValueError) as exc:
             tts_error = str(exc)
+        if tts_error and self.conversation is not None:
+            self.conversation.turn_failed(now_ms(), "tts_error")
         self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
         if suppress_thinking:
@@ -1760,6 +1874,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auto-turn-text", default="")
     parser.add_argument("--enable-research", action="store_true")
     parser.add_argument("--searxng-url", default="http://127.0.0.1:8080")
+    parser.add_argument("--conversation-v2", action="store_true")
+    parser.add_argument("--conversation-reply-window-ms", type=int, default=8000)
+    parser.add_argument("--conversation-acoustic-tail-ms", type=int, default=250)
+    parser.add_argument("--conversation-cooldown-ms", type=int, default=300)
+    parser.add_argument("--conversation-max-turns", type=int, default=12)
     parser.add_argument("--reset-memory", action="store_true")
     return parser
 
@@ -1797,6 +1916,11 @@ def main() -> int:
         auto_turn_text=args.auto_turn_text,
         research_enabled=args.enable_research,
         searxng_url=args.searxng_url,
+        conversation_v2_enabled=args.conversation_v2,
+        conversation_reply_window_ms=max(1000, min(30000, args.conversation_reply_window_ms)),
+        conversation_acoustic_tail_ms=max(0, min(2000, args.conversation_acoustic_tail_ms)),
+        conversation_cooldown_ms=max(0, min(5000, args.conversation_cooldown_ms)),
+        conversation_max_turns=max(1, min(50, args.conversation_max_turns)),
     )
     serve(config)
     return 0

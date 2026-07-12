@@ -1139,6 +1139,64 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual([{"type": "heartbeat", "playback_complete_seq": 44}], frames)
         self.assertFalse(session.audio.active)
 
+    def test_conversation_v2_requires_confirmable_audio_downlink(self):
+        with self.assertRaisesRegex(ValueError, "requires configured TTS"):
+            LanBridgeSession(LanBridgeConfig(conversation_v2_enabled=True))
+
+    def test_conversation_v2_opens_followup_only_after_matching_playback_complete(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_tts.py"
+            script.write_text(
+                "import base64,json,sys\n"
+                "sys.stdin.buffer.read()\n"
+                "print(json.dumps({'audio_format':'pcm16','sample_rate':16000,"
+                "'audio_b64':base64.b64encode(b'\\x00\\x00\\x01\\x00').decode('ascii'),"
+                "'audio_truncated':False,'beats':[{'env':0.5,'viseme':'ah',"
+                "'duration_ms':20,'final':True}]}))\n",
+                encoding="utf-8",
+            )
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    conversation_v2_enabled=True,
+                    conversation_acoustic_tail_ms=0,
+                    tts_command=f'"{sys.executable}" "{script}"',
+                )
+            )
+
+            listening = session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 70, "sample_rate": 16000})
+            )
+            response = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 70, "text": "What is your name?"})
+            )
+            stale = session.handle_text(
+                json.dumps({"type": "playback_complete", "seq": 69, "at_ms": 100})
+            )
+            completed = session.handle_text(
+                json.dumps({"type": "playback_complete", "seq": 70, "at_ms": 120})
+            )
+            followup = session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 71, "sample_rate": 16000})
+            )
+            exit_frames = session.handle_text(
+                json.dumps(
+                    {"type": "utterance_end", "seq": 71, "text": "Goodbye Stackchan"}
+                )
+            )
+
+        self.assertEqual("engaged", listening[0]["conversation_state"])
+        self.assertEqual("response_end", response[-1]["type"])
+        self.assertEqual("error", stale[0]["type"])
+        self.assertEqual("playback_complete_seq_mismatch", stale[0]["code"])
+        self.assertEqual("reply_window", completed[0]["conversation_state"])
+        self.assertFalse(completed[0]["conversation_capture_open"])
+        self.assertEqual("listening", followup[0]["type"])
+        self.assertEqual("engaged", followup[0]["conversation_state"])
+        self.assertTrue(followup[0]["conversation_capture_open"])
+        self.assertEqual("heartbeat", exit_frames[0]["type"])
+        self.assertEqual("cooldown", exit_frames[0]["conversation_state"])
+        self.assertEqual("exit_phrase", exit_frames[0]["conversation_reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

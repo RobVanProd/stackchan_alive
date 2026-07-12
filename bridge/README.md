@@ -252,6 +252,19 @@ measured turn has first audio under three seconds, TTS rendering faster than rea
 truncation. These are host/bridge timings; robot playback-completion evidence remains a separate
 wire/device gate.
 
+Conversation v2 host-state rehearsal is opt-in and requires confirmable audio downlink:
+
+```powershell
+python bridge\lan_service.py --conversation-v2 --tts-command "python bridge\rvc_tts_client.py" --stream-tts-phrases
+```
+
+The opt-in session accepts one wake-gated first turn, validates matching firmware
+`playback_complete`, then permits a bounded follow-up turn without another wake phrase. Exit
+phrases, turn limits, bridge loss, cancellation, TTS failure, and model failure close through a
+typed cooldown. This flag does not yet command the firmware to start the follow-up capture and
+does not yet provide concurrent in-flight generation cancellation; leave it off for normal v1
+operation until those two wire gates pass.
+
 Run the optional local camera detector only with the isolated camera diagnostic firmware:
 
 ```powershell

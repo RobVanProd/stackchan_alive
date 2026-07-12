@@ -75,9 +75,13 @@ firmware to its normal local face and wake behavior.
 - Firmware playback accounting now stays active until M5Speaker is idle and its microphone pause
   is released, then sends retry-safe `playback_complete` evidence. The LAN bridge acknowledges the
   frame without opening capture, preserving the v0.2.0 one-wake/one-turn behavior.
-- The next slice adds an opt-in configuration flag, maps that authoritative frame into
-  `playback_completed()`, schedules the acoustic tail and reply capture, and exports typed
-  conversation state.
+- `bridge/lan_service.py --conversation-v2` now maps the first utterance, matching authoritative
+  playback completion, acoustic-tail state, bounded follow-up, exit phrases, turn limit, and
+  failure cleanup into the session core. It requires configured TTS/downlink and remains off by
+  default.
+- The next slice adds the firmware reply-capture command after the acoustic tail and makes model
+  generation/playback cancellation genuinely concurrent. Until those pass, the opt-in host state
+  is a rehearsal path rather than a promoted two-way conversation feature.
 
 ## Memory Model
 

@@ -183,6 +183,18 @@ class ConversationSession:
         actions.append("open_capture")
         return self._transition(*actions, reason="barge_in")
 
+    def turn_failed(self, now_ms: int, reason: str = "turn_failed") -> ConversationTransition:
+        now = self._now(now_ms)
+        if self.phase not in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
+            return self._transition("reject_turn_failure", reason="not_busy")
+        return self._begin_cooldown(now, self._normalize_text(reason) or "turn_failed")
+
+    def cancel(self, now_ms: int, reason: str = "cancelled") -> ConversationTransition:
+        now = self._now(now_ms)
+        if self.phase == ConversationPhase.IDLE:
+            return self._transition("session_already_closed", reason="idle")
+        return self._begin_cooldown(now, self._normalize_text(reason) or "cancelled")
+
     def tick(self, now_ms: int) -> ConversationTransition:
         now = self._now(now_ms)
         if self.phase == ConversationPhase.REPLY_WINDOW:
