@@ -106,9 +106,13 @@ support compiled with motion disabled at boot.
   `output\pc-brain\imu-accounting-servo-5min-20260712-070001` with `59/59` good polls, every motion
   sample unsuppressed, VBUS floor `4973 mV`, maximum frame `29618 us`, no terminal/external IMU
   event, and a formal `70/70` result.
-- The exact-image one-hour actuator acceptance is active at
-  `output\pc-brain\imu-accounting-servo-60min-20260712-070606`. It must pass its terminal summary
-  and formal checker before the same image advances to the eight-hour continuation or release lead.
+- The exact-image one-hour actuator run at
+  `output\pc-brain\imu-accounting-servo-60min-20260712-070606` later stopped at `3161 s` after
+  `620/620` successful polls because one terminal IMU read failure advanced the strict
+  final-integration I/O counter. It had no failed HTTP poll, motion-session timeout, camera failure,
+  hard-floor event, PMIC protective event, or reset. This image was superseded by the atomic-snapshot
+  candidate documented in the launch section above; that exact later image passed its formal
+  one-hour actuator acceptance before starting the current eight-hour continuation.
 
 ### Release Acceptance Camera-Transport Finding (2026-07-12)
 

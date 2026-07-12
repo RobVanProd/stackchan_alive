@@ -1,7 +1,8 @@
 # Stackchan Power Blackout Forensics
 
-Status: corrected PMIC input-policy candidate installed; short no-motion and actuator gates pass;
-one-hour actuator qualification active.
+Status: the current exact-image candidate passed short no-motion, short actuator, and one-hour
+actuator qualification; its eight-hour all-feature actuator continuation is active. Historical
+full-off root cause remains unidentified.
 
 ## What The Evidence Says
 
@@ -81,16 +82,28 @@ treated an IMU `shaken` event as fatal even though preserved telemetry classifie
 `self_motion=true`. No reset, power, bridge, display, camera, motion-session, or actuator-safety
 failure accompanied that stop.
 
-The installed superseding image, source commit `fd07b62a81460f9066f67bc6955f57f1e3b8971a` and
+The later image at source commit `fd07b62a81460f9066f67bc6955f57f1e3b8971a` and
 SHA256 `4F7B02616E8CC42C3066F732A4E899717129049AFE95051F996C600FB7E02BF2`, separates self-motion from
 external IMU events and retains terminal read failures as strict faults. It passed a formal
 180-second no-motion gate (`71/71`) and formal 300-second actuator gate (`70/70`); the actuator run
 had `59/59` good and unsuppressed motion samples, VBUS floor `4973 mV`, maximum display frame
 `29618 us`, and no terminal/external IMU, battery-supplement, hard-floor, PMIC protective/VBUS-loss,
-reset, network, camera, or peripheral failure. Its exact-image one-hour continuation is active at
-`output\pc-brain\imu-accounting-servo-60min-20260712-070606`. These results prove the policy and
-event accounting over the short gates; they do not yet prove long-term stability or identify the
-universal cause of prior shutdowns.
+reset, network, camera, or peripheral failure. Its exact-image one-hour continuation at
+`output\pc-brain\imu-accounting-servo-60min-20260712-070606` stopped at `3161 s` after `620/620`
+successful polls because one terminal IMU read failure advanced the strict final-integration I/O
+counter. It had no failed poll, motion-session timeout, camera failure, hard-floor event, PMIC
+protective event, or reset. This is peripheral-I/O evidence, not blackout evidence.
+
+The current exact paired candidate, source commit `a7532f61cc7e5161ce5e65d05675c37bd7941e7c` and
+SHA256 `C43E5AC1CF1718F61D5DA35A37720A7C3E24CE9CD28DD6586521F50175708EA7`, supersedes that image with
+atomic M5Unified IMU snapshots, bounded yielding retries, isolated exhaustion accounting, and a
+terminal failure only after three consecutive exhausted read windows. It passed its exact-image
+formal one-hour actuator acceptance (`76/76`) after `3601 s` with `706/706` successful polls and
+zero IMU exhaustion or terminal read failure. Its interaction-aware eight-hour all-feature
+continuation is active at
+`output\pc-brain\release-interaction-aware-servo-8hr-corrected-20260712-111123`. These results
+strengthen the current mitigation evidence; they do not identify a universal cause for historical
+full-off events, and the long run is not a pass until its terminal summary and formal checker pass.
 
 ## Instrumented Candidate
 
