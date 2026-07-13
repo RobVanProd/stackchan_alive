@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from cancellation import CancellationToken, OperationCancelledError
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from reference_bridge import (
     AudioBeat,
@@ -775,6 +776,8 @@ class LanBridgeSession:
         self.next_seq = 1
         self.audio = AudioUpload()
         self.robot_embodiment = RobotEmbodimentState()
+        self._active_turn_lock = threading.Lock()
+        self._active_turn_token: CancellationToken | None = None
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
         if config.conversation_v2_enabled:
@@ -813,6 +816,26 @@ class LanBridgeSession:
     def _conversation_context_lines(self) -> tuple[str, ...]:
         return self.conversation.context_lines() if self.conversation is not None else ()
 
+    def cancel_active_turn(self, reason: str = "cancelled") -> bool:
+        with self._active_turn_lock:
+            token = self._active_turn_token
+        if token is None:
+            return False
+        token.cancel(reason)
+        return True
+
+    def _register_active_turn(self, token: CancellationToken) -> bool:
+        with self._active_turn_lock:
+            if self._active_turn_token is not None:
+                return False
+            self._active_turn_token = token
+            return True
+
+    def _finish_active_turn(self, token: CancellationToken) -> None:
+        with self._active_turn_lock:
+            if self._active_turn_token is token:
+                self._active_turn_token = None
+
     def _stage_conversation_turn(self, user_text: str, response_text: str, tts_error: str) -> None:
         if self.conversation is not None and not tts_error:
             self.conversation.stage_turn(user_text, response_text)
@@ -825,6 +848,7 @@ class LanBridgeSession:
         if self.conversation.phase == ConversationPhase.IDLE:
             self.conversation.wake(current_ms, owner_id)
         elif self.conversation.phase in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
+            self.cancel_active_turn("barge_in")
             self.conversation.barge_in(current_ms)
         transition = self.conversation.utterance_started(current_ms)
         if "reject_utterance" in transition.actions:
@@ -1052,8 +1076,10 @@ class LanBridgeSession:
             return [{"type": "listening", **self.audio.summary(), **self._conversation_payload()}]
         if message_type == "cancel":
             self.audio.clear()
+            reason = str(message.get("reason") or "cancelled")
+            self.cancel_active_turn(reason)
             if self.conversation is not None:
-                transition = self.conversation.cancel(now_ms(), str(message.get("reason") or "cancelled"))
+                transition = self.conversation.cancel(now_ms(), reason)
                 return [self._conversation_heartbeat(transition)]
             return [error_frame("cancelled")]
         if message_type == "utterance_audio":
@@ -1161,10 +1187,13 @@ class LanBridgeSession:
         turn_started: float,
         validation_issues: list[str],
         frame_sink: Callable[[dict[str, object] | bytes], None] | None,
+        cancellation: CancellationToken | None = None,
     ) -> tuple[list[dict[str, object] | bytes], dict[str, object], str]:
+        cancellation = cancellation or CancellationToken()
         emitted: list[dict[str, object] | bytes] = []
 
         def emit(frame: dict[str, object] | bytes) -> None:
+            cancellation.raise_if_cancelled()
             if frame_sink is None:
                 emitted.append(frame)
             else:
@@ -1210,11 +1239,15 @@ class LanBridgeSession:
                         command=self.config.tts_command,
                         voice=self.config.tts_voice,
                         timeout_ms=self.config.tts_timeout_ms,
+                        cancellation=cancellation,
                     )
                     if bool(result.diagnostics.get("audio_truncated", False)):
                         raise TtsExecutionError("streaming TTS refused a truncated phrase")
                     if not result.audio_data:
                         raise TtsExecutionError("streaming TTS phrase produced no audio")
+                except OperationCancelledError as exc:
+                    rendered.put(("cancelled", exc))
+                    return
                 except Exception as exc:
                     rendered.put(("error", exc))
                     return
@@ -1225,9 +1258,15 @@ class LanBridgeSession:
         producer.start()
         try:
             while True:
-                item_type, item = rendered.get()
+                cancellation.raise_if_cancelled()
+                try:
+                    item_type, item = rendered.get(timeout=0.1)
+                except queue.Empty:
+                    continue
                 if item_type == "done":
                     break
+                if item_type == "cancelled":
+                    raise item
                 if item_type == "error":
                     raise TtsExecutionError(str(item))
                 result = item
@@ -1264,6 +1303,7 @@ class LanBridgeSession:
                 )
                 phrase_audio_offset_ms = 0.0
                 for offset in range(0, len(result.audio_data), safe_chunk_bytes):
+                    cancellation.raise_if_cancelled()
                     chunk = result.audio_data[offset : offset + safe_chunk_bytes]
                     chunk_duration_ms = (
                         (len(chunk) / 2.0) / max(1, result.sample_rate) * 1000.0
@@ -1345,7 +1385,33 @@ class LanBridgeSession:
         suppress_thinking: bool = False,
         frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
     ) -> list[dict[str, object] | bytes]:
+        cancellation = CancellationToken()
+        if not self._register_active_turn(cancellation):
+            return [error_frame("turn_busy", "a response is already being generated")]
+        try:
+            return self._run_utterance_end(
+                message,
+                suppress_thinking=suppress_thinking,
+                frame_sink=frame_sink,
+                cancellation=cancellation,
+            )
+        except OperationCancelledError as exc:
+            frame = error_frame("turn_cancelled", str(exc))
+            frame.update(self._conversation_payload())
+            return [frame]
+        finally:
+            self._finish_active_turn(cancellation)
+
+    def _run_utterance_end(
+        self,
+        message: dict[str, Any],
+        *,
+        suppress_thinking: bool,
+        frame_sink: Callable[[dict[str, object] | bytes], None] | None,
+        cancellation: CancellationToken,
+    ) -> list[dict[str, object] | bytes]:
         turn_started = time.perf_counter()
+        cancellation.raise_if_cancelled()
         seq = int(message.get("seq") or self.next_seq)
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
@@ -1405,6 +1471,7 @@ class LanBridgeSession:
                 stt_log["stt_raw_transcript"] = stt.raw_transcript
             if stt.transcript_normalized:
                 stt_log["stt_transcript_normalized"] = True
+        cancellation.raise_if_cancelled()
         require_wake_phrase = self.config.require_audio_wake_phrase and (
             self.conversation is None or self.conversation.turns == 0
         )
@@ -1470,6 +1537,7 @@ class LanBridgeSession:
                     embodiment_lines=self.robot_embodiment.prompt_lines(),
                     memory_lines=tuple(self.memory.context_lines(user_text)),
                     conversation_lines=self._conversation_context_lines(),
+                    cancellation=cancellation,
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [self._conversation_failure("runner_error", str(exc))]
@@ -1523,6 +1591,7 @@ class LanBridgeSession:
                             embodiment_lines=self.robot_embodiment.prompt_lines(),
                             memory_lines=tuple(self.memory.context_lines(user_text)),
                             conversation_lines=self._conversation_context_lines(),
+                            cancellation=cancellation,
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                         return [self._conversation_failure("runner_error", str(exc))]
@@ -1533,7 +1602,8 @@ class LanBridgeSession:
                     if researched.elapsed_ms is not None:
                         runner_summary["research_runner_elapsed_ms"] = round(researched.elapsed_ms, 2)
 
-        turn, self.memory, validation = turn_from_character_response(
+        cancellation.raise_if_cancelled()
+        turn, candidate_memory, validation = turn_from_character_response(
             raw_response,
             self.memory,
             session=self.session,
@@ -1557,9 +1627,12 @@ class LanBridgeSession:
                 turn_started=turn_started,
                 validation_issues=list(validation.issues),
                 frame_sink=frame_sink,
+                cancellation=cancellation,
             )
             if tts_error and self.conversation is not None:
                 self.conversation.turn_failed(now_ms(), "tts_error")
+            cancellation.raise_if_cancelled()
+            self.memory = candidate_memory
             self._stage_conversation_turn(user_text, turn.text, tts_error)
             self._save_memory()
             self._append_completed_turn_log(
@@ -1588,6 +1661,7 @@ class LanBridgeSession:
                 command=self.config.tts_command,
                 voice=self.config.tts_voice,
                 timeout_ms=self.config.tts_timeout_ms,
+                cancellation=cancellation,
             )
             turn = replace(
                 turn,
@@ -1626,6 +1700,8 @@ class LanBridgeSession:
             tts_error = str(exc)
         if tts_error and self.conversation is not None:
             self.conversation.turn_failed(now_ms(), "tts_error")
+        cancellation.raise_if_cancelled()
+        self.memory = candidate_memory
         self._stage_conversation_turn(user_text, turn.text, tts_error)
         self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
@@ -1731,25 +1807,46 @@ def handle_connection(
     print("[bridge-lan] session_hello=1", flush=True)
 
     pending_short_chunk: bytes | None = None
+    send_lock = threading.RLock()
+    turn_thread: threading.Thread | None = None
+    turn_errors: queue.Queue[BaseException] = queue.Queue()
 
     def send_live(frame: dict[str, object] | bytes) -> None:
         nonlocal pending_short_chunk
-        if pending_short_chunk is not None:
-            send_connection_frame(
-                conn,
-                config,
-                pending_short_chunk,
-                final_binary_chunk=not isinstance(frame, bytes),
-            )
+        with send_lock:
+            if pending_short_chunk is not None:
+                send_connection_frame(
+                    conn,
+                    config,
+                    pending_short_chunk,
+                    final_binary_chunk=not isinstance(frame, bytes),
+                )
+                pending_short_chunk = None
+            if (
+                config.stream_tts_phrases
+                and isinstance(frame, bytes)
+                and len(frame) < config.downlink_audio_chunk_bytes
+            ):
+                pending_short_chunk = frame
+                return
+            send_connection_frame(conn, config, frame)
+
+    def discard_pending_audio() -> None:
+        nonlocal pending_short_chunk
+        with send_lock:
             pending_short_chunk = None
-        if (
-            config.stream_tts_phrases
-            and isinstance(frame, bytes)
-            and len(frame) < config.downlink_audio_chunk_bytes
-        ):
-            pending_short_chunk = frame
-            return
-        send_connection_frame(conn, config, frame)
+
+    def run_turn(text: str, suppress_thinking: bool) -> None:
+        try:
+            frames = session.handle_text(
+                text,
+                suppress_thinking=suppress_thinking,
+                frame_sink=send_live if config.stream_tts_phrases else None,
+            )
+            for frame in frames:
+                send_live(frame)
+        except Exception as exc:  # surfaced on the connection thread
+            turn_errors.put(exc)
 
     if config.auto_turn_text:
         seq = now_ms() % 1000000
@@ -1781,62 +1878,90 @@ def handle_connection(
             f"binary_bytes={binary_bytes} text_types={','.join(text_types)}",
             flush=True,
         )
-    while True:
-        opcode, payload = read_ws_frame(conn)
-        if opcode == 0x8:
-            conn.sendall(encode_ws_close())
-            break
-        if opcode == 0x9:
-            conn.sendall(encode_ws_frame(payload, opcode=0xA))
-            continue
-        if opcode == 0x1:
-            text = payload.decode("utf-8")
-            text_message_type = ""
-            try:
-                parsed_text = json.loads(text)
-                if isinstance(parsed_text, dict):
-                    text_message_type = str(parsed_text.get("type", "")).strip().lower()
-            except json.JSONDecodeError:
+    try:
+        while True:
+            if not turn_errors.empty():
+                raise turn_errors.get_nowait()
+            opcode, payload = read_ws_frame(conn)
+            if opcode == 0x8:
+                session.cancel_active_turn("connection_closed")
+                discard_pending_audio()
+                with send_lock:
+                    conn.sendall(encode_ws_close())
+                break
+            if opcode == 0x9:
+                with send_lock:
+                    conn.sendall(encode_ws_frame(payload, opcode=0xA))
+                continue
+            if opcode == 0x1:
+                text = payload.decode("utf-8")
                 text_message_type = ""
-            if '"type":"heartbeat"' in text or '"type": "heartbeat"' in text:
-                if '"mww_' in text or '"wake_' in text:
-                    print(f"[bridge-lan] heartbeat {text}", flush=True)
-                else:
-                    print("[bridge-lan] heartbeat", flush=True)
-            elif '"type":"utterance_start"' in text or '"type": "utterance_start"' in text:
-                print("[bridge-lan] utterance_start", flush=True)
-            elif '"type":"utterance_end"' in text or '"type": "utterance_end"' in text:
-                print("[bridge-lan] utterance_end", flush=True)
-            early_frame = session.early_thinking_frame(text)
-            if early_frame is not None:
-                conn.sendall(encode_ws_text(frame_to_text(early_frame)))
-            frames = session.handle_text(
-                text,
-                suppress_thinking=early_frame is not None,
-                frame_sink=(
-                    send_live
-                    if config.stream_tts_phrases and text_message_type == "utterance_end"
-                    else None
-                ),
-            )
-            if text_message_type == "heartbeat":
+                try:
+                    parsed_text = json.loads(text)
+                    if isinstance(parsed_text, dict):
+                        text_message_type = str(parsed_text.get("type", "")).strip().lower()
+                except json.JSONDecodeError:
+                    text_message_type = ""
+                if '"type":"heartbeat"' in text or '"type": "heartbeat"' in text:
+                    if '"mww_' in text or '"wake_' in text:
+                        print(f"[bridge-lan] heartbeat {text}", flush=True)
+                    else:
+                        print("[bridge-lan] heartbeat", flush=True)
+                elif '"type":"utterance_start"' in text or '"type": "utterance_start"' in text:
+                    print("[bridge-lan] utterance_start", flush=True)
+                elif '"type":"utterance_end"' in text or '"type": "utterance_end"' in text:
+                    print("[bridge-lan] utterance_end", flush=True)
+
+                if text_message_type in ("cancel", "utterance_start"):
+                    session.cancel_active_turn(
+                        str(parsed_text.get("reason") or "barge_in")
+                        if isinstance(parsed_text, dict)
+                        else "barge_in"
+                    )
+                    discard_pending_audio()
+
+                if text_message_type == "utterance_end":
+                    if turn_thread is not None and turn_thread.is_alive():
+                        turn_thread.join(timeout=1.5)
+                    if turn_thread is not None and turn_thread.is_alive():
+                        send_live(error_frame("turn_busy", "the cancelled response is still stopping"))
+                        continue
+                    early_frame = session.early_thinking_frame(text)
+                    if early_frame is not None:
+                        send_live(early_frame)
+                    turn_thread = threading.Thread(
+                        target=run_turn,
+                        args=(text, early_frame is not None),
+                        name="stackchan-turn-worker",
+                        daemon=True,
+                    )
+                    turn_thread.start()
+                    continue
+
+                frames = session.handle_text(text)
+                if text_message_type == "heartbeat":
+                    frames = []
+            elif opcode == 0x2:
+                before_chunks = session.audio.chunks
+                frames = session.handle_binary(payload)
+                if session.audio.chunks != before_chunks and (
+                    session.audio.chunks == 1 or session.audio.chunks % 20 == 0
+                ):
+                    print(
+                        f"[bridge-lan] utterance_audio chunks={session.audio.chunks} "
+                        f"bytes={session.audio.bytes_received}",
+                        flush=True,
+                    )
                 frames = []
-        elif opcode == 0x2:
-            before_chunks = session.audio.chunks
-            frames = session.handle_binary(payload)
-            if session.audio.chunks != before_chunks and (
-                session.audio.chunks == 1 or session.audio.chunks % 20 == 0
-            ):
-                print(
-                    f"[bridge-lan] utterance_audio chunks={session.audio.chunks} "
-                    f"bytes={session.audio.bytes_received}",
-                    flush=True,
-                )
-            frames = []
-        else:
-            frames = [error_frame("unsupported_websocket_opcode", str(opcode))]
-        for frame in frames:
-            send_live(frame)
+            else:
+                frames = [error_frame("unsupported_websocket_opcode", str(opcode))]
+            for frame in frames:
+                send_live(frame)
+    finally:
+        session.cancel_active_turn("connection_closed")
+        discard_pending_audio()
+        if turn_thread is not None and turn_thread.is_alive():
+            turn_thread.join(timeout=2.0)
     return session.memory
 
 

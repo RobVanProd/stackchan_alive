@@ -96,9 +96,15 @@ firmware to its normal local face and wake behavior.
   the prior 4.8-second maximum as its no-speech or ambiguous fallback. Initial wake-gated v1
   capture remains unchanged. Native tests and the public full build pass; real-room threshold
   evidence is still required before promotion.
-- The remaining core slice is genuinely concurrent cancellation of in-flight model generation and
-  playback. The state machine emits bounded cancellation actions, but the synchronous LAN worker
-  cannot yet process another socket frame while a model or TTS subprocess owns the turn.
+- The LAN bridge now keeps its socket reader responsive while one serialized turn worker owns
+  Gemma and TTS. `cancel` or a companion-originated `utterance_start` cancels the active token,
+  terminates the model/RVC process tree, drops a pending unsent audio tail, and prevents cancelled
+  model memory or session history from committing. Host tests prove both real child-process
+  termination and cancellation arriving through WebSocket while generation is blocked.
+- Remaining: the onboard microphones are still echo-guarded while Stackchan's speaker is active.
+  Therefore this source proves host/companion interruption, not yet a person speaking over the
+  physical robot speaker. On-device overlap detection, immediate speaker cancellation, echo
+  rejection, and exact-image hardware qualification remain required before barge-in promotion.
 
 ## Memory Model
 
@@ -128,7 +134,8 @@ firmware to its normal local face and wake behavior.
 - Complete TTS/RVC rendering faster than real time with zero truncation.
 - No robot-speech echo accepted as a user turn across 100 reply windows.
 - Explicit exit and silence timeout close capture every time.
-- Barge-in cancels playback without leaving speaker, mic, or motion state stuck.
+- Host/companion barge-in cancels generation and TTS without committing stale memory or audio.
+- Physical over-speaker barge-in cancels playback without leaving speaker, mic, or motion stuck.
 - Memory recall is relevant, privacy-filtered, forgettable, and does not recite logs.
 - Bridge loss returns to wake-gated local behavior without rebooting or blacking out the face.
 - A final no-motion conversation soak precedes an actuator-enabled conversation soak.

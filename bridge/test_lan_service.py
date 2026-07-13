@@ -5,6 +5,7 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -34,6 +35,7 @@ from lan_service import (
     serve,
     websocket_accept_value,
 )
+from cancellation import OperationCancelledError
 from bridge_memory import BridgeMemory
 from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
@@ -161,6 +163,133 @@ class LanServiceTests(unittest.TestCase):
         thread.join(timeout=5.0)
 
         self.assertFalse(thread.is_alive())
+        self.assertEqual([], errors)
+
+    def test_cancel_interrupts_active_model_process_without_committing_its_memory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            marker = Path(temp_dir) / "model-finished.txt"
+            script = Path(temp_dir) / "slow_model.py"
+            script.write_text(
+                "import json,pathlib,sys,time\n"
+                "sys.stdin.read()\n"
+                "time.sleep(3)\n"
+                f"pathlib.Path({str(marker)!r}).write_text('finished')\n"
+                "print(json.dumps({\n"
+                "  'spoken_text': 'This stale response must never play.',\n"
+                "  'mode': 'think',\n"
+                "  'earcon': 'think',\n"
+                "  'emotion': {'arousal': 0.1, 'valence': 0.0},\n"
+                "  'memory_write': {'project.note': 'stale'},\n"
+                "  'memory_forget': []\n"
+                "}))\n",
+                encoding="utf-8",
+            )
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    runner_command=f'"{sys.executable}" "{script}"',
+                    require_runner=True,
+                    runner_timeout_ms=5000,
+                )
+            )
+            result: list[list[dict[str, object] | bytes]] = []
+            worker = threading.Thread(
+                target=lambda: result.append(
+                    session.handle_text(
+                        json.dumps({"type": "utterance_end", "seq": 91, "text": "Tell me something."})
+                    )
+                )
+            )
+            worker.start()
+            time.sleep(0.15)
+
+            cancel_frames = session.handle_text(
+                json.dumps({"type": "cancel", "reason": "barge_in"})
+            )
+            worker.join(timeout=2.0)
+
+            self.assertFalse(worker.is_alive())
+            self.assertEqual("cancelled", cancel_frames[0]["code"])
+            self.assertEqual("turn_cancelled", result[0][0]["code"])
+            self.assertIn("barge_in", result[0][0]["detail"])
+            self.assertFalse(marker.exists())
+            self.assertNotIn("project.note", json.dumps(session.memory.to_dict()))
+
+    def test_websocket_loop_reads_cancel_while_model_turn_is_running(self):
+        with socket.create_server(("127.0.0.1", 0)) as probe:
+            port = int(probe.getsockname()[1])
+        model_started = threading.Event()
+        errors: list[BaseException] = []
+
+        def blocking_runner(*_args, cancellation=None, **_kwargs):
+            model_started.set()
+            deadline = time.monotonic() + 4.0
+            while time.monotonic() < deadline:
+                if cancellation is not None and cancellation.cancelled:
+                    raise OperationCancelledError(cancellation.reason)
+                time.sleep(0.01)
+            raise AssertionError("model turn was not cancelled")
+
+        def run_server():
+            try:
+                serve(
+                    LanBridgeConfig(
+                        host="127.0.0.1",
+                        port=port,
+                        once=True,
+                        runner_command="fake-runner",
+                        require_runner=True,
+                        downlink_text_frame_delay_ms=0,
+                    )
+                )
+            except BaseException as exc:  # pragma: no cover - surfaced by assertion
+                errors.append(exc)
+
+        with patch("lan_service.run_runner_profile", side_effect=blocking_runner):
+            server = threading.Thread(target=run_server, daemon=True)
+            server.start()
+            request = (
+                "GET /bridge HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "\r\n"
+            ).encode("ascii")
+            with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+                client.sendall(request)
+                response = bytearray()
+                while b"\r\n\r\n" not in response:
+                    response.extend(client.recv(1))
+                read_ws_frame(client)  # session hello
+                client.sendall(
+                    encode_ws_text(
+                        json.dumps({"type": "utterance_end", "seq": 92, "text": "Tell me something."})
+                    )
+                )
+                opcode, payload = read_ws_frame(client)
+                self.assertEqual("thinking", json.loads(payload.decode("utf-8"))["type"])
+                self.assertTrue(model_started.wait(timeout=1.0))
+
+                started = time.monotonic()
+                client.sendall(
+                    encode_ws_text(json.dumps({"type": "cancel", "reason": "barge_in"}))
+                )
+                codes: set[str] = set()
+                while time.monotonic() - started < 2.0 and len(codes) < 2:
+                    opcode, payload = read_ws_frame(client)
+                    if opcode == 0x1:
+                        frame = json.loads(payload.decode("utf-8"))
+                        if frame.get("code"):
+                            codes.add(str(frame["code"]))
+                elapsed = time.monotonic() - started
+                client.sendall(encode_ws_frame(b"", opcode=0x8))
+
+            server.join(timeout=3.0)
+
+        self.assertLess(elapsed, 2.0)
+        self.assertEqual({"cancelled", "turn_cancelled"}, codes)
+        self.assertFalse(server.is_alive())
         self.assertEqual([], errors)
 
     def test_prompt_case_can_follow_utterance_text(self):

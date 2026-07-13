@@ -10,12 +10,13 @@ import io
 import json
 import os
 import re
-import subprocess
-import time
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from cancellable_process import ProcessTimeoutError, run_cancellable_process
+from cancellation import CancellationToken
 
 DEFAULT_TTS_TIMEOUT_MS = 45000
 DEFAULT_TTS_VOICE = "stackchan-rvc-bright-robot"
@@ -328,26 +329,29 @@ def clamp_int(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
 
-def run_tts_command(command: str, text: str, voice: str, timeout_ms: int) -> tuple[tuple[TtsBeat, ...], dict[str, object], float]:
+def run_tts_command(
+    command: str,
+    text: str,
+    voice: str,
+    timeout_ms: int,
+    cancellation: CancellationToken | None = None,
+) -> tuple[tuple[TtsBeat, ...], dict[str, object], float]:
     payload = text.encode("utf-8")
     env = os.environ.copy()
     env["STACKCHAN_TTS_TEXT_BYTES"] = str(len(payload))
     env["STACKCHAN_TTS_VOICE"] = voice
     env["STACKCHAN_TTS_OUTPUT"] = "stackchan.tts-metadata.v1"
-    start = time.perf_counter()
     try:
-        completed = subprocess.run(
+        completed = run_cancellable_process(
             command,
-            input=payload,
-            capture_output=True,
-            shell=True,
-            check=False,
-            timeout=max(1, timeout_ms) / 1000.0,
+            input_data=payload,
+            timeout_ms=timeout_ms,
+            cancellation=cancellation,
             env=env,
         )
-    except subprocess.TimeoutExpired as exc:
+    except ProcessTimeoutError as exc:
         raise TtsExecutionError(f"tts command timed out after {timeout_ms} ms") from exc
-    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    elapsed_ms = completed.elapsed_ms
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace").strip()
         raise TtsExecutionError(f"tts command failed with exit {completed.returncode}: {stderr}")
@@ -361,6 +365,7 @@ def synthesize_speech(
     command: str = "",
     voice: str = DEFAULT_TTS_VOICE,
     timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS,
+    cancellation: CancellationToken | None = None,
 ) -> TtsResult:
     resolved_command, command_source = resolve_tts_command(command)
     if not resolved_command:
@@ -369,7 +374,9 @@ def synthesize_speech(
     if not clean_text:
         raise TtsExecutionError("tts text is empty")
     clean_voice = " ".join(str(voice or DEFAULT_TTS_VOICE).split())[:80]
-    beats, metadata, elapsed_ms = run_tts_command(resolved_command, clean_text, clean_voice, timeout_ms)
+    beats, metadata, elapsed_ms = run_tts_command(
+        resolved_command, clean_text, clean_voice, timeout_ms, cancellation
+    )
     return TtsResult(
         beats=beats,
         elapsed_ms=elapsed_ms,

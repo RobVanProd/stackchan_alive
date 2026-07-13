@@ -6,11 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
-import time
 from dataclasses import dataclass
 from typing import Any
 
+from cancellable_process import ProcessTimeoutError, run_cancellable_process
+from cancellation import CancellationToken
 from character_harness import MODEL_PROFILES, PROMPT_SUITE, HarnessResult, build_prompt, validate_response
 from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
@@ -189,27 +189,28 @@ def resolve_command(profile_id: str, override: str = "") -> tuple[str | None, st
     return None, "deterministic_fallback"
 
 
-def run_command(command: str, prompt: str, timeout_ms: int) -> tuple[str, float, float]:
-    start = time.perf_counter()
+def run_command(
+    command: str,
+    prompt: str,
+    timeout_ms: int,
+    cancellation: CancellationToken | None = None,
+) -> tuple[str, float, float]:
     try:
-        completed = subprocess.run(
+        completed = run_cancellable_process(
             command,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            shell=True,
-            check=False,
-            timeout=max(timeout_ms, 1) / 1000.0,
+            input_data=prompt.encode("utf-8"),
+            timeout_ms=timeout_ms,
+            cancellation=cancellation,
         )
-    except subprocess.TimeoutExpired as exc:
+    except ProcessTimeoutError as exc:
         raise RunnerExecutionError(f"model command timed out after {timeout_ms} ms") from exc
 
-    elapsed_ms = (time.perf_counter() - start) * 1000.0
-    stdout = completed.stdout.strip()
+    elapsed_ms = completed.elapsed_ms
+    stdout = completed.stdout.decode("utf-8", errors="replace").strip()
     approx_tokens = max(1, len(stdout.split()))
     approx_tokens_per_sec = approx_tokens / max(elapsed_ms / 1000.0, 0.001)
     if completed.returncode != 0:
-        stderr = completed.stderr.strip()
+        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
         raise RunnerExecutionError(f"model command failed with exit {completed.returncode}: {stderr}")
     return stdout, elapsed_ms, approx_tokens_per_sec
 
@@ -227,6 +228,7 @@ def run_runner_profile(
     embodiment_lines: tuple[str, ...] = (),
     memory_lines: tuple[str, ...] = (),
     conversation_lines: tuple[str, ...] = (),
+    cancellation: CancellationToken | None = None,
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
@@ -250,7 +252,9 @@ def run_runner_profile(
     approx_tokens_per_sec: float | None = None
 
     if resolved_command:
-        raw_response, elapsed_ms, approx_tokens_per_sec = run_command(resolved_command, prompt, timeout_ms)
+        raw_response, elapsed_ms, approx_tokens_per_sec = run_command(
+            resolved_command, prompt, timeout_ms, cancellation
+        )
     else:
         if require_runner:
             profile_env = RUNNER_PROFILES[profile_id]["command_env"]

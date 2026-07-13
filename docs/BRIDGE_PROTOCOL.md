@@ -188,7 +188,12 @@ downlink sink.
 - Binary client frames after `utterance_start`: signed 16-bit mono PCM chunks.
 - `utterance_audio`: optional development text frame with `pcm_b64`; normal LAN use sends binary PCM WebSocket frames after `utterance_start`.
 - `utterance_end`: user speech ended; bridge should begin STT/LLM/TTS work. A `text` or `transcript` field bypasses STT and is useful for deterministic tests.
-- `cancel`: barge-in or local safety state interrupted playback.
+- `cancel`: barge-in or local safety state interrupted the active turn. The host keeps reading
+  while Gemma/TTS runs, cancels the active subprocess tree, discards any pending unsent audio tail,
+  and does not commit cancelled model-generated memory or conversation history. A companion may
+  also send `utterance_start` during an active turn to take the same host cancellation path before
+  beginning replacement capture. This does not by itself prove onboard over-speaker detection;
+  firmware microphone/speaker overlap remains separately gated.
 - `playback_complete`: firmware-confirmed speaker drain for one response sequence. The device
   sends this only after the audio stream is complete, M5Speaker is idle, and the wake microphone
   pause has been released. It is evidence for Conversation v2; v1 acknowledges it without opening
