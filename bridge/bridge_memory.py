@@ -347,6 +347,13 @@ def _rank_for_prompt(record: MemoryRecord, query_terms: set[str]) -> tuple[int, 
     )
 
 
+def _relevant_for_prompt(record: MemoryRecord, query_terms: set[str]) -> bool:
+    if not query_terms:
+        return True
+    rank = _rank_for_prompt(record, query_terms)
+    return rank[0] > 0 or rank[1] > 0
+
+
 def _upsert_durable(
     records: Iterable[MemoryRecord],
     key: str,
@@ -735,6 +742,9 @@ class BridgeMemory:
         candidates = [
             (record, "durable") for record in durable if record.key not in _NAME_KEYS
         ] + [(record, "recent") for record in recent]
+        candidates = [
+            item for item in candidates if _relevant_for_prompt(item[0], query_terms)
+        ]
         selected = sorted(
             candidates,
             key=lambda item: (_rank_for_prompt(item[0], query_terms), item[1] == "durable"),

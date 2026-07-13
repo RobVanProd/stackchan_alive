@@ -157,7 +157,9 @@ URLs in `response_start`, and cannot write or delete memory.
 `BridgeMemory.context_lines(user_text)` ranks durable and recent facts against the current query,
 keeps identity available, injects at most eight non-identity records, and refreshes `last_used_at`
 only for records actually supplied to the model. This prevents unrelated facts from crowding out
-the item the user is asking Stackchan to remember.
+the item the user is asking Stackchan to remember. For a nonempty production query, a record with
+no key or value term overlap is omitted entirely rather than being used as importance-ranked fill.
+The empty-query developer preview remains a bounded store inspection, not the production turn path.
 
 Use one of these command sources to run a real local model:
 

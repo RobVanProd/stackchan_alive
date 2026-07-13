@@ -354,6 +354,47 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("You asked me to call you Rob.", name_response["text"])
         self.assertEqual(["local_clock", "memory_recall"], [record["local_fact_tool"] for record in records])
 
+    def test_model_prompt_receives_only_query_relevant_memory(self):
+        memory = BridgeMemory(preferred_name="Rob")
+        memory = memory.apply_character_memory(
+            {"memory_write": {"project.servo_bracket_color": "the servo bracket is teal"}}
+        )
+        memory = memory.apply_character_memory(
+            {"memory_write": {"project.launch_music": "quiet piano"}}
+        )
+        runner_result = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "The bracket is teal.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+        session = LanBridgeSession(LanBridgeConfig(), memory=memory)
+
+        with patch("lan_service.run_runner_profile", return_value=runner_result) as runner:
+            session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 15,
+                        "text": "What color is the servo bracket?",
+                    }
+                )
+            )
+
+        memory_lines = runner.call_args.kwargs["memory_lines"]
+        self.assertIn("preferred_name: Rob", memory_lines)
+        self.assertTrue(any("servo_bracket_color" in line for line in memory_lines))
+        self.assertFalse(any("launch_music" in line for line in memory_lines), memory_lines)
+
     def test_explicit_research_fallback_is_bounded_and_rejects_sensitive_queries(self):
         request = explicit_research_request("Please search the web for the latest Stackchan release")
         self.assertEqual("web_search", request["name"])
@@ -1065,10 +1106,16 @@ class LanServiceTests(unittest.TestCase):
             )
             with patch("lan_service.run_runner_profile", return_value=runner) as run_runner:
                 returned = session.handle_text(
-                    json.dumps({"type": "utterance_end", "seq": 21, "text": "Tell me something."}),
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 21,
+                            "text": "Tell me the bracket color.",
+                        }
+                    ),
                     frame_sink=emitted.append,
                 )
-            self.assertEqual("Tell me something.", run_runner.call_args.kwargs["user_text"])
+            self.assertEqual("Tell me the bracket color.", run_runner.call_args.kwargs["user_text"])
             self.assertIn("mode: listening", run_runner.call_args.kwargs["embodiment_lines"])
             self.assertIn(
                 "approved_fact project.bracket_color: blue",

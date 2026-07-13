@@ -103,7 +103,8 @@ without the normal explicit opt-in and privacy checks.
 
 The bridge injects only the bounded, privacy-filtered, query-ranked
 `BridgeMemory.context_lines(user_text)` view into the model prompt. Identity remains available;
-at most eight other facts are supplied, and only supplied records have their usage time refreshed.
+at most eight other facts are supplied, zero-overlap facts are excluded from nonempty production
+queries, and only supplied records have their usage time refreshed.
 Explicit `remember that my <subject> is <value>` and `remember the project <subject> is <value>`
 requests are captured deterministically from the wake-gated transcript before inference, using the
 same namespace, length, and privacy filters. Exact approved-fact questions are answered by the

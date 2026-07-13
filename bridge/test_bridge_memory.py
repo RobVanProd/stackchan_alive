@@ -297,6 +297,61 @@ class BridgeMemoryStoreTests(unittest.TestCase):
             lines,
         )
 
+    def test_prompt_context_does_not_inject_unrelated_facts(self):
+        memory = BridgeMemory(preferred_name="Rob")
+        for index in range(MAX_PROMPT_FACTS):
+            memory = memory.apply_character_memory(
+                {"memory_write": {f"project.fact_{index}": f"unrelated note {index}"}}
+            )
+
+        lines = memory.context_lines("How are you feeling today?")
+
+        self.assertIn("preferred_name: Rob", lines)
+        self.assertFalse(any(line.startswith("approved_fact ") for line in lines), lines)
+
+    def test_prompt_context_marks_only_retrieved_facts_as_used(self):
+        memory = BridgeMemory.from_dict(
+            {
+                "schema": "stackchan.bridge-memory.v3",
+                "schema_version": 3,
+                "durable_facts": [
+                    {
+                        "key": "project.servo_bracket_color",
+                        "value": "the servo bracket is teal",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z",
+                        "last_used_at": "2026-01-01T00:00:00Z",
+                        "importance": 0.75,
+                    },
+                    {
+                        "key": "project.launch_music",
+                        "value": "quiet piano",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z",
+                        "last_used_at": "2026-01-01T00:00:00Z",
+                        "importance": 0.75,
+                    },
+                ],
+                "recent_context": [],
+                "turns_seen": 1,
+            }
+        )
+
+        lines = memory.context_lines("What color is the servo bracket?")
+        saved = memory.to_dict()["durable_facts"]
+        by_key = {record["key"]: record for record in saved}
+
+        self.assertTrue(any("servo_bracket_color" in line for line in lines), lines)
+        self.assertFalse(any("launch_music" in line for line in lines), lines)
+        self.assertNotEqual(
+            "2026-01-01T00:00:00Z",
+            by_key["project.servo_bracket_color"]["last_used_at"],
+        )
+        self.assertEqual(
+            "2026-01-01T00:00:00Z",
+            by_key["project.launch_music"]["last_used_at"],
+        )
+
     def test_privacy_policy_rejects_sensitive_and_raw_content(self):
         memory = BridgeMemory().remember_user_text(
             "Please store the raw audio transcript while we tune the voice."
