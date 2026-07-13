@@ -111,6 +111,9 @@ Working on real hardware:
    - Done in post-release source: validated bridge persona selection works at startup and between
      turns, rejects path-like/invalid IDs and active-turn races, and clears cross-character session
      context. Embedded face/earcon/prompt assets remain truthfully build-time.
+   - Runtime persona hot-swap is therefore complete for host-owned prompt, behavior, and voice
+     selection between turns. A coherent firmware asset hot-swap remains future work; the bridge
+     must never claim an embedded face or earcon changed when only the host persona changed.
    - Done in post-release source: OTA stable/beta manifests bind each enabled channel to an exact
      version, source commit, HTTPS URL, byte count, and SHA-256; the LAN uploader can require a
      matching local artifact without adding automatic download or flashing.
