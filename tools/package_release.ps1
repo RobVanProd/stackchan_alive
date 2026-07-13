@@ -465,6 +465,7 @@ Copy-Item -LiteralPath "data/voice_persona.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_source_provenance.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base.yaml" -Destination $dataDir
 Copy-Item -LiteralPath "data/voice_rvc_base_metadata.json" -Destination $dataDir
+Copy-Item -LiteralPath "data/persona_index.json" -Destination $dataDir
 $bridgePackageFiles = @(
   "README.md",
   "bridge_memory.py",
@@ -548,6 +549,10 @@ Copy-Item -LiteralPath "bridge/models/face_detection_yunet_2023mar.onnx" -Destin
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $outDir "personas") -Recurse
 
 $personaVerifierPython = Get-StackchanPreviewPython
+& $personaVerifierPython tools/build_persona_index.py --check
+if ($LASTEXITCODE -ne 0) {
+  throw "Persona index is stale or invalid."
+}
 $personaStatus = & $personaVerifierPython tools/verify_persona_pack.py spark --json
 $personaStatusExit = $LASTEXITCODE
 $personaStatusPath = Join-Path $outDir "persona_pack_status.json"
@@ -752,6 +757,9 @@ $releaseTools = @(
   "tools/create_persona_pack.cmd",
   "tools/create_persona_pack.ps1",
   "tools/create_persona_pack.py",
+  "tools/build_persona_index.cmd",
+  "tools/build_persona_index.ps1",
+  "tools/build_persona_index.py",
   "tools/export_persona_prompt_assets.py",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
@@ -1353,6 +1361,7 @@ $manifest = [ordered]@{
   gapAnalysis = "docs/GAP_ANALYSIS.md"
   johnnyAlivePathway = "docs/JOHNNY_ALIVE_PATHWAY.md"
   personaPacksGuide = "docs/PERSONA_PACKS.md"
+  personaIndex = "data/persona_index.json"
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   voiceV2Guide = "docs/VOICE_V2_DIRECTML.md"
   hardwareFeatureRoadmap = "docs/HARDWARE_FEATURE_ROADMAP.md"
@@ -1677,6 +1686,9 @@ $manifest = [ordered]@{
     "tools/create_persona_pack.cmd",
     "tools/create_persona_pack.ps1",
     "tools/create_persona_pack.py",
+    "tools/build_persona_index.cmd",
+    "tools/build_persona_index.ps1",
+    "tools/build_persona_index.py",
     "tools/export_persona_prompt_assets.py",
     "tools/render_voice_samples.cmd",
     "tools/render_voice_samples.ps1",

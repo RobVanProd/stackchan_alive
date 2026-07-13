@@ -3,7 +3,7 @@ id: glow
 name: Stackchan Glow
 version: 0.1.0
 author: RobVanProd
-license: project-internal-review
+license: Apache-2.0
 description: Second Stackchan:Alive character OS persona. Calm, concise, gentle, and safety-aware.
 provenance:
   character_lock: ../../docs/CHARACTER_LOCK.md

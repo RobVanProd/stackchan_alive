@@ -1,0 +1,42 @@
+{
+  "invalid_count": 0,
+  "pack_count": 2,
+  "packs": [
+    {
+      "author": "RobVanProd",
+      "capabilities": {
+        "bridge_load_time": true,
+        "firmware_build_time": true,
+        "runtime_hot_swap": false
+      },
+      "description": "Second Stackchan:Alive character OS persona. Calm, concise, gentle, and safety-aware.",
+      "id": "glow",
+      "issues": [],
+      "license": "Apache-2.0",
+      "name": "Stackchan Glow",
+      "path": "personas/glow",
+      "sha256": "c3e4157831c5ba4133a32507bfd1cac33f66c9fa984754105784287bbb2fb0fc",
+      "valid": true,
+      "version": "0.1.0"
+    },
+    {
+      "author": "RobVanProd",
+      "capabilities": {
+        "bridge_load_time": true,
+        "firmware_build_time": true,
+        "runtime_hot_swap": false
+      },
+      "description": "Reference Stackchan:Alive character OS persona. Curious, concise, bright, and safety-aware.",
+      "id": "spark",
+      "issues": [],
+      "license": "Apache-2.0",
+      "name": "Stackchan Spark",
+      "path": "personas/spark",
+      "sha256": "011adf4f5834d88a73a562978592a984b495448c744d132255f1b2deb56fa3ba",
+      "valid": true,
+      "version": "0.1.0"
+    }
+  ],
+  "schema": "stackchan.persona-index.v1",
+  "valid_count": 2
+}

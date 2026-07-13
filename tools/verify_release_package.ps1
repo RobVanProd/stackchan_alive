@@ -215,6 +215,7 @@ $requiredFiles = @(
   "data/voice_source_provenance.yaml",
   "data/voice_rvc_base.yaml",
   "data/voice_rvc_base_metadata.json",
+  "data/persona_index.json",
   "bridge/README.md",
   "bridge/bridge_memory.py",
   "bridge/test_bridge_memory.py",
@@ -545,6 +546,9 @@ $requiredFiles = @(
   "tools/create_persona_pack.cmd",
   "tools/create_persona_pack.ps1",
   "tools/create_persona_pack.py",
+  "tools/build_persona_index.cmd",
+  "tools/build_persona_index.ps1",
+  "tools/build_persona_index.py",
   "tools/export_persona_prompt_assets.py",
   "tools/verify_persona_pack.cmd",
   "tools/verify_persona_pack.ps1",
@@ -2590,6 +2594,37 @@ foreach ($pattern in @("Persona pack author is required", "Persona pack author m
     throw "bridge/persona_pack.py missing author provenance guard: $pattern"
   }
 }
+foreach ($pattern in @("stackchan.persona-index.v1", "runtime_hot_swap", "persona pack file escapes pack root")) {
+  if ($personaPackLibraryText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/persona_pack.py missing persona index guard: $pattern"
+  }
+}
+
+$personaIndex = Get-Content -LiteralPath (Join-PackagePath "data/persona_index.json") -Raw |
+  ConvertFrom-Json
+if ($personaIndex.schema -ne "stackchan.persona-index.v1" -or
+    [int]$personaIndex.pack_count -lt 2 -or
+    [int]$personaIndex.valid_count -ne [int]$personaIndex.pack_count -or
+    [int]$personaIndex.invalid_count -ne 0) {
+  throw "Persona index summary is not release-ready."
+}
+foreach ($personaId in @("spark", "glow")) {
+  $entry = @($personaIndex.packs | Where-Object { $_.id -eq $personaId }) | Select-Object -First 1
+  if ($null -eq $entry -or -not $entry.valid) {
+    throw "Persona index missing valid pack: $personaId"
+  }
+  if ($entry.license -ne "Apache-2.0") {
+    throw "Persona index pack license mismatch for ${personaId}: $($entry.license)"
+  }
+  if ([string]$entry.sha256 -notmatch '^[0-9a-f]{64}$') {
+    throw "Persona index pack hash is invalid for $personaId"
+  }
+  if ($entry.capabilities.runtime_hot_swap -ne $false -or
+      $entry.capabilities.bridge_load_time -ne $true -or
+      $entry.capabilities.firmware_build_time -ne $true) {
+    throw "Persona index capabilities are not truthful for $personaId"
+  }
+}
 
 $personaCreatorPowerShellText = Get-Content -LiteralPath (Join-PackagePath "tools/create_persona_pack.ps1") -Raw
 foreach ($pattern in @('[Parameter(Mandatory = $true)]', '[ValidateNotNullOrEmpty()]', '$argsList += @("--author", $Author)')) {
@@ -2734,6 +2769,10 @@ if ($manifest.activePersonaVerification -ne "persona_pack_status.json") {
 
 if ($manifest.activePersonaPromptAssets -ne "persona_prompt_assets.json") {
   throw "Manifest activePersonaPromptAssets mismatch: $($manifest.activePersonaPromptAssets)"
+}
+
+if ($manifest.personaIndex -ne "data/persona_index.json") {
+  throw "Manifest personaIndex mismatch: $($manifest.personaIndex)"
 }
 
 if ($manifest.privacyModel -ne "docs/PRIVACY.md") {

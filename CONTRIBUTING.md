@@ -36,9 +36,10 @@ recovery archives, camera frames, raw microphone recordings, local memory files,
 weights or indexes, converted private voice samples, signing keys, or generated evidence containing
 those values. Use placeholders in documentation and synthetic fixtures in tests.
 
-The public release includes the hash-pinned Stackchan Spark production RVC model and index. BYOM is
-also supported for personal characters. Do not replace or add tracked voice models in an ordinary
-pull request. Any submitted recording or derived voice asset must be original and redistributable;
+The public release includes the hash-pinned Stackchan Spark production RVC model and index.
+Bring-your-own-model (BYOM) is also supported for personal characters. Do not replace or add
+tracked voice models in an ordinary pull request. Any submitted recording or derived voice asset
+must be original and redistributable;
 do not submit cloned character voices, actor recordings, soundboards, or unclear-source assets.
 
 If a secret reaches Git history, stop sharing it, rotate it, and report it privately. Deleting the

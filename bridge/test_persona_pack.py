@@ -1,14 +1,17 @@
 import tempfile
 import unittest
 import shutil
+import json
 from pathlib import Path
 
 from persona_pack import (
     DEFAULT_PERSONA_ID,
     PersonaPackError,
+    build_persona_index,
     load_and_validate_persona_pack,
     load_persona_pack,
     normalize_persona_id,
+    persona_pack_sha256,
     packaged_prompt_asset_manifest,
     repo_root,
     scaffold_persona_pack,
@@ -61,6 +64,72 @@ class PersonaPackTests(unittest.TestCase):
         self.assertNotIn("Johnny", prompt)
         self.assertNotIn("Short Circuit", prompt)
         self.assertNotIn("Number 5", prompt)
+
+    def test_bundled_persona_index_is_deterministic_and_explicit_about_runtime(self):
+        first = build_persona_index()
+        second = build_persona_index()
+
+        self.assertEqual(first, second)
+        self.assertEqual("stackchan.persona-index.v1", first["schema"])
+        self.assertEqual(2, first["pack_count"])
+        self.assertEqual(2, first["valid_count"])
+        self.assertEqual(0, first["invalid_count"])
+        self.assertEqual(["glow", "spark"], [entry["id"] for entry in first["packs"]])
+        for entry in first["packs"]:
+            self.assertEqual(64, len(entry["sha256"]))
+            self.assertFalse(Path(entry["path"]).is_absolute())
+            self.assertTrue(entry["capabilities"]["bridge_load_time"])
+            self.assertTrue(entry["capabilities"]["firmware_build_time"])
+            self.assertFalse(entry["capabilities"]["runtime_hot_swap"])
+
+    def test_checked_in_persona_index_matches_bundled_packs(self):
+        checked_in = json.loads((repo_root() / "data" / "persona_index.json").read_text(encoding="utf-8"))
+        self.assertEqual(build_persona_index(), checked_in)
+
+    def test_persona_index_preserves_invalid_pack_without_activating_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            bad = root / "personas" / "bad"
+            bad.mkdir(parents=True)
+            (bad / "pack.yaml").write_text("schema: wrong\nid: bad\n", encoding="utf-8")
+
+            index = build_persona_index(root)
+
+        self.assertEqual(1, index["pack_count"])
+        self.assertEqual(0, index["valid_count"])
+        self.assertFalse(index["packs"][0]["valid"])
+        self.assertFalse(index["packs"][0]["capabilities"]["bridge_load_time"])
+
+    def test_persona_pack_required_files_cannot_escape_pack_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pack_root = root / "personas" / "escape"
+            pack_root.mkdir(parents=True)
+            (root / "outside.yaml").write_text("schema: test\n", encoding="utf-8")
+            (pack_root / "pack.yaml").write_text(
+                "\n".join(
+                    [
+                        "schema: stackchan.persona-pack.v1",
+                        "id: escape",
+                        "files:",
+                        "  character: ../../outside.yaml",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(PersonaPackError, "escapes pack root"):
+                load_persona_pack("escape", root=root)
+
+    def test_persona_pack_digest_changes_with_pack_content(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "a.txt").write_text("one", encoding="utf-8")
+            before = persona_pack_sha256(root)
+            (root / "a.txt").write_text("two", encoding="utf-8")
+            after = persona_pack_sha256(root)
+        self.assertNotEqual(before, after)
 
     def test_normalize_persona_id_keeps_build_friendly_slug(self):
         self.assertEqual("my-test-bot", normalize_persona_id(" My Test Bot "))

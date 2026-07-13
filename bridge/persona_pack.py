@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 PACK_SCHEMA = "stackchan.persona-pack.v1"
+PACK_INDEX_SCHEMA = "stackchan.persona-index.v1"
 CHARACTER_SCHEMA = "stackchan.persona-character.v1"
 BEHAVIOR_SCHEMA = "stackchan.persona-behavior.v1"
 VOICE_PROVENANCE_SCHEMA = "stackchan.voice-source-provenance.v1"
@@ -488,12 +490,20 @@ def load_persona_pack(persona: str | Path | None = None, root: Path | None = Non
         raise PersonaPackError(f"persona pack manifest not found: {manifest_path}")
     manifest = load_yaml_subset(manifest_path)
     files = mapping(manifest.get("files"))
-    character_path = pack_root / str(files.get("character", "character.yaml"))
-    prompt_path = pack_root / str(files.get("prompt", "prompt.md"))
-    behavior_path = pack_root / str(files.get("behavior", "behavior.yaml"))
-    expressions_path = pack_root / str(files.get("expressions", "expressions.yaml"))
-    earcons_path = pack_root / str(files.get("earcons", "earcons.yaml"))
-    voice_path = pack_root / str(files.get("voice", "voice.yaml"))
+    def member_path(key: str, fallback: str) -> Path:
+        path = (pack_root / str(files.get(key, fallback))).resolve()
+        try:
+            path.relative_to(pack_root.resolve())
+        except ValueError as exc:
+            raise PersonaPackError(f"persona pack file escapes pack root: {key}") from exc
+        return path
+
+    character_path = member_path("character", "character.yaml")
+    prompt_path = member_path("prompt", "prompt.md")
+    behavior_path = member_path("behavior", "behavior.yaml")
+    expressions_path = member_path("expressions", "expressions.yaml")
+    earcons_path = member_path("earcons", "earcons.yaml")
+    voice_path = member_path("voice", "voice.yaml")
     for path in (character_path, prompt_path, behavior_path, expressions_path, earcons_path, voice_path):
         if not path.exists():
             raise PersonaPackError(f"persona pack file not found: {path}")
@@ -527,6 +537,11 @@ def validate_pack(pack: PersonaPack) -> list[str]:
         issues.append("behavior_schema_invalid")
     if not pack.pack_id:
         issues.append("pack_id_missing")
+    elif not re.fullmatch(PERSONA_ID_PATTERN, pack.pack_id):
+        issues.append("pack_id_invalid")
+    for field in ("name", "version", "author", "license", "description"):
+        if not str(pack.manifest.get(field, "")).strip():
+            issues.append(f"pack_{field}_missing")
     files = mapping(pack.manifest.get("files"))
     for key in REQUIRED_PACK_FILES:
         if key not in files:
@@ -713,6 +728,83 @@ def validate_pack(pack: PersonaPack) -> list[str]:
     return issues
 
 
+def persona_pack_sha256(pack_root: Path) -> str:
+    root = pack_root.resolve()
+    digest = hashlib.sha256()
+    for path in sorted((item for item in root.rglob("*") if item.is_file()), key=lambda item: item.as_posix()):
+        resolved = path.resolve()
+        try:
+            relative = resolved.relative_to(root).as_posix()
+        except ValueError as exc:
+            raise PersonaPackError(f"persona pack asset escapes pack root: {path}") from exc
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(resolved.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def build_persona_index(root: Path | None = None) -> dict[str, object]:
+    base = (root or repo_root()).resolve()
+    personas_root = (base / "personas").resolve()
+    entries: list[dict[str, object]] = []
+    if personas_root.is_dir():
+        for candidate in sorted(personas_root.iterdir(), key=lambda item: item.name.casefold()):
+            if not candidate.is_dir() or candidate.is_symlink() or not (candidate / "pack.yaml").is_file():
+                continue
+            relative_path = candidate.relative_to(base).as_posix()
+            try:
+                pack = load_persona_pack(candidate, root=base)
+                issues = validate_pack(pack)
+                if pack.pack_id != candidate.name:
+                    issues.append("pack_id_directory_mismatch")
+                entry: dict[str, object] = {
+                    "id": pack.pack_id or candidate.name,
+                    "name": str(pack.manifest.get("name", pack.display_name)).strip(),
+                    "version": str(pack.manifest.get("version", "")).strip(),
+                    "author": str(pack.manifest.get("author", "")).strip(),
+                    "license": str(pack.manifest.get("license", "")).strip(),
+                    "description": str(pack.manifest.get("description", "")).strip(),
+                    "path": relative_path,
+                    "sha256": persona_pack_sha256(candidate),
+                    "valid": not issues,
+                    "issues": sorted(set(issues)),
+                    "capabilities": {
+                        "bridge_load_time": True,
+                        "firmware_build_time": True,
+                        "runtime_hot_swap": False,
+                    },
+                }
+            except (OSError, PersonaPackError) as exc:
+                entry = {
+                    "id": candidate.name,
+                    "name": candidate.name,
+                    "version": "",
+                    "author": "",
+                    "license": "",
+                    "description": "",
+                    "path": relative_path,
+                    "sha256": "",
+                    "valid": False,
+                    "issues": [str(exc)],
+                    "capabilities": {
+                        "bridge_load_time": False,
+                        "firmware_build_time": False,
+                        "runtime_hot_swap": False,
+                    },
+                }
+            entries.append(entry)
+
+    entries.sort(key=lambda entry: str(entry["id"]))
+    return {
+        "schema": PACK_INDEX_SCHEMA,
+        "pack_count": len(entries),
+        "valid_count": sum(1 for entry in entries if entry["valid"]),
+        "invalid_count": sum(1 for entry in entries if not entry["valid"]),
+        "packs": entries,
+    }
+
+
 def load_and_validate_persona_pack(persona: str | Path | None = None, root: Path | None = None) -> PersonaPack:
     pack = load_persona_pack(persona, root)
     issues = validate_pack(pack)
@@ -725,11 +817,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate a Stackchan persona pack.")
     parser.add_argument("persona", nargs="?", default=DEFAULT_PERSONA_ID, help="Pack id or path. Defaults to spark.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable validation output.")
+    parser.add_argument("--index", action="store_true", help="Emit the deterministic installed persona index.")
     return parser
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    if args.index:
+        payload = build_persona_index()
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["invalid_count"] == 0 else 1
     try:
         pack = load_persona_pack(args.persona)
         issues = validate_pack(pack)

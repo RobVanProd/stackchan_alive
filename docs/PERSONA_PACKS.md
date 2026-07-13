@@ -107,6 +107,20 @@ hardware evidence records exactly which persona was running. No marketplace
 infrastructure is needed to start; a verified folder format that travels well *is* the MVP
 of sharing.
 
+`data/persona_index.json` is the deterministic local community-library contract. Generate it
+after adding or changing a pack, then verify it without rewriting:
+
+```powershell
+.\tools\build_persona_index.cmd
+.\tools\build_persona_index.cmd -Check
+```
+
+Every valid entry carries author/license/version metadata, a content SHA-256, a repository-relative
+path, and explicit capability flags. The current contract truthfully reports bridge selection as
+load-time, firmware assets as build-time, and runtime hot-swap as unsupported. Invalid packs remain
+visible with issues but cannot advertise activation capabilities. Required pack files and indexed
+assets are resolved inside the pack root; path or symlink escape is rejected.
+
 ## Creator path
 
 The community path must stay simple:
@@ -147,8 +161,9 @@ behavior constants, expression defaults, yawn shape, listen/think/orient motion 
 packaged prompt metadata, firmware WAV embedding list, release prompt WAV/sidecar
 packaging, voice asset validation, and red-team dry-run harness now load from
 persona packs. The red-team gate is corpus/validator-ready, but it still requires a
-configured real runner before it can pass as model evidence. Production voice assets remain
-review-gated until a licensed/owned source record clears the rollout evidence requirements.
+configured real runner before it can pass as model evidence. The bundled Stackchan Spark voice
+has a completed owned-source record; new community voice assets must likewise identify
+licensed or owned source material and pass the same hash/provenance validation.
 
 1. **Extract Spark:** create `personas/spark/` from CHARACTER_LOCK.md, `voice_persona.yaml`,
    `expressions.yaml`, and the strings currently in `SpeechPlanner.cpp` /

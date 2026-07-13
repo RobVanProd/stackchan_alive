@@ -3,7 +3,7 @@ id: spark
 name: Stackchan Spark
 version: 0.1.0
 author: RobVanProd
-license: project-internal-review
+license: Apache-2.0
 description: Reference Stackchan:Alive character OS persona. Curious, concise, bright, and safety-aware.
 provenance:
   character_lock: ../../docs/CHARACTER_LOCK.md

@@ -61,7 +61,7 @@ Working on real hardware:
 | P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. Post-release source adds deterministic person-loss phase telemetry and bounded search/sigh/settle choreography. | Physically qualify departure/reacquisition, then improve tracking speed and active-speaker selection. |
 | P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, phrase streaming, and normalized per-stage latency evidence work. | Add voice-activity-ended follow-up capture and interruption-safe concurrent barge-in. |
 | P7 Brain bridge | Real Wi-Fi bridge, Whisper, Gemma 4, local research, trusted facts, privacy-filtered memory, production voice, and recovery tooling are integrated. | Improve memory retrieval relevance and expose typed live robot state to the character prompt. |
-| P8 Continuity | Started: durable filtered facts, persona packs, robot embodiment telemetry, camera continuity, source-level person-loss choreography, and hysteretic embodied-energy state exist. | Conversation qualification, persona hot-swap, and community pack discovery. |
+| P8 Continuity | Started: durable filtered facts, persona packs, a hash-pinned local community pack index, robot embodiment telemetry, camera continuity, source-level person-loss choreography, and hysteretic embodied-energy state exist. | Conversation qualification and persona hot-swap. |
 
 ## Sequenced Post-Release Work
 
@@ -97,8 +97,10 @@ Working on real hardware:
      state into hysteretic `unknown`/`ready`/`charging`/`low`/`critical` character energy, share
      only the allowlisted label with Gemma, and keep all power/safety authority out of the model.
    - Next: physically qualify charge/discharge threshold transitions on the exact image.
-   - Add runtime persona hot-swap, a community pack index, OTA stable/beta channels, and a linear
-     first-30-minutes quickstart.
+   - Done in post-release source: deterministic validation-backed local community pack index with
+     content hashes, Apache-2.0 metadata, invalid-pack quarantine, and explicit capability flags.
+   - Next: runtime persona hot-swap and OTA stable/beta channels. The linear first-30-minutes
+     quickstart is already present in `RELEASE_QUICKSTART.md`.
 
 ## Evidence Rules
 
