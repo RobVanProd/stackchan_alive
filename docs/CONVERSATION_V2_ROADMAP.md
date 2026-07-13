@@ -69,9 +69,13 @@ firmware to its normal local face and wake behavior.
   snapshot contains no motion authority.
 - `bridge/lan_service.py` now writes `stackchan.conversation-latency.v1` stage evidence for
   capture, STT, brain work, text readiness, first audio, TTS rendering, audio duration, total turn
-  time, real-time factor, and the three initial latency/completeness gates.
+  time, real-time factor, and the four latency/completeness gates.
 - `bridge/conversation_latency_report.py --turn-log <turns.jsonl> --json --require-ready`
   summarizes p50/p95/max and refuses readiness when any audio turn misses or fails a gate.
+- Network turns also record `latency_host_reaction_ms`: complete `utterance_end` frame arrival to
+  the host writing its early `thinking` frame. The report requires this to remain under 300 ms.
+  This is host/socket evidence; physical face or RGB reaction still requires robot telemetry or
+  video evidence and must not be inferred from this field alone.
 - Firmware playback accounting now stays active until M5Speaker is idle and its microphone pause
   is released, then sends retry-safe `playback_complete` evidence. Default v1 acknowledges the
   frame without opening capture, preserving the v0.2.0 one-wake/one-turn behavior.

@@ -19,12 +19,15 @@ class ConversationLatencyTests(unittest.TestCase):
             },
             response_text_ready_ms=1130.0,
             turn_total_ms=2810.0,
+            host_reaction_ms=42.5,
         )
 
         self.assertEqual("stackchan.conversation-latency.v1", result["latency_schema"])
         self.assertEqual(1220.5, result["latency_capture_ms"])
         self.assertEqual(410.25, result["latency_stt_ms"])
         self.assertEqual(900.0, result["latency_brain_ms"])
+        self.assertEqual(42.5, result["latency_host_reaction_ms"])
+        self.assertTrue(result["latency_gate_host_reaction_under_300"])
         self.assertEqual(0.4, result["latency_tts_render_rtf"])
         self.assertTrue(result["latency_gate_first_audio_under_3000"])
         self.assertTrue(result["latency_gate_render_faster_than_realtime"])
@@ -45,9 +48,11 @@ class ConversationLatencyTests(unittest.TestCase):
             },
             response_text_ready_ms=2700.0,
             turn_total_ms=5600.0,
+            host_reaction_ms=330.0,
         )
 
         self.assertFalse(result["latency_gate_first_audio_under_3000"])
+        self.assertFalse(result["latency_gate_host_reaction_under_300"])
         self.assertFalse(result["latency_gate_render_faster_than_realtime"])
         self.assertFalse(result["latency_gate_zero_truncation"])
 
@@ -62,6 +67,8 @@ class ConversationLatencyTests(unittest.TestCase):
         )
 
         self.assertNotIn("latency_first_audio_ms", result)
+        self.assertNotIn("latency_host_reaction_ms", result)
+        self.assertNotIn("latency_gate_host_reaction_under_300", result)
         self.assertNotIn("latency_gate_first_audio_under_3000", result)
         self.assertNotIn("latency_gate_render_faster_than_realtime", result)
         self.assertNotIn("latency_gate_zero_truncation", result)

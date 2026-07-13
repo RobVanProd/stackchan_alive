@@ -1097,6 +1097,7 @@ class LanBridgeSession:
         audio_evidence_log: dict[str, object],
         turn_started: float,
         response_text_ready_ms: float,
+        host_reaction_ms: float | None,
     ) -> None:
         record: dict[str, object] = {
             "schema": "stackchan.lan-turn-summary.v1",
@@ -1132,6 +1133,7 @@ class LanBridgeSession:
                 tts_summary=tts_summary,
                 response_text_ready_ms=response_text_ready_ms,
                 turn_total_ms=turn_elapsed_ms,
+                host_reaction_ms=host_reaction_ms,
             )
         )
         self._append_turn_log(record)
@@ -1558,6 +1560,10 @@ class LanBridgeSession:
         turn_started = time.perf_counter()
         cancellation.raise_if_cancelled()
         seq = int(message.get("seq") or self.next_seq)
+        try:
+            host_reaction_ms = max(0.0, float(message["_bridge_host_reaction_ms"]))
+        except (KeyError, TypeError, ValueError):
+            host_reaction_ms = None
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
         pcm = bytes(self.audio.buffer)
@@ -1805,6 +1811,7 @@ class LanBridgeSession:
                 audio_evidence_log=audio_evidence_log,
                 turn_started=turn_started,
                 response_text_ready_ms=response_text_ready_ms,
+                host_reaction_ms=host_reaction_ms,
             )
             return frames
         tts_summary: dict[str, object] = {}
@@ -1906,6 +1913,7 @@ class LanBridgeSession:
             audio_evidence_log=audio_evidence_log,
             turn_started=turn_started,
             response_text_ready_ms=response_text_ready_ms,
+            host_reaction_ms=host_reaction_ms,
         )
         return prefix_errors + frames
 
@@ -1928,18 +1936,21 @@ def send_connection_frame(
     frame: dict[str, object] | bytes,
     *,
     final_binary_chunk: bool = True,
-) -> None:
+) -> float:
     if isinstance(frame, bytes):
         conn.sendall(encode_ws_frame(frame, opcode=0x2))
+        sent_at = time.perf_counter()
         delay_ms = config.downlink_binary_frame_delay_ms
         if final_binary_chunk and len(frame) < config.downlink_audio_chunk_bytes:
             delay_ms = max(delay_ms, 250)
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
-        return
+        return sent_at
     conn.sendall(encode_ws_text(frame_to_text(frame)))
+    sent_at = time.perf_counter()
     if config.downlink_text_frame_delay_ms > 0:
         time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
+    return sent_at
 
 
 def handle_connection(
@@ -1966,7 +1977,7 @@ def handle_connection(
     turn_thread: threading.Thread | None = None
     turn_errors: queue.Queue[BaseException] = queue.Queue()
 
-    def send_live(frame: dict[str, object] | bytes) -> None:
+    def send_live(frame: dict[str, object] | bytes) -> float | None:
         nonlocal pending_short_chunk
         with send_lock:
             if pending_short_chunk is not None:
@@ -1983,8 +1994,8 @@ def handle_connection(
                 and len(frame) < config.downlink_audio_chunk_bytes
             ):
                 pending_short_chunk = frame
-                return
-            send_connection_frame(conn, config, frame)
+                return None
+            return send_connection_frame(conn, config, frame)
 
     def discard_pending_audio() -> None:
         nonlocal pending_short_chunk
@@ -2038,6 +2049,7 @@ def handle_connection(
             if not turn_errors.empty():
                 raise turn_errors.get_nowait()
             opcode, payload = read_ws_frame(conn)
+            frame_received_at = time.perf_counter()
             if opcode == 0x8:
                 session.cancel_active_turn("connection_closed")
                 discard_pending_audio()
@@ -2083,7 +2095,12 @@ def handle_connection(
                         continue
                     early_frame = session.early_thinking_frame(text)
                     if early_frame is not None:
-                        send_live(early_frame)
+                        sent_at = send_live(early_frame)
+                        if sent_at is not None and isinstance(parsed_text, dict):
+                            parsed_text["_bridge_host_reaction_ms"] = max(
+                                0.0, (sent_at - frame_received_at) * 1000.0
+                            )
+                            text = json.dumps(parsed_text, separators=(",", ":"), ensure_ascii=True)
                     turn_thread = threading.Thread(
                         target=run_turn,
                         args=(text, early_frame is not None),

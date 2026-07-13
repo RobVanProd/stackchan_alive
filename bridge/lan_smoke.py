@@ -389,6 +389,7 @@ def run_audio_loop(host: str, base_config: LanBridgeConfig, temp_dir: Path) -> S
 def run_thinking_latency(host: str, base_config: LanBridgeConfig, temp_dir: Path) -> ScenarioResult:
     result = ScenarioResult(scenario="thinking-latency")
     start = time.perf_counter()
+    turn_log = temp_dir / "thinking_latency_turns.jsonl"
     config = LanBridgeConfig(
         host=base_config.host,
         runner_profile=base_config.runner_profile,
@@ -397,6 +398,7 @@ def run_thinking_latency(host: str, base_config: LanBridgeConfig, temp_dir: Path
         tts_voice=DEFAULT_TTS_VOICE,
         downlink_audio_chunk_bytes=1024,
         max_audio_bytes=base_config.max_audio_bytes,
+        turn_log_file=turn_log,
     )
     with SmokeServer(config) as server:
         port = server.port()
@@ -412,6 +414,17 @@ def run_thinking_latency(host: str, base_config: LanBridgeConfig, temp_dir: Path
             for frame in client.read_many({"response_end"}):
                 append_received(result, frame)
         result.server_errors.extend(server.errors)
+    if turn_log.exists():
+        records = [
+            json.loads(line)
+            for line in turn_log.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if records:
+            result.evidence["host_reaction_ms"] = records[-1].get("latency_host_reaction_ms")
+            result.evidence["host_reaction_under_300"] = records[-1].get(
+                "latency_gate_host_reaction_under_300"
+            )
     result.elapsed_ms = (time.perf_counter() - start) * 1000.0
     validate_thinking_latency(result)
     return result
@@ -580,6 +593,8 @@ def validate_thinking_latency(result: ScenarioResult) -> None:
         result.fail("thinking_latency_too_slow")
     if response_end_ms < DELAYED_RESPONSE_MIN_MS:
         result.fail("delayed_response_not_observed")
+    if result.evidence.get("host_reaction_under_300") is not True:
+        result.fail("host_reaction_gate_failed")
 
 
 def validate_endpoint_controls(result: ScenarioResult) -> None:

@@ -73,6 +73,8 @@ class LanSmokeTests(unittest.TestCase):
         timings = {item["type"]: item["elapsed_ms"] for item in scenarios["thinking-latency"]["frame_timings"]}
         self.assertLessEqual(timings["thinking"], 200.0)
         self.assertGreaterEqual(timings["response_end"], 250.0)
+        self.assertTrue(scenarios["thinking-latency"]["evidence"]["host_reaction_under_300"])
+        self.assertLess(scenarios["thinking-latency"]["evidence"]["host_reaction_ms"], 300.0)
 
     def test_write_outputs_creates_json_markdown_and_per_scenario_reports(self):
         with tempfile.TemporaryDirectory() as temp_dir:

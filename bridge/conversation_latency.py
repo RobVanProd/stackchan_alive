@@ -21,6 +21,7 @@ def build_conversation_latency_record(
     tts_summary: Mapping[str, object],
     response_text_ready_ms: float,
     turn_total_ms: float,
+    host_reaction_ms: float | None = None,
 ) -> dict[str, object]:
     """Return flat, JSON-safe stage timings and acceptance outcomes."""
 
@@ -41,6 +42,10 @@ def build_conversation_latency_record(
     result["latency_brain_ms"] = round(runner_ms + research_runner_ms, 2)
     result["latency_text_ready_ms"] = round(max(0.0, response_text_ready_ms), 2)
     result["latency_turn_total_ms"] = round(max(0.0, turn_total_ms), 2)
+    if host_reaction_ms is not None:
+        reaction_ms = max(0.0, float(host_reaction_ms))
+        result["latency_host_reaction_ms"] = round(reaction_ms, 2)
+        result["latency_gate_host_reaction_under_300"] = reaction_ms < 300.0
 
     if first_audio_ms is not None and payload_bytes > 0:
         result["latency_first_audio_ms"] = round(first_audio_ms, 2)

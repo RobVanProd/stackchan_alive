@@ -12,6 +12,7 @@ from typing import Iterable
 
 LATENCY_SCHEMA = "stackchan.conversation-latency.v1"
 GATES = (
+    "latency_gate_host_reaction_under_300",
     "latency_gate_first_audio_under_3000",
     "latency_gate_render_faster_than_realtime",
     "latency_gate_zero_truncation",
@@ -71,6 +72,7 @@ def summarize_latency_records(records: Iterable[dict[str, object]]) -> dict[str,
         "status": "pass" if ready else "not_ready",
         "measured_turns": len(measured),
         "audio_turns": len(audio_turns),
+        "host_reaction_ms": _distribution(_numbers(audio_turns, "latency_host_reaction_ms")),
         "first_audio_ms": _distribution(_numbers(audio_turns, "latency_first_audio_ms")),
         "text_ready_ms": _distribution(_numbers(measured, "latency_text_ready_ms")),
         "turn_total_ms": _distribution(_numbers(measured, "latency_turn_total_ms")),
@@ -113,7 +115,7 @@ def main() -> int:
             f"status={report['status']} measured_turns={report['measured_turns']} "
             f"audio_turns={report['audio_turns']}"
         )
-        for metric in ("first_audio_ms", "text_ready_ms", "turn_total_ms", "tts_render_rtf"):
+        for metric in ("host_reaction_ms", "first_audio_ms", "text_ready_ms", "turn_total_ms", "tts_render_rtf"):
             print(f"{metric}={json.dumps(report[metric], separators=(',', ':'))}")
         print(f"gates={json.dumps(report['gates'], separators=(',', ':'))}")
     return 1 if args.require_ready and report["status"] != "pass" else 0

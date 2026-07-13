@@ -9,10 +9,12 @@ class ConversationLatencyReportTests(unittest.TestCase):
             {
                 "latency_schema": "stackchan.conversation-latency.v1",
                 "latency_first_audio_ms": first_audio,
+                "latency_host_reaction_ms": 40 + index,
                 "latency_text_ready_ms": 500 + index,
                 "latency_turn_total_ms": 2000 + index,
                 "latency_tts_render_rtf": 0.5,
                 "latency_gate_first_audio_under_3000": True,
+                "latency_gate_host_reaction_under_300": True,
                 "latency_gate_render_faster_than_realtime": True,
                 "latency_gate_zero_truncation": True,
             }
@@ -24,6 +26,7 @@ class ConversationLatencyReportTests(unittest.TestCase):
         self.assertEqual("pass", report["status"])
         self.assertEqual(4, report["audio_turns"])
         self.assertEqual(1100, report["first_audio_ms"]["p50"])
+        self.assertEqual(41, report["host_reaction_ms"]["p50"])
         self.assertEqual(2200, report["first_audio_ms"]["p95"])
         self.assertEqual(0, report["gates"]["latency_gate_zero_truncation"]["failed"])
 
@@ -42,6 +45,7 @@ class ConversationLatencyReportTests(unittest.TestCase):
         self.assertEqual("not_ready", report["status"])
         self.assertEqual(1, report["gates"]["latency_gate_first_audio_under_3000"]["failed"])
         self.assertEqual(1, report["gates"]["latency_gate_render_faster_than_realtime"]["missing"])
+        self.assertEqual(1, report["gates"]["latency_gate_host_reaction_under_300"]["missing"])
 
 
 if __name__ == "__main__":
