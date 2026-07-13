@@ -29,6 +29,27 @@ corrected continuation at
 ended the release gate and explicitly waived its remaining duration. Preserve that evidence as an
 accepted release run, not a formal eight-hour pass.
 
+Overnight follow-up (2026-07-13): exact image SHA-256
+`c0314b375b86e8f350b6c4588422818526c54b2d6b0293b3a7233b95c06e740e` from source commit
+`2d0e61e28416df376499acab744ea91a5d56c2d4` passed its `76/76` no-motion and `77/77` actuator
+qualifications, then ran all features with actuators for `22953.5 s` at
+`output\pc-brain\single-owner-release-servo-8hr-20260712-2325`. The runner stopped on one
+recovered lifetime camera-timer maximum of `330105 us` against the `300000 us` limit. The final
+capture was back to `15036 us`; camera frames and paired target updates kept advancing, and power,
+thermal, display, bridge, audio, IMU, camera, and motion-session gates remained healthy. Treat the
+summary as a failed duration gate caused by a camera-latency policy breach, not as a blackout,
+reset, camera failure, or power fault.
+
+That exact image had two Core-1 tasks servicing the same HTTP server: priority-3 `IntentTask` and
+priority-1 Arduino `loopTask`. This shared ownership had already produced one recovered malformed
+debug response in earlier evidence and can inflate the combined camera timer when the lower-
+priority caller is descheduled. Existing telemetry combines `esp_camera_fb_get()`, RGB565-to-gray
+conversion, and scheduler delay, so do not claim which substage caused the historical `330105 us`
+sample. The corrected source makes `IntentTask` the single runtime owner and release checks enforce
+that call count. It passes `261/261` native tests, the public embedded build, architecture, soak-
+evidence, reproducibility, and archive contracts, but remains an uninstalled candidate. Qualify its
+own binary before starting another long actuator soak; never transfer the prior SHA's evidence.
+
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
 checker. This does not relax IMU health: terminal read failures, three consecutive exhausted read

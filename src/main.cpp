@@ -9496,10 +9496,8 @@ void loop() {
   samplePowerTelemetry(nowMs, false);
   applyManagedChargeCurrent(nowMs);
 #endif
-  updateBridgeNetwork(nowMs);
-  pollBridgeOutputs(nowMs);
-  pollBridgeDebugServer(nowMs);
-  ensureWakeSrStarted(nowMs);
+  // IntentTask is the single owner of bridge, debug HTTP, and wake runtime service.
+  // These paths use shared transports and response buffers and must not be polled here.
 #if STACKCHAN_ENABLE_PERIODIC_SERIAL_TELEMETRY
   if (lastHeartbeatMs == 0 || nowMs - lastHeartbeatMs >= 10000) {
     lastHeartbeatMs = nowMs;

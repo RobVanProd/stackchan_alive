@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-12 17:10 America/New_York
+Status timestamp: 2026-07-13 07:15 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -63,6 +63,48 @@ support compiled with motion disabled at boot.
   explicitly authorized public distribution of the active voice files. The final release firmware
   requests autonomous ambient motion at boot through the existing power, thermal, audio, duty-
   cycle, IMU safety-hold, manual-stop, and session-watchdog controls.
+
+### Overnight Exact-Image Result And HTTP Ownership Diagnosis (2026-07-13)
+
+- The later exact installed image was clean source commit
+  `2d0e61e28416df376499acab744ea91a5d56c2d4`, firmware SHA-256
+  `c0314b375b86e8f350b6c4588422818526c54b2d6b0293b3a7233b95c06e740e`. Its formal short
+  qualifications passed `76/76` no-motion and `77/77` actuator checks before the long run.
+- The all-feature actuator soak at
+  `output\pc-brain\single-owner-release-servo-8hr-20260712-2325` collected `22953.5 s`
+  (`6 h 22 min 33 s`) before the fail-fast runner stopped it. The summary is correctly `fail`, not
+  an eight-hour pass: one lifetime camera timer maximum reached `330105 us` against the configured
+  `300000 us` ceiling. The immediately preceding lifetime maximum was `236000 us`, and the final
+  sampled capture had already recovered to `15036 us`.
+- The camera continued working: `91100` captured-frame delta, `45494` host frame requests,
+  `45487` target updates, zero camera capture/authentication failures, and two isolated response-
+  write failures (`0.0044%`, maximum streak one). The run recorded `4497/4499` good polls, two
+  isolated failed polls with maximum streak one, `4461` motion samples (`99.2%`), zero motion
+  timeouts, VBUS floor `4632 mV`, maximum temperature `66.5 C`, maximum display frame `45045 us`,
+  zero hard-floor/PMIC protective events, and zero IMU exhaustions or terminal failures. This is
+  not evidence of a blackout, reset, power fault, thermal fault, or failed camera.
+- The exact historical `330105 us` substage cannot be recovered from existing telemetry. The
+  stopwatch begins before blocking `esp_camera_fb_get()` and ends after RGB565-to-gray conversion,
+  so it includes camera acquisition, conversion, and time while the calling task is descheduled.
+  Do not claim a sensor/DMA stall or scheduler stall as an observed fact from this sample alone.
+- A confirmed concurrency defect existed in that exact image: both priority-3 `IntentTask` and
+  Arduino's priority-1 `loopTask`, on Core 1, serviced the same debug/camera HTTP server and shared
+  response state. The earlier corrected continuation preserved a malformed `/debug` response with
+  an embedded NUL while the next poll recovered, matching this dual-owner path. Commit `3570b443`
+  had removed the duplicate loop servicing and added release guards; commit `6ec18215` reverted it
+  five minutes later without contrary technical evidence. This defect is the strongest supported
+  explanation for an inflated recovered camera timer, but the old combined timer prevents proving
+  which portion of this one sample was preemption.
+- The current uninstalled worktree restores `IntentTask` as the single runtime owner of bridge,
+  wake, and debug/camera HTTP servicing and restores architecture/package count guards. Native
+  logic passes `261/261`; `stackchan_release_full` builds successfully; architecture, full-system
+  soak-evidence, current-lead reproducibility, and archive contracts pass. The public build artifact
+  is `2798688` bytes, SHA-256
+  `F660291251A760C045C99E3B61D1AD332E4BBEA5F258A2D75B901B2CAD3F875B`. It is not installed or
+  physically qualified and does not inherit the preceding image's hardware evidence.
+- After the failed runner exited, `/motion-stop` was issued and post-stop evidence was saved as
+  `post-stop-debug-20260713-0952.json` in the run root. Motion request, rail, and torque were all
+  off while bridge/network, power, temperature, and display telemetry remained healthy.
 
 ### Corrected PMIC And Bridge-Port Candidate (2026-07-12)
 
