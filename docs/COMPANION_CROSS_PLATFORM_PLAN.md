@@ -397,6 +397,10 @@ app" each pass against the simulator, with a negative test proving the lock.
 **C4 — Owner semantics & handoff.**
 Arbitration FSM + heartbeat expiry; claim/release/owner_status; observer restrictions
 enforced (an observer socket receiving audio is a test failure, not a warning).
+Post-release source status: the Python bridge and shared Kotlin core now use the same 15-second
+owner lease, capability-filtered promotion, explicit-claim precedence, priority/recency automatic
+selection, and offline fallback. Protocol conformance includes the Conversation v2 reply-window
+and playback-complete messages. Target-device two-endpoint evidence is still pending.
 *Gate C4:* PC → mobile → PC handoff on the simulator with zero firmware-settings writes;
 owner-timeout promotion; offline fallback when no endpoint is healthy. Deterministic FSM
 unit tests plus one live two-endpoint LAN run, both in evidence.

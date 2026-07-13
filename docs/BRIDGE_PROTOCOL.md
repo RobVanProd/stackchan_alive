@@ -175,6 +175,8 @@ downlink sink.
 
 - `hello`: device identity and protocol version.
 - `endpoint_hello`: companion/bridge endpoint identity, kind, priority, and capabilities.
+- `heartbeat`: robot telemetry by default; an optional trusted `endpoint_id` refreshes that
+  endpoint's brain-owner lease. A heartbeat without `endpoint_id` never grants ownership.
 - `claim_brain`: trusted endpoint requests active brain ownership.
 - `release_brain`: active owner releases the brain; the bridge may promote another trusted endpoint.
 - `owner_status`: request the current active brain owner state.
@@ -235,7 +237,9 @@ Example:
   speech falls back to the existing 4.8-second maximum. Initial wake-gated v1 capture remains
   fixed-length.
 - `endpoint_hello_result`: endpoint trust/capability registration result.
-- `owner_status`: active brain owner, owner kind, health state, and trusted endpoint count.
+- `owner_status`: active brain owner, owner kind, health state, trusted endpoint count, owner lease,
+  and cumulative expiration/promotion counters. Only trusted endpoints advertising `brain_owner`
+  may claim or auto-promote. An explicit claim wins; timeout promotion uses priority then recency.
 - `trusted_endpoints_result`: trusted endpoint registry snapshot.
 - `forget_endpoint_result`: endpoint removal result.
 - `settings_snapshot`: versioned safe settings snapshot.

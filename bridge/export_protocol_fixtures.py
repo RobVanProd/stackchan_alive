@@ -134,6 +134,9 @@ def fixture_documents() -> dict[str, dict[str, Any]]:
             "active_brain_owner": "phone-rob-01",
             "owner_kind": "android",
             "state": "healthy",
+            "owner_lease_ms": 15000,
+            "owner_expirations": 0,
+            "owner_promotions": 1,
         },
         "settings_get.json": {
             "type": "settings_get",

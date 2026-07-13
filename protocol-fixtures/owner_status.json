@@ -1,6 +1,9 @@
 {
   "active_brain_owner": "phone-rob-01",
+  "owner_expirations": 0,
   "owner_kind": "android",
+  "owner_lease_ms": 15000,
+  "owner_promotions": 1,
   "state": "healthy",
   "type": "owner_status"
 }

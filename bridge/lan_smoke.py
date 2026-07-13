@@ -430,7 +430,14 @@ def run_endpoint_controls(host: str, config: LanBridgeConfig) -> ScenarioResult:
                     "endpoint_kind": "pc",
                     "priority": 80,
                     "supports_binary_audio": True,
-                    "capabilities": ["stt", "llm", "tts", "settings", "audio_downlink"],
+                    "capabilities": [
+                        "stt",
+                        "llm",
+                        "tts",
+                        "settings",
+                        "audio_downlink",
+                        "brain_owner",
+                    ],
                 }
             )
             append_received(result, client.read())

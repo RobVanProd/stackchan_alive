@@ -92,7 +92,15 @@ def run_probe(url: str, text: str, timeout: float) -> dict[str, object]:
                 "endpoint_kind": "pc",
                 "priority": 90,
                 "auto_connect": True,
-                "capabilities": ["llm", "tts", "rvc", "settings", "diagnostics", "audio_downlink"],
+                "capabilities": [
+                    "llm",
+                    "tts",
+                    "rvc",
+                    "settings",
+                    "diagnostics",
+                    "audio_downlink",
+                    "brain_owner",
+                ],
                 "supports_binary_audio": True,
                 "app_version": "pc-brain-probe",
             }

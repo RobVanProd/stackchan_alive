@@ -112,7 +112,7 @@ class EndpointRequestRouterTest {
 
         assertEquals("phone-rob-01", claimed.activeBrainOwner)
         assertEquals("", coordinator.status().activeBrainOwner)
-        assertEquals("idle", coordinator.status().state)
+        assertEquals("offline", coordinator.status().state)
     }
 
     @Test
@@ -187,5 +187,28 @@ class EndpointRequestRouterTest {
         val router = EndpointRequestRouter()
 
         assertEquals(null, router.handle(Heartbeat(seq = 1)))
+    }
+
+    @Test
+    fun routerUsesEndpointHeartbeatForOwnerLiveness() {
+        val registry = TrustedEndpointRegistry()
+        registry.upsert(
+            TrustedEndpoint(
+                endpointId = "phone-rob-01",
+                endpointKind = "android",
+                publicKeyFingerprint = "sha256:1111222233334444",
+                priority = 80,
+                autoConnect = true,
+                capabilities = listOf("brain_owner"),
+            ),
+        )
+        val router = EndpointRequestRouter(trustedEndpointRegistry = registry)
+
+        val response = assertIs<OwnerStatus>(
+            router.handle(Heartbeat(seq = 1, endpointId = "phone-rob-01")),
+        )
+
+        assertEquals("phone-rob-01", response.activeBrainOwner)
+        assertEquals("promoted", response.state)
     }
 }

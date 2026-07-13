@@ -70,6 +70,7 @@ DEFAULT_CLIENT_IDLE_TIMEOUT_S = 20.0
 DEFAULT_TCP_KEEPALIVE_IDLE_MS = 5_000
 DEFAULT_TCP_KEEPALIVE_INTERVAL_MS = 1_000
 DEFAULT_TTS_PHRASE_MAX_CHARS = 96
+DEFAULT_BRAIN_OWNER_LEASE_MS = 15_000
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_TRUSTED_ENDPOINTS = 8
 STACKCHAN_WAKE_PHRASE = re.compile(
@@ -248,6 +249,9 @@ class BridgeControlState:
     settings_version: int = 1
     settings: dict[str, object] = field(default_factory=default_bridge_settings)
     persona_initialized: bool = False
+    owner_lease_ms: int = DEFAULT_BRAIN_OWNER_LEASE_MS
+    owner_expirations: int = 0
+    owner_promotions: int = 0
 
     @staticmethod
     def _validated_persona_id(value: object) -> str:
@@ -305,14 +309,42 @@ class BridgeControlState:
             self.trusted_endpoints[normalized].last_seen_ms = now_ms()
         return normalized
 
-    def owner_status(self, state: str = "healthy") -> dict[str, object]:
+    def endpoint_healthy(self, endpoint: EndpointRecord, observed_ms: int) -> bool:
+        lease_ms = max(1_000, int(self.owner_lease_ms))
+        age_ms = max(0, observed_ms - endpoint.last_seen_ms)
+        return endpoint.last_seen_ms > 0 and age_ms <= lease_ms
+
+    def reconcile_owner(self, observed_ms: int | None = None) -> str:
+        current_ms = now_ms() if observed_ms is None else max(0, int(observed_ms))
+        owner = self.trusted_endpoints.get(self.active_brain_owner)
+        if (
+            owner is not None
+            and "brain_owner" in owner.capabilities
+            and self.endpoint_healthy(owner, current_ms)
+        ):
+            return "healthy"
+        expired_owner = self.active_brain_owner
+        if expired_owner:
+            self.owner_expirations += 1
+        self.active_brain_owner = ""
+        promoted = self.promote_best_endpoint(exclude=expired_owner, observed_ms=current_ms)
+        if promoted:
+            self.owner_promotions += 1
+            return "promoted"
+        return "offline"
+
+    def owner_status(self, state: str = "") -> dict[str, object]:
+        resolved_state = state or self.reconcile_owner()
         owner = self.trusted_endpoints.get(self.active_brain_owner)
         return {
             "type": "owner_status",
             "active_brain_owner": self.active_brain_owner,
             "owner_kind": owner.endpoint_kind if owner else "",
-            "state": state if self.active_brain_owner else "offline",
+            "state": resolved_state if self.active_brain_owner else "offline",
             "trusted_endpoint_count": len(self.trusted_endpoints),
+            "owner_lease_ms": max(1_000, int(self.owner_lease_ms)),
+            "owner_expirations": self.owner_expirations,
+            "owner_promotions": self.owner_promotions,
         }
 
     def claim_brain(self, message: dict[str, Any]) -> dict[str, object]:
@@ -321,23 +353,34 @@ class BridgeControlState:
             return error_frame("endpoint_id_required")
         if endpoint_id not in self.trusted_endpoints:
             return error_frame("endpoint_not_trusted", endpoint_id)
+        candidate = self.trusted_endpoints[endpoint_id]
+        if "brain_owner" not in candidate.capabilities:
+            return error_frame("brain_owner_capability_missing", endpoint_id)
         self.active_brain_owner = endpoint_id
-        return self.owner_status("healthy")
+        return self.owner_status("claimed")
 
     def release_brain(self, message: dict[str, Any]) -> dict[str, object]:
         endpoint_id = self.touch_endpoint(message.get("endpoint_id"))
+        if not endpoint_id:
+            return error_frame("endpoint_id_required")
         if endpoint_id and self.active_brain_owner and endpoint_id != self.active_brain_owner:
             return error_frame("brain_owner_mismatch", endpoint_id)
         released = self.active_brain_owner
         self.active_brain_owner = ""
-        promoted = self.promote_best_endpoint(exclude=released)
-        return self.owner_status("healthy" if promoted else "released")
+        promoted = self.promote_best_endpoint(exclude=released, observed_ms=now_ms())
+        if promoted:
+            self.owner_promotions += 1
+        return self.owner_status("promoted" if promoted else "released")
 
-    def promote_best_endpoint(self, *, exclude: str = "") -> str:
+    def promote_best_endpoint(self, *, exclude: str = "", observed_ms: int | None = None) -> str:
+        current_ms = now_ms() if observed_ms is None else max(0, int(observed_ms))
         candidates = [
             endpoint
             for endpoint in self.trusted_endpoints.values()
-            if endpoint.auto_connect and endpoint.endpoint_id != exclude
+            if endpoint.auto_connect
+            and endpoint.endpoint_id != exclude
+            and "brain_owner" in endpoint.capabilities
+            and self.endpoint_healthy(endpoint, current_ms)
         ]
         if not candidates:
             return ""
@@ -346,6 +389,7 @@ class BridgeControlState:
         return self.active_brain_owner
 
     def trusted_endpoints_frame(self) -> dict[str, object]:
+        self.reconcile_owner()
         endpoints = sorted(
             (endpoint.to_dict() for endpoint in self.trusted_endpoints.values()),
             key=lambda item: (-int(item.get("priority", 0)), str(item.get("endpoint_id", ""))),
@@ -364,7 +408,8 @@ class BridgeControlState:
         self.trusted_endpoints.pop(endpoint_id, None)
         if self.active_brain_owner == endpoint_id:
             self.active_brain_owner = ""
-            self.promote_best_endpoint(exclude=endpoint_id)
+            if self.promote_best_endpoint(exclude=endpoint_id, observed_ms=now_ms()):
+                self.owner_promotions += 1
         return {
             "type": "forget_endpoint_result",
             "endpoint_id": endpoint_id,
@@ -374,6 +419,7 @@ class BridgeControlState:
         }
 
     def _settings_snapshot_dict(self) -> dict[str, object]:
+        self.reconcile_owner()
         snapshot = copy.deepcopy(self.settings)
         bridge_settings = snapshot.setdefault("bridge", {})
         if isinstance(bridge_settings, dict):
@@ -448,11 +494,16 @@ class BridgeControlState:
                 target[str(key)] = copy.deepcopy(value)
 
     def diagnostics_snapshot(self, config: LanBridgeConfig) -> dict[str, object]:
+        owner_state = self.reconcile_owner()
         return {
             "type": "diagnostics_snapshot",
             "bridge": {
                 "protocol": PROTOCOL,
                 "active_brain_owner": self.active_brain_owner,
+                "owner_state": owner_state,
+                "owner_lease_ms": max(1_000, int(self.owner_lease_ms)),
+                "owner_expirations": self.owner_expirations,
+                "owner_promotions": self.owner_promotions,
                 "trusted_endpoint_count": len(self.trusted_endpoints),
                 "settings_version": self.settings_version,
                 "mode_policy": self._settings_snapshot_dict().get("bridge", {}).get("mode_policy", "auto"),
@@ -1120,7 +1171,12 @@ class LanBridgeSession:
             if self.conversation is not None:
                 conversation_transition = self.conversation.tick(now_ms())
             endpoint_id = self.control_state.touch_endpoint(message.get("endpoint_id") or self.endpoint_id)
-            frame: dict[str, object] = {"type": "heartbeat", "active_brain_owner": self.control_state.active_brain_owner}
+            owner_state = self.control_state.reconcile_owner()
+            frame: dict[str, object] = {
+                "type": "heartbeat",
+                "active_brain_owner": self.control_state.active_brain_owner,
+                "owner_state": owner_state,
+            }
             if endpoint_id:
                 frame["endpoint_id"] = endpoint_id
             frame.update(self._conversation_payload(conversation_transition))
@@ -1203,6 +1259,7 @@ class LanBridgeSession:
         if not endpoint_id:
             return None
         self.control_state.touch_endpoint(endpoint_id)
+        self.control_state.reconcile_owner()
         owner = self.control_state.active_brain_owner
         if owner and endpoint_id != owner:
             return error_frame("brain_owner_mismatch", endpoint_id)
@@ -1218,11 +1275,14 @@ class LanBridgeSession:
         endpoint.capabilities = normalize_capabilities(message.get("capabilities"))
         endpoint.supports_binary_audio = bool(message.get("supports_binary_audio", endpoint.supports_binary_audio))
         endpoint.last_seen_ms = now_ms()
+        owner_state = self.control_state.reconcile_owner()
         return {
             "type": "capability_update_result",
             "endpoint_id": endpoint_id,
             "capabilities": list(endpoint.capabilities),
             "supports_binary_audio": endpoint.supports_binary_audio,
+            "active_brain_owner": self.control_state.active_brain_owner,
+            "owner_state": owner_state,
         }
 
     def early_thinking_frame(self, text: str) -> dict[str, object] | None:
@@ -1244,6 +1304,8 @@ class LanBridgeSession:
         return frame
 
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
+        self.control_state.touch_endpoint(self.endpoint_id)
+        self.control_state.reconcile_owner()
         if self.endpoint_id and self.control_state.active_brain_owner and self.endpoint_id != self.control_state.active_brain_owner:
             return [error_frame("brain_owner_mismatch", self.endpoint_id)]
         try:

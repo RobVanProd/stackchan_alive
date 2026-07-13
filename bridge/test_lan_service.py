@@ -18,6 +18,7 @@ if str(BRIDGE_DIR) not in sys.path:
 
 from lan_service import (
     BridgeControlState,
+    EndpointRecord,
     LanBridgeConfig,
     LanBridgeSession,
     audio_downlink_frames,
@@ -454,7 +455,7 @@ class LanServiceTests(unittest.TestCase):
                     "endpoint_kind": "android",
                     "priority": 60,
                     "supports_binary_audio": True,
-                    "capabilities": ["settings", "llm", "tts", "settings"],
+                    "capabilities": ["settings", "llm", "tts", "settings", "brain_owner"],
                 }
             )
         )
@@ -484,7 +485,7 @@ class LanServiceTests(unittest.TestCase):
 
         self.assertEqual("endpoint_hello_result", endpoint[0]["type"])
         self.assertEqual("phone-rob-01", endpoint[0]["endpoint_id"])
-        self.assertEqual(["settings", "llm", "tts"], endpoint[0]["capabilities"])
+        self.assertEqual(["settings", "llm", "tts", "brain_owner"], endpoint[0]["capabilities"])
         self.assertEqual("owner_status", claim[0]["type"])
         self.assertEqual("phone-rob-01", claim[0]["active_brain_owner"])
         self.assertEqual("android", claim[0]["owner_kind"])
@@ -518,7 +519,7 @@ class LanServiceTests(unittest.TestCase):
                     "endpoint_id": "pc-studio-01",
                     "endpoint_kind": "pc",
                     "priority": 80,
-                    "capabilities": ["settings", "stt", "llm", "tts"],
+                    "capabilities": ["settings", "stt", "llm", "tts", "brain_owner"],
                 }
             )
         )
@@ -531,7 +532,7 @@ class LanServiceTests(unittest.TestCase):
                     "endpoint_id": "phone-rob-01",
                     "endpoint_kind": "android",
                     "priority": 60,
-                    "capabilities": ["settings"],
+                    "capabilities": ["settings", "brain_owner"],
                 }
             )
         )
@@ -540,7 +541,7 @@ class LanServiceTests(unittest.TestCase):
                 {
                     "type": "capability_update",
                     "endpoint_id": "phone-rob-01",
-                    "capabilities": ["settings", "model_profiles"],
+                    "capabilities": ["settings", "model_profiles", "brain_owner"],
                     "supports_binary_audio": False,
                 }
             )
@@ -550,10 +551,112 @@ class LanServiceTests(unittest.TestCase):
 
         self.assertEqual("pc-studio-01", owner[0]["active_brain_owner"])
         self.assertEqual("capability_update_result", capability[0]["type"])
-        self.assertEqual(["settings", "model_profiles"], capability[0]["capabilities"])
+        self.assertEqual(["settings", "model_profiles", "brain_owner"], capability[0]["capabilities"])
         self.assertEqual("brain_owner_mismatch", release_wrong_owner[0]["code"])
         self.assertEqual("owner_status", release_pc[0]["type"])
         self.assertEqual("phone-rob-01", release_pc[0]["active_brain_owner"])
+
+    def test_brain_claim_requires_explicit_owner_capability(self):
+        state = BridgeControlState()
+        state.register_endpoint(
+            {
+                "endpoint_id": "settings-tablet-01",
+                "endpoint_kind": "android",
+                "capabilities": ["settings", "diagnostics"],
+            }
+        )
+
+        result = state.claim_brain({"endpoint_id": "settings-tablet-01"})
+
+        self.assertEqual("error", result["type"])
+        self.assertEqual("brain_owner_capability_missing", result["code"])
+        self.assertEqual("", state.active_brain_owner)
+
+    def test_explicit_claim_can_replace_a_higher_priority_healthy_owner(self):
+        state = BridgeControlState()
+        state.trusted_endpoints = {
+            "pc-studio-01": EndpointRecord(
+                endpoint_id="pc-studio-01",
+                endpoint_kind="pc",
+                priority=90,
+                capabilities=("brain_owner",),
+                last_seen_ms=9_000,
+            ),
+            "phone-rob-01": EndpointRecord(
+                endpoint_id="phone-rob-01",
+                endpoint_kind="android",
+                priority=60,
+                capabilities=("brain_owner",),
+                last_seen_ms=9_000,
+            ),
+        }
+        state.active_brain_owner = "pc-studio-01"
+
+        with patch("lan_service.now_ms", return_value=10_000):
+            result = state.claim_brain({"endpoint_id": "phone-rob-01"})
+
+        self.assertEqual("phone-rob-01", result["active_brain_owner"])
+        self.assertEqual("claimed", result["state"])
+
+    def test_expired_owner_promotes_highest_priority_healthy_endpoint(self):
+        state = BridgeControlState(owner_lease_ms=5_000)
+        state.trusted_endpoints = {
+            "pc-studio-01": EndpointRecord(
+                endpoint_id="pc-studio-01",
+                endpoint_kind="pc",
+                priority=90,
+                auto_connect=True,
+                capabilities=("brain_owner",),
+                last_seen_ms=1_000,
+            ),
+            "phone-rob-01": EndpointRecord(
+                endpoint_id="phone-rob-01",
+                endpoint_kind="android",
+                priority=60,
+                auto_connect=True,
+                capabilities=("brain_owner",),
+                last_seen_ms=7_000,
+            ),
+        }
+        state.active_brain_owner = "pc-studio-01"
+
+        with patch("lan_service.now_ms", return_value=8_000):
+            result = state.owner_status()
+
+        self.assertEqual("phone-rob-01", result["active_brain_owner"])
+        self.assertEqual("promoted", result["state"])
+        self.assertEqual(1, result["owner_expirations"])
+        self.assertEqual(1, result["owner_promotions"])
+
+    def test_expired_owner_falls_offline_without_a_healthy_successor(self):
+        state = BridgeControlState(owner_lease_ms=5_000)
+        state.trusted_endpoints = {
+            "pc-studio-01": EndpointRecord(
+                endpoint_id="pc-studio-01",
+                endpoint_kind="pc",
+                priority=90,
+                auto_connect=True,
+                capabilities=("brain_owner",),
+                last_seen_ms=1_000,
+            ),
+            "settings-tablet-01": EndpointRecord(
+                endpoint_id="settings-tablet-01",
+                endpoint_kind="android",
+                priority=100,
+                auto_connect=True,
+                capabilities=("settings",),
+                last_seen_ms=7_500,
+            ),
+        }
+        state.active_brain_owner = "pc-studio-01"
+
+        with patch("lan_service.now_ms", return_value=8_000):
+            result = state.owner_status()
+
+        self.assertEqual("", result["active_brain_owner"])
+        self.assertEqual("offline", result["state"])
+        self.assertEqual(1, result["owner_expirations"])
+        self.assertEqual(0, result["owner_promotions"])
 
     def test_settings_version_conflict_returns_current_snapshot(self):
         session = LanBridgeSession(LanBridgeConfig())
@@ -668,6 +771,7 @@ class LanServiceTests(unittest.TestCase):
                     "endpoint_id": "pc-studio-01",
                     "endpoint_kind": "pc",
                     "priority": 80,
+                    "capabilities": ["brain_owner"],
                 }
             )
         )
@@ -679,6 +783,7 @@ class LanServiceTests(unittest.TestCase):
                     "endpoint_id": "phone-rob-01",
                     "endpoint_kind": "android",
                     "priority": 60,
+                    "capabilities": ["brain_owner"],
                 }
             )
         )

@@ -279,7 +279,7 @@ Owner messages:
 ```json
 {"type":"claim_brain","endpoint_id":"phone-rob-01","reason":"user_selected"}
 {"type":"release_brain","endpoint_id":"phone-rob-01","reason":"handoff_to_pc"}
-{"type":"owner_status","active_brain_owner":"phone-rob-01","owner_kind":"android","state":"healthy"}
+{"type":"owner_status","active_brain_owner":"phone-rob-01","owner_kind":"android","state":"healthy","owner_lease_ms":15000,"owner_expirations":0,"owner_promotions":1}
 ```
 
 Settings messages:
@@ -403,6 +403,13 @@ Owner loss:
 2. Firmware aborts open binary audio stream if one exists.
 3. Firmware emits the existing recoverable bridge error path.
 4. Arbitration promotes another healthy trusted endpoint.
+
+The post-release host bridge and shared Kotlin core now implement this deterministic 15-second
+lease. Endpoint heartbeats refresh liveness only when they carry a trusted `endpoint_id`; ordinary
+robot heartbeats do not. Explicit claims take precedence, while automatic promotion filters for
+`brain_owner` capability and `auto_connect`, then ranks priority followed by most recent heartbeat.
+Source tests cover promotion and offline fallback. The live PC-to-phone-to-PC run remains a target-
+device evidence gate rather than a source-completion claim.
 5. If none exists, packaged prompts and offline commands continue.
 
 Forget device:

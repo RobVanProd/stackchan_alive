@@ -16,6 +16,9 @@ class EndpointRequestRouter(
         when (message) {
             is ClaimBrain -> brainOwnerCoordinator.claim(message)
             is ReleaseBrain -> brainOwnerCoordinator.release(message)
+            is Heartbeat -> message.endpointId?.takeIf { it.isNotBlank() }?.let {
+                brainOwnerCoordinator.heartbeat(it)
+            }
             is SettingsGet -> settingsRepository.handleGet(message)
             is SettingsSet -> handleSettingsSet(message)
             is TrustedEndpoints -> trustedEndpointRegistry.trustedEndpoints()

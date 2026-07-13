@@ -102,7 +102,11 @@ tasks.processResources {
     from(rootProject.layout.projectDirectory.dir("../bridge")) {
         include(
             "bridge_memory.py",
+            "cancellable_process.py",
+            "cancellation.py",
             "character_harness.py",
+            "conversation_latency.py",
+            "conversation_session.py",
             "lan_service.py",
             "local_facts.py",
             "local_runner.py",
@@ -112,6 +116,7 @@ tasks.processResources {
             "robot_embodiment.py",
             "stt_adapter.py",
             "tts_adapter.py",
+            "utterance_text.py",
         )
         into("brain/bridge")
     }

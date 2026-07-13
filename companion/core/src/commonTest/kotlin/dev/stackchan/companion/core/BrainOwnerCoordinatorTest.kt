@@ -21,7 +21,7 @@ class BrainOwnerCoordinatorTest {
         assertEquals("claimed", claimed.state)
         assertEquals("", released.activeBrainOwner)
         assertEquals("none", released.ownerKind)
-        assertEquals("idle", released.state)
+        assertEquals("offline", released.state)
     }
 
     @Test
@@ -51,7 +51,7 @@ class BrainOwnerCoordinatorTest {
     }
 
     @Test
-    fun lowerPriorityEndpointCannotPreemptHigherPriorityOwner() {
+    fun explicitLowerPriorityClaimCanReplaceHigherPriorityOwner() {
         val coordinator = BrainOwnerCoordinator(
             registryWith(
                 phoneEndpoint(priority = 80),
@@ -60,12 +60,12 @@ class BrainOwnerCoordinatorTest {
         )
         coordinator.claim(ClaimBrain(endpointId = "phone-rob-01", reason = "active mobile brain"))
 
-        val response = assertIs<BridgeError>(
+        val response = assertIs<OwnerStatus>(
             coordinator.claim(ClaimBrain(endpointId = "studio-mac-01", reason = "manual takeover")),
         )
 
-        assertEquals("owner_priority_conflict", response.code)
-        assertEquals("phone-rob-01", coordinator.status().activeBrainOwner)
+        assertEquals("studio-mac-01", response.activeBrainOwner)
+        assertEquals("claimed", response.state)
     }
 
     @Test
@@ -95,7 +95,64 @@ class BrainOwnerCoordinatorTest {
         coordinator.clearIfForgotten("phone-rob-01")
 
         assertEquals("", coordinator.status().activeBrainOwner)
-        assertEquals("idle", coordinator.status().state)
+        assertEquals("offline", coordinator.status().state)
+    }
+
+    @Test
+    fun expiredOwnerPromotesHighestPriorityHealthyEndpoint() {
+        var nowMs = 1_000L
+        val coordinator = BrainOwnerCoordinator(
+            trustedEndpointRegistry = registryWith(
+                phoneEndpoint(priority = 60),
+                studioEndpoint(priority = 90),
+            ),
+            clockMs = { nowMs },
+            ownerLeaseMs = 5_000,
+        )
+        coordinator.claim(ClaimBrain(endpointId = "studio-mac-01", reason = "primary PC"))
+        nowMs = 3_000L
+        coordinator.heartbeat("phone-rob-01")
+        nowMs = 7_000L
+
+        val status = coordinator.status()
+
+        assertEquals("phone-rob-01", status.activeBrainOwner)
+        assertEquals("promoted", status.state)
+        assertEquals(1, status.ownerExpirations)
+        assertEquals(1, status.ownerPromotions)
+    }
+
+    @Test
+    fun expiredOwnerFallsOfflineWhenNoHealthyOwnerCapableEndpointExists() {
+        var nowMs = 1_000L
+        val coordinator = BrainOwnerCoordinator(
+            trustedEndpointRegistry = registryWith(
+                studioEndpoint(priority = 90),
+                phoneEndpoint(priority = 100, capabilities = listOf("settings")),
+            ),
+            clockMs = { nowMs },
+            ownerLeaseMs = 5_000,
+        )
+        coordinator.claim(ClaimBrain(endpointId = "studio-mac-01", reason = "primary PC"))
+        nowMs = 3_000L
+        coordinator.heartbeat("phone-rob-01")
+        nowMs = 7_000L
+
+        val status = coordinator.status()
+
+        assertEquals("", status.activeBrainOwner)
+        assertEquals("offline", status.state)
+        assertEquals(1, status.ownerExpirations)
+        assertEquals(0, status.ownerPromotions)
+    }
+
+    @Test
+    fun heartbeatFromUntrustedEndpointIsRejected() {
+        val coordinator = BrainOwnerCoordinator(registryWith(phoneEndpoint()))
+
+        val response = assertIs<BridgeError>(coordinator.heartbeat("unknown-phone"))
+
+        assertEquals("owner_untrusted_endpoint", response.code)
     }
 
     private fun registryWith(vararg endpoints: TrustedEndpoint): TrustedEndpointRegistry {

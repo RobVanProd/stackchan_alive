@@ -144,6 +144,22 @@ data class Heartbeat(
     override val type: String = "heartbeat",
     val seq: Int? = null,
     val owner: String? = null,
+    @SerialName("endpoint_id") val endpointId: String? = null,
+) : BridgeMessage
+
+@Serializable
+data class ConversationReplyWindow(
+    override val type: String = "conversation_reply_window",
+    val seq: Int,
+    @SerialName("open_after_ms") val openAfterMs: Int,
+    @SerialName("window_ms") val windowMs: Int,
+) : BridgeMessage
+
+@Serializable
+data class PlaybackComplete(
+    override val type: String = "playback_complete",
+    val seq: Int,
+    @SerialName("at_ms") val atMs: Long,
 ) : BridgeMessage
 
 @Serializable
@@ -175,6 +191,9 @@ data class OwnerStatus(
     @SerialName("active_brain_owner") val activeBrainOwner: String,
     @SerialName("owner_kind") val ownerKind: String,
     val state: String,
+    @SerialName("owner_lease_ms") val ownerLeaseMs: Long = DEFAULT_BRAIN_OWNER_LEASE_MS,
+    @SerialName("owner_expirations") val ownerExpirations: Int = 0,
+    @SerialName("owner_promotions") val ownerPromotions: Int = 0,
 ) : BridgeMessage
 
 @Serializable
@@ -323,6 +342,8 @@ fun decodeControlMessage(text: String): BridgeMessage {
         "audio_stream_start" -> decodeAs<AudioStreamStart>(element)
         "audio_stream_end" -> decodeAs<AudioStreamEnd>(element)
         "heartbeat" -> decodeAs<Heartbeat>(element)
+        "conversation_reply_window" -> decodeAs<ConversationReplyWindow>(element)
+        "playback_complete" -> decodeAs<PlaybackComplete>(element)
         "error" -> decodeAs<BridgeError>(element)
         "claim_brain" -> decodeAs<ClaimBrain>(element)
         "release_brain" -> decodeAs<ReleaseBrain>(element)
@@ -362,6 +383,8 @@ fun encodeControlMessage(message: BridgeMessage): String {
         is AudioStreamStart -> companionJson.encodeToJsonElement(message)
         is AudioStreamEnd -> companionJson.encodeToJsonElement(message)
         is Heartbeat -> companionJson.encodeToJsonElement(message)
+        is ConversationReplyWindow -> companionJson.encodeToJsonElement(message)
+        is PlaybackComplete -> companionJson.encodeToJsonElement(message)
         is BridgeError -> companionJson.encodeToJsonElement(message)
         is ClaimBrain -> companionJson.encodeToJsonElement(message)
         is ReleaseBrain -> companionJson.encodeToJsonElement(message)

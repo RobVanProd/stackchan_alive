@@ -143,7 +143,7 @@ class EndpointServerTest {
             assertEquals("phone-rob-01", claimed.activeBrainOwner)
             assertEquals("claimed", claimed.state)
             assertEquals("", released.activeBrainOwner)
-            assertEquals("idle", released.state)
+            assertEquals("offline", released.state)
             client.close()
         }
     }

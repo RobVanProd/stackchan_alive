@@ -651,7 +651,7 @@ Test-TextEvidence `
   -Id "desktop-packaged-brain-script" `
   -Name "Desktop package includes PC brain service script" `
   -RelativePaths @("companion/app-desktop/build.gradle.kts") `
-  -Patterns @("lan_service.py", "character_harness.py", "reference_bridge.py", "stt_adapter.py", "tts_adapter.py", "into(`"brain/bridge`")", "into(`"brain/personas`")", "voice_source_provenance.yaml", "stackchan_spark_greeting.wav")
+  -Patterns @("lan_service.py", "cancellation.py", "cancellable_process.py", "conversation_latency.py", "conversation_session.py", "utterance_text.py", "character_harness.py", "reference_bridge.py", "stt_adapter.py", "tts_adapter.py", "into(`"brain/bridge`")", "into(`"brain/personas`")", "voice_source_provenance.yaml", "stackchan_spark_greeting.wav")
 
 Test-TextEvidence `
   -Id "desktop-packaged-brain-script-test" `
