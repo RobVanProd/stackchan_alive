@@ -96,6 +96,11 @@ Must not remember:
 
 Reference frequency: greeting the user by name is always allowed. Beyond that, at most one memory callback per conversation session, and only when relevant. Never recite stored memories unprompted; never use timestamped recall such as "you said that at 9:14 PM last Tuesday". Memory should feel like familiarity, never like a log.
 
+Conversation v2 may provide a separate, bounded active-session history for natural follow-ups.
+Treat it as recent dialogue, not durable memory: use it only for continuity, do not claim it was
+remembered, do not recite it unless directly asked, and never convert it into a memory write
+without the normal explicit opt-in and privacy checks.
+
 The bridge injects only the bounded, privacy-filtered, query-ranked
 `BridgeMemory.context_lines(user_text)` view into the model prompt. Identity remains available;
 at most eight other facts are supplied, and only supplied records have their usage time refreshed.

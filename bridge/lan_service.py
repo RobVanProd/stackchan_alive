@@ -810,6 +810,13 @@ class LanBridgeSession:
     def _conversation_heartbeat(self, transition=None, *, observed_ms: int | None = None) -> dict[str, object]:
         return {"type": "heartbeat", **self._conversation_payload(transition, observed_ms=observed_ms)}
 
+    def _conversation_context_lines(self) -> tuple[str, ...]:
+        return self.conversation.context_lines() if self.conversation is not None else ()
+
+    def _stage_conversation_turn(self, user_text: str, response_text: str, tts_error: str) -> None:
+        if self.conversation is not None and not tts_error:
+            self.conversation.stage_turn(user_text, response_text)
+
     def _begin_conversation_capture(self, owner_id: str) -> dict[str, object] | None:
         if self.conversation is None:
             return None
@@ -1462,6 +1469,7 @@ class LanBridgeSession:
                     research_tools_enabled=self.config.research_enabled,
                     embodiment_lines=self.robot_embodiment.prompt_lines(),
                     memory_lines=tuple(self.memory.context_lines(user_text)),
+                    conversation_lines=self._conversation_context_lines(),
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [self._conversation_failure("runner_error", str(exc))]
@@ -1514,6 +1522,7 @@ class LanBridgeSession:
                             research_tools_enabled=False,
                             embodiment_lines=self.robot_embodiment.prompt_lines(),
                             memory_lines=tuple(self.memory.context_lines(user_text)),
+                            conversation_lines=self._conversation_context_lines(),
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                         return [self._conversation_failure("runner_error", str(exc))]
@@ -1551,6 +1560,7 @@ class LanBridgeSession:
             )
             if tts_error and self.conversation is not None:
                 self.conversation.turn_failed(now_ms(), "tts_error")
+            self._stage_conversation_turn(user_text, turn.text, tts_error)
             self._save_memory()
             self._append_completed_turn_log(
                 seq=seq,
@@ -1616,6 +1626,7 @@ class LanBridgeSession:
             tts_error = str(exc)
         if tts_error and self.conversation is not None:
             self.conversation.turn_failed(now_ms(), "tts_error")
+        self._stage_conversation_turn(user_text, turn.text, tts_error)
         self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
         if suppress_thinking:

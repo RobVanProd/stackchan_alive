@@ -97,6 +97,12 @@ memory (or an allowed namespace prefix); a spoken deletion claim with an empty `
 fails the model benchmark. The production suite also includes a safe preference request; an
 acknowledgment without a bounded `user.*` or `project.*` `memory_write` fails that case.
 
+Opt-in Conversation v2 adds a third, explicitly separate channel: up to four completed turns from
+the current conversation lease. This history is bounded and labeled as session data rather than
+approved memory. It is committed only after authoritative playback completion, is never persisted
+to `BridgeMemory`, and is erased on exit, timeout, failure, cancellation, or bridge loss. Robot
+telemetry reports only the number of retained turns, never their text.
+
 ### Trusted Local Facts And Tool Routing
 
 Deterministic host facts do not depend on Gemma deciding to call a tool. Before inference,

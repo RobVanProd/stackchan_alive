@@ -73,6 +73,44 @@ class ConversationSessionTests(unittest.TestCase):
         self.assertEqual(ConversationPhase.IDLE, self.session.phase)
         self.assertEqual("bridge_lost", result.reason)
 
+    def test_recent_turn_context_commits_only_after_playback_and_is_bounded(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(
+                reply_window_ms=1_000,
+                acoustic_tail_ms=0,
+                cooldown_ms=0,
+                max_turns=5,
+                max_context_turns=2,
+                max_context_chars=24,
+            )
+        )
+        session.wake(0)
+
+        for index in range(3):
+            session.utterance_committed(index * 100 + 10, f"Question {index} with extra words")
+            session.response_started(index * 100 + 20)
+            session.stage_turn(
+                f"Question {index} with extra words",
+                f"Response {index} with extra words",
+            )
+            self.assertEqual(index if index < 2 else 2, len(session.context_lines()) // 2)
+            session.playback_completed(index * 100 + 30)
+            session.tick(index * 100 + 30)
+
+        lines = session.context_lines()
+        self.assertEqual(4, len(lines))
+        self.assertFalse(any("Question 0" in line for line in lines))
+        self.assertTrue(any("Question 1" in line for line in lines))
+        self.assertTrue(any("Question 2" in line for line in lines))
+        self.assertTrue(all(len(line.split(": ", 1)[-1]) <= 24 for line in lines))
+
+        snapshot = session.snapshot(400)
+        self.assertEqual(2, snapshot["conversation_context_turns"])
+        self.assertNotIn("Question", str(snapshot))
+
+        session.bridge_lost()
+        self.assertEqual((), session.context_lines())
+
     def test_turn_failure_and_cancel_close_through_cooldown(self) -> None:
         self.session.wake(0)
         self.session.utterance_committed(10, "Question")
@@ -100,6 +138,8 @@ class ConversationSessionTests(unittest.TestCase):
             ConversationConfig(reply_window_ms=0)
         with self.assertRaises(ValueError):
             ConversationConfig(max_turns=0)
+        with self.assertRaises(ValueError):
+            ConversationConfig(max_context_turns=0)
 
 
 if __name__ == "__main__":

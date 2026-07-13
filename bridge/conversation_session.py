@@ -21,6 +21,8 @@ class ConversationConfig:
     acoustic_tail_ms: int = 250
     cooldown_ms: int = 300
     max_turns: int = 12
+    max_context_turns: int = 4
+    max_context_chars: int = 320
     barge_in_enabled: bool = True
     exit_phrases: tuple[str, ...] = (
         "goodbye stackchan",
@@ -38,6 +40,10 @@ class ConversationConfig:
             raise ValueError("cooldown_ms cannot be negative")
         if self.max_turns <= 0:
             raise ValueError("max_turns must be positive")
+        if self.max_context_turns <= 0:
+            raise ValueError("max_context_turns must be positive")
+        if self.max_context_chars <= 0:
+            raise ValueError("max_context_chars must be positive")
 
 
 @dataclass(frozen=True)
@@ -63,6 +69,8 @@ class ConversationSession:
         self.cooldown_until_ms = 0
         self.close_after_response = False
         self.last_close_reason = ""
+        self._recent_turns: list[tuple[str, str]] = []
+        self._pending_turn: tuple[str, str] | None = None
 
     @staticmethod
     def _now(now_ms: int) -> int:
@@ -78,6 +86,10 @@ class ConversationSession:
     def _transition(self, *actions: str, reason: str = "") -> ConversationTransition:
         return ConversationTransition(self.phase, tuple(actions), reason)
 
+    def _clear_context(self) -> None:
+        self._recent_turns.clear()
+        self._pending_turn = None
+
     def _begin_cooldown(self, now_ms: int, reason: str) -> ConversationTransition:
         self.phase = ConversationPhase.COOLDOWN
         self.capture_open = False
@@ -87,6 +99,7 @@ class ConversationSession:
         self.cooldown_until_ms = now_ms + self.config.cooldown_ms
         self.close_after_response = False
         self.last_close_reason = reason
+        self._clear_context()
         return self._transition("close_capture", "session_closing", reason=reason)
 
     def _return_idle(self, reason: str) -> ConversationTransition:
@@ -100,6 +113,7 @@ class ConversationSession:
         self.cooldown_until_ms = 0
         self.close_after_response = False
         self.last_close_reason = reason
+        self._clear_context()
         return self._transition("close_capture", "session_closed", reason=reason)
 
     def wake(self, now_ms: int, owner_id: str = "") -> ConversationTransition:
@@ -115,7 +129,33 @@ class ConversationSession:
         self.cooldown_until_ms = 0
         self.close_after_response = False
         self.last_close_reason = ""
+        self._clear_context()
         return self._transition("session_started", "open_capture", reason="wake")
+
+    def stage_turn(self, user_text: str, response_text: str) -> None:
+        """Stage a generated turn until authoritative playback completion arrives."""
+
+        if self.phase not in (ConversationPhase.SPEAKING, ConversationPhase.REPLY_WINDOW):
+            return
+        user = " ".join(str(user_text or "").strip().split())[: self.config.max_context_chars]
+        response = " ".join(str(response_text or "").strip().split())[: self.config.max_context_chars]
+        if not user or not response:
+            return
+        self._pending_turn = (user, response)
+
+    def _commit_staged_turn(self) -> None:
+        if self._pending_turn is None:
+            return
+        self._recent_turns.append(self._pending_turn)
+        self._pending_turn = None
+        del self._recent_turns[: -self.config.max_context_turns]
+
+    def context_lines(self) -> tuple[str, ...]:
+        lines: list[str] = []
+        for index, (user, response) in enumerate(self._recent_turns, start=1):
+            lines.append(f"turn {index} user: {user}")
+            lines.append(f"turn {index} stackchan: {response}")
+        return tuple(lines)
 
     def utterance_started(self, now_ms: int) -> ConversationTransition:
         self._now(now_ms)
@@ -156,6 +196,7 @@ class ConversationSession:
         now = self._now(now_ms)
         if self.phase != ConversationPhase.SPEAKING:
             return self._transition("reject_playback_complete", reason="not_speaking")
+        self._commit_staged_turn()
         if self.close_after_response:
             return self._begin_cooldown(now, "turn_limit")
         self.phase = ConversationPhase.REPLY_WINDOW
@@ -180,6 +221,7 @@ class ConversationSession:
         self.acoustic_tail_until_ms = 0
         self.reply_window_until_ms = now + self.config.reply_window_ms
         self.close_after_response = False
+        self._pending_turn = None
         actions.append("open_capture")
         return self._transition(*actions, reason="barge_in")
 
@@ -228,6 +270,7 @@ class ConversationSession:
             "conversation_session": self.session_number,
             "conversation_owner": self.owner_id,
             "conversation_turns": self.turns,
+            "conversation_context_turns": len(self._recent_turns),
             "conversation_capture_open": self.capture_open,
             "conversation_echo_guard": self.echo_guard,
             "conversation_reply_window_remaining_ms": max(0, self.reply_window_until_ms - now),

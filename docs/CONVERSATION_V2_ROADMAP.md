@@ -85,6 +85,12 @@ firmware to its normal local face and wake behavior.
   bridge loss cancels a pending window. Native and host tests cover parsing, bounds, expiry, and
   host transitions. The source path remains opt-in and unpromoted until it passes exact-image
   hardware qualification.
+- Completed follow-ups now receive at most four prior user/Stackchan turns through a separately
+  labeled active-session prompt channel. A generated reply is staged after successful TTS and
+  enters the ring only after its matching authoritative `playback_complete`; failed, interrupted,
+  unplayed, closed, or bridge-lost turns do not survive. The ring is never written to
+  `BridgeMemory`, turn telemetry exposes only its count, and all text is erased when the lease
+  closes.
 - The remaining core slice is voice-activity-ended capture plus genuinely concurrent cancellation
   of in-flight model generation/playback. The current reply capture is still fixed-length, so it
   proves turn-taking but is not yet natural barge-in.
@@ -92,8 +98,9 @@ firmware to its normal local face and wake behavior.
 ## Memory Model
 
 - Keep the current privacy-filtered `BridgeMemory` durable facts as the source of familiarity.
-- Add a bounded recent-turn ring for the active session only; do not persist raw transcripts by
-  default.
+- Done in post-release source: a four-turn recent-history ring exists only inside the active
+  conversation lease and is cleared on every close path. Raw session text is not promoted to
+  durable memory.
 - Retrieve durable facts by query relevance and importance. Do not inject or mark every fact as
   used on every turn.
 - Run optional consolidation only after a session, against privacy-filtered summaries, with

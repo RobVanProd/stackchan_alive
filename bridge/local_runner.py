@@ -226,6 +226,7 @@ def run_runner_profile(
     research_tools_enabled: bool = False,
     embodiment_lines: tuple[str, ...] = (),
     memory_lines: tuple[str, ...] = (),
+    conversation_lines: tuple[str, ...] = (),
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
@@ -241,6 +242,7 @@ def run_runner_profile(
         research_tools_enabled=research_tools_enabled,
         embodiment_lines=embodiment_lines,
         memory_lines=memory_lines,
+        conversation_lines=conversation_lines,
     )
     resolved_command, command_source = resolve_command(profile_id, command)
     configured_runner = resolved_command is not None

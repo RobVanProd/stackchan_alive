@@ -35,7 +35,7 @@ from lan_service import (
     websocket_accept_value,
 )
 from bridge_memory import BridgeMemory
-from local_runner import RunnerExecutionError
+from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
 from stt_adapter import STT_COMMAND_ENV
 from tts_adapter import TTS_COMMAND_ENV
@@ -1175,6 +1175,7 @@ class LanServiceTests(unittest.TestCase):
             completed = session.handle_text(
                 json.dumps({"type": "playback_complete", "seq": 70, "at_ms": 120})
             )
+            context_after_playback = session.conversation.context_lines()
             followup = session.handle_text(
                 json.dumps({"type": "utterance_start", "seq": 71, "sample_rate": 16000})
             )
@@ -1193,12 +1194,64 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(8000, completed[0]["window_ms"])
         self.assertEqual("reply_window", completed[0]["conversation_state"])
         self.assertFalse(completed[0]["conversation_capture_open"])
+        self.assertEqual(
+            (
+                "turn 1 user: What is your name?",
+                "turn 1 stackchan: I am Stackchan.",
+            ),
+            context_after_playback,
+        )
         self.assertEqual("listening", followup[0]["type"])
         self.assertEqual("engaged", followup[0]["conversation_state"])
         self.assertTrue(followup[0]["conversation_capture_open"])
         self.assertEqual("heartbeat", exit_frames[0]["type"])
         self.assertEqual("cooldown", exit_frames[0]["conversation_state"])
         self.assertEqual("exit_phrase", exit_frames[0]["conversation_reason"])
+        self.assertEqual((), session.conversation.context_lines())
+
+    def test_conversation_v2_supplies_only_completed_session_turns_to_followup(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_tts.py"
+            script.write_text(
+                "import base64,json,sys\n"
+                "sys.stdin.buffer.read()\n"
+                "print(json.dumps({'audio_format':'pcm16','sample_rate':16000,"
+                "'audio_b64':base64.b64encode(b'\\x00\\x00').decode('ascii'),"
+                "'audio_truncated':False,'beats':[{'env':0.4,'viseme':'ah',"
+                "'duration_ms':20,'final':True}]}))\n",
+                encoding="utf-8",
+            )
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    conversation_v2_enabled=True,
+                    conversation_acoustic_tail_ms=0,
+                    tts_command=f'"{sys.executable}" "{script}"',
+                )
+            )
+
+            session.handle_text(json.dumps({"type": "utterance_start", "seq": 80}))
+            session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 80, "text": "What is your name?"})
+            )
+            session.handle_text(json.dumps({"type": "playback_complete", "seq": 80}))
+            session.handle_text(json.dumps({"type": "utterance_start", "seq": 81}))
+            with patch.dict(os.environ, RUNNER_ENV, clear=False), patch(
+                "lan_service.run_runner_profile", wraps=run_runner_profile
+            ) as runner:
+                session.handle_text(
+                    json.dumps(
+                        {"type": "utterance_end", "seq": 81, "text": "What did you just say?"}
+                    )
+                )
+
+        self.assertEqual(1, runner.call_count)
+        self.assertEqual(
+            (
+                "turn 1 user: What is your name?",
+                "turn 1 stackchan: I am Stackchan.",
+            ),
+            runner.call_args.kwargs["conversation_lines"],
+        )
 
 
 if __name__ == "__main__":
