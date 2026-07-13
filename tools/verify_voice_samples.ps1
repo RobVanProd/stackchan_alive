@@ -203,7 +203,8 @@ foreach ($pattern in @(
   "stackchan_spark_thinking.wav",
   "Hello. I am Stackchan, and I am awake.",
   "Input received. I am thinking now. Curiosity level rising.",
-  "production rollout remains blocked"
+  "The public release uses the exact production RVC model and index",
+  "bring-your-own voice models remain supported"
 )) {
   Assert-TextContains -Text $auditionPage -Pattern $pattern -Name "VOICE_AUDITION.html"
 }

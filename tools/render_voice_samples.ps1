@@ -541,7 +541,7 @@ Rollout note: these WAV and MP3 files are quick auditions; the production Direct
 <body>
   <main>
     <h1>Stackchan Spark Voice Audition</h1>
-    <p class="note">Prototype direction samples for local review. These are original Stackchan Spark auditions, not a named character clone, and production rollout remains blocked until source provenance and real-device speaker evidence are complete.</p>
+    <p class="note">Historical Stackchan Spark direction samples. The public release uses the exact production RVC model and index under <code>media/voice/rvc/</code>; bring-your-own voice models remain supported for custom persona packs.</p>
 
     <section class="sample">
       <h2>Bright Robot Greeting</h2>
