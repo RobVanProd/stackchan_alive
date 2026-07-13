@@ -111,8 +111,11 @@ Working on real hardware:
    - Done in post-release source: validated bridge persona selection works at startup and between
      turns, rejects path-like/invalid IDs and active-turn races, and clears cross-character session
      context. Embedded face/earcon/prompt assets remain truthfully build-time.
-   - Next: coherent firmware asset hot-swap and OTA stable/beta channels. The linear
-     first-30-minutes quickstart is already present in `RELEASE_QUICKSTART.md`.
+   - Done in post-release source: OTA stable/beta manifests bind each enabled channel to an exact
+     version, source commit, HTTPS URL, byte count, and SHA-256; the LAN uploader can require a
+     matching local artifact without adding automatic download or flashing.
+   - Next: coherent firmware asset hot-swap and publishing the first permanent channel manifest.
+     The linear first-30-minutes quickstart is already present in `RELEASE_QUICKSTART.md`.
 
 ## Evidence Rules
 

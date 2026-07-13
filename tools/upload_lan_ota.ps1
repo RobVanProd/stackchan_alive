@@ -8,6 +8,9 @@ param(
   [int]$RequestTimeoutSec = 45,
   [int]$HealthTimeoutSec = 180,
   [string]$EvidenceRoot = "",
+  [ValidateSet("", "stable", "beta")]
+  [string]$Channel = "",
+  [string]$ChannelManifest = "",
   [switch]$ConfirmUpload,
   [switch]$SkipHealthWait
 )
@@ -38,6 +41,42 @@ $firmwarePath = (Resolve-Path -LiteralPath $Firmware).Path
 $firmwareInfo = Get-Item -LiteralPath $firmwarePath
 if ($firmwareInfo.Length -le 0) {
   throw "Firmware image is empty: $firmwarePath"
+}
+
+$channelVerification = $null
+$hasChannel = -not [string]::IsNullOrWhiteSpace($Channel)
+$hasChannelManifest = -not [string]::IsNullOrWhiteSpace($ChannelManifest)
+if ($hasChannel -ne $hasChannelManifest) {
+  throw "Channel and ChannelManifest must be supplied together."
+}
+if ($hasChannel) {
+  $manifestPath = (Resolve-Path -LiteralPath $ChannelManifest).Path
+  $validatorPath = Join-Path (Split-Path -Parent $PSScriptRoot) "bridge\ota_channels.py"
+  if (-not (Test-Path -LiteralPath $validatorPath -PathType Leaf)) {
+    throw "OTA channel validator is missing: $validatorPath"
+  }
+  $python = Get-Command python -ErrorAction SilentlyContinue
+  if ($null -eq $python) {
+    throw "Python is required to validate an OTA channel manifest."
+  }
+  $validatorOutput = @(
+    & $python.Source $validatorPath verify `
+      --manifest $manifestPath `
+      --channel $Channel `
+      --firmware $firmwarePath 2>&1
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "OTA channel verification failed: $($validatorOutput -join [Environment]::NewLine)"
+  }
+  try {
+    $channelVerification = ($validatorOutput -join [Environment]::NewLine) | ConvertFrom-Json
+  } catch {
+    throw "OTA channel validator returned invalid JSON: $($validatorOutput -join [Environment]::NewLine)"
+  }
+  if (-not $channelVerification.ok) {
+    throw "OTA channel verification did not report ready."
+  }
+  Write-Host "Verified OTA channel $Channel version $($channelVerification.version) at source commit $($channelVerification.source_commit)."
 }
 
 $token = [Environment]::GetEnvironmentVariable("STACKCHAN_OTA_TOKEN")
@@ -103,6 +142,9 @@ if (-not [string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     firmware_file = $firmwareInfo.Name
     firmware_bytes = $firmwareInfo.Length
     firmware_sha256 = $sha256
+    channel = if ($null -ne $channelVerification) { $Channel } else { "" }
+    channel_version = if ($null -ne $channelVerification) { $channelVerification.version } else { "" }
+    channel_source_commit = if ($null -ne $channelVerification) { $channelVerification.source_commit } else { "" }
   } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $evidencePath "manifest.json") -Encoding UTF8
 }
 

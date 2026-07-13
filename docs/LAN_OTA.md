@@ -24,6 +24,57 @@ prevents a release artifact from carrying an owner's secrets. Install that publi
 serial first, then build `stackchan_release_forensics` or `stackchan_camera_probe` locally with
 the owner's unique token when LAN OTA is desired.
 
+## Stable And Beta Channels
+
+`bridge/ota_channels.py` defines the local, hash-bound channel contract. A manifest contains
+exactly `stable` and `beta`. Stable must be enabled; beta may be explicitly disabled. Every enabled
+entry binds a semantic version, 40-character source commit, publication timestamp, durable HTTPS
+artifact URL, byte count, and SHA-256. Stable cannot point at a prerelease version.
+
+Build a manifest only after the named binaries exist and their permanent release URLs are known:
+
+```powershell
+$sourceCommit = (git rev-parse HEAD).Trim()
+$stableUrl = Read-Host "Permanent stable firmware HTTPS URL"
+$betaUrl = Read-Host "Permanent beta firmware HTTPS URL"
+python bridge/ota_channels.py build `
+  --stable-firmware output\release\stable\firmware.bin `
+  --stable-version 0.2.0 `
+  --stable-source-commit $sourceCommit `
+  --stable-url $stableUrl `
+  --beta-firmware output\release\beta\firmware.bin `
+  --beta-version 0.3.0-beta.1 `
+  --beta-source-commit $sourceCommit `
+  --beta-url $betaUrl `
+  --output output\ota\channels.json
+```
+
+Before upload, verify a downloaded or locally retained binary against the selected entry:
+
+```powershell
+python bridge/ota_channels.py verify `
+  --manifest output\ota\channels.json `
+  --channel stable `
+  --firmware output\release\stable\firmware.bin
+```
+
+Pass the same manifest and channel to the uploader to make that verification mandatory before any
+device preflight or upload request:
+
+```powershell
+.\tools\upload_lan_ota.ps1 `
+  -Device stackchan.local `
+  -Firmware output\release\stable\firmware.bin `
+  -Channel stable `
+  -ChannelManifest output\ota\channels.json `
+  -ConfirmUpload
+```
+
+The channel tooling never downloads or uploads automatically. It does not make release evidence
+transferable to another binary, and it does not bypass the token, private-LAN, operator,
+power/motion/audio, rollback, or post-boot health gates below. Do not commit a channel manifest
+until its URL is permanent and its exact artifact is published.
+
 ## Upload
 
 Keep Stackchan on stable external power, clear its moving parts, and stop active voice or wake interactions. Use the firmware binary produced for the same board and partition layout already installed on the device.

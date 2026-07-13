@@ -28,7 +28,8 @@ What is working in the repository now:
   seed-varied procedural nod/shake gestures for unambiguous yes/no replies.
 - Paired local camera capture and YuNet face detection plus instrumented body RGB, touch, IMU,
   battery, PMIC, thermal, display, audio, network, and actuator state.
-- Confirmed OTA updates with candidate health confirmation and automatic rollback.
+- Confirmed OTA updates with candidate health confirmation, automatic rollback, and optional
+  hash-bound stable/beta channel manifests that never auto-flash the robot.
 - Versioned, bounded, privacy-filtered host memory with atomic persistence, relevant fact recall,
   explicit forgetting, and deterministic local time/date/time-zone/name answers that do not rely
   on Gemma choosing a tool.
@@ -58,7 +59,8 @@ in [docs/FIRST_DEPLOY_STATUS.md](docs/FIRST_DEPLOY_STATUS.md), the exact hardwar
 [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
 [docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the deliberately
 post-release natural-conversation plan. Passive visitor-sensor measurement is documented in
-[docs/LTR553_CALIBRATION.md](docs/LTR553_CALIBRATION.md).
+[docs/LTR553_CALIBRATION.md](docs/LTR553_CALIBRATION.md), and authenticated updates plus the
+stable/beta manifest contract are in [docs/LAN_OTA.md](docs/LAN_OTA.md).
 
 ## What This Is
 
