@@ -91,8 +91,18 @@ Capture companion release evidence after APK or desktop package artifacts exist:
 This writes `COMPANION_RELEASE_EVIDENCE.json` and `COMPANION_RELEASE_EVIDENCE.md` with the
 artifact hashes, source commit, and companion toolchain provenance used by the release gate.
 
-Before a signed C8 distribution is promoted, rerun it with `-RequireArtifacts` so missing
-APK or desktop package hashes block the release evidence.
+Before a signed C8 distribution is promoted, rerun the PowerShell exporter with all strict gates:
+
+```powershell
+.\tools\export_companion_release_evidence.ps1 `
+  -RequireArtifacts `
+  -RequireUploadSigning `
+  -RequireAndroidEmulatorEvidence `
+  -RequireDesktopPackageEvidence
+```
+
+The emulator JSON must come from the exact release APK; the exporter recomputes its hash and
+blocks stale or separately rebuilt launch evidence.
 
 Run the socket-level LAN bridge smoke report:
 

@@ -20,6 +20,9 @@ Authoritative Android release guidance:
 - Target SDK: `36`
 - Release artifact for Google Play: `app-android-release.aab`
 - Lab install artifact for arrival-day testing: `app-android-release.apk`
+- CI runtime smoke: API 35 AOSP ATD install, cold launch, foreground bridge service, and crash check
+  against the exact release APK artifact, with SHA-256 binding in aggregate release evidence; this
+  remains separate from required target-phone and Play internal-testing evidence.
 
 Google Play requires Android App Bundles for new apps and requires Play App Signing.
 APKs remain useful for direct lab installation and robot-arrival testing,
@@ -43,12 +46,20 @@ debug signing only by passing `-Pstackchan.allowLabDebugReleaseSigning=true`; th
 fallback must not be used for a public GitHub or Play upload.
 `tools/check_android_play_release_readiness.ps1` reports this as
 `source-ready-pending-upload-signing` until the upload-key environment is configured.
+When all four values are present, that checker cryptographically validates the configured material:
+it proves the alias is a private-key entry, verifies both passwords through a disposable PKCS#12
+copy, requires an RSA key of at least 4096 bits, rejects an Android debug certificate subject,
+checks that the certificate is currently valid and expires after `2033-10-22`, and reports the
+certificate SHA-256 fingerprint. Passwords are passed to `keytool` only by temporary environment
+references, are never written to the report, and the disposable private-key copy is always removed.
 
 The tag workflow reads the same four values from GitHub Actions secrets. The keystore itself
 is supplied as base64 in `STACKCHAN_ANDROID_KEYSTORE_B64`; the other three secret names match
-the environment variables above. `tools/export_companion_release_evidence.ps1
--RequireUploadSigning` rejects both APK and AAB evidence unless the `upload-key` profile is
-recorded.
+the environment variables above. Before building, the tag workflow runs the same cryptographic
+readiness checker against those secrets. `tools/export_companion_release_evidence.ps1
+-RequireUploadSigning -RequireAndroidEmulatorEvidence` rejects both APK and AAB evidence unless
+the `upload-key` profile is recorded and the upload-signed release APK's API 35 launch evidence has
+the same SHA-256.
 
 ### One-Time Upload Key Provisioning
 
@@ -69,6 +80,18 @@ keytool -genkeypair -v `
   -validity 10000
 keytool -list -v -keystore $keystore -alias stackchan-upload
 ```
+
+After setting the four local values, run the same release preflight used by CI and compare the
+reported certificate SHA-256 fingerprint with the offline key record before building:
+
+```powershell
+tools/check_android_play_release_readiness.ps1 -Json
+tools/test_android_upload_signing_contract.ps1
+```
+
+The first command must report `source-ready`, with `play-upload-signing-environment` set to `pass`.
+The second command uses only generated temporary keys to prove that valid material is accepted and
+that missing, weak, debug, short-lived, wrong-alias, and wrong-password configurations are rejected.
 
 Before any Play upload, preserve two independent offline media copies of the encrypted JKS and its
 password record. Losing the private upload key or its passwords breaks update continuity. Do not

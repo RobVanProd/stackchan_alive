@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+*.jks
+*.keystore
+*.p12
 
 # Editor and OS files
 .vscode/

@@ -19,6 +19,17 @@ The app intentionally declares the bridge service as `connectedDevice` only. Do 
 within Android's time-limited data-sync window. The bridge needs to stay reachable during
 screen-off robot sessions, which matches the connected-device foreground-service role.
 
+CI also runs an API 35 AOSP automated-test emulator smoke against the exact lab-signed release APK
+uploaded by the Android artifact build; it does not rebuild a second APK for this test.
+`tools/test_android_emulator_launch.ps1` installs the APK, pre-grants notification permission for
+a deterministic cold launch, verifies the package/version, waits for `MainActivity` and
+`CompanionBridgeService`, checks that the process remains alive, and captures scoped post-launch
+logcat evidence. `tools/check_android_emulator_release_evidence.ps1` then recomputes the release
+APK SHA-256 and requires it to match that JSON before aggregate evidence can pass. Its JSON
+explicitly sets `substitutesForPhysicalEvidence=false`: this catches
+packaging and launch regressions, but it does not satisfy any target-phone, physical robot,
+screen-off, microphone, Gemma accelerator, or Play internal-testing item in this plan.
+
 ## Preflight
 
 - [ ] Phone and robot are on the same Wi-Fi/LAN segment.

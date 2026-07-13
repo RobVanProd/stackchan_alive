@@ -226,9 +226,17 @@ The same workflow supports `workflow_dispatch`; a manual run forces `companion-t
 native build legs, and aggregate package evidence even when path filtering would skip them. Use
 it for a pushed candidate-branch rehearsal before creating a release tag.
 
+The Android build leg uploads one lab-signed release APK. A dependent API 35 AOSP ATD job installs
+and cold-launches that exact artifact, verifies `MainActivity`, the foreground
+`CompanionBridgeService`, and zero scoped fatal-process matches, then uploads bounded smoke JSON.
+The aggregate gate recomputes the release APK SHA-256 and rejects stale or separately rebuilt
+emulator evidence. This remains packaging/runtime smoke only and never substitutes for target-phone
+or physical-robot qualification.
+
 A follow-on `companion-release-evidence` job downloads those platform artifacts and runs
 `tools/export_companion_release_evidence.ps1 -RequireArtifacts
--RequireDesktopPackageEvidence`. PR evidence records the lab signing profile, package hashes,
+-RequireAndroidEmulatorEvidence -RequireDesktopPackageEvidence`. PR evidence records the lab
+signing profile, exact release-APK emulator launch binding, package hashes,
 and one ready native package/runtime report for Windows, Linux, and macOS, but it is not promotion
 evidence. Public promotion additionally uses `-RequireUploadSigning`, which requires both Android
 release artifacts to report the `upload-key` signing profile.
@@ -248,15 +256,18 @@ three desktop operating systems.
 1. `tools/check_companion_release_version.ps1 -ExpectedVersion <tag>` rejects source/tag drift.
 2. `companion-android-release` decodes the upload keystore and builds upload-signed APK/AAB
    artifacts. Missing or incomplete credentials fail before Gradle produces release output.
-3. `companion-desktop-release` runs natively on Ubuntu, macOS, and Windows. Each leg creates
+3. `companion-android-emulator-smoke` installs and cold-launches that exact upload-signed release
+   APK on an API 35 AOSP ATD emulator. The final manifest rejects evidence whose APK SHA-256 does
+   not match the release input.
+4. `companion-desktop-release` runs natively on Ubuntu, macOS, and Windows. Each leg creates
    and validates a managed Python payload, embeds it, builds DEB, DMG, or MSI output, then
    natively extracts the installer and hashes `python-runtime/` from its application JAR. Native
    evidence ties the installer, packaged JAR, processed runtime, manifest, and required brain
    resources to one exact payload.
-4. The final release job runs the firmware/package gates, exports strict companion evidence,
+5. The final release job runs the firmware/package gates, exports strict companion evidence,
    requires all three native package/runtime reports, stages stable artifact names, and publishes
    the complete set in one GitHub Release.
-5. `tools/verify_published_release.ps1` downloads the release and checks the tag commit,
+6. `tools/verify_published_release.ps1` downloads the release and checks the tag commit,
    expected asset set, hashes, package evidence, and upload-signing evidence.
 
 Repository secrets required before the first public tag:
@@ -272,7 +283,8 @@ follow-on hardening and are not represented as complete by current evidence.
 
 Every release job also emits `RELEASE_EVIDENCE.json` and
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, SHA-256 hashes, source commit,
-toolchain pins, package-runtime evidence, and Android signing status.
+toolchain pins, package-runtime evidence, Android signing status, and exact release-APK emulator
+launch evidence.
 
 ## Update Distribution
 

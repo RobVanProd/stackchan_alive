@@ -7,12 +7,14 @@ param(
   [string]$DesktopArtifactRoot = "",
   [string]$DesktopPythonRuntimeRoot = "",
   [string]$DesktopPackageEvidenceRoot = "",
+  [string]$AndroidEmulatorEvidencePath = "",
   [string]$ApkSignerPath = "",
   [string]$OutDir = "",
   [switch]$RequireArtifacts,
   [switch]$RequireUploadSigning,
   [switch]$RequireDesktopPythonRuntime,
   [switch]$RequireDesktopPackageEvidence,
+  [switch]$RequireAndroidEmulatorEvidence,
   [switch]$Json
 )
 
@@ -523,6 +525,134 @@ function Test-AndroidReleaseBundleSignature {
   }
 }
 
+function Get-AndroidEmulatorReleaseEvidence {
+  $releaseEntry = Get-AndroidApkEntry $androidArtifacts "release"
+  if ($null -eq $releaseEntry) {
+    return [ordered]@{
+      status = "pending"
+      checker = ""
+      evidence = ""
+      releaseApk = ""
+      releaseApkSha256 = ""
+      smoke = $null
+      issues = @("Release APK artifact not found for emulator evidence binding.")
+    }
+  }
+
+  $releaseApkPath = [string]$releaseEntry["path"]
+  if (-not [System.IO.Path]::IsPathRooted($releaseApkPath)) {
+    $releaseApkPath = Join-Path $Root $releaseApkPath
+  }
+  if (-not (Test-Path -LiteralPath $releaseApkPath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      checker = ""
+      evidence = ""
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = ""
+      smoke = $null
+      issues = @("Release APK path does not exist for emulator evidence binding.")
+    }
+  }
+
+  $resolvedEvidencePath = ""
+  foreach ($candidatePath in @(
+    $AndroidEmulatorEvidencePath,
+    "output/android-emulator-smoke/latest/android_emulator_launch_smoke.json",
+    "output/companion/ci-artifacts/companion-android-emulator-smoke/android_emulator_launch_smoke.json",
+    "output/companion/release-input/android-emulator/android_emulator_launch_smoke.json"
+  )) {
+    if ([string]::IsNullOrWhiteSpace($candidatePath)) {
+      continue
+    }
+    $candidate = if ([System.IO.Path]::IsPathRooted($candidatePath)) { $candidatePath } else { Join-Path $Root $candidatePath }
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      $resolvedEvidencePath = [string](Resolve-Path -LiteralPath $candidate)
+      break
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($resolvedEvidencePath)) {
+    return [ordered]@{
+      status = "pending"
+      checker = ""
+      evidence = $AndroidEmulatorEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Android emulator launch evidence was not found.")
+    }
+  }
+
+  $checkerPath = Join-Path $Root "tools/check_android_emulator_release_evidence.ps1"
+  if (-not (Test-Path -LiteralPath $checkerPath -PathType Leaf)) {
+    return [ordered]@{
+      status = "failed"
+      checker = ""
+      evidence = Convert-ToRelativePath $resolvedEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Android emulator release evidence checker is missing.")
+    }
+  }
+
+  $powerShellRunner = Find-PowerShellRunner
+  if ([string]::IsNullOrWhiteSpace($powerShellRunner)) {
+    return [ordered]@{
+      status = "failed"
+      checker = Convert-ToRelativePath $checkerPath
+      evidence = Convert-ToRelativePath $resolvedEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Neither pwsh nor powershell was found for the Android emulator evidence checker.")
+    }
+  }
+
+  $checkerOutput = @()
+  $checkerExitCode = -1
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $checkerOutput = @(& $powerShellRunner -NoProfile -File $checkerPath -EvidencePath $resolvedEvidencePath -ReleaseApkPath $releaseApkPath -Json 2>&1)
+    $checkerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  $checkerText = ($checkerOutput | Out-String).Trim()
+  try {
+    $checkerReport = $checkerText | ConvertFrom-Json
+  } catch {
+    return [ordered]@{
+      status = "failed"
+      checker = Convert-ToRelativePath $checkerPath
+      evidence = Convert-ToRelativePath $resolvedEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Android emulator evidence checker did not return valid JSON (exit $checkerExitCode).")
+    }
+  }
+
+  $checkerStatus = [string]$checkerReport.status
+  $checkerIssues = @($checkerReport.issues)
+  if (($checkerExitCode -eq 0) -ne ($checkerStatus -eq "ready")) {
+    $checkerStatus = "failed"
+    $checkerIssues += "Android emulator evidence checker status and exit code were inconsistent (status '$($checkerReport.status)', exit $checkerExitCode)."
+  }
+
+  return [ordered]@{
+    status = $checkerStatus
+    checkerExitCode = $checkerExitCode
+    checker = Convert-ToRelativePath $checkerPath
+    evidence = Convert-ToRelativePath $resolvedEvidencePath
+    releaseApk = [string]$releaseEntry["path"]
+    releaseApkSha256 = [string]$checkerReport.releaseApkSha256
+    smoke = $checkerReport.evidence
+    issues = $checkerIssues
+  }
+}
+
 function Get-DesktopPythonRuntimeEvidence {
   $checkerPath = Join-Path $Root "tools/check_desktop_python_runtime_payload.ps1"
   if (-not (Test-Path -LiteralPath $checkerPath -PathType Leaf)) {
@@ -761,6 +891,10 @@ if ($androidBundleSigning.status -ne "verified") {
 if ($RequireUploadSigning -and $androidBundleSigning.signingProfile -ne "upload-key") {
   $pending += "android-release-aab-upload-signing"
 }
+$androidEmulatorEvidence = Get-AndroidEmulatorReleaseEvidence
+if ($androidEmulatorEvidence.status -ne "ready" -and ($RequireAndroidEmulatorEvidence -or -not [string]::IsNullOrWhiteSpace($AndroidEmulatorEvidencePath))) {
+  $pending += "android-emulator-release-apk-evidence"
+}
 $desktopPythonRuntime = Get-DesktopPythonRuntimeEvidence
 if ($desktopPythonRuntime.status -ne "ready" -and ($RequireDesktopPythonRuntime -or -not [string]::IsNullOrWhiteSpace($desktopPythonRuntime.runtimeRoot))) {
   $pending += "desktop-managed-python-runtime-payload"
@@ -770,7 +904,8 @@ if ($RequireDesktopPackageEvidence -and $desktopPackageEvidence.status -ne "read
   $pending += "desktop-native-package-runtime-evidence"
 }
 
-$status = if (($RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPackageEvidence) -and $pending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
+$strictEvidenceRequired = $RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPythonRuntime -or $RequireDesktopPackageEvidence -or $RequireAndroidEmulatorEvidence
+$status = if ($strictEvidenceRequired -and $pending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
 $report = [ordered]@{
   schema = "stackchan.companion-release-evidence.v1"
@@ -789,6 +924,8 @@ $report = [ordered]@{
   androidSigning = $androidSigning
   androidBundleSigning = $androidBundleSigning
   uploadSigningRequired = [bool]$RequireUploadSigning
+  androidEmulatorEvidenceRequired = [bool]$RequireAndroidEmulatorEvidence
+  androidEmulatorEvidence = $androidEmulatorEvidence
   desktopPythonRuntime = $desktopPythonRuntime
   desktopPackageEvidenceRequired = [bool]$RequireDesktopPackageEvidence
   desktopPackageEvidence = $desktopPackageEvidence
@@ -846,6 +983,22 @@ $lines += "- Signing profile: $($androidBundleSigning.signingProfile)"
 $lines += "- Verifier: $($androidBundleSigning.verifier)"
 $lines += "- Detail: $($androidBundleSigning.detail)"
 $lines += ""
+$lines += "## Android Emulator Release APK Evidence"
+$lines += "- Required: $([bool]$RequireAndroidEmulatorEvidence)"
+$lines += "- Status: $($androidEmulatorEvidence.status)"
+$lines += "- Evidence: $($androidEmulatorEvidence.evidence)"
+$lines += "- Release APK: $($androidEmulatorEvidence.releaseApk)"
+$lines += "- Release APK SHA-256: $($androidEmulatorEvidence.releaseApkSha256)"
+if ($null -ne $androidEmulatorEvidence.smoke) {
+  $lines += "- Emulator: $($androidEmulatorEvidence.smoke.model) / API $($androidEmulatorEvidence.smoke.apiLevel)"
+  $lines += "- Package: $($androidEmulatorEvidence.smoke.packageName) $($androidEmulatorEvidence.smoke.versionName) ($($androidEmulatorEvidence.smoke.versionCode))"
+  $lines += "- MainActivity resumed: $($androidEmulatorEvidence.smoke.mainActivityResumed)"
+  $lines += "- CompanionBridgeService present: $($androidEmulatorEvidence.smoke.bridgeServicePresent)"
+  $lines += "- Fatal process matches: $($androidEmulatorEvidence.smoke.fatalProcessMatches)"
+  $lines += "- Substitutes for physical evidence: $($androidEmulatorEvidence.smoke.substitutesForPhysicalEvidence)"
+}
+foreach ($issue in @($androidEmulatorEvidence.issues)) { $lines += "- Issue: $issue" }
+$lines += ""
 $lines += "## Desktop Managed Python Runtime"
 $lines += "- Status: $($desktopPythonRuntime.status)"
 $lines += "- Runtime root: $($desktopPythonRuntime.runtimeRoot)"
@@ -884,6 +1037,6 @@ if ($Json) {
   }
 }
 
-if (($RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPackageEvidence) -and $pending.Count -gt 0) {
+if ($strictEvidenceRequired -and $pending.Count -gt 0) {
   exit 2
 }

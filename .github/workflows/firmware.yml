@@ -29,9 +29,16 @@ jobs:
               - 'companion/**'
               - 'protocol-fixtures/**'
               - 'docs/ANDROID_COMPANION_SPEC.md'
+              - 'docs/ANDROID_COMPANION_TEST_PLAN.md'
+              - 'docs/ANDROID_PLAY_RELEASE.md'
               - 'docs/BRIDGE_PROTOCOL.md'
               - 'docs/COMPANION_CROSS_PLATFORM_PLAN.md'
               - 'tools/check_android_toolchain.*'
+              - 'tools/check_android_play_release_readiness.*'
+              - 'tools/test_android_upload_signing_contract.*'
+              - 'tools/test_android_emulator_launch.*'
+              - 'tools/check_android_emulator_release_evidence.*'
+              - 'tools/test_android_emulator_release_evidence_contract.*'
               - 'tools/check_companion_v1_readiness.*'
               - 'tools/check_companion_v1_evidence_bundle.*'
               - 'tools/test_companion_v1_evidence_bundle_contract.*'
@@ -177,6 +184,14 @@ jobs:
         shell: pwsh
         run: ./tools/check_android_play_release_readiness.ps1 -Json
 
+      - name: Run Android upload signing contract
+        shell: pwsh
+        run: ./tools/test_android_upload_signing_contract.ps1
+
+      - name: Run Android emulator release evidence contract
+        shell: pwsh
+        run: ./tools/test_android_emulator_release_evidence_contract.ps1
+
       - name: Run Android Play Store evidence contract
         shell: pwsh
         run: ./tools/test_android_play_store_evidence_contract.ps1
@@ -206,6 +221,91 @@ jobs:
         with:
           name: companion-c0-spike
           path: output/companion/c0-spike/SPIKE.md
+
+  companion-android-emulator-smoke:
+    needs: [changes, companion-platform-builds]
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Download companion Android APK artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-apks
+          path: output/companion/ci-artifacts/companion-android-apks
+
+      - name: Install emulator SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "emulator" \
+            "system-images;android-35;aosp_atd;x86_64"
+
+      - name: Locate release APK
+        shell: pwsh
+        run: |
+          $releaseApks = @(
+            Get-ChildItem "output/companion/ci-artifacts/companion-android-apks" -Recurse -File -Filter "*.apk" |
+              Where-Object { $_.FullName -match '[\\/]release[\\/]' }
+          )
+          if ($releaseApks.Count -ne 1) {
+            throw "Expected one release APK for emulator smoke; found $($releaseApks.Count)."
+          }
+          "STACKCHAN_EMULATOR_APK=$($releaseApks[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Start API 35 automated-test emulator
+        shell: bash
+        run: |
+          mkdir -p output/android-emulator-smoke/latest
+          echo no | avdmanager create avd \
+            --force \
+            --name stackchan_ci_api35_atd \
+            --package "system-images;android-35;aosp_atd;x86_64" \
+            --device pixel_2
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd stackchan_ci_api35_atd \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -wipe-data \
+            -memory 2048 \
+            -cores 2 \
+            > output/android-emulator-smoke/latest/emulator.stdout.log \
+            2> output/android-emulator-smoke/latest/emulator.stderr.log &
+          adb wait-for-device
+          timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb devices -l
+
+      - name: Run Android emulator install and launch smoke
+        shell: pwsh
+        run: |
+          ./tools/test_android_emulator_launch.ps1 `
+            -ApkPath "$env:STACKCHAN_EMULATOR_APK" `
+            -OutputDir output/android-emulator-smoke/latest `
+            -Json
+
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: adb emu kill || true
+
+      - name: Upload Android emulator launch evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/android-emulator-smoke/latest/**
+          if-no-files-found: error
 
   companion-platform-builds:
     needs: changes
@@ -425,7 +525,7 @@ jobs:
           if-no-files-found: error
 
   companion-release-evidence:
-    needs: [changes, companion-platform-builds]
+    needs: [changes, companion-platform-builds, companion-android-emulator-smoke]
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -449,6 +549,12 @@ jobs:
         with:
           name: companion-android-apks
           path: output/companion/ci-artifacts/companion-android-apks
+
+      - name: Download Android emulator launch evidence
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/companion/ci-artifacts/companion-android-emulator-smoke
 
       - name: Download companion Linux desktop artifacts
         uses: actions/download-artifact@v7
@@ -475,11 +581,13 @@ jobs:
             -Version "${{ github.sha }}" `
             -Commit "${{ github.sha }}" `
             -AndroidArtifactRoot "output/companion/ci-artifacts/companion-android-apks" `
+            -AndroidEmulatorEvidencePath "output/companion/ci-artifacts/companion-android-emulator-smoke/android_emulator_launch_smoke.json" `
             -DesktopArtifactRoot "output/companion/ci-artifacts" `
             -DesktopPackageEvidenceRoot "output/companion/ci-artifacts" `
             -ApkSignerPath "$env:ANDROID_HOME/build-tools/36.0.0/apksigner" `
             -OutDir "output/companion/release-evidence/ci" `
             -RequireArtifacts `
+            -RequireAndroidEmulatorEvidence `
             -RequireDesktopPackageEvidence `
             -Json
 

@@ -55,6 +55,10 @@ jobs:
           echo "STACKCHAN_ANDROID_KEY_ALIAS=$STACKCHAN_ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "STACKCHAN_ANDROID_KEY_PASSWORD=$STACKCHAN_ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
 
+      - name: Validate Android upload key
+        shell: pwsh
+        run: ./tools/check_android_play_release_readiness.ps1 -Json
+
       - name: Build upload-signed Android release
         shell: bash
         run: |
@@ -69,6 +73,90 @@ jobs:
             companion/app-android/build/outputs/apk/debug/*.apk
             companion/app-android/build/outputs/apk/release/*.apk
             companion/app-android/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+  companion-android-emulator-smoke:
+    needs: companion-android-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Download upload-signed Android release
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-release
+          path: output/companion/release-input/android
+
+      - name: Install emulator SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "emulator" \
+            "system-images;android-35;aosp_atd;x86_64"
+
+      - name: Locate upload-signed release APK
+        shell: pwsh
+        run: |
+          $releaseApks = @(
+            Get-ChildItem "output/companion/release-input/android" -Recurse -File -Filter "*.apk" |
+              Where-Object { $_.FullName -match '[\\/]release[\\/]' }
+          )
+          if ($releaseApks.Count -ne 1) {
+            throw "Expected one upload-signed release APK for emulator smoke; found $($releaseApks.Count)."
+          }
+          "STACKCHAN_EMULATOR_APK=$($releaseApks[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Start API 35 automated-test emulator
+        shell: bash
+        run: |
+          mkdir -p output/android-emulator-smoke/latest
+          echo no | avdmanager create avd \
+            --force \
+            --name stackchan_release_api35_atd \
+            --package "system-images;android-35;aosp_atd;x86_64" \
+            --device pixel_2
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd stackchan_release_api35_atd \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -wipe-data \
+            -memory 2048 \
+            -cores 2 \
+            > output/android-emulator-smoke/latest/emulator.stdout.log \
+            2> output/android-emulator-smoke/latest/emulator.stderr.log &
+          adb wait-for-device
+          timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb devices -l
+
+      - name: Run upload-signed Android emulator launch smoke
+        shell: pwsh
+        run: |
+          ./tools/test_android_emulator_launch.ps1 `
+            -ApkPath "$env:STACKCHAN_EMULATOR_APK" `
+            -OutputDir output/android-emulator-smoke/latest `
+            -Json
+
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: adb emu kill || true
+
+      - name: Upload Android emulator launch evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/android-emulator-smoke/latest/**
           if-no-files-found: error
 
   companion-desktop-release:
@@ -184,7 +272,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [companion-android-release, companion-desktop-release]
+    needs: [companion-android-release, companion-android-emulator-smoke, companion-desktop-release]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -209,6 +297,12 @@ jobs:
         with:
           name: companion-android-release
           path: output/companion/release-input/android
+
+      - name: Download Android emulator launch evidence
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/companion/release-input/android-emulator
 
       - name: Download Linux companion artifact
         uses: actions/download-artifact@v7
@@ -260,12 +354,14 @@ jobs:
             -Commit "${{ github.sha }}" `
             -PackageRoot "output/release/${{ github.ref_name }}" `
             -AndroidArtifactRoot "output/companion/release-input/android" `
+            -AndroidEmulatorEvidencePath "output/companion/release-input/android-emulator/android_emulator_launch_smoke.json" `
             -DesktopArtifactRoot "output/companion/release-input" `
             -DesktopPackageEvidenceRoot "output/companion/release-input" `
             -ApkSignerPath "$env:ANDROID_HOME/build-tools/36.0.0/apksigner.bat" `
             -OutDir "output/companion/release-evidence/${{ github.ref_name }}" `
             -RequireArtifacts `
             -RequireUploadSigning `
+            -RequireAndroidEmulatorEvidence `
             -RequireDesktopPackageEvidence `
             -Json
 

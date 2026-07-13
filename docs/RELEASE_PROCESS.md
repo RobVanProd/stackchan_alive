@@ -34,12 +34,23 @@ For the companion C8 distribution path, run `tools/export_companion_release_evid
 after Android APK or desktop package artifacts are built. It writes
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact SHA256s, git commit,
 `companion/gradle/libs.versions.toml` toolchain pins, and Android release APK signing
-status from `apksigner`; use `-RequireArtifacts -RequireUploadSigning
--RequireDesktopPackageEvidence` for promotion.
+status from `apksigner`. For promotion, use:
+
+```powershell
+tools/export_companion_release_evidence.ps1 `
+  -RequireArtifacts `
+  -RequireUploadSigning `
+  -RequireAndroidEmulatorEvidence `
+  -RequireDesktopPackageEvidence
+```
+
 The strict gate requires upload-key-signed APK and AAB artifacts plus MSI, DEB, and DMG
-packages. The tag workflow prepares and validates a managed Python runtime for each desktop
-package before embedding it, then natively extracts each MSI, DEB, or DMG and opens its
-installer application JAR. The native report binds the package SHA-256 and application-JAR SHA-256 to the
+packages. It also requires API 35 emulator launch evidence whose APK SHA-256 matches the release
+APK. Stale, failed, lower-API, wrong-package, service-missing, fatal-process, or physical-evidence
+substitution reports are rejected. The tag workflow prepares and validates a managed Python
+runtime for each desktop package before embedding it, then natively extracts each MSI, DEB, or
+DMG and opens its installer application JAR. The native report binds the package SHA-256 and
+application-JAR SHA-256 to the
 processed and installer-derived runtime SHA-256, manifest, file totals, and required brain
 resources. Missing, duplicate, stale-commit, staging-only, or mismatched native reports block
 release evidence.
