@@ -11,7 +11,7 @@
 - `COMPANION_CROSS_PLATFORM_PLAN.md`: Android/desktop companion build, distribution, and C0-C8 gate plan.
 - `CHARACTER_LOCK.md`: locked bridge persona, response schema, and memory policy.
 - `CUSTOMIZING_THE_FACE.md`: persona-safe expression tuning and advanced procedural eye, mouth, transition, viseme, preview, and performance workflow.
-- `GAP_ANALYSIS.md`: current implementation audit, ranked hardware/transport gaps, and recommended bottom-half order.
+- `GAP_ANALYSIS.md`: historical pre-arrival audit with a current post-v0.2.0 delta and links to the authoritative evidence record.
 - `HARDWARE_FEATURE_ROADMAP.md`: post-stability IMU, body touch/RGB, camera, active-speaker tracking, and opt-in face-recognition integration plan.
 - `LTR553_CALIBRATION.md`: passive far/near capture and evidence-gated proximity hysteresis calibration.
 - `LAN_OTA.md`: private-LAN authenticated updates, rollback health, recovery, and hash-bound stable/beta channel manifests.

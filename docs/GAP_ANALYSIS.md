@@ -1,5 +1,34 @@
 # Gap Analysis: Johnny Alive Implementation Audit
 
+> **Historical snapshot, not current status.** The audit below was written on 2026-07-03 before
+> hardware arrival. Its statements that Stackchan cannot hear, see, run a real model, or reach the
+> bridge are intentionally preserved as the original gap record. For current proof, start with
+> [FIRST_DEPLOY_STATUS.md](FIRST_DEPLOY_STATUS.md), then
+> [JOHNNY_ALIVE_PATHWAY.md](JOHNNY_ALIVE_PATHWAY.md). Do not use the old table below to describe the
+> public release.
+
+## Current Delta After v0.2.0
+
+The original critical path is now closed on the reference robot:
+
+| Original blind spot | Current observed or source status | Remaining gate |
+|---|---|---|
+| B1/B2 transport and audio bandwidth | Real Wi-Fi WebSocket bridge carries wake-gated PCM uplink and complete speaker downlink. | Live phone-host handoff remains companion evidence, not a PC-host release blocker. |
+| B3/B4 microphone and wake | Dual-mic capture, on-device wake phrase, acknowledgement cues, Whisper uplink, and bounded capture run on hardware. | Physically qualify opt-in reply-window capture, overlap detection, and echo rejection. |
+| B5 sight | Authenticated camera capture, host YuNet detection, and bounded face-follow motion run on hardware. | Qualify person-loss search/sigh and multi-person active-speaker selection. |
+| B6 body senses | Touch, RGB, and BMI270 pickup/orientation behavior run on hardware with forensic counters. LTR-553 raw proximity/light support exists in source. | Calibrate the physical LTR-553 before enabling proximity behavior. |
+| B7 brain and character | Local Whisper, Gemma 4, production DirectML RVC, privacy-filtered memory, trusted facts, local research, two persona packs, and Character Lock gates are integrated. | Continue retrieval/personality evaluation and physically qualify Conversation v2. |
+| B8 concurrency | The integrated face, wake, bridge, speaker, camera, body sensors, and guarded actuator stack passed exact-image qualification and the owner-accepted extended run recorded in `FIRST_DEPLOY_STATUS.md`. | Keep collecting long community runs; never transfer evidence to another firmware SHA. |
+| B9 latency | Per-stage conversation timing, early thinking state, phrase streaming, and complete-playback accounting exist; the warm path is conversational rather than the original multi-minute delay. | Keep first visible reaction under 300 ms and optimize first audio without truncation. |
+| B10 evidence creep | Formal package, exact-image, power, display, camera, motion, and evidence contracts remain separate from simulator checks. | Maintain the contributor fast lane without weakening promotion gates. |
+
+Post-release source also includes deterministic PC/phone brain-owner leases and simulator failover,
+hash-bound OTA stable/beta manifests, bounded person-loss choreography, embodied energy state,
+runtime host persona selection, and a validated community pack index. Target-device evidence remains
+explicitly pending where noted; source completion is not relabeled as physical proof.
+
+---
+
 Audit date: 2026-07-03, against `main` at the pre-arrival simulation gate.
 Current firmware transport/registry/control/persistence slice check in this workspace: **166/166 native firmware logic
 tests pass**. The status table in
