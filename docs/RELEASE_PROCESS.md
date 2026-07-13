@@ -38,8 +38,10 @@ status from `apksigner`; use `-RequireArtifacts -RequireUploadSigning
 -RequireDesktopPackageEvidence` for promotion.
 The strict gate requires upload-key-signed APK and AAB artifacts plus MSI, DEB, and DMG
 packages. The tag workflow prepares and validates a managed Python runtime for each desktop
-package before embedding it, then exports a native report binding the package SHA-256 to the
-processed runtime SHA-256. Missing, duplicate, stale-commit, or mismatched native reports block
+package before embedding it, then natively extracts each MSI, DEB, or DMG and opens its
+installer application JAR. The native report binds the package SHA-256 and application-JAR SHA-256 to the
+processed and installer-derived runtime SHA-256, manifest, file totals, and required brain
+resources. Missing, duplicate, stale-commit, staging-only, or mismatched native reports block
 release evidence.
 
 ## Exact Tested Lead Versus Public Package

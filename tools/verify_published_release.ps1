@@ -297,6 +297,12 @@ $publishedDesktopPaths = [ordered]@{
   linux = Join-Path $remoteDir "stackchan-companion-linux-$Version.deb"
   macos = Join-Path $remoteDir "stackchan-companion-macos-$Version.dmg"
 }
+$requiredInstallerBrainFiles = @(
+  "brain/bridge/lan_service.py",
+  "brain/bridge/reference_bridge.py",
+  "brain/data/voice_source_provenance.yaml",
+  "brain/docs/media/voice/stackchan_spark_greeting.wav"
+)
 foreach ($platform in $publishedDesktopPaths.Keys) {
   $summary = @($desktopEvidencePlatforms | Where-Object { [string]$_.platform -eq $platform })
   if ($summary.Count -ne 1) { throw "Missing unique native desktop package/runtime evidence for $platform." }
@@ -307,6 +313,19 @@ foreach ($platform in $publishedDesktopPaths.Keys) {
       [int64]$summary[0].processedFileCount -lt 2 -or
       [int64]$summary[0].processedBytes -le 0) {
     throw "Native desktop runtime evidence is incomplete for $platform."
+  }
+  if ([string]$summary[0].installerExtractionMethod -ne "native" -or
+      [string]$summary[0].installerAppJarName -notmatch '^app-desktop-.+\.jar$' -or
+      [string]$summary[0].installerAppJarSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+      ([string]$summary[0].installerPackageSha256).ToLowerInvariant() -ne ([string]$summary[0].packageSha256).ToLowerInvariant() -or
+      ([string]$summary[0].installerRuntimeSha256).ToLowerInvariant() -ne ([string]$summary[0].runtimeSha256).ToLowerInvariant() -or
+      [int64]$summary[0].installerRuntimeFileCount -ne [int64]$summary[0].processedFileCount -or
+      [int64]$summary[0].installerRuntimeBytes -ne [int64]$summary[0].processedBytes) {
+    throw "Installer-derived desktop runtime evidence is incomplete or inconsistent for $platform."
+  }
+  $installerBrainFiles = @($summary[0].installerBrainFiles | ForEach-Object { [string]$_ })
+  foreach ($brainPath in $requiredInstallerBrainFiles) {
+    if ($installerBrainFiles -notcontains $brainPath) { throw "Installer-derived desktop evidence is missing $brainPath for $platform." }
   }
 }
 

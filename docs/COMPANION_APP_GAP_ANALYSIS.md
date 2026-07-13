@@ -230,10 +230,12 @@ current v1 companion branch.
   runtime source into its JSON report.
   Each native tag leg now runs `tools\export_desktop_package_evidence.ps1` after packaging.
   That report records the MSI/DEB/DMG package SHA-256, recomputes the processed runtime SHA-256
-  from Gradle resources, and fails when it differs from the prepared payload. Strict companion
-  release evidence requires exactly one ready Windows, Linux, and macOS report and matches every
-  package hash to the downloaded release input. The published-release verifier repeats that
-  package-hash match before accepting the release.
+  from Gradle resources, natively extracts the installer, and hashes `python-runtime/` directly
+  from the packaged application JAR. It also proves the packaged runtime manifest, platform
+  executable, and required bridge/provenance/voice resources. Strict companion release evidence
+  requires exactly one ready Windows, Linux, and macOS report and matches every package hash,
+  installer runtime hash, and payload summary. The published-release verifier repeats those
+  package and installer-derived evidence checks before accepting the release.
   The source tree now also includes `tools\check_desktop_v1_evidence_bundle.ps1`, which
   aggregates the desktop package hashes, C6 supervisor/GUI evidence, Windows/macOS/Linux
   managed runtime payload checks, PC Brain deploy audio evidence, quiet-soak evidence,
@@ -249,8 +251,9 @@ current v1 companion branch.
   Desktop v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
   can reject stale desktop bundle evidence.
   Native tag jobs now prepare and embed the actual managed Python binary payload for each desktop
-  platform. A Windows release rehearsal passed locally; native macOS/Linux package and runtime
-  evidence still must come from the tag matrix before the desktop aggregate gate can close.
+  platform. A Windows release rehearsal passed locally, including direct MSI extraction and an
+  exact 4,635-file packaged-runtime hash match; native macOS/Linux package and runtime evidence
+  still must come from the tag matrix before the desktop aggregate gate can close.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision

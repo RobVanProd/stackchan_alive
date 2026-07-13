@@ -607,6 +607,12 @@ function Get-DesktopPackageEvidence {
   }
 
   $expected = [ordered]@{ windows = ".msi"; linux = ".deb"; macos = ".dmg" }
+  $requiredBrainFiles = @(
+    "brain/bridge/lan_service.py",
+    "brain/bridge/reference_bridge.py",
+    "brain/data/voice_source_provenance.yaml",
+    "brain/docs/media/voice/stackchan_spark_greeting.wav"
+  )
   foreach ($platform in $expected.Keys) {
     $matches = @($parsedReports | Where-Object { [string]$_.report.platform -eq $platform })
     if ($matches.Count -ne 1) {
@@ -634,6 +640,45 @@ function Get-DesktopPackageEvidence {
     foreach ($field in @("source", "pythonVersion", "probedPythonVersion")) {
       if ([string]::IsNullOrWhiteSpace([string]$item.runtime.$field)) { $issues += "Desktop runtime $field is missing for $platform." }
     }
+    $installer = $item.installerPayload
+    $installerAppJarName = ""
+    $installerAppJarSha = ""
+    $installerPackageSha = ""
+    $installerRuntimeSha = ""
+    $installerFileCount = 0
+    $installerBytes = 0
+    $installerBrainFiles = @()
+    $installerExtractionMethod = ""
+    if ($null -eq $installer) {
+      $issues += "Installer-derived runtime evidence is missing for $platform."
+    } else {
+      $installerAppJarName = [string]$installer.appJarName
+      $installerAppJarSha = ([string]$installer.appJarSha256).ToLowerInvariant()
+      $installerPackageSha = ([string]$installer.packageSha256).ToLowerInvariant()
+      $installerRuntimeSha = ([string]$installer.runtimePayloadSha256).ToLowerInvariant()
+      $installerFileCount = [int64]$installer.runtimeFileCount
+      $installerBytes = [int64]$installer.runtimeBytes
+      $installerBrainFiles = @($installer.requiredBrainFiles | ForEach-Object { [string]$_ })
+      $installerExtractionMethod = [string]$installer.extractionMethod
+      if ($installer.required -ne $true -or [string]$installer.status -ne "ready") { $issues += "Installer-derived runtime evidence is not required and ready for $platform." }
+      if ($installerExtractionMethod -ne "native") { $issues += "Installer payload extraction was not performed natively for $platform." }
+      if ($installerAppJarName -notmatch '^app-desktop-.+\.jar$' -or $installerAppJarSha -notmatch '^[a-f0-9]{64}$') { $issues += "Installer application JAR evidence is invalid for $platform." }
+      if ($installerPackageSha -ne $packageSha) { $issues += "Installer payload package hash mismatch for $platform." }
+      if ($installerRuntimeSha -ne $payloadSha -or $installerRuntimeSha -ne $processedSha) { $issues += "Installer runtime payload hash mismatch for $platform." }
+      if ([string]$installer.runtimeManifestSchema -ne "stackchan.desktop-python-runtime.v1" -or
+          [string]$installer.runtimeManifestPlatform -ne $platform -or
+          ([string]$installer.runtimeManifestSha256).ToLowerInvariant() -ne $installerRuntimeSha) {
+        $issues += "Installer runtime manifest evidence is invalid for $platform."
+      }
+      if ($installerFileCount -ne [int64]$item.runtime.processedFileCount -or
+          $installerBytes -ne [int64]$item.runtime.processedBytes -or
+          $installerFileCount -lt 2 -or $installerBytes -le 0) {
+        $issues += "Installer runtime payload summary does not match processed resources for $platform."
+      }
+      foreach ($brainPath in $requiredBrainFiles) {
+        if ($installerBrainFiles -notcontains $brainPath) { $issues += "Installer brain resource evidence is missing for $platform`: $brainPath" }
+      }
+    }
     $summaries += [ordered]@{
       platform = $platform
       path = Convert-ToRelativePath $path
@@ -646,6 +691,14 @@ function Get-DesktopPackageEvidence {
       probedPythonVersion = [string]$item.runtime.probedPythonVersion
       processedFileCount = [int64]$item.runtime.processedFileCount
       processedBytes = [int64]$item.runtime.processedBytes
+      installerExtractionMethod = $installerExtractionMethod
+      installerAppJarName = $installerAppJarName
+      installerAppJarSha256 = $installerAppJarSha
+      installerPackageSha256 = $installerPackageSha
+      installerRuntimeSha256 = $installerRuntimeSha
+      installerRuntimeFileCount = $installerFileCount
+      installerRuntimeBytes = $installerBytes
+      installerBrainFiles = @($installerBrainFiles)
     }
   }
 
@@ -806,7 +859,7 @@ $lines += "- Required: $([bool]$RequireDesktopPackageEvidence)"
 $lines += "- Status: $($desktopPackageEvidence.status)"
 $lines += "- Root: $($desktopPackageEvidence.root)"
 foreach ($platform in @($desktopPackageEvidence.platforms)) {
-  $lines += "- $($platform.platform): package=$($platform.packageName) package_sha256=$($platform.packageSha256) runtime_sha256=$($platform.runtimeSha256) python=$($platform.probedPythonVersion)"
+  $lines += "- $($platform.platform): package=$($platform.packageName) package_sha256=$($platform.packageSha256) runtime_sha256=$($platform.runtimeSha256) installer_runtime_sha256=$($platform.installerRuntimeSha256) app_jar_sha256=$($platform.installerAppJarSha256) python=$($platform.probedPythonVersion)"
 }
 foreach ($issue in @($desktopPackageEvidence.issues)) { $lines += "- Issue: $issue" }
 $lines += ""

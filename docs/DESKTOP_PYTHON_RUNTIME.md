@@ -106,15 +106,22 @@ After the native installer task finishes, bind the installer to the exact proces
 resource that Gradle copied:
 
 ```powershell
-.\tools\export_desktop_package_evidence.ps1 -Platform windows -PackagePath <msi> -RuntimePrepareJsonPath <windows-prepare.json> -ProcessedRuntimeRoot companion\app-desktop\build\resources\main\python-runtime -Version <tag> -Commit <commit> -Json
+$extractRoot = Join-Path $env:TEMP "stackchan-package-extraction-windows-<unique-id>"
+.\tools\export_desktop_package_evidence.ps1 -Platform windows -PackagePath <msi> -RuntimePrepareJsonPath <windows-prepare.json> -ProcessedRuntimeRoot companion\app-desktop\build\resources\main\python-runtime -PackageExtractionRoot $extractRoot -Version <tag> -Commit <commit> -RequireInstallerPayload -Json
 ```
 
 Use `linux` with the DEB and `macos` with the DMG on their native runners. The exporter writes
 `stackchan.desktop-package-evidence.v1`, records the package SHA-256 and processed runtime SHA-256,
-and rejects a package when the recomputed runtime differs from its validated prepare report.
-`tools/test_desktop_package_evidence_contract.ps1` covers extension, platform, and
-runtime-tampering failures. Public release evidence requires one ready report for every desktop
-platform and matches each report back to exactly one published package.
+then natively extracts the MSI, DEB, or DMG and opens its packaged `app-desktop-*.jar`. It hashes
+`python-runtime/` directly from that installer application JAR, validates its runtime manifest and
+Python executable, and requires the packaged bridge, provenance, and voice-proof resources. The
+report fails when installer content differs from the validated prepare report or Gradle resources.
+`tools/test_desktop_package_evidence_contract.ps1` covers extension, platform, processed-runtime,
+and installer-runtime tampering failures. Public release evidence requires one ready native report
+for every desktop platform and matches each report back to exactly one published package.
+Keep the Windows extraction root short; MSI administrative extraction can still encounter the
+legacy Windows path limit when both the checkout and destination are deeply nested. CI uses
+`RUNNER_TEMP`, and omitting `-PackageExtractionRoot` creates a unique short temporary root.
 
 The desktop app exports this state under `brain_service.python_runtime.managed_runtime` in
 diagnostics and C6 brain-supervisor evidence.

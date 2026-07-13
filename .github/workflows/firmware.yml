@@ -408,9 +408,11 @@ jobs:
             -PackagePath $packages[0].FullName `
             -RuntimePrepareJsonPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-prepare.json" `
             -ProcessedRuntimeRoot "companion/app-desktop/build/resources/main/python-runtime" `
+            -PackageExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.desktop_platform }}") `
             -Version "${{ github.sha }}" `
             -Commit "${{ github.sha }}" `
             -OutPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-evidence.json" `
+            -RequireInstallerPayload `
             -Json
 
       - name: Upload companion platform artifact

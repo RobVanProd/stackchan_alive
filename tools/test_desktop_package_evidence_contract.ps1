@@ -37,6 +37,7 @@ function Invoke-Evidence {
     [string]$PackagePath,
     [string]$PreparePath,
     [string]$ProcessedRoot,
+    [string]$ExtractionRoot,
     [string]$OutPath
   )
   $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $checker `
@@ -44,11 +45,24 @@ function Invoke-Evidence {
     -PackagePath $PackagePath `
     -RuntimePrepareJsonPath $PreparePath `
     -ProcessedRuntimeRoot $ProcessedRoot `
+    -PackageExtractionRoot $ExtractionRoot `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
     -OutPath $OutPath `
+    -RequireInstallerPayload `
+    -UseExistingPackageExtraction `
     -Json 2>&1 | Out-String
   return [ordered]@{ exitCode = $LASTEXITCODE; output = $output }
+}
+
+function New-FixtureApplicationJar {
+  param(
+    [string]$JarRoot,
+    [string]$JarPath
+  )
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  if (Test-Path -LiteralPath $JarPath) { Remove-Item -LiteralPath $JarPath -Force }
+  [System.IO.Compression.ZipFile]::CreateFromDirectory($JarRoot, $JarPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 }
 
 try {
@@ -88,14 +102,47 @@ try {
   $packagePath = Join-Path $tempRoot "Stackchan Companion-1.0.0.msi"
   Set-Content -LiteralPath $packagePath -Value "synthetic msi" -Encoding ASCII
 
+  $requiredBrainFiles = @(
+    "brain/bridge/lan_service.py",
+    "brain/bridge/reference_bridge.py",
+    "brain/data/voice_source_provenance.yaml",
+    "brain/docs/media/voice/stackchan_spark_greeting.wav"
+  )
+  $jarRoot = Join-Path $tempRoot "jar-root"
+  $jarRuntimeRoot = Join-Path $jarRoot "python-runtime"
+  Copy-Item -LiteralPath $processedRoot -Destination $jarRuntimeRoot -Recurse
+  foreach ($brainPath in $requiredBrainFiles) {
+    $targetPath = Join-Path $jarRoot $brainPath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
+    Set-Content -LiteralPath $targetPath -Value "fixture resource: $brainPath" -Encoding ASCII
+  }
+  $extractionRoot = Join-Path $tempRoot "package-extraction"
+  New-Item -ItemType Directory -Force -Path $extractionRoot | Out-Null
+  $fixtureJar = Join-Path $extractionRoot "app-desktop-1.0.0-fixture.jar"
+  New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
+
   $readyPath = Join-Path $tempRoot "ready.json"
-  $ready = Invoke-Evidence $packagePath $preparePath $processedRoot $readyPath
+  $ready = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $readyPath
   if ($ready.exitCode -ne 0) { throw "Complete desktop package evidence was rejected: $($ready.output)" }
   $readyReport = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
-  if ($readyReport.status -ne "ready" -or $readyReport.runtime.processedPayloadSha256 -ne $payloadHash) {
-    throw "Complete desktop package evidence did not preserve the processed runtime hash."
+  if ($readyReport.status -ne "ready" -or
+      $readyReport.runtime.processedPayloadSha256 -ne $payloadHash -or
+      $readyReport.installerPayload.status -ne "ready" -or
+      $readyReport.installerPayload.runtimePayloadSha256 -ne $payloadHash -or
+      @($readyReport.installerPayload.requiredBrainFiles).Count -ne $requiredBrainFiles.Count) {
+    throw "Complete desktop package evidence did not preserve the processed and installer runtime proof."
   }
-  Write-Host "[ok] complete desktop package evidence is accepted"
+  Write-Host "[ok] complete installer-derived desktop package evidence is accepted"
+
+  Set-Content -LiteralPath (Join-Path $jarRuntimeRoot "Lib/runtime.txt") -Value "tampered installer runtime" -Encoding ASCII
+  New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
+  $tamperedInstaller = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "tampered-installer.json")
+  if ($tamperedInstaller.exitCode -eq 0 -or $tamperedInstaller.output -notmatch "Installer runtime payload hash does not match") {
+    throw "Tampered installer runtime was not rejected."
+  }
+  Write-Host "[ok] installer runtime tampering is rejected"
+  Set-Content -LiteralPath (Join-Path $jarRuntimeRoot "Lib/runtime.txt") -Value "synthetic runtime" -Encoding ASCII
+  New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
 
   $aggregateRoot = Join-Path $tempRoot "aggregate"
   New-Item -ItemType Directory -Force -Path $aggregateRoot | Out-Null
@@ -107,6 +154,9 @@ try {
     $targetPackage = Join-Path $aggregateRoot ("stackchan-companion-{0}-v1.0.0{1}" -f $target.platform, $target.extension)
     Set-Content -LiteralPath $targetPackage -Value ("synthetic {0} package" -f $target.platform) -Encoding ASCII
     $targetItem = Get-Item -LiteralPath $targetPackage
+    $targetPackageSha = Get-Sha256Text $targetItem.FullName
+    $processedFiles = @(Get-ChildItem -LiteralPath $processedRoot -File -Recurse)
+    $processedBytes = [int64](($processedFiles | Measure-Object -Property Length -Sum).Sum)
     $targetReport = [ordered]@{
       schema = "stackchan.desktop-package-evidence.v1"
       status = "ready"
@@ -117,7 +167,7 @@ try {
         name = $targetItem.Name
         extension = $target.extension
         bytes = [int64]$targetItem.Length
-        sha256 = Get-Sha256Text $targetItem.FullName
+        sha256 = $targetPackageSha
       }
       runtime = [ordered]@{
         payloadSha256 = $payloadHash
@@ -125,8 +175,23 @@ try {
         source = "contract-fixture"
         pythonVersion = "Python 3.12.4"
         probedPythonVersion = "Python 3.12.4"
-        processedFileCount = 2
-        processedBytes = 64
+        processedFileCount = $processedFiles.Count
+        processedBytes = $processedBytes
+      }
+      installerPayload = [ordered]@{
+        required = $true
+        status = "ready"
+        extractionMethod = "native"
+        appJarName = "app-desktop-1.0.0-fixture.jar"
+        appJarSha256 = $payloadHash
+        packageSha256 = $targetPackageSha
+        runtimePayloadSha256 = $payloadHash
+        runtimeFileCount = $processedFiles.Count
+        runtimeBytes = $processedBytes
+        runtimeManifestSchema = "stackchan.desktop-python-runtime.v1"
+        runtimeManifestPlatform = $target.platform
+        runtimeManifestSha256 = $payloadHash
+        requiredBrainFiles = @($requiredBrainFiles)
       }
       issues = @()
     }
@@ -148,7 +213,28 @@ try {
   }
   Write-Host "[ok] aggregate companion evidence accepts all three native package reports"
 
-  Remove-Item -LiteralPath (Join-Path $aggregateRoot "macos-package-evidence.json") -Force
+  $macosReportPath = Join-Path $aggregateRoot "macos-package-evidence.json"
+  $macosReport = Get-Content -LiteralPath $macosReportPath -Raw | ConvertFrom-Json
+  $macosReport.installerPayload.runtimePayloadSha256 = "0" * 64
+  $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
+  $aggregateTamperedOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
+    -Version v1.0.0 `
+    -Commit 1111111111111111111111111111111111111111 `
+    -DesktopArtifactRoot $aggregateRoot `
+    -DesktopPackageEvidenceRoot $aggregateRoot `
+    -OutDir (Join-Path $tempRoot "aggregate-tampered-out") `
+    -RequireDesktopPackageEvidence `
+    -Json 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not reject a tampered installer runtime: $aggregateTamperedOutput" }
+  $aggregateTamperedReport = $aggregateTamperedOutput | ConvertFrom-Json
+  if (@($aggregateTamperedReport.pending) -notcontains "desktop-native-package-runtime-evidence") {
+    throw "Strict aggregate evidence did not preserve the installer runtime mismatch marker."
+  }
+  Write-Host "[ok] aggregate companion evidence rejects installer-derived runtime mismatch"
+  $macosReport.installerPayload.runtimePayloadSha256 = $payloadHash
+  $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
+
+  Remove-Item -LiteralPath $macosReportPath -Force
   $missingOut = Join-Path $tempRoot "aggregate-missing-out"
   $missingOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
     -Version v1.0.0 `
@@ -167,19 +253,19 @@ try {
 
   $wrongExtension = Join-Path $tempRoot "Stackchan Companion-1.0.0.deb"
   Copy-Item -LiteralPath $packagePath -Destination $wrongExtension
-  $wrong = Invoke-Evidence $wrongExtension $preparePath $processedRoot (Join-Path $tempRoot "wrong-extension.json")
+  $wrong = Invoke-Evidence $wrongExtension $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "wrong-extension.json")
   if ($wrong.exitCode -eq 0 -or $wrong.output -notmatch "must use .msi") { throw "Wrong desktop package extension was not rejected." }
   Write-Host "[ok] wrong platform package extension is rejected"
 
   Set-Content -LiteralPath (Join-Path $processedRoot "Lib/runtime.txt") -Value "tampered runtime" -Encoding ASCII
-  $tampered = Invoke-Evidence $packagePath $preparePath $processedRoot (Join-Path $tempRoot "tampered.json")
+  $tampered = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "tampered.json")
   if ($tampered.exitCode -eq 0 -or $tampered.output -notmatch "payload hash does not match") { throw "Tampered processed runtime was not rejected." }
   Write-Host "[ok] processed runtime tampering is rejected"
 
   $prepare.platform = "linux"
   $prepare.validation.platform = "linux"
   $prepare | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $preparePath -Encoding UTF8
-  $wrongPlatform = Invoke-Evidence $packagePath $preparePath $processedRoot (Join-Path $tempRoot "wrong-platform.json")
+  $wrongPlatform = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "wrong-platform.json")
   if ($wrongPlatform.exitCode -eq 0 -or $wrongPlatform.output -notmatch "must be windows") { throw "Wrong runtime evidence platform was not rejected." }
   Write-Host "[ok] runtime prepare platform mismatch is rejected"
 } finally {

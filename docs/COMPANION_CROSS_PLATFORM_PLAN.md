@@ -246,7 +246,9 @@ three desktop operating systems.
    artifacts. Missing or incomplete credentials fail before Gradle produces release output.
 3. `companion-desktop-release` runs natively on Ubuntu, macOS, and Windows. Each leg creates
    and validates a managed Python payload, embeds it, builds DEB, DMG, or MSI output, then
-   exports native package evidence tying that installer hash to the processed runtime hash.
+   natively extracts the installer and hashes `python-runtime/` from its application JAR. Native
+   evidence ties the installer, packaged JAR, processed runtime, manifest, and required brain
+   resources to one exact payload.
 4. The final release job runs the firmware/package gates, exports strict companion evidence,
    requires all three native package/runtime reports, stages stable artifact names, and publishes
    the complete set in one GitHub Release.
@@ -403,7 +405,8 @@ notarization decisions, and the first end-to-end tagged release. Conveyor or ano
 may be evaluated only after the native packages are accepted.
 *Gate C8:* one tag publishes verified APK/AAB/MSI/DEB/DMG artifacts, the Android artifacts
 are upload-key signed, each desktop package contains its validated managed runtime, each package
-hash is bound to its processed runtime hash by native evidence, target install checks pass, and
+hash and extracted application JAR are bound to its processed runtime hash by native evidence,
+required brain resources are present, target install checks pass, and
 `RELEASE_EVIDENCE.json` plus `COMPANION_RELEASE_EVIDENCE.json` are complete. Automatic update
 behavior requires a separate implemented and tested gate.
 
