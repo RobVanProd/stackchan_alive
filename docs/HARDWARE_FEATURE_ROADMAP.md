@@ -84,9 +84,11 @@ display, audio, motion, power, heap, and reset state. The current exact image ke
 and camera capture/host vision ready throughout its formal one-hour all-feature actuator pass with
 zero terminal peripheral failures. A dedicated ordered body-sensor report remains a separate
 consumer-promotion artifact; its absence does not mean the integrated hardware has not run. The
-post-release LTR-553 adapter adds raw proximity and ALS channel values, saturation, readiness,
-retry, recovery, and failure accounting. It builds successfully but remains unflashed and its
-near/far thresholds are disabled until desk measurements establish a defensible calibration.
+  post-release LTR-553 adapter adds raw proximity and ALS channel values, saturation, readiness,
+  retry, recovery, and failure accounting. It builds successfully but remains unflashed and its
+  near/far thresholds are disabled until desk measurements establish a defensible calibration.
+  `LTR553_CALIBRATION.md` and `bridge/ltr553_calibration.py` now provide the passive labeled capture,
+  health rejection, robust separation analysis, and non-writing threshold recommendation path.
 
 - Add capability telemetry for the expected body and CoreS3 devices using the official
   StackChan BSP/M5Unified paths where compatible with this firmware.

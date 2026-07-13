@@ -138,3 +138,19 @@ wake -> upload -> STT -> response -> PCM playback turns on the real robot with
 `-EnableAudioDownlink`, `-SelectedVoiceStartBytes 65536`, and
 `-DownlinkBinaryFrameDelayMs 20`. Keep the explicit enable flag, but use the faster pacing
 for supervised voice-out runs.
+
+## Conversation V2 Interruption Boundary
+
+The 2026-07-12 pinned M5Unified source confirms why physical voice barge-in is a separate
+qualification problem. CoreS3 configures both microphone RX and speaker TX on `I2S_NUM_1` with
+shared BCLK GPIO34 and word-select GPIO33; mic data enters on GPIO14 and speaker data exits on
+GPIO13. The production path intentionally pauses and ends `M5.Mic` before changing speaker
+ownership/sample rate, then resumes the mic only after physical speaker drain.
+
+The host bridge can now read a companion `utterance_start` or explicit `cancel` while Gemma/RVC is
+running, terminate that process tree, and discard pending unsent audio. That is real host-side
+interruption, but it does not prove that the onboard microphones can listen over active 48 kHz
+speaker output. Do not remove the arbiter or start simultaneous M5Unified mic/speaker tasks by
+assumption. A future physical experiment must first prove a supported same-clock full-duplex path
+or another echo/reference design in a no-motion exact-image qualification, with clean audio, wake,
+display, power, and reset evidence.

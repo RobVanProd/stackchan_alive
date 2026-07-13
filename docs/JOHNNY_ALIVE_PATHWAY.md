@@ -86,8 +86,11 @@ Working on real hardware:
 2. LTR-553 proximity and ambient light.
    - Done in post-release source: deterministic I2C adapter, readiness/failure telemetry, raw
      proximity/ALS accounting, and native tests.
-   - Next: collect physical desk measurements before enabling hysteretic proximity reflexes or
-     calibrated display/RGB adaptation.
+   - Done in post-release source: a passive calibration CLI captures labeled far/near `/debug`
+     samples, rejects unhealthy/saturated evidence, and emits non-writing hysteresis suggestions
+     only when robust distributions separate.
+   - Next: collect physical desk measurements with `LTR553_CALIBRATION.md` before enabling
+     hysteretic proximity reflexes or calibrated display/RGB adaptation.
    - Do not infer identity from proximity and do not make it a boot dependency.
 
 3. Perceived latency and person awareness.

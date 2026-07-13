@@ -57,7 +57,8 @@ in [docs/FIRST_DEPLOY_STATUS.md](docs/FIRST_DEPLOY_STATUS.md), the exact hardwar
 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md). See
 [docs/JOHNNY_ALIVE_PATHWAY.md](docs/JOHNNY_ALIVE_PATHWAY.md) for the live roadmap and
 [docs/CONVERSATION_V2_ROADMAP.md](docs/CONVERSATION_V2_ROADMAP.md) for the deliberately
-post-release natural-conversation plan.
+post-release natural-conversation plan. Passive visitor-sensor measurement is documented in
+[docs/LTR553_CALIBRATION.md](docs/LTR553_CALIBRATION.md).
 
 ## What This Is
 

@@ -19,6 +19,7 @@ Feature-specific entry points:
 - Voice and DirectML RVC: `docs/VOICE_V2_DIRECTML.md`
 - Camera and active-speaker tracking: `docs/LOCAL_VISION.md`
 - IMU, touch, RGB, camera, and recognition roadmap: `docs/HARDWARE_FEATURE_ROADMAP.md`
+- LTR-553 passive proximity calibration: `docs/LTR553_CALIBRATION.md`
 - OTA: `docs/LAN_OTA.md`
 - Post-release natural conversation: `docs/CONVERSATION_V2_ROADMAP.md`
 

@@ -13,6 +13,7 @@
 - `CUSTOMIZING_THE_FACE.md`: persona-safe expression tuning and advanced procedural eye, mouth, transition, viseme, preview, and performance workflow.
 - `GAP_ANALYSIS.md`: current implementation audit, ranked hardware/transport gaps, and recommended bottom-half order.
 - `HARDWARE_FEATURE_ROADMAP.md`: post-stability IMU, body touch/RGB, camera, active-speaker tracking, and opt-in face-recognition integration plan.
+- `LTR553_CALIBRATION.md`: passive far/near capture and evidence-gated proximity hysteresis calibration.
 - `LOCAL_RESEARCH_TOOLING.md`: local-first SearXNG plus restricted fetch/Playwright tool-broker architecture for cited web research.
 - `LOCAL_VISION.md`: paired, local-only camera detection and active-speaker validation path.
 - `POWER_BLACKOUT_FORENSICS.md`: evidence-first PMIC/reset capture and historical blackout interpretation rules.

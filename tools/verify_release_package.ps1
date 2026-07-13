@@ -190,6 +190,7 @@ $requiredFiles = @(
   "docs/PERSONA_PACKS.md",
   "docs/HARDWARE_SIMULATION.md",
   "docs/HARDWARE_FEATURE_ROADMAP.md",
+  "docs/LTR553_CALIBRATION.md",
   "docs/LOCAL_RESEARCH_TOOLING.md",
   "docs/LOCAL_VISION.md",
   "docs/LAN_OTA.md",
@@ -239,6 +240,11 @@ $requiredFiles = @(
   "bridge/test_trusted_facts_smoke.py",
   "bridge/local_runner.py",
   "bridge/test_local_runner.py",
+  "bridge/cancellation.py",
+  "bridge/cancellable_process.py",
+  "bridge/test_cancellable_process.py",
+  "bridge/ltr553_calibration.py",
+  "bridge/test_ltr553_calibration.py",
   "bridge/engine_probe.py",
   "bridge/test_engine_probe.py",
   "bridge/litert_lm_contract_smoke.py",
@@ -2687,6 +2693,10 @@ if ($manifest.johnnyAlivePathway -ne "docs/JOHNNY_ALIVE_PATHWAY.md") {
 
 if ($manifest.personaPacksGuide -ne "docs/PERSONA_PACKS.md") {
   throw "Manifest personaPacksGuide mismatch: $($manifest.personaPacksGuide)"
+}
+
+if ($manifest.ltr553CalibrationGuide -ne "docs/LTR553_CALIBRATION.md") {
+  throw "Manifest ltr553CalibrationGuide mismatch: $($manifest.ltr553CalibrationGuide)"
 }
 
 if ($manifest.voicePersonalityGuide -ne "docs/VOICE_PERSONALITY.md") {

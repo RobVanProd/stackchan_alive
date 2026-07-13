@@ -437,6 +437,7 @@ Copy-Item -LiteralPath "docs/JOHNNY_ALIVE_PATHWAY.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/PERSONA_PACKS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/HARDWARE_SIMULATION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/HARDWARE_FEATURE_ROADMAP.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/LTR553_CALIBRATION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/LOCAL_RESEARCH_TOOLING.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/LOCAL_VISION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/LAN_OTA.md" -Destination $docsDir
@@ -490,6 +491,11 @@ $bridgePackageFiles = @(
   "test_trusted_facts_smoke.py",
   "local_runner.py",
   "test_local_runner.py",
+  "cancellation.py",
+  "cancellable_process.py",
+  "test_cancellable_process.py",
+  "ltr553_calibration.py",
+  "test_ltr553_calibration.py",
   "litert_lm_stackchan_wrapper.py",
   "test_litert_lm_stackchan_wrapper.py",
   "litert_lm_contract_smoke.py",
@@ -1365,6 +1371,7 @@ $manifest = [ordered]@{
   voicePersonalityGuide = "docs/VOICE_PERSONALITY.md"
   voiceV2Guide = "docs/VOICE_V2_DIRECTML.md"
   hardwareFeatureRoadmap = "docs/HARDWARE_FEATURE_ROADMAP.md"
+  ltr553CalibrationGuide = "docs/LTR553_CALIBRATION.md"
   localResearchTooling = "docs/LOCAL_RESEARCH_TOOLING.md"
   localVisionGuide = "docs/LOCAL_VISION.md"
   bodySensorValidator = "tools/body_sensor_validation.ps1"
