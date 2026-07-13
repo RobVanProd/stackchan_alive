@@ -86,7 +86,7 @@ function Test-PlayUploadSigningEnvironment {
       -Name "Play upload signing environment" `
       -Status "pending" `
       -Evidence "STACKCHAN_ANDROID_KEYSTORE*" `
-      -Detail ("Upload signing credentials are not configured yet; missing " + ($missing -join ", ") + ". Lab APK/AAB builds remain debug-certificate signed until these exist.")
+      -Detail ("Upload signing credentials are not configured yet; missing " + ($missing -join ", ") + ". Release tasks fail closed; lab debug signing requires the explicit stackchan.allowLabDebugReleaseSigning property.")
     return
   }
 
@@ -226,7 +226,7 @@ Test-TextPatterns `
   -Id "gradle-play-signing" `
   -Name "Gradle Play upload signing inputs" `
   -RelativePath "companion/app-android/build.gradle.kts" `
-  -Patterns @("STACKCHAN_ANDROID_KEYSTORE", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "playRelease", "isDebuggable = false")
+  -Patterns @("STACKCHAN_ANDROID_KEYSTORE", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "playRelease", "isDebuggable = false", "stackchan.allowLabDebugReleaseSigning", "verifyReleaseSigning", "Android release signing is not configured")
 
 Test-PlayUploadSigningEnvironment
 

@@ -2,6 +2,17 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+$desktopBuildText = Get-Content -LiteralPath (Join-Path $PSScriptRoot "../companion/app-desktop/build.gradle.kts") -Raw
+if ($desktopBuildText -notmatch [regex]::Escape("process.waitFor(120, TimeUnit.SECONDS)")) {
+  throw "Desktop packaging must allow the managed-runtime validation subprocess a bounded 120-second first-launch window."
+}
+foreach ($pattern in @("desktop-runtime-validator-output", "outputReader.join(5_000)", "output.append(reader.readText())")) {
+  if ($desktopBuildText -notmatch [regex]::Escape($pattern)) {
+    throw "Desktop packaging must drain managed-runtime checker output while the subprocess runs: missing $pattern"
+  }
+}
+Write-Host "[ok] desktop packaging runtime validation uses the bounded first-launch window"
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checkScript = Join-Path $PSScriptRoot "check_desktop_python_runtime_payload.ps1"
 $createdRoots = New-Object System.Collections.Generic.List[string]

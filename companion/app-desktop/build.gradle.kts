@@ -52,12 +52,24 @@ val validateDesktopPythonRuntimePayload = tasks.register("validateDesktopPythonR
             val process = ProcessBuilder(command)
                 .redirectErrorStream(true)
                 .start()
-            val finished = process.waitFor(30, TimeUnit.SECONDS)
+            val output = StringBuilder()
+            val outputReader = Thread {
+                process.inputStream.bufferedReader().use { reader ->
+                    output.append(reader.readText())
+                }
+            }.apply {
+                name = "desktop-runtime-validator-output"
+                isDaemon = true
+                start()
+            }
+            val finished = process.waitFor(120, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
+                outputReader.join(5_000)
                 return 124 to "Command timed out: ${command.joinToString(" ")}"
             }
-            return process.exitValue() to process.inputStream.bufferedReader().readText()
+            outputReader.join(5_000)
+            return process.exitValue() to output.toString()
         }
 
         val checker = rootProject.layout.projectDirectory

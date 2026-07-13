@@ -102,6 +102,20 @@ Run the checker contract before relying on the payload gate in a release package
 The contract proves placeholder hashes, platform mismatches, and stale `pythonVersion`
 manifests fail while a minimal valid runtime payload reports `ready`.
 
+After the native installer task finishes, bind the installer to the exact processed runtime
+resource that Gradle copied:
+
+```powershell
+.\tools\export_desktop_package_evidence.ps1 -Platform windows -PackagePath <msi> -RuntimePrepareJsonPath <windows-prepare.json> -ProcessedRuntimeRoot companion\app-desktop\build\resources\main\python-runtime -Version <tag> -Commit <commit> -Json
+```
+
+Use `linux` with the DEB and `macos` with the DMG on their native runners. The exporter writes
+`stackchan.desktop-package-evidence.v1`, records the package SHA-256 and processed runtime SHA-256,
+and rejects a package when the recomputed runtime differs from its validated prepare report.
+`tools/test_desktop_package_evidence_contract.ps1` covers extension, platform, and
+runtime-tampering failures. Public release evidence requires one ready report for every desktop
+platform and matches each report back to exactly one published package.
+
 The desktop app exports this state under `brain_service.python_runtime.managed_runtime` in
 diagnostics and C6 brain-supervisor evidence.
 

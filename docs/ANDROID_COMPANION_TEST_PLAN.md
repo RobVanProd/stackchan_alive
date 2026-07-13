@@ -45,8 +45,11 @@ is signed with the Android debug key for physical testing, not for public distri
 .\tools\check_companion_v1_readiness.cmd
 .\tools\check_android_toolchain.cmd
 cd companion
-.\gradlew.bat :app-android:assembleRelease
+.\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease
 ```
+
+The unqualified `.\gradlew.bat :app-android:assembleRelease` command is intentionally rejected
+unless the production upload-key environment is configured.
 
 The companion readiness check verifies the v1 companion plan, protocol fixtures, KMP
 source tree, CI hooks, Android foreground service, and pending hardware gates before

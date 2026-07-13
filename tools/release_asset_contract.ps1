@@ -100,3 +100,24 @@ function Get-ReleaseAllowedAuditAssetEntries {
     New-ReleaseAssetEntry -Name "RELEASE_AUDIT.json" -Path (Join-Path $AuditRoot "RELEASE_AUDIT.json") -Phase "audit"
   )
 }
+
+function Get-ReleaseCompanionAssetEntries {
+  param(
+    [string]$Version,
+    [string]$CompanionAssetRoot
+  )
+
+  if ([string]::IsNullOrWhiteSpace($CompanionAssetRoot)) {
+    throw "CompanionAssetRoot is required for companion release assets."
+  }
+
+  return @(
+    New-ReleaseAssetEntry -Name "stackchan-companion-android-$Version.apk" -Path (Join-Path $CompanionAssetRoot "stackchan-companion-android-$Version.apk") -Phase "final"
+    New-ReleaseAssetEntry -Name "stackchan-companion-android-$Version.aab" -Path (Join-Path $CompanionAssetRoot "stackchan-companion-android-$Version.aab") -Phase "final"
+    New-ReleaseAssetEntry -Name "stackchan-companion-windows-$Version.msi" -Path (Join-Path $CompanionAssetRoot "stackchan-companion-windows-$Version.msi") -Phase "final"
+    New-ReleaseAssetEntry -Name "stackchan-companion-linux-$Version.deb" -Path (Join-Path $CompanionAssetRoot "stackchan-companion-linux-$Version.deb") -Phase "final"
+    New-ReleaseAssetEntry -Name "stackchan-companion-macos-$Version.dmg" -Path (Join-Path $CompanionAssetRoot "stackchan-companion-macos-$Version.dmg") -Phase "final"
+    New-ReleaseAssetEntry -Name "COMPANION_RELEASE_EVIDENCE.json" -Path (Join-Path $CompanionAssetRoot "COMPANION_RELEASE_EVIDENCE.json") -Phase "final"
+    New-ReleaseAssetEntry -Name "COMPANION_RELEASE_EVIDENCE.md" -Path (Join-Path $CompanionAssetRoot "COMPANION_RELEASE_EVIDENCE.md") -Phase "final"
+  )
+}

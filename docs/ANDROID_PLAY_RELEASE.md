@@ -38,11 +38,17 @@ Gradle properties or environment variables are present:
 - `STACKCHAN_ANDROID_KEY_ALIAS`
 - `STACKCHAN_ANDROID_KEY_PASSWORD`
 
-When they are absent, Gradle falls back to the Android debug signing config so the
-CI/lab release APK remains installable before Play credentials exist. That fallback
-is for testing only and must not be used for a public Play upload.
+When they are absent, Gradle fails release APK/AAB tasks. A lab or PR build may opt in to
+debug signing only by passing `-Pstackchan.allowLabDebugReleaseSigning=true`; that explicit
+fallback must not be used for a public GitHub or Play upload.
 `tools/check_android_play_release_readiness.ps1` reports this as
 `source-ready-pending-upload-signing` until the upload-key environment is configured.
+
+The tag workflow reads the same four values from GitHub Actions secrets. The keystore itself
+is supplied as base64 in `STACKCHAN_ANDROID_KEYSTORE_B64`; the other three secret names match
+the environment variables above. `tools/export_companion_release_evidence.ps1
+-RequireUploadSigning` rejects both APK and AAB evidence unless the `upload-key` profile is
+recorded.
 
 Example local Play-ready build:
 
@@ -59,6 +65,13 @@ Expected outputs:
 
 - `companion/app-android/build/outputs/bundle/release/app-android-release.aab`
 - `companion/app-android/build/outputs/apk/release/app-android-release.apk`
+
+Example lab-only release build:
+
+```powershell
+cd companion
+.\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease
+```
 
 ## Store Listing Assets
 

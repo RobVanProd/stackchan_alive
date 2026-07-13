@@ -120,8 +120,13 @@ current v1 companion branch.
   reload proof, robot-log password leakage, and stale Wi-Fi review commits. The
   `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields,
   not Wi-Fi credentials.
-- G7 Play submission remains pending on upload signing, developer verification,
+- G7 Play submission remains pending on upload-signing credentials, developer verification,
   a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
+  Release tasks now fail closed when upload-key properties are absent; debug signing requires
+  the explicit `stackchan.allowLabDebugReleaseSigning` Gradle property. The tag workflow consumes
+  four `STACKCHAN_ANDROID_*` Actions secrets, builds both APK and AAB, and the release evidence
+  gate requires the `upload-key` signing profile. The repository currently has no configured
+  Actions secrets, so a public companion tag remains externally blocked until they are provisioned.
   Source-side Play prep now includes a policy/data-safety declaration draft for
   `dev.stackchan.companion`, foreground-service `connectedDevice` justification,
   microphone/battery/network permission review, a Play-facing privacy policy page derived
@@ -194,6 +199,14 @@ current v1 companion branch.
   rejects release evidence that lacks hashed package core files from the extracted release
   package, and verifies that the rollout report's strict hardware evidence root and hardware
   metadata commit match the final bundle.
+- C8 source-side release packaging is implemented. `release.yml` verifies that the tag matches
+  every companion version source, builds upload-signed Android APK/AAB artifacts, creates managed
+  Python payloads on native Windows/macOS/Linux runners, packages MSI/DMG/DEB artifacts, exports
+  strict companion release evidence, and publishes stable artifact names with the firmware
+  release. `tools/verify_published_release.ps1` now verifies those remote assets and evidence.
+  A successful public tag run is still required before this can be called released. Automatic
+  desktop updates and an Android in-app updater are not implemented; current distribution is
+  manual GitHub Release installation, with Obtainium or Play as Android alternatives.
 - G9 desktop Python runtime detection is partially closed. The desktop supervisor now probes
   the configured Python command before PC Brain Mode starts, requires Python 3.10+, reports
   missing interpreters or missing brain script in the Brain panel, and includes the
@@ -215,6 +228,12 @@ current v1 companion branch.
   `tools\test_desktop_python_runtime_payload_contract.ps1` covering those failure modes. It
   also emits the manifest platform, manifest/probed Python versions, runtime SHA-256, and
   runtime source into its JSON report.
+  Each native tag leg now runs `tools\export_desktop_package_evidence.ps1` after packaging.
+  That report records the MSI/DEB/DMG package SHA-256, recomputes the processed runtime SHA-256
+  from Gradle resources, and fails when it differs from the prepared payload. Strict companion
+  release evidence requires exactly one ready Windows, Linux, and macOS report and matches every
+  package hash to the downloaded release input. The published-release verifier repeats that
+  package-hash match before accepting the release.
   The source tree now also includes `tools\check_desktop_v1_evidence_bundle.ps1`, which
   aggregates the desktop package hashes, C6 supervisor/GUI evidence, Windows/macOS/Linux
   managed runtime payload checks, PC Brain deploy audio evidence, quiet-soak evidence,
@@ -229,8 +248,9 @@ current v1 companion branch.
   commit, so stale source or voice hash evidence cannot close the desktop bundle. The
   Desktop v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
   can reject stale desktop bundle evidence.
-  Supplying and shipping the actual managed Python binary payload for each desktop platform
-  remains open.
+  Native tag jobs now prepare and embed the actual managed Python binary payload for each desktop
+  platform. A Windows release rehearsal passed locally; native macOS/Linux package and runtime
+  evidence still must come from the tag matrix before the desktop aggregate gate can close.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision
@@ -251,15 +271,15 @@ current v1 companion branch.
 
 ## Next Attack Order
 
-1. Finish G1 with hardware push-to-talk/STT validation, run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach transcript-redacted evidence.
-2. Finish G3 with protected robot settings writes and manual brain handoff on physical hardware, then run `tools\check_android_controls_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-3. Finish G5 with robot QR/short-code UI entry and real hardware pairing evidence, then run `tools\check_android_pairing_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-4. Exercise G8 Android diagnostics export on hardware, run `tools\check_android_diagnostics_export_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`, and attach support-reviewed evidence.
-5. Validate Gemma-4-E2B model download/load/eject, run the non-dry-run `gemma4-e2b-litert-lm` benchmark, and capture a real LiteRT turn on target Android hardware, then run `tools\check_android_gemma_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-6. Finish G6 with persistent robot-side Wi-Fi credential entry/provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
-7. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json` before release promotion.
-7a. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`; attach `ANDROID_V1_EVIDENCE_BUNDLE.json/md`, `ANDROID_V1_REVIEW.md`, and the `reports/` JSON outputs.
-8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, `tools\run_pc_brain_probe.cmd`, and `tools\collect_pc_brain_deploy_evidence.cmd -SourceCommit <git-commit>`; run `tools\check_pc_brain_deploy_evidence.cmd -RequireTests -RequireReady -Json`, then `tools\run_pc_brain_quiet_soak.cmd -DurationSeconds 600 -SourceCommit <git-commit>` and `tools\check_pc_brain_quiet_soak_evidence.cmd -RequireReady -Json`; attach `PC_BRAIN_DEPLOY_EVIDENCE.json/md` and `PC_BRAIN_QUIET_SOAK.json/md` as lab evidence while keeping the managed runtime payload gate open.
-9. Prepare platform-native desktop Python runtime payloads with `tools\prepare_desktop_python_runtime.cmd`, package desktop builds with `-Pstackchan.desktop.pythonRuntimeRoot=<path>`, then run `tools\check_desktop_python_runtime_payload.cmd -RuntimeRoot <path> -Json` and attach the resulting manifest/check output for each platform.
-9a. Assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`; attach `DESKTOP_V1_EVIDENCE_BUNDLE.json/md`, `DESKTOP_V1_REVIEW.md`, and the `reports/` JSON outputs. The Windows/macOS/Linux runtime payload reports must include matching `platform`, valid `runtimeSha256`, non-placeholder `runtimeSource`, `pythonVersion`, and `probedPythonVersion` summaries. The PC Brain deploy and quiet-soak reports must carry the same `sourceCommit` as the desktop bundle.
-10. Assemble the final Companion v1 evidence bundle and run `tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json`; attach `COMPANION_V1_EVIDENCE_BUNDLE.json/md`, `COMPANION_V1_REVIEW.md`, and the `reports/` JSON outputs before calling v1 release-ready.
+1. Provision the four `STACKCHAN_ANDROID_*` Actions secrets, back up the upload keystore, and
+   run a prerelease tag to collect native APK/AAB/MSI/DEB/DMG and managed-runtime evidence.
+2. Finish G1 with hardware push-to-talk/STT validation, then run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
+3. Finish G3 physical settings writes/manual brain handoff and G5 hardware pairing, then run the strict controls and pairing evidence checks.
+4. Exercise G8 Android diagnostics, Gemma-4-E2B download/load/eject, the real `gemma4-e2b-litert-lm` benchmark, and one target-device LiteRT turn.
+5. Finish G6 persistent robot Wi-Fi provisioning UX and hardware proof, then run `tools\check_android_wifi_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
+6. Run the target-phone screen-off bridge soak and `tools\check_android_screen_off_soak_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
+7. Assemble the Android v1 evidence bundle and run `tools\check_android_v1_evidence_bundle.cmd -RequireReady -Json`.
+8. Exercise PC Brain Mode against the physical robot with `tools\start_pc_brain.cmd`, the deploy evidence collector, and the strict 600-second quiet soak.
+9. Use the tag matrix's native managed-runtime reports to assemble the Desktop v1 evidence bundle and run `tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -RequireReady -Json`.
+10. Verify the prerelease with `tools\verify_published_release.cmd -Version <version>` and retain its exact-commit companion evidence.
+11. Assemble the final Companion v1 evidence bundle and run `tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot output\companion-v1-evidence\latest -RequireReady -Json` before calling v1 release-ready.

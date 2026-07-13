@@ -6,10 +6,13 @@ param(
   [string]$AndroidArtifactRoot = "",
   [string]$DesktopArtifactRoot = "",
   [string]$DesktopPythonRuntimeRoot = "",
+  [string]$DesktopPackageEvidenceRoot = "",
   [string]$ApkSignerPath = "",
   [string]$OutDir = "",
   [switch]$RequireArtifacts,
+  [switch]$RequireUploadSigning,
   [switch]$RequireDesktopPythonRuntime,
+  [switch]$RequireDesktopPackageEvidence,
   [switch]$Json
 )
 
@@ -580,6 +583,80 @@ function Get-DesktopPythonRuntimeEvidence {
   }
 }
 
+function Get-DesktopPackageEvidence {
+  $evidenceRoot = Find-FirstExistingDirectory @($DesktopPackageEvidenceRoot, $DesktopArtifactRoot)
+  if ([string]::IsNullOrWhiteSpace($evidenceRoot)) {
+    return [ordered]@{
+      status = "pending"
+      root = ""
+      platforms = @()
+      issues = @("Desktop package evidence root was not found.")
+    }
+  }
+
+  $issues = @()
+  $summaries = @()
+  $files = @(Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File -Filter "*-package-evidence.json" -ErrorAction SilentlyContinue)
+  $parsedReports = @()
+  foreach ($file in $files) {
+    try {
+      $parsedReports += [pscustomobject]@{ path = $file.FullName; report = (Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json) }
+    } catch {
+      $issues += "Desktop package evidence is invalid JSON: $($file.FullName)"
+    }
+  }
+
+  $expected = [ordered]@{ windows = ".msi"; linux = ".deb"; macos = ".dmg" }
+  foreach ($platform in $expected.Keys) {
+    $matches = @($parsedReports | Where-Object { [string]$_.report.platform -eq $platform })
+    if ($matches.Count -ne 1) {
+      $issues += "Expected exactly one desktop package evidence report for $platform; found $($matches.Count)."
+      continue
+    }
+    $path = $matches[0].path
+    $item = $matches[0].report
+    if ([string]$item.schema -ne "stackchan.desktop-package-evidence.v1") { $issues += "Desktop package evidence for $platform has unexpected schema." }
+    if ([string]$item.status -ne "ready") { $issues += "Desktop package evidence for $platform is not ready." }
+    if ([string]$item.version -ne $versionText) { $issues += "Desktop package evidence version mismatch for $platform." }
+    if ([string]$item.commit -ne $commitText) { $issues += "Desktop package evidence commit mismatch for $platform." }
+    if ([string]$item.package.extension -ne [string]$expected[$platform]) { $issues += "Desktop package evidence extension mismatch for $platform." }
+    $packageSha = ([string]$item.package.sha256).ToLowerInvariant()
+    if ($packageSha -notmatch '^[a-f0-9]{64}$') { $issues += "Desktop package evidence SHA-256 is invalid for $platform." }
+    $artifactMatches = @($desktopArtifacts.entries | Where-Object {
+      ([string]$_['sha256']).ToLowerInvariant() -eq $packageSha -and
+      ([string]$_['path']).EndsWith([string]$expected[$platform], [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($artifactMatches.Count -ne 1) { $issues += "Desktop package evidence does not match exactly one downloaded $platform artifact." }
+    $payloadSha = ([string]$item.runtime.payloadSha256).ToLowerInvariant()
+    $processedSha = ([string]$item.runtime.processedPayloadSha256).ToLowerInvariant()
+    if ($payloadSha -notmatch '^[a-f0-9]{64}$' -or $processedSha -ne $payloadSha) { $issues += "Processed runtime payload hash mismatch for $platform." }
+    if ([int64]$item.runtime.processedFileCount -lt 2 -or [int64]$item.runtime.processedBytes -le 0) { $issues += "Processed runtime payload summary is incomplete for $platform." }
+    foreach ($field in @("source", "pythonVersion", "probedPythonVersion")) {
+      if ([string]::IsNullOrWhiteSpace([string]$item.runtime.$field)) { $issues += "Desktop runtime $field is missing for $platform." }
+    }
+    $summaries += [ordered]@{
+      platform = $platform
+      path = Convert-ToRelativePath $path
+      packageName = [string]$item.package.name
+      packageBytes = [int64]$item.package.bytes
+      packageSha256 = $packageSha
+      runtimeSha256 = $payloadSha
+      runtimeSource = [string]$item.runtime.source
+      pythonVersion = [string]$item.runtime.pythonVersion
+      probedPythonVersion = [string]$item.runtime.probedPythonVersion
+      processedFileCount = [int64]$item.runtime.processedFileCount
+      processedBytes = [int64]$item.runtime.processedBytes
+    }
+  }
+
+  return [ordered]@{
+    status = if ($issues.Count -eq 0 -and $summaries.Count -eq 3) { "ready" } else { "not-ready" }
+    root = Convert-ToRelativePath $evidenceRoot
+    platforms = @($summaries)
+    issues = @($issues)
+  }
+}
+
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
   $pending += "companion-cross-platform-plan"
@@ -621,16 +698,26 @@ $androidSigning = Test-AndroidReleaseApkSignature $androidArtifacts
 if ($androidSigning.status -ne "verified") {
   $pending += "android-release-apk-signature"
 }
+if ($RequireUploadSigning -and $androidSigning.signingProfile -ne "upload-key") {
+  $pending += "android-release-apk-upload-signing"
+}
 $androidBundleSigning = Test-AndroidReleaseBundleSignature $androidArtifacts
 if ($androidBundleSigning.status -ne "verified") {
   $pending += "android-release-aab-signature"
+}
+if ($RequireUploadSigning -and $androidBundleSigning.signingProfile -ne "upload-key") {
+  $pending += "android-release-aab-upload-signing"
 }
 $desktopPythonRuntime = Get-DesktopPythonRuntimeEvidence
 if ($desktopPythonRuntime.status -ne "ready" -and ($RequireDesktopPythonRuntime -or -not [string]::IsNullOrWhiteSpace($desktopPythonRuntime.runtimeRoot))) {
   $pending += "desktop-managed-python-runtime-payload"
 }
+$desktopPackageEvidence = Get-DesktopPackageEvidence
+if ($RequireDesktopPackageEvidence -and $desktopPackageEvidence.status -ne "ready") {
+  $pending += "desktop-native-package-runtime-evidence"
+}
 
-$status = if ($RequireArtifacts -and $pending.Count -gt 0) { "blocked-missing-artifacts" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
+$status = if (($RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPackageEvidence) -and $pending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
 $report = [ordered]@{
   schema = "stackchan.companion-release-evidence.v1"
@@ -648,7 +735,10 @@ $report = [ordered]@{
   artifacts = @($androidArtifacts, $desktopArtifacts)
   androidSigning = $androidSigning
   androidBundleSigning = $androidBundleSigning
+  uploadSigningRequired = [bool]$RequireUploadSigning
   desktopPythonRuntime = $desktopPythonRuntime
+  desktopPackageEvidenceRequired = [bool]$RequireDesktopPackageEvidence
+  desktopPackageEvidence = $desktopPackageEvidence
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
 }
@@ -686,6 +776,7 @@ foreach ($artifactGroup in $report.artifacts) {
 }
 $lines += ""
 $lines += "## Android Signing"
+$lines += "- Upload signing required: $([bool]$RequireUploadSigning)"
 $lines += "- Status: $($androidSigning.status)"
 $lines += "- APK: $($androidSigning.apk)"
 $lines += "- Scheme: $($androidSigning.scheme)"
@@ -710,6 +801,15 @@ foreach ($check in @($desktopPythonRuntime.checks)) {
   $lines += "- [$($check.status)] $($check.id): $($check.detail)"
 }
 $lines += ""
+$lines += "## Native Desktop Package Runtime Evidence"
+$lines += "- Required: $([bool]$RequireDesktopPackageEvidence)"
+$lines += "- Status: $($desktopPackageEvidence.status)"
+$lines += "- Root: $($desktopPackageEvidence.root)"
+foreach ($platform in @($desktopPackageEvidence.platforms)) {
+  $lines += "- $($platform.platform): package=$($platform.packageName) package_sha256=$($platform.packageSha256) runtime_sha256=$($platform.runtimeSha256) python=$($platform.probedPythonVersion)"
+}
+foreach ($issue in @($desktopPackageEvidence.issues)) { $lines += "- Issue: $issue" }
+$lines += ""
 $lines += "## Pending"
 if ($pending.Count -eq 0) {
   $lines += "- None"
@@ -731,6 +831,6 @@ if ($Json) {
   }
 }
 
-if ($RequireArtifacts -and $pending.Count -gt 0) {
+if (($RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPackageEvidence) -and $pending.Count -gt 0) {
   exit 2
 }

@@ -36,6 +36,13 @@ jobs:
               - 'tools/check_desktop_v1_evidence_bundle.*'
               - 'tools/test_desktop_v1_evidence_bundle_contract.*'
               - 'tools/export_companion_release_evidence.*'
+              - 'tools/check_companion_release_version.*'
+              - 'tools/test_companion_release_version_contract.*'
+              - 'tools/prepare_desktop_python_runtime.*'
+              - 'tools/check_desktop_python_runtime_payload.*'
+              - 'tools/test_desktop_python_runtime_payload_contract.*'
+              - 'tools/export_desktop_package_evidence.*'
+              - 'tools/test_desktop_package_evidence_contract.*'
 
   bridge-tests:
     runs-on: ubuntu-latest
@@ -158,6 +165,12 @@ jobs:
           cd companion
           ./gradlew check :app-desktop:c0Spike
 
+      - name: Check companion release version contract
+        shell: pwsh
+        run: |
+          ./tools/check_companion_release_version.ps1 -Json
+          ./tools/test_companion_release_version_contract.ps1
+
       - name: Run Android Play release readiness check
         shell: pwsh
         run: ./tools/check_android_play_release_readiness.ps1 -Json
@@ -173,6 +186,10 @@ jobs:
       - name: Run desktop Python runtime payload contract
         shell: pwsh
         run: ./tools/test_desktop_python_runtime_payload_contract.ps1
+
+      - name: Run native desktop package evidence contract
+        shell: pwsh
+        run: ./tools/test_desktop_package_evidence_contract.ps1
 
       - name: Run Desktop v1 evidence bundle contract
         shell: pwsh
@@ -199,13 +216,17 @@ jobs:
             os: ubuntu-latest
             setup_android: true
             setup_linux_packaging: false
+            setup_desktop_runtime: false
+            desktop_platform: ''
+            package_dir: ''
+            extension: ''
             shell: bash
             install_android_command: |
               yes | sdkmanager --licenses || true
               sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
             command: |
               cd companion
-              ./gradlew :app-android:assembleDebug :app-android:assembleRelease :app-android:bundleRelease
+              ./gradlew :app-android:assembleDebug :app-android:assembleRelease :app-android:bundleRelease -Pstackchan.allowLabDebugReleaseSigning=true
             artifact_name: companion-android-apks
             artifact_path: |
               companion/app-android/build/outputs/apk/debug/*.apk
@@ -215,6 +236,10 @@ jobs:
             os: ubuntu-latest
             setup_android: true
             setup_linux_packaging: true
+            setup_desktop_runtime: true
+            desktop_platform: linux
+            package_dir: deb
+            extension: deb
             shell: bash
             install_android_command: |
               yes | sdkmanager --licenses || true
@@ -223,11 +248,18 @@ jobs:
               cd companion
               ./gradlew :app-desktop:packageDistributionForCurrentOS
             artifact_name: companion-desktop-linux
-            artifact_path: companion/app-desktop/build/compose/binaries/main/deb/*.deb
+            artifact_path: |
+              companion/app-desktop/build/compose/binaries/main/deb/*.deb
+              output/desktop-python-runtime/linux-prepare.json
+              output/desktop-python-runtime/linux-package-evidence.json
           - name: desktop-macos
             os: macos-latest
             setup_android: true
             setup_linux_packaging: false
+            setup_desktop_runtime: true
+            desktop_platform: macos
+            package_dir: dmg
+            extension: dmg
             shell: bash
             install_android_command: |
               yes | sdkmanager --licenses || true
@@ -236,11 +268,18 @@ jobs:
               cd companion
               ./gradlew :app-desktop:packageDistributionForCurrentOS
             artifact_name: companion-desktop-macos
-            artifact_path: companion/app-desktop/build/compose/binaries/main/dmg/*.dmg
+            artifact_path: |
+              companion/app-desktop/build/compose/binaries/main/dmg/*.dmg
+              output/desktop-python-runtime/macos-prepare.json
+              output/desktop-python-runtime/macos-package-evidence.json
           - name: desktop-windows
             os: windows-latest
             setup_android: true
             setup_linux_packaging: false
+            setup_desktop_runtime: true
+            desktop_platform: windows
+            package_dir: msi
+            extension: msi
             shell: pwsh
             install_android_command: |
               1..20 | ForEach-Object { 'y' } | sdkmanager --licenses
@@ -249,11 +288,19 @@ jobs:
               cd companion
               .\gradlew.bat :app-desktop:packageDistributionForCurrentOS
             artifact_name: companion-desktop-windows
-            artifact_path: companion/app-desktop/build/compose/binaries/main/msi/*.msi
+            artifact_path: |
+              companion/app-desktop/build/compose/binaries/main/msi/*.msi
+              output/desktop-python-runtime/windows-prepare.json
+              output/desktop-python-runtime/windows-package-evidence.json
     name: companion-platform-builds (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        if: matrix.setup_desktop_runtime
+        with:
+          python-version: "3.12"
 
       - uses: actions/setup-java@v5
         with:
@@ -281,6 +328,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y fakeroot
+
+      - name: Prepare managed Python runtime for desktop package
+        if: matrix.setup_desktop_runtime
+        shell: pwsh
+        run: |
+          $runtimeRoot = Join-Path "${{ github.workspace }}" "output/desktop-python-runtime/${{ matrix.desktop_platform }}"
+          ./tools/prepare_desktop_python_runtime.ps1 `
+            -SourcePython (Get-Command python).Source `
+            -RuntimeRoot $runtimeRoot `
+            -SourceName "github-actions-pr-${{ runner.os }}-${{ runner.arch }}-python-3.12" `
+            -Force `
+            -Json | Set-Content "output/desktop-python-runtime/${{ matrix.desktop_platform }}-prepare.json" -Encoding utf8
+          "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build companion platform artifact
         if: matrix.shell == 'bash'
@@ -334,6 +394,24 @@ jobs:
             Write-Output '::endgroup::'
             exit $status
           }
+
+      - name: Export native desktop package evidence
+        if: matrix.setup_desktop_runtime
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.desktop_platform }} desktop package; found $($packages.Count)."
+          }
+          ./tools/export_desktop_package_evidence.ps1 `
+            -Platform "${{ matrix.desktop_platform }}" `
+            -PackagePath $packages[0].FullName `
+            -RuntimePrepareJsonPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-prepare.json" `
+            -ProcessedRuntimeRoot "companion/app-desktop/build/resources/main/python-runtime" `
+            -Version "${{ github.sha }}" `
+            -Commit "${{ github.sha }}" `
+            -OutPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-evidence.json" `
+            -Json
 
       - name: Upload companion platform artifact
         uses: actions/upload-artifact@v7
@@ -394,9 +472,11 @@ jobs:
             -Commit "${{ github.sha }}" `
             -AndroidArtifactRoot "output/companion/ci-artifacts/companion-android-apks" `
             -DesktopArtifactRoot "output/companion/ci-artifacts" `
+            -DesktopPackageEvidenceRoot "output/companion/ci-artifacts" `
             -ApkSignerPath "$env:ANDROID_HOME/build-tools/36.0.0/apksigner" `
             -OutDir "output/companion/release-evidence/ci" `
             -RequireArtifacts `
+            -RequireDesktopPackageEvidence `
             -Json
 
       - name: Upload companion release evidence

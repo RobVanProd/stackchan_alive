@@ -318,8 +318,11 @@ Build the Android companion APK from the source checkout before this step:
 ```powershell
 .\tools\check_android_toolchain.cmd
 cd companion
-.\gradlew.bat :app-android:assembleRelease
+.\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease
 ```
+
+The unqualified `.\gradlew.bat :app-android:assembleRelease` command is intentionally rejected
+unless the production upload-key environment is configured.
 
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.

@@ -209,8 +209,11 @@ If the Android companion is the bridge host, install the lab-signed release APK 
 phone, open Stackchan Companion, allow notifications when prompted on Android 13 or newer,
 and allow the app to ignore battery optimizations if prompted for screen-off bench testing.
 Build the APK from the source checkout with `.\tools\check_android_toolchain.cmd` and then
-`cd companion; .\gradlew.bat :app-android:assembleRelease`. The default lab release output
+`cd companion; .\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease`.
+This explicit property permits debug-certificate signing for lab evidence only. The output
 path is `companion\app-android\build\outputs\apk\release\app-android-release.apk`.
+The unqualified `cd companion; .\gradlew.bat :app-android:assembleRelease` command is
+intentionally rejected unless the production upload-key environment is configured.
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.
 Confirm the foreground notification reports the bridge as ready and advertised. The phone

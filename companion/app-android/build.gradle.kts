@@ -1,3 +1,5 @@
+import org.gradle.api.GradleException
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -21,6 +23,10 @@ val hasPlayReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
+val allowLabDebugReleaseSigning = providers.gradleProperty("stackchan.allowLabDebugReleaseSigning")
+    .map(String::toBoolean)
+    .orElse(false)
+    .get()
 
 android {
     namespace = "dev.stackchan.companion.android"
@@ -48,7 +54,11 @@ android {
     buildTypes {
         release {
             isDebuggable = false
-            signingConfig = signingConfigs.getByName(if (hasPlayReleaseSigning) "playRelease" else "debug")
+            signingConfig = when {
+                hasPlayReleaseSigning -> signingConfigs.getByName("playRelease")
+                allowLabDebugReleaseSigning -> signingConfigs.getByName("debug")
+                else -> null
+            }
         }
     }
 
@@ -57,6 +67,33 @@ android {
             assets.srcDir("../../personas")
         }
     }
+}
+
+val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
+    group = "verification"
+    description = "Fails release builds unless Play upload signing is configured or lab signing is explicitly allowed."
+
+    doLast {
+        if (!hasPlayReleaseSigning && !allowLabDebugReleaseSigning) {
+            throw GradleException(
+                "Android release signing is not configured. Set STACKCHAN_ANDROID_KEYSTORE, " +
+                    "STACKCHAN_ANDROID_KEYSTORE_PASSWORD, STACKCHAN_ANDROID_KEY_ALIAS, and " +
+                    "STACKCHAN_ANDROID_KEY_PASSWORD. For a non-distributable lab build only, pass " +
+                    "-Pstackchan.allowLabDebugReleaseSigning=true."
+            )
+        }
+        logger.lifecycle(
+            if (hasPlayReleaseSigning) {
+                "Android release signing profile: Play upload key."
+            } else {
+                "Android release signing profile: LAB ONLY Android debug key."
+            }
+        )
+    }
+}
+
+tasks.matching { it.name in setOf("assembleRelease", "bundleRelease") }.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
 
 dependencies {

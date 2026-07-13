@@ -34,8 +34,13 @@ For the companion C8 distribution path, run `tools/export_companion_release_evid
 after Android APK or desktop package artifacts are built. It writes
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact SHA256s, git commit,
 `companion/gradle/libs.versions.toml` toolchain pins, and Android release APK signing
-status from `apksigner`; use `-RequireArtifacts` when the signed release APK and desktop
-packages are required for promotion.
+status from `apksigner`; use `-RequireArtifacts -RequireUploadSigning
+-RequireDesktopPackageEvidence` for promotion.
+The strict gate requires upload-key-signed APK and AAB artifacts plus MSI, DEB, and DMG
+packages. The tag workflow prepares and validates a managed Python runtime for each desktop
+package before embedding it, then exports a native report binding the package SHA-256 to the
+processed runtime SHA-256. Missing, duplicate, stale-commit, or mismatched native reports block
+release evidence.
 
 ## Exact Tested Lead Versus Public Package
 
@@ -257,15 +262,24 @@ git tag <version>
 git push origin <version>
 ```
 
-The release workflow builds both firmware variants, runs native logic tests, compile-checks the embedded test firmware, renders preview media, creates and verifies an auditable package, and attaches the package, ZIP SHA256 sidecar, individual preview media, expression-sheet, and firmware files to a GitHub release.
+The release workflow builds both firmware variants, runs native logic tests, compile-checks
+the embedded test firmware, renders preview media, creates and verifies an auditable package,
+builds upload-signed Android APK/AAB artifacts, builds runtime-bundled Windows MSI, Linux DEB,
+and macOS DMG packages on their native runners, and attaches the complete verified asset set
+to one GitHub release. Before the first public companion tag, provision the four
+`STACKCHAN_ANDROID_*` Actions secrets documented in `ANDROID_PLAY_RELEASE.md`.
 
-If GitHub Actions cannot run, publish the already verified package with the manual release helper:
+If GitHub Actions cannot run, the manual helper remains available for a firmware-only recovery
+publication:
 
 ```powershell
 .\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
 ```
 
-The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.
+The manual helper verifies the local ZIP, uploads the firmware package assets, downloads the
+GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.
+It does not cross-build or upload companion packages and therefore cannot satisfy the full
+companion release asset contract by itself.
 
 Audit an existing GitHub release after publication:
 
@@ -273,7 +287,12 @@ Audit an existing GitHub release after publication:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP plus ZIP SHA256 sidecar, validates the sidecar against the downloaded ZIP, and runs the package verifier on that downloaded copy.
+The published-release verifier checks the firmware and companion asset set, compares sizes and
+SHA256 digests against package and companion evidence, requires upload-key signing for Android,
+requires ready Windows/Linux/macOS package evidence and matches each published desktop package
+to its recorded processed runtime hash,
+confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP
+plus ZIP SHA256 sidecar, validates the sidecar, and runs the package verifier on that copy.
 
 For a single post-publish operator summary, run:
 
