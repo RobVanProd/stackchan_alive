@@ -1011,7 +1011,7 @@ class LanServiceTests(unittest.TestCase):
                         "import json",
                         "import sys",
                         "text = sys.stdin.buffer.read().decode('utf-8')",
-                        "payload = (b'abcd' if text.startswith('First') else b'efgh')",
+                        "payload = (b'abcd' if text.startswith('Yes') else b'efgh')",
                         "print(json.dumps({'audio_format':'pcm16','sample_rate':16000,'audio_b64':base64.b64encode(payload).decode('ascii'),'audio_truncated':False,'beats':[{'env':0.5,'viseme':'ah','duration_ms':20,'final':True}]}))",
                     ]
                 ),
@@ -1021,7 +1021,7 @@ class LanServiceTests(unittest.TestCase):
             runner = SimpleNamespace(
                 raw_response=json.dumps(
                     {
-                        "spoken_text": "First phrase. Second phrase.",
+                        "spoken_text": "Yes. Second phrase.",
                         "mode": "speak",
                         "earcon": "none",
                         "emotion": {"arousal": 0.0, "valence": 0.0},
@@ -1094,6 +1094,8 @@ class LanServiceTests(unittest.TestCase):
         )
         stream_start = next(frame for frame in emitted if isinstance(frame, dict) and frame["type"] == "audio_stream_start")
         stream_end = next(frame for frame in emitted if isinstance(frame, dict) and frame["type"] == "audio_stream_end")
+        response_start = next(frame for frame in emitted if isinstance(frame, dict) and frame["type"] == "response_start")
+        self.assertEqual("affirm", response_start["gesture"])
         self.assertEqual(0, stream_start["audio_bytes"])
         self.assertEqual(0, stream_start["chunks"])
         self.assertEqual(8, stream_end["audio_bytes"])

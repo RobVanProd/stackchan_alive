@@ -28,12 +28,19 @@ BRIDGE_SYSTEM_PROMPT = DEFAULT_PERSONA.bridge_system_prompt()
 Viseme = Literal["neutral", "ah", "oh", "ee"]
 ResponseGesture = Literal["none", "affirm", "deny"]
 
-_AFFIRM_RESPONSE = re.compile(r"^(?:yes|yeah|yep|correct|absolutely|certainly|definitely)\b", re.IGNORECASE)
+_AFFIRM_RESPONSE = re.compile(
+    r"^(?:yes|yeah|yep|correct|absolutely|certainly|definitely|of course)\b",
+    re.IGNORECASE,
+)
 _DENY_RESPONSE = re.compile(
-    r"^(?:no|nope|not\b|i (?:cannot|can not|do not|will not|am not)\b|that is not\b)",
+    r"^(?:no|nope|nah|never|not\b|i (?:cannot|can't|can not|do not|don't|will not|won't|am not)\b|(?:that|it) (?:is not|isn't)\b)",
     re.IGNORECASE,
 )
 _NO_PROBLEM = re.compile(r"^no (?:problem|worries|trouble)\b", re.IGNORECASE)
+_MIXED_RESPONSE = re.compile(r"^(?:yes|yeah|no|nope)\s+(?:and|or)\s+(?:yes|yeah|no|nope)\b", re.IGNORECASE)
+_INFORMAL_DENY = re.compile(r"^(?:(?:yes|yeah),?\s+no|(?:absolutely|certainly|definitely)\s+not)\b", re.IGNORECASE)
+_UNCERTAIN_RESPONSE = re.compile(r"^(?:yes|yeah|yep|no|nope)\s*\?", re.IGNORECASE)
+_QUALIFIED_RESPONSE = re.compile(r"^correct me\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -73,8 +80,16 @@ def clamp_signed(value: float) -> float:
 
 def response_gesture_for_text(text: object) -> ResponseGesture:
     clean = " ".join(str(text or "").strip().split()).lstrip("\"'([{ ")
-    if not clean or _NO_PROBLEM.search(clean):
+    if (
+        not clean
+        or _NO_PROBLEM.search(clean)
+        or _MIXED_RESPONSE.search(clean)
+        or _UNCERTAIN_RESPONSE.search(clean)
+        or _QUALIFIED_RESPONSE.search(clean)
+    ):
         return "none"
+    if _INFORMAL_DENY.search(clean):
+        return "deny"
     if _AFFIRM_RESPONSE.search(clean):
         return "affirm"
     if _DENY_RESPONSE.search(clean):

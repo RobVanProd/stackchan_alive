@@ -101,6 +101,9 @@ firmware to its normal local face and wake behavior.
   terminates the model/RVC process tree, drops a pending unsent audio tail, and prevents cancelled
   model memory or session history from committing. Host tests prove both real child-process
   termination and cancellation arriving through WebSocket while generation is blocked.
+- Validated replies now retain their semantic `affirm` or `deny` gesture on the phrase-streaming
+  TTS path. The firmware's seeded procedural nod or shake remains a bounded visual/body layer;
+  mixed, uncertain, or qualified wording deliberately emits no gesture.
 - Remaining: the onboard microphones are still echo-guarded while Stackchan's speaker is active.
   Therefore this source proves host/companion interruption, not yet a person speaking over the
   physical robot speaker. On-device overlap detection, immediate speaker cancellation, echo

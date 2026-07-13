@@ -179,7 +179,12 @@ class ReferenceBridgeTests(unittest.TestCase):
     def test_yes_and_no_responses_emit_semantic_head_gestures(self):
         self.assertEqual("affirm", response_gesture_for_text("Yes, that is correct."))
         self.assertEqual("deny", response_gesture_for_text("No, I cannot do that."))
+        self.assertEqual("deny", response_gesture_for_text("Definitely not."))
+        self.assertEqual("deny", response_gesture_for_text("Yeah, no, that is not right."))
         self.assertEqual("none", response_gesture_for_text("No problem. I can help."))
+        self.assertEqual("none", response_gesture_for_text("Yes and no. It depends."))
+        self.assertEqual("none", response_gesture_for_text("Correct me if I am wrong."))
+        self.assertEqual("none", response_gesture_for_text("Yes?"))
         self.assertEqual("none", response_gesture_for_text("I am Stackchan."))
 
         raw = json.dumps(

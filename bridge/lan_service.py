@@ -1290,6 +1290,7 @@ class LanBridgeSession:
                 "intent": turn.intent,
                 "arousal": round(max(0.0, min(1.0, turn.arousal)), 2),
                 "valence": round(max(0.0, min(1.0, turn.valence)), 2),
+                "gesture": getattr(turn, "gesture", "none"),
                 "text": turn.text,
                 "tts_streaming": True,
             }

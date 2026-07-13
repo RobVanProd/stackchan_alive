@@ -246,7 +246,9 @@ Example:
 - `thinking`: bridge is processing; firmware emits `ThinkingStarted`.
 - `response_start`: response metadata is ready; firmware emits `ResponseStarted`. Optional
   `gesture` is `none`, `affirm`, or `deny`; firmware layers a short seeded procedural nod or
-  shake over the existing idle/camera pose and then settles back to that pose.
+  shake over the existing idle/camera pose and then settles back to that pose. The bridge derives
+  this field from the completed validated response, and preserves it on both whole-response and
+  low-latency phrase-streaming TTS paths. Ambiguous wording does not produce a gesture.
 - `audio_stream_start`: optional metadata for a following binary TTS audio downlink.
 - Binary WebSocket frame: optional raw TTS audio chunk. Format is declared by the preceding
   `audio_stream_start` frame. Firmware accepts chunks up to 4096 bytes, copies the chunk
