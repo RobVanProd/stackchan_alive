@@ -40,15 +40,27 @@ thermal, display, bridge, audio, IMU, camera, and motion-session gates remained 
 summary as a failed duration gate caused by a camera-latency policy breach, not as a blackout,
 reset, camera failure, or power fault.
 
-That exact image had two Core-1 tasks servicing the same HTTP server: priority-3 `IntentTask` and
-priority-1 Arduino `loopTask`. This shared ownership had already produced one recovered malformed
-debug response in earlier evidence and can inflate the combined camera timer when the lower-
+That historical exact image had two Core-1 tasks servicing the same HTTP server: priority-3
+`IntentTask` and priority-1 Arduino `loopTask`. This shared ownership had already produced one
+recovered malformed debug response in earlier evidence and can inflate the combined camera timer when the lower-
 priority caller is descheduled. Existing telemetry combines `esp_camera_fb_get()`, RGB565-to-gray
 conversion, and scheduler delay, so do not claim which substage caused the historical `330105 us`
-sample. The corrected source makes `IntentTask` the single runtime owner and release checks enforce
-that call count. It passes `261/261` native tests, the public embedded build, architecture, soak-
-evidence, reproducibility, and archive contracts, but remains an uninstalled candidate. Qualify its
-own binary before starting another long actuator soak; never transfer the prior SHA's evidence.
+sample.
+
+Corrected exact-image acceptance (2026-07-13): clean source commit
+`ce66f8a0fadfadbc07eb59124522267ba66ee70a`, firmware SHA-256
+`69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`, makes `IntentTask` the
+single runtime owner and passed `261/261` native tests plus exact-image formal `76/76` no-motion and
+`77/77` actuator qualifications. Its all-feature actuator soak at
+`output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750` passed for `28807 s` with
+`5643/5643` good polls, zero failed polls, zero motion timeouts, VBUS floors `4913/4909 mV`
+(sampled/reported), maximum temperature `66.5 C`, maximum display frame `41511 us`, maximum camera
+capture `223997 us`, and zero hard-floor, PMIC protective, IMU exhaustion/failure, camera capture,
+response-write, or authentication events. Motion, rail, torque, and motion power authority were
+verified off after completion. The saved formal checker result is
+`output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750\checker.json` and passed `77/77`.
+Use this exact SHA and evidence sequence as the current private paired hardware candidate; never
+transfer its evidence to a different binary.
 
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal

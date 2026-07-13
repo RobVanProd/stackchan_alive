@@ -1,6 +1,6 @@
 # Stackchan First Deploy Status
 
-Status timestamp: 2026-07-13 07:15 America/New_York
+Status timestamp: 2026-07-13 15:53 America/New_York
 
 ## Current Lead: Power-Coordinated Full-Online Accepted Lead
 
@@ -66,6 +66,39 @@ support compiled with motion disabled at boot.
 
 ### Overnight Exact-Image Result And HTTP Ownership Diagnosis (2026-07-13)
 
+#### Corrected Single-Owner Exact-Image Acceptance
+
+- The corrected exact installed candidate is clean source commit
+  `ce66f8a0fadfadbc07eb59124522267ba66ee70a`, firmware SHA-256
+  `69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`, archived at
+  `output\private\firmware-candidates\single-owner-runtime-ce66f8a0-20260713-073852`. It gives
+  `IntentTask` sole ownership of bridge networking, bridge output polling, debug/camera HTTP
+  servicing, and wake-runtime startup. Native logic passed `261/261`; the exact image then passed
+  formal `76/76` no-motion qualification at
+  `output\pc-brain\single-owner-runtime-nomotion-2min-20260713-0742` and formal `77/77` actuator
+  qualification at `output\pc-brain\single-owner-runtime-servo-2min-20260713-0746`.
+- Its all-feature actuator soak at
+  `output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750` completed from
+  `2026-07-13 07:50:15` through `15:50:22` America/New_York with `status=pass` after `28807 s`.
+  All `5643/5643` polls succeeded, motion and unsuppressed-motion ratios were both `1.0`, all
+  `96/96` motion refreshes succeeded, maximum consecutive failed polls and motion-session
+  timeouts were zero, and RVC was ready for `472/472` worker polls.
+- Power, thermal, display, and actuator invariants remained inside their strict gates: sampled
+  VBUS floor `4913 mV`, reported VBUS floor `4909 mV`, VSYS floor `4150 mV`, maximum chip
+  temperature `66.5 C`, maximum display frame `41511 us`, zero servo-rail-without-grant or
+  torque-without-rail samples, zero hard-floor entries, and zero new PMIC runtime or protective
+  events.
+- RGB, touch, IMU, and paired camera/host vision remained active. The run recorded `366943` RGB
+  frames, `594390` touch samples, `565484` IMU samples, and `115019` camera frames; IMU retry/
+  recovery accounting was `8573/5441` with zero exhaustions or terminal failures. Paired vision
+  made `57505` frame requests and `57500` target updates. Maximum camera capture time was
+  `223997 us`; camera capture, host-capture, response-write, authentication, and terminal
+  readiness failures were all zero.
+- `tools\check_full_system_soak_evidence.ps1` passed `77/77` with zero failures or pending checks;
+  its saved JSON is `output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750\checker.json`.
+  The runner's bounded final stop verified on its first attempt, and a subsequent live `/debug`
+  check confirmed motion request, servo rail, servo torque, and motion power authority all off.
+
 - The later exact installed image was clean source commit
   `2d0e61e28416df376499acab744ea91a5d56c2d4`, firmware SHA-256
   `c0314b375b86e8f350b6c4588422818526c54b2d6b0293b3a7233b95c06e740e`. Its formal short
@@ -95,13 +128,11 @@ support compiled with motion disabled at boot.
   five minutes later without contrary technical evidence. This defect is the strongest supported
   explanation for an inflated recovered camera timer, but the old combined timer prevents proving
   which portion of this one sample was preemption.
-- The current uninstalled worktree restores `IntentTask` as the single runtime owner of bridge,
-  wake, and debug/camera HTTP servicing and restores architecture/package count guards. Native
-  logic passes `261/261`; `stackchan_release_full` builds successfully; architecture, full-system
-  soak-evidence, current-lead reproducibility, and archive contracts pass. The public build artifact
-  is `2798688` bytes, SHA-256
-  `F660291251A760C045C99E3B61D1AD332E4BBEA5F258A2D75B901B2CAD3F875B`. It is not installed or
-  physically qualified and does not inherit the preceding image's hardware evidence.
+- The single-owner correction described above was subsequently installed and qualified as its own
+  exact image; it does not inherit the preceding image's hardware evidence. The earlier public
+  `stackchan_release_full` build artifact was `2798688` bytes, SHA-256
+  `F660291251A760C045C99E3B61D1AD332E4BBEA5F258A2D75B901B2CAD3F875B`; that public artifact is
+  distinct from the private paired binary and does not inherit its device-specific evidence.
 - After the failed runner exited, `/motion-stop` was issued and post-stop evidence was saved as
   `post-stop-debug-20260713-0952.json` in the run root. Motion request, rail, and torque were all
   off while bridge/network, power, temperature, and display telemetry remained healthy.
