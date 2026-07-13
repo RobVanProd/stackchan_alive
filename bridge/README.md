@@ -260,11 +260,13 @@ python bridge\lan_service.py --conversation-v2 --tts-command "python bridge\rvc_
 
 The opt-in session accepts one wake-gated first turn, validates matching firmware
 `playback_complete`, then sends a bounded `conversation_reply_window` command so firmware reuses
-the proven cue, RGB, microphone-pause, fixed capture, and wake-gated uplink path without another
-wake phrase. Exit phrases, turn limits, bridge loss, cancellation, TTS failure, and model failure
-close through a typed cooldown. The flag still does not provide voice-activity-ended capture or
-concurrent in-flight generation cancellation; leave it off for normal v1 operation until
-exact-image hardware qualification and those natural barge-in gates pass.
+the proven cue, RGB, microphone-pause, and wake-gated uplink path without another wake phrase.
+Reply-window capture uses a deterministic local endpoint with sustained-speech and trailing-silence
+hysteresis; no-speech or ambiguous input retains the 4.8-second maximum fallback. Initial v1
+capture remains fixed-length. Exit phrases, turn limits, bridge loss, cancellation, TTS failure,
+and model failure close through a typed cooldown. Concurrent in-flight generation/playback
+cancellation is still pending; leave Conversation v2 off for normal v1 operation until exact-image
+hardware qualification and that natural barge-in gate pass.
 
 Run the optional local camera detector only with the isolated camera diagnostic firmware:
 

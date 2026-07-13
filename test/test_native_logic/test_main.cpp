@@ -33,6 +33,7 @@
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
+#include "io/VoiceActivityEndpoint.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "motion/Spring.hpp"
 #include "PersonaBehavior.hpp"
@@ -1090,6 +1091,79 @@ void test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking() {
   TEST_ASSERT_GREATER_THAN_FLOAT(1.0f, frame.face.faceX);
   TEST_ASSERT_LESS_THAN_FLOAT(-1.0f, frame.motion.yawDeg);
   TEST_ASSERT_GREATER_THAN_FLOAT(0.08f, frame.motion.pitchDeg);
+}
+
+void fillVoiceEndpointSpeech(int16_t* samples, size_t sampleCount, int16_t amplitude = 5000) {
+  for (size_t i = 0; i < sampleCount; ++i) {
+    samples[i] = ((i / 5u) % 2u) == 0u ? amplitude : static_cast<int16_t>(-amplitude);
+  }
+}
+
+void test_voice_activity_endpoint_ends_after_sustained_speech_and_trailing_silence() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  config.minimumCaptureMs = 300;
+  config.minimumSpeechMs = 100;
+  config.trailingSilenceMs = 200;
+  config.maximumCaptureMs = 1000;
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 0));
+
+  int16_t speech[800] = {};
+  int16_t silence[800] = {};
+  fillVoiceEndpointSpeech(speech, 800);
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(speech, 800, 50)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(speech, 800, 100)));
+  TEST_ASSERT_TRUE(endpoint.telemetry().speechSeen);
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(silence, 800, 200)));
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+                    static_cast<int>(endpoint.process(silence, 800, 300)));
+  TEST_ASSERT_FALSE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().endpointsDetected);
+  TEST_ASSERT_EQUAL_STRING(
+      "trailing_silence", voiceActivityEndpointReasonName(endpoint.telemetry().lastReason));
+}
+
+void test_voice_activity_endpoint_rejects_short_noise_and_uses_maximum_fallback() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  config.minimumCaptureMs = 300;
+  config.minimumSpeechMs = 150;
+  config.trailingSilenceMs = 200;
+  config.maximumCaptureMs = 500;
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 0));
+
+  int16_t noise[800] = {};
+  int16_t silence[800] = {};
+  fillVoiceEndpointSpeech(noise, 800, 6000);
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(noise, 800, 50)));
+  TEST_ASSERT_FALSE(endpoint.telemetry().speechSeen);
+  for (uint32_t nowMs = 100; nowMs < 500; nowMs += 50) {
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                      static_cast<int>(endpoint.process(silence, 800, nowMs)));
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::MaxDuration),
+                    static_cast<int>(endpoint.process(silence, 800, 500)));
+  TEST_ASSERT_FALSE(endpoint.telemetry().speechSeen);
+  TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().maxDurationFallbacks);
+}
+
+void test_voice_activity_endpoint_disabled_path_preserves_fixed_capture() {
+  VoiceActivityEndpointConfig config;
+  config.enabled = false;
+  VoiceActivityEndpoint endpoint;
+  TEST_ASSERT_TRUE(endpoint.begin(config, 100));
+  int16_t speech[800] = {};
+  fillVoiceEndpointSpeech(speech, 800);
+  TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::None),
+                    static_cast<int>(endpoint.process(speech, 800, 1000)));
+  TEST_ASSERT_FALSE(endpoint.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(0, endpoint.telemetry().capturesStarted);
 }
 
 void test_embodied_energy_classifies_with_hysteresis_and_charging_priority() {
@@ -7265,6 +7339,9 @@ int main() {
   RUN_TEST(test_stereo_direction_rejects_silence);
   RUN_TEST(test_audio_reflex_maps_saliency_to_persona_events);
   RUN_TEST(test_audio_reflex_loud_noise_preempts_speech_events);
+  RUN_TEST(test_voice_activity_endpoint_ends_after_sustained_speech_and_trailing_silence);
+  RUN_TEST(test_voice_activity_endpoint_rejects_short_noise_and_uses_maximum_fallback);
+  RUN_TEST(test_voice_activity_endpoint_disabled_path_preserves_fixed_capture);
   RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);
   RUN_TEST(test_audio_capture_adapter_rejects_oversized_window);
   RUN_TEST(test_audio_capture_adapter_records_pcm_and_emits_reflex_events);

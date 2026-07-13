@@ -624,6 +624,7 @@ static_assert(STACKCHAN_ENABLE_PMIC_INPUT_TELEMETRY == 0 ||
 #include "io/SensorAdapter.hpp"
 #include "io/SpeechAdapter.hpp"
 #include "io/StackChanServoAdapter.hpp"
+#include "io/VoiceActivityEndpoint.hpp"
 #include "motion/ActuationEngine.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/BodyFeedback.hpp"
@@ -986,14 +987,18 @@ constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
 constexpr uint8_t kWakeMwwDedicatedCaptureChunks = 96;
 RobotEvent gWakeMwwPendingCaptureEvent {};
 bool gWakeMwwPendingCaptureEventReady = false;
+bool gWakeMwwPendingCaptureIsConversationReply = false;
 WakeCueSequence gWakeCueSequence;
 struct WakeMwwDedicatedCaptureRuntime {
   bool active = false;
+  bool conversationReplyCapture = false;
+  bool lastConversationReplyCapture = false;
   uint32_t seq = 0;
   uint16_t chunksAttempted = 0;
   uint16_t chunksSubmitted = 0;
   uint32_t serviceCalls = 0;
   uint32_t maxServiceUs = 0;
+  VoiceActivityEndpoint endpoint;
 };
 WakeMwwDedicatedCaptureRuntime gWakeMwwDedicatedCapture;
 #endif
@@ -4686,9 +4691,19 @@ bool beginDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
   }
 
   gWakeMwwDedicatedCapture.active = true;
+  gWakeMwwDedicatedCapture.conversationReplyCapture =
+      gWakeMwwPendingCaptureIsConversationReply;
+  gWakeMwwDedicatedCapture.lastConversationReplyCapture =
+      gWakeMwwDedicatedCapture.conversationReplyCapture;
   gWakeMwwDedicatedCapture.seq = started.lastSeq;
   gWakeMwwDedicatedCapture.chunksAttempted = 0;
   gWakeMwwDedicatedCapture.chunksSubmitted = 0;
+  VoiceActivityEndpointConfig endpointConfig;
+  endpointConfig.enabled = endpointConfig.enabled &&
+                           gWakeMwwDedicatedCapture.conversationReplyCapture;
+  if (!gWakeMwwDedicatedCapture.endpoint.begin(endpointConfig, captureStartMs)) {
+    return false;
+  }
   return true;
 }
 
@@ -4707,7 +4722,10 @@ void finishDedicatedWakeCaptureSession(bool captured) {
     gWakeCueSequence.abort(captureEndMs);
   }
   gWakeMwwPendingCaptureEventReady = false;
+  gWakeMwwPendingCaptureIsConversationReply = false;
+  gWakeMwwDedicatedCapture.endpoint.cancel();
   gWakeMwwDedicatedCapture.active = false;
+  gWakeMwwDedicatedCapture.conversationReplyCapture = false;
   if (captured) {
     ++gWakeSrProbe.wakeEventsApplied;
   }
@@ -4731,6 +4749,7 @@ void serviceDedicatedWakeCaptureChunk() {
   ++gWakeMwwDedicatedCapture.serviceCalls;
   ++gWakeMwwDedicatedCapture.chunksAttempted;
   bool submitFailed = false;
+  VoiceActivityEndpointReason endpointReason = VoiceActivityEndpointReason::None;
   if (!recordWakeMwwAudioBlocking(recordBuf, kRecordSamples, kSampleRate, kRecordStereo)) {
     gWakeSrProbe.recordDrops++;
   } else {
@@ -4749,6 +4768,11 @@ void serviceDedicatedWakeCaptureChunk() {
     gWakeSrProbe.samplesFed += kMonoSamples;
     gWakeSrProbe.lastRecordMs = millis();
 
+    if (gWakeMwwDedicatedCapture.conversationReplyCapture) {
+      endpointReason = gWakeMwwDedicatedCapture.endpoint.process(
+          monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs);
+    }
+
     if (submitDedicatedWakeCaptureChunk(
             gWakeMwwDedicatedCapture.seq, monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs)) {
       ++gWakeMwwDedicatedCapture.chunksSubmitted;
@@ -4762,9 +4786,14 @@ void serviceDedicatedWakeCaptureChunk() {
   if (serviceUs > gWakeMwwDedicatedCapture.maxServiceUs) {
     gWakeMwwDedicatedCapture.maxServiceUs = serviceUs;
   }
-  const bool complete = submitFailed ||
-                        gWakeMwwDedicatedCapture.chunksAttempted >=
-                            kWakeMwwDedicatedCaptureChunks;
+  const bool chunkLimitReached = gWakeMwwDedicatedCapture.chunksAttempted >=
+                                 kWakeMwwDedicatedCaptureChunks;
+  if (chunkLimitReached && gWakeMwwDedicatedCapture.conversationReplyCapture &&
+      endpointReason == VoiceActivityEndpointReason::None) {
+    endpointReason = gWakeMwwDedicatedCapture.endpoint.forceMaximum(millis());
+  }
+  const bool complete = submitFailed || endpointReason != VoiceActivityEndpointReason::None ||
+                        chunkLimitReached;
   if (complete) {
     finishDedicatedWakeCaptureSession(gWakeMwwDedicatedCapture.chunksSubmitted > 0);
   }
@@ -4860,6 +4889,7 @@ bool beginConversationReplyCapture(uint32_t seq, uint32_t nowMs) {
   suppressWakeMwwDetections(nowMs, 900);
   gWakeMwwPendingCaptureEvent = event;
   gWakeMwwPendingCaptureEventReady = true;
+  gWakeMwwPendingCaptureIsConversationReply = true;
   gIntent.applyEvent(event, CharacterMode::Listen);
   gBodyFeedback.notifyMicActivated(nowMs);
 #if STACKCHAN_ENABLE_WAKE_SERIAL_LOGS
@@ -5365,6 +5395,7 @@ void pollWakeMwwProbe(uint32_t nowMs) {
     if (scheduled) {
       gWakeMwwPendingCaptureEvent = event;
       gWakeMwwPendingCaptureEventReady = true;
+      gWakeMwwPendingCaptureIsConversationReply = false;
       gIntent.applyEvent(event, CharacterMode::Listen);
       gBodyFeedback.notifyMicActivated(nowMs);
     }
@@ -8447,6 +8478,30 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
          static_cast<unsigned long>(gWakeMwwDedicatedCapture.serviceCalls));
   append(",\"wake_capture_max_service_us\":%lu",
          static_cast<unsigned long>(gWakeMwwDedicatedCapture.maxServiceUs));
+  const VoiceActivityEndpointTelemetry& replyVad =
+      gWakeMwwDedicatedCapture.endpoint.telemetry();
+  append(",\"conversation_reply_vad_enabled\":%s", replyVad.enabled ? "true" : "false");
+  append(",\"conversation_reply_vad_active\":%s", replyVad.active ? "true" : "false");
+  append(",\"conversation_reply_vad_capture\":%s",
+         gWakeMwwDedicatedCapture.lastConversationReplyCapture ? "true" : "false");
+  append(",\"conversation_reply_vad_speech_seen\":%s",
+         replyVad.speechSeen ? "true" : "false");
+  append(",\"conversation_reply_vad_captures\":%lu",
+         static_cast<unsigned long>(replyVad.capturesStarted));
+  append(",\"conversation_reply_vad_chunks\":%lu",
+         static_cast<unsigned long>(replyVad.chunksProcessed));
+  append(",\"conversation_reply_vad_speech_chunks\":%lu",
+         static_cast<unsigned long>(replyVad.speechChunks));
+  append(",\"conversation_reply_vad_endpoints\":%lu",
+         static_cast<unsigned long>(replyVad.endpointsDetected));
+  append(",\"conversation_reply_vad_max_fallbacks\":%lu",
+         static_cast<unsigned long>(replyVad.maxDurationFallbacks));
+  append(",\"conversation_reply_vad_last_reason\":\"%s\"",
+         voiceActivityEndpointReasonName(replyVad.lastReason));
+  append(",\"conversation_reply_vad_last_level\":%.4f",
+         static_cast<double>(replyVad.lastLevel));
+  append(",\"conversation_reply_vad_noise_floor\":%.4f",
+         static_cast<double>(replyVad.noiseFloor));
   append(",\"wake_cue_aborts\":%lu", static_cast<unsigned long>(wakeCue.aborts));
   append(",\"wake_cue_ordering_violations\":%lu",
          static_cast<unsigned long>(wakeCue.orderingViolations));

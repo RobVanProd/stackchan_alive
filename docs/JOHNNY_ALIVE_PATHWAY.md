@@ -45,7 +45,7 @@ Working on real hardware:
 | Step | Current result | Remaining work |
 |---|---|---|
 | 1. Stackchan notices a visitor before they speak. | Partial. Camera presence and face boxes exist. Post-release `main` can read raw LTR-553 proximity/light telemetry, but presence behavior is deliberately disabled. | Measure the physical sensor, set hysteretic thresholds, and qualify the bounded reflex without making it a boot dependency. |
-| 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. Post-release source now includes an opt-in, bounded reply-window command that reuses the proven cue/RGB/capture/uplink path. | Qualify that exact image on hardware, then add voice-activity-ended capture, echo rejection, concurrent barge-in, and session-only recent turns. |
+| 2. The visitor greets it and has a conversation. | Pass for wake-gated turns on the reference robot. Post-release source includes an opt-in reply-window command, voice-activity-ended follow-up capture with a fixed maximum fallback, and four-turn session-only context. | Qualify that exact image on hardware, then add echo rejection and genuinely concurrent generation/playback barge-in. |
 | 3. Stackchan moves naturally while listening and replying. | Pass for coordinated face, RGB, mouth, and guarded servos. | Tighten active-speaker orientation and perceived-latency choreography. |
 | 4. The visitor picks it up and Stackchan knows. | Pass through real IMU pickup/orientation events with forensic accounting. Post-release source also shapes character energy from validated battery/charge state without power authority. | Physically qualify the exact energy-aware image across charging and battery thresholds. |
 | 5. Stackchan notices departure, searches, and sighs. | Implemented in post-release source as a bounded hold, two-sided search, procedural visual/body sigh, settle, and immediate reacquisition cancel path. | Qualify the exact image with real camera loss/reacquisition and tune timing from observed behavior. |
@@ -57,9 +57,9 @@ Working on real hardware:
 | P1 Ambient life | Working on hardware: procedural face, blink/saccade/breathing, mode transitions, RGB flow, reduced motion, and guarded autonomous body motion. | Continue character-motion tuning without exceeding the strict 50 ms display gate. |
 | P2 Physical senses | Touch, RGB, and IMU pickup/orientation are exercised on hardware. A telemetry-first LTR-553 adapter, failure accounting, and native tests are implemented after `v0.2.0`. | Flash and measure raw proximity/light values, calibrate presence hysteresis, and keep microSD optional. |
 | P3 Sound awareness | Dual-mic capture and on-device wake work on hardware. | Add evidence-backed sound-direction estimation and fuse it with camera confidence. |
-| P4 Wake/commands | On-device wake, acknowledgement cues, bounded capture, bridge uplink, and local fallback are working. Opt-in Conversation v2 now has a tested host-to-firmware reply-window command with expiry and disconnect cancellation. | Physically qualify the opt-in path while preserving wake-gated entry and deterministic close conditions. |
+| P4 Wake/commands | On-device wake, acknowledgement cues, bounded capture, bridge uplink, and local fallback are working. Opt-in Conversation v2 has a tested host-to-firmware reply window plus source-level speech endpointing with expiry, disconnect cancellation, and maximum-duration fallback. | Physically qualify the opt-in path while preserving wake-gated entry and deterministic close conditions. |
 | P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. Post-release source adds deterministic person-loss phase telemetry and bounded search/sigh/settle choreography. | Physically qualify departure/reacquisition, then improve tracking speed and active-speaker selection. |
-| P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, phrase streaming, and normalized per-stage latency evidence work. | Add voice-activity-ended follow-up capture and interruption-safe concurrent barge-in. |
+| P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, phrase streaming, normalized per-stage latency evidence, and source-level voice-activity-ended follow-up capture work. | Physically tune endpoint thresholds, then add interruption-safe concurrent barge-in. |
 | P7 Brain bridge | Real Wi-Fi bridge, Whisper, Gemma 4, local research, trusted facts, privacy-filtered memory, production voice, and recovery tooling are integrated. | Improve memory retrieval relevance and expose typed live robot state to the character prompt. |
 | P8 Continuity | Started: durable filtered facts, persona packs, a hash-pinned local community pack index, robot embodiment telemetry, camera continuity, source-level person-loss choreography, and hysteretic embodied-energy state exist. | Conversation qualification and persona hot-swap. |
 
@@ -74,8 +74,11 @@ Working on real hardware:
    - Done in post-release source: authoritative speaker-drain evidence produces a bounded firmware
      reply-window command; parser limits, wrap-safe scheduling, expiry, and bridge-loss cancellation
      are covered by native and host tests.
-   - Next: exact-image hardware qualification, voice-activity-ended capture, and concurrent
-     cancellation of model generation and playback.
+   - Done in post-release source: completed turns enter a four-turn, non-persistent session ring
+     only after authoritative playback completion; reply capture ends after sustained speech and
+     trailing silence, with the old 4.8-second maximum as fallback.
+   - Next: exact-image hardware qualification and concurrent cancellation of model generation and
+     playback.
 
 2. LTR-553 proximity and ambient light.
    - Done in post-release source: deterministic I2C adapter, readiness/failure telemetry, raw

@@ -220,7 +220,12 @@ Example:
   RGB, microphone-pause, and bounded audio-uplink path after authoritative speaker drain. `seq`
   identifies the completed response, `open_after_ms` is bounded to 0-2000 ms, and `window_ms` is
   bounded to 1000-30000 ms. Firmware retries while audio/wake is temporarily busy, expires at the
-  deadline, and cancels on bridge loss. The frame carries no actuator or power authority.
+  deadline, and cancels on bridge loss. The frame carries no actuator or power authority. In
+  `stackchan_voice_v2` and the derived full release source, an accepted reply-window capture uses
+  a local voice-activity endpoint: at least 150 ms of speech must be observed, capture remains open
+  for at least 600 ms, and 550 ms of trailing silence ends the utterance. Ambiguous or absent
+  speech falls back to the existing 4.8-second maximum. Initial wake-gated v1 capture remains
+  fixed-length.
 - `endpoint_hello_result`: endpoint trust/capability registration result.
 - `owner_status`: active brain owner, owner kind, health state, and trusted endpoint count.
 - `trusted_endpoints_result`: trusted endpoint registry snapshot.

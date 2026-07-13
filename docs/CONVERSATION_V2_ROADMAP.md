@@ -81,7 +81,7 @@ firmware to its normal local face and wake behavior.
   default.
 - With `--conversation-v2`, authoritative playback completion now produces a bounded
   `conversation_reply_window` command. Firmware validates it, schedules it with wrap-safe timing,
-  and reuses the proven mic cue, RGB, microphone pause, fixed capture, and wake-gated uplink path;
+  and reuses the proven mic cue, RGB, microphone pause, and wake-gated uplink path;
   bridge loss cancels a pending window. Native and host tests cover parsing, bounds, expiry, and
   host transitions. The source path remains opt-in and unpromoted until it passes exact-image
   hardware qualification.
@@ -91,9 +91,14 @@ firmware to its normal local face and wake behavior.
   unplayed, closed, or bridge-lost turns do not survive. The ring is never written to
   `BridgeMemory`, turn telemetry exposes only its count, and all text is erased when the lease
   closes.
-- The remaining core slice is voice-activity-ended capture plus genuinely concurrent cancellation
-  of in-flight model generation/playback. The current reply capture is still fixed-length, so it
-  proves turn-taking but is not yet natural barge-in.
+- Reply-window firmware capture now uses a deterministic local endpoint detector. It requires
+  sustained speech, waits through a 550 ms trailing pause, never closes before 600 ms, and keeps
+  the prior 4.8-second maximum as its no-speech or ambiguous fallback. Initial wake-gated v1
+  capture remains unchanged. Native tests and the public full build pass; real-room threshold
+  evidence is still required before promotion.
+- The remaining core slice is genuinely concurrent cancellation of in-flight model generation and
+  playback. The state machine emits bounded cancellation actions, but the synchronous LAN worker
+  cannot yet process another socket frame while a model or TTS subprocess owns the turn.
 
 ## Memory Model
 
