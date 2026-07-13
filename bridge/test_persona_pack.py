@@ -80,6 +80,7 @@ class PersonaPackTests(unittest.TestCase):
             self.assertFalse(Path(entry["path"]).is_absolute())
             self.assertTrue(entry["capabilities"]["bridge_load_time"])
             self.assertTrue(entry["capabilities"]["firmware_build_time"])
+            self.assertTrue(entry["capabilities"]["bridge_runtime_hot_swap"])
             self.assertFalse(entry["capabilities"]["runtime_hot_swap"])
 
     def test_checked_in_persona_index_matches_bundled_packs(self):

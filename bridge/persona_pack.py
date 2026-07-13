@@ -771,6 +771,7 @@ def build_persona_index(root: Path | None = None) -> dict[str, object]:
                     "issues": sorted(set(issues)),
                     "capabilities": {
                         "bridge_load_time": True,
+                        "bridge_runtime_hot_swap": True,
                         "firmware_build_time": True,
                         "runtime_hot_swap": False,
                     },
@@ -789,6 +790,7 @@ def build_persona_index(root: Path | None = None) -> dict[str, object]:
                     "issues": [str(exc)],
                     "capabilities": {
                         "bridge_load_time": False,
+                        "bridge_runtime_hot_swap": False,
                         "firmware_build_time": False,
                         "runtime_hot_swap": False,
                     },

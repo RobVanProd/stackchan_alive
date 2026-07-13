@@ -116,10 +116,25 @@ after adding or changing a pack, then verify it without rewriting:
 ```
 
 Every valid entry carries author/license/version metadata, a content SHA-256, a repository-relative
-path, and explicit capability flags. The current contract truthfully reports bridge selection as
-load-time, firmware assets as build-time, and runtime hot-swap as unsupported. Invalid packs remain
-visible with issues but cannot advertise activation capabilities. Required pack files and indexed
-assets are resolved inside the pack root; path or symlink escape is rejected.
+path, and explicit capability flags. The bridge can select a validated installed pack at launch
+with `--persona <id>` or between turns with `settings_set`:
+
+```json
+{"type":"settings_set","settings":{"persona":{"active":"glow"}}}
+```
+
+The bridge rejects missing, invalid, path-like, or normalization-dependent IDs. It also rejects a
+switch while Gemma/TTS owns an active turn, clears bounded conversation context when the character
+changes, and uses one persona snapshot for prompt construction and response validation throughout
+the next turn. The selection survives sequential robot/companion sessions that share the bridge
+control state.
+
+Capability metadata distinguishes `bridge_runtime_hot_swap: true` from the broader
+`runtime_hot_swap: false`. Firmware face geometry, expression defaults, earcons, and packaged
+prompts remain build-time assets, so changing only the bridge pack does not pretend those embedded
+assets changed. Invalid packs remain visible with issues but cannot advertise activation
+capabilities. Required pack files and indexed assets are resolved inside the pack root; path or
+symlink escape is rejected.
 
 ## Creator path
 

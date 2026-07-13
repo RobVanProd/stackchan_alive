@@ -181,7 +181,10 @@ downlink sink.
 - `trusted_endpoints`: list trusted PC/mobile/dev endpoints.
 - `forget_endpoint`: remove one trusted endpoint and require pairing before it reconnects as trusted.
 - `settings_get`: read safe bot/bridge settings by domain.
-- `settings_set`: write safe settings with version conflict detection; safety-locked settings are rejected.
+- `settings_set`: write safe settings with version conflict detection; safety-locked settings are
+  rejected. `persona.active` accepts only an installed, validated pack ID between turns. A
+  successful change closes bounded conversation context before the next turn; missing/path-like
+  IDs and changes during an active model/TTS turn are rejected.
 - `diagnostics_request`: read bridge/model/audio diagnostics.
 - `capability_update`: update capabilities for a trusted endpoint.
 - `utterance_start`: wake-gated user speech has started.

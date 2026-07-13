@@ -6,6 +6,7 @@
       "author": "RobVanProd",
       "capabilities": {
         "bridge_load_time": true,
+        "bridge_runtime_hot_swap": true,
         "firmware_build_time": true,
         "runtime_hot_swap": false
       },
@@ -23,6 +24,7 @@
       "author": "RobVanProd",
       "capabilities": {
         "bridge_load_time": true,
+        "bridge_runtime_hot_swap": true,
         "firmware_build_time": true,
         "runtime_hot_swap": false
       },

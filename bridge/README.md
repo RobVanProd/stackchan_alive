@@ -123,8 +123,13 @@ python bridge/reference_bridge.py --format bench --runner-profile gemma4-e2b-ggu
 Run the local LAN WebSocket bridge:
 
 ```powershell
-python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --runner-profile gemma4-e2b-gguf --persona spark
 ```
+
+The launch persona and any later `settings_set` selection must name an installed, validated pack.
+Changing `persona.active` between turns switches Gemma prompt/validation behavior and clears the
+bounded conversation context. Embedded face geometry, earcons, and packaged prompts remain tied to
+the firmware build.
 
 Run the socket-level no-hardware smoke report:
 

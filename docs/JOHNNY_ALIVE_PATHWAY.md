@@ -61,7 +61,7 @@ Working on real hardware:
 | P5 Sight | Paired camera frames, host YuNet detection, and face-follow movement work on the reference robot. Post-release source adds deterministic person-loss phase telemetry and bounded search/sigh/settle choreography. | Physically qualify departure/reacquisition, then improve tracking speed and active-speaker selection. |
 | P6 Voice | Production DirectML RVC, complete speaker playback, mouth sync, phrase streaming, normalized per-stage latency evidence, source-level voice-activity-ended follow-up capture, and host/companion cancellation work. | Physically tune endpoint thresholds, then qualify onboard over-speaker barge-in and echo rejection. |
 | P7 Brain bridge | Real Wi-Fi bridge, Whisper, Gemma 4, local research, trusted facts, privacy-filtered memory, production voice, and recovery tooling are integrated. | Improve memory retrieval relevance and expose typed live robot state to the character prompt. |
-| P8 Continuity | Started: durable filtered facts, persona packs, a hash-pinned local community pack index, robot embodiment telemetry, camera continuity, source-level person-loss choreography, and hysteretic embodied-energy state exist. | Conversation qualification and persona hot-swap. |
+| P8 Continuity | Started: durable filtered facts, persona packs, a hash-pinned local community pack index, runtime bridge persona selection, robot embodiment telemetry, camera continuity, source-level person-loss choreography, and hysteretic embodied-energy state exist. | Conversation qualification and coherent firmware asset hot-swap. |
 
 ## Sequenced Post-Release Work
 
@@ -105,8 +105,11 @@ Working on real hardware:
    - Next: physically qualify charge/discharge threshold transitions on the exact image.
    - Done in post-release source: deterministic validation-backed local community pack index with
      content hashes, Apache-2.0 metadata, invalid-pack quarantine, and explicit capability flags.
-   - Next: runtime persona hot-swap and OTA stable/beta channels. The linear first-30-minutes
-     quickstart is already present in `RELEASE_QUICKSTART.md`.
+   - Done in post-release source: validated bridge persona selection works at startup and between
+     turns, rejects path-like/invalid IDs and active-turn races, and clears cross-character session
+     context. Embedded face/earcon/prompt assets remain truthfully build-time.
+   - Next: coherent firmware asset hot-swap and OTA stable/beta channels. The linear
+     first-30-minutes quickstart is already present in `RELEASE_QUICKSTART.md`.
 
 ## Evidence Rules
 

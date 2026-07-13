@@ -233,6 +233,18 @@ Run the pack validator after every edit:
 .\tools\verify_persona_pack.cmd nova --Json
 ```
 
+After validation, select the pack when launching the PC bridge:
+
+```powershell
+python bridge\lan_service.py --persona nova
+```
+
+A trusted companion can also set `persona.active` to `nova` between turns. The bridge rejects
+unvalidated, missing, path-like, or mid-turn changes and clears the active conversation history so
+two characters never inherit each other's recent dialogue. This switches the host character
+prompt and validation immediately. Firmware face geometry, earcons, and packaged prompts remain
+build-time assets; rebuild the desired firmware persona for a visually coherent release image.
+
 Run the persona-aware Character Lock red-team dry run:
 
 ```powershell

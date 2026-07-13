@@ -35,7 +35,7 @@ from lan_service import (
     serve,
     websocket_accept_value,
 )
-from cancellation import OperationCancelledError
+from cancellation import CancellationToken, OperationCancelledError
 from bridge_memory import BridgeMemory
 from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
@@ -532,6 +532,90 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("settings_version_conflict", conflict[0]["code"])
         self.assertEqual(1, conflict[0]["version"])
         self.assertIn("display", conflict[0]["settings"])
+
+    def test_validated_persona_switch_applies_to_the_next_turn_and_survives_sessions(self):
+        state = BridgeControlState()
+        first = LanBridgeSession(LanBridgeConfig(), control_state=state)
+
+        switched = first.handle_text(
+            json.dumps(
+                {
+                    "type": "settings_set",
+                    "version": 1,
+                    "settings": {"persona": {"active": "glow"}},
+                }
+            )
+        )
+        identity = first.handle_text(
+            json.dumps({"type": "utterance_end", "seq": 31, "text": "What is your name?"})
+        )
+        second = LanBridgeSession(LanBridgeConfig(), control_state=state)
+        snapshot = second.handle_text(json.dumps({"type": "settings_get", "domains": ["persona"]}))
+        diagnostics = second.handle_text(json.dumps({"type": "diagnostics_request"}))
+
+        response = next(frame for frame in identity if isinstance(frame, dict) and frame["type"] == "response_start")
+        self.assertTrue(switched[0]["ok"])
+        self.assertEqual("spark", switched[0]["persona_previous"])
+        self.assertEqual("glow", switched[0]["persona_active"])
+        self.assertEqual("I am Stackchan Glow.", response["text"])
+        self.assertEqual("glow", snapshot[0]["settings"]["persona"]["active"])
+        self.assertEqual("glow", diagnostics[0]["model"]["persona"])
+
+    def test_persona_switch_rejects_unknown_or_path_values_without_mutation(self):
+        session = LanBridgeSession(LanBridgeConfig())
+
+        missing = session.handle_text(
+            json.dumps({"type": "settings_set", "settings": {"persona": {"active": "missing-pack"}}})
+        )
+        escaped = session.handle_text(
+            json.dumps({"type": "settings_set", "settings": {"persona": {"active": "../glow"}}})
+        )
+        snapshot = session.handle_text(json.dumps({"type": "settings_get", "domains": ["persona"]}))
+
+        self.assertEqual("persona_invalid", missing[0]["code"])
+        self.assertEqual("persona_invalid", escaped[0]["code"])
+        self.assertEqual("spark", snapshot[0]["settings"]["persona"]["active"])
+
+    def test_active_persona_is_snapshotted_for_model_validation(self):
+        session = LanBridgeSession(LanBridgeConfig(persona_id="glow"))
+        model_response = json.dumps(
+            {
+                "spoken_text": "A quiet signal is still a signal.",
+                "mode": "think",
+                "earcon": "think",
+                "emotion": {"arousal": 0.05, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch("lan_service.run_runner_profile") as runner:
+            runner.return_value = SimpleNamespace(
+                raw_response=model_response,
+                command_source="test",
+                elapsed_ms=12.0,
+                approx_tokens_per_sec=20.0,
+            )
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 32, "text": "Tell me something calm?"})
+            )
+
+        runner.assert_called_once()
+        self.assertEqual("glow", runner.call_args.kwargs["persona_id"])
+        self.assertTrue(any(isinstance(frame, dict) and frame.get("type") == "response_start" for frame in frames))
+
+    def test_persona_switch_is_rejected_while_a_turn_owns_the_runner(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        token = CancellationToken()
+        self.assertTrue(session._register_active_turn(token))
+        try:
+            result = session.handle_text(
+                json.dumps({"type": "settings_set", "settings": {"persona": {"active": "glow"}}})
+            )
+        finally:
+            session._finish_active_turn(token)
+
+        self.assertEqual("persona_busy", result[0]["code"])
+        self.assertEqual("spark", session.control_state.active_persona_id())
 
     def test_identified_non_owner_cannot_start_speech_turn(self):
         state = BridgeControlState()

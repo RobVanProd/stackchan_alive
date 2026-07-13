@@ -21,6 +21,13 @@ from typing import Any, Callable
 
 from cancellation import CancellationToken, OperationCancelledError
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
+from persona_pack import (
+    DEFAULT_PERSONA_ID,
+    PersonaPack,
+    PersonaPackError,
+    load_and_validate_persona_pack,
+    normalize_persona_id,
+)
 from reference_bridge import (
     AudioBeat,
     PROTOCOL,
@@ -163,7 +170,7 @@ def normalize_capabilities(value: object) -> tuple[str, ...]:
 
 def default_bridge_settings() -> dict[str, object]:
     return {
-        "persona": {"active": "spark"},
+        "persona": {"active": DEFAULT_PERSONA_ID},
         "voice": {"profile": "rvc-bright", "volume": 0.8},
         "display": {"brightness": 1.0, "reduced_motion": False},
         "motion": {"servo_enabled": False, "calibration_status": "unknown", "safe_stop": False},
@@ -240,6 +247,39 @@ class BridgeControlState:
     active_brain_owner: str = ""
     settings_version: int = 1
     settings: dict[str, object] = field(default_factory=default_bridge_settings)
+    persona_initialized: bool = False
+
+    @staticmethod
+    def _validated_persona_id(value: object) -> str:
+        try:
+            raw_persona_id = str(value or "").strip().lower()
+            persona_id = normalize_persona_id(raw_persona_id)
+            if raw_persona_id != persona_id:
+                raise PersonaPackError("persona id must not contain path or normalization characters")
+            return load_and_validate_persona_pack(persona_id).pack_id
+        except (OSError, PersonaPackError, ValueError) as exc:
+            raise ValueError(f"persona_invalid:{exc}") from exc
+
+    def initialize_persona(self, value: object) -> str:
+        if self.persona_initialized:
+            return self.active_persona_id()
+        persona_id = self._validated_persona_id(value or DEFAULT_PERSONA_ID)
+        persona = self.settings.setdefault("persona", {})
+        if not isinstance(persona, dict):
+            persona = {}
+            self.settings["persona"] = persona
+        persona["active"] = persona_id
+        self.persona_initialized = True
+        return persona_id
+
+    def active_persona_id(self) -> str:
+        persona = self.settings.get("persona", {})
+        if not isinstance(persona, dict):
+            return DEFAULT_PERSONA_ID
+        try:
+            return normalize_persona_id(str(persona.get("active") or DEFAULT_PERSONA_ID))
+        except PersonaPackError:
+            return DEFAULT_PERSONA_ID
 
     def register_endpoint(self, message: dict[str, Any]) -> dict[str, object]:
         try:
@@ -366,6 +406,15 @@ class BridgeControlState:
         updates = message.get("settings")
         if not isinstance(updates, dict):
             return error_frame("settings_payload_invalid")
+        updates = copy.deepcopy(updates)
+        persona_update = updates.get("persona")
+        if "persona" in updates and not isinstance(persona_update, dict):
+            return error_frame("persona_invalid", "persona settings must be an object")
+        if isinstance(persona_update, dict) and "active" in persona_update:
+            try:
+                persona_update["active"] = self._validated_persona_id(persona_update.get("active"))
+            except ValueError as exc:
+                return error_frame("persona_invalid", str(exc).split(":", 1)[-1])
         locked = self._locked_paths(updates)
         if locked:
             return {
@@ -376,6 +425,8 @@ class BridgeControlState:
                 "version": self.settings_version,
             }
         self._deep_merge(self.settings, updates)
+        if isinstance(persona_update, dict) and "active" in persona_update:
+            self.persona_initialized = True
         self.settings_version += 1
         return {"type": "settings_result", "ok": True, "version": self.settings_version}
 
@@ -409,6 +460,7 @@ class BridgeControlState:
             "model": {
                 "profile": config.runner_profile,
                 "require_runner": config.require_runner,
+                "persona": self.active_persona_id(),
             },
             "research": {
                 "enabled": config.research_enabled,
@@ -434,6 +486,7 @@ class LanBridgeConfig:
     runner_command: str = ""
     require_runner: bool = False
     runner_timeout_ms: int = 60000
+    persona_id: str = DEFAULT_PERSONA_ID
     stt_command: str = ""
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
     require_audio_wake_phrase: bool = False
@@ -720,10 +773,11 @@ def is_identity_question(text: str) -> bool:
     return bool(IDENTITY_QUESTION.search(" ".join(str(text or "").split())))
 
 
-def identity_character_response() -> str:
+def identity_character_response(display_name: str = "Stackchan") -> str:
+    clean_name = " ".join(str(display_name or "Stackchan").split())[:80] or "Stackchan"
     return json.dumps(
         {
-            "spoken_text": "I am Stackchan.",
+            "spoken_text": f"I am {clean_name}.",
             "mode": "happy",
             "earcon": "confirm",
             "emotion": {"arousal": 0.15, "valence": 0.35},
@@ -771,6 +825,10 @@ class LanBridgeSession:
         self.config = config
         self.memory = memory if memory is not None else BridgeMemory()
         self.control_state = control_state if control_state is not None else BridgeControlState()
+        try:
+            self.control_state.initialize_persona(config.persona_id)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
         self.session = "lan"
         self.endpoint_id = ""
         self.next_seq = 1
@@ -823,6 +881,30 @@ class LanBridgeSession:
             return False
         token.cancel(reason)
         return True
+
+    def active_turn_in_progress(self) -> bool:
+        with self._active_turn_lock:
+            return self._active_turn_token is not None
+
+    def _active_persona(self) -> PersonaPack:
+        return load_and_validate_persona_pack(self.control_state.active_persona_id())
+
+    def _handle_settings_set(self, message: dict[str, Any]) -> dict[str, object]:
+        updates = message.get("settings")
+        persona_update = updates.get("persona") if isinstance(updates, dict) else None
+        changes_persona = isinstance(persona_update, dict) and "active" in persona_update
+        if changes_persona and self.active_turn_in_progress():
+            return error_frame("persona_busy", "wait for the active turn to finish or cancel it")
+        previous_persona = self.control_state.active_persona_id()
+        frame = self.control_state.settings_set(message)
+        current_persona = self.control_state.active_persona_id()
+        if frame.get("type") == "settings_result" and frame.get("ok") and current_persona != previous_persona:
+            frame["persona_active"] = current_persona
+            frame["persona_previous"] = previous_persona
+            if self.conversation is not None:
+                transition = self.conversation.cancel(now_ms(), "persona_changed")
+                frame.update(self._conversation_payload(transition))
+        return frame
 
     def _register_active_turn(self, token: CancellationToken) -> bool:
         with self._active_turn_lock:
@@ -1056,7 +1138,7 @@ class LanBridgeSession:
         if message_type == "settings_get":
             return [self.control_state.settings_snapshot(message.get("domains"))]
         if message_type == "settings_set":
-            return [self.control_state.settings_set(message)]
+            return [self._handle_settings_set(message)]
         if message_type == "diagnostics_request":
             frame = self.control_state.diagnostics_snapshot(self.config)
             frame.update(self._conversation_payload())
@@ -1508,8 +1590,12 @@ class LanBridgeSession:
             # remember request survives a later runner or audio failure.
             self._save_memory()
 
+        try:
+            active_persona = self._active_persona()
+        except (OSError, PersonaPackError, ValueError) as exc:
+            return [self._conversation_failure("persona_error", str(exc))]
         requested_case = str(message.get("runner_case", "")).strip()
-        runner_summary: dict[str, object] = {}
+        runner_summary: dict[str, object] = {"persona_id": active_persona.pack_id}
         research_result: dict[str, object] | None = None
         local_fact = resolve_local_fact(user_text, self.memory) if not requested_case else None
         if local_fact is not None:
@@ -1520,7 +1606,10 @@ class LanBridgeSession:
             runner_summary["local_fact_tool"] = local_fact.tool
         elif not requested_case and is_identity_question(user_text):
             runner_case = "identity"
-            raw_response = identity_character_response()
+            identity_name = (
+                "Stackchan" if active_persona.pack_id == DEFAULT_PERSONA_ID else active_persona.display_name
+            )
+            raw_response = identity_character_response(identity_name)
             runner_summary["runner_command_source"] = "local_identity"
             runner_summary["runner_elapsed_ms"] = 0.0
         else:
@@ -1538,6 +1627,7 @@ class LanBridgeSession:
                     memory_lines=tuple(self.memory.context_lines(user_text)),
                     conversation_lines=self._conversation_context_lines(),
                     cancellation=cancellation,
+                    persona_id=active_persona.pack_id,
                 )
             except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                 return [self._conversation_failure("runner_error", str(exc))]
@@ -1592,6 +1682,7 @@ class LanBridgeSession:
                             memory_lines=tuple(self.memory.context_lines(user_text)),
                             conversation_lines=self._conversation_context_lines(),
                             cancellation=cancellation,
+                            persona_id=active_persona.pack_id,
                         )
                     except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
                         return [self._conversation_failure("runner_error", str(exc))]
@@ -1608,6 +1699,7 @@ class LanBridgeSession:
             self.memory,
             session=self.session,
             seq=seq,
+            persona=active_persona,
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))
@@ -1996,6 +2088,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-command", default="")
     parser.add_argument("--require-runner", action="store_true")
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
+    parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Validated persona pack id.")
     parser.add_argument("--stt-command", default="")
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--require-audio-wake-phrase", action="store_true")
@@ -2038,6 +2131,7 @@ def main() -> int:
         runner_command=args.runner_command,
         require_runner=args.require_runner,
         runner_timeout_ms=args.runner_timeout_ms,
+        persona_id=args.persona,
         stt_command=args.stt_command,
         stt_timeout_ms=args.stt_timeout_ms,
         require_audio_wake_phrase=args.require_audio_wake_phrase,
