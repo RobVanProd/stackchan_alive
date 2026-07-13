@@ -1,6 +1,7 @@
 name: Firmware
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -20,6 +21,7 @@ jobs:
 
       - uses: dorny/paths-filter@v4
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             companion:
@@ -141,7 +143,7 @@ jobs:
 
   companion-tests:
     needs: changes
-    if: needs.changes.outputs.companion == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -207,7 +209,7 @@ jobs:
 
   companion-platform-builds:
     needs: changes
-    if: needs.changes.outputs.companion == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -424,7 +426,7 @@ jobs:
 
   companion-release-evidence:
     needs: [changes, companion-platform-builds]
-    if: needs.changes.outputs.companion == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

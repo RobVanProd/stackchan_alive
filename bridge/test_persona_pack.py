@@ -87,6 +87,26 @@ class PersonaPackTests(unittest.TestCase):
         checked_in = json.loads((repo_root() / "data" / "persona_index.json").read_text(encoding="utf-8"))
         self.assertEqual(build_persona_index(), checked_in)
 
+    def test_persona_pack_sha256_normalizes_text_line_endings_only(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            lf_pack = root / "lf"
+            crlf_pack = root / "crlf"
+            lf_pack.mkdir()
+            crlf_pack.mkdir()
+            (lf_pack / "pack.yaml").write_bytes(b"schema: test\nid: line-endings\n")
+            (crlf_pack / "pack.yaml").write_bytes(b"schema: test\r\nid: line-endings\r\n")
+            (lf_pack / "prompt.md").write_bytes(b"hello\nworld\n")
+            (crlf_pack / "prompt.md").write_bytes(b"hello\rworld\r")
+            binary = b"\x00\r\n\xff"
+            (lf_pack / "earcon.bin").write_bytes(binary)
+            (crlf_pack / "earcon.bin").write_bytes(binary)
+
+            self.assertEqual(persona_pack_sha256(lf_pack), persona_pack_sha256(crlf_pack))
+
+            (crlf_pack / "earcon.bin").write_bytes(b"\x00\n\xff")
+            self.assertNotEqual(persona_pack_sha256(lf_pack), persona_pack_sha256(crlf_pack))
+
     def test_persona_index_preserves_invalid_pack_without_activating_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

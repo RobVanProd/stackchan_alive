@@ -44,6 +44,11 @@ processed and installer-derived runtime SHA-256, manifest, file totals, and requ
 resources. Missing, duplicate, stale-commit, staging-only, or mismatched native reports block
 release evidence.
 
+Before tagging, push the exact candidate branch and dispatch the `Firmware` workflow from the
+Actions UI or with `gh workflow run firmware.yml --ref <candidate-branch>`. A manual dispatch
+forces companion tests plus the Android, Linux, macOS, and Windows package matrix and aggregate
+evidence even when no companion path changed in the candidate commit.
+
 ## Exact Tested Lead Versus Public Package
 
 Keep two release artifacts distinct:

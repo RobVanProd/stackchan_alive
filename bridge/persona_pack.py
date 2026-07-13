@@ -18,6 +18,7 @@ CHARACTER_SCHEMA = "stackchan.persona-character.v1"
 BEHAVIOR_SCHEMA = "stackchan.persona-behavior.v1"
 VOICE_PROVENANCE_SCHEMA = "stackchan.voice-source-provenance.v1"
 DEFAULT_PERSONA_ID = "spark"
+PERSONA_HASH_TEXT_SUFFIXES = frozenset({".json", ".md", ".txt", ".yaml", ".yml"})
 
 FOUNDATION_MAX_CHARS = 140
 FOUNDATION_MAX_SENTENCES = 2
@@ -728,6 +729,13 @@ def validate_pack(pack: PersonaPack) -> list[str]:
     return issues
 
 
+def _persona_asset_hash_bytes(path: Path) -> bytes:
+    data = path.read_bytes()
+    if path.suffix.casefold() in PERSONA_HASH_TEXT_SUFFIXES:
+        return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return data
+
+
 def persona_pack_sha256(pack_root: Path) -> str:
     root = pack_root.resolve()
     digest = hashlib.sha256()
@@ -739,7 +747,7 @@ def persona_pack_sha256(pack_root: Path) -> str:
             raise PersonaPackError(f"persona pack asset escapes pack root: {path}") from exc
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(resolved.read_bytes())
+        digest.update(_persona_asset_hash_bytes(resolved))
         digest.update(b"\0")
     return digest.hexdigest()
 

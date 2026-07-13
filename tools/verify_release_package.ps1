@@ -1111,7 +1111,7 @@ foreach ($pattern in @("Install bridge test dependencies", "sudo apt-get install
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
   }
 }
-foreach ($pattern in @("companion-platform-builds", "python-version: `"3.12`"", "test_desktop_package_evidence_contract.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
+foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-platform-builds", "python-version: `"3.12`"", "test_desktop_package_evidence_contract.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing native desktop package/runtime PR evidence support: $pattern"
   }

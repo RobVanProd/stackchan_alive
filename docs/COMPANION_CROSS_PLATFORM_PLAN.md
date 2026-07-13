@@ -222,6 +222,10 @@ debug-signed release artifacts available for CI without allowing public release 
 silently fall back to the debug key. The companion test gate also verifies that every source
 version agrees with the release tag convention.
 
+The same workflow supports `workflow_dispatch`; a manual run forces `companion-tests`, all four
+native build legs, and aggregate package evidence even when path filtering would skip them. Use
+it for a pushed candidate-branch rehearsal before creating a release tag.
+
 A follow-on `companion-release-evidence` job downloads those platform artifacts and runs
 `tools/export_companion_release_evidence.ps1 -RequireArtifacts
 -RequireDesktopPackageEvidence`. PR evidence records the lab signing profile, package hashes,
