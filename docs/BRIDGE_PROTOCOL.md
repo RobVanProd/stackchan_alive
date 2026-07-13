@@ -176,7 +176,8 @@ downlink sink.
 - `hello`: device identity and protocol version.
 - `endpoint_hello`: companion/bridge endpoint identity, kind, priority, and capabilities.
 - `heartbeat`: robot telemetry by default; an optional trusted `endpoint_id` refreshes that
-  endpoint's brain-owner lease. A heartbeat without `endpoint_id` never grants ownership.
+  endpoint's brain-owner lease and receives an owner-state heartbeat response. A heartbeat without
+  `endpoint_id` never grants ownership and remains reply-suppressed on the PC bridge.
 - `claim_brain`: trusted endpoint requests active brain ownership.
 - `release_brain`: active owner releases the brain; the bridge may promote another trusted endpoint.
 - `owner_status`: request the current active brain owner state.

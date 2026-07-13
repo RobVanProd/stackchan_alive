@@ -400,7 +400,10 @@ enforced (an observer socket receiving audio is a test failure, not a warning).
 Post-release source status: the Python bridge and shared Kotlin core now use the same 15-second
 owner lease, capability-filtered promotion, explicit-claim precedence, priority/recency automatic
 selection, and offline fallback. Protocol conformance includes the Conversation v2 reply-window
-and playback-complete messages. Target-device two-endpoint evidence is still pending.
+and playback-complete messages. `bridge/lan_smoke.py --scenario owner-failover` exercises PC claim,
+observer-audio rejection, timeout promotion to phone, and explicit handback to PC through the real
+local WebSocket path, followed by offline fallback when both endpoint leases expire. Target-device
+two-endpoint evidence is still pending.
 *Gate C4:* PC → mobile → PC handoff on the simulator with zero firmware-settings writes;
 owner-timeout promotion; offline fallback when no endpoint is healthy. Deterministic FSM
 unit tests plus one live two-endpoint LAN run, both in evidence.

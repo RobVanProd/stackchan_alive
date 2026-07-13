@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from lan_service import LanBridgeConfig, WebSocketProtocolError, handle_connection, read_ws_frame
+from lan_service import BridgeControlState, LanBridgeConfig, WebSocketProtocolError, handle_connection, read_ws_frame
 from local_runner import GENERIC_COMMAND_ENV, RUNNER_PROFILES
 from reference_bridge import PROTOCOL, BridgeMemory
 from stt_adapter import STT_COMMAND_ENV
@@ -32,7 +32,7 @@ from tts_adapter import DEFAULT_TTS_VOICE, TTS_COMMAND_ENV
 
 SCHEMA = "stackchan.lan-smoke.v1"
 DEFAULT_OUT_DIR = Path("output/lan-smoke/latest")
-DEFAULT_SCENARIOS = ("text-turn", "audio-loop", "thinking-latency", "endpoint-controls")
+DEFAULT_SCENARIOS = ("text-turn", "audio-loop", "thinking-latency", "endpoint-controls", "owner-failover")
 CLIENT_MASK = b"\x37\xfa\x21\x3d"
 THINKING_LATENCY_MAX_MS = 200.0
 DELAYED_RESPONSE_MIN_MS = 250.0
@@ -76,6 +76,7 @@ class ScenarioResult:
     response_text: str = ""
     handshake_status: str = ""
     server_errors: list[str] = field(default_factory=list)
+    evidence: dict[str, Any] = field(default_factory=dict)
 
     def fail(self, issue: str) -> None:
         self.status = "fail"
@@ -96,6 +97,7 @@ class ScenarioResult:
             "response_text": self.response_text,
             "handshake_status": self.handshake_status,
             "server_errors": list(self.server_errors),
+            "evidence": dict(self.evidence),
         }
 
 
@@ -162,8 +164,9 @@ def read_handshake_response(sock: socket.socket) -> str:
 
 
 class SmokeServer:
-    def __init__(self, config: LanBridgeConfig):
+    def __init__(self, config: LanBridgeConfig, control_state: BridgeControlState | None = None):
         self.config = config
+        self.control_state = control_state
         self.port_queue: queue.Queue[int] = queue.Queue(maxsize=1)
         self.errors: list[str] = []
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -190,7 +193,7 @@ class SmokeServer:
                 self.port_queue.put(int(server.getsockname()[1]))
                 conn, _address = server.accept()
                 with conn:
-                    handle_connection(conn, self.config, BridgeMemory())
+                    handle_connection(conn, self.config, BridgeMemory(), self.control_state)
         except Exception as exc:  # pragma: no cover - surfaced in scenario report
             self.errors.append(f"{type(exc).__name__}: {exc}")
 
@@ -467,6 +470,62 @@ def run_endpoint_controls(host: str, config: LanBridgeConfig) -> ScenarioResult:
     return result
 
 
+def run_owner_failover(host: str, config: LanBridgeConfig) -> ScenarioResult:
+    result = ScenarioResult(scenario="owner-failover")
+    start = time.perf_counter()
+    control_state = BridgeControlState(owner_lease_ms=1_000)
+    with SmokeServer(config, control_state) as server:
+        port = server.port()
+        with SmokeClient(host, port) as client:
+            result.handshake_status = "accepted"
+            receive_session_hello(result, client)
+            for endpoint_id, endpoint_name, endpoint_kind, priority in (
+                ("pc-studio-01", "Studio PC", "pc", 90),
+                ("phone-rob-01", "Rob's Phone", "android", 60),
+            ):
+                client.send_text(
+                    {
+                        "type": "endpoint_hello",
+                        "endpoint_id": endpoint_id,
+                        "endpoint_name": endpoint_name,
+                        "endpoint_kind": endpoint_kind,
+                        "priority": priority,
+                        "auto_connect": True,
+                        "capabilities": ["brain_owner", "audio_downlink", "settings"],
+                    }
+                )
+                append_received(result, client.read())
+
+            client.send_text({"type": "claim_brain", "endpoint_id": "pc-studio-01"})
+            append_received(result, client.read())
+            client.send_text(
+                {
+                    "type": "utterance_start",
+                    "endpoint_id": "phone-rob-01",
+                    "seq": 21,
+                    "sample_rate": 16000,
+                }
+            )
+            append_received(result, client.read())
+
+            time.sleep(1.05)
+            client.send_text({"type": "heartbeat", "endpoint_id": "phone-rob-01"})
+            append_received(result, client.read())
+            client.send_text({"type": "owner_status"})
+            append_received(result, client.read())
+
+            client.send_text({"type": "claim_brain", "endpoint_id": "pc-studio-01"})
+            append_received(result, client.read())
+
+            time.sleep(1.05)
+            client.send_text({"type": "owner_status"})
+            append_received(result, client.read())
+        result.server_errors.extend(server.errors)
+    result.elapsed_ms = (time.perf_counter() - start) * 1000.0
+    validate_owner_failover(result)
+    return result
+
+
 def validate_common(result: ScenarioResult) -> None:
     if result.server_errors:
         result.fail("server_errors_present")
@@ -555,6 +614,45 @@ def validate_endpoint_controls(result: ScenarioResult) -> None:
         result.fail("forget_endpoint_failed")
 
 
+def validate_owner_failover(result: ScenarioResult) -> None:
+    if result.server_errors:
+        result.fail("server_errors_present")
+    owners = [frame for frame in result.frames if frame.get("type") == "owner_status"]
+    heartbeat = next((frame for frame in result.frames if frame.get("type") == "heartbeat"), {})
+    blocked = next((frame for frame in result.frames if frame.get("type") == "error"), {})
+    result.evidence = {
+        "initial_owner": owners[0].get("active_brain_owner", "") if owners else "",
+        "observer_audio_error": blocked.get("code", ""),
+        "timeout_owner": heartbeat.get("active_brain_owner", ""),
+        "timeout_state": heartbeat.get("owner_state", ""),
+        "handback_owner": owners[2].get("active_brain_owner", "") if len(owners) > 2 else "",
+        "offline_owner": owners[3].get("active_brain_owner", "") if len(owners) > 3 else "",
+        "offline_state": owners[3].get("state", "") if len(owners) > 3 else "",
+        "promotion_expirations": owners[1].get("owner_expirations", 0) if len(owners) > 1 else 0,
+        "owner_expirations": owners[3].get("owner_expirations", 0) if len(owners) > 3 else 0,
+        "owner_promotions": owners[3].get("owner_promotions", 0) if len(owners) > 3 else 0,
+    }
+    if len(owners) != 4:
+        result.fail("owner_status_count_mismatch")
+        return
+    if owners[0].get("active_brain_owner") != "pc-studio-01" or owners[0].get("state") != "claimed":
+        result.fail("initial_pc_claim_failed")
+    if blocked.get("code") != "brain_owner_mismatch":
+        result.fail("observer_audio_not_blocked")
+    if heartbeat.get("active_brain_owner") != "phone-rob-01" or heartbeat.get("owner_state") != "promoted":
+        result.fail("phone_timeout_promotion_failed")
+    if owners[1].get("active_brain_owner") != "phone-rob-01":
+        result.fail("phone_owner_status_mismatch")
+    if owners[1].get("owner_expirations") != 1 or owners[1].get("owner_promotions") != 1:
+        result.fail("failover_counters_mismatch")
+    if owners[2].get("active_brain_owner") != "pc-studio-01" or owners[2].get("state") != "claimed":
+        result.fail("explicit_pc_handback_failed")
+    if owners[3].get("active_brain_owner") or owners[3].get("state") != "offline":
+        result.fail("offline_fallback_failed")
+    if owners[3].get("owner_expirations") != 2 or owners[3].get("owner_promotions") != 1:
+        result.fail("offline_counters_mismatch")
+
+
 def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEFAULT_SCENARIOS) -> dict[str, Any]:
     selected = tuple(scenarios)
     results: list[ScenarioResult] = []
@@ -570,6 +668,8 @@ def build_report(out_dir: Path = DEFAULT_OUT_DIR, scenarios: Iterable[str] = DEF
                 results.append(run_thinking_latency(config.host, config, temp_dir))
             elif scenario == "endpoint-controls":
                 results.append(run_endpoint_controls(config.host, config))
+            elif scenario == "owner-failover":
+                results.append(run_owner_failover(config.host, config))
             else:
                 result = ScenarioResult(scenario=scenario, status="fail")
                 result.issues.append("unknown_scenario")

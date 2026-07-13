@@ -40,15 +40,30 @@ class LanSmokeTests(unittest.TestCase):
         self.assertEqual("stackchan.lan-smoke.v1", report["schema"])
         self.assertEqual("pass", report["status"])
         scenarios = {scenario["scenario"]: scenario for scenario in report["scenarios"]}
-        self.assertEqual({"text-turn", "audio-loop", "thinking-latency", "endpoint-controls"}, set(scenarios))
+        self.assertEqual(
+            {"text-turn", "audio-loop", "thinking-latency", "endpoint-controls", "owner-failover"},
+            set(scenarios),
+        )
         self.assertEqual("pass", scenarios["text-turn"]["status"])
         self.assertEqual("pass", scenarios["audio-loop"]["status"])
         self.assertEqual("pass", scenarios["thinking-latency"]["status"])
         self.assertEqual("pass", scenarios["endpoint-controls"]["status"])
+        self.assertEqual("pass", scenarios["owner-failover"]["status"])
         self.assertIn("thinking", scenarios["text-turn"]["frame_types"])
         self.assertIn("audio_stream_start", scenarios["audio-loop"]["frame_types"])
         self.assertIn("owner_status", scenarios["endpoint-controls"]["frame_types"])
         self.assertIn("forget_endpoint_result", scenarios["endpoint-controls"]["frame_types"])
+        failover = scenarios["owner-failover"]["evidence"]
+        self.assertEqual("pc-studio-01", failover["initial_owner"])
+        self.assertEqual("brain_owner_mismatch", failover["observer_audio_error"])
+        self.assertEqual("phone-rob-01", failover["timeout_owner"])
+        self.assertEqual("promoted", failover["timeout_state"])
+        self.assertEqual("pc-studio-01", failover["handback_owner"])
+        self.assertEqual("", failover["offline_owner"])
+        self.assertEqual("offline", failover["offline_state"])
+        self.assertEqual(1, failover["promotion_expirations"])
+        self.assertEqual(2, failover["owner_expirations"])
+        self.assertEqual(1, failover["owner_promotions"])
         self.assertGreater(scenarios["audio-loop"]["binary_frames"], 0)
         self.assertGreater(scenarios["audio-loop"]["binary_bytes"], 0)
         self.assertEqual(
@@ -71,12 +86,14 @@ class LanSmokeTests(unittest.TestCase):
             self.assertTrue((out_dir / "audio-loop.json").exists())
             self.assertTrue((out_dir / "thinking-latency.json").exists())
             self.assertTrue((out_dir / "endpoint-controls.json").exists())
+            self.assertTrue((out_dir / "owner-failover.json").exists())
             markdown = paths["markdown"].read_text(encoding="utf-8")
 
         self.assertIn("Stackchan LAN Bridge Smoke", markdown)
         self.assertIn("socket-level no-hardware proxy", markdown)
         self.assertIn("thinking-latency", markdown)
         self.assertIn("endpoint-controls", markdown)
+        self.assertIn("owner-failover", markdown)
 
     def test_smoke_report_does_not_leak_configured_runner_environment(self):
         key = "STACKCHAN_MODEL_COMMAND"

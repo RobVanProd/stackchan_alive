@@ -2094,7 +2094,12 @@ def handle_connection(
                     continue
 
                 frames = session.handle_text(text)
-                if text_message_type == "heartbeat":
+                endpoint_heartbeat = (
+                    text_message_type == "heartbeat"
+                    and isinstance(parsed_text, dict)
+                    and bool(normalize_endpoint_id(parsed_text.get("endpoint_id")))
+                )
+                if text_message_type == "heartbeat" and not endpoint_heartbeat:
                     frames = []
             elif opcode == 0x2:
                 before_chunks = session.audio.chunks
