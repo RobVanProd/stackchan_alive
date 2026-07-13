@@ -17,6 +17,8 @@ ROUTED_CASES = (
     ("Do you have the time?", "local_clock"),
     ("Can you tell me what time it is?", "local_clock"),
     ("Could you tell me the current time?", "local_clock"),
+    ("Okay Stackchan, whats the time?", "local_clock"),
+    ("Like, what's the time?", "local_clock"),
     ("Can you check the time?", "local_clock"),
     ("Can I get the time?", "local_clock"),
     ("Give me the time please.", "local_clock"),
@@ -29,6 +31,7 @@ ROUTED_CASES = (
     ("Could you tell me who I am?", "memory_recall"),
     ("Do you remember my favorite color?", "memory_recall"),
     ("What do you remember about my favorite color?", "memory_recall"),
+    ("Okay Stackchan, could you remind me what my favorite color is?", "memory_recall"),
     ("What did I tell you about the project codename?", "memory_recall"),
 )
 
@@ -36,6 +39,9 @@ PASSTHROUGH_CASES = (
     "What time is it in Tokyo?",
     "What day is it in Tokyo?",
     "What is the date in London?",
+    "Can you tell me what time it is in Tokyo?",
+    "What is the time for the meeting?",
+    "What's the date for the launch?",
     "I have a date tomorrow.",
     "Which time zone setting should I use?",
     "The movie starts at what time?",

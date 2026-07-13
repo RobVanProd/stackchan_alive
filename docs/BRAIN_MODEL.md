@@ -105,7 +105,10 @@ zone, the user's remembered preferred name, and exact approved `user.*` / `proje
 returns validated Character Lock JSON immediately, records `local_clock` or `memory_recall` in the
 turn log, and never asks Gemma to infer those facts. Requests for another city's time, day, or date
 are deliberately left to the normal research/model path rather than being misreported as host-local
-facts.
+facts. The trusted parser normalizes curly apostrophes, ordinary ASR punctuation loss, short
+discourse fillers, and a leading `Stackchan`/`Stack-chan` address. Context-qualified questions such
+as a meeting time, launch date, or a remote-city clock remain passthrough cases even when wrapped
+in polite wording.
 
 Explicit opt-in memory is transcript-owned as well. Phrases shaped like `Remember that my favorite
 color is teal` and `Remember the project codename is Johnny Alive` are sanitized into bounded
@@ -122,7 +125,9 @@ stored fact key.
 Explicit `forget my <subject>`, `forget the project <subject>`, `forget everything you remember
 about me`, and `forget everything` requests delete their exact bounded scope before inference and
 are persisted immediately. The model may still phrase the spoken confirmation, but it is not the
-deletion authority.
+deletion authority. The same leading-address normalization applies to these transcript-owned
+commands, so `Okay Stackchan, please forget my favorite color` has the same exact-key semantics as
+the unaddressed form.
 
 Run the silent production-memory smoke after restarting the PC brain. It does not call Gemma or
 play audio, and it reports only whether a preferred name is present rather than printing it:

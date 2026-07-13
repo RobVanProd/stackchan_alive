@@ -8,18 +8,20 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from bridge_memory import BridgeMemory, memory_fact_key
+from utterance_text import normalize_user_utterance
 
 
 _TIME_QUERY = re.compile(
     r"\b(?:"
-    r"what(?:'s| is) (?:the )?(?:current |local )?time(?: right now)?|"
+    r"what(?:'s|s| is) (?:the )?(?:current |local )?time(?: right now)?|"
     r"what time (?:is it|do you have)|"
-    r"do you (?:know what time it is|have (?:the )?time)|"
+    r"do you (?:know (?:what time it is|(?:the )?time)|have (?:the )?time)|"
+    r"would you happen to know (?:what time it is|(?:the )?time)|"
     r"(?:can|could|would|will) you (?:please )?tell me "
     r"(?:what time it is|(?:the |current |local )?time)|"
     r"(?:can|could|would|will) you (?:please )?(?:check|give me) "
     r"(?:the |current |local )?time|"
-    r"can i (?:please )?(?:get|have) (?:the |current |local )?time|"
+    r"(?:can|could) i (?:please )?(?:get|have) (?:the |current |local )?time|"
     r"tell me (?:what time it is|(?:the |current |local )?time)|"
     r"(?:check|give me) (?:the |current |local )?time(?: please)?|"
     r"(?:the )?(?:current|local) time(?: right now)?(?: please)?|"
@@ -29,13 +31,14 @@ _TIME_QUERY = re.compile(
 )
 _DATE_QUERY = re.compile(
     r"\b(?:"
-    r"what(?:'s| is) (?:today(?:'s)? date|the date|today)|"
+    r"what(?:'s|s| is) (?:today(?:'s)? date|the date|today)|"
     r"what (?:day|date) is it|what day is today|"
+    r"do you know what (?:day|date) it is|"
     r"(?:can|could|would|will) you (?:please )?tell me "
     r"(?:what (?:day|date) it is|(?:today(?:'s)? |the )?(?:day|date))|"
     r"(?:can|could|would|will) you (?:please )?(?:check|give me) "
     r"(?:(?:today(?:'s)?|the|current) )(?:day|date)|"
-    r"can i (?:please )?(?:get|have) (?:(?:today(?:'s)?|the|current) )(?:day|date)|"
+    r"(?:can|could) i (?:please )?(?:get|have) (?:(?:today(?:'s)?|the|current) )(?:day|date)|"
     r"tell me (?:what (?:day|date) it is|(?:today(?:'s)? |the )?(?:day|date))|"
     r"(?:today(?:'s)?|current) (?:day|date)(?: please)?"
     r")\b",
@@ -43,7 +46,7 @@ _DATE_QUERY = re.compile(
 )
 _TIMEZONE_QUERY = re.compile(
     r"\b(?:"
-    r"what(?:'s| is) (?:the |our |this )?(?:local )?time ?zone|"
+    r"what(?:'s|s| is) (?:the |our |this )?(?:local )?time ?zone|"
     r"(?:what|which) time ?zone is (?:this|it)|"
     r"(?:what|which) time ?zone (?:are we|am i) in|"
     r"(?:can|could|would|will) you (?:please )?tell me (?:the |our |this )?time ?zone|"
@@ -52,9 +55,14 @@ _TIMEZONE_QUERY = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-_REMOTE_TIME = re.compile(r"\btime\s+(?:is\s+it\s+)?in\s+(?!here\b|our\b|this\b|the\b)", re.IGNORECASE)
-_REMOTE_DATE = re.compile(
-    r"\b(?:day|date)\s+(?:is\s+it\s+)?in\s+(?!here\b|our\b|this\b|the\b)",
+_NONLOCAL_TIME_CONTEXT = re.compile(
+    r"\btime\b(?:\s+[a-z0-9']+){0,6}\s+(?:in|for|at)\s+"
+    r"(?!here\b|our\b|this\b|the\s+local\b)",
+    re.IGNORECASE,
+)
+_NONLOCAL_DATE_CONTEXT = re.compile(
+    r"\b(?:day|date)\b(?:\s+[a-z0-9']+){0,6}\s+(?:in|for|at)\s+"
+    r"(?!here\b|our\b|this\b|the\s+local\b)",
     re.IGNORECASE,
 )
 _DATE_CONFIGURATION = re.compile(
@@ -79,6 +87,12 @@ _USER_FACT_QUERIES = (
     re.compile(r"^what do you remember about my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
     re.compile(r"^remind me (?:what )?my (?P<subject>.+?) (?:is|was)[?.!]*$", re.IGNORECASE),
     re.compile(r"^what did i (?:say|tell you) (?:about )?my (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(
+        r"^(?:can|could|would|will) you (?:please )?(?:tell|remind) me "
+        r"(?:what )?my (?P<subject>.+?)(?: is| was)?[?.!]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^do you know what my (?P<subject>.+?) (?:is|was)[?.!]*$", re.IGNORECASE),
 )
 _PROJECT_FACT_QUERIES = (
     re.compile(r"^(?:what(?:'s| is| was)|tell me) (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
@@ -89,6 +103,15 @@ _PROJECT_FACT_QUERIES = (
         re.IGNORECASE,
     ),
     re.compile(r"^what did i (?:say|tell you) about (?:the )?project(?:'s)? (?P<subject>.+?)[?.!]*$", re.IGNORECASE),
+    re.compile(
+        r"^(?:can|could|would|will) you (?:please )?(?:tell|remind) me "
+        r"(?:what )?(?:the )?project(?:'s)? (?P<subject>.+?)(?: is| was)?[?.!]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^do you know what (?:the )?project(?:'s)? (?P<subject>.+?) (?:is|was)[?.!]*$",
+        re.IGNORECASE,
+    ),
 )
 
 
@@ -126,7 +149,7 @@ def _timezone_text(now: datetime) -> str:
 
 
 def _explicit_fact_query(text: str) -> tuple[str, str, str] | None:
-    clean = re.sub(r"^(?:hey\s+)?stackchan[, ]+", "", text.strip(), flags=re.IGNORECASE)
+    clean = normalize_user_utterance(text)
     for namespace, patterns in (("user", _USER_FACT_QUERIES), ("project", _PROJECT_FACT_QUERIES)):
         for pattern in patterns:
             match = pattern.fullmatch(clean)
@@ -151,7 +174,7 @@ def resolve_local_fact(
 ) -> LocalFactResult | None:
     """Resolve facts owned by the host instead of asking the language model to guess."""
 
-    text = " ".join(str(user_text or "").split())
+    text = normalize_user_utterance(user_text)
     if not text:
         return None
 
@@ -159,10 +182,10 @@ def resolve_local_fact(
         local_now = datetime.now().astimezone()
     else:
         local_now = now if now.tzinfo is not None else now.astimezone()
-    asks_time = bool(_TIME_QUERY.search(text)) and not _REMOTE_TIME.search(text)
+    asks_time = bool(_TIME_QUERY.search(text)) and not _NONLOCAL_TIME_CONTEXT.search(text)
     asks_date = (
         bool(_DATE_QUERY.search(text))
-        and not _REMOTE_DATE.search(text)
+        and not _NONLOCAL_DATE_CONTEXT.search(text)
         and not _DATE_CONFIGURATION.search(text)
     )
     asks_timezone = bool(_TIMEZONE_QUERY.search(text))
@@ -196,7 +219,13 @@ def resolve_local_fact(
     if fact_query is not None:
         namespace, subject, key = fact_query
         value = memory.fact_value(key)
-        explicit_recall = bool(re.search(r"\bremember\b|\bwhat did i (?:say|tell you)\b", text, re.IGNORECASE))
+        explicit_recall = bool(
+            re.search(
+                r"\b(?:remember|remind)\b|\bdo you know\b|\bwhat did i (?:say|tell you)\b",
+                text,
+                re.IGNORECASE,
+            )
+        )
         if not value and not explicit_recall:
             return None
         owner = "your" if namespace == "user" else "the project's"

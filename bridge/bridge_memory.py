@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
+from utterance_text import normalize_user_utterance
+
 MEMORY_SCHEMA = "stackchan.bridge-memory.v3"
 MEMORY_SCHEMA_VERSION = 3
 LEGACY_MEMORY_SCHEMA = "stackchan.bridge-memory.v2"
@@ -635,18 +637,19 @@ class BridgeMemory:
         text = " ".join(user_text.strip().split())
         if not text:
             return self
+        command_text = normalize_user_utterance(text)
         now = _utc_now()
         preferred_name = self.preferred_name
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
-        if _EXPLICIT_FORGET_ALL_RE.fullmatch(text):
+        if _EXPLICIT_FORGET_ALL_RE.fullmatch(command_text):
             return BridgeMemory()
-        if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(text):
+        if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(command_text):
             preferred_name = ""
             durable = tuple(record for record in durable if not record.key.startswith("user."))
         else:
-            user_forget = _EXPLICIT_USER_FORGET_RE.fullmatch(text)
-            project_forget = _EXPLICIT_PROJECT_FORGET_RE.fullmatch(text)
+            user_forget = _EXPLICIT_USER_FORGET_RE.fullmatch(command_text)
+            project_forget = _EXPLICIT_PROJECT_FORGET_RE.fullmatch(command_text)
             if user_forget is not None:
                 forget_key = memory_fact_key("user", user_forget.group("subject"))
                 if forget_key in _NAME_KEYS:
@@ -661,7 +664,7 @@ class BridgeMemory:
         match = re.search(
             r"\b(?:my name is|call me|you can call me|i am called|i'm called)\s+"
             r"([A-Za-z][A-Za-z0-9_-]{1,20})",
-            text,
+            command_text,
             re.IGNORECASE,
         )
         observed_name = _preferred_name(match.group(1)) if match else ""
@@ -669,10 +672,10 @@ class BridgeMemory:
             preferred_name = observed_name
             durable = _upsert_durable(durable, "user.preferred_name", preferred_name, 0.9, now=now)
 
-        fact_match = _EXPLICIT_USER_FACT_RE.search(text)
+        fact_match = _EXPLICIT_USER_FACT_RE.search(command_text)
         fact_namespace = "user"
         if fact_match is None:
-            fact_match = _EXPLICIT_PROJECT_FACT_RE.search(text)
+            fact_match = _EXPLICIT_PROJECT_FACT_RE.search(command_text)
             fact_namespace = "project"
         if fact_match is not None:
             fact_key = memory_fact_key(fact_namespace, fact_match.group("subject"))

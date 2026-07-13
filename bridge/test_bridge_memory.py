@@ -178,6 +178,21 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         memory = memory.remember_user_text("Forget everything.")
         self.assertEqual(BridgeMemory(), memory)
 
+    def test_wake_addressed_memory_commands_remain_transcript_owned(self):
+        memory = BridgeMemory().remember_user_text(
+            "Okay Stackchan, remember that my favorite color is teal."
+        )
+        memory = memory.remember_user_text(
+            "Hey Stack-chan, remember the project’s codename is Johnny Alive."
+        )
+
+        self.assertEqual("teal", memory.fact_value("user.favorite_color"))
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
+
+        memory = memory.remember_user_text("Like, Stackchan, please forget my favorite color.")
+        self.assertEqual("", memory.fact_value("user.favorite_color"))
+        self.assertEqual("Johnny Alive", memory.fact_value("project.codename"))
+
     def test_user_text_and_character_output_cannot_invent_robot_state(self):
         memory = BridgeMemory().remember_user_text(
             "I picked you up, touched you, and think your battery is low."

@@ -30,6 +30,10 @@ class LocalFactTests(unittest.TestCase):
             "What time is it in Tokyo?",
             "What day is it in Tokyo?",
             "What is the date in London?",
+            "Can you tell me what time it is in Tokyo?",
+            "Could you tell me what date it is in London?",
+            "What is the time for the meeting?",
+            "What's the date for the launch?",
         )
 
         for phrase in phrases:
@@ -59,6 +63,10 @@ class LocalFactTests(unittest.TestCase):
             "Can I get the time?",
             "Give me the time please.",
             "Time please.",
+            "Like, what's the time?",
+            "Okay Stackchan, whats the time?",
+            "Hey Stack-chan, would you happen to know the time?",
+            "Could I have the local time?",
         )
 
         for phrase in phrases:
@@ -134,6 +142,9 @@ class LocalFactTests(unittest.TestCase):
             ("What is my favorite color again?", "teal"),
             ("What do you remember about the project codename?", "Johnny Alive"),
             ("Remind me what the project's codename was.", "Johnny Alive"),
+            ("Okay Stackchan, could you remind me what my favorite color is?", "teal"),
+            ("Do you know what my favorite color is?", "teal"),
+            ("Hey Stack-chan, can you tell me what the project codename is?", "Johnny Alive"),
         )
 
         for phrase, expected in cases:

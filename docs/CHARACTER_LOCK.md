@@ -106,6 +106,10 @@ trusted host route without depending on the model to notice its memory context. 
 never promoted to durable memory merely because it sounds personal.
 Explicit exact-key, user-namespace, and all-memory forget phrases are applied and atomically saved
 before inference; the model is responsible only for a truthful short confirmation after deletion.
+Curly apostrophes, punctuation-light ASR output, brief leading fillers, and a leading
+`Stackchan`/`Stack-chan` address are normalized before deterministic fact recall and memory-command
+matching. This normalization never turns generic conversation into memory and never broadens the
+privacy allowlist.
 For a forget request, the response must put the matching displayed `user.*` or
 `project.*` key (or the requested allowed namespace prefix) in `memory_forget`; speaking a deletion
 confirmation while emitting an empty array is a failed turn.
