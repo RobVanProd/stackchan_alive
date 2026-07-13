@@ -50,6 +50,48 @@ the environment variables above. `tools/export_companion_release_evidence.ps1
 -RequireUploadSigning` rejects both APK and AAB evidence unless the `upload-key` profile is
 recorded.
 
+### One-Time Upload Key Provisioning
+
+Create the upload key interactively outside the repository. Do this once, record the owner
+identity accurately when `keytool` prompts for the certificate fields, and use unique high-entropy
+store and key passwords:
+
+```powershell
+$secretDir = Join-Path $HOME "StackchanReleaseSecrets"
+$keystore = Join-Path $secretDir "stackchan-upload.jks"
+New-Item -ItemType Directory -Force $secretDir | Out-Null
+keytool -genkeypair -v `
+  -keystore $keystore `
+  -storetype JKS `
+  -alias stackchan-upload `
+  -keyalg RSA `
+  -keysize 4096 `
+  -validity 10000
+keytool -list -v -keystore $keystore -alias stackchan-upload
+```
+
+Before any Play upload, preserve two independent offline media copies of the encrypted JKS and its
+password record. Losing the private upload key or its passwords breaks update continuity. Do not
+move either copy under this repository or into `output/`.
+
+From an authenticated checkout of the release repository, set the Actions secrets. The
+password commands prompt interactively, keeping their values out of the shell command line and
+history:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($keystore)) |
+  gh secret set STACKCHAN_ANDROID_KEYSTORE_B64 --app actions
+gh secret set STACKCHAN_ANDROID_KEYSTORE_PASSWORD --app actions
+gh secret set STACKCHAN_ANDROID_KEY_ALIAS --app actions
+gh secret set STACKCHAN_ANDROID_KEY_PASSWORD --app actions
+gh secret list --app actions
+```
+
+Enter `stackchan-upload` when the alias secret prompts. The two password prompts must receive
+the exact store and key passwords created above. `gh secret list` confirms names and update
+times only; GitHub never returns secret values. After provisioning, verify the same key locally
+with the Play-ready build below and retain the APK/AAB signing evidence before creating a tag.
+
 Example local Play-ready build:
 
 ```powershell
