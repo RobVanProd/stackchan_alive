@@ -76,7 +76,7 @@ $pendingGates = @(
   [ordered]@{
     name = "desktop-production-signing-credentials"
     evidence = "GitHub Actions secrets for Windows Authenticode and macOS Developer ID/notarization"
-    detail = "Provision the two STACKCHAN_WINDOWS_* and six STACKCHAN_MACOS_* release secrets. The tag workflow fails closed until it can verify timestamped Authenticode, Developer ID, Gatekeeper, and stapled notarization evidence."
+    detail = "Provision the two STACKCHAN_WINDOWS_* and six STACKCHAN_MACOS_* release secrets, then run the Companion Signing Readiness workflow. The tag workflow fails closed until it can verify timestamped Authenticode, Developer ID, Gatekeeper, and stapled notarization evidence."
   },
   [ordered]@{
     name = "c8-tagged-release-distribution"
@@ -698,6 +698,12 @@ Test-TextEvidence `
   -RelativePaths @("tools/test_desktop_package_evidence_contract.ps1", "tools/test_desktop_package_evidence_contract.cmd") `
   -Patterns @("tagged release requires native signing, notarization, and provenance attestation", "complete installer-derived desktop package evidence is accepted", "installed launch context cannot replace package-extraction evidence", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "aggregate companion evidence rejects missing native distribution trust", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")
 
+Test-AggregateTextEvidence `
+  -Id "desktop-release-signing-readiness" `
+  -Name "Desktop release signing credential preflight" `
+  -RelativePaths @("tools/check_desktop_release_signing_readiness.ps1", "tools/test_desktop_release_signing_readiness_contract.ps1", ".github/workflows/companion-signing-readiness.yml", ".github/workflows/firmware.yml") `
+  -Patterns @("stackchan.desktop-signing-readiness.v1", "private code-signing certificate", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "does not chain to a root trusted by the native host", "temporary Authenticode signing probe", "temporary Developer ID signing probe", "manual signing readiness workflow validates without publishing", "tagged release runs native desktop signing preflight", "companion CI runs the desktop signing readiness contract", "invalid Windows PKCS12 base64 is rejected", "wrong Windows PKCS12 password is rejected", "Windows certificate without code-signing EKU is rejected", "near-expiry Windows certificate is rejected", "undersized Windows signing key is rejected", "mismatched macOS signing identity is rejected", "mismatched Apple team ID is rejected", "Desktop release signing readiness contract passed", "workflow_dispatch", "contents: read")
+
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
@@ -1116,7 +1122,7 @@ Test-TextEvidence `
   -Id "companion-tag-release-workflow" `
   -Name "Companion all-platform tag release workflow" `
   -RelativePaths @(".github/workflows/release.yml") `
-  -Patterns @("companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_WINDOWS_PFX_PASSWORD", "STACKCHAN_MACOS_CERTIFICATE_B64", "STACKCHAN_MACOS_CERTIFICATE_PASSWORD", "STACKCHAN_MACOS_SIGNING_IDENTITY", "STACKCHAN_MACOS_NOTARIZATION_APPLE_ID", "STACKCHAN_MACOS_NOTARIZATION_PASSWORD", "STACKCHAN_MACOS_NOTARIZATION_TEAM_ID", "check_android_play_release_readiness.ps1", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", ":app-desktop:notarizeDmg", "actions/attest@v4", "Get-ReleaseCompanionAssetEntries", "COMPANION_RELEASE_EVIDENCE.json")
+  -Patterns @("companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_WINDOWS_PFX_PASSWORD", "STACKCHAN_MACOS_CERTIFICATE_B64", "STACKCHAN_MACOS_CERTIFICATE_PASSWORD", "STACKCHAN_MACOS_SIGNING_IDENTITY", "STACKCHAN_MACOS_NOTARIZATION_APPLE_ID", "STACKCHAN_MACOS_NOTARIZATION_PASSWORD", "STACKCHAN_MACOS_NOTARIZATION_TEAM_ID", "check_android_play_release_readiness.ps1", "check_desktop_release_signing_readiness.ps1", "Validate production desktop signing credentials", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", ":app-desktop:notarizeDmg", "actions/attest@v4", "Get-ReleaseCompanionAssetEntries", "COMPANION_RELEASE_EVIDENCE.json")
 
 Test-TextEvidence `
   -Id "companion-release-signing-evidence" `

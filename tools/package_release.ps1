@@ -670,6 +670,9 @@ $releaseTools = @(
   "tools/test_desktop_package_launch.ps1",
   "tools/test_desktop_package_evidence_contract.cmd",
   "tools/test_desktop_package_evidence_contract.ps1",
+  "tools/check_desktop_release_signing_readiness.cmd",
+  "tools/check_desktop_release_signing_readiness.ps1",
+  "tools/test_desktop_release_signing_readiness_contract.ps1",
   "tools/install_desktop_companion_package.cmd",
   "tools/install_desktop_companion_package.ps1",
   "tools/check_desktop_target_install_evidence.cmd",
@@ -938,6 +941,7 @@ Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/pages.yml" -Destination $provenanceDir
+Copy-Item -LiteralPath ".github/workflows/companion-signing-readiness.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
 Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
@@ -1525,6 +1529,9 @@ $manifest = [ordered]@{
     "tools/test_desktop_package_launch.ps1",
     "tools/test_desktop_package_evidence_contract.cmd",
     "tools/test_desktop_package_evidence_contract.ps1",
+    "tools/check_desktop_release_signing_readiness.cmd",
+    "tools/check_desktop_release_signing_readiness.ps1",
+    "tools/test_desktop_release_signing_readiness_contract.ps1",
     "tools/install_desktop_companion_package.cmd",
     "tools/install_desktop_companion_package.ps1",
     "tools/check_desktop_target_install_evidence.cmd",
@@ -1834,6 +1841,7 @@ $manifest = [ordered]@{
     "provenance/protocol-fixtures/invalid/wrong_protocol.json",
     "provenance/firmware.yml",
     "provenance/release.yml",
+    "provenance/companion-signing-readiness.yml",
     "provenance/data/commands.yaml",
     "provenance/personas/spark/pack.yaml",
     "provenance/personas/spark/character.yaml",

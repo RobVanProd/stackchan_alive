@@ -442,6 +442,9 @@ $requiredFiles = @(
   "tools/test_desktop_package_launch.ps1",
   "tools/test_desktop_package_evidence_contract.cmd",
   "tools/test_desktop_package_evidence_contract.ps1",
+  "tools/check_desktop_release_signing_readiness.cmd",
+  "tools/check_desktop_release_signing_readiness.ps1",
+  "tools/test_desktop_release_signing_readiness_contract.ps1",
   "tools/install_desktop_companion_package.cmd",
   "tools/install_desktop_companion_package.ps1",
   "tools/check_desktop_target_install_evidence.cmd",
@@ -1140,7 +1143,7 @@ foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.p
 }
 
 $releaseWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/release.yml") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", ":app-desktop:notarizeDmg", "actions/attest@v4", "media/voice/*", "release_assets.json", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", '$releaseAssetPaths', '@releaseAssetPaths')) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1", "check_desktop_release_signing_readiness.ps1", "Validate production desktop signing credentials", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", ":app-desktop:notarizeDmg", "actions/attest@v4", "media/voice/*", "release_assets.json", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", '$releaseAssetPaths', '@releaseAssetPaths')) {
   if ($releaseWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/release.yml missing release asset contract upload logic: $pattern"
   }
@@ -1150,13 +1153,25 @@ if ($releaseWorkflowText -notmatch 'package_release\.ps1 -Version' -or
   throw "provenance/release.yml must let package_release.ps1 build all required firmware profiles on a clean tag runner."
 }
 
+$signingReadinessWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/companion-signing-readiness.yml") -Raw
+foreach ($pattern in @("workflow_dispatch", "contents: read", "check_desktop_release_signing_readiness.ps1", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", "RequireNativeToolchain", "ValidateAppleNotaryCredentials")) {
+  if ($signingReadinessWorkflowText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/companion-signing-readiness.yml missing safe credential validation logic: $pattern"
+  }
+}
+foreach ($forbidden in @("gh release", "upload-artifact", "contents: write")) {
+  if ($signingReadinessWorkflowText -match [regex]::Escape($forbidden)) {
+    throw "provenance/companion-signing-readiness.yml must not publish release assets: $forbidden"
+  }
+}
+
 $firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
 foreach ($pattern in @("Install bridge test dependencies", "sudo apt-get install -y ffmpeg", "python -m pip install -r bridge/requirements-vision.txt", "Verify bundled persona packs", "verify_persona_pack.py glow", "Compile native logic with Glow persona", "STACKCHAN_PERSONA: glow", "Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
   }
 }
-foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12`"", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "test_desktop_target_install_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
+foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12`"", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "test_desktop_release_signing_readiness_contract.ps1", "test_desktop_target_install_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing native desktop package/runtime PR evidence support: $pattern"
   }
@@ -1179,7 +1194,7 @@ foreach ($docPath in @("README.md", "docs/RELEASE_PROCESS.md")) {
 }
 
 $releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
-foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json/md", "artifact SHA256s", "libs.versions.toml", "-RequireArtifacts", "-RequireUploadSigning", "-RequireAndroidEmulatorEvidence", "-RequireDesktopPackageEvidence", "-RequireDesktopDistributionTrust", "timestamped Authenticode", "Developer ID", "stapled", "provenance attestations", "API 35 emulator launch evidence", "APK SHA-256 matches the release", "package SHA-256", "installer application JAR", "installer-derived runtime SHA-256")) {
+foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json/md", "artifact SHA256s", "libs.versions.toml", "-RequireArtifacts", "-RequireUploadSigning", "-RequireAndroidEmulatorEvidence", "-RequireDesktopPackageEvidence", "-RequireDesktopDistributionTrust", "Companion Signing Readiness", "check_desktop_release_signing_readiness.cmd", "RequireNativeToolchain", "timestamped Authenticode", "Developer ID", "stapled", "provenance attestations", "API 35 emulator launch evidence", "APK SHA-256 matches the release", "package SHA-256", "installer application JAR", "installer-derived runtime SHA-256")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing companion C8 release evidence guidance: $pattern"
   }
@@ -2311,6 +2326,20 @@ $desktopPackageEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath
 foreach ($pattern in @("tagged release requires native signing, notarization, and provenance attestation", "complete installer-derived desktop package evidence is accepted", "installed launch context cannot replace package-extraction evidence", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "aggregate companion evidence rejects missing native distribution trust", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")) {
   if ($desktopPackageEvidenceContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_package_evidence_contract.ps1 missing native package/runtime evidence contract coverage: $pattern"
+  }
+}
+
+$desktopSigningReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_release_signing_readiness.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-signing-readiness.v1", "private code-signing certificate", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "notarytool", "signtool.exe", "does not chain to a root trusted by the native host", "temporary Authenticode signing probe", "temporary Developer ID signing probe", "pending-credentials")) {
+  if ($desktopSigningReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_desktop_release_signing_readiness.ps1 missing signing credential validation: $pattern"
+  }
+}
+
+$desktopSigningReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_release_signing_readiness_contract.ps1") -Raw
+foreach ($pattern in @("manual signing readiness workflow validates without publishing", "tagged release runs native desktop signing preflight", "companion CI runs the desktop signing readiness contract", "invalid Windows PKCS12 base64 is rejected", "wrong Windows PKCS12 password is rejected", "Windows certificate without code-signing EKU is rejected", "near-expiry Windows certificate is rejected", "undersized Windows signing key is rejected", "valid Windows signing credential material is accepted", "valid macOS Developer ID credential material is accepted", "mismatched macOS signing identity is rejected", "mismatched Apple team ID is rejected", "invalid Apple notarization account shape is rejected", "Desktop release signing readiness contract passed")) {
+  if ($desktopSigningReadinessContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_desktop_release_signing_readiness_contract.ps1 missing signing credential contract coverage: $pattern"
   }
 }
 

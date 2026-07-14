@@ -235,6 +235,30 @@ jobs:
             -Json | Set-Content "output/desktop-python-runtime/${{ matrix.platform }}-prepare.json" -Encoding utf8
           "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Validate production desktop signing credentials
+        if: matrix.platform == 'windows' || matrix.platform == 'macos'
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+          STACKCHAN_MACOS_CERTIFICATE_B64: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_B64 }}
+          STACKCHAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_PASSWORD }}
+          STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
+          STACKCHAN_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_APPLE_ID }}
+          STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
+          STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
+        run: |
+          $arguments = @{
+            Platform = "${{ matrix.platform }}"
+            RequireReady = $true
+            RequireNativeToolchain = $true
+            Json = $true
+          }
+          if ("${{ matrix.platform }}" -eq "macos") {
+            $arguments.ValidateAppleNotaryCredentials = $true
+          }
+          ./tools/check_desktop_release_signing_readiness.ps1 @arguments
+
       - name: Prepare macOS Developer ID keychain
         if: matrix.platform == 'macos'
         shell: pwsh

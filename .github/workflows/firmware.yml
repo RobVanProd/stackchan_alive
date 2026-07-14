@@ -63,9 +63,13 @@ jobs:
               - 'tools/test_desktop_python_runtime_payload_contract.*'
               - 'tools/export_desktop_package_evidence.*'
               - 'tools/test_desktop_package_evidence_contract.*'
+              - 'tools/check_desktop_release_signing_readiness.*'
+              - 'tools/test_desktop_release_signing_readiness_contract.*'
               - 'tools/install_desktop_companion_package.*'
               - 'tools/check_desktop_target_install_evidence.*'
               - 'tools/test_desktop_target_install_evidence_contract.*'
+              - '.github/workflows/companion-signing-readiness.yml'
+              - '.github/workflows/release.yml'
 
   bridge-tests:
     runs-on: ubuntu-latest
@@ -225,6 +229,10 @@ jobs:
       - name: Run native desktop package evidence contract
         shell: pwsh
         run: ./tools/test_desktop_package_evidence_contract.ps1
+
+      - name: Run desktop release signing readiness contract
+        shell: pwsh
+        run: ./tools/test_desktop_release_signing_readiness_contract.ps1
 
       - name: Run native desktop target-install evidence contract
         shell: pwsh

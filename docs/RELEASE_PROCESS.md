@@ -339,6 +339,26 @@ password-protected PKCS#12 file; notarization uses an app-specific Apple passwor
 offline backups and do not add any certificate or password to the repository. The tag workflow
 fails before publishing when any signing credential or native trust proof is absent.
 
+After provisioning the eight desktop secrets, run the manual **Companion Signing Readiness**
+workflow before creating a tag:
+
+```powershell
+gh workflow run companion-signing-readiness.yml --ref <release-branch>
+gh run watch (gh run list --workflow companion-signing-readiness.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
+```
+
+That workflow has read-only repository permission and does not build, upload, or publish release
+assets. Its native Windows job signs and verifies a temporary executable with the private
+code-signing certificate and SignTool; its native macOS job imports the Developer ID identity into
+a temporary keychain, signs and verifies a temporary hardened-runtime executable, and asks Apple
+`notarytool` to authenticate the configured account, app-specific password, and team ID. The same
+native jobs also require the certificate chain to terminate at a root trusted by that host. The
+preflight runs again in the tag workflow before desktop packaging. For a local credential-material
+check, set the corresponding environment variables and run
+`tools\check_desktop_release_signing_readiness.cmd -Platform windows|macos -RequireReady -Json`;
+add `-RequireNativeToolchain` only on the matching OS. The checker emits certificate metadata and
+status only, never PKCS#12 bytes or passwords.
+
 If GitHub Actions cannot run, the manual helper remains available for a firmware-only recovery
 publication:
 

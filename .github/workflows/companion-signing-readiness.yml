@@ -1,0 +1,47 @@
+name: Companion Signing Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-authenticode:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Windows Authenticode credentials
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+        run: |
+          ./tools/check_desktop_release_signing_readiness.ps1 `
+            -Platform windows `
+            -RequireReady `
+            -RequireNativeToolchain `
+            -Json
+
+  macos-developer-id:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Developer ID and notarization credentials
+        shell: pwsh
+        env:
+          STACKCHAN_MACOS_CERTIFICATE_B64: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_B64 }}
+          STACKCHAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_PASSWORD }}
+          STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
+          STACKCHAN_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_APPLE_ID }}
+          STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
+          STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
+        run: |
+          ./tools/check_desktop_release_signing_readiness.ps1 `
+            -Platform macos `
+            -RequireReady `
+            -RequireNativeToolchain `
+            -ValidateAppleNotaryCredentials `
+            -Json
