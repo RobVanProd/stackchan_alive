@@ -181,10 +181,14 @@ $requiredFiles = @(
   "docs/ANDROID_PLAY_RELEASE.md",
   "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md",
   "docs/ANDROID_PLAY_PRIVACY_POLICY.md",
+  "site/.nojekyll",
+  "site/index.html",
+  "site/privacy/index.html",
   "docs/store-assets/play/icon-512.png",
   "docs/store-assets/play/icon-512.svg",
   "docs/store-assets/play/feature-graphic-1024x500.png",
   "docs/store-assets/play/README.md",
+  "provenance/pages.yml",
   "docs/BRAIN_MODEL.md",
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CONVERSATION_V2_ROADMAP.md",
@@ -2690,6 +2694,18 @@ if ($manifest.androidPlayPrivacyPolicy -ne "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
   throw "Manifest androidPlayPrivacyPolicy mismatch: $($manifest.androidPlayPrivacyPolicy)"
 }
 
+if ($manifest.androidPlayPrivacyPolicySite -ne "site/privacy/index.html") {
+  throw "Manifest androidPlayPrivacyPolicySite mismatch: $($manifest.androidPlayPrivacyPolicySite)"
+}
+
+if ($manifest.androidPlayPrivacyPolicyUrl -ne "https://robvanprod.github.io/stackchan_alive/privacy/") {
+  throw "Manifest androidPlayPrivacyPolicyUrl mismatch: $($manifest.androidPlayPrivacyPolicyUrl)"
+}
+
+if ($manifest.pagesWorkflow -ne "provenance/pages.yml") {
+  throw "Manifest pagesWorkflow mismatch: $($manifest.pagesWorkflow)"
+}
+
 if ($manifest.androidPlayIcon -ne "docs/store-assets/play/icon-512.png") {
   throw "Manifest androidPlayIcon mismatch: $($manifest.androidPlayIcon)"
 }
@@ -3412,17 +3428,46 @@ foreach ($pattern in @("Android Play Release Checklist", "app-android-release.aa
 }
 
 $androidPlayPolicyDeclarations = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md") -Raw
-foreach ($pattern in @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "Foreground service Play Console draft", "connectedDevice", "not directed to children")) {
+foreach ($pattern in @("Google Play Data safety form", "Google Play User Data policy", "Privacy policy URL", "https://robvanprod.github.io/stackchan_alive/privacy/", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Collected only for optional, ephemeral app functionality", "RECORD_AUDIO", "configured Android SpeechRecognizer may transmit microphone audio", "not represented as end-to-end encrypted", "Foreground service Play Console draft", "connectedDevice", "not directed to children")) {
   if ($androidPlayPolicyDeclarations -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_PLAY_POLICY_DECLARATIONS.md missing expected Play policy guidance: $pattern"
   }
 }
 
 $androidPlayPrivacyPolicy = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_PRIVACY_POLICY.md") -Raw
-foreach ($pattern in @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")) {
+foreach ($pattern in @("Stackchan Companion Privacy Policy", "July 14, 2026", "https://robvanprod.github.io/stackchan_alive/privacy/", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "configured Android speech-recognition service", "may process microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not represented as end-to-end encrypted", "not directed to children")) {
   if ($androidPlayPrivacyPolicy -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_PLAY_PRIVACY_POLICY.md missing expected Play privacy policy guidance: $pattern"
   }
+}
+
+$privacySite = Get-Content -LiteralPath (Join-PackagePath "site/privacy/index.html") -Raw
+foreach ($pattern in @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")) {
+  if ($privacySite -notmatch [regex]::Escape($pattern)) {
+    throw "site/privacy/index.html missing expected public privacy-policy content: $pattern"
+  }
+}
+
+$pagesWorkflow = Get-Content -LiteralPath (Join-PackagePath "provenance/pages.yml") -Raw
+foreach ($pattern in @("Deploy privacy policy", "branches:", "main", "site/**", "pages: write", "id-token: write", "actions/configure-pages@v5", "actions/upload-pages-artifact@v4", "path: site", "actions/deploy-pages@v4")) {
+  if ($pagesWorkflow -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/pages.yml missing expected Pages deployment control: $pattern"
+  }
+}
+
+$companionIdentitySource = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt") -Raw
+if ($companionIdentitySource -notmatch [regex]::Escape('privacyPolicyUrl = "https://robvanprod.github.io/stackchan_alive/privacy/"')) {
+  throw "CompanionIdentity.kt must bind the app to the canonical privacy-policy URL."
+}
+
+$androidMainSource = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") -Raw
+if ($androidMainSource -notmatch [regex]::Escape("Intent.ACTION_VIEW") -or $androidMainSource -notmatch [regex]::Escape("CompanionIdentity.privacyPolicyUrl")) {
+  throw "Android MainActivity.kt must open the canonical privacy-policy URL."
+}
+
+$desktopMainSource = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt") -Raw
+if ($desktopMainSource -notmatch [regex]::Escape("Desktop.Action.BROWSE") -or $desktopMainSource -notmatch [regex]::Escape("CompanionIdentity.privacyPolicyUrl")) {
+  throw "Desktop Main.kt must open the canonical privacy-policy URL."
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw

@@ -150,8 +150,11 @@ Prepared source-controlled assets:
 - Play feature graphic: `docs/store-assets/play/feature-graphic-1024x500.png`
 - Final screenshot capture plan: `docs/store-assets/play/SCREENSHOT_CAPTURE_PLAN.md`
 - Listing metadata: `fastlane/metadata/android/en-US/`
-- Play policy/data-safety declaration draft: `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md`
-- Play-facing privacy policy draft: `docs/ANDROID_PLAY_PRIVACY_POLICY.md`
+- Play policy/data-safety declarations: `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md`
+- Play-facing privacy policy: `docs/ANDROID_PLAY_PRIVACY_POLICY.md`
+- Static privacy site source: `site/privacy/index.html`
+- Canonical privacy URL: https://robvanprod.github.io/stackchan_alive/privacy/
+- Pages deployment workflow: `.github/workflows/pages.yml`
 
 Screenshots still need to be captured from the final phone build after physical
 robot validation, because the store screenshots should show a real connected
@@ -194,9 +197,11 @@ do not include a UTC upload timestamp.
 Use `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md` as the source-side draft for the
 Play Console Data safety form, foreground-service declaration, and permission
 review. Use `docs/ANDROID_PLAY_PRIVACY_POLICY.md` as the source-side privacy
-policy page content. Before upload, compare both documents against the exact
-release build, publish the privacy policy at the final URL, and copy the final
-reviewed answers into the Play evidence packet.
+policy review record and `site/privacy/index.html` as the deployable public page.
+Before upload, compare both against the exact release build, verify the canonical
+HTTPS URL after a successful Pages deployment from the default branch, and copy
+the final reviewed answers into the Play evidence packet. The Android and desktop
+apps expose that same canonical URL from their Settings surface.
 
 Before upload, confirm that each Android permission maps to an app behavior visible
 in the release:
@@ -211,7 +216,8 @@ in the release:
   reliability test path.
 - `RECORD_AUDIO`: explicit Push-to-talk action on the Talk screen. The app sends the
   recognized transcript through the local robot bridge and does not export raw microphone
-  audio in diagnostics.
+  audio in diagnostics. The app requests offline recognition, but the configured Android
+  speech service may process audio off-device under that provider's privacy policy.
 
 If a Play policy declaration is required for foreground service or battery
 optimization behavior, use the physical-test evidence and Android test plan as the

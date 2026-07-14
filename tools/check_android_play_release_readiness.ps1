@@ -498,19 +498,61 @@ Test-TextPatterns `
   -Id "play-release-doc" `
   -Name "Play release checklist" `
   -RelativePath "docs/ANDROID_PLAY_RELEASE.md" `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "cryptographically validates", "test_android_upload_signing_contract.ps1", "certificate SHA-256 fingerprint", "CI runtime smoke", "API 35 AOSP ATD", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "cryptographically validates", "test_android_upload_signing_contract.ps1", "certificate SHA-256 fingerprint", "CI runtime smoke", "API 35 AOSP ATD", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "site/privacy/index.html", ".github/workflows/pages.yml", "https://robvanprod.github.io/stackchan_alive/privacy/", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
 
 Test-TextPatterns `
   -Id "play-policy-declarations" `
   -Name "Play policy and data-safety declarations" `
   -RelativePath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" `
-  -Patterns @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "password_redacted=true", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
+  -Patterns @("Google Play Data safety form", "Google Play User Data policy", "Privacy policy URL", "https://robvanprod.github.io/stackchan_alive/privacy/", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Collected only for optional, ephemeral app functionality", "RECORD_AUDIO", "configured Android SpeechRecognizer may transmit microphone audio", "password_redacted=true", "not represented as end-to-end encrypted", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
 
 Test-TextPatterns `
   -Id "play-privacy-policy-page" `
   -Name "Play-facing privacy policy page" `
   -RelativePath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" `
-  -Patterns @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "https://robvanprod.github.io/stackchan_alive/privacy/", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "may process microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextPatterns `
+  -Id "play-privacy-policy-site" `
+  -Name "Deployable public privacy-policy site" `
+  -RelativePath "site/privacy/index.html" `
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextPatterns `
+  -Id "play-privacy-pages-workflow" `
+  -Name "Privacy-policy Pages deployment workflow" `
+  -RelativePath ".github/workflows/pages.yml" `
+  -Patterns @("Deploy privacy policy", "main", "site/**", "pages: write", "id-token: write", "actions/configure-pages@v5", "actions/upload-pages-artifact@v4", "path: site", "actions/deploy-pages@v4")
+
+Test-TextPatterns `
+  -Id "play-privacy-canonical-app-url" `
+  -Name "Canonical privacy-policy URL in companion identity" `
+  -RelativePath "companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt" `
+  -Patterns @("privacyPolicyUrl", "https://robvanprod.github.io/stackchan_alive/privacy/")
+
+Test-TextPatterns `
+  -Id "play-privacy-android-link" `
+  -Name "Android in-app privacy-policy link" `
+  -RelativePath "companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt" `
+  -Patterns @("onOpenPrivacyPolicy", "Intent.ACTION_VIEW", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextPatterns `
+  -Id "play-privacy-desktop-link" `
+  -Name "Desktop in-app privacy-policy link" `
+  -RelativePath "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt" `
+  -Patterns @("onOpenPrivacyPolicy", "Desktop.Action.BROWSE", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextPatterns `
+  -Id "play-privacy-ui-and-speech" `
+  -Name "Privacy link UI and offline speech preference" `
+  -RelativePath "companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt" `
+  -Patterns @("onOpenPrivacyPolicy", "Privacy policy", "Export logs")
+
+Test-TextPatterns `
+  -Id "play-speech-offline-preference" `
+  -Name "Android speech requests offline recognition" `
+  -RelativePath "companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt" `
+  -Patterns @("RecognizerIntent.EXTRA_PREFER_OFFLINE", "true")
 
 foreach ($relativePath in @(
   "fastlane/metadata/android/en-US/title.txt",

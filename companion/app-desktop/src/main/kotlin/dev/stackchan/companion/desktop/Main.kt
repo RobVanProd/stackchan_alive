@@ -8,8 +8,10 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.stackchan.companion.core.CompanionIdentity
 import dev.stackchan.companion.ui.CompanionConsole
+import java.awt.Desktop
 import java.awt.FileDialog
 import java.awt.Frame
+import java.net.URI
 import java.nio.file.Path
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -103,6 +105,9 @@ fun main(args: Array<String>) {
                 onPrivacySettings = {
                     runCatching { runtime.toggleDiagnosticsLogExport() }
                 },
+                onOpenPrivacyPolicy = {
+                    runCatching { openPrivacyPolicy() }
+                },
                 onRunC6Rehearsal = {
                     scope.launch {
                         runCatching { runtime.runC6GuiRehearsal() }
@@ -130,6 +135,13 @@ fun main(args: Array<String>) {
 
 private const val PACKAGE_SMOKE_OUTPUT_PREFIX = "--package-smoke-output="
 private const val PACKAGE_SMOKE_CONTEXT_PREFIX = "--package-smoke-context="
+
+private fun openPrivacyPolicy() {
+    check(Desktop.isDesktopSupported()) { "Desktop integration is unavailable." }
+    val desktop = Desktop.getDesktop()
+    check(desktop.isSupported(Desktop.Action.BROWSE)) { "Browser integration is unavailable." }
+    desktop.browse(URI(CompanionIdentity.privacyPolicyUrl))
+}
 
 private fun choosePersonaImportZip(): Path? {
     val dialog = FileDialog(null as Frame?, "Import Stackchan persona", FileDialog.LOAD)

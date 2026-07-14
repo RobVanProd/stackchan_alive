@@ -157,7 +157,7 @@ function Write-PlayStoreEvidenceTemplate {
     sourceCommit = "<40-character git commit>"
     releaseAabSha256 = "<64-character app-android-release.aab sha256>"
     playSigningEnabled = $false
-    privacyPolicyUrl = "https://<hosted-final-privacy-policy-url>"
+    privacyPolicyUrl = "https://robvanprod.github.io/stackchan_alive/privacy/"
     privacyPolicySourcePath = "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
     track = "internal"
     uploadStatus = "pending"

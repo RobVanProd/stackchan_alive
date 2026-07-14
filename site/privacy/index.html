@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stackchan Companion Privacy Policy</title>
+  <meta name="description" content="Privacy Policy for Stackchan Companion on Android and desktop.">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 17px;
+    }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { width: min(46rem, calc(100% - 2rem)); margin: 0 auto; padding: 2.5rem 0 4rem; }
+    h1, h2 { letter-spacing: 0; line-height: 1.2; }
+    h1 { font-size: 2.15rem; margin-bottom: .5rem; }
+    h2 { font-size: 1.25rem; margin-top: 2.25rem; }
+    p, li { line-height: 1.65; }
+    li + li { margin-top: .4rem; }
+    a { color: LinkText; overflow-wrap: anywhere; }
+    code { font-size: .9em; }
+    .meta { color: GrayText; margin-top: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Stackchan Companion Privacy Policy</h1>
+    <p class="meta">Effective July 14, 2026. Last reviewed July 14, 2026.</p>
+    <p>This policy applies to Stackchan Companion for Android (<code>dev.stackchan.companion</code>) and the companion desktop applications. Stackchan Companion is developed by RobVanProd.</p>
+    <p><a href="https://github.com/RobVanProd/stackchan_alive/issues">Privacy inquiries</a> · <a href="https://github.com/RobVanProd/stackchan_alive/security/policy">Security reports</a></p>
+
+    <h2>Summary</h2>
+    <p>Stackchan Companion pairs with and operates a Stack-chan robot on the user's local network. The app does not create accounts, show ads, sell purchases, or send companion data to a developer-controlled analytics service. Meaningful connected features require a Stack-chan robot or bridge on the same local network.</p>
+
+    <h2>Data The Developer Does Not Collect</h2>
+    <p>The developer does not receive personal or financial information, photos, videos, camera data, automatic crash reports or diagnostics, advertising identifiers, or location data from the app. The app uses local network state and bridge URLs, not Android location permissions.</p>
+    <p>The app does not persist raw microphone audio or include raw audio in diagnostics exports. Push-to-talk speech processing is described below because the configured Android speech service may process audio away from the phone.</p>
+
+    <h2>Local Data Stored On The Device</h2>
+    <p>The app may store these records in app-private storage:</p>
+    <ul>
+      <li>Saved robot and trusted companion records.</li>
+      <li>Local bridge URLs, endpoint IDs, robot IDs, pairing fingerprints, and pairing state.</li>
+      <li>Persona, display, diagnostics export, and model asset settings.</li>
+      <li>Optional Mobile Brain model path, byte count, checksum, and load state.</li>
+    </ul>
+    <p>This information remains on the device unless the user explicitly sends it to a local Stack-chan bridge or shares a diagnostics export.</p>
+
+    <h2>Microphone And Speech</h2>
+    <p>The Android app requests <code>RECORD_AUDIO</code> only when the user invokes Push-to-talk. If permission is denied, the app does not start the turn or send a transcript.</p>
+    <p>The app asks the configured Android speech-recognition service to convert speech into text. Depending on device and service settings, that service may process audio on-device or transmit it to the speech-service provider for ephemeral processing under that provider's privacy policy. Stackchan Companion requests offline recognition when supported but cannot guarantee every installed service honors that preference.</p>
+    <p>The app sends the returned transcript to the user-configured Stack-chan bridge, normally on the local network. It does not persist raw microphone audio or include raw audio or transcript text in diagnostics exports.</p>
+
+    <h2>Diagnostics Export</h2>
+    <p>Diagnostics export is user initiated. The app creates a local JSON file and opens the operating system share surface only after a request. The user chooses whether and where to send it.</p>
+    <p>Diagnostics may include bridge and robot status, saved robot and trusted endpoint state, model state, and provisioning state. The export reduces the last text turn to a presence-only flag and records Wi-Fi provisioning with password placeholders and <code>password_redacted=true</code>.</p>
+
+    <h2>Local Network And Model Downloads</h2>
+    <p>The app uses network access to host or connect to a Stack-chan bridge, discover local services, and keep an active robot session reachable. Local bridge traffic can include pairing state, commands, settings, status, and the current recognized transcript. The v1 local bridge uses the user's trusted LAN and is not represented as end-to-end encrypted.</p>
+    <p>If the user downloads the optional Mobile Brain model, the configured model host may receive ordinary request metadata such as the user's IP address. The request does not include local robot, conversation, microphone, or diagnostics content.</p>
+
+    <h2>When Data Leaves The App</h2>
+    <ul>
+      <li>The user starts Push-to-talk and the configured Android speech service uses off-device processing.</li>
+      <li>The user sends a recognized text turn or commands to a user-configured local Stack-chan bridge.</li>
+      <li>The user explicitly shares a diagnostics export with a destination they select.</li>
+      <li>The user downloads the optional model asset from its configured host.</li>
+    </ul>
+    <p>The app does not automatically sell data or send data to the developer.</p>
+
+    <h2>Security, Retention, And Deletion</h2>
+    <p>Local records are stored in app-private storage until the user removes them, clears app data, or uninstalls. Downloaded models remain until removed or app data is cleared. The app does not retain raw microphone audio.</p>
+    <p>Users can remove saved robot and trusted companion records from the app UI. Robot-side unpairing is managed separately by robot firmware and may require a robot-side clear or pairing command.</p>
+
+    <h2>Children</h2>
+    <p>Stackchan Companion is not directed to children. It is intended for robot setup, development, and operation by the device owner.</p>
+
+    <h2>Changes And Contact</h2>
+    <p>Material changes will be published here with an updated review date. Submit privacy questions through the <a href="https://github.com/RobVanProd/stackchan_alive/issues">public issue tracker</a>. Use the <a href="https://github.com/RobVanProd/stackchan_alive/security/policy">repository security policy</a> for sensitive security reports.</p>
+  </main>
+</body>
+</html>

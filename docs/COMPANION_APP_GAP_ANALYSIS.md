@@ -126,16 +126,19 @@ current v1 companion branch.
   `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields,
   not Wi-Fi credentials.
 - G7 Play submission remains pending on upload-signing credentials, developer verification,
-  a hosted privacy policy URL, screenshots, Play Console upload, and closed testing.
+  verified deployment of the canonical privacy policy URL, screenshots, Play Console upload,
+  and closed testing.
   Release tasks now fail closed when upload-key properties are absent; debug signing requires
   the explicit `stackchan.allowLabDebugReleaseSigning` Gradle property. The tag workflow consumes
   four `STACKCHAN_ANDROID_*` Actions secrets, builds both APK and AAB, and the release evidence
   gate requires the `upload-key` signing profile. The repository currently has no configured
   Actions secrets, so a public companion tag remains externally blocked until they are provisioned.
-  Source-side Play prep now includes a policy/data-safety declaration draft for
+  Source-side Play prep now includes policy/data-safety declarations for
   `dev.stackchan.companion`, foreground-service `connectedDevice` justification,
-  microphone/battery/network permission review, a Play-facing privacy policy page derived
-  from the core privacy boundary, and improved Play evidence packet templates. The Play
+  microphone/battery/network permission review, a dated Play-facing privacy policy derived
+  from the core privacy boundary, the deployable `site/privacy/index.html` page, a Pages
+  workflow, Android and desktop in-app links, and improved Play evidence packet templates.
+  The Play
   evidence checker now requires a hosted HTTPS privacy-policy URL before marking internal
   testing evidence ready. The store asset packet now also defines a four-shot final-build
   screenshot plan covering pairing/setup, live dashboard, Brain/model controls, and
@@ -145,8 +148,8 @@ current v1 companion branch.
   group, and UTC upload timestamp for the exact uploaded build. The Android v1 aggregate
   gate now rejects Play evidence whose uploaded `applicationId`, `versionName`, or
   `versionCode` does not match the target-phone APK install report. Those answers, hosted
-  privacy URL, release identity fields, and screenshots still must be reviewed against the
-  exact uploaded build before submission.
+  privacy URL deployment, release identity fields, and screenshots still must be verified
+  against the exact uploaded build before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.

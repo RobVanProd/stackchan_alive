@@ -297,6 +297,7 @@ fun CompanionConsole(
     onSelectPersona: () -> Unit = {},
     onSaveDisplaySettings: () -> Unit = {},
     onPrivacySettings: () -> Unit = {},
+    onOpenPrivacyPolicy: () -> Unit = {},
     onClaimBrain: () -> Unit = {},
     onReleaseBrain: () -> Unit = {},
     onOpenWifiSettings: () -> Unit = {},
@@ -329,6 +330,7 @@ fun CompanionConsole(
                         onSelectPersona = onSelectPersona,
                         onSaveDisplaySettings = onSaveDisplaySettings,
                         onPrivacySettings = onPrivacySettings,
+                        onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                         onClaimBrain = onClaimBrain,
                         onReleaseBrain = onReleaseBrain,
                         onOpenWifiSettings = onOpenWifiSettings,
@@ -363,6 +365,7 @@ fun CompanionConsole(
                                 onSelectPersona = onSelectPersona,
                                 onSaveDisplaySettings = onSaveDisplaySettings,
                                 onPrivacySettings = onPrivacySettings,
+                                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                                 onClaimBrain = onClaimBrain,
                                 onReleaseBrain = onReleaseBrain,
                                 onOpenWifiSettings = onOpenWifiSettings,
@@ -388,6 +391,7 @@ fun CompanionConsole(
                                 onSelectPersona = onSelectPersona,
                                 onSaveDisplaySettings = onSaveDisplaySettings,
                                 onPrivacySettings = onPrivacySettings,
+                                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                                 onClaimBrain = onClaimBrain,
                                 onReleaseBrain = onReleaseBrain,
                                 onOpenWifiSettings = onOpenWifiSettings,
@@ -423,6 +427,7 @@ private fun MobileConsole(
     onSelectPersona: () -> Unit,
     onSaveDisplaySettings: () -> Unit,
     onPrivacySettings: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
     onOpenWifiSettings: () -> Unit,
@@ -465,6 +470,7 @@ private fun MobileConsole(
                     onSelectPersona = onSelectPersona,
                     onSaveDisplaySettings = onSaveDisplaySettings,
                     onPrivacySettings = onPrivacySettings,
+                    onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                     onClaimBrain = onClaimBrain,
                     onReleaseBrain = onReleaseBrain,
                 )
@@ -506,6 +512,7 @@ private fun WideConsole(
     onSelectPersona: () -> Unit,
     onSaveDisplaySettings: () -> Unit,
     onPrivacySettings: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
     onOpenWifiSettings: () -> Unit,
@@ -564,6 +571,7 @@ private fun WideConsole(
                 onSelectPersona = onSelectPersona,
                 onSaveDisplaySettings = onSaveDisplaySettings,
                 onPrivacySettings = onPrivacySettings,
+                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                 onClaimBrain = onClaimBrain,
                 onReleaseBrain = onReleaseBrain,
             )
@@ -592,6 +600,7 @@ private fun TabletConsole(
     onSelectPersona: () -> Unit,
     onSaveDisplaySettings: () -> Unit,
     onPrivacySettings: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
     onOpenWifiSettings: () -> Unit,
@@ -642,6 +651,7 @@ private fun TabletConsole(
                 onSelectPersona = onSelectPersona,
                 onSaveDisplaySettings = onSaveDisplaySettings,
                 onPrivacySettings = onPrivacySettings,
+                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                 onClaimBrain = onClaimBrain,
                 onReleaseBrain = onReleaseBrain,
             )
@@ -1221,6 +1231,7 @@ private fun BrainPanel(
     onSelectPersona: () -> Unit = {},
     onSaveDisplaySettings: () -> Unit = {},
     onPrivacySettings: () -> Unit = {},
+    onOpenPrivacyPolicy: () -> Unit = {},
     onClaimBrain: () -> Unit = {},
     onReleaseBrain: () -> Unit = {},
 ) {
@@ -1289,6 +1300,7 @@ private fun BrainPanel(
             onSelectPersona = onSelectPersona,
             onSaveDisplaySettings = onSaveDisplaySettings,
             onPrivacySettings = onPrivacySettings,
+            onOpenPrivacyPolicy = onOpenPrivacyPolicy,
         )
         Spacer(Modifier.height(14.dp))
         ModelAssetPanel(
@@ -1323,6 +1335,7 @@ private fun SettingsSurfacePanel(
     onSelectPersona: () -> Unit,
     onSaveDisplaySettings: () -> Unit,
     onPrivacySettings: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
 ) {
     Surface(
         color = Console,
@@ -1350,7 +1363,8 @@ private fun SettingsSurfacePanel(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SmallCommand("Select persona", enabled = settings.writesEnabled, onClick = onSelectPersona)
                 SmallCommand("Save display", enabled = settings.writesEnabled, onClick = onSaveDisplaySettings)
-                SmallCommand("Privacy", enabled = settings.writesEnabled, onClick = onPrivacySettings)
+                SmallCommand("Export logs", enabled = settings.writesEnabled, onClick = onPrivacySettings)
+                SmallCommand("Privacy policy", onClick = onOpenPrivacyPolicy)
             }
         }
     }

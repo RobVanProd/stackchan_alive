@@ -176,6 +176,8 @@ $fullOnlineFirmwareDir = Join-Path $firmwareDir "full_online"
 $mediaDir = Join-Path $outDir "media"
 $faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
+$siteDir = Join-Path $outDir "site"
+$privacySiteDir = Join-Path $siteDir "privacy"
 $dataDir = Join-Path $outDir "data"
 $bridgeDir = Join-Path $outDir "bridge"
 $bridgeModelsDir = Join-Path $bridgeDir "models"
@@ -183,7 +185,7 @@ $companionEvidenceDir = Join-Path $outDir "companion/evidence"
 $provenanceDir = Join-Path $outDir "provenance"
 $thirdPartyLicensesDir = Join-Path $outDir "third_party_licenses"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $fullOnlineFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $bridgeModelsDir, $companionEvidenceDir, $provenanceDir, $thirdPartyLicensesDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $fullOnlineFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $siteDir, $privacySiteDir, $dataDir, $bridgeDir, $bridgeModelsDir, $companionEvidenceDir, $provenanceDir, $thirdPartyLicensesDir, $toolsDir | Out-Null
 
 $releaseRootPrefix = [System.IO.Path]::GetFullPath($outDir).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 
@@ -425,6 +427,9 @@ Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsD
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_RELEASE.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" -Destination $docsDir
+Copy-Item -LiteralPath "site/.nojekyll" -Destination $siteDir
+Copy-Item -LiteralPath "site/index.html" -Destination $siteDir
+Copy-Item -LiteralPath "site/privacy/index.html" -Destination $privacySiteDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CONVERSATION_V2_ROADMAP.md" -Destination $docsDir
@@ -928,6 +933,7 @@ Copy-Item -LiteralPath "partitions_esp_sr_16.csv" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
+Copy-Item -LiteralPath ".github/workflows/pages.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
 Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
@@ -1378,6 +1384,9 @@ $manifest = [ordered]@{
   androidPlayRelease = "docs/ANDROID_PLAY_RELEASE.md"
   androidPlayPolicyDeclarations = "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md"
   androidPlayPrivacyPolicy = "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
+  androidPlayPrivacyPolicySite = "site/privacy/index.html"
+  androidPlayPrivacyPolicyUrl = "https://robvanprod.github.io/stackchan_alive/privacy/"
+  pagesWorkflow = "provenance/pages.yml"
   androidPlayIcon = "docs/store-assets/play/icon-512.png"
   androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"

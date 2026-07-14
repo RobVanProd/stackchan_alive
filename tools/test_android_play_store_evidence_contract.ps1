@@ -141,8 +141,13 @@ try {
   if ($templateResult.report.status -ne "pending-play-store-evidence") {
     throw "Expected placeholder template status pending-play-store-evidence, got $($templateResult.report.status)."
   }
-  foreach ($id in @("evidence-status", "source-commit", "release-aab-sha", "play-signing", "privacy-policy-url", "upload-status", "internal-install", "play-console-release", "tester-group", "uploaded-at-utc", "screenshots")) {
+  foreach ($id in @("evidence-status", "source-commit", "release-aab-sha", "play-signing", "upload-status", "internal-install", "play-console-release", "tester-group", "uploaded-at-utc", "screenshots")) {
     Assert-CheckStatus -Report $templateResult.report -Id $id -Status "fail"
+  }
+  Assert-CheckStatus -Report $templateResult.report -Id "privacy-policy-url" -Status "pass"
+  $templateEvidence = Get-Content -LiteralPath (Join-Path $templateRoot "PLAY_STORE_EVIDENCE.json") -Raw | ConvertFrom-Json
+  if ($templateEvidence.privacyPolicyUrl -ne "https://robvanprod.github.io/stackchan_alive/privacy/") {
+    throw "Expected template to use the canonical Stackchan privacy-policy URL."
   }
   Write-Host "[ok] placeholder Play Store template is rejected"
 
@@ -194,6 +199,18 @@ pairing evidence tied to the final internal testing build.
     Assert-CheckStatus -Report $completeResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Play Store internal testing packet is accepted"
+
+  $invalidPrivacyRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $completeRoot "*") -Destination $invalidPrivacyRoot -Recurse
+  $invalidPrivacyEvidence = New-CompletePlayEvidence
+  $invalidPrivacyEvidence.privacyPolicyUrl = "http://stackchan.example/privacy"
+  Write-JsonFile -Path (Join-Path $invalidPrivacyRoot "PLAY_STORE_EVIDENCE.json") -Value $invalidPrivacyEvidence
+  $invalidPrivacyResult = Invoke-PlayStoreEvidenceCheck -EvidenceRoot $invalidPrivacyRoot
+  if ([int]$invalidPrivacyResult.exitCode -eq 0) {
+    throw "Expected a non-HTTPS privacy-policy URL to fail."
+  }
+  Assert-CheckStatus -Report $invalidPrivacyResult.report -Id "privacy-policy-url" -Status "fail"
+  Write-Host "[ok] non-HTTPS privacy-policy URL is rejected"
 
   $pendingStatusRoot = New-TempEvidenceRoot
   New-Item -ItemType Directory -Force -Path (Join-Path $pendingStatusRoot "screenshots") | Out-Null

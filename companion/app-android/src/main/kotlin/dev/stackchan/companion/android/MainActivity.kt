@@ -349,6 +349,17 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 },
+                onOpenPrivacyPolicy = {
+                    runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CompanionIdentity.privacyPolicyUrl)))
+                    }.onFailure {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "No browser is available to open the privacy policy.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
                 onClaimBrain = {
                     coroutineScope.launch {
                         val result = CompanionBridgeService.claimBrain()

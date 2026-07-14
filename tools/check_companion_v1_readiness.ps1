@@ -925,19 +925,61 @@ Test-TextEvidence `
   -Id "android-play-policy-declarations" `
   -Name "Android Play policy and data-safety declarations" `
   -RelativePaths @("docs/ANDROID_PLAY_POLICY_DECLARATIONS.md", "provenance/docs/ANDROID_PLAY_POLICY_DECLARATIONS.md") `
-  -Patterns @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "password_redacted=true", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
+  -Patterns @("Google Play Data safety form", "Google Play User Data policy", "Privacy policy URL", "https://robvanprod.github.io/stackchan_alive/privacy/", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Collected only for optional, ephemeral app functionality", "RECORD_AUDIO", "configured Android SpeechRecognizer may transmit microphone audio", "password_redacted=true", "not represented as end-to-end encrypted", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
 
 Test-TextEvidence `
   -Id "android-play-privacy-policy-page" `
   -Name "Android Play privacy policy page" `
   -RelativePaths @("docs/ANDROID_PLAY_PRIVACY_POLICY.md", "provenance/docs/ANDROID_PLAY_PRIVACY_POLICY.md") `
-  -Patterns @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "https://robvanprod.github.io/stackchan_alive/privacy/", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "may process microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-policy-site" `
+  -Name "Deployable public privacy-policy site" `
+  -RelativePaths @("site/privacy/index.html") `
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-pages-workflow" `
+  -Name "Privacy-policy Pages deployment workflow" `
+  -RelativePaths @(".github/workflows/pages.yml", "provenance/pages.yml") `
+  -Patterns @("Deploy privacy policy", "main", "site/**", "pages: write", "id-token: write", "actions/configure-pages@v5", "actions/upload-pages-artifact@v4", "path: site", "actions/deploy-pages@v4")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-app-identity" `
+  -Name "Canonical privacy-policy URL in companion identity" `
+  -RelativePaths @("companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt", "provenance/companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt") `
+  -Patterns @("privacyPolicyUrl", "https://robvanprod.github.io/stackchan_alive/privacy/")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-android-link" `
+  -Name "Android in-app privacy-policy link" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
+  -Patterns @("onOpenPrivacyPolicy", "Intent.ACTION_VIEW", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-desktop-link" `
+  -Name "Desktop in-app privacy-policy link" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt", "provenance/companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt") `
+  -Patterns @("onOpenPrivacyPolicy", "Desktop.Action.BROWSE", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-shared-ui" `
+  -Name "Shared in-app privacy-policy command" `
+  -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt", "provenance/companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
+  -Patterns @("onOpenPrivacyPolicy", "Privacy policy", "Export logs")
+
+Test-TextEvidence `
+  -Id "android-play-speech-offline-preference" `
+  -Name "Android speech requests offline recognition" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt") `
+  -Patterns @("RecognizerIntent.EXTRA_PREFER_OFFLINE", "true")
 
 Test-TextEvidence `
   -Id "android-play-readiness-check" `
   -Name "Android Play source readiness check" `
   -RelativePaths @("tools/check_android_play_release_readiness.ps1", "provenance/tools/check_android_play_release_readiness.ps1") `
-  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "keytool private-key validation", "RSACertificateExtensions", "project policy requires at least 4096 bits", "2033-10-23 UTC", "certificate SHA-256", "CI builds Android release bundle", "CI runs Android emulator launch smoke", "Tag release validates upload key and exact release APK launch", "RequireAndroidEmulatorEvidence", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-policy-declarations", "play-privacy-policy-page")
+  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "keytool private-key validation", "RSACertificateExtensions", "project policy requires at least 4096 bits", "2033-10-23 UTC", "certificate SHA-256", "CI builds Android release bundle", "CI runs Android emulator launch smoke", "Tag release validates upload key and exact release APK launch", "RequireAndroidEmulatorEvidence", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-policy-declarations", "play-privacy-policy-page", "play-privacy-policy-site", "play-privacy-pages-workflow", "play-privacy-android-link", "play-privacy-desktop-link", "play-speech-offline-preference")
 
 Test-TextEvidence `
   -Id "android-upload-signing-contract" `
