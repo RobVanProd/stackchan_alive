@@ -241,12 +241,21 @@ and one ready native package/runtime report for Windows, Linux, and macOS, but i
 evidence. Public promotion additionally uses `-RequireUploadSigning`, which requires both Android
 release artifacts to report the `upload-key` signing profile.
 
-Current rehearsal snapshot: PR #197 run `29315427331` on 2026-07-14 at source commit
-`732bfe4b797f7758946a1e11d2d75d24369a3356` passed all `11/11` jobs: `changes`, `bridge-tests`,
-`native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, the exact
-API 35 release-APK emulator smoke, and `companion-release-evidence`. This proves the current
-lab-signed source/package matrix and strict evidence contracts; it does not substitute for
-upload signing, native operator installs, physical phone/robot evidence, or a tagged release.
+Exact-source rehearsal handoff is now fail-closed. Every checkout and evidence exporter in the
+Firmware workflow uses `STACKCHAN_CI_SOURCE_SHA`, resolving to the PR branch head for pull requests
+and `github.sha` otherwise. `tools/download_companion_ci_candidate.ps1` accepts only a successful
+11-job Firmware run whose reported head matches the requested 40-character commit, then downloads
+the Android, emulator, Windows, macOS, Linux, and aggregate-evidence artifacts. It recomputes every
+distribution hash and requires the embedded `COMPANION_RELEASE_EVIDENCE.json` commit and version
+to match before writing `COMPANION_CI_CANDIDATE.json`. The manifest says explicitly that these are
+lab rehearsal artifacts, not production-signed, tagged, or physical evidence.
+
+The correction was motivated by observed PR run `29318315665`: GitHub associated that successful
+run with branch head `d68d10db5b00d36cd7d02922c0e2660838b24c9a`, while its downloadable
+`COMPANION_RELEASE_EVIDENCE.json` recorded PR merge commit
+`3343fef30ec0b65de08f2eab099044e1249d2220`. That run remains useful CI regression evidence but
+must not be handed to physical testing as an exact-head binary set. The new downloader rejects
+that mismatch. A later run is authoritative only when its candidate manifest passes.
 
 Historical evidence snapshot: PR #194 run `28711092216` on 2026-07-04 passed `bridge-tests`,
 `native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, and

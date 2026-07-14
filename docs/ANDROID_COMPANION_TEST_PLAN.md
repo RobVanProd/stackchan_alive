@@ -49,8 +49,22 @@ screen-off, microphone, Gemma accelerator, or Play internal-testing item in this
 
 When using adb, install the APK and capture the install evidence before discovery checks:
 
-Build the lab-signed release APK from the source checkout first. The v1 PR/CI release APK
-is signed with the Android debug key for physical testing, not for public distribution:
+Use either a locally built lab-signed release APK or an exact-source CI candidate. To use CI,
+download and verify the complete run before selecting its release APK:
+
+```powershell
+.\tools\download_companion_ci_candidate.cmd `
+  -RunId <successful-firmware-run-id> `
+  -Commit <40-character-branch-head-sha>
+```
+
+Use only the release APK under that candidate's `artifacts/companion-android-apks/apk/release/`
+and preserve its SHA-256 from `COMPANION_CI_CANDIDATE.json` in the phone evidence. The helper
+rejects a PR artifact whose embedded evidence records a merge commit instead of the requested
+branch head. CI candidate artifacts remain debug-key signed for physical testing, not public
+distribution.
+
+To build the lab-signed release APK from the source checkout instead:
 
 ```powershell
 .\tools\check_companion_v1_readiness.cmd

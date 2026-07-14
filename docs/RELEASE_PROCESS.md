@@ -87,6 +87,26 @@ Actions UI or with `gh workflow run firmware.yml --ref <candidate-branch>`. A ma
 forces companion tests plus the Android, Linux, macOS, and Windows package matrix and aggregate
 evidence even when no companion path changed in the candidate commit.
 
+For a PR or manually dispatched Firmware run, download one exact-source rehearsal candidate with:
+
+```powershell
+tools\download_companion_ci_candidate.cmd `
+  -RunId <successful-firmware-run-id> `
+  -Commit <40-character-branch-head-sha> `
+  -Json
+```
+
+The Firmware workflow checks out `STACKCHAN_CI_SOURCE_SHA`, which is the PR branch head for pull
+requests and `github.sha` for push or manual-dispatch runs. The downloader independently requires
+all 11 jobs and all six companion artifact groups to be successful and present, rejects expired
+artifacts, and recomputes every APK/AAB/MSI/DEB/DMG hash against the embedded
+`COMPANION_RELEASE_EVIDENCE.json`. It writes
+`output/companion/ci-candidates/<commit>-run-<id>/COMPANION_CI_CANDIDATE.json` as the handoff to
+phone or workstation testing. A PR status check associated with a branch head is not sufficient
+when the downloaded evidence records a different merge commit; the helper rejects that mismatch.
+The manifest is explicitly scoped to CI rehearsal and does not substitute for upload signing,
+desktop production trust, a tagged release, or physical evidence.
+
 ## Exact Tested Lead Versus Public Package
 
 Keep two release artifacts distinct:
