@@ -150,13 +150,13 @@ function Assert-Readiness {
     [string]$Name
   )
 
+  $check = Get-SigningCheck -Report $Result.report
   if ($Result.exitCode -ne $ExpectedExitCode) {
-    throw "$Name returned exit code $($Result.exitCode); expected $ExpectedExitCode."
+    throw "$Name returned exit code $($Result.exitCode); expected $ExpectedExitCode. Report status: $($Result.report.status). Signing check: $($check.status). Detail: $($check.detail)"
   }
   if ($Result.report.status -ne $ExpectedReportStatus) {
     throw "$Name returned status '$($Result.report.status)'; expected '$ExpectedReportStatus'."
   }
-  $check = Get-SigningCheck -Report $Result.report
   if ($check.status -ne $ExpectedCheckStatus) {
     throw "$Name signing check was '$($check.status)'; expected '$ExpectedCheckStatus'."
   }
