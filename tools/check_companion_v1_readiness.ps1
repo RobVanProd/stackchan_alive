@@ -13,20 +13,71 @@ if ([string]::IsNullOrWhiteSpace($Root)) {
 
 $checks = @()
 $pendingGates = @(
-  "physical-robot-hardware-validation",
-  "android-apk-install-on-target-phone",
-  "android-dashboard-connected-state-media",
-  "android-push-to-talk-stt-on-target-phone",
-  "android-settings-handoff-on-target-robot",
-  "android-qr-short-code-pairing-on-target-robot",
-  "android-wifi-provisioning-on-target-robot",
-  "screen-off-bridge-soak",
-  "google-play-store-screenshots",
-  "google-play-internal-testing-upload",
-  "gemma4-e2b-real-device-download-and-inference-validation",
-  "desktop-managed-python-runtime-binary-payload",
-  "desktop-target-installs-on-operator-workstations",
-  "c8-tagged-release-distribution"
+  [ordered]@{
+    name = "physical-robot-hardware-validation"
+    evidence = "output/hardware-evidence/<candidate>"
+    detail = "Complete the physical packet, then run tools\verify_hardware_evidence.cmd -EvidenceRoot <packet> and tools\export_rollout_status.cmd with the same exact release candidate."
+  },
+  [ordered]@{
+    name = "android-apk-install-on-target-phone"
+    evidence = "output/android-apk-install/<candidate>/android_apk_install.json"
+    detail = "Connect the target phone and run tools\install_android_companion_apk.cmd -ApkPath <release-apk> -SourceCommit <40-character-sha>."
+  },
+  [ordered]@{
+    name = "android-dashboard-connected-state-media"
+    evidence = "output/hardware-evidence/<candidate>/media/phone-live-dashboard*"
+    detail = "Capture the exact installed build connected to the robot, register media id phone-live-dashboard, and pass the strict Android dashboard evidence gate in tools\verify_hardware_evidence.cmd."
+  },
+  [ordered]@{
+    name = "android-push-to-talk-stt-on-target-phone"
+    evidence = "output/android-speech/<candidate>"
+    detail = "Capture phone diagnostics/logcat and robot response frames, review ANDROID_SPEECH_REVIEW.md, then run tools\check_android_speech_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "android-settings-handoff-on-target-robot"
+    evidence = "output/android-controls/<candidate>"
+    detail = "Capture settings_set, claim_brain, release_brain, owner_status, and pre-hello rejection, then run tools\check_android_controls_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "android-qr-short-code-pairing-on-target-robot"
+    evidence = "output/android-pairing/<candidate>"
+    detail = "Capture QR/manual-code success, wrong-code rejection, trusted endpoint state, and setup media, then run tools\check_android_pairing_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "android-wifi-provisioning-on-target-robot"
+    evidence = "output/android-wifi/<candidate>"
+    detail = "Capture persisted provisioning, power-cycle reload, clear behavior, and password redaction, then run tools\check_android_wifi_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "screen-off-bridge-soak"
+    evidence = "output/android-companion-soak/<candidate>"
+    detail = "Run the target-phone screen-off soak, review its packet, then run tools\check_android_screen_off_soak_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "google-play-store-screenshots"
+    evidence = "output/android-play-store/<candidate>/screenshots"
+    detail = "Capture the four required final-build screenshot ids on the target phone and validate them with tools\check_android_play_store_evidence.cmd -EvidenceRoot <packet> -Json."
+  },
+  [ordered]@{
+    name = "google-play-internal-testing-upload"
+    evidence = "output/android-play-store/<candidate>/ANDROID_PLAY_STORE_EVIDENCE.json"
+    detail = "Provision upload signing, upload the exact AAB, install from the internal track, record the hosted privacy URL/release/tester/timestamp fields, and pass tools\check_android_play_store_evidence.cmd."
+  },
+  [ordered]@{
+    name = "gemma4-e2b-real-device-download-and-inference-validation"
+    evidence = "output/android-gemma/<candidate>"
+    detail = "On the target phone complete verified download, load/eject/reload, non-dry-run benchmark, one LiteRT turn, and robot audio/TTS review; then run tools\check_android_gemma_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "desktop-target-installs-on-operator-workstations"
+    evidence = "output/desktop-target-install/<windows|linux|macos>/<platform>-target-install.json"
+    detail = "Install the exact tagged MSI, DEB, and DMG with tools\install_desktop_companion_package.ps1 on native operator workstations, then pass tools\check_desktop_target_install_evidence.ps1 -RequireOperatorTarget for each package hash."
+  },
+  [ordered]@{
+    name = "c8-tagged-release-distribution"
+    evidence = "GitHub prerelease assets plus COMPANION_RELEASE_EVIDENCE.json and output/companion-v1-evidence/<candidate>"
+    detail = "Create the exact upload-signed prerelease tag, run tools\verify_published_release.cmd -Version <tag>, assemble Android/Desktop/rollout evidence, and pass tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot <packet> -RequireReady -Json."
+  }
 )
 
 function Add-Check {
@@ -284,7 +335,7 @@ function Test-CompanionSourceTree {
 
 function Add-PendingGateChecks {
   foreach ($gate in $pendingGates) {
-    Add-Check ("pending-" + $gate) $gate "pending" "" "Requires target hardware, release signing/distribution, or production-source evidence outside this source/package check."
+    Add-Check ("pending-" + $gate.name) $gate.name "pending" $gate.evidence $gate.detail
   }
 }
 
@@ -977,6 +1028,12 @@ Test-TextEvidence `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
   -Patterns @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-tests", "companion-android-emulator-smoke", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "python-version: `"3.12`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "system-images;android-35;aosp_atd;x86_64", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "stackchan.allowLabDebugReleaseSigning=true", "check_companion_release_version.ps1", "test_companion_release_version_contract.ps1", "check_android_play_release_readiness.ps1", "test_android_upload_signing_contract.ps1", "test_android_emulator_launch.ps1", "test_android_emulator_release_evidence_contract.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "test_desktop_package_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDesktopPackageEvidence")
+
+Test-TextEvidence `
+  -Id "desktop-managed-runtime-native-package-matrix" `
+  -Name "Desktop managed Python runtimes in native package matrix" `
+  -RelativePaths @(".github/workflows/firmware.yml", ".github/workflows/release.yml") `
+  -Patterns @("desktop-windows", "desktop-linux", "desktop-macos", "Prepare managed Python runtime for desktop package", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "Export native desktop package evidence", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "windows-package-evidence.json", "linux-package-evidence.json", "macos-package-evidence.json")
 
 Test-TextEvidence `
   -Id "companion-release-version-gate" `

@@ -8,6 +8,11 @@ current v1 companion branch.
 
 ## Current Status
 
+- The native all-platform CI rehearsal at source commit `d389307831398e02469cd3b2ade8c084ed136423`
+  passed firmware, bridge, companion contracts, Android APK/AAB packaging and API 35 install/launch,
+  Windows MSI, Linux DEB, macOS DMG, installer-derived managed-runtime identity, and aggregate
+  companion release evidence. Source readiness is now `126 passed / 0 failed / 13 external gates
+  pending`; a successful upload-signed tag and target-device/operator evidence are still required.
 - G1 conversation surface is partially closed. The shared app now has a Talk panel on
   Android and desktop. Text turns are sent through the active `CompanionEndpointServer`
   session as `app_text_turn` response frames (`thinking`, `response_start`,
@@ -250,10 +255,13 @@ current v1 companion branch.
   commit, so stale source or voice hash evidence cannot close the desktop bundle. The
   Desktop v1 aggregate checker emits that same `sourceCommit` so the final Companion v1 gate
   can reject stale desktop bundle evidence.
-  Native tag jobs now prepare and embed the actual managed Python binary payload for each desktop
-  platform. A Windows release rehearsal passed locally, including direct MSI extraction and an
-  exact 4,635-file packaged-runtime hash match; native macOS/Linux package and runtime evidence
-  still must come from the tag matrix before the desktop aggregate gate can close.
+  Native CI jobs now prepare and embed the actual managed Python binary payload for each desktop
+  platform. The Windows, Linux, and macOS package matrix passed installer-native extraction,
+  packaged-runtime identity, managed-Python probing, required brain-resource checks, and exact
+  package launch evidence. This closes the source/CI binary-payload gate. A tagged candidate must
+  still produce its own hash-bound package reports, and the three exact tagged packages still need
+  operator-workstation installation and human acceptance before the desktop aggregate gate can
+  close.
 - PC Brain live-deploy bring-up is now easier to exercise before the managed desktop runtime
   lands. Source/package tools can start the Python LAN bridge with an Ollama Character Lock
   runner and selected RVC voice sample TTS path, probe the WebSocket endpoint, flash/provision
@@ -275,7 +283,8 @@ current v1 companion branch.
 ## Next Attack Order
 
 1. Provision the four `STACKCHAN_ANDROID_*` Actions secrets, back up the upload keystore, and
-   run a prerelease tag to collect native APK/AAB/MSI/DEB/DMG and managed-runtime evidence.
+   run a prerelease tag to bind upload-signed APK/AAB plus native MSI/DEB/DMG managed-runtime
+   evidence to the exact release tag.
 2. Finish G1 with hardware push-to-talk/STT validation, then run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 3. Finish G3 physical settings writes/manual brain handoff and G5 hardware pairing, then run the strict controls and pairing evidence checks.
 4. Exercise G8 Android diagnostics, Gemma-4-E2B download/load/eject, the real `gemma4-e2b-litert-lm` benchmark, and one target-device LiteRT turn.
