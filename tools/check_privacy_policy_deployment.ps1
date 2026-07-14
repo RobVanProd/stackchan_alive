@@ -71,6 +71,19 @@ function Test-UtcTimestamp {
   return [DateTimeOffset]::TryParse($Value, [ref]$parsed)
 }
 
+function Get-RawJsonStringField {
+  param(
+    [string]$Json,
+    [string]$Name
+  )
+
+  $match = [regex]::Match($Json, '"' + [regex]::Escape($Name) + '"\s*:\s*"([^"]*)"')
+  if ($match.Success) {
+    return $match.Groups[1].Value
+  }
+  return ""
+}
+
 function Resolve-RootFile {
   param([string]$RelativePath)
 
@@ -143,10 +156,12 @@ if ($null -ne $evidence) {
     Add-Check "pages-build" "GitHub Pages build record" "fail" ([string]$evidence.pagesBuildId) "Expected a built gh-pages deployment with HTTPS enforced."
   }
 
-  if ((Test-UtcTimestamp ([string]$evidence.pagesBuiltAtUtc)) -and (Test-UtcTimestamp ([string]$evidence.verifiedAtUtc))) {
-    Add-Check "verification-timestamps" "Deployment verification timestamps" "pass" ([string]$evidence.verifiedAtUtc) "Build and verification times use strict UTC timestamps."
+  $pagesBuiltAtUtc = Get-RawJsonStringField $rawEvidence "pagesBuiltAtUtc"
+  $verifiedAtUtc = Get-RawJsonStringField $rawEvidence "verifiedAtUtc"
+  if ((Test-UtcTimestamp $pagesBuiltAtUtc) -and (Test-UtcTimestamp $verifiedAtUtc)) {
+    Add-Check "verification-timestamps" "Deployment verification timestamps" "pass" $verifiedAtUtc "Build and verification times use strict UTC timestamps."
   } else {
-    Add-Check "verification-timestamps" "Deployment verification timestamps" "fail" ([string]$evidence.verifiedAtUtc) "pagesBuiltAtUtc and verifiedAtUtc must use YYYY-MM-DDTHH:MM:SSZ."
+    Add-Check "verification-timestamps" "Deployment verification timestamps" "fail" $verifiedAtUtc "pagesBuiltAtUtc and verifiedAtUtc must use YYYY-MM-DDTHH:MM:SSZ."
   }
 
   $servedBytes = $null
