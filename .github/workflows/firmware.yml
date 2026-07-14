@@ -298,7 +298,7 @@ jobs:
             -cores 2 \
             > output/android-emulator-smoke/latest/emulator.stdout.log \
             2> output/android-emulator-smoke/latest/emulator.stderr.log &
-          adb wait-for-device
+          timeout 180 adb wait-for-device
           timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb devices -l
 
