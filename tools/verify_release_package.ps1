@@ -1229,9 +1229,30 @@ foreach ($pattern in @("On-device wake phrase", "microphone capture", "wake-gate
     throw "README.md missing mic capture status guidance: $pattern"
   }
 }
-foreach ($pattern in @("public v0.2 release candidate", "formal one-hour actuator acceptance", "more than five hours", "exact paired candidate", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
+foreach ($pattern in @("public v0.2 release candidate", "Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing current release-candidate status or navigation: $pattern"
+  }
+}
+
+$productionReadinessText = Get-Content -LiteralPath (Join-PackagePath "docs/PRODUCTION_READINESS.md") -Raw
+foreach ($pattern in @("Current status (2026-07-13)", "corrected single-owner exact-image", "28807 s", "5643/5643", "77/77", "bounded final motion stop evidence")) {
+  if ($productionReadinessText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/PRODUCTION_READINESS.md missing corrected exact-image soak evidence: $pattern"
+  }
+}
+
+$hardwareFeatureRoadmapText = Get-Content -LiteralPath (Join-PackagePath "docs/HARDWARE_FEATURE_ROADMAP.md") -Raw
+foreach ($pattern in @("Current status (2026-07-13)", "corrected exact release image", "28807 s", "5643/5643", "77/77", "verified off after completion")) {
+  if ($hardwareFeatureRoadmapText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/HARDWARE_FEATURE_ROADMAP.md missing corrected exact-image soak evidence: $pattern"
+  }
+}
+
+$powerBlackoutForensicsText = Get-Content -LiteralPath (Join-PackagePath "docs/POWER_BLACKOUT_FORENSICS.md") -Raw
+foreach ($pattern in @('corrected `v0.2.0` exact-image candidate', "28807 s", "5643/5643", "77/77", "bounded final stop evidence", "Historical full-off root cause remains unidentified")) {
+  if ($powerBlackoutForensicsText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/POWER_BLACKOUT_FORENSICS.md missing corrected exact-image soak evidence: $pattern"
   }
 }
 

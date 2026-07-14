@@ -241,6 +241,13 @@ and one ready native package/runtime report for Windows, Linux, and macOS, but i
 evidence. Public promotion additionally uses `-RequireUploadSigning`, which requires both Android
 release artifacts to report the `upload-key` signing profile.
 
+Current rehearsal snapshot: PR #197 run `29315427331` on 2026-07-14 at source commit
+`732bfe4b797f7758946a1e11d2d75d24369a3356` passed all `11/11` jobs: `changes`, `bridge-tests`,
+`native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, the exact
+API 35 release-APK emulator smoke, and `companion-release-evidence`. This proves the current
+lab-signed source/package matrix and strict evidence contracts; it does not substitute for
+upload signing, native operator installs, physical phone/robot evidence, or a tagged release.
+
 Historical evidence snapshot: PR #194 run `28711092216` on 2026-07-04 passed `bridge-tests`,
 `native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, and
 `companion-release-evidence`. Uploaded companion artifacts included `companion-android-apks`,
@@ -249,7 +256,8 @@ complete `COMPANION_RELEASE_EVIDENCE.json/md` manifest. The release APK entry is
 `app-android-release.apk`; the signing evidence records APK Signature Scheme v2 with the
 Android debug certificate for lab/arrival-day testing. That run predates managed-runtime package
 evidence and is not proof of the current native package gate; a new PR must establish it on all
-three desktop operating systems.
+three desktop operating systems. The current PR #197 rehearsal above supersedes that packaging
+snapshot.
 
 **Tag `v*` (`release.yml`):**
 

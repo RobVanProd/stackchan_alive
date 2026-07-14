@@ -8,11 +8,13 @@ current v1 companion branch.
 
 ## Current Status
 
-- The native all-platform CI rehearsal at source commit `d389307831398e02469cd3b2ade8c084ed136423`
-  passed firmware, bridge, companion contracts, Android APK/AAB packaging and API 35 install/launch,
+- The native all-platform CI rehearsal at source commit
+  `732bfe4b797f7758946a1e11d2d75d24369a3356`, PR #197 run `29315427331`, passed all `11/11`
+  jobs: firmware, bridge, companion contracts, Android APK/AAB packaging and API 35 install/launch,
   Windows MSI, Linux DEB, macOS DMG, installer-derived managed-runtime identity, and aggregate
-  companion release evidence. Source readiness is now `126 passed / 0 failed / 13 external gates
-  pending`; a successful upload-signed tag and target-device/operator evidence are still required.
+  companion release evidence. Source readiness is `141 passed / 0 failed / 14 owner-controlled or
+  physical gates pending`; a successful upload-signed tag and target-device/operator evidence are
+  still required.
 - G1 conversation surface is partially closed. The shared app now has a Talk panel on
   Android and desktop. Text turns are sent through the active `CompanionEndpointServer`
   session as `app_text_turn` response frames (`thinking`, `response_start`,

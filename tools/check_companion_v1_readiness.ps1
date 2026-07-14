@@ -351,6 +351,30 @@ Test-TextEvidence `
   -Patterns @("Cross-Platform Build & Distribution Plan", "Kotlin Multiplatform", "Compose Multiplatform", "Hydraulic Conveyor", "C0", "C1", "C8", "RELEASE_EVIDENCE.json")
 
 Test-TextEvidence `
+  -Id "readme-current-eight-hour-evidence" `
+  -Name "Public README carries corrected exact-image soak evidence" `
+  -RelativePaths @("README.md") `
+  -Patterns @("Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop")
+
+Test-TextEvidence `
+  -Id "production-readiness-current-eight-hour-evidence" `
+  -Name "Production readiness carries corrected exact-image soak evidence" `
+  -RelativePaths @("docs/PRODUCTION_READINESS.md") `
+  -Patterns @("Current status (2026-07-13)", "corrected single-owner exact-image", "28807 s", "5643/5643", "77/77", "bounded final motion stop evidence")
+
+Test-TextEvidence `
+  -Id "hardware-roadmap-current-eight-hour-evidence" `
+  -Name "Hardware roadmap carries corrected exact-image soak evidence" `
+  -RelativePaths @("docs/HARDWARE_FEATURE_ROADMAP.md") `
+  -Patterns @("Current status (2026-07-13)", "corrected exact release image", "28807 s", "5643/5643", "77/77", "verified off after completion")
+
+Test-TextEvidence `
+  -Id "power-forensics-current-eight-hour-evidence" `
+  -Name "Power forensics carries corrected exact-image soak evidence" `
+  -RelativePaths @("docs/POWER_BLACKOUT_FORENSICS.md") `
+  -Patterns @('corrected `v0.2.0` exact-image candidate', "28807 s", "5643/5643", "77/77", "bounded final stop evidence", "Historical full-off root cause remains unidentified")
+
+Test-TextEvidence `
   -Id "android-companion-spec" `
   -Name "Android companion behavioral contract" `
   -RelativePaths @("docs/ANDROID_COMPANION_SPEC.md") `
