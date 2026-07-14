@@ -135,3 +135,4 @@ if ($passCount -ne 9) {
   throw "Android emulator release evidence contract did not execute all cases."
 }
 Write-Host "Android emulator release evidence contract: 9/9 passed"
+exit 0

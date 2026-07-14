@@ -125,3 +125,4 @@ try {
 }
 
 Write-Host "Desktop target install evidence contract tests passed"
+exit 0

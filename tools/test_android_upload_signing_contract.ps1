@@ -285,3 +285,4 @@ try {
 }
 
 Write-Host "Android upload signing contract passed: $passCount checks."
+exit 0

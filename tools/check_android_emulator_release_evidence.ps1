@@ -136,3 +136,4 @@ if ($Json) {
 if ($status -ne "ready") {
   exit 2
 }
+exit 0

@@ -85,3 +85,4 @@ $report = [ordered]@{
 
 if ($Json) { $report | ConvertTo-Json -Depth 8 } else { Write-Host "Desktop target install evidence: $($report.status)" }
 if ($failed.Count -gt 0) { exit 1 }
+exit 0
