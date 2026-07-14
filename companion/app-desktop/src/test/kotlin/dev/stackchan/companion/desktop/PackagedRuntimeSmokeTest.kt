@@ -33,7 +33,40 @@ class PackagedRuntimeSmokeTest {
             assertTrue(report.runtimePresent)
             assertTrue(report.pythonAvailable)
             assertTrue(report.brainScriptAvailable)
+            assertEquals("package-extraction", report.launchContext)
+            assertTrue(report.toJson().contains("extracted-native-package-headless-runtime-probe"))
             assertTrue(report.issues.isEmpty())
+        } finally {
+            appHome.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun installedLaunchContextIsRecordedWithoutClaimingHumanAcceptance() {
+        val appHome = Files.createTempDirectory("stackchan-installed-package-smoke")
+        try {
+            val runtimeRoot = Files.createDirectories(appHome.resolve("python-runtime"))
+            val manifest = Files.writeString(runtimeRoot.resolve("stackchan-python-runtime.json"), "{}")
+            val pythonPath = Files.writeString(runtimeRoot.resolve("python.exe"), "fixture")
+            val brainScript = Files.writeString(appHome.resolve("lan_service.py"), "# fixture")
+            val managed = DesktopManagedPythonRuntimeStatus(true, runtimeRoot, manifest, pythonPath, "ready")
+            val python = DesktopPythonRuntimeStatus(
+                command = pythonPath.toString(),
+                available = true,
+                version = "Python 3.12.4",
+                scriptAvailable = true,
+                workingDirectory = appHome,
+                detail = "ready",
+                searchedCommands = listOf(pythonPath.toString()),
+                managedRuntime = managed,
+            )
+
+            val report = buildPackagedRuntimeSmokeReport(appHome, brainScript, managed, python, "installed-package")
+
+            assertEquals("ready", report.status)
+            assertEquals("installed-package", report.launchContext)
+            assertTrue(report.toJson().contains("installed-native-package-headless-runtime-probe"))
+            assertTrue(report.toJson().contains("\"substitutesForTargetInstall\": false"))
         } finally {
             appHome.toFile().deleteRecursively()
         }

@@ -25,6 +25,7 @@ $pendingGates = @(
   "google-play-internal-testing-upload",
   "gemma4-e2b-real-device-download-and-inference-validation",
   "desktop-managed-python-runtime-binary-payload",
+  "desktop-target-installs-on-operator-workstations",
   "c8-tagged-release-distribution"
 )
 
@@ -621,25 +622,37 @@ Test-TextEvidence `
   -Id "desktop-package-launch-smoke" `
   -Name "Exact native desktop package launch smoke" `
   -RelativePaths @("tools/test_desktop_package_launch.ps1", "tools/test_desktop_package_launch.cmd", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/PackagedRuntimeSmoke.kt") `
-  -Patterns @("stackchan.desktop-package-launch-evidence.v1", "stackchan.desktop-packaged-runtime-smoke.v1", "exact-native-package-extraction-and-headless-launch", "extracted-native-package-headless-runtime-probe", "substitutesForTargetInstall", "--package-smoke-output=")
+  -Patterns @("stackchan.desktop-package-launch-evidence.v1", "stackchan.desktop-packaged-runtime-smoke.v1", "exact-native-package-extraction-and-headless-launch", "extracted-native-package-headless-runtime-probe", "package-extraction", "substitutesForTargetInstall", "--package-smoke-output=", "--package-smoke-context=")
+
+Test-AggregateTextEvidence `
+  -Id "desktop-target-install-evidence" `
+  -Name "Native desktop operator target-install evidence" `
+  -RelativePaths @("tools/install_desktop_companion_package.ps1", "tools/check_desktop_target_install_evidence.ps1") `
+  -Patterns @("stackchan.desktop-target-install-evidence.v1", "stackchan.desktop-target-install-evidence-check.v1", "installed-and-ready", "operator-target-workstation", "ci-native-runner", "exact-native-package-install-and-headless-launch", "installed-native-package-headless-runtime-probe", "RequireOperatorTarget", "substitutesForHumanAcceptance")
+
+Test-TextEvidence `
+  -Id "desktop-target-install-evidence-contract" `
+  -Name "Native desktop target-install evidence contract" `
+  -RelativePaths @("tools/test_desktop_target_install_evidence_contract.ps1", "tools/test_desktop_target_install_evidence_contract.cmd") `
+  -Patterns @("operator target-install evidence is accepted for Windows, Linux, and macOS", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-package-evidence-contract" `
   -Name "Native desktop package/runtime evidence contract test" `
   -RelativePaths @("tools/test_desktop_package_evidence_contract.ps1", "tools/test_desktop_package_evidence_contract.cmd") `
-  -Patterns @("complete installer-derived desktop package evidence is accepted", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")
+  -Patterns @("complete installer-derived desktop package evidence is accepted", "installed launch context cannot replace package-extraction evidence", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_desktop_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "runtimeSource", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "stackchan.desktop-target-install-evidence.v1", "windowsTargetInstallReport", "macosTargetInstallReport", "linuxTargetInstallReport", "Test-DesktopTargetInstallReport", "RequireOperatorTarget", "Target installation decision: pass", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "runtimeSource", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-contract" `
   -Name "Desktop v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_desktop_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "missing Desktop v1 runtime payload summary is rejected", "missing Desktop v1 runtime payload source is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "missing Desktop v1 runtime payload summary is rejected", "missing Desktop v1 runtime payload source is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "stale Desktop v1 target-install package hash is rejected", "CI install rehearsal cannot replace Desktop v1 operator target evidence", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `

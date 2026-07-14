@@ -19,11 +19,15 @@ fun main(args: Array<String>) {
     val packageSmokeOutput = args.firstOrNull { it.startsWith(PACKAGE_SMOKE_OUTPUT_PREFIX) }
         ?.substringAfter(PACKAGE_SMOKE_OUTPUT_PREFIX)
         ?.takeIf { it.isNotBlank() }
+    val packageSmokeContext = args.firstOrNull { it.startsWith(PACKAGE_SMOKE_CONTEXT_PREFIX) }
+        ?.substringAfter(PACKAGE_SMOKE_CONTEXT_PREFIX)
+        ?.takeIf { it.isNotBlank() }
+        ?: "package-extraction"
     if (packageSmokeOutput != null || "--package-smoke" in args) {
         val report = if (packageSmokeOutput == null) {
-            inspectPackagedRuntimeSmoke()
+            inspectPackagedRuntimeSmoke(launchContext = packageSmokeContext)
         } else {
-            writePackagedRuntimeSmoke(Path.of(packageSmokeOutput))
+            writePackagedRuntimeSmoke(Path.of(packageSmokeOutput), packageSmokeContext)
         }
         if (packageSmokeOutput == null) {
             println(report.toJson())
@@ -125,6 +129,7 @@ fun main(args: Array<String>) {
 }
 
 private const val PACKAGE_SMOKE_OUTPUT_PREFIX = "--package-smoke-output="
+private const val PACKAGE_SMOKE_CONTEXT_PREFIX = "--package-smoke-context="
 
 private fun choosePersonaImportZip(): Path? {
     val dialog = FileDialog(null as Frame?, "Import Stackchan persona", FileDialog.LOAD)

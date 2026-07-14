@@ -57,6 +57,26 @@ resources. Missing, duplicate, stale-commit, stale-package-launch, staging-only,
 native reports block release evidence. Extracted-package launch evidence does not substitute for
 target-machine installation acceptance.
 
+The tag workflow creates the GitHub Release with `--prerelease`. Before promotion, download the
+exact MSI, DEB, and DMG and run the native installer helper on a matching operator workstation:
+
+```powershell
+tools/install_desktop_companion_package.ps1 `
+  -Platform <windows|linux|macos> `
+  -PackagePath <downloaded-package> `
+  -SourceCommit <tag-commit> `
+  -OutputDir output/desktop-target-install/<platform> `
+  -Json
+```
+
+Windows requires an elevated PowerShell session; Linux requires root or passwordless `sudo`; the
+macOS helper performs the normal DMG application copy. Check each result with
+`tools/check_desktop_target_install_evidence.ps1 -RequireOperatorTarget`, bind it to the published
+package SHA-256 and tag commit, and copy all three reports into the Desktop v1 aggregate packet.
+CI-native installation rehearsals, MSI administrative extraction, and DMG/DEB extraction do not
+satisfy this gate. Installed-launch evidence proves package installation and bundled runtime
+startup only; the human Desktop v1 review remains required.
+
 Before tagging, push the exact candidate branch and dispatch the `Firmware` workflow from the
 Actions UI or with `gh workflow run firmware.yml --ref <candidate-branch>`. A manual dispatch
 forces companion tests plus the Android, Linux, macOS, and Windows package matrix and aggregate

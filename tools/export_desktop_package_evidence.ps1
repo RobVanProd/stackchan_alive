@@ -397,6 +397,7 @@ if ($RequireLaunchEvidence -or -not [string]::IsNullOrWhiteSpace($LaunchEvidence
       }
       if ([string]$launch.probe.schema -ne "stackchan.desktop-packaged-runtime-smoke.v1" -or [string]$launch.probe.status -ne "ready") { Add-Issue "Packaged runtime smoke probe is not ready." }
       if ($launch.probe.runtimePresent -ne $true -or $launch.probe.pythonAvailable -ne $true -or $launch.probe.brainScriptAvailable -ne $true) { Add-Issue "Packaged runtime smoke did not prove all runtime components." }
+      if ([string]$launch.probe.launchContext -ne "package-extraction" -or [string]$launch.probe.scope -ne "extracted-native-package-headless-runtime-probe" -or $launch.probe.substitutesForTargetInstall -ne $false) { Add-Issue "Packaged runtime smoke probe context is invalid." }
       if (@($launch.probe.issues).Count -ne 0 -or $launch.substitutesForTargetInstall -ne $false) { Add-Issue "Exact desktop package launch evidence has invalid scope or issues." }
       if ([string]$launch.scope -ne "exact-native-package-extraction-and-headless-launch") { Add-Issue "Exact desktop package launch scope is invalid." }
     } catch {

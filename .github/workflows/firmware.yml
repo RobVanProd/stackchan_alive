@@ -52,6 +52,9 @@ jobs:
               - 'tools/test_desktop_python_runtime_payload_contract.*'
               - 'tools/export_desktop_package_evidence.*'
               - 'tools/test_desktop_package_evidence_contract.*'
+              - 'tools/install_desktop_companion_package.*'
+              - 'tools/check_desktop_target_install_evidence.*'
+              - 'tools/test_desktop_target_install_evidence_contract.*'
 
   bridge-tests:
     runs-on: ubuntu-latest
@@ -207,6 +210,10 @@ jobs:
       - name: Run native desktop package evidence contract
         shell: pwsh
         run: ./tools/test_desktop_package_evidence_contract.ps1
+
+      - name: Run native desktop target-install evidence contract
+        shell: pwsh
+        run: ./tools/test_desktop_target_install_evidence_contract.ps1
 
       - name: Run Desktop v1 evidence bundle contract
         shell: pwsh

@@ -112,8 +112,11 @@ if (Test-Path -LiteralPath $ExtractionRoot -PathType Container) {
     $probePath = Join-Path (Split-Path -Parent $OutPath) "$Platform-packaged-runtime-smoke.json"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $probePath) | Out-Null
     try {
-      $argument = "--package-smoke-output=`"$probePath`""
-      $process = Start-Process -FilePath $launcherPath -ArgumentList $argument -PassThru
+      $arguments = @(
+        "--package-smoke-output=`"$probePath`"",
+        "--package-smoke-context=package-extraction"
+      )
+      $process = Start-Process -FilePath $launcherPath -ArgumentList $arguments -PassThru
       if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
         $process.Kill()
         Add-Issue "Packaged launcher smoke timed out after $TimeoutSeconds seconds."
@@ -139,7 +142,7 @@ if ($null -ne $probe) {
   if ([string]$probe.appVersion -ne "1.0.0" -or [string]$probe.protocol -ne "stackchan.bridge.v1") { Add-Issue "Packaged runtime identity is invalid." }
   if ($probe.runtimePresent -ne $true -or $probe.pythonAvailable -ne $true -or $probe.brainScriptAvailable -ne $true) { Add-Issue "Packaged runtime smoke did not prove runtime, Python, and brain readiness." }
   if (@($probe.issues).Count -ne 0) { Add-Issue "Packaged runtime smoke reported issues." }
-  if ([string]$probe.scope -ne "extracted-native-package-headless-runtime-probe" -or $probe.substitutesForTargetInstall -ne $false) { Add-Issue "Packaged runtime smoke scope is invalid." }
+  if ([string]$probe.launchContext -ne "package-extraction" -or [string]$probe.scope -ne "extracted-native-package-headless-runtime-probe" -or $probe.substitutesForTargetInstall -ne $false) { Add-Issue "Packaged runtime smoke scope is invalid." }
   foreach ($pathField in @("runtimeRoot", "runtimeManifest", "runtimeExecutable", "brainScript")) {
     $value = [string]$probe.$pathField
     if ([string]::IsNullOrWhiteSpace($value) -or -not (Test-Path -LiteralPath $value)) { Add-Issue "Packaged runtime smoke path is missing: $pathField" }

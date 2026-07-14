@@ -132,6 +132,50 @@ function Write-C6Report {
     })
 }
 
+function Write-TargetInstallReport {
+  param(
+    [string]$Path,
+    [ValidateSet("windows", "linux", "macos")]
+    [string]$Platform,
+    [string]$SourceCommit,
+    [string]$PackageSha256,
+    [string]$EnvironmentKind = "operator-target-workstation"
+  )
+
+  $extension = @{ windows = ".msi"; linux = ".deb"; macos = ".dmg" }[$Platform]
+  $method = @{ windows = "msiexec-install"; linux = "dpkg-install"; macos = "dmg-application-copy" }[$Platform]
+  Write-JsonFile -Path $Path -Value ([ordered]@{
+      schema = "stackchan.desktop-target-install-evidence.v1"
+      status = "installed-and-ready"
+      capturedUtc = "2026-07-13T00:00:00Z"
+      sourceCommit = $SourceCommit
+      platform = $Platform
+      environmentKind = $EnvironmentKind
+      host = [ordered]@{ platform = $Platform; osDescription = "contract fixture"; architecture = "x64" }
+      package = [ordered]@{ name = "stackchan-companion$extension"; bytes = 12345; sha256 = $PackageSha256 }
+      install = [ordered]@{ method = $method; exitCode = 0; installRoot = "/fixture"; installedLauncherPath = "/fixture/Stackchan Companion"; logPath = "fixture.log" }
+      launch = [ordered]@{
+        exitCode = 0
+        probe = [ordered]@{
+          schema = "stackchan.desktop-packaged-runtime-smoke.v1"
+          status = "ready"
+          platform = $Platform
+          runtimePresent = $true
+          pythonAvailable = $true
+          brainScriptAvailable = $true
+          launchContext = "installed-package"
+          scope = "installed-native-package-headless-runtime-probe"
+          substitutesForTargetInstall = $false
+          issues = @()
+        }
+      }
+      scope = "exact-native-package-install-and-headless-launch"
+      targetInstallVerified = $true
+      substitutesForHumanAcceptance = $false
+      issues = @()
+    })
+}
+
 try {
   Set-Location $repoRoot
 
@@ -140,7 +184,7 @@ try {
   if ($templateResult.report.status -ne "pending-desktop-v1-evidence-bundle") {
     throw "Expected placeholder bundle to be pending, got $($templateResult.report.status)."
   }
-  foreach ($id in @("source-commit", "hardware-evidence", "runtime-payload-status", "pc-brain-lab-status", "artifact-windows", "runtime-windows", "desktop-v1-review")) {
+  foreach ($id in @("source-commit", "hardware-evidence", "runtime-payload-status", "pc-brain-lab-status", "artifact-windows", "runtime-windows", "target-install-windows", "desktop-v1-review")) {
     Assert-CheckStatus -Report $templateResult.report -Id $id -Status "pending"
   }
   Write-Host "[ok] placeholder Desktop v1 evidence bundle is pending"
@@ -154,6 +198,9 @@ try {
     windowsRuntimePayloadReport = "reports/desktop_runtime_windows.json"
     macosRuntimePayloadReport = "reports/desktop_runtime_macos.json"
     linuxRuntimePayloadReport = "reports/desktop_runtime_linux.json"
+    windowsTargetInstallReport = "reports/desktop_target_install_windows.json"
+    macosTargetInstallReport = "reports/desktop_target_install_macos.json"
+    linuxTargetInstallReport = "reports/desktop_target_install_linux.json"
     pcBrainDeployCheckReport = "reports/pc_brain_deploy_check.json"
     pcBrainQuietSoakCheckReport = "reports/pc_brain_quiet_soak_check.json"
     voiceSourceReadinessReport = "reports/voice_source_readiness.json"
@@ -181,6 +228,9 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.windowsRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "windows" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("d" * 64) -RuntimeSource "python.org-embed-3.12.0-windows" -ProbedPythonVersion "Python 3.12.0"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.macosRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "macos" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("e" * 64) -RuntimeSource "python.org-embed-3.12.0-macos" -ProbedPythonVersion "Python 3.12.0"
   Write-StatusReport -Path (Join-Path $readyRoot $reports.linuxRuntimePayloadReport) -Schema "stackchan.desktop-python-runtime-payload.v1" -Status "ready" -Platform "linux" -PythonVersion "Python 3.12.0" -RuntimeSha256 ("f" * 64) -RuntimeSource "python.org-embed-3.12.0-linux" -ProbedPythonVersion "Python 3.12.0"
+  Write-TargetInstallReport -Path (Join-Path $readyRoot $reports.windowsTargetInstallReport) -Platform "windows" -SourceCommit $sourceCommit -PackageSha256 ("a" * 64)
+  Write-TargetInstallReport -Path (Join-Path $readyRoot $reports.macosTargetInstallReport) -Platform "macos" -SourceCommit $sourceCommit -PackageSha256 ("b" * 64)
+  Write-TargetInstallReport -Path (Join-Path $readyRoot $reports.linuxTargetInstallReport) -Platform "linux" -SourceCommit $sourceCommit -PackageSha256 ("c" * 64)
   Write-StatusReport -Path (Join-Path $readyRoot $reports.pcBrainDeployCheckReport) -Schema "stackchan.pc-brain-deploy-evidence-check.v1" -Status "pc-brain-deploy-ready" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.pcBrainQuietSoakCheckReport) -Schema "stackchan.pc-brain-quiet-soak-evidence-check.v1" -Status "pc-brain-quiet-soak-ready" -SourceCommit $sourceCommit
   Write-JsonFile -Path (Join-Path $readyRoot $reports.voiceSourceReadinessReport) -Value ([ordered]@{
@@ -200,7 +250,8 @@ try {
 - Source commit: $sourceCommit
 - Overall desktop v1 decision: pass
 - Desktop package artifact decision: pass
-- Managed Python runtime decision: pass
+  - Managed Python runtime decision: pass
+  - Target installation decision: pass
 - C6 GUI/supervisor evidence decision: pass
 - PC Brain deploy audio decision: pass
 - PC Brain quiet-soak decision: pass
@@ -221,7 +272,7 @@ try {
   if ($readyResult.report.windowsMsiSha256 -ne ("a" * 64) -or $readyResult.report.macosDmgSha256 -ne ("b" * 64) -or $readyResult.report.linuxDebSha256 -ne ("c" * 64)) {
     throw "Expected Desktop v1 bundle check report to emit desktop package artifact hashes."
   }
-  foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "pc-brain-deploy", "pc-brain-quiet-soak", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
+  foreach ($id in @("artifact-windows", "artifact-macos", "artifact-linux", "companion-readiness", "c6-brain-supervisor", "c6-gui-rehearsal", "runtime-windows", "runtime-macos", "runtime-linux", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "target-install-windows", "target-install-macos", "target-install-linux", "pc-brain-deploy", "pc-brain-quiet-soak", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-ready", "voice-source-commit-match", "desktop-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Desktop v1 evidence bundle is accepted"
@@ -256,6 +307,26 @@ try {
   Assert-CheckStatus -Report $runtimePlatformMismatchResult.report -Id "runtime-macos-summary" -Status "fail"
   Write-Host "[ok] mismatched Desktop v1 runtime payload platform is rejected"
 
+  $targetInstallHashMismatchRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $targetInstallHashMismatchRoot -Recurse -Force
+  Write-TargetInstallReport -Path (Join-Path $targetInstallHashMismatchRoot $reports.windowsTargetInstallReport) -Platform "windows" -SourceCommit $sourceCommit -PackageSha256 ("0" * 64)
+  $targetInstallHashMismatchResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $targetInstallHashMismatchRoot
+  if ([int]$targetInstallHashMismatchResult.exitCode -eq 0) {
+    throw "Expected stale Windows target-install package hash to fail."
+  }
+  Assert-CheckStatus -Report $targetInstallHashMismatchResult.report -Id "target-install-windows" -Status "fail"
+  Write-Host "[ok] stale Desktop v1 target-install package hash is rejected"
+
+  $targetInstallCiRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $targetInstallCiRoot -Recurse -Force
+  Write-TargetInstallReport -Path (Join-Path $targetInstallCiRoot $reports.linuxTargetInstallReport) -Platform "linux" -SourceCommit $sourceCommit -PackageSha256 ("c" * 64) -EnvironmentKind "ci-native-runner"
+  $targetInstallCiResult = Invoke-DesktopV1BundleCheck -EvidenceRoot $targetInstallCiRoot
+  if ([int]$targetInstallCiResult.exitCode -eq 0) {
+    throw "Expected CI native-runner target-install evidence to fail final Desktop v1 acceptance."
+  }
+  Assert-CheckStatus -Report $targetInstallCiResult.report -Id "target-install-linux" -Status "fail"
+  Write-Host "[ok] CI install rehearsal cannot replace Desktop v1 operator target evidence"
+
   $readinessMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $readinessMismatchRoot -Recurse -Force
   Write-StatusReport -Path (Join-Path $readinessMismatchRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit ("d" * 40)
@@ -276,7 +347,8 @@ try {
 - Source commit: $("d" * 40)
 - Overall desktop v1 decision: pass
 - Desktop package artifact decision: pass
-- Managed Python runtime decision: pass
+  - Managed Python runtime decision: pass
+  - Target installation decision: pass
 - C6 GUI/supervisor evidence decision: pass
 - PC Brain deploy audio decision: pass
 - PC Brain quiet-soak decision: pass

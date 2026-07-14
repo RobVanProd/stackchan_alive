@@ -271,6 +271,13 @@ three desktop operating systems.
 6. `tools/verify_published_release.ps1` downloads the release and checks the tag commit,
    expected asset set, hashes, package evidence, and upload-signing evidence.
 
+The tag is intentionally created as a GitHub prerelease. After it exists,
+`tools/install_desktop_companion_package.ps1` installs the exact downloaded MSI, DEB, or DMG on a
+matching workstation and launches the installed managed runtime. The standalone checker binds that
+report to the package SHA-256 and source commit. The final Desktop v1 aggregate requires one
+`operator-target-workstation` report for every desktop OS; CI rehearsal and extraction reports are
+not accepted as substitutes, and human acceptance remains a separate review item.
+
 Repository secrets required before the first public tag:
 
 - `STACKCHAN_ANDROID_KEYSTORE_B64`
@@ -416,9 +423,10 @@ and benchmark gates as the PC path before the UI may label it a real brain candi
 Until then the label stays "fake engine".
 
 **C8 — Distribution hardening.**
-The native all-platform tag workflow and strict evidence contract are source-complete. Remaining
-work is upload-keystore provisioning, native tag evidence, target installs, platform signing/
-notarization decisions, and the first end-to-end tagged release. Conveyor or another updater
+The native all-platform tag workflow, strict package evidence, and operator target-install
+collector/checker contracts are source-complete. Remaining work is upload-keystore provisioning,
+native tag evidence, executing the three target installs and human reviews, platform signing/
+notarization decisions, and the first end-to-end tagged prerelease and promotion. Conveyor or another updater
 may be evaluated only after the native packages are accepted.
 *Gate C8:* one tag publishes verified APK/AAB/MSI/DEB/DMG artifacts, the Android artifacts
 are upload-key signed, each desktop package contains its validated managed runtime, each package

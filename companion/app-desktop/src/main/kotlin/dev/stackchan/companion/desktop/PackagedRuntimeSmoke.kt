@@ -24,6 +24,7 @@ internal data class PackagedRuntimeSmokeReport(
     val pythonVersion: String,
     val brainScript: Path,
     val brainScriptAvailable: Boolean,
+    val launchContext: String,
     val issues: List<String>,
 ) {
     fun toJson(): String =
@@ -43,7 +44,15 @@ internal data class PackagedRuntimeSmokeReport(
                 put("pythonVersion", pythonVersion)
                 put("brainScript", brainScript.toString())
                 put("brainScriptAvailable", brainScriptAvailable)
-                put("scope", "extracted-native-package-headless-runtime-probe")
+                put("launchContext", launchContext)
+                put(
+                    "scope",
+                    when (launchContext) {
+                        "installed-package" -> "installed-native-package-headless-runtime-probe"
+                        "package-extraction" -> "extracted-native-package-headless-runtime-probe"
+                        else -> "invalid-native-package-headless-runtime-probe"
+                    },
+                )
                 put("substitutesForTargetInstall", false)
                 put("issues", JsonArray(issues.map(::JsonPrimitive)))
             },
@@ -53,6 +62,7 @@ internal data class PackagedRuntimeSmokeReport(
 internal fun inspectPackagedRuntimeSmoke(
     appHome: Path = desktopApplicationHome(),
     brainScript: Path = defaultDesktopBrainScriptPath(),
+    launchContext: String = "package-extraction",
 ): PackagedRuntimeSmokeReport {
     val normalizedAppHome = appHome.toAbsolutePath().normalize()
     val expectedRuntimeRoot = normalizedAppHome.resolve("python-runtime")
@@ -65,7 +75,7 @@ internal fun inspectPackagedRuntimeSmoke(
             searchedCommands = listOf(pythonPath.toString()),
         )
     }
-    return buildPackagedRuntimeSmokeReport(normalizedAppHome, brainScript, managed, python)
+    return buildPackagedRuntimeSmokeReport(normalizedAppHome, brainScript, managed, python, launchContext)
 }
 
 internal fun buildPackagedRuntimeSmokeReport(
@@ -73,6 +83,7 @@ internal fun buildPackagedRuntimeSmokeReport(
     brainScript: Path,
     managed: DesktopManagedPythonRuntimeStatus,
     python: DesktopPythonRuntimeStatus?,
+    launchContext: String = "package-extraction",
 ): PackagedRuntimeSmokeReport {
     val normalizedAppHome = appHome.toAbsolutePath().normalize()
     val expectedRuntimeRoot = normalizedAppHome.resolve("python-runtime")
@@ -86,6 +97,9 @@ internal fun buildPackagedRuntimeSmokeReport(
         }
         if (!Files.isRegularFile(brainScript)) {
             add("Packaged brain entry point was not available.")
+        }
+        if (launchContext !in PACKAGED_RUNTIME_LAUNCH_CONTEXTS) {
+            add("Packaged runtime launch context is invalid: $launchContext")
         }
     }
     return PackagedRuntimeSmokeReport(
@@ -102,16 +116,22 @@ internal fun buildPackagedRuntimeSmokeReport(
         pythonVersion = python?.version.orEmpty(),
         brainScript = brainScript.toAbsolutePath().normalize(),
         brainScriptAvailable = Files.isRegularFile(brainScript),
+        launchContext = launchContext,
         issues = issues,
     )
 }
 
-internal fun writePackagedRuntimeSmoke(outputPath: Path): PackagedRuntimeSmokeReport {
-    val report = inspectPackagedRuntimeSmoke()
+internal fun writePackagedRuntimeSmoke(
+    outputPath: Path,
+    launchContext: String = "package-extraction",
+): PackagedRuntimeSmokeReport {
+    val report = inspectPackagedRuntimeSmoke(launchContext = launchContext)
     outputPath.toAbsolutePath().normalize().parent?.let(Files::createDirectories)
     Files.writeString(outputPath, report.toJson())
     return report
 }
+
+private val PACKAGED_RUNTIME_LAUNCH_CONTEXTS = setOf("package-extraction", "installed-package")
 
 private fun desktopHostPlatform(): String {
     val osName = System.getProperty("os.name").lowercase()

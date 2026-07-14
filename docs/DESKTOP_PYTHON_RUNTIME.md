@@ -129,15 +129,42 @@ Keep the Windows extraction root short; MSI administrative extraction can still 
 legacy Windows path limit when both the checkout and destination are deeply nested. CI uses
 `RUNNER_TEMP`, and omitting `-PackageExtractionRoot` creates a unique short temporary root.
 
+## Operator Target Installation Evidence
+
+After the tag workflow creates its prerelease artifacts, install each exact package on a real
+workstation running the matching operating system. Run Windows from an elevated PowerShell
+session; the Linux helper requires root or passwordless `sudo`; macOS copies the application from
+the mounted DMG into `~/Applications` unless `-InstallRoot` is supplied:
+
+```powershell
+.\tools\install_desktop_companion_package.ps1 -Platform windows -PackagePath <msi> -SourceCommit <40-character-commit> -OutputDir output\desktop-target-install\windows -Json
+.\tools\install_desktop_companion_package.ps1 -Platform linux -PackagePath <deb> -SourceCommit <40-character-commit> -OutputDir output\desktop-target-install\linux -Json
+.\tools\install_desktop_companion_package.ps1 -Platform macos -PackagePath <dmg> -SourceCommit <40-character-commit> -OutputDir output\desktop-target-install\macos -Json
+```
+
+Each helper performs the native install, launches the installed application with the managed
+runtime probe, and writes `stackchan.desktop-target-install-evidence.v1`. Validate each report
+against the release artifact hash and commit before copying it into the desktop v1 packet:
+
+```powershell
+.\tools\check_desktop_target_install_evidence.ps1 -EvidencePath <platform-target-install.json> -ExpectedPlatform <windows|linux|macos> -ExpectedPackageSha256 <artifact-sha256> -ExpectedSourceCommit <40-character-commit> -RequireOperatorTarget -Json
+.\tools\test_desktop_target_install_evidence_contract.cmd
+```
+
+`ci-native-runner` reports may be useful installer rehearsals, but the final desktop v1 gate
+accepts only `operator-target-workstation` reports. Extraction evidence cannot satisfy this gate,
+and successful installed-runtime probing does not substitute for the separate human review of
+launch UX, display, audio, robot connection, and uninstall behavior.
+
 The desktop app exports this state under `brain_service.python_runtime.managed_runtime` in
 diagnostics and C6 brain-supervisor evidence.
 
 ## Desktop V1 Evidence Bundle
 
 After Windows, macOS, and Linux runtime payloads are prepared and checked, copy those
-checker JSON outputs into the desktop aggregate evidence packet together with C6
-supervisor/GUI evidence, package artifact hashes, PC Brain deploy audio proof, quiet-soak
-proof, production voice-source readiness, and `DESKTOP_V1_REVIEW.md`:
+checker JSON outputs and the three operator target-install reports into the desktop aggregate
+evidence packet together with C6 supervisor/GUI evidence, package artifact hashes, PC Brain deploy
+audio proof, quiet-soak proof, production voice-source readiness, and `DESKTOP_V1_REVIEW.md`:
 
 ```powershell
 .\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -WriteTemplate

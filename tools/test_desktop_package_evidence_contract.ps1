@@ -145,6 +145,9 @@ try {
       pythonAvailable = $true
       pythonVersion = "Python 3.12.4"
       brainScriptAvailable = $true
+      launchContext = "package-extraction"
+      scope = "extracted-native-package-headless-runtime-probe"
+      substitutesForTargetInstall = $false
       issues = @()
     }
     scope = "exact-native-package-extraction-and-headless-launch"
@@ -167,6 +170,18 @@ try {
     throw "Complete desktop package evidence did not preserve the processed and installer runtime proof."
   }
   Write-Host "[ok] complete installer-derived desktop package evidence is accepted"
+
+  $launch.probe.launchContext = "installed-package"
+  $launch.probe.scope = "installed-native-package-headless-runtime-probe"
+  $launch | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $launchPath -Encoding UTF8
+  $wrongLaunchContext = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "wrong-launch-context.json")
+  if ($wrongLaunchContext.exitCode -eq 0 -or $wrongLaunchContext.output -notmatch "probe context is invalid") {
+    throw "Installed-package probe context was accepted as extraction evidence."
+  }
+  Write-Host "[ok] installed launch context cannot replace package-extraction evidence"
+  $launch.probe.launchContext = "package-extraction"
+  $launch.probe.scope = "extracted-native-package-headless-runtime-probe"
+  $launch | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $launchPath -Encoding UTF8
 
   Set-Content -LiteralPath (Join-Path $installerRuntimeRoot "Lib/runtime.txt") -Value "tampered installer runtime" -Encoding ASCII
   $tamperedInstaller = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "tampered-installer.json")
