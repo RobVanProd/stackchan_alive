@@ -6,6 +6,7 @@ import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -205,6 +206,24 @@ class DesktopBrainSupervisorTest {
         assertEquals(runtimeRoot.resolve("stackchan-python-runtime.json"), present.manifestPath)
         assertEquals(pythonPath, present.pythonPath)
         assertTrue(present.detail.contains("Managed Python runtime payload present"))
+    }
+
+    @Test
+    fun managedPythonRuntimeExecutableBitIsRestoredOnUnix() {
+        if (System.getProperty("os.name").lowercase().contains("win")) return
+        val runtimeRoot = Files.createTempDirectory("stackchan-python-runtime")
+        try {
+            val pythonPath = runtimeRoot.resolve("bin").resolve("python3")
+            Files.createDirectories(pythonPath.parent)
+            Files.writeString(pythonPath, "#!/usr/bin/env python3\n")
+            pythonPath.toFile().setExecutable(false, false)
+
+            assertFalse(pythonPath.toFile().canExecute())
+            assertTrue(ensureDesktopRuntimeExecutable(pythonPath))
+            assertTrue(pythonPath.toFile().canExecute())
+        } finally {
+            runtimeRoot.toFile().deleteRecursively()
+        }
     }
 
     private fun testConfig(script: Path, maxLogLines: Int = 20): DesktopBrainSupervisorConfig =

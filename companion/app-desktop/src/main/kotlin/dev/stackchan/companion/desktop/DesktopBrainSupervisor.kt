@@ -199,6 +199,7 @@ private fun defaultLanServiceArguments(
 
 internal fun resolveDesktopBrainPythonCommand(): String =
     desktopBrainPythonCandidates().firstOrNull { candidate ->
+        Path.of(candidate).takeIf(Files::isRegularFile)?.let(::ensureDesktopRuntimeExecutable)
         inspectDesktopPythonRuntime(
             pythonCommand = candidate,
             scriptPath = defaultDesktopBrainScriptPath(),
@@ -259,6 +260,21 @@ internal fun desktopBrainManagedPythonBinaryCandidates(root: Path): List<Path> {
         normalizedRoot.resolve("python"),
     )
     return if ("win" in osName) windows + unix else unix + windows
+}
+
+internal fun ensureDesktopRuntimeExecutable(path: Path): Boolean {
+    if (System.getProperty("os.name").lowercase().contains("win")) {
+        return true
+    }
+    val normalized = path.toAbsolutePath().normalize()
+    if (!Files.isRegularFile(normalized)) {
+        return false
+    }
+    val file = normalized.toFile()
+    if (!file.canExecute()) {
+        file.setExecutable(true, false)
+    }
+    return file.canExecute()
 }
 
 internal fun inspectDesktopManagedPythonRuntime(

@@ -68,6 +68,7 @@ internal fun inspectPackagedRuntimeSmoke(
     val expectedRuntimeRoot = normalizedAppHome.resolve("python-runtime")
     val managed = inspectDesktopManagedPythonRuntime(appHome = normalizedAppHome)
     val python = managed.pythonPath?.let { pythonPath ->
+        ensureDesktopRuntimeExecutable(pythonPath)
         inspectDesktopPythonRuntime(
             pythonCommand = pythonPath.toString(),
             scriptPath = brainScript,
