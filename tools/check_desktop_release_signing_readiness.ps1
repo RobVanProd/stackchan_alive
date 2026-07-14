@@ -155,11 +155,18 @@ function Get-KeySummary {
     if ($Certificate.PublicKey.Oid.Value -eq "1.2.840.113549.1.1.1") {
       $key = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($Certificate)
       $algorithm = "RSA"
+      if ($null -ne $key) {
+        $parameters = $key.ExportParameters($false)
+        $bits = [int]($parameters.Modulus.Length * 8)
+      }
     } elseif ($Certificate.PublicKey.Oid.Value -eq "1.2.840.10045.2.1") {
       $key = [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPublicKey($Certificate)
       $algorithm = "ECDSA"
+      if ($null -ne $key) {
+        $parameters = $key.ExportParameters($false)
+        $bits = [int]($parameters.Q.X.Length * 8)
+      }
     }
-    if ($null -ne $key) { $bits = [int]$key.KeySize }
   } finally {
     if ($null -ne $key) { $key.Dispose() }
   }

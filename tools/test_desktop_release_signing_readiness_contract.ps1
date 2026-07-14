@@ -64,6 +64,7 @@ foreach ($pattern in @(
   "SignTool could not verify the temporary Authenticode signing probe",
   "codesign could not verify the temporary Developer ID signing probe",
   "does not chain to a root trusted by the native host",
+  "ExportParameters",
   '"--options", "runtime"'
 )) {
   if ($checkerText -notmatch [regex]::Escape($pattern)) {
