@@ -463,6 +463,10 @@ $requiredFiles = @(
   "tools/check_android_toolchain.ps1",
   "tools/check_android_play_release_readiness.cmd",
   "tools/check_android_play_release_readiness.ps1",
+  "tools/check_privacy_policy_deployment.cmd",
+  "tools/check_privacy_policy_deployment.ps1",
+  "tools/test_privacy_policy_deployment_contract.cmd",
+  "tools/test_privacy_policy_deployment_contract.ps1",
   "tools/test_android_upload_signing_contract.cmd",
   "tools/test_android_upload_signing_contract.ps1",
   "tools/test_android_emulator_launch.cmd",
@@ -1524,6 +1528,20 @@ $androidPlayStoreEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePat
 foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "internal-testing-ready", "applicationId", "releaseAabSha256", "releaseAabSha256 =", "versionName =", "versionCode =", "playSigningEnabled", "playConsoleReleaseName", "testerGroup", "uploadedAtUtc", "play-console-release", "tester-group", "uploaded-at-utc", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
   if ($androidPlayStoreEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_store_evidence.ps1 missing Android Play Store evidence logic: $pattern"
+  }
+}
+
+$privacyPolicyDeploymentCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_privacy_policy_deployment.ps1") -Raw
+foreach ($pattern in @("stackchan.privacy-policy-deployment-check.v1", "privacy-policy-deployment-ready", "live-https", "Published policy byte identity", "Published policy disclosures", "sourceSha256", "servedSha256")) {
+  if ($privacyPolicyDeploymentCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_privacy_policy_deployment.ps1 missing privacy-policy deployment verification logic: $pattern"
+  }
+}
+
+$privacyPolicyDeploymentContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_privacy_policy_deployment_contract.ps1") -Raw
+foreach ($pattern in @("exact published privacy policy bytes are accepted", "tampered published privacy policy bytes are rejected", "noncanonical privacy policy URL is rejected", "stale privacy policy source hash is rejected", "pending privacy policy deployment status is rejected", "5/5")) {
+  if ($privacyPolicyDeploymentContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_privacy_policy_deployment_contract.ps1 missing privacy-policy deployment contract coverage: $pattern"
   }
 }
 
@@ -3446,6 +3464,17 @@ foreach ($pattern in @("Stackchan Companion Privacy Policy", "July 14, 2026", "d
   if ($privacySite -notmatch [regex]::Escape($pattern)) {
     throw "site/privacy/index.html missing expected public privacy-policy content: $pattern"
   }
+}
+
+$privacyDeploymentRecord = Get-Content -LiteralPath (Join-PackagePath "docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json") -Raw | ConvertFrom-Json
+if ($privacyDeploymentRecord.schema -ne "stackchan.privacy-policy-deployment.v1" -or
+    $privacyDeploymentRecord.status -ne "deployed" -or
+    $privacyDeploymentRecord.canonicalUrl -ne "https://robvanprod.github.io/stackchan_alive/privacy/" -or
+    $privacyDeploymentRecord.sourcePath -ne "site/privacy/index.html" -or
+    $privacyDeploymentRecord.sourceSha256 -ne $privacyDeploymentRecord.servedSha256 -or
+    $privacyDeploymentRecord.pagesBuildStatus -ne "built" -or
+    -not [bool]$privacyDeploymentRecord.httpsEnforced) {
+  throw "PRIVACY_POLICY_DEPLOYMENT.json does not bind a built HTTPS deployment to the tracked policy source."
 }
 
 $pagesWorkflow = Get-Content -LiteralPath (Join-PackagePath "provenance/pages.yml") -Raw

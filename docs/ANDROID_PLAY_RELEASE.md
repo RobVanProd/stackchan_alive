@@ -154,7 +154,16 @@ Prepared source-controlled assets:
 - Play-facing privacy policy: `docs/ANDROID_PLAY_PRIVACY_POLICY.md`
 - Static privacy site source: `site/privacy/index.html`
 - Canonical privacy URL: https://robvanprod.github.io/stackchan_alive/privacy/
+- Public deployment record: `docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json`
+- Live deployment verifier: `tools/check_privacy_policy_deployment.ps1 -Json`
 - Pages deployment workflow: `.github/workflows/pages.yml`
+
+The canonical URL was first deployed through the isolated `gh-pages` branch so the reviewed
+policy could be hosted without merging the broader release-candidate branch. GitHub Pages build
+`1094346889` published deployment commit `49cefe092920c0a12da50896356394d380df6904` and the served
+bytes match `site/privacy/index.html` at SHA-256
+`28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47`. After the Pages workflow
+lands on `main`, switch the Pages build source to GitHub Actions and refresh the deployment record.
 
 Screenshots still need to be captured from the final phone build after physical
 robot validation, because the store screenshots should show a real connected
@@ -198,8 +207,8 @@ Use `docs/ANDROID_PLAY_POLICY_DECLARATIONS.md` as the source-side draft for the
 Play Console Data safety form, foreground-service declaration, and permission
 review. Use `docs/ANDROID_PLAY_PRIVACY_POLICY.md` as the source-side privacy
 policy review record and `site/privacy/index.html` as the deployable public page.
-Before upload, compare both against the exact release build, verify the canonical
-HTTPS URL after a successful Pages deployment from the default branch, and copy
+Before upload, compare both against the exact release build, run
+`tools/check_privacy_policy_deployment.ps1 -Json` against the canonical HTTPS URL, and copy
 the final reviewed answers into the Play evidence packet. The Android and desktop
 apps expose that same canonical URL from their Settings surface.
 
@@ -234,9 +243,9 @@ Do not promote the app beyond internal testing until these are complete:
 - Physical robot connected-session evidence is captured.
 - Android screen-off bridge soak evidence is captured.
 - Store screenshots are captured from the final Android build.
-- The privacy policy is hosted from the final reviewed
-  `docs/ANDROID_PLAY_PRIVACY_POLICY.md` content and the URL is recorded in the
-  Play evidence packet.
+- `tools/check_privacy_policy_deployment.ps1 -Json` reports
+  `privacy-policy-deployment-ready` for the final reviewed policy bytes, and the URL is recorded
+  in the Play evidence packet.
 - Privacy/data-safety answers are reviewed against actual network, audio, and
   diagnostics behavior.
 - Microphone permission copy, denial behavior, and transcript handling are verified from

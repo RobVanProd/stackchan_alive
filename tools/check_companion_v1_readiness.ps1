@@ -940,6 +940,24 @@ Test-TextEvidence `
   -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")
 
 Test-TextEvidence `
+  -Id "android-play-privacy-deployment-record" `
+  -Name "Published privacy-policy deployment record" `
+  -RelativePaths @("docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json") `
+  -Patterns @("stackchan.privacy-policy-deployment.v1", "deployed", "https://robvanprod.github.io/stackchan_alive/privacy/", "site/privacy/index.html", "afbebbd3429e00a6f76cb238788ce7664f1b6fda", "49cefe092920c0a12da50896356394d380df6904", "1094346889", "28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47", "httpsEnforced")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-deployment-checker" `
+  -Name "Published privacy-policy deployment checker" `
+  -RelativePaths @("tools/check_privacy_policy_deployment.ps1", "provenance/tools/check_privacy_policy_deployment.ps1") `
+  -Patterns @("stackchan.privacy-policy-deployment-check.v1", "privacy-policy-deployment-ready", "live-https", "Published policy byte identity", "Published policy disclosures", "sourceSha256", "servedSha256")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-deployment-contract" `
+  -Name "Privacy-policy deployment contract" `
+  -RelativePaths @("tools/test_privacy_policy_deployment_contract.ps1", "provenance/tools/test_privacy_policy_deployment_contract.ps1") `
+  -Patterns @("exact published privacy policy bytes are accepted", "tampered published privacy policy bytes are rejected", "noncanonical privacy policy URL is rejected", "stale privacy policy source hash is rejected", "pending privacy policy deployment status is rejected", "5/5")
+
+Test-TextEvidence `
   -Id "android-play-privacy-pages-workflow" `
   -Name "Privacy-policy Pages deployment workflow" `
   -RelativePaths @(".github/workflows/pages.yml", "provenance/pages.yml") `

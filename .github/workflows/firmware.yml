@@ -31,12 +31,18 @@ jobs:
               - 'docs/ANDROID_COMPANION_SPEC.md'
               - 'docs/ANDROID_COMPANION_TEST_PLAN.md'
               - 'docs/ANDROID_PLAY_RELEASE.md'
+              - 'docs/ANDROID_PLAY_POLICY_DECLARATIONS.md'
+              - 'docs/ANDROID_PLAY_PRIVACY_POLICY.md'
+              - 'docs/store-assets/play/**'
+              - 'site/**'
               - 'docs/BRIDGE_PROTOCOL.md'
               - 'docs/COMPANION_CROSS_PLATFORM_PLAN.md'
               - 'docs/RELEASE_PROCESS.md'
               - 'docs/RELEASE_QUICKSTART.md'
               - 'tools/check_android_toolchain.*'
               - 'tools/check_android_play_release_readiness.*'
+              - 'tools/check_privacy_policy_deployment.*'
+              - 'tools/test_privacy_policy_deployment_contract.*'
               - 'tools/test_android_upload_signing_contract.*'
               - 'tools/test_android_emulator_launch.*'
               - 'tools/check_android_emulator_release_evidence.*'
@@ -203,6 +209,10 @@ jobs:
       - name: Run Android Play Store evidence contract
         shell: pwsh
         run: ./tools/test_android_play_store_evidence_contract.ps1
+
+      - name: Run privacy policy deployment contract
+        shell: pwsh
+        run: ./tools/test_privacy_policy_deployment_contract.ps1
 
       - name: Run Android v1 evidence bundle contract
         shell: pwsh

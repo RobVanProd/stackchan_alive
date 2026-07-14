@@ -23,9 +23,13 @@ Authoritative policy references checked for this source review:
   https://robvanprod.github.io/stackchan_alive/privacy/. The hosted page source
   is `site/privacy/index.html`; it is reviewed with
   `docs/ANDROID_PLAY_PRIVACY_POLICY.md` and names the Android package
-  `dev.stackchan.companion`. The URL remains a deployment gate until the Pages
-  workflow has completed from the default branch and an HTTPS fetch verifies
-  the published content.
+  `dev.stackchan.companion`. GitHub Pages build `1094346889` published the exact
+  source bytes from commit `afbebbd3429e00a6f76cb238788ce7664f1b6fda` on
+  July 14, 2026. The HTTPS response returned `200` and matched source SHA-256
+  `28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47`.
+  `docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json` preserves the public
+  deployment identity; `tools/check_privacy_policy_deployment.ps1 -Json`
+  revalidates the current URL and exact bytes before a Play upload.
 - Ads: no ads.
 - App access: no login account. Access requires a Stack-chan robot on the same
   LAN for the meaningful connected flows. Review notes must explain that the app

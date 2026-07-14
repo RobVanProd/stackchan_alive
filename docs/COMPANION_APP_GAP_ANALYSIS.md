@@ -126,8 +126,11 @@ current v1 companion branch.
   `stackchan://pair` ticket intentionally carries only the bridge URL and pairing fields,
   not Wi-Fi credentials.
 - G7 Play submission remains pending on upload-signing credentials, developer verification,
-  verified deployment of the canonical privacy policy URL, screenshots, Play Console upload,
-  and closed testing.
+  screenshots, Play Console upload, and closed testing. The canonical privacy policy deployment
+  gate is now closed: GitHub Pages build `1094346889` serves the exact reviewed source bytes at
+  https://robvanprod.github.io/stackchan_alive/privacy/, and
+  `tools/check_privacy_policy_deployment.ps1` verifies HTTPS `200`, canonical final URL, source
+  SHA-256, and required disclosures against the tracked deployment record.
   Release tasks now fail closed when upload-key properties are absent; debug signing requires
   the explicit `stackchan.allowLabDebugReleaseSigning` Gradle property. The tag workflow consumes
   four `STACKCHAN_ANDROID_*` Actions secrets, builds both APK and AAB, and the release evidence
@@ -147,9 +150,9 @@ current v1 companion branch.
   be explicitly marked `internal-testing-ready` with the Play Console release name, tester
   group, and UTC upload timestamp for the exact uploaded build. The Android v1 aggregate
   gate now rejects Play evidence whose uploaded `applicationId`, `versionName`, or
-  `versionCode` does not match the target-phone APK install report. Those answers, hosted
-  privacy URL deployment, release identity fields, and screenshots still must be verified
-  against the exact uploaded build before submission.
+  `versionCode` does not match the target-phone APK install report. The policy deployment must be
+  rechecked, and the data-safety answers, release identity fields, and screenshots still must be
+  verified against the exact uploaded build before submission.
 - G8 Android field diagnostics export is partially closed. Android can now export
   `stackchan.android.diagnostics-export.v1` JSON from live bridge, robot, trust, saved-robot,
   and Gemma model state to `ANDROID_DIAGNOSTICS_EXPORT.json` and open the native share sheet.
