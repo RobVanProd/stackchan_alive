@@ -35,7 +35,20 @@ $readinessWorkflow = Get-Content -LiteralPath $readinessWorkflowPath -Raw
 foreach ($pattern in @(
   "workflow_dispatch",
   "contents: read",
+  "id-token: write",
+  "environment: windows-code-signing",
   "check_desktop_release_signing_readiness.ps1",
+  "STACKCHAN_WINDOWS_SIGNING_PROVIDER",
+  "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT",
+  "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT",
+  "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE",
+  "STACKCHAN_AZURE_CLIENT_ID",
+  "STACKCHAN_AZURE_TENANT_ID",
+  "STACKCHAN_AZURE_SUBSCRIPTION_ID",
+  "azure/login@v3",
+  "azure/artifact-signing-action@v2",
+  "http://timestamp.acs.microsoft.com",
+  "staticClientSecret = `$false",
   "STACKCHAN_WINDOWS_PFX_B64",
   "STACKCHAN_WINDOWS_PFX_PASSWORD",
   "STACKCHAN_MACOS_CERTIFICATE_B64",
@@ -51,7 +64,7 @@ foreach ($pattern in @(
     throw "Manual signing readiness workflow is missing: $pattern"
   }
 }
-foreach ($forbidden in @("gh release", "upload-artifact", "contents: write")) {
+foreach ($forbidden in @("gh release", "upload-artifact", "contents: write", "AZURE_CLIENT_SECRET")) {
   if ($readinessWorkflow -match [regex]::Escape($forbidden)) {
     throw "Manual signing readiness workflow must not publish artifacts or releases: $forbidden"
   }
@@ -75,13 +88,36 @@ $passCount++
 Write-Host "[PASS] native desktop credential checks sign and verify temporary executables"
 
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
-foreach ($pattern in @("Validate production desktop signing credentials", "check_desktop_release_signing_readiness.ps1", "RequireNativeToolchain", "ValidateAppleNotaryCredentials")) {
+foreach ($pattern in @(
+  "Validate production desktop signing credentials",
+  "check_desktop_release_signing_readiness.ps1",
+  "RequireNativeToolchain",
+  "ValidateAppleNotaryCredentials",
+  "environment: windows-code-signing",
+  "companion-windows-sign",
+  "companion-desktop-unsigned-windows",
+  "Upload signed Windows release input",
+  "STACKCHAN_WINDOWS_SIGNING_PROVIDER",
+  "azure/login@v3",
+  "azure/artifact-signing-action@v2",
+  "STACKCHAN_WINDOWS_MSI_PATH",
+  "Get-AuthenticodeSignature",
+  "TimeStamperCertificate",
+  "http://timestamp.acs.microsoft.com",
+  "Authenticode sign Windows package with PFX fallback"
+)) {
   if ($releaseWorkflow -notmatch [regex]::Escape($pattern)) {
     throw "Tagged release workflow is missing desktop signing preflight: $pattern"
   }
 }
+if ($releaseWorkflow -match [regex]::Escape("AZURE_CLIENT_SECRET")) {
+  throw "Tagged release workflow must use GitHub OIDC rather than an Azure client secret."
+}
+if ([regex]::Matches($releaseWorkflow, [regex]::Escape("environment: windows-code-signing")).Count -ne 1) {
+  throw "Only the isolated Windows signing job may use the windows-code-signing environment."
+}
 $passCount++
-Write-Host "[PASS] tagged release runs native desktop signing preflight"
+Write-Host "[PASS] tagged release runs native desktop signing preflight with secretless Azure Artifact Signing and explicit PFX fallback"
 
 $firmwareWorkflowPath = Join-Path $repoRoot ".github/workflows/firmware.yml"
 $firmwareWorkflow = Get-Content -LiteralPath $firmwareWorkflowPath -Raw

@@ -60,20 +60,119 @@ jobs:
 
   windows-authenticode:
     runs-on: windows-latest
+    environment: windows-code-signing
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate Windows Authenticode credentials
+      - name: Select Windows signing provider
         shell: pwsh
         env:
+          STACKCHAN_WINDOWS_SIGNING_PROVIDER: ${{ vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER }}
+          STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
+          STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
+          STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE }}
+          STACKCHAN_AZURE_CLIENT_ID: ${{ vars.STACKCHAN_AZURE_CLIENT_ID }}
+          STACKCHAN_AZURE_TENANT_ID: ${{ vars.STACKCHAN_AZURE_TENANT_ID }}
+          STACKCHAN_AZURE_SUBSCRIPTION_ID: ${{ vars.STACKCHAN_AZURE_SUBSCRIPTION_ID }}
           STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
           STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
         run: |
-          ./tools/check_desktop_release_signing_readiness.ps1 `
-            -Platform windows `
-            -RequireReady `
-            -RequireNativeToolchain `
-            -Json
+          $provider = ([string]$env:STACKCHAN_WINDOWS_SIGNING_PROVIDER).Trim()
+          if ($provider -notin @("azure-artifact-signing", "pfx")) {
+            throw "STACKCHAN_WINDOWS_SIGNING_PROVIDER must be azure-artifact-signing or pfx."
+          }
+          if ($provider -eq "azure-artifact-signing") {
+            $required = @(
+              "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT",
+              "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT",
+              "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE",
+              "STACKCHAN_AZURE_CLIENT_ID",
+              "STACKCHAN_AZURE_TENANT_ID",
+              "STACKCHAN_AZURE_SUBSCRIPTION_ID"
+            )
+            foreach ($name in $required) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                throw "$name is required for Azure Artifact Signing readiness."
+              }
+            }
+            $endpoint = $null
+            if (-not [Uri]::TryCreate($env:STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT, [UriKind]::Absolute, [ref]$endpoint) -or
+                $endpoint.Scheme -ne "https" -or
+                $endpoint.Host -notmatch '^[a-z0-9-]+\.codesigning\.azure\.net$') {
+              throw "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT must be an HTTPS Azure Artifact Signing endpoint."
+            }
+            foreach ($name in @("STACKCHAN_AZURE_CLIENT_ID", "STACKCHAN_AZURE_TENANT_ID", "STACKCHAN_AZURE_SUBSCRIPTION_ID")) {
+              $value = [Environment]::GetEnvironmentVariable($name)
+              $parsed = [guid]::Empty
+              if (-not [guid]::TryParse($value, [ref]$parsed)) { throw "$name must be a GUID." }
+            }
+          } else {
+            ./tools/check_desktop_release_signing_readiness.ps1 `
+              -Platform windows `
+              -RequireReady `
+              -RequireNativeToolchain `
+              -Json
+          }
+
+      - name: Build Azure Artifact Signing readiness probe
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'azure-artifact-signing'
+        shell: pwsh
+        run: |
+          $probeRoot = Join-Path $env:RUNNER_TEMP "stackchan-windows-signing-probe"
+          $publishRoot = Join-Path $probeRoot "publish"
+          dotnet new console --name stackchan-windows-signing-probe --output $probeRoot --framework net8.0 --force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish $probeRoot --configuration Release --runtime win-x64 --self-contained false --output $publishRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $probe = Get-Item (Join-Path $publishRoot "stackchan-windows-signing-probe.exe")
+          "STACKCHAN_WINDOWS_SIGNING_PROBE=$($probe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Azure login with GitHub OIDC
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'azure-artifact-signing'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.STACKCHAN_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.STACKCHAN_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.STACKCHAN_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign readiness probe with Azure Artifact Signing
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'azure-artifact-signing'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ env.STACKCHAN_WINDOWS_SIGNING_PROBE }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Stackchan Companion signing readiness probe
+          description-url: https://github.com/RobVanProd/stackchan_alive
+
+      - name: Verify Azure Artifact Signing readiness probe
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'azure-artifact-signing'
+        shell: pwsh
+        run: |
+          $signature = Get-AuthenticodeSignature -LiteralPath $env:STACKCHAN_WINDOWS_SIGNING_PROBE
+          if ($signature.Status -ne "Valid") {
+            throw "Azure Artifact Signing probe did not have a valid Authenticode signature: $($signature.StatusMessage)"
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            throw "Azure Artifact Signing probe did not have an RFC3161 timestamp."
+          }
+          [ordered]@{
+            schema = "stackchan.windows-artifact-signing-readiness.v1"
+            status = "windows-artifact-signing-ready"
+            provider = "azure-artifact-signing"
+            oidc = $true
+            staticClientSecret = $false
+            signerSubject = [string]$signature.SignerCertificate.Subject
+            signerThumbprint = [string]$signature.SignerCertificate.Thumbprint
+            timestampSubject = [string]$signature.TimeStamperCertificate.Subject
+          } | ConvertTo-Json -Depth 4
 
   macos-developer-id:
     runs-on: macos-latest

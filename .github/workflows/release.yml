@@ -236,11 +236,9 @@ jobs:
           "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Validate production desktop signing credentials
-        if: matrix.platform == 'windows' || matrix.platform == 'macos'
+        if: matrix.platform == 'macos'
         shell: pwsh
         env:
-          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
-          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
           STACKCHAN_MACOS_CERTIFICATE_B64: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_B64 }}
           STACKCHAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_PASSWORD }}
           STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
@@ -248,16 +246,12 @@ jobs:
           STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
           STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
         run: |
-          $arguments = @{
-            Platform = "${{ matrix.platform }}"
-            RequireReady = $true
-            RequireNativeToolchain = $true
-            Json = $true
-          }
-          if ("${{ matrix.platform }}" -eq "macos") {
-            $arguments.ValidateAppleNotaryCredentials = $true
-          }
-          ./tools/check_desktop_release_signing_readiness.ps1 @arguments
+          ./tools/check_desktop_release_signing_readiness.ps1 `
+            -Platform macos `
+            -RequireReady `
+            -RequireNativeToolchain `
+            -ValidateAppleNotaryCredentials `
+            -Json
 
       - name: Prepare macOS Developer ID keychain
         if: matrix.platform == 'macos'
@@ -329,37 +323,8 @@ jobs:
           ./gradlew :app-desktop:notarizeDmg
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Authenticode sign Windows package
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        env:
-          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
-          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
-        run: |
-          foreach ($name in @("STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_WINDOWS_PFX_PASSWORD")) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "$name is required for a tagged Windows companion release."
-            }
-          }
-          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/msi" -File -Filter "*.msi")
-          if ($packages.Count -ne 1) { throw "Expected one Windows MSI; found $($packages.Count)." }
-          $pfxPath = Join-Path $env:RUNNER_TEMP "stackchan-authenticode.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:STACKCHAN_WINDOWS_PFX_B64))
-            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -File -Filter signtool.exe |
-              Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1
-            if ($null -eq $signTool) { throw "signtool.exe was not found in the Windows SDK." }
-            & $signTool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfxPath /p $env:STACKCHAN_WINDOWS_PFX_PASSWORD /d "Stackchan Companion" /du "https://github.com/RobVanProd/stackchan_alive" $packages[0].FullName
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            & $signTool.FullName verify /pa /all /tw /v $packages[0].FullName
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally {
-            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
-          }
-
       - name: Launch exact native desktop package headlessly
+        if: matrix.platform != 'windows'
         shell: pwsh
         run: |
           $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
@@ -374,6 +339,7 @@ jobs:
             -Json
 
       - name: Export native desktop package evidence
+        if: matrix.platform != 'windows'
         shell: pwsh
         run: |
           $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
@@ -412,6 +378,7 @@ jobs:
           }
 
       - name: Upload desktop release input
+        if: matrix.platform != 'windows'
         uses: actions/upload-artifact@v7
         with:
           name: companion-desktop-release-${{ matrix.platform }}
@@ -422,8 +389,189 @@ jobs:
             output/desktop-python-runtime/${{ matrix.platform }}-package-evidence.json
           if-no-files-found: error
 
+      - name: Upload unsigned Windows signing input
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-desktop-unsigned-windows
+          path: |
+            companion/app-desktop/build/compose/binaries/main/msi/*.msi
+            companion/app-desktop/build/generated/native-app-resources/common/python-runtime/**
+            output/desktop-python-runtime/windows-prepare.json
+          if-no-files-found: error
+
+  companion-windows-sign:
+    needs: companion-desktop-release
+    runs-on: windows-latest
+    environment: windows-code-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download unsigned Windows signing input
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-unsigned-windows
+          path: .
+
+      - name: Select Windows signing provider
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_SIGNING_PROVIDER: ${{ vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER }}
+          STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
+          STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
+          STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE }}
+          STACKCHAN_AZURE_CLIENT_ID: ${{ vars.STACKCHAN_AZURE_CLIENT_ID }}
+          STACKCHAN_AZURE_TENANT_ID: ${{ vars.STACKCHAN_AZURE_TENANT_ID }}
+          STACKCHAN_AZURE_SUBSCRIPTION_ID: ${{ vars.STACKCHAN_AZURE_SUBSCRIPTION_ID }}
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+        run: |
+          $provider = ([string]$env:STACKCHAN_WINDOWS_SIGNING_PROVIDER).Trim()
+          if ($provider -notin @("azure-artifact-signing", "pfx")) {
+            throw "STACKCHAN_WINDOWS_SIGNING_PROVIDER must be azure-artifact-signing or pfx."
+          }
+          if ($provider -eq "azure-artifact-signing") {
+            $required = @(
+              "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT",
+              "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT",
+              "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE",
+              "STACKCHAN_AZURE_CLIENT_ID",
+              "STACKCHAN_AZURE_TENANT_ID",
+              "STACKCHAN_AZURE_SUBSCRIPTION_ID"
+            )
+            foreach ($name in $required) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                throw "$name is required for a tagged Windows release using Azure Artifact Signing."
+              }
+            }
+            $endpoint = $null
+            if (-not [Uri]::TryCreate($env:STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT, [UriKind]::Absolute, [ref]$endpoint) -or
+                $endpoint.Scheme -ne "https" -or
+                $endpoint.Host -notmatch '^[a-z0-9-]+\.codesigning\.azure\.net$') {
+              throw "STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT must be an HTTPS Azure Artifact Signing endpoint."
+            }
+            foreach ($name in @("STACKCHAN_AZURE_CLIENT_ID", "STACKCHAN_AZURE_TENANT_ID", "STACKCHAN_AZURE_SUBSCRIPTION_ID")) {
+              $value = [Environment]::GetEnvironmentVariable($name)
+              $parsed = [guid]::Empty
+              if (-not [guid]::TryParse($value, [ref]$parsed)) { throw "$name must be a GUID." }
+            }
+          } else {
+            ./tools/check_desktop_release_signing_readiness.ps1 `
+              -Platform windows `
+              -RequireReady `
+              -RequireNativeToolchain `
+              -Json
+          }
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/msi" -File -Filter "*.msi")
+          if ($packages.Count -ne 1) { throw "Expected one Windows MSI; found $($packages.Count)." }
+          "STACKCHAN_WINDOWS_MSI_PATH=$($packages[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Azure login with GitHub OIDC
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'azure-artifact-signing'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.STACKCHAN_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.STACKCHAN_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.STACKCHAN_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign Windows package with Azure Artifact Signing
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'azure-artifact-signing'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ env.STACKCHAN_WINDOWS_MSI_PATH }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Stackchan Companion
+          description-url: https://github.com/RobVanProd/stackchan_alive
+
+      - name: Authenticode sign Windows package with PFX fallback
+        if: vars.STACKCHAN_WINDOWS_SIGNING_PROVIDER == 'pfx'
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "stackchan-authenticode.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:STACKCHAN_WINDOWS_PFX_B64))
+            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -File -Filter signtool.exe |
+              Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if ($null -eq $signTool) { throw "signtool.exe was not found in the Windows SDK." }
+            & $signTool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfxPath /p $env:STACKCHAN_WINDOWS_PFX_PASSWORD /d "Stackchan Companion" /du "https://github.com/RobVanProd/stackchan_alive" $env:STACKCHAN_WINDOWS_MSI_PATH
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Verify timestamped Windows Authenticode package
+        shell: pwsh
+        run: |
+          $signature = Get-AuthenticodeSignature -LiteralPath $env:STACKCHAN_WINDOWS_MSI_PATH
+          if ($signature.Status -ne "Valid") {
+            throw "Windows MSI did not have a valid Authenticode signature: $($signature.StatusMessage)"
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            throw "Windows MSI did not have an RFC3161 timestamp."
+          }
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -File -Filter signtool.exe |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $signTool) { throw "signtool.exe was not found in the Windows SDK." }
+          & $signTool.FullName verify /pa /all /tw /v $env:STACKCHAN_WINDOWS_MSI_PATH
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Launch exact signed Windows package headlessly
+        shell: pwsh
+        run: |
+          ./tools/test_desktop_package_launch.ps1 `
+            -Platform windows `
+            -PackagePath $env:STACKCHAN_WINDOWS_MSI_PATH `
+            -ExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-windows") `
+            -OutPath "output/desktop-python-runtime/windows-package-launch.json" `
+            -Json
+
+      - name: Export signed Windows package evidence
+        shell: pwsh
+        run: |
+          ./tools/export_desktop_package_evidence.ps1 `
+            -Platform windows `
+            -PackagePath $env:STACKCHAN_WINDOWS_MSI_PATH `
+            -RuntimePrepareJsonPath "output/desktop-python-runtime/windows-prepare.json" `
+            -ProcessedRuntimeRoot "companion/app-desktop/build/generated/native-app-resources/common/python-runtime" `
+            -PackageExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-windows") `
+            -LaunchEvidencePath "output/desktop-python-runtime/windows-package-launch.json" `
+            -Version "${{ github.ref_name }}" `
+            -Commit "${{ github.sha }}" `
+            -OutPath "output/desktop-python-runtime/windows-package-evidence.json" `
+            -RequireInstallerPayload `
+            -RequireLaunchEvidence `
+            -RequireDistributionTrust `
+            -UseExistingPackageExtraction `
+            -Json
+
+      - name: Upload signed Windows release input
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-desktop-release-windows
+          path: |
+            companion/app-desktop/build/compose/binaries/main/msi/*.msi
+            output/desktop-python-runtime/windows-prepare.json
+            output/desktop-python-runtime/windows-package-launch.json
+            output/desktop-python-runtime/windows-package-evidence.json
+          if-no-files-found: error
+
   release:
-    needs: [companion-android-release, companion-android-emulator-smoke, companion-desktop-release]
+    needs: [companion-android-release, companion-android-emulator-smoke, companion-desktop-release, companion-windows-sign]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

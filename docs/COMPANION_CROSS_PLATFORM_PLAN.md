@@ -298,14 +298,12 @@ pre-existing Stackchan installation must be explicitly replaced with `-AllowRepl
 records the pre-install registration, its successful uninstall, and the post-install registration
 so same-version MSI maintenance cannot be mistaken for a fresh exact-package install.
 
-Repository secrets required before the first public tag:
+Android and macOS file-based repository secrets required before the first public tag:
 
 - `STACKCHAN_ANDROID_KEYSTORE_B64`
 - `STACKCHAN_ANDROID_KEYSTORE_PASSWORD`
 - `STACKCHAN_ANDROID_KEY_ALIAS`
 - `STACKCHAN_ANDROID_KEY_PASSWORD`
-- `STACKCHAN_WINDOWS_PFX_B64`
-- `STACKCHAN_WINDOWS_PFX_PASSWORD`
 - `STACKCHAN_MACOS_CERTIFICATE_B64`
 - `STACKCHAN_MACOS_CERTIFICATE_PASSWORD`
 - `STACKCHAN_MACOS_SIGNING_IDENTITY`
@@ -313,8 +311,16 @@ Repository secrets required before the first public tag:
 - `STACKCHAN_MACOS_NOTARIZATION_PASSWORD`
 - `STACKCHAN_MACOS_NOTARIZATION_TEAM_ID`
 
+The preferred Windows path is Azure Artifact Signing with GitHub OIDC. The
+`windows-code-signing` environment holds only non-secret variables for provider, endpoint,
+account, certificate profile, Azure client ID, tenant ID, and subscription ID. Azure holds the
+private key in a managed HSM and GitHub exchanges an environment-scoped OIDC token; there is no
+PFX, static client secret, or password file to back up. An existing publicly trusted exportable
+PFX remains an explicit fallback through `STACKCHAN_WINDOWS_PFX_B64` and
+`STACKCHAN_WINDOWS_PFX_PASSWORD`, but a self-signed certificate is never a production substitute.
+
 Back up the upload keystore outside the repository; losing it breaks Android update
-continuity. Back up the Windows signing PFX and macOS Developer ID PKCS#12 independently as well.
+continuity. Back up any PFX fallback and the macOS Developer ID PKCS#12 independently as well.
 Run `tools/check_release_credential_hygiene.cmd -Json` before provisioning or rotating those files;
 it fails if private-key bundle extensions are not ignored, if one is tracked, or if a tracked text
 file contains a private-key marker. Release packaging and companion CI enforce the same boundary,
@@ -322,12 +328,15 @@ and the checker reports paths only rather than credential contents.
 The tag workflow now fails closed unless the MSI has a valid timestamped Authenticode signature and
 the DMG contains a Developer ID signed app accepted by Gatekeeper plus a stapled Apple notarization
 ticket. Every final asset also receives a GitHub Sigstore-backed provenance attestation before the
-prerelease is created. The repository currently has none of these Actions secrets configured, so a
-consumer tag remains externally blocked until the owner provisions and backs them up.
+prerelease is created. The Windows Artifact Signing account, identity validation, certificate
+profile, OIDC federation, and GitHub environment variables are external prerequisites. Android
+upload signing and macOS Developer ID/notarization remain independently blocked until their owner
+credentials are provisioned.
 Once provisioned, the manual `Companion Signing Readiness` workflow validates the Android upload
 keystore, selected private-key entry, passwords, RSA 4096-bit minimum, non-debug subject, and Play
-certificate lifetime in temporary runner storage. It also uses the Windows private code-signing
-certificate and native SignTool to sign and verify a temporary executable, imports the macOS
+certificate lifetime in temporary runner storage. It also signs and timestamp-verifies a Windows
+probe through Azure Artifact Signing with secretless OIDC, or through the explicitly selected PFX
+fallback, and imports the macOS
 Developer ID identity into a temporary keychain to sign and verify a hardened-runtime probe,
 requires each desktop certificate chain to terminate at a native-host trusted root, and validates
 Apple notarization authentication without publishing any artifact. The tag workflow repeats these
@@ -468,7 +477,7 @@ Until then the label stays "fake engine".
 **C8 — Distribution hardening.**
 The native all-platform tag workflow, strict package evidence, and operator target-install
 collector/checker contracts are source-complete. Remaining work is upload-keystore provisioning,
-Windows/macOS signing credential provisioning, native tag evidence, executing the three target
+Windows Artifact Signing identity/OIDC provisioning, macOS signing credential provisioning, native tag evidence, executing the three target
 installs and human reviews, and the first end-to-end tagged prerelease and promotion. Conveyor or another updater
 may be evaluated only after the native packages are accepted.
 *Gate C8:* one tag publishes verified APK/AAB/MSI/DEB/DMG artifacts, the Android artifacts
