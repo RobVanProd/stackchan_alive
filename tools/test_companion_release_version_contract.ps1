@@ -4,10 +4,11 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checker = Join-Path $PSScriptRoot "check_companion_release_version.ps1"
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-companion-version-" + [guid]::NewGuid().ToString("N"))
+$powerShellHost = (Get-Process -Id $PID).Path
 
 function Invoke-Checker {
   param([string]$Root, [string]$ExpectedVersion)
-  $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $checker -Root $Root -ExpectedVersion $ExpectedVersion -Json 2>&1 | Out-String
+  $output = & $powerShellHost -NoProfile -File $checker -Root $Root -ExpectedVersion $ExpectedVersion -Json 2>&1 | Out-String
   return [ordered]@{ exitCode = $LASTEXITCODE; output = $output }
 }
 

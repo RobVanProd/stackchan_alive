@@ -5,6 +5,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checker = Join-Path $PSScriptRoot "export_desktop_package_evidence.ps1"
 $releaseExporter = Join-Path $PSScriptRoot "export_companion_release_evidence.ps1"
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-desktop-package-evidence-" + [guid]::NewGuid().ToString("N"))
+$powerShellHost = (Get-Process -Id $PID).Path
 
 function Get-Sha256Text {
   param([string]$Path)
@@ -41,7 +42,7 @@ function Invoke-Evidence {
     [string]$LaunchPath,
     [string]$OutPath
   )
-  $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $checker `
+  $output = & $powerShellHost -NoProfile -File $checker `
     -Platform windows `
     -PackagePath $PackagePath `
     -RuntimePrepareJsonPath $PreparePath `
@@ -269,7 +270,7 @@ try {
   }
 
   $aggregateOut = Join-Path $tempRoot "aggregate-out"
-  $aggregateOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
+  $aggregateOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
     -DesktopArtifactRoot $aggregateRoot `
@@ -287,7 +288,7 @@ try {
   $macosReport = Get-Content -LiteralPath $macosReportPath -Raw | ConvertFrom-Json
   $macosReport.installerPayload.runtimePayloadSha256 = "0" * 64
   $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
-  $aggregateTamperedOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
+  $aggregateTamperedOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
     -DesktopArtifactRoot $aggregateRoot `
@@ -306,7 +307,7 @@ try {
 
   $macosReport.launchEvidence.packageSha256 = "0" * 64
   $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
-  $staleLaunchOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
+  $staleLaunchOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
     -DesktopArtifactRoot $aggregateRoot `
@@ -321,7 +322,7 @@ try {
 
   Remove-Item -LiteralPath $macosReportPath -Force
   $missingOut = Join-Path $tempRoot "aggregate-missing-out"
-  $missingOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
+  $missingOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
     -DesktopArtifactRoot $aggregateRoot `
