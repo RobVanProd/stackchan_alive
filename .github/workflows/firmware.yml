@@ -33,6 +33,8 @@ jobs:
               - 'docs/ANDROID_PLAY_RELEASE.md'
               - 'docs/BRIDGE_PROTOCOL.md'
               - 'docs/COMPANION_CROSS_PLATFORM_PLAN.md'
+              - 'docs/RELEASE_PROCESS.md'
+              - 'docs/RELEASE_QUICKSTART.md'
               - 'tools/check_android_toolchain.*'
               - 'tools/check_android_play_release_readiness.*'
               - 'tools/test_android_upload_signing_contract.*'
@@ -42,6 +44,9 @@ jobs:
               - 'tools/check_companion_v1_readiness.*'
               - 'tools/check_companion_v1_evidence_bundle.*'
               - 'tools/test_companion_v1_evidence_bundle_contract.*'
+              - 'tools/verify_consumer_promotion.*'
+              - 'tools/test_consumer_promotion_contract.*'
+              - 'tools/start_hardware_evidence.*'
               - 'tools/check_desktop_v1_evidence_bundle.*'
               - 'tools/test_desktop_v1_evidence_bundle_contract.*'
               - 'tools/export_companion_release_evidence.*'
@@ -222,6 +227,10 @@ jobs:
       - name: Run Companion v1 evidence bundle contract
         shell: pwsh
         run: ./tools/test_companion_v1_evidence_bundle_contract.ps1
+
+      - name: Run consumer promotion binding contract
+        shell: pwsh
+        run: ./tools/test_consumer_promotion_contract.ps1
 
       - name: Upload companion C0 spike report
         uses: actions/upload-artifact@v7

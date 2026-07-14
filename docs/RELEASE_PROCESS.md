@@ -267,14 +267,16 @@ Before promoting a prerelease, verify the completed hardware evidence packet:
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
 ```
 
-Then run the full release gate, which composes package verification, hardware evidence
-verification, GitHub Actions status, and production voice hash verification:
+Then run the full release gate, which composes package verification, strict hardware evidence,
+the ready aggregate Companion v1 packet, GitHub Actions status, and production voice hash
+verification:
 
 ```powershell
 .\tools\verify_consumer_promotion.cmd `
   -Version <version> `
   -PackageZip output\release\stackchan_alive_<version>.zip `
   -EvidenceRoot output\hardware-evidence\<packet-folder> `
+  -CompanionV1EvidenceRoot output\companion-v1-evidence\<version> `
   -ExpectedCommit <release-commit> `
   -ExpectedFirmwareSourceCommit <tested-firmware-source-commit> `
   -CameraFollowSummaryPath <camera-summary.json> `
@@ -287,6 +289,14 @@ verification, GitHub Actions status, and production voice hash verification:
 `-ExpectedFirmwareSourceCommit` independently pins camera, body-sensor, and final-soak evidence to
 the source used for the installed firmware. They default to the same value, but must be supplied
 separately when documentation or host-only changes follow the exact physical firmware build.
+
+Final consumer promotion requires `-PackageZip`; `-PackageRoot` is insufficient for the terminal
+decision because the exact archive SHA-256 must be bound to the aggregate evidence. The Companion
+v1 checker must return `companion-v1-evidence-ready`. Promotion independently verifies that the
+aggregate release source commit, exact installed `firmwareSourceCommit`, release version, release
+ZIP hash, and hardware evidence root match the values being promoted. This makes the Android
+real-device, Play, desktop target-install, hardware, CI, voice, and release evidence mandatory
+inputs to the final decision instead of parallel records.
 
 The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. By default it refreshes GitHub Actions status live for the exact release commit, after the tag-triggered `Release` workflow has finished. This avoids asking a ZIP created inside that workflow to prove its own future success. Pass `-ActionsStatusPath` only with a separately captured, exact-commit `stackchan.github-actions-status.v1` report. The status snapshot inside the ZIP remains package-generation provenance, not the terminal promotion decision.
 

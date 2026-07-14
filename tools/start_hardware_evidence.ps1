@@ -6,6 +6,7 @@ param(
   [string]$Operator = "",
   [string]$DeviceId = "",
   [string]$ShareRoot = "",
+  [string]$CompanionV1EvidenceRoot = "output/companion-v1-evidence/latest",
   [switch]$AllowIncompleteMetadata,
   [switch]$AllowDirtyPackage
 )
@@ -777,14 +778,16 @@ if ($AllowDirtyPackage) {
 $progressCommand = "& '.\tools\check_hardware_evidence_progress.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $addMediaCommand = "& '.\tools\add_hardware_evidence_media.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
 $evidenceVerifyCommand = "& '.\tools\verify_hardware_evidence.ps1' -EvidenceRoot $(Quote-PowerShellArgument $outDir)"
-$promotionPackageArg = "-PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
+$rolloutPackageArg = "-PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
+$consumerPromotionPackageArg = "-PackageZip $(Quote-PowerShellArgument '<path-to-release-zip>')"
 if ($packageInfo -and $packageInfo.Contains("copiedFile")) {
-  $promotionPackageArg = "-PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
+  $rolloutPackageArg = "-PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
+  $consumerPromotionPackageArg = "-PackageZip $(Quote-PowerShellArgument $packageFlashZip)"
 } elseif (-not [string]::IsNullOrWhiteSpace($PackageRoot)) {
-  $promotionPackageArg = "-PackageRoot $(Quote-PowerShellArgument $PackageRoot)"
+  $rolloutPackageArg = "-PackageRoot $(Quote-PowerShellArgument $PackageRoot)"
 }
-$rolloutStatusCommand = "& '.\tools\export_rollout_status.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $promotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit) -OutDir $(Quote-PowerShellArgument $outDir)"
-$consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $promotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
+$rolloutStatusCommand = "& '.\tools\export_rollout_status.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $rolloutPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -ExpectedCommit $(Quote-PowerShellArgument $commit) -OutDir $(Quote-PowerShellArgument $outDir)"
+$consumerPromotionCommand = "& '.\tools\verify_consumer_promotion.ps1' -Version $(Quote-PowerShellArgument $ReleaseTag) $consumerPromotionPackageArg -EvidenceRoot $(Quote-PowerShellArgument $outDir) -CompanionV1EvidenceRoot $(Quote-PowerShellArgument $CompanionV1EvidenceRoot) -ExpectedCommit $(Quote-PowerShellArgument $commit)"
 $platformioResolver = Quote-PowerShellArgument (Join-Path $PSScriptRoot "platformio_resolver.ps1")
 $soakCommand = ". $platformioResolver; Invoke-StackchanPlatformio device monitor --baud 115200$monitorPortArg 2>&1 | Tee-Object -FilePath $soakLog"
 $playLeadCommand = "Write-Host 'No RVC lead audition reference was copied into this packet.'"
@@ -893,7 +896,8 @@ $nextSteps = @(
   "15. Run ``RUN_PROGRESS_CHECK.cmd`` to refresh ``BENCH_STATUS.md/json`` and fix every missing field, marker, media file, and unchecked checklist item it reports.",
   "16. Run ``RUN_ROLLOUT_STATUS.cmd`` to write ``ROLLOUT_STATUS.md`` and ``ROLLOUT_STATUS.json`` for handoff review.",
   "17. Run ``RUN_EVIDENCE_VERIFY.cmd`` for the strict hardware evidence gate.",
-  "18. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict evidence verification passes.",
+  "18. Complete the aggregate Companion v1 packet at ``$CompanionV1EvidenceRoot`` and confirm its checker reports ``companion-v1-evidence-ready``.",
+  "19. Run ``RUN_CONSUMER_PROMOTION_CHECK.cmd`` only after strict hardware and aggregate Companion v1 evidence verification pass.",
   "",
   "## Gates Still Expected",
   "",
@@ -903,6 +907,7 @@ $nextSteps = @(
   "- RVC voice-base evidence remains review-only until consumer and distribution approvals are explicitly recorded.",
   "- GitHub Actions may still be externally blocked; use ``RUN_ROLLOUT_STATUS.cmd`` for the current CI/account state.",
   "- Hosted media or synthetic diagnostic packets are review aids only. They do not replace real-device evidence.",
+  "- Consumer promotion requires the exact release ZIP and a ready aggregate Companion v1 packet that binds Android, desktop, Play, hardware, CI, voice, and release evidence to the same commit.",
   "",
   "## Hard Stops",
   "",
@@ -1069,7 +1074,7 @@ $readme = @(
   "",
   "    .\RUN_EVIDENCE_VERIFY.cmd",
   "",
-  "After the strict evidence check passes, run the full consumer promotion gate. This also requires successful GitHub Actions status and completed production voice-source provenance:",
+  "After the strict evidence check passes, complete the aggregate Companion v1 packet at ``$CompanionV1EvidenceRoot``. Its checker must report ``companion-v1-evidence-ready`` before the full consumer promotion gate can pass. The final gate also requires the exact release ZIP, successful GitHub Actions status, and completed production voice-source provenance:",
   "",
   "    $consumerPromotionCommand",
   "",
@@ -1214,6 +1219,7 @@ $metadata = [ordered]@{
     refreshCommand = "RUN_PROGRESS_CHECK.cmd"
   }
   promotionVerifier = "tools/verify_consumer_promotion.ps1"
+  companionV1EvidenceRoot = $CompanionV1EvidenceRoot
   hardwareEvidenceVerifier = "tools/verify_hardware_evidence.ps1"
 }
 

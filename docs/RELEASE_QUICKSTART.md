@@ -493,6 +493,13 @@ required dashboard media IDs from the final Android aggregate gate. The rollout 
 point at the same strict hardware evidence packet and hardware metadata commit recorded in
 the final bundle.
 
+The terminal consumer-promotion command must pass this packet as `-CompanionV1EvidenceRoot`.
+It reruns the aggregate checker with `-RequireReady` and independently binds the source commit,
+exact installed `firmwareSourceCommit`, release version, exact release ZIP SHA-256, and strict
+hardware evidence root. A ready rollout report or completed hardware packet cannot substitute for
+the Android real-device, Play, and three-platform desktop operator evidence carried by the
+aggregate packet.
+
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
 Only after display-only firmware boots cleanly and the body is on a clear surface, run:
@@ -598,16 +605,20 @@ Then run:
 .\RUN_EVIDENCE_VERIFY.cmd
 ```
 
-After that passes, run the full consumer promotion gate:
+After that passes, complete the aggregate Companion v1 packet and confirm its checker reports
+`companion-v1-evidence-ready`, then run the full consumer promotion gate:
 
 ```powershell
 .\RUN_CONSUMER_PROMOTION_CHECK.cmd
 ```
 
-The generated command assumes the package commit and tested firmware source commit are identical.
+The generated command uses `output\companion-v1-evidence\latest` by default and requires the exact
+release ZIP. Pending aggregate evidence cannot pass consumer promotion. The generated command also
+assumes the package commit and tested firmware source commit are identical.
 If documentation or host-only release commits were made after the exact firmware image was flashed,
 run `tools\verify_consumer_promotion.cmd` directly and pass both `-ExpectedCommit` for the package
-and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence.
+and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence, plus
+`-CompanionV1EvidenceRoot` for the completed aggregate packet.
 
 That final gate also records GitHub Actions status. If hosted jobs cannot start because of account
 billing or runner allocation, preserve the local verification report and publish the limitation.

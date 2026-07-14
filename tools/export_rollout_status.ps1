@@ -416,8 +416,8 @@ function Get-RolloutNextAction {
   return [ordered]@{
     owner = "release"
     action = "Run the consumer promotion verifier."
-    command = ".\tools\verify_consumer_promotion.cmd -Version $ReleaseVersion"
-    reason = "All rollout status gates are passing."
+    command = ".\tools\verify_consumer_promotion.cmd -Version $ReleaseVersion -PackageZip <path-to-release-zip> -EvidenceRoot <path-to-hardware-evidence> -CompanionV1EvidenceRoot output\companion-v1-evidence\latest"
+    reason = "All rollout component gates are passing; the aggregate Companion v1 packet remains mandatory for terminal promotion."
   }
 }
 

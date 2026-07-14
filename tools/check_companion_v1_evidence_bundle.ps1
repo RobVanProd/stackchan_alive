@@ -755,7 +755,7 @@ function Test-RolloutHardwareEvidence {
   param(
     [object]$Reports,
     [string]$ExpectedHardwareRoot,
-    [string]$ExpectedCommit
+    [string]$ExpectedFirmwareCommit
   )
 
   $relativePath = [string](Get-Field $Reports "rolloutStatusReport")
@@ -795,14 +795,14 @@ function Test-RolloutHardwareEvidence {
   $evidence = Get-Field $report "evidence"
   $metadata = Get-Field $evidence "metadata"
   $actualEvidenceCommit = [string](Get-Field $metadata "commit")
-  if ([string]::IsNullOrWhiteSpace($ExpectedCommit) -or $ExpectedCommit -match "<|TBD|pending") {
-    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record sourceCommit before checking rollout hardware evidence consistency."
+  if ([string]::IsNullOrWhiteSpace($ExpectedFirmwareCommit) -or $ExpectedFirmwareCommit -match "<|TBD|pending") {
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record firmwareSourceCommit before checking rollout hardware evidence consistency."
   } elseif ([string]::IsNullOrWhiteSpace($actualEvidenceCommit)) {
     Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "fail" (Convert-ToRelativePath $path) "Rollout status report is missing evidence.metadata.commit."
-  } elseif ($actualEvidenceCommit -eq $ExpectedCommit) {
-    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pass" (Convert-ToRelativePath $path) "Rollout hardware evidence commit matches sourceCommit."
+  } elseif ($actualEvidenceCommit -eq $ExpectedFirmwareCommit) {
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "pass" (Convert-ToRelativePath $path) "Rollout hardware evidence commit matches firmwareSourceCommit."
   } else {
-    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "fail" (Convert-ToRelativePath $path) "Expected evidence.metadata.commit=$ExpectedCommit, got $actualEvidenceCommit."
+    Add-Check "rollout-hardware-commit-match" "Rollout hardware evidence commit matches bundle" "fail" (Convert-ToRelativePath $path) "Expected evidence.metadata.commit=$ExpectedFirmwareCommit, got $actualEvidenceCommit."
   }
 }
 
@@ -814,6 +814,7 @@ function Write-CompanionV1EvidenceTemplate {
     schema = "stackchan.companion-v1-evidence-bundle.v1"
     status = "pending"
     sourceCommit = "<40-character git commit>"
+    firmwareSourceCommit = "<40-character installed firmware source commit; use sourceCommit when identical>"
     releaseVersion = "<release version or tag>"
     releasePackage = [ordered]@{
       path = "artifacts/stackchan_alive_<version>.zip"
@@ -861,6 +862,9 @@ Required ready statuses:
   must match a release evidence AAB artifact hash.
 - Desktop MSI, DMG, and DEB hashes must match release evidence package artifact hashes.
 - Release evidence ``packageEvidence`` must include hashed package core files from the extracted release package.
+- ``sourceCommit`` identifies the release package source. ``firmwareSourceCommit`` identifies
+  the exact installed firmware source used by the hardware packet; use the same value only when
+  no host-only or documentation commits separate them.
 - Final release ZIP attachment with matching SHA-256, verified hardware evidence root, and ``COMPANION_V1_REVIEW.md``
 
 Run:
@@ -924,6 +928,16 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
       Add-Check "source-commit" "Source commit" "pass" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Full source commit recorded."
     } else {
       Add-Check "source-commit" "Source commit" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record a full 40-character source commit."
+    }
+
+    $firmwareSourceCommit = [string](Get-Field $bundle "firmwareSourceCommit")
+    if ([string]::IsNullOrWhiteSpace($firmwareSourceCommit)) {
+      $firmwareSourceCommit = [string]$bundle.sourceCommit
+    }
+    if (Test-Commit $firmwareSourceCommit) {
+      Add-Check "firmware-source-commit" "Installed firmware source commit" "pass" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Full installed firmware source commit recorded."
+    } else {
+      Add-Check "firmware-source-commit" "Installed firmware source commit" "pending" "COMPANION_V1_EVIDENCE_BUNDLE.json" "Record the full source commit used for the exact installed firmware image."
     }
 
     $releaseVersion = [string]$bundle.releaseVersion
@@ -1002,7 +1016,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-AndroidReleaseAabHashMatchesReleaseEvidence $reports
     Test-DesktopArtifactHashesMatchReleaseEvidence $reports
     Test-ReleasePackageEvidencePresent $reports
-    Test-RolloutHardwareEvidence $reports ([string]$bundle.hardwareEvidenceRoot) ([string]$bundle.sourceCommit)
+    Test-RolloutHardwareEvidence $reports ([string]$bundle.hardwareEvidenceRoot) $firmwareSourceCommit
 
     $reviewPath = Resolve-EvidencePath ([string]$bundle.reviewPath)
     if ([string]::IsNullOrWhiteSpace([string]$bundle.reviewPath) -or -not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) {
@@ -1052,6 +1066,10 @@ $report = [ordered]@{
   root = [string]$Root
   evidenceRoot = Convert-ToRelativePath $EvidenceRoot
   sourceCommit = if ($null -ne $bundle) { [string]$bundle.sourceCommit } else { "" }
+  firmwareSourceCommit = if ($null -ne $bundle) {
+    $value = [string](Get-Field $bundle "firmwareSourceCommit")
+    if ([string]::IsNullOrWhiteSpace($value)) { [string]$bundle.sourceCommit } else { $value }
+  } else { "" }
   releaseVersion = if ($null -ne $bundle) { [string]$bundle.releaseVersion } else { "" }
   androidGemmaBenchmarkProfile = $androidGemmaBenchmarkProfile
   androidGemmaBenchmarkMedianMs = $androidGemmaBenchmarkMedianMs
