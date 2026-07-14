@@ -90,7 +90,7 @@ function New-Fixture {
   $androidDebug = Add-FixtureFile $downloadRoot "companion-android-apks/apk/debug/app-android-debug.apk" "fixture debug apk"
   $androidRelease = Add-FixtureFile $downloadRoot "companion-android-apks/apk/release/app-android-release.apk" "fixture release apk"
   $androidBundle = Add-FixtureFile $downloadRoot "companion-android-apks/bundle/release/app-android-release.aab" "fixture release aab"
-  $windowsPackage = Add-FixtureFile $downloadRoot "companion-desktop-windows/package/Stackchan Companion-1.0.0.msi" "fixture windows package"
+  $windowsPackage = Add-FixtureFile $downloadRoot "companion-desktop-windows/companion/app-desktop/build/compose/binaries/main/msi/Stackchan Companion-1.0.0.msi" "fixture windows package"
   $macosPackage = Add-FixtureFile $downloadRoot "companion-desktop-macos/package/Stackchan Companion-1.0.0.dmg" "fixture macos package"
   $linuxPackage = Add-FixtureFile $downloadRoot "companion-desktop-linux/package/stackchan-companion_1.0.0_amd64.deb" "fixture linux package"
   Add-FixtureFile $downloadRoot "companion-android-emulator-smoke/android_emulator_launch_smoke.json" '{"schema":"stackchan.android-emulator-launch-smoke.v1","status":"pass"}' | Out-Null
@@ -128,10 +128,13 @@ function Invoke-Downloader {
   param(
     [string]$FixtureRoot,
     [string]$Name,
-    [string]$Commit = $sourceCommit
+    [string]$Commit = $sourceCommit,
+    [string]$OutDir = ""
   )
 
-  $outDir = Join-Path $tempRoot "out-$Name"
+  if ([string]::IsNullOrWhiteSpace($OutDir)) {
+    $OutDir = Join-Path $tempRoot "out-$Name"
+  }
   $oldPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
@@ -139,7 +142,7 @@ function Invoke-Downloader {
       -RunId $runId `
       -Repo "fixture/stackchan" `
       -Commit $Commit `
-      -OutDir $outDir `
+      -OutDir $OutDir `
       -FixtureRoot $FixtureRoot `
       -Json 2>&1)
     $exitCode = $LASTEXITCODE
@@ -149,7 +152,7 @@ function Invoke-Downloader {
   return [pscustomobject]@{
     exitCode = $exitCode
     output = ($output | Out-String).Trim()
-    outDir = $outDir
+    outDir = $OutDir
   }
 }
 
@@ -215,6 +218,21 @@ try {
   }
   $passCount++
   Write-Host "[PASS] complete exact-source CI candidate is accepted and inventoried"
+
+  $longOutDir = Join-Path $tempRoot ("out-long-" + ("x" * 36))
+  $longPathReady = Invoke-Downloader $readyFixture "long-path" $sourceCommit $longOutDir
+  if ($longPathReady.exitCode -ne 0) {
+    throw "Long-path exact-source candidate fixture failed: $($longPathReady.output)"
+  }
+  $longPathPackage = Get-ChildItem -LiteralPath $longPathReady.outDir -Recurse -File -Filter "*.msi" | Select-Object -First 1
+  if ($null -eq $longPathPackage) {
+    throw "Long-path candidate did not contain its Windows package fixture."
+  }
+  if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT -and $longPathPackage.FullName.Length -le 260) {
+    throw "Long-path candidate fixture did not cross the Windows legacy path boundary."
+  }
+  $passCount++
+  Write-Host "[PASS] long downloaded artifact paths are hashed portably"
 
   $mergeMismatch = Invoke-Downloader $readyFixture "merge-mismatch" "2222222222222222222222222222222222222222"
   Assert-Failed $mergeMismatch "source mismatch" "PR merge/head source mismatch is rejected"

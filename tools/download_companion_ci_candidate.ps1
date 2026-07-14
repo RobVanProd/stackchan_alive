@@ -72,8 +72,15 @@ function Copy-FixtureArtifact {
   if (-not (Test-Path -LiteralPath $source -PathType Container)) {
     throw "Missing downloaded-artifact fixture for $Name`: $source"
   }
-  foreach ($item in @(Get-ChildItem -LiteralPath $source -Force)) {
-    Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse
+  foreach ($file in @(Get-ChildItem -LiteralPath $source -Recurse -File -Force)) {
+    $relativePath = Get-RelativePathNormalized -BasePath $source -Path $file.FullName
+    $target = Join-Path $Destination $relativePath
+    [void][IO.Directory]::CreateDirectory((Get-ExtendedIoPath ([IO.Path]::GetDirectoryName($target))))
+    [IO.File]::Copy(
+      (Get-ExtendedIoPath $file.FullName),
+      (Get-ExtendedIoPath $target),
+      $true
+    )
   }
 }
 
@@ -102,6 +109,20 @@ function Download-Artifact {
   }
 }
 
+function Get-ExtendedIoPath {
+  param([string]$Path)
+
+  $fullPath = [IO.Path]::GetFullPath($Path)
+  if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT -and
+      -not $fullPath.StartsWith("\\?\", [StringComparison]::Ordinal)) {
+    if ($fullPath.StartsWith("\\", [StringComparison]::Ordinal)) {
+      return "\\?\UNC\" + $fullPath.Substring(2)
+    }
+    return "\\?\" + $fullPath
+  }
+  return $fullPath
+}
+
 function Get-RelativePathNormalized {
   param(
     [string]$BasePath,
@@ -117,6 +138,26 @@ function Get-RelativePathNormalized {
   return $pathFull.Substring($prefix.Length).Replace("\", "/")
 }
 
+function Get-Sha256Hex {
+  param([string]$Path)
+
+  $stream = $null
+  $sha256 = $null
+  try {
+    $stream = [IO.File]::Open(
+      (Get-ExtendedIoPath $Path),
+      [IO.FileMode]::Open,
+      [IO.FileAccess]::Read,
+      [IO.FileShare]::Read
+    )
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    return ([BitConverter]::ToString($sha256.ComputeHash($stream)) -replace "-", "").ToLowerInvariant()
+  } finally {
+    if ($null -ne $sha256) { $sha256.Dispose() }
+    if ($null -ne $stream) { $stream.Dispose() }
+  }
+}
+
 function Get-FileEntry {
   param(
     [string]$CandidateRoot,
@@ -127,7 +168,7 @@ function Get-FileEntry {
     path = Get-RelativePathNormalized -BasePath $CandidateRoot -Path $File.FullName
     name = $File.Name
     bytes = [int64]$File.Length
-    sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $File.FullName).Hash.ToLowerInvariant()
+    sha256 = Get-Sha256Hex -Path $File.FullName
   }
 }
 
@@ -354,7 +395,7 @@ $report = [ordered]@{
   artifacts = @($artifactReports)
   releaseEvidence = [ordered]@{
     path = Get-RelativePathNormalized -BasePath $candidateRoot -Path $releaseEvidenceFile.FullName
-    sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseEvidenceFile.FullName).Hash.ToLowerInvariant()
+    sha256 = Get-Sha256Hex -Path $releaseEvidenceFile.FullName
     status = [string]$releaseEvidence.status
     sourceCommit = $evidenceCommit
     androidSigningProfile = [string]$releaseEvidence.androidSigning.signingProfile
