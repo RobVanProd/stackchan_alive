@@ -135,6 +135,52 @@ function Get-RuntimePayloadHash {
   return (($sha.Hash | ForEach-Object { $_.ToString("x2") }) -join "")
 }
 
+function Get-RuntimeFileInventory {
+  param([string]$Root)
+
+  $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd("\", "/")
+  $prefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
+  $inventory = @{}
+  Get-ChildItem -LiteralPath $Root -File -Recurse -Force |
+    Where-Object {
+      $_.Name -ne "stackchan-python-runtime.json" -and
+      $_.FullName -notmatch "([\\/])__pycache__([\\/])"
+    } |
+    ForEach-Object {
+      $full = [System.IO.Path]::GetFullPath($_.FullName)
+      $relative = $full.Substring($prefix.Length).Replace("\", "/")
+      $inventory[$relative] = [ordered]@{
+        bytes = [int64]$_.Length
+        sha256 = Get-Sha256Text $full
+      }
+    }
+  return $inventory
+}
+
+function Compare-RuntimeFileInventories {
+  param(
+    [hashtable]$Expected,
+    [hashtable]$Actual,
+    [int]$Limit = 12
+  )
+
+  $differences = New-Object System.Collections.Generic.List[string]
+  $paths = @($Expected.Keys + $Actual.Keys | Sort-Object -Unique)
+  foreach ($path in $paths) {
+    $expectedEntry = $Expected[$path]
+    $actualEntry = $Actual[$path]
+    if ($null -eq $expectedEntry) {
+      $differences.Add("added $path ($($actualEntry.bytes) bytes, $(([string]$actualEntry.sha256).Substring(0, 12)))...)")
+    } elseif ($null -eq $actualEntry) {
+      $differences.Add("missing $path ($($expectedEntry.bytes) bytes, $(([string]$expectedEntry.sha256).Substring(0, 12)))...)")
+    } elseif ([int64]$expectedEntry.bytes -ne [int64]$actualEntry.bytes -or [string]$expectedEntry.sha256 -ne [string]$actualEntry.sha256) {
+      $differences.Add("changed $path (expected $($expectedEntry.bytes)/$(([string]$expectedEntry.sha256).Substring(0, 12))..., actual $($actualEntry.bytes)/$(([string]$actualEntry.sha256).Substring(0, 12))...)")
+    }
+    if ($differences.Count -ge $Limit) { break }
+  }
+  return @($differences)
+}
+
 function Add-Issue {
   param([string]$Message)
   $script:issues += $Message
@@ -147,6 +193,8 @@ $prepare = $null
 $manifest = $null
 $processedHash = ""
 $processedFiles = @()
+$processedInventory = $null
+$installerInventory = $null
 $installerPayload = [ordered]@{
   required = [bool]$RequireInstallerPayload
   status = if ($RequireInstallerPayload) { "not-ready" } else { "not-required" }
@@ -232,6 +280,7 @@ if ([string]::IsNullOrWhiteSpace($ProcessedRuntimeRoot) -or -not (Test-Path -Lit
   if ($processedFiles.Count -lt 2) { Add-Issue "Processed desktop runtime contains too few files." }
   try {
     $processedHash = Get-RuntimePayloadHash $ProcessedRuntimeRoot
+    $processedInventory = Get-RuntimeFileInventory $ProcessedRuntimeRoot
   } catch {
     Add-Issue $_.Exception.Message
   }
@@ -244,6 +293,18 @@ if ($null -ne $manifest) {
 }
 if ($null -ne $prepare -and -not [string]::IsNullOrWhiteSpace($processedHash) -and $processedHash -ne [string]$prepare.payloadSha256) {
   Add-Issue "Processed runtime payload hash does not match runtime prepare evidence."
+  if (-not [string]::IsNullOrWhiteSpace([string]$prepare.runtimeRoot) -and
+      (Test-Path -LiteralPath ([string]$prepare.runtimeRoot) -PathType Container) -and
+      $null -ne $processedInventory) {
+    try {
+      $prepareInventory = Get-RuntimeFileInventory ([string]$prepare.runtimeRoot)
+      foreach ($difference in Compare-RuntimeFileInventories -Expected $prepareInventory -Actual $processedInventory) {
+        Add-Issue "Prepare/processed runtime difference: $difference"
+      }
+    } catch {
+      Add-Issue "Prepare/processed runtime inventory comparison failed: $($_.Exception.Message)"
+    }
+  }
 }
 
 if ($RequireInstallerPayload) {
@@ -325,6 +386,7 @@ if ($RequireInstallerPayload) {
         $installerPayload.runtimeRootRelative = $runtimeRoot.Substring($extractionPrefix.Length).Replace("\", "/")
         $runtimeFiles = @(Get-ChildItem -LiteralPath $runtimeRoot -File -Recurse -Force)
         $installerPayload.runtimePayloadSha256 = Get-RuntimePayloadHash $runtimeRoot
+        $installerInventory = Get-RuntimeFileInventory $runtimeRoot
         $installerPayload.runtimeFileCount = $runtimeFiles.Count
         $installerPayload.runtimeBytes = [int64](($runtimeFiles | Measure-Object -Property Length -Sum).Sum)
         $installerManifestPath = Join-Path $runtimeRoot "stackchan-python-runtime.json"
@@ -357,6 +419,11 @@ if ($RequireInstallerPayload) {
   if (-not [string]::IsNullOrWhiteSpace($processedHash) -and -not [string]::IsNullOrWhiteSpace([string]$installerPayload.runtimePayloadSha256) -and
       [string]$installerPayload.runtimePayloadSha256 -ne $processedHash) {
     Add-Issue "Installer runtime payload hash does not match processed Gradle resources."
+    if ($null -ne $processedInventory -and $null -ne $installerInventory) {
+      foreach ($difference in Compare-RuntimeFileInventories -Expected $processedInventory -Actual $installerInventory) {
+        Add-Issue "Processed/installer runtime difference: $difference"
+      }
+    }
   }
   if ($processedFiles.Count -gt 0 -and [int]$installerPayload.runtimeFileCount -ne $processedFiles.Count) {
     Add-Issue "Installer runtime file count does not match processed Gradle resources."

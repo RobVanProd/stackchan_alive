@@ -186,7 +186,9 @@ try {
 
   Set-Content -LiteralPath (Join-Path $installerRuntimeRoot "Lib/runtime.txt") -Value "tampered installer runtime" -Encoding ASCII
   $tamperedInstaller = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "tampered-installer.json")
-  if ($tamperedInstaller.exitCode -eq 0 -or $tamperedInstaller.output -notmatch "Installer runtime payload hash does not match") {
+  if ($tamperedInstaller.exitCode -eq 0 -or
+      $tamperedInstaller.output -notmatch "Installer runtime payload hash does not match" -or
+      $tamperedInstaller.output -notmatch "Processed/installer runtime difference: changed Lib/runtime.txt") {
     throw "Tampered installer runtime was not rejected."
   }
   Write-Host "[ok] installer runtime tampering is rejected"
