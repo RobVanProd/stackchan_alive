@@ -5,6 +5,11 @@
 *.jks
 *.keystore
 *.p12
+*.pfx
+*.pkcs12
+*.key
+*.p8
+*.snk
 
 # Editor and OS files
 .vscode/

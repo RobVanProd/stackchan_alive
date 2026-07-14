@@ -339,6 +339,17 @@ password-protected PKCS#12 file; notarization uses an app-specific Apple passwor
 offline backups and do not add any certificate or password to the repository. The tag workflow
 fails before publishing when any signing credential or native trust proof is absent.
 
+Before provisioning or rotating any signing material, run the source-checkout hygiene gate:
+
+```powershell
+.\tools\check_release_credential_hygiene.cmd -Json
+```
+
+It verifies that Android keystores, Windows PFX, macOS PKCS#12, Apple API keys, and other private-key
+bundle extensions remain ignored and untracked, and that no tracked text file contains a private-key
+marker. `package_release.ps1` runs the same gate before building, while companion CI runs its
+negative contract tests. The report exposes paths and status only, never credential contents.
+
 After provisioning all twelve companion signing secrets (four Android, two Windows, and six
 macOS), run the manual **Companion Signing Readiness** workflow before creating a tag:
 

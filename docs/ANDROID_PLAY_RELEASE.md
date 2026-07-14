@@ -97,6 +97,12 @@ Before any Play upload, preserve two independent offline media copies of the enc
 password record. Losing the private upload key or its passwords breaks update continuity. Do not
 move either copy under this repository or into `output/`.
 
+Before creating or provisioning the upload key, run
+`tools/check_release_credential_hygiene.cmd -Json` from the source checkout. It verifies that JKS,
+PFX, PKCS#12, Apple API key, and related private-key files remain ignored and untracked and rejects
+tracked private-key markers without printing key contents. Every release package runs this gate
+before building.
+
 From an authenticated checkout of the release repository, set the Actions secrets. The
 password commands prompt interactively, keeping their values out of the shell command line and
 history:

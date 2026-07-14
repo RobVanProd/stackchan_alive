@@ -303,6 +303,10 @@ Repository secrets required before the first public tag:
 
 Back up the upload keystore outside the repository; losing it breaks Android update
 continuity. Back up the Windows signing PFX and macOS Developer ID PKCS#12 independently as well.
+Run `tools/check_release_credential_hygiene.cmd -Json` before provisioning or rotating those files;
+it fails if private-key bundle extensions are not ignored, if one is tracked, or if a tracked text
+file contains a private-key marker. Release packaging and companion CI enforce the same boundary,
+and the checker reports paths only rather than credential contents.
 The tag workflow now fails closed unless the MSI has a valid timestamped Authenticode signature and
 the DMG contains a Developer ID signed app accepted by Gatekeeper plus a stapled Apple notarization
 ticket. Every final asset also receives a GitHub Sigstore-backed provenance attestation before the

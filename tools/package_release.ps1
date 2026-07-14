@@ -50,6 +50,13 @@ Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 . (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
+$credentialHygieneJson = (& (Join-Path $PSScriptRoot "check_release_credential_hygiene.ps1") -Root $repoRoot -Json | Out-String)
+$credentialHygieneReport = $credentialHygieneJson | ConvertFrom-Json
+if ($credentialHygieneReport.status -ne "release-credential-hygiene-ready" -or [int]$credentialHygieneReport.failed -ne 0) {
+  throw "Release credential hygiene failed; refusing to build or package from this checkout."
+}
+Write-Host $credentialHygieneJson.Trim()
+
 $releaseLegacyPlatformioCore = Get-StackchanPlatformioCoreDir
 $releasePlatformioCoreRoot = if ($env:OS -eq "Windows_NT") {
   # The repository may be running through a temporary subst drive. Keep the
@@ -673,6 +680,10 @@ $releaseTools = @(
   "tools/check_desktop_release_signing_readiness.cmd",
   "tools/check_desktop_release_signing_readiness.ps1",
   "tools/test_desktop_release_signing_readiness_contract.ps1",
+  "tools/check_release_credential_hygiene.cmd",
+  "tools/check_release_credential_hygiene.ps1",
+  "tools/test_release_credential_hygiene_contract.cmd",
+  "tools/test_release_credential_hygiene_contract.ps1",
   "tools/install_desktop_companion_package.cmd",
   "tools/install_desktop_companion_package.ps1",
   "tools/check_desktop_target_install_evidence.cmd",

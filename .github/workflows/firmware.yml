@@ -25,6 +25,7 @@ jobs:
         with:
           filters: |
             companion:
+              - '.gitignore'
               - '.github/workflows/firmware.yml'
               - 'companion/**'
               - 'protocol-fixtures/**'
@@ -65,6 +66,8 @@ jobs:
               - 'tools/test_desktop_package_evidence_contract.*'
               - 'tools/check_desktop_release_signing_readiness.*'
               - 'tools/test_desktop_release_signing_readiness_contract.*'
+              - 'tools/check_release_credential_hygiene.*'
+              - 'tools/test_release_credential_hygiene_contract.*'
               - 'tools/install_desktop_companion_package.*'
               - 'tools/check_desktop_target_install_evidence.*'
               - 'tools/test_desktop_target_install_evidence_contract.*'
@@ -233,6 +236,10 @@ jobs:
       - name: Run desktop release signing readiness contract
         shell: pwsh
         run: ./tools/test_desktop_release_signing_readiness_contract.ps1
+
+      - name: Run release credential hygiene contract
+        shell: pwsh
+        run: ./tools/test_release_credential_hygiene_contract.ps1
 
       - name: Run native desktop target-install evidence contract
         shell: pwsh

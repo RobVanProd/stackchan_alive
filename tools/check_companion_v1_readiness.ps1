@@ -728,6 +728,12 @@ Test-AggregateTextEvidence `
   -RelativePaths @("tools/check_desktop_release_signing_readiness.ps1", "tools/test_desktop_release_signing_readiness_contract.ps1", ".github/workflows/companion-signing-readiness.yml", ".github/workflows/firmware.yml") `
   -Patterns @("stackchan.desktop-signing-readiness.v1", "private code-signing certificate", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "does not chain to a root trusted by the native host", "temporary Authenticode signing probe", "temporary Developer ID signing probe", "manual signing readiness workflow validates without publishing", "tagged release runs native desktop signing preflight", "companion CI runs the desktop signing readiness contract", "invalid Windows PKCS12 base64 is rejected", "wrong Windows PKCS12 password is rejected", "Windows certificate without code-signing EKU is rejected", "near-expiry Windows certificate is rejected", "undersized Windows signing key is rejected", "mismatched macOS signing identity is rejected", "mismatched Apple team ID is rejected", "Desktop release signing readiness contract passed", "workflow_dispatch", "contents: read")
 
+Test-AggregateTextEvidence `
+  -Id "release-credential-hygiene" `
+  -Name "Release private signing credential hygiene" `
+  -RelativePaths @("tools/check_release_credential_hygiene.ps1", "tools/test_release_credential_hygiene_contract.ps1") `
+  -Patterns @("stackchan.release-credential-hygiene.v1", "release-credential-hygiene-ready", "blocked-release-credential-hygiene", "tracked-private-key-bundles", "tracked-private-key-markers", "ignore-pattern-pfx", "ignore-pattern-pkcs12", "current source tree has no tracked private signing credentials", "every release package runs credential hygiene before building", "companion CI runs the release credential hygiene contract", "tracked private-key bundle extensions are rejected", "tracked PEM private key markers are rejected", "missing private-key ignore patterns are rejected", "Release credential hygiene contract tests passed")
+
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
