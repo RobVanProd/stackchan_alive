@@ -3,6 +3,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 $desktopBuildText = Get-Content -LiteralPath (Join-Path $PSScriptRoot "../companion/app-desktop/build.gradle.kts") -Raw
+$runtimePrepareText = Get-Content -LiteralPath (Join-Path $PSScriptRoot "prepare_desktop_python_runtime.ps1") -Raw
 if ($desktopBuildText -notmatch [regex]::Escape("process.waitFor(120, TimeUnit.SECONDS)")) {
   throw "Desktop packaging must allow the managed-runtime validation subprocess a bounded 120-second first-launch window."
 }
@@ -12,6 +13,13 @@ foreach ($pattern in @("desktop-runtime-validator-output", "outputReader.join(5_
   }
 }
 Write-Host "[ok] desktop packaging runtime validation uses the bounded first-launch window"
+
+foreach ($pattern in @("[System.IO.File]::Copy", "GetUnixFileMode", "SetUnixFileMode", "materializedSymlinkCount")) {
+  if ($runtimePrepareText -notmatch [regex]::Escape($pattern)) {
+    throw "Desktop runtime preparation must materialize Unix file symlinks deterministically: missing $pattern"
+  }
+}
+Write-Host "[ok] desktop runtime preparation materializes Unix file symlinks with target modes"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checkScript = Join-Path $PSScriptRoot "check_desktop_python_runtime_payload.ps1"
