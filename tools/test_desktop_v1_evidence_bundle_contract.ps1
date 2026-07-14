@@ -151,9 +151,31 @@ function Write-TargetInstallReport {
       sourceCommit = $SourceCommit
       platform = $Platform
       environmentKind = $EnvironmentKind
-      host = [ordered]@{ platform = $Platform; osDescription = "contract fixture"; architecture = "x64" }
+      host = [ordered]@{ platform = $Platform; osDescription = "contract fixture"; architecture = "x64"; elevatedAdministrator = ($Platform -eq "windows") }
       package = [ordered]@{ name = "stackchan-companion$extension"; bytes = 12345; sha256 = $PackageSha256 }
-      install = [ordered]@{ method = $method; exitCode = 0; installRoot = "/fixture"; installedLauncherPath = "/fixture/Stackchan Companion"; logPath = "fixture.log" }
+      install = [ordered]@{
+        method = $method
+        exitCode = 0
+        installRoot = "/fixture"
+        installedLauncherPath = "/fixture/Stackchan Companion"
+        logPath = "fixture.log"
+        windows = if ($Platform -eq "windows") {
+          [ordered]@{
+            preExistingRegistrations = @()
+            replacementRequested = $false
+            replacementPerformed = $false
+            uninstallAttempts = @()
+            postInstallRegistrations = @([ordered]@{
+              productCode = "{11111111-2222-3333-4444-555555555555}"
+              displayName = "Stackchan Companion"
+              displayVersion = "1.0.0"
+              publisher = "fixture"
+              installLocation = "/fixture"
+              registryPath = "fixture-registry"
+            })
+          }
+        } else { $null }
+      }
       launch = [ordered]@{
         exitCode = 0
         probe = [ordered]@{
