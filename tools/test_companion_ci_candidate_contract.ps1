@@ -160,7 +160,12 @@ function Assert-Failed {
     [string]$Name
   )
 
-  if ($Result.exitCode -eq 0 -or $Result.output -notmatch $Pattern) {
+  $matched = [regex]::IsMatch(
+    [string]$Result.output,
+    $Pattern,
+    [System.Text.RegularExpressions.RegexOptions]::Singleline
+  )
+  if ($Result.exitCode -eq 0 -or -not $matched) {
     throw "$Name was not rejected as expected. Exit=$($Result.exitCode) Output=$($Result.output)"
   }
   $script:passCount++
