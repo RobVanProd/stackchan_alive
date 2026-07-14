@@ -49,3 +49,4 @@ try {
 }
 
 Write-Host "Companion release version contract tests passed"
+exit 0

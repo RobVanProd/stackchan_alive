@@ -359,3 +359,4 @@ try {
 }
 
 Write-Host "Desktop package evidence contract tests passed"
+exit 0
