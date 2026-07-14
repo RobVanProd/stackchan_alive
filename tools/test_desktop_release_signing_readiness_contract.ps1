@@ -372,3 +372,4 @@ try {
 }
 
 Write-Host "Desktop release signing readiness contract passed: $passCount checks."
+exit 0
