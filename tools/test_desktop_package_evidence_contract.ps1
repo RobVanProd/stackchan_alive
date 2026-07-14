@@ -363,10 +363,13 @@ try {
     $targetReport | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $aggregateRoot ("{0}-package-evidence.json" -f $target.platform)) -Encoding UTF8
   }
 
+  $emptyAndroidRoot = Join-Path $tempRoot "empty-android"
+  New-Item -ItemType Directory -Path $emptyAndroidRoot | Out-Null
   $aggregateOut = Join-Path $tempRoot "aggregate-out"
   $aggregateOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
+    -AndroidArtifactRoot $emptyAndroidRoot `
     -DesktopArtifactRoot $aggregateRoot `
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir $aggregateOut `
@@ -374,6 +377,9 @@ try {
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 0) { throw "Complete aggregate desktop package evidence unexpectedly failed: $aggregateOutput" }
   $aggregateReport = $aggregateOutput | ConvertFrom-Json
+  if ($aggregateReport.status -eq "blocked-release-evidence" -or @($aggregateReport.blockingPending).Count -ne 0) {
+    throw "Ready desktop trust must not be blocked by unrelated optional Android evidence."
+  }
   if ($aggregateReport.desktopPackageEvidence.status -ne "ready" -or @($aggregateReport.desktopPackageEvidence.platforms).Count -ne 3) {
     throw "Complete aggregate desktop package evidence did not report three ready platforms."
   }
@@ -386,6 +392,7 @@ try {
   $aggregateTamperedOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
+    -AndroidArtifactRoot $emptyAndroidRoot `
     -DesktopArtifactRoot $aggregateRoot `
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir (Join-Path $tempRoot "aggregate-tampered-out") `
@@ -394,7 +401,7 @@ try {
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not reject a tampered installer runtime: $aggregateTamperedOutput" }
   $aggregateTamperedReport = $aggregateTamperedOutput | ConvertFrom-Json
-  if (@($aggregateTamperedReport.pending) -notcontains "desktop-native-package-runtime-evidence") {
+  if (@($aggregateTamperedReport.blockingPending) -notcontains "desktop-native-package-runtime-evidence") {
     throw "Strict aggregate evidence did not preserve the installer runtime mismatch marker."
   }
   Write-Host "[ok] aggregate companion evidence rejects installer-derived runtime mismatch"
@@ -406,6 +413,7 @@ try {
   $staleLaunchOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
+    -AndroidArtifactRoot $emptyAndroidRoot `
     -DesktopArtifactRoot $aggregateRoot `
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir (Join-Path $tempRoot "aggregate-stale-launch-out") `
@@ -424,6 +432,7 @@ try {
   $trustTamperedOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
+    -AndroidArtifactRoot $emptyAndroidRoot `
     -DesktopArtifactRoot $aggregateRoot `
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir (Join-Path $tempRoot "aggregate-trust-tampered-out") `
@@ -432,7 +441,7 @@ try {
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not reject missing Windows distribution trust: $trustTamperedOutput" }
   $trustTamperedReport = $trustTamperedOutput | ConvertFrom-Json
-  if (@($trustTamperedReport.pending) -notcontains "desktop-native-distribution-trust") {
+  if (@($trustTamperedReport.blockingPending) -notcontains "desktop-native-distribution-trust") {
     throw "Strict aggregate evidence did not preserve the desktop distribution trust marker."
   }
   Write-Host "[ok] aggregate companion evidence rejects missing native distribution trust"
@@ -444,6 +453,7 @@ try {
   $missingOutput = & $powerShellHost -NoProfile -File $releaseExporter `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
+    -AndroidArtifactRoot $emptyAndroidRoot `
     -DesktopArtifactRoot $aggregateRoot `
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir $missingOut `
@@ -452,7 +462,7 @@ try {
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not fail when a native report was missing: $missingOutput" }
   $missingReport = $missingOutput | ConvertFrom-Json
-  if (@($missingReport.pending) -notcontains "desktop-native-package-runtime-evidence") {
+  if (@($missingReport.blockingPending) -notcontains "desktop-native-package-runtime-evidence") {
     throw "Strict aggregate evidence did not preserve the missing native package marker."
   }
   Write-Host "[ok] strict aggregate evidence rejects a missing native package report"

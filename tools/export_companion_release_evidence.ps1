@@ -1024,7 +1024,44 @@ if ($RequireDesktopDistributionTrust -and $desktopPackageEvidence.status -ne "re
 }
 
 $strictEvidenceRequired = $RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPythonRuntime -or $RequireDesktopPackageEvidence -or $RequireDesktopDistributionTrust -or $RequireAndroidEmulatorEvidence
-$status = if ($strictEvidenceRequired -and $pending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
+$blockingMarkers = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+function Add-BlockingMarkers {
+  param([string[]]$Markers)
+  foreach ($marker in $Markers) { [void]$blockingMarkers.Add($marker) }
+}
+
+if ($strictEvidenceRequired) {
+  Add-BlockingMarkers @("companion-cross-platform-plan", "companion-v1-readiness-check", "gradle-toolchain-pins")
+}
+if ($RequireArtifacts) {
+  Add-BlockingMarkers @(
+    "android-apk-artifacts",
+    "android-debug-apk-artifact",
+    "android-release-apk-artifact",
+    "android-release-aab-artifact",
+    "desktop-distribution-artifacts",
+    "desktop-linux-deb-artifact",
+    "desktop-macos-dmg-artifact",
+    "desktop-windows-msi-artifact"
+  )
+}
+if ($RequireUploadSigning) {
+  Add-BlockingMarkers @(
+    "android-release-apk-signature",
+    "android-release-apk-upload-signing",
+    "android-release-aab-signature",
+    "android-release-aab-upload-signing"
+  )
+}
+if ($RequireAndroidEmulatorEvidence) { Add-BlockingMarkers @("android-emulator-release-apk-evidence") }
+if ($RequireDesktopPythonRuntime) { Add-BlockingMarkers @("desktop-managed-python-runtime-payload") }
+if ($RequireDesktopPackageEvidence) { Add-BlockingMarkers @("desktop-native-package-runtime-evidence") }
+if ($RequireDesktopDistributionTrust) {
+  Add-BlockingMarkers @("desktop-native-package-runtime-evidence", "desktop-native-distribution-trust")
+}
+
+$blockingPending = @($pending | Where-Object { $blockingMarkers.Contains($_) })
+$status = if ($strictEvidenceRequired -and $blockingPending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
 $report = [ordered]@{
   schema = "stackchan.companion-release-evidence.v1"
@@ -1051,6 +1088,7 @@ $report = [ordered]@{
   desktopPackageEvidence = $desktopPackageEvidence
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
+  blockingPending = @($blockingPending)
 }
 
 $jsonPath = Join-Path $OutDir "COMPANION_RELEASE_EVIDENCE.json"
@@ -1159,6 +1197,6 @@ if ($Json) {
   }
 }
 
-if ($strictEvidenceRequired -and $pending.Count -gt 0) {
+if ($strictEvidenceRequired -and $blockingPending.Count -gt 0) {
   exit 2
 }
