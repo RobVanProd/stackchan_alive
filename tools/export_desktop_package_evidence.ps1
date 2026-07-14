@@ -215,6 +215,27 @@ function Get-Sha256Utf8Text {
   return Get-Sha256Bytes ([System.Text.Encoding]::UTF8.GetBytes($Value))
 }
 
+function Get-ByteDifferenceSummary {
+  param(
+    [byte[]]$Expected,
+    [byte[]]$Actual,
+    [int]$Limit = 8
+  )
+
+  $differences = New-Object System.Collections.Generic.List[string]
+  $sharedLength = [Math]::Min($Expected.Length, $Actual.Length)
+  for ($offset = 0; $offset -lt $sharedLength -and $differences.Count -lt $Limit; $offset++) {
+    if ($Expected[$offset] -ne $Actual[$offset]) {
+      $differences.Add(("0x{0:x}:0x{1:x2}/0x{2:x2}" -f $offset, $Expected[$offset], $Actual[$offset]))
+    }
+  }
+  if ($differences.Count -lt $Limit -and $Expected.Length -ne $Actual.Length) {
+    $differences.Add("length:$($Expected.Length)/$($Actual.Length)")
+  }
+  if ($differences.Count -eq 0) { return "none" }
+  return ($differences -join ",")
+}
+
 function Read-MachOUInt32 {
   param(
     [byte[]]$Bytes,
@@ -285,6 +306,7 @@ function Get-MachOCodeContentIdentity {
     sha256 = Get-Sha256Bytes $canonical
     codeBytes = $signatureDataOffset
     signatureBytes = $signatureDataSize
+    canonicalBytes = $canonical
   }
 }
 
@@ -393,7 +415,8 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
           return [pscustomobject]$result
         }
         if ($expectedIdentity.sha256 -ne $actualIdentity.sha256 -or $expectedIdentity.codeBytes -ne $actualIdentity.codeBytes) {
-          $result.issue = "Mach-O code content differs outside LC_CODE_SIGNATURE for '$architecture': $path"
+          $byteDifferences = Get-ByteDifferenceSummary -Expected $expectedIdentity.canonicalBytes -Actual $actualIdentity.canonicalBytes
+          $result.issue = "Mach-O code content differs outside LC_CODE_SIGNATURE for '$architecture': $path (codeBytes $($expectedIdentity.codeBytes)/$($actualIdentity.codeBytes); signatureBytes $($expectedIdentity.signatureBytes)/$($actualIdentity.signatureBytes); firstDiffs $byteDifferences)"
           return [pscustomobject]$result
         }
         $architectureProofs.Add([ordered]@{
