@@ -496,14 +496,14 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
         processedFileSha256 = [string]$Expected[$path].sha256
         installerFileSha256 = [string]$Actual[$path].sha256
         normalizedFileSha256 = $normalizedFileSha
-        architectures = @($architectureProofs)
+        architectures = $architectureProofs.ToArray()
       })
       $index++
     }
 
     $result.status = "ready"
     $result.changedFileCount = $proofs.Count
-    $result.files = @($proofs)
+    $result.files = $proofs.ToArray()
     return [pscustomobject]$result
   } finally {
     if (Test-Path -LiteralPath $tempRoot) {
