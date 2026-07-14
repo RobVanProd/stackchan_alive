@@ -29,6 +29,40 @@ $environmentNames = @($signingEnvironmentNames + $storePasswordEnvironmentName +
 $previousEnvironment = @{}
 $passCount = 0
 
+$signingReadinessWorkflowPath = Join-Path $repoRoot ".github/workflows/companion-signing-readiness.yml"
+$signingReadinessWorkflow = Get-Content -LiteralPath $signingReadinessWorkflowPath -Raw
+foreach ($pattern in @(
+  "android-upload-key",
+  "actions/setup-java@v5",
+  "STACKCHAN_ANDROID_KEYSTORE_B64",
+  "STACKCHAN_ANDROID_KEYSTORE_PASSWORD",
+  "STACKCHAN_ANDROID_KEY_ALIAS",
+  "STACKCHAN_ANDROID_KEY_PASSWORD",
+  "check_android_play_release_readiness.ps1",
+  "RequireUploadSigning"
+)) {
+  if ($signingReadinessWorkflow -notmatch [regex]::Escape($pattern)) {
+    throw "Manual signing readiness workflow is missing Android upload-key validation: $pattern"
+  }
+}
+foreach ($forbidden in @("gh release", "upload-artifact", "contents: write")) {
+  if ($signingReadinessWorkflow -match [regex]::Escape($forbidden)) {
+    throw "Manual signing readiness workflow must not publish artifacts or releases: $forbidden"
+  }
+}
+$passCount++
+Write-Host "[PASS] manual signing readiness workflow validates Android upload key without publishing"
+
+$releaseWorkflowPath = Join-Path $repoRoot ".github/workflows/release.yml"
+$releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
+foreach ($pattern in @("Validate Android upload key", "check_android_play_release_readiness.ps1 -RequireUploadSigning -Json")) {
+  if ($releaseWorkflow -notmatch [regex]::Escape($pattern)) {
+    throw "Tagged release workflow is missing strict Android upload signing validation: $pattern"
+  }
+}
+$passCount++
+Write-Host "[PASS] tagged Android release requires upload signing readiness"
+
 function Invoke-ContractKeytool {
   param([string[]]$Arguments)
 
@@ -90,6 +124,8 @@ function Clear-SigningEnvironment {
 }
 
 function Invoke-ReadinessCheck {
+  param([bool]$RequireUploadSigning = $false)
+
   $powerShellExe = (Get-Process -Id $PID).Path
   $arguments = @(
     "-NoProfile",
@@ -101,6 +137,9 @@ function Invoke-ReadinessCheck {
     [string]$repoRoot,
     "-Json"
   )
+  if ($RequireUploadSigning) {
+    $arguments += "-RequireUploadSigning"
+  }
 
   $oldErrorActionPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
@@ -209,9 +248,17 @@ try {
     -DetailPattern "Release tasks fail closed" `
     -Name "missing upload signing credentials remain pending and fail closed"
 
+  Assert-Readiness `
+    -Result (Invoke-ReadinessCheck -RequireUploadSigning $true) `
+    -ExpectedExitCode 2 `
+    -ExpectedReportStatus "source-ready-pending-upload-signing" `
+    -ExpectedCheckStatus "pending" `
+    -DetailPattern "Release tasks fail closed" `
+    -Name "required upload signing credentials fail closed when missing"
+
   Set-SigningEnvironment -StorePassword $storePassword -Alias "valid-upload" -KeyPassword $validKeyPassword
   Assert-Readiness `
-    -Result (Invoke-ReadinessCheck) `
+    -Result (Invoke-ReadinessCheck -RequireUploadSigning $true) `
     -ExpectedExitCode 0 `
     -ExpectedReportStatus "source-ready" `
     -ExpectedCheckStatus "pass" `

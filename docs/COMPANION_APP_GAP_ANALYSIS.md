@@ -136,12 +136,14 @@ current v1 companion branch.
   four `STACKCHAN_ANDROID_*` Actions secrets, builds both APK and AAB, and the release evidence
   gate requires the `upload-key` signing profile. The repository currently has no configured
   Actions secrets, so a public companion tag remains externally blocked until they are provisioned.
-  Desktop credential provisioning now has a read-only, manually dispatched
-  `Companion Signing Readiness` workflow plus a secret-safe checker/contract. It validates the
-  Windows private code-signing certificate by signing and verifying a temporary executable, the
-  macOS Developer ID identity by signing and verifying a temporary hardened-runtime executable in
-  a temporary keychain, each certificate's native trust chain, and live Apple notarization
-  authentication without publishing assets; the tag workflow repeats the preflight before
+  All-platform credential provisioning now has a read-only, manually dispatched
+  `Companion Signing Readiness` workflow plus secret-safe checker/contracts. It validates the
+  Android upload keystore, selected private-key entry, passwords, RSA 4096-bit minimum, non-debug
+  subject, and Play certificate lifetime in temporary runner storage. It also validates the Windows
+  private code-signing certificate by signing and verifying a temporary executable, the macOS
+  Developer ID identity by signing and verifying a temporary hardened-runtime executable in a
+  temporary keychain, each desktop certificate's native trust chain, and live Apple notarization
+  authentication without publishing assets; the tag workflow repeats the preflights before
   packaging.
   Source-side Play prep now includes policy/data-safety declarations for
   `dev.stackchan.companion`, foreground-service `connectedDevice` justification,

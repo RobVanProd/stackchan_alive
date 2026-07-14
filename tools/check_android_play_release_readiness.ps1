@@ -1,5 +1,6 @@
 param(
   [string]$Root = "",
+  [switch]$RequireUploadSigning,
   [switch]$Json
 )
 
@@ -248,7 +249,8 @@ function Test-PlayUploadSigningEnvironment {
         if ($null -eq $rsa) {
           throw "RSA public key provider returned null."
         } else {
-          $rsaKeySize = $rsa.KeySize
+          $rsaParameters = $rsa.ExportParameters($false)
+          $rsaKeySize = [int]($rsaParameters.Modulus.Length * 8)
         }
       } catch {
         $keytoolListText = $listResult.output -join "`n"
@@ -621,6 +623,7 @@ $report = [ordered]@{
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count
   pending = $pendingChecks.Count
   failed = $failedChecks.Count
+  uploadSigningRequired = [bool]$RequireUploadSigning
   checks = @($checks)
 }
 
@@ -637,5 +640,8 @@ if ($Json) {
 
 if ($failedChecks.Count -gt 0) {
   exit 1
+}
+if ($RequireUploadSigning -and $pendingChecks.Count -gt 0) {
+  exit 2
 }
 exit 0

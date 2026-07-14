@@ -59,7 +59,7 @@ jobs:
 
       - name: Validate Android upload key
         shell: pwsh
-        run: ./tools/check_android_play_release_readiness.ps1 -Json
+        run: ./tools/check_android_play_release_readiness.ps1 -RequireUploadSigning -Json
 
       - name: Build upload-signed Android release
         shell: bash

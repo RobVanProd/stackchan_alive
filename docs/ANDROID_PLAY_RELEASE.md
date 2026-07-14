@@ -112,8 +112,17 @@ gh secret list --app actions
 
 Enter `stackchan-upload` when the alias secret prompts. The two password prompts must receive
 the exact store and key passwords created above. `gh secret list` confirms names and update
-times only; GitHub never returns secret values. After provisioning, verify the same key locally
-with the Play-ready build below and retain the APK/AAB signing evidence before creating a tag.
+times only; GitHub never returns secret values. After provisioning, run the read-only
+**Companion Signing Readiness** workflow. Its Android job validates the configured keystore and
+selected private key without building or publishing an artifact:
+
+```powershell
+gh workflow run companion-signing-readiness.yml --ref <release-branch>
+gh run watch (gh run list --workflow companion-signing-readiness.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
+```
+
+Then verify the same key locally with the Play-ready build below and retain the APK/AAB signing
+evidence before creating a tag.
 
 Example local Play-ready build:
 

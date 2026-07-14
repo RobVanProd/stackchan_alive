@@ -300,12 +300,14 @@ the DMG contains a Developer ID signed app accepted by Gatekeeper plus a stapled
 ticket. Every final asset also receives a GitHub Sigstore-backed provenance attestation before the
 prerelease is created. The repository currently has none of these Actions secrets configured, so a
 consumer tag remains externally blocked until the owner provisions and backs them up.
-Once provisioned, the manual `Companion Signing Readiness` workflow uses the Windows private
-code-signing certificate and native SignTool to sign and verify a temporary executable, imports the
-macOS Developer ID identity into a temporary keychain to sign and verify a hardened-runtime probe,
-requires each certificate chain to terminate at a native-host trusted root, and validates Apple
-notarization authentication without publishing any artifact. The tag workflow repeats this
-preflight before building the MSI or DMG.
+Once provisioned, the manual `Companion Signing Readiness` workflow validates the Android upload
+keystore, selected private-key entry, passwords, RSA 4096-bit minimum, non-debug subject, and Play
+certificate lifetime in temporary runner storage. It also uses the Windows private code-signing
+certificate and native SignTool to sign and verify a temporary executable, imports the macOS
+Developer ID identity into a temporary keychain to sign and verify a hardened-runtime probe,
+requires each desktop certificate chain to terminate at a native-host trusted root, and validates
+Apple notarization authentication without publishing any artifact. The tag workflow repeats these
+preflights before building the AAB, MSI, or DMG.
 
 Every release job also emits `RELEASE_EVIDENCE.json` and
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, SHA-256 hashes, source commit,
