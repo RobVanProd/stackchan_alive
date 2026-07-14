@@ -78,6 +78,9 @@ Windows requires an elevated PowerShell session; Linux requires root or password
 macOS helper performs the normal DMG application copy. Check each result with
 `tools/check_desktop_target_install_evidence.ps1 -RequireOperatorTarget`, bind it to the published
 package SHA-256 and tag commit, and copy all three reports into the Desktop v1 aggregate packet.
+If Windows already has Stackchan Companion registered, preserve its evidence and rerun the helper
+with `-AllowReplace`. The helper then records and removes only the existing Stackchan MSI product
+before installing the exact release MSI; implicit same-version MSI maintenance is rejected.
 CI-native installation rehearsals, MSI administrative extraction, and DMG/DEB extraction do not
 satisfy this gate. Installed-launch evidence proves package installation and bundled runtime
 startup only; the human Desktop v1 review remains required.

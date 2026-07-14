@@ -142,6 +142,12 @@ the mounted DMG into `~/Applications` unless `-InstallRoot` is supplied:
 .\tools\install_desktop_companion_package.ps1 -Platform macos -PackagePath <dmg> -SourceCommit <40-character-commit> -OutputDir output\desktop-target-install\macos -Json
 ```
 
+On Windows, the helper refuses to treat MSI maintenance mode as fresh exact-package evidence when
+`Stackchan Companion` is already registered. Preserve the existing report or other required
+evidence, then add `-AllowReplace`; the helper records the old registration, uninstalls only that
+registered Stackchan MSI product, installs the exact requested MSI, and records the new
+registration. A silent probe of an older executable cannot satisfy the checker.
+
 Each helper performs the native install, launches the installed application with the managed
 runtime probe, and writes `stackchan.desktop-target-install-evidence.v1`. Validate each report
 against the release artifact hash and commit before copying it into the desktop v1 packet:

@@ -2365,17 +2365,17 @@ foreach ($pattern in @("stackchan.desktop-package-launch-evidence.v1", "stackcha
 }
 
 $desktopTargetInstallToolText = Get-Content -LiteralPath (Join-PackagePath "tools/install_desktop_companion_package.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-target-install-evidence.v1", "operator-target-workstation", "ci-native-runner", "msiexec-install", "dpkg-install", "dmg-application-copy", "installed-native-package-headless-runtime-probe", "exact-native-package-install-and-headless-launch", "substitutesForHumanAcceptance")) {
+foreach ($pattern in @("stackchan.desktop-target-install-evidence.v1", "operator-target-workstation", "ci-native-runner", "msiexec-install", "dpkg-install", "dmg-application-copy", "installed-native-package-headless-runtime-probe", "exact-native-package-install-and-headless-launch", "substitutesForHumanAcceptance", "preExistingRegistrations", "replacementRequested", "replacementPerformed", "uninstallAttempts", "postInstallRegistrations", "elevatedAdministrator")) {
   if ($desktopTargetInstallToolText -notmatch [regex]::Escape($pattern)) { throw "tools/install_desktop_companion_package.ps1 missing native target-install evidence logic: $pattern" }
 }
 
 $desktopTargetInstallCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_target_install_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-target-install-evidence-check.v1", "desktop-target-install-ready", "RequireOperatorTarget", "expected-package-sha256", "expected-source-commit", "installed-runtime-probe", "human-acceptance-scope")) {
+foreach ($pattern in @("stackchan.desktop-target-install-evidence-check.v1", "desktop-target-install-ready", "RequireOperatorTarget", "expected-package-sha256", "expected-source-commit", "installed-runtime-probe", "human-acceptance-scope", "windows-elevation", "windows-install-registration", "windows-exact-package-replacement")) {
   if ($desktopTargetInstallCheckerText -notmatch [regex]::Escape($pattern)) { throw "tools/check_desktop_target_install_evidence.ps1 missing native target-install validation: $pattern" }
 }
 
 $desktopTargetInstallContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_target_install_evidence_contract.ps1") -Raw
-foreach ($pattern in @("operator target-install evidence is accepted for Windows, Linux, and macOS", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")) {
+foreach ($pattern in @("operator target-install evidence is accepted for Windows, Linux, and macOS", "explicit Windows replacement evidence is accepted", "implicit Windows maintenance-mode replacement is rejected", "non-elevated Windows install evidence is rejected", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")) {
   if ($desktopTargetInstallContractText -notmatch [regex]::Escape($pattern)) { throw "tools/test_desktop_target_install_evidence_contract.ps1 missing target-install contract coverage: $pattern" }
 }
 

@@ -50,6 +50,41 @@ if ($null -ne $evidence) {
   $expectedMethod = @{ windows = "msiexec-install"; linux = "dpkg-install"; macos = "dmg-application-copy" }[$platform]
   $installExitCode = $evidence.install.exitCode
   if ([string]$evidence.install.method -eq $expectedMethod -and $null -ne $installExitCode -and [int]$installExitCode -in @(0, 1641, 3010)) { Add-Check "native-install" "pass" "Native installation method completed successfully." } else { Add-Check "native-install" "fail" "Native installation method or exit code is invalid." }
+
+  if ($platform -eq "windows") {
+    if ($evidence.host.elevatedAdministrator -eq $true) {
+      Add-Check "windows-elevation" "pass" "Windows MSI installation ran from an elevated session."
+    } else {
+      Add-Check "windows-elevation" "fail" "Windows MSI target-install evidence must prove an elevated installation session."
+    }
+
+    $windowsInstall = $evidence.install.windows
+    $preExisting = @($windowsInstall.preExistingRegistrations)
+    $uninstallAttempts = @($windowsInstall.uninstallAttempts)
+    $postInstall = @($windowsInstall.postInstallRegistrations)
+    $validPreExisting = $preExisting.Count -le 1 -and @($preExisting | Where-Object { [string]$_.productCode -notmatch '^\{[a-fA-F0-9-]{36}\}$' }).Count -eq 0
+    $validUninstalls = @($uninstallAttempts | Where-Object { [string]$_.productCode -notmatch '^\{[a-fA-F0-9-]{36}\}$' -or $null -eq $_.exitCode -or [int]$_.exitCode -notin @(0, 1641, 3010) }).Count -eq 0
+    $validPostInstall = $postInstall.Count -eq 1 -and [string]$postInstall[0].productCode -match '^\{[a-fA-F0-9-]{36}\}$'
+    if ($validPreExisting -and $validUninstalls -and $validPostInstall) {
+      Add-Check "windows-install-registration" "pass" "Windows pre-install and post-install product registrations are recorded."
+    } else {
+      Add-Check "windows-install-registration" "fail" "Windows product registration or uninstall evidence is malformed or incomplete."
+    }
+
+    $replacementSafe = if ($preExisting.Count -eq 0) {
+      $windowsInstall.replacementPerformed -eq $false -and $uninstallAttempts.Count -eq 0
+    } else {
+      $windowsInstall.replacementRequested -eq $true -and
+        $windowsInstall.replacementPerformed -eq $true -and
+        $uninstallAttempts.Count -eq $preExisting.Count
+    }
+    if ($replacementSafe) {
+      Add-Check "windows-exact-package-replacement" "pass" "Any existing Windows installation was explicitly removed before installing the exact MSI."
+    } else {
+      Add-Check "windows-exact-package-replacement" "fail" "Existing Windows installation replacement was not explicitly requested, completed, and recorded."
+    }
+  }
+
   $launchExitCode = $evidence.launch.exitCode
   if (-not [string]::IsNullOrWhiteSpace([string]$evidence.install.installedLauncherPath) -and $null -ne $launchExitCode -and [int]$launchExitCode -eq 0) { Add-Check "installed-launcher" "pass" "Installed launcher exited successfully." } else { Add-Check "installed-launcher" "fail" "Installed launcher path or exit code is invalid." }
 

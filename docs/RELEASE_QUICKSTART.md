@@ -417,6 +417,11 @@ from an elevated PowerShell session:
 .\tools\check_desktop_target_install_evidence.ps1 -EvidencePath output\desktop-target-install\<platform>\<platform>-target-install.json -ExpectedPlatform <platform> -ExpectedPackageSha256 <release-package-sha256> -ExpectedSourceCommit <40-character-commit> -RequireOperatorTarget -Json
 ```
 
+For a pre-existing Windows installation, preserve the prior evidence and pass `-AllowReplace` to
+the installer helper. It records the old product registration, removes only the registered
+Stackchan MSI, installs the exact requested package, and records the replacement. The checker
+rejects evidence that could have come from same-version MSI maintenance mode.
+
 Repeat on all three desktop operating systems. A CI runner report and an extracted launcher probe
 are deliberately rejected by the final desktop v1 gate. Installed-launch evidence also does not
 replace the human desktop review.

@@ -293,7 +293,10 @@ The tag is intentionally created as a GitHub prerelease. After it exists,
 matching workstation and launches the installed managed runtime. The standalone checker binds that
 report to the package SHA-256 and source commit. The final Desktop v1 aggregate requires one
 `operator-target-workstation` report for every desktop OS; CI rehearsal and extraction reports are
-not accepted as substitutes, and human acceptance remains a separate review item.
+not accepted as substitutes, and human acceptance remains a separate review item. On Windows, a
+pre-existing Stackchan installation must be explicitly replaced with `-AllowReplace`; the evidence
+records the pre-install registration, its successful uninstall, and the post-install registration
+so same-version MSI maintenance cannot be mistaken for a fresh exact-package install.
 
 Repository secrets required before the first public tag:
 

@@ -708,13 +708,13 @@ Test-AggregateTextEvidence `
   -Id "desktop-target-install-evidence" `
   -Name "Native desktop operator target-install evidence" `
   -RelativePaths @("tools/install_desktop_companion_package.ps1", "tools/check_desktop_target_install_evidence.ps1") `
-  -Patterns @("stackchan.desktop-target-install-evidence.v1", "stackchan.desktop-target-install-evidence-check.v1", "installed-and-ready", "operator-target-workstation", "ci-native-runner", "exact-native-package-install-and-headless-launch", "installed-native-package-headless-runtime-probe", "RequireOperatorTarget", "substitutesForHumanAcceptance")
+  -Patterns @("stackchan.desktop-target-install-evidence.v1", "stackchan.desktop-target-install-evidence-check.v1", "installed-and-ready", "operator-target-workstation", "ci-native-runner", "exact-native-package-install-and-headless-launch", "installed-native-package-headless-runtime-probe", "RequireOperatorTarget", "substitutesForHumanAcceptance", "preExistingRegistrations", "replacementRequested", "replacementPerformed", "uninstallAttempts", "postInstallRegistrations", "elevatedAdministrator", "windows-elevation", "windows-exact-package-replacement")
 
 Test-TextEvidence `
   -Id "desktop-target-install-evidence-contract" `
   -Name "Native desktop target-install evidence contract" `
   -RelativePaths @("tools/test_desktop_target_install_evidence_contract.ps1", "tools/test_desktop_target_install_evidence_contract.cmd") `
-  -Patterns @("operator target-install evidence is accepted for Windows, Linux, and macOS", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")
+  -Patterns @("operator target-install evidence is accepted for Windows, Linux, and macOS", "explicit Windows replacement evidence is accepted", "implicit Windows maintenance-mode replacement is rejected", "non-elevated Windows install evidence is rejected", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-package-evidence-contract" `

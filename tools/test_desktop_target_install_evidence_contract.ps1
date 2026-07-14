@@ -21,9 +21,31 @@ function New-TargetInstallFixture {
     sourceCommit = $sourceCommit
     platform = $Platform
     environmentKind = $EnvironmentKind
-    host = [ordered]@{ platform = $Platform; osDescription = "contract fixture"; architecture = "x64" }
+    host = [ordered]@{ platform = $Platform; osDescription = "contract fixture"; architecture = "x64"; elevatedAdministrator = ($Platform -eq "windows") }
     package = [ordered]@{ name = "stackchan-companion$extension"; bytes = 12345; sha256 = $packageHashes[$Platform] }
-    install = [ordered]@{ method = $method; exitCode = 0; installRoot = "/fixture"; installedLauncherPath = "/fixture/Stackchan Companion"; logPath = "fixture.log" }
+    install = [ordered]@{
+      method = $method
+      exitCode = 0
+      installRoot = "/fixture"
+      installedLauncherPath = "/fixture/Stackchan Companion"
+      logPath = "fixture.log"
+      windows = if ($Platform -eq "windows") {
+        [ordered]@{
+          preExistingRegistrations = @()
+          replacementRequested = $false
+          replacementPerformed = $false
+          uninstallAttempts = @()
+          postInstallRegistrations = @([ordered]@{
+            productCode = "{11111111-2222-3333-4444-555555555555}"
+            displayName = "Stackchan Companion"
+            displayVersion = "1.0.0"
+            publisher = "fixture"
+            installLocation = "/fixture"
+            registryPath = "fixture-registry"
+          })
+        }
+      } else { $null }
+    }
     launch = [ordered]@{
       exitCode = 0
       probe = [ordered]@{
@@ -83,6 +105,41 @@ try {
     if ($result.exitCode -ne 0 -or $result.report.status -ne "desktop-target-install-ready") { throw "Ready $platform target-install evidence was rejected: $($result.output)" }
   }
   Write-Host "[ok] operator target-install evidence is accepted for Windows, Linux, and macOS"
+
+  $windowsReplacement = New-TargetInstallFixture "windows"
+  $windowsReplacement.install.windows.preExistingRegistrations = @([ordered]@{
+    productCode = "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
+    displayName = "Stackchan Companion"
+    displayVersion = "1.0.0"
+    publisher = "fixture"
+    installLocation = "/fixture-old"
+    registryPath = "fixture-registry-old"
+  })
+  $windowsReplacement.install.windows.replacementRequested = $true
+  $windowsReplacement.install.windows.replacementPerformed = $true
+  $windowsReplacement.install.windows.uninstallAttempts = @([ordered]@{
+    productCode = "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
+    exitCode = 0
+    logPath = "fixture-uninstall.log"
+  })
+  $windowsReplacementPath = Write-Fixture "windows-replacement" $windowsReplacement
+  $windowsReplacementResult = Invoke-Check $windowsReplacementPath "windows" $packageHashes.windows -RequireOperatorTarget
+  if ($windowsReplacementResult.exitCode -ne 0 -or $windowsReplacementResult.report.status -ne "desktop-target-install-ready") { throw "Safe Windows replacement evidence was rejected: $($windowsReplacementResult.output)" }
+  Write-Host "[ok] explicit Windows replacement evidence is accepted"
+
+  $unsafeWindowsReplacement = New-TargetInstallFixture "windows"
+  $unsafeWindowsReplacement.install.windows.preExistingRegistrations = $windowsReplacement.install.windows.preExistingRegistrations
+  $unsafeWindowsReplacementPath = Write-Fixture "unsafe-windows-replacement" $unsafeWindowsReplacement
+  $unsafeWindowsReplacementResult = Invoke-Check $unsafeWindowsReplacementPath "windows" $packageHashes.windows -RequireOperatorTarget
+  if ($unsafeWindowsReplacementResult.exitCode -eq 0 -or @($unsafeWindowsReplacementResult.report.checks | Where-Object { $_.id -eq "windows-exact-package-replacement" -and $_.status -eq "fail" }).Count -ne 1) { throw "Unsafe Windows replacement evidence was accepted." }
+  Write-Host "[ok] implicit Windows maintenance-mode replacement is rejected"
+
+  $nonElevatedWindows = New-TargetInstallFixture "windows"
+  $nonElevatedWindows.host.elevatedAdministrator = $false
+  $nonElevatedWindowsPath = Write-Fixture "non-elevated-windows" $nonElevatedWindows
+  $nonElevatedWindowsResult = Invoke-Check $nonElevatedWindowsPath "windows" $packageHashes.windows -RequireOperatorTarget
+  if ($nonElevatedWindowsResult.exitCode -eq 0 -or @($nonElevatedWindowsResult.report.checks | Where-Object { $_.id -eq "windows-elevation" -and $_.status -eq "fail" }).Count -ne 1) { throw "Non-elevated Windows install evidence was accepted." }
+  Write-Host "[ok] non-elevated Windows install evidence is rejected"
 
   $wrongHashPath = Write-Fixture "wrong-hash" (New-TargetInstallFixture "windows")
   $wrongHash = Invoke-Check $wrongHashPath "windows" ("0" * 64) -RequireOperatorTarget

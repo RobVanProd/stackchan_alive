@@ -27,6 +27,11 @@ function Get-HostPlatform {
 function Get-GitCommit {
   try { return ((& git -C $repoRoot rev-parse HEAD 2>$null) | Out-String).Trim() } catch { return "" }
 }
+function Test-WindowsAdministrator {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 function Find-WindowsLauncher {
   $roots = New-Object System.Collections.Generic.List[string]
   if (-not [string]::IsNullOrWhiteSpace($InstallRoot)) { $roots.Add([System.IO.Path]::GetFullPath($InstallRoot)) }
@@ -52,6 +57,30 @@ function Find-WindowsLauncher {
     }
   }
   return @($matches | Sort-Object FullName -Unique)
+}
+function Get-WindowsInstallRegistrations {
+  $registryRoots = @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+  )
+  $registrations = @()
+  foreach ($entry in @(Get-ItemProperty $registryRoots -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq "Stackchan Companion" })) {
+    $productCode = [string]$entry.PSChildName
+    if ($productCode -notmatch '^\{[a-fA-F0-9-]{36}\}$') {
+      $uninstallString = [string]$entry.UninstallString
+      if ($uninstallString -match '\{[a-fA-F0-9-]{36}\}') { $productCode = $Matches[0] } else { $productCode = "" }
+    }
+    $registrations += [ordered]@{
+      productCode = $productCode.ToUpperInvariant()
+      displayName = [string]$entry.DisplayName
+      displayVersion = [string]$entry.DisplayVersion
+      publisher = [string]$entry.Publisher
+      installLocation = [string]$entry.InstallLocation
+      registryPath = [string]$entry.PSPath
+    }
+  }
+  return @($registrations | Sort-Object productCode, registryPath -Unique)
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputDir)) { $OutputDir = "output/desktop-target-install/latest" }
@@ -84,23 +113,84 @@ $installedLauncherPath = ""
 $probe = $null
 $launchExitCode = $null
 $mountPoint = ""
+$windowsPreExistingRegistrations = @()
+$windowsPostInstallRegistrations = @()
+$windowsReplacementPerformed = $false
+$windowsUninstallAttempts = @()
+$windowsElevatedAdministrator = $false
+
+if ($Platform -eq "windows" -and $hostPlatform -eq "windows") {
+  $windowsPreExistingRegistrations = @(Get-WindowsInstallRegistrations)
+  $windowsElevatedAdministrator = Test-WindowsAdministrator
+  if (-not $windowsElevatedAdministrator) {
+    Add-Issue "Windows MSI installation requires an elevated PowerShell session; no existing installation was changed."
+  }
+}
 
 if ($null -ne $package -and $hostPlatform -eq $Platform -and $issues.Count -eq 0) {
   try {
     switch ($Platform) {
       "windows" {
-        $arguments = @('/i', "`"$($package.FullName)`"", '/qn', '/norestart')
-        if (-not [string]::IsNullOrWhiteSpace($InstallRoot)) {
-          $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
-          $arguments += "INSTALLDIR=`"$InstallRoot`""
+        if ($windowsPreExistingRegistrations.Count -gt 1) {
+          Add-Issue "Expected at most one existing Stackchan Companion product registration; found $($windowsPreExistingRegistrations.Count). Resolve duplicate registrations before replacement."
         }
-        $arguments += @('/L*v', "`"$installLogPath`"")
-        $process = Start-Process -FilePath (Get-Command msiexec.exe -ErrorAction Stop).Source -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
-        $installExitCode = $process.ExitCode
-        if ($installExitCode -notin @(0, 1641, 3010)) { Add-Issue "MSI installation failed with exit code $installExitCode. Run this helper from an elevated PowerShell session and inspect $installLogPath." }
+        if ($windowsPreExistingRegistrations.Count -gt 0 -and -not $AllowReplace) {
+          Add-Issue "Stackchan Companion is already installed. Preserve any required evidence, then re-run with -AllowReplace to uninstall only the registered Stackchan Companion product before installing this exact MSI."
+        }
+
+        if ($windowsPreExistingRegistrations.Count -gt 0 -and $issues.Count -eq 0) {
+          foreach ($registration in $windowsPreExistingRegistrations) {
+            $productCode = [string]$registration.productCode
+            if ($productCode -notmatch '^\{[a-fA-F0-9-]{36}\}$') {
+              Add-Issue "Existing Stackchan Companion registration does not expose a valid MSI product code: $($registration.registryPath)"
+            }
+          }
+        }
+
+        if ($windowsPreExistingRegistrations.Count -gt 0 -and $issues.Count -eq 0) {
+          $msiexec = (Get-Command msiexec.exe -ErrorAction Stop).Source
+          $uninstallIndex = 0
+          foreach ($registration in $windowsPreExistingRegistrations) {
+            $uninstallIndex += 1
+            $uninstallLogPath = Join-Path $OutputDir "windows-native-uninstall-$uninstallIndex.log"
+            $uninstallProcess = Start-Process -FilePath $msiexec -ArgumentList @('/x', [string]$registration.productCode, '/qn', '/norestart', '/L*v', "`"$uninstallLogPath`"") -Wait -PassThru -WindowStyle Hidden
+            $windowsUninstallAttempts += [ordered]@{
+              productCode = [string]$registration.productCode
+              exitCode = $uninstallProcess.ExitCode
+              logPath = $uninstallLogPath
+            }
+            if ($uninstallProcess.ExitCode -notin @(0, 1641, 3010)) {
+              Add-Issue "Existing Stackchan Companion uninstall failed with exit code $($uninstallProcess.ExitCode). Inspect $uninstallLogPath."
+            }
+          }
+          if ($issues.Count -eq 0) {
+            $remainingRegistrations = @(Get-WindowsInstallRegistrations)
+            if ($remainingRegistrations.Count -ne 0) {
+              Add-Issue "Stackchan Companion remains registered after replacement uninstall."
+            } else {
+              $windowsReplacementPerformed = $true
+            }
+          }
+        }
+
         if ($issues.Count -eq 0) {
-          $launchers = @(Find-WindowsLauncher)
-          if ($launchers.Count -ne 1) { Add-Issue "Expected exactly one installed Windows launcher; found $($launchers.Count)." } else { $installedLauncherPath = $launchers[0].FullName }
+          $arguments = @('/i', "`"$($package.FullName)`"", '/qn', '/norestart')
+          if (-not [string]::IsNullOrWhiteSpace($InstallRoot)) {
+            $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
+            $arguments += "INSTALLDIR=`"$InstallRoot`""
+          }
+          $arguments += @('/L*v', "`"$installLogPath`"")
+          $process = Start-Process -FilePath (Get-Command msiexec.exe -ErrorAction Stop).Source -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          $installExitCode = $process.ExitCode
+          if ($installExitCode -notin @(0, 1641, 3010)) { Add-Issue "MSI installation failed with exit code $installExitCode. Run this helper from an elevated PowerShell session and inspect $installLogPath." }
+          if ($issues.Count -eq 0) {
+            $windowsPostInstallRegistrations = @(Get-WindowsInstallRegistrations)
+            if ($windowsPostInstallRegistrations.Count -ne 1) { Add-Issue "Expected exactly one installed Windows product registration; found $($windowsPostInstallRegistrations.Count)." }
+          }
+          if ($issues.Count -eq 0) {
+            $launchers = @(Find-WindowsLauncher)
+            if ($launchers.Count -ne 1) { Add-Issue "Expected exactly one installed Windows launcher; found $($launchers.Count)." } else { $installedLauncherPath = $launchers[0].FullName }
+          }
         }
       }
       "linux" {
@@ -200,6 +290,7 @@ $report = [ordered]@{
     platform = $hostPlatform
     osDescription = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
     architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+    elevatedAdministrator = $windowsElevatedAdministrator
   }
   package = if ($null -eq $package) { [ordered]@{ name = ""; bytes = 0; sha256 = "" } } else { [ordered]@{ name = $package.Name; bytes = [int64]$package.Length; sha256 = $packageSha } }
   install = [ordered]@{
@@ -208,6 +299,13 @@ $report = [ordered]@{
     installRoot = $InstallRoot
     installedLauncherPath = $installedLauncherPath
     logPath = $installLogPath
+    windows = [ordered]@{
+      preExistingRegistrations = @($windowsPreExistingRegistrations)
+      replacementRequested = [bool]$AllowReplace
+      replacementPerformed = $windowsReplacementPerformed
+      uninstallAttempts = @($windowsUninstallAttempts)
+      postInstallRegistrations = @($windowsPostInstallRegistrations)
+    }
   }
   launch = [ordered]@{
     exitCode = $launchExitCode
