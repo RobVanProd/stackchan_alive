@@ -64,7 +64,14 @@ if ($restrictedVoicePayloads.Count -gt 0) {
 
 function Join-PackagePath {
   param([string]$RelativePath)
-  return Join-Path $packageRootPath ($RelativePath -replace "/", "\")
+  $path = Join-Path $packageRootPath ($RelativePath -replace "/", "\")
+  if ($env:OS -eq "Windows_NT" -and $path.Length -ge 260 -and -not $path.StartsWith("\\?\")) {
+    if ($path.StartsWith("\\")) {
+      return "\\?\UNC\$($path.TrimStart('\'))"
+    }
+    return "\\?\$path"
+  }
+  return $path
 }
 
 function Assert-File {
