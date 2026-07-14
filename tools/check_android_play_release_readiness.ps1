@@ -468,13 +468,13 @@ Test-TextPatterns `
   -Id "ci-android-emulator-launch-smoke" `
   -Name "CI runs Android emulator launch smoke" `
   -RelativePath ".github/workflows/firmware.yml" `
-  -Patterns @("companion-android-emulator-smoke", "companion-android-apks", "actions/download-artifact@v7", "system-images;android-35;aosp_atd;x86_64", "timeout 180 adb wait-for-device", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "output/android-emulator-smoke/latest/**")
+  -Patterns @("companion-android-emulator-smoke", "companion-android-apks", "actions/download-artifact@v7", "system-images;android-35;aosp_atd;x86_64", 'export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"', "timeout 180 adb wait-for-device", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "output/android-emulator-smoke/latest/**")
 
 Test-TextPatterns `
   -Id "tag-android-emulator-release-gate" `
   -Name "Tag release validates upload key and exact release APK launch" `
   -RelativePath ".github/workflows/release.yml" `
-  -Patterns @("Validate Android upload key", "check_android_play_release_readiness.ps1", "companion-android-emulator-smoke", "Download upload-signed Android release", "timeout 180 adb wait-for-device", "Run upload-signed Android emulator launch smoke", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence")
+  -Patterns @("Validate Android upload key", "check_android_play_release_readiness.ps1", "companion-android-emulator-smoke", "Download upload-signed Android release", 'export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"', "timeout 180 adb wait-for-device", "Run upload-signed Android emulator launch smoke", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence")
 
 Test-TextPatterns `
   -Id "release-evidence-aab" `

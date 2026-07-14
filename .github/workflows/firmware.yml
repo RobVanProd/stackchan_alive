@@ -278,6 +278,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p output/android-emulator-smoke/latest
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo no | avdmanager create avd \
             --force \
             --name stackchan_ci_api35_atd \
