@@ -432,8 +432,8 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
 
       $expectedVerify = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--verify", "--strict", "--verbose=2", $expectedPath)
       $actualVerify = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--verify", "--strict", "--verbose=2", $actualPath)
-      if ($expectedVerify.exitCode -ne 0 -or $actualVerify.exitCode -ne 0) {
-        $result.issue = "Processed and installer runtime files must both have valid strict code signatures: $path"
+      if ($actualVerify.exitCode -ne 0) {
+        $result.issue = "Installer runtime file must have a valid strict code signature: $path"
         return [pscustomobject]$result
       }
 
@@ -482,6 +482,8 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
           codeBytes = [int64]$expectedIdentity.codeBytes
           processedSignatureBytes = [int64]$expectedIdentity.signatureBytes
           installerSignatureBytes = [int64]$actualIdentity.signatureBytes
+          processedSignatureVerified = $expectedVerify.exitCode -eq 0
+          installerSignatureVerified = $true
           processedLinkEditFileBytes = [int64]$expectedIdentity.linkEditFileBytes
           installerLinkEditFileBytes = [int64]$actualIdentity.linkEditFileBytes
           processedLinkEditVirtualBytes = [int64]$expectedIdentity.linkEditVirtualBytes

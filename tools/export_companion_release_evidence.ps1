@@ -821,6 +821,7 @@ function Get-DesktopPackageEvidence {
                 [int64]$architectureProof.codeBytes -le 0 -or
                 [int64]$architectureProof.processedSignatureBytes -le 0 -or
                 [int64]$architectureProof.installerSignatureBytes -le 0 -or
+                $architectureProof.installerSignatureVerified -ne $true -or
                 [int64]$architectureProof.processedLinkEditFileBytes -le 0 -or
                 [int64]$architectureProof.installerLinkEditFileBytes -le 0 -or
                 [int64]$architectureProof.processedLinkEditVirtualBytes -le 0 -or

@@ -308,6 +308,8 @@ try {
             codeBytes = 1024
             processedSignatureBytes = 256
             installerSignatureBytes = 192
+            processedSignatureVerified = $false
+            installerSignatureVerified = $true
             processedLinkEditFileBytes = 4096
             installerLinkEditFileBytes = 4032
             processedLinkEditVirtualBytes = 16384
