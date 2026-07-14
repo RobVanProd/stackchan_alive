@@ -61,7 +61,7 @@ The Android app requests `RECORD_AUDIO` only when the user invokes
 Push-to-talk. If microphone permission is denied, the app does not start the
 turn or send a transcript.
 
-The app asks Android's configured speech-recognition service to convert the
+The app asks the configured Android speech-recognition service to convert the
 user's speech into text. Depending on the device and speech-service settings,
 that service may process microphone audio on the device or transmit it to the
 speech-service provider for ephemeral processing. That processing is governed
