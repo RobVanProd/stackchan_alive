@@ -177,6 +177,24 @@ compose.desktop {
             packageName = "Stackchan Companion"
             packageVersion = "1.0.0"
             appResourcesRootDir.set(desktopNativeAppResourcesRoot)
+
+            macOS {
+                bundleID = "dev.stackchan.companion"
+                signing {
+                    sign.set(
+                        providers.environmentVariable("STACKCHAN_MACOS_SIGNING_IDENTITY")
+                            .map { it.isNotBlank() }
+                            .orElse(false)
+                    )
+                    identity.set(providers.environmentVariable("STACKCHAN_MACOS_SIGNING_IDENTITY"))
+                    keychain.set(providers.environmentVariable("STACKCHAN_MACOS_KEYCHAIN"))
+                }
+                notarization {
+                    appleID.set(providers.environmentVariable("STACKCHAN_MACOS_NOTARIZATION_APPLE_ID"))
+                    password.set(providers.environmentVariable("STACKCHAN_MACOS_NOTARIZATION_PASSWORD"))
+                    teamID.set(providers.environmentVariable("STACKCHAN_MACOS_NOTARIZATION_TEAM_ID"))
+                }
+            }
         }
     }
 }

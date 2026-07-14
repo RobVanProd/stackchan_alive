@@ -213,8 +213,10 @@ current v1 companion branch.
 - C8 source-side release packaging is implemented. `release.yml` verifies that the tag matches
   every companion version source, builds upload-signed Android APK/AAB artifacts, creates managed
   Python payloads on native Windows/macOS/Linux runners, packages MSI/DMG/DEB artifacts, exports
-  strict companion release evidence, and publishes stable artifact names with the firmware
-  release. `tools/verify_published_release.ps1` now verifies those remote assets and evidence.
+  strict companion release evidence, Authenticode-signs and timestamps the MSI, Developer ID signs
+  and notarizes the DMG, creates GitHub provenance attestations for every final asset, and publishes
+  stable artifact names with the firmware release. `tools/verify_published_release.ps1` now verifies
+  those remote assets, native trust evidence, attestations, and release evidence.
   A successful public tag run is still required before this can be called released. Automatic
   desktop updates and an Android in-app updater are not implemented; current distribution is
   manual GitHub Release installation, with Obtainium or Play as Android alternatives.
@@ -288,9 +290,10 @@ current v1 companion branch.
 
 ## Next Attack Order
 
-1. Provision the four `STACKCHAN_ANDROID_*` Actions secrets, back up the upload keystore, and
-   run a prerelease tag to bind upload-signed APK/AAB plus native MSI/DEB/DMG managed-runtime
-   evidence to the exact release tag.
+1. Provision the four `STACKCHAN_ANDROID_*`, two `STACKCHAN_WINDOWS_*`, and six
+   `STACKCHAN_MACOS_*` Actions secrets; back up all three signing identities; then run a prerelease
+   tag to bind upload-signed APK/AAB, timestamped Authenticode MSI, notarized/stapled DMG,
+   provenance-attested DEB, and native managed-runtime evidence to the exact release tag.
 2. Finish G1 with hardware push-to-talk/STT validation, then run `tools\check_android_speech_evidence.cmd -SourceCommit <git-commit> -RequireReady -Json`.
 3. Finish G3 physical settings writes/manual brain handoff and G5 hardware pairing, then run the strict controls and pairing evidence checks.
 4. Exercise G8 Android diagnostics, Gemma-4-E2B download/load/eject, the real `gemma4-e2b-litert-lm` benchmark, and one target-device LiteRT turn.

@@ -155,6 +155,36 @@ function Write-StatusReport {
     $report.artifacts = @($artifactGroups)
   }
   if ($Schema -eq "stackchan.companion-release-evidence.v1") {
+    $report.desktopDistributionTrustRequired = $true
+    $report.desktopPackageEvidence = [ordered]@{
+      status = "ready"
+      platforms = @(
+        [ordered]@{
+          platform = "windows"
+          distributionTrustStatus = "ready"
+          distributionTrustPolicy = "authenticode-sha256-timestamped"
+          distributionTrustTimestamped = $true
+          distributionTrustNotarizationStapled = $false
+          distributionTrustGatekeeperAccepted = $false
+        },
+        [ordered]@{
+          platform = "linux"
+          distributionTrustStatus = "not-required"
+          distributionTrustPolicy = "github-sigstore-attestation-at-publication"
+          distributionTrustTimestamped = $false
+          distributionTrustNotarizationStapled = $false
+          distributionTrustGatekeeperAccepted = $false
+        },
+        [ordered]@{
+          platform = "macos"
+          distributionTrustStatus = "ready"
+          distributionTrustPolicy = "developer-id-notarized-stapled"
+          distributionTrustTimestamped = $false
+          distributionTrustNotarizationStapled = $true
+          distributionTrustGatekeeperAccepted = $true
+        }
+      )
+    }
     $report.packageEvidence = [ordered]@{
       status = "present"
       root = "output/release/v1.0.0"
@@ -301,6 +331,20 @@ try {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
   Write-Host "[ok] complete Companion v1 evidence bundle with distinct release and firmware commits is accepted"
+
+  $desktopTrustMissingRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $desktopTrustMissingRoot -Recurse -Force
+  $desktopTrustMissingPath = Join-Path $desktopTrustMissingRoot $reports.companionReleaseEvidenceReport
+  $desktopTrustMissingReport = Get-Content -LiteralPath $desktopTrustMissingPath -Raw | ConvertFrom-Json
+  $desktopTrustMissingReport.desktopDistributionTrustRequired = $false
+  $desktopTrustMissingReport.desktopPackageEvidence.platforms[0].distributionTrustStatus = "not-ready"
+  Write-JsonFile -Path $desktopTrustMissingPath -Value $desktopTrustMissingReport
+  $desktopTrustMissingResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $desktopTrustMissingRoot
+  if ([int]$desktopTrustMissingResult.exitCode -eq 0) {
+    throw "Expected missing desktop distribution trust to fail Companion v1 evidence."
+  }
+  Assert-CheckStatus -Report $desktopTrustMissingResult.report -Id "desktop-v1-artifact-hashes-match" -Status "fail"
+  Write-Host "[ok] missing desktop distribution trust is rejected by final Companion v1 evidence"
 
   $legacyCommitRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $legacyCommitRoot -Recurse -Force

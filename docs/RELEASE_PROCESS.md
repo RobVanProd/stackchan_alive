@@ -41,7 +41,8 @@ tools/export_companion_release_evidence.ps1 `
   -RequireArtifacts `
   -RequireUploadSigning `
   -RequireAndroidEmulatorEvidence `
-  -RequireDesktopPackageEvidence
+  -RequireDesktopPackageEvidence `
+  -RequireDesktopDistributionTrust
 ```
 
 The strict gate requires upload-key-signed APK and AAB artifacts plus MSI, DEB, and DMG
@@ -55,7 +56,11 @@ interpreter. The native report binds the package SHA-256 and application-JAR SHA
 result, processed and installer-derived runtime SHA-256, manifest, file totals, and required brain
 resources. Missing, duplicate, stale-commit, stale-package-launch, staging-only, or mismatched
 native reports block release evidence. Extracted-package launch evidence does not substitute for
-target-machine installation acceptance.
+target-machine installation acceptance. Tagged Windows packages must additionally pass timestamped
+SHA-256 Authenticode verification. Tagged macOS packages must be Developer ID signed, accepted by
+Gatekeeper, notarized by Apple, and carry a stapled ticket. The final release job creates GitHub
+Sigstore-backed provenance attestations for every staged firmware, companion, evidence, ZIP, and
+checksum asset before publication.
 
 The tag workflow creates the GitHub Release with `--prerelease`. Before promotion, download the
 exact MSI, DEB, and DMG and run the native installer helper on a matching operator workstation:
@@ -317,7 +322,22 @@ the embedded test firmware, renders preview media, creates and verifies an audit
 builds upload-signed Android APK/AAB artifacts, builds runtime-bundled Windows MSI, Linux DEB,
 and macOS DMG packages on their native runners, and attaches the complete verified asset set
 to one GitHub release. Before the first public companion tag, provision the four
-`STACKCHAN_ANDROID_*` Actions secrets documented in `ANDROID_PLAY_RELEASE.md`.
+`STACKCHAN_ANDROID_*` Actions secrets documented in `ANDROID_PLAY_RELEASE.md`, plus:
+
+- `STACKCHAN_WINDOWS_PFX_B64`
+- `STACKCHAN_WINDOWS_PFX_PASSWORD`
+- `STACKCHAN_MACOS_CERTIFICATE_B64`
+- `STACKCHAN_MACOS_CERTIFICATE_PASSWORD`
+- `STACKCHAN_MACOS_SIGNING_IDENTITY`
+- `STACKCHAN_MACOS_NOTARIZATION_APPLE_ID`
+- `STACKCHAN_MACOS_NOTARIZATION_PASSWORD`
+- `STACKCHAN_MACOS_NOTARIZATION_TEAM_ID`
+
+The Windows certificate must be a trusted code-signing certificate exported as a password-protected
+PFX. The macOS certificate must be a Developer ID Application certificate exported as a
+password-protected PKCS#12 file; notarization uses an app-specific Apple password. Keep independent
+offline backups and do not add any certificate or password to the repository. The tag workflow
+fails before publishing when any signing credential or native trust proof is absent.
 
 If GitHub Actions cannot run, the manual helper remains available for a firmware-only recovery
 publication:
@@ -341,6 +361,8 @@ The published-release verifier checks the firmware and companion asset set, comp
 SHA256 digests against package and companion evidence, requires upload-key signing for Android,
 requires ready Windows/Linux/macOS package evidence and matches each published desktop package
 to its recorded processed runtime and exact-package launch hashes,
+requires timestamped Authenticode evidence for Windows and Developer ID, Gatekeeper, and stapled
+notarization evidence for macOS, verifies GitHub provenance attestations for the downloaded assets,
 confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP
 plus ZIP SHA256 sidecar, validates the sidecar, and runs the package verifier on that copy.
 

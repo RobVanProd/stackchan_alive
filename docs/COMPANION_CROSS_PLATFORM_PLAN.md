@@ -284,10 +284,22 @@ Repository secrets required before the first public tag:
 - `STACKCHAN_ANDROID_KEYSTORE_PASSWORD`
 - `STACKCHAN_ANDROID_KEY_ALIAS`
 - `STACKCHAN_ANDROID_KEY_PASSWORD`
+- `STACKCHAN_WINDOWS_PFX_B64`
+- `STACKCHAN_WINDOWS_PFX_PASSWORD`
+- `STACKCHAN_MACOS_CERTIFICATE_B64`
+- `STACKCHAN_MACOS_CERTIFICATE_PASSWORD`
+- `STACKCHAN_MACOS_SIGNING_IDENTITY`
+- `STACKCHAN_MACOS_NOTARIZATION_APPLE_ID`
+- `STACKCHAN_MACOS_NOTARIZATION_PASSWORD`
+- `STACKCHAN_MACOS_NOTARIZATION_TEAM_ID`
 
 Back up the upload keystore outside the repository; losing it breaks Android update
-continuity. Windows code signing and Apple Developer ID notarization are still optional
-follow-on hardening and are not represented as complete by current evidence.
+continuity. Back up the Windows signing PFX and macOS Developer ID PKCS#12 independently as well.
+The tag workflow now fails closed unless the MSI has a valid timestamped Authenticode signature and
+the DMG contains a Developer ID signed app accepted by Gatekeeper plus a stapled Apple notarization
+ticket. Every final asset also receives a GitHub Sigstore-backed provenance attestation before the
+prerelease is created. The repository currently has none of these Actions secrets configured, so a
+consumer tag remains externally blocked until the owner provisions and backs them up.
 
 Every release job also emits `RELEASE_EVIDENCE.json` and
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, SHA-256 hashes, source commit,
@@ -327,11 +339,10 @@ app {
 }
 ```
 
-Known rough edges, stated up front rather than discovered later: self-signed Windows
-packages trip SmartScreen on first install (users click through once; a paid cert removes
-it); un-notarized macOS builds need right-click → Open (an Apple Developer ID, $99/yr,
-removes it); the apt path covers Debian-family only. None of these block the lab/streaming
-use case.
+Known rough edges, stated up front rather than discovered later: secret-free PR/CI rehearsal
+packages are intentionally unsigned and are not consumer candidates; a newly issued Windows
+certificate can still need reputation before SmartScreen becomes quiet; and the DEB path covers
+Debian-family systems only. Tagged consumer candidates cannot use the unsigned rehearsal path.
 
 **Out of scope, explicitly:** robot firmware updates. Those remain the PlatformIO/USB flow
 in `docs/RELEASE_PROCESS.md`. The companion spec grants the app no firmware-flash
@@ -425,13 +436,15 @@ Until then the label stays "fake engine".
 **C8 — Distribution hardening.**
 The native all-platform tag workflow, strict package evidence, and operator target-install
 collector/checker contracts are source-complete. Remaining work is upload-keystore provisioning,
-native tag evidence, executing the three target installs and human reviews, platform signing/
-notarization decisions, and the first end-to-end tagged prerelease and promotion. Conveyor or another updater
+Windows/macOS signing credential provisioning, native tag evidence, executing the three target
+installs and human reviews, and the first end-to-end tagged prerelease and promotion. Conveyor or another updater
 may be evaluated only after the native packages are accepted.
 *Gate C8:* one tag publishes verified APK/AAB/MSI/DEB/DMG artifacts, the Android artifacts
 are upload-key signed, each desktop package contains its validated managed runtime, each package
 hash and extracted application JAR are bound to its processed runtime hash by native evidence,
-required brain resources are present, target install checks pass, and
+the MSI is timestamped Authenticode signed, the DMG is Developer ID signed and notarized with a
+stapled ticket, every final asset has GitHub provenance, required brain resources are present,
+target install checks pass, and
 `RELEASE_EVIDENCE.json` plus `COMPANION_RELEASE_EVIDENCE.json` are complete. Automatic update
 behavior requires a separate implemented and tested gate.
 

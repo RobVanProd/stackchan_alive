@@ -667,8 +667,33 @@ function Test-DesktopArtifactHashesMatchReleaseEvidence {
     }
   }
 
+  if ((Get-Field $releaseReport "desktopDistributionTrustRequired") -ne $true) {
+    $issues += "Companion release evidence does not require native desktop distribution trust."
+  }
+  $desktopPackageEvidence = Get-Field $releaseReport "desktopPackageEvidence"
+  if ($null -eq $desktopPackageEvidence -or [string](Get-Field $desktopPackageEvidence "status") -ne "ready") {
+    $issues += "Companion release evidence does not contain ready desktop package evidence."
+  } else {
+    $platformSummaries = @((Get-Field $desktopPackageEvidence "platforms"))
+    $windowsTrust = @($platformSummaries | Where-Object { [string](Get-Field $_ "platform") -eq "windows" })
+    $macosTrust = @($platformSummaries | Where-Object { [string](Get-Field $_ "platform") -eq "macos" })
+    if ($windowsTrust.Count -ne 1 -or
+        [string](Get-Field $windowsTrust[0] "distributionTrustStatus") -ne "ready" -or
+        [string](Get-Field $windowsTrust[0] "distributionTrustPolicy") -ne "authenticode-sha256-timestamped" -or
+        (Get-Field $windowsTrust[0] "distributionTrustTimestamped") -ne $true) {
+      $issues += "Companion release evidence does not prove timestamped Windows Authenticode trust."
+    }
+    if ($macosTrust.Count -ne 1 -or
+        [string](Get-Field $macosTrust[0] "distributionTrustStatus") -ne "ready" -or
+        [string](Get-Field $macosTrust[0] "distributionTrustPolicy") -ne "developer-id-notarized-stapled" -or
+        (Get-Field $macosTrust[0] "distributionTrustNotarizationStapled") -ne $true -or
+        (Get-Field $macosTrust[0] "distributionTrustGatekeeperAccepted") -ne $true) {
+      $issues += "Companion release evidence does not prove macOS Developer ID and notarization trust."
+    }
+  }
+
   if ($issues.Count -eq 0) {
-    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pass" (Convert-ToRelativePath $releasePath) "Desktop package hashes match release evidence artifacts."
+    Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "pass" (Convert-ToRelativePath $releasePath) "Desktop package hashes and native distribution trust match release evidence."
   } else {
     Add-Check "desktop-v1-artifact-hashes-match" "Desktop v1 package hashes match release evidence" "fail" (Convert-ToRelativePath $releasePath) ($issues -join " ")
   }

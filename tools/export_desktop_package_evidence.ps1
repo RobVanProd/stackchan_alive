@@ -11,6 +11,7 @@ param(
   [string]$OutPath = "",
   [switch]$RequireInstallerPayload,
   [switch]$RequireLaunchEvidence,
+  [switch]$RequireDistributionTrust,
   [switch]$UseExistingPackageExtraction,
   [switch]$Json
 )
@@ -197,6 +198,155 @@ function Invoke-NativeCommandCapture {
     $ErrorActionPreference = $oldPreference
   }
   return [pscustomobject]@{ exitCode = $exitCode; output = $output.Trim() }
+}
+
+function Find-WindowsSignTool {
+  $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+  if ($null -ne $command) { return [string]$command.Source }
+
+  $kitsRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/bin"
+  if (-not (Test-Path -LiteralPath $kitsRoot -PathType Container)) { return "" }
+  $candidates = @(Get-ChildItem -LiteralPath $kitsRoot -Recurse -File -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
+    Sort-Object FullName -Descending)
+  if ($candidates.Count -eq 0) { return "" }
+  return [string]$candidates[0].FullName
+}
+
+function Test-WindowsDistributionTrust {
+  param([string]$SourcePackage)
+
+  $result = [ordered]@{
+    required = $true
+    status = "not-ready"
+    policy = "authenticode-sha256-timestamped"
+    packageSha256 = Get-Sha256Text $SourcePackage
+    signerSubject = ""
+    signerThumbprint = ""
+    timestampSubject = ""
+    timestampThumbprint = ""
+    signatureStatus = ""
+    notarizationStapled = $false
+    gatekeeperAccepted = $false
+    issue = ""
+  }
+
+  if ((Get-HostPlatform) -ne "windows") {
+    $result.issue = "Windows Authenticode verification requires a native Windows host."
+    return $result
+  }
+
+  try {
+    $signature = Get-AuthenticodeSignature -LiteralPath $SourcePackage
+    $result.signatureStatus = [string]$signature.Status
+    if ($null -ne $signature.SignerCertificate) {
+      $result.signerSubject = [string]$signature.SignerCertificate.Subject
+      $result.signerThumbprint = ([string]$signature.SignerCertificate.Thumbprint).ToLowerInvariant()
+    }
+    if ($null -ne $signature.TimeStamperCertificate) {
+      $result.timestampSubject = [string]$signature.TimeStamperCertificate.Subject
+      $result.timestampThumbprint = ([string]$signature.TimeStamperCertificate.Thumbprint).ToLowerInvariant()
+    }
+    if ([string]$signature.Status -ne "Valid" -or $null -eq $signature.SignerCertificate) {
+      $result.issue = "Windows package does not have a valid Authenticode signature."
+      return $result
+    }
+    if ($null -eq $signature.TimeStamperCertificate) {
+      $result.issue = "Windows package Authenticode signature is not timestamped."
+      return $result
+    }
+
+    $signTool = Find-WindowsSignTool
+    if ([string]::IsNullOrWhiteSpace($signTool)) {
+      $result.issue = "signtool.exe is unavailable for Authenticode policy verification."
+      return $result
+    }
+    $verify = Invoke-NativeCommandCapture -Command $signTool -Arguments @("verify", "/pa", "/all", "/tw", "/v", $SourcePackage)
+    if ($verify.exitCode -ne 0) {
+      $result.issue = "signtool Authenticode verification failed: $($verify.output)"
+      return $result
+    }
+
+    $result.status = "ready"
+    return $result
+  } catch {
+    $result.issue = "Windows Authenticode verification failed: $($_.Exception.Message)"
+    return $result
+  }
+}
+
+function Test-MacOSDistributionTrust {
+  param(
+    [string]$SourcePackage,
+    [string]$ExtractionRoot
+  )
+
+  $result = [ordered]@{
+    required = $true
+    status = "not-ready"
+    policy = "developer-id-notarized-stapled"
+    packageSha256 = Get-Sha256Text $SourcePackage
+    signerSubject = ""
+    signerThumbprint = ""
+    timestampSubject = ""
+    timestampThumbprint = ""
+    signatureStatus = ""
+    notarizationStapled = $false
+    gatekeeperAccepted = $false
+    issue = ""
+  }
+
+  if ((Get-HostPlatform) -ne "macos") {
+    $result.issue = "Developer ID and notarization verification requires a native macOS host."
+    return $result
+  }
+
+  try {
+    $apps = @(Get-ChildItem -LiteralPath $ExtractionRoot -Recurse -Directory -Filter "*.app" -ErrorAction SilentlyContinue)
+    if ($apps.Count -ne 1) {
+      $result.issue = "Expected exactly one extracted macOS application bundle; found $($apps.Count)."
+      return $result
+    }
+    $appPath = $apps[0].FullName
+    $codesign = (Get-Command codesign -ErrorAction Stop).Source
+    $spctl = (Get-Command spctl -ErrorAction Stop).Source
+    $xcrun = (Get-Command xcrun -ErrorAction Stop).Source
+
+    $verify = Invoke-NativeCommandCapture -Command $codesign -Arguments @("--verify", "--deep", "--strict", "--verbose=2", $appPath)
+    if ($verify.exitCode -ne 0) {
+      $result.issue = "Strict macOS code-signature verification failed: $($verify.output)"
+      return $result
+    }
+    $details = Invoke-NativeCommandCapture -Command $codesign -Arguments @("-dv", "--verbose=4", $appPath)
+    if ($details.exitCode -ne 0 -or $details.output -notmatch '(?m)^Authority=(Developer ID Application:.+)$') {
+      $result.issue = "macOS application is not signed with a Developer ID Application identity."
+      return $result
+    }
+    $result.signerSubject = $Matches[1].Trim()
+    if ($details.output -match '(?m)^TeamIdentifier=([^\r\n]+)$') {
+      $result.signerThumbprint = $Matches[1].Trim()
+    }
+    $result.signatureStatus = "Valid"
+
+    $gatekeeper = Invoke-NativeCommandCapture -Command $spctl -Arguments @("--assess", "--type", "execute", "--verbose=4", $appPath)
+    if ($gatekeeper.exitCode -ne 0) {
+      $result.issue = "Gatekeeper rejected the extracted macOS application: $($gatekeeper.output)"
+      return $result
+    }
+    $result.gatekeeperAccepted = $true
+
+    $stapler = Invoke-NativeCommandCapture -Command $xcrun -Arguments @("stapler", "validate", $SourcePackage)
+    if ($stapler.exitCode -ne 0) {
+      $result.issue = "The macOS DMG does not carry a valid stapled notarization ticket: $($stapler.output)"
+      return $result
+    }
+    $result.notarizationStapled = $true
+    $result.status = "ready"
+    return $result
+  } catch {
+    $result.issue = "macOS distribution trust verification failed: $($_.Exception.Message)"
+    return $result
+  }
 }
 
 function Get-Sha256Bytes {
@@ -567,6 +717,20 @@ $launchEvidence = [ordered]@{
   pythonVersion = ""
   scope = ""
 }
+$distributionTrust = [ordered]@{
+  required = [bool]$RequireDistributionTrust
+  status = if ($RequireDistributionTrust) { "not-ready" } else { "not-required" }
+  policy = if ($Platform -eq "windows") { "authenticode-sha256-timestamped" } elseif ($Platform -eq "macos") { "developer-id-notarized-stapled" } else { "github-sigstore-attestation-at-publication" }
+  packageSha256 = ""
+  signerSubject = ""
+  signerThumbprint = ""
+  timestampSubject = ""
+  timestampThumbprint = ""
+  signatureStatus = ""
+  notarizationStapled = $false
+  gatekeeperAccepted = $false
+  issue = ""
+}
 
 if ([string]::IsNullOrWhiteSpace($PackagePath) -or -not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
   Add-Issue "Desktop package is missing: $PackagePath"
@@ -844,6 +1008,21 @@ if ($RequireLaunchEvidence -or -not [string]::IsNullOrWhiteSpace($LaunchEvidence
   if ($issues.Count -eq $launchIssueStart) { $launchEvidence.status = "ready" }
 }
 
+if ($RequireDistributionTrust) {
+  if ($null -eq $package) {
+    Add-Issue "Desktop distribution trust cannot be verified because the package is missing."
+  } elseif ($Platform -eq "windows") {
+    $distributionTrust = Test-WindowsDistributionTrust -SourcePackage $package.FullName
+  } elseif ($Platform -eq "macos") {
+    $distributionTrust = Test-MacOSDistributionTrust -SourcePackage $package.FullName -ExtractionRoot $PackageExtractionRoot
+  } else {
+    $distributionTrust.issue = "Linux package provenance is attested in the final release job, not by the native DEB package exporter."
+  }
+  if ($distributionTrust.status -ne "ready") {
+    Add-Issue "Desktop distribution trust is not ready for $Platform`: $($distributionTrust.issue)"
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($Commit)) {
   $Commit = ((& git -C $repoRoot rev-parse HEAD 2>$null) | Out-String).Trim()
 }
@@ -876,6 +1055,7 @@ $report = [ordered]@{
   }
   installerPayload = $installerPayload
   launchEvidence = $launchEvidence
+  distributionTrust = $distributionTrust
   issues = @($issues)
 }
 

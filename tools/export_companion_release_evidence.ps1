@@ -14,6 +14,7 @@ param(
   [switch]$RequireUploadSigning,
   [switch]$RequireDesktopPythonRuntime,
   [switch]$RequireDesktopPackageEvidence,
+  [switch]$RequireDesktopDistributionTrust,
   [switch]$RequireAndroidEmulatorEvidence,
   [switch]$Json
 )
@@ -781,6 +782,12 @@ function Get-DesktopPackageEvidence {
     $installerExtractionMethod = ""
     $installerContentIdentityStatus = ""
     $installerSignatureNormalizedFileCount = 0
+    $distributionTrustStatus = ""
+    $distributionTrustPolicy = ""
+    $distributionTrustSigner = ""
+    $distributionTrustTimestamped = $false
+    $distributionTrustNotarizationStapled = $false
+    $distributionTrustGatekeeperAccepted = $false
     if ($null -eq $installer) {
       $issues += "Installer-derived runtime evidence is missing for $platform."
     } else {
@@ -881,6 +888,33 @@ function Get-DesktopPackageEvidence {
       if ([string]$launch.extractionMethod -ne "native" -or [int]$launch.processExitCode -ne 0) { $issues += "Exact desktop package was not natively extracted and launched for $platform." }
       if ([string]$launch.scope -ne "exact-native-package-extraction-and-headless-launch" -or [string]::IsNullOrWhiteSpace($launchPythonVersion)) { $issues += "Exact desktop package launch probe is incomplete for $platform." }
     }
+    $trust = $item.distributionTrust
+    if ($null -eq $trust) {
+      if ($RequireDesktopDistributionTrust -and $platform -ne "linux") {
+        $issues += "Native desktop distribution trust evidence is missing for $platform."
+      }
+    } else {
+      $distributionTrustStatus = [string]$trust.status
+      $distributionTrustPolicy = [string]$trust.policy
+      $distributionTrustSigner = [string]$trust.signerSubject
+      $distributionTrustTimestamped = -not [string]::IsNullOrWhiteSpace([string]$trust.timestampThumbprint)
+      $distributionTrustNotarizationStapled = [bool]$trust.notarizationStapled
+      $distributionTrustGatekeeperAccepted = [bool]$trust.gatekeeperAccepted
+      if ($RequireDesktopDistributionTrust -and $platform -ne "linux") {
+        $expectedTrustPolicy = if ($platform -eq "windows") { "authenticode-sha256-timestamped" } else { "developer-id-notarized-stapled" }
+        if ($trust.required -ne $true -or $distributionTrustStatus -ne "ready" -or
+            $distributionTrustPolicy -ne $expectedTrustPolicy -or
+            ([string]$trust.packageSha256).ToLowerInvariant() -ne $packageSha -or
+            [string]::IsNullOrWhiteSpace($distributionTrustSigner) -or
+            [string]$trust.signatureStatus -ne "Valid") {
+          $issues += "Native desktop distribution trust evidence is incomplete for $platform."
+        } elseif ($platform -eq "windows" -and -not $distributionTrustTimestamped) {
+          $issues += "Windows desktop distribution trust is missing its timestamp proof."
+        } elseif ($platform -eq "macos" -and (-not $distributionTrustNotarizationStapled -or -not $distributionTrustGatekeeperAccepted)) {
+          $issues += "macOS desktop distribution trust is missing notarization or Gatekeeper proof."
+        }
+      }
+    }
     $summaries += [ordered]@{
       platform = $platform
       path = Convert-ToRelativePath $path
@@ -905,6 +939,12 @@ function Get-DesktopPackageEvidence {
       installerBrainFiles = @($installerBrainFiles)
       launchPackageSha256 = $launchPackageSha
       launchPythonVersion = $launchPythonVersion
+      distributionTrustStatus = $distributionTrustStatus
+      distributionTrustPolicy = $distributionTrustPolicy
+      distributionTrustSigner = $distributionTrustSigner
+      distributionTrustTimestamped = $distributionTrustTimestamped
+      distributionTrustNotarizationStapled = $distributionTrustNotarizationStapled
+      distributionTrustGatekeeperAccepted = $distributionTrustGatekeeperAccepted
     }
   }
 
@@ -976,11 +1016,14 @@ if ($desktopPythonRuntime.status -ne "ready" -and ($RequireDesktopPythonRuntime 
   $pending += "desktop-managed-python-runtime-payload"
 }
 $desktopPackageEvidence = Get-DesktopPackageEvidence
-if ($RequireDesktopPackageEvidence -and $desktopPackageEvidence.status -ne "ready") {
+if (($RequireDesktopPackageEvidence -or $RequireDesktopDistributionTrust) -and $desktopPackageEvidence.status -ne "ready") {
   $pending += "desktop-native-package-runtime-evidence"
 }
+if ($RequireDesktopDistributionTrust -and $desktopPackageEvidence.status -ne "ready") {
+  $pending += "desktop-native-distribution-trust"
+}
 
-$strictEvidenceRequired = $RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPythonRuntime -or $RequireDesktopPackageEvidence -or $RequireAndroidEmulatorEvidence
+$strictEvidenceRequired = $RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPythonRuntime -or $RequireDesktopPackageEvidence -or $RequireDesktopDistributionTrust -or $RequireAndroidEmulatorEvidence
 $status = if ($strictEvidenceRequired -and $pending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
 $report = [ordered]@{
@@ -1004,6 +1047,7 @@ $report = [ordered]@{
   androidEmulatorEvidence = $androidEmulatorEvidence
   desktopPythonRuntime = $desktopPythonRuntime
   desktopPackageEvidenceRequired = [bool]$RequireDesktopPackageEvidence
+  desktopDistributionTrustRequired = [bool]$RequireDesktopDistributionTrust
   desktopPackageEvidence = $desktopPackageEvidence
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
@@ -1085,10 +1129,12 @@ foreach ($check in @($desktopPythonRuntime.checks)) {
 $lines += ""
 $lines += "## Native Desktop Package Runtime Evidence"
 $lines += "- Required: $([bool]$RequireDesktopPackageEvidence)"
+$lines += "- Native distribution trust required: $([bool]$RequireDesktopDistributionTrust)"
 $lines += "- Status: $($desktopPackageEvidence.status)"
 $lines += "- Root: $($desktopPackageEvidence.root)"
 foreach ($platform in @($desktopPackageEvidence.platforms)) {
   $lines += "- $($platform.platform): package=$($platform.packageName) package_sha256=$($platform.packageSha256) runtime_sha256=$($platform.runtimeSha256) installer_runtime_sha256=$($platform.installerRuntimeSha256) app_jar_sha256=$($platform.installerAppJarSha256) python=$($platform.probedPythonVersion)"
+  $lines += "  - Distribution trust: $($platform.distributionTrustStatus) / $($platform.distributionTrustPolicy) / $($platform.distributionTrustSigner)"
 }
 foreach ($issue in @($desktopPackageEvidence.issues)) { $lines += "- Issue: $issue" }
 $lines += ""

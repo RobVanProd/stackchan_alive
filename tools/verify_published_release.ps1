@@ -110,6 +110,19 @@ function Assert-CompanionEvidenceHash {
   }
 }
 
+function Assert-GitHubProvenanceAttestation {
+  param(
+    [string]$Path,
+    [string]$Repository
+  )
+
+  $signerWorkflow = "$Repository/.github/workflows/release.yml"
+  $output = gh attestation verify $Path --repo $Repository --signer-workflow $signerWorkflow 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) {
+    throw "GitHub provenance attestation verification failed for $(Split-Path -Leaf $Path): $($output.Trim())"
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
 }
@@ -285,8 +298,9 @@ if ($companionEvidence.packageEvidence.status -ne "present") {
 }
 
 if ($companionEvidence.desktopPackageEvidenceRequired -ne $true -or
+    $companionEvidence.desktopDistributionTrustRequired -ne $true -or
     $companionEvidence.desktopPackageEvidence.status -ne "ready") {
-  throw "Companion release evidence does not require ready native desktop package/runtime evidence."
+  throw "Companion release evidence does not require ready native desktop package/runtime and distribution-trust evidence."
 }
 $desktopEvidencePlatforms = @($companionEvidence.desktopPackageEvidence.platforms)
 if ($desktopEvidencePlatforms.Count -ne 3 -or @($desktopEvidencePlatforms.platform | Select-Object -Unique).Count -ne 3) {
@@ -327,6 +341,21 @@ foreach ($platform in $publishedDesktopPaths.Keys) {
   foreach ($brainPath in $requiredInstallerBrainFiles) {
     if ($installerBrainFiles -notcontains $brainPath) { throw "Installer-derived desktop evidence is missing $brainPath for $platform." }
   }
+  if ($platform -eq "windows" -and
+      ([string]$summary[0].distributionTrustStatus -ne "ready" -or
+       [string]$summary[0].distributionTrustPolicy -ne "authenticode-sha256-timestamped" -or
+       [string]::IsNullOrWhiteSpace([string]$summary[0].distributionTrustSigner) -or
+       $summary[0].distributionTrustTimestamped -ne $true)) {
+    throw "Published Windows package evidence does not prove timestamped Authenticode trust."
+  }
+  if ($platform -eq "macos" -and
+      ([string]$summary[0].distributionTrustStatus -ne "ready" -or
+       [string]$summary[0].distributionTrustPolicy -ne "developer-id-notarized-stapled" -or
+       [string]::IsNullOrWhiteSpace([string]$summary[0].distributionTrustSigner) -or
+       $summary[0].distributionTrustNotarizationStapled -ne $true -or
+       $summary[0].distributionTrustGatekeeperAccepted -ne $true)) {
+    throw "Published macOS package evidence does not prove Developer ID, notarization, and Gatekeeper trust."
+  }
 }
 
 Assert-CompanionEvidenceHash $companionEvidence (Join-Path $remoteDir "stackchan-companion-android-$Version.apk") ".apk" '(^|[\\/])release[\\/]'
@@ -347,6 +376,12 @@ if ($LASTEXITCODE -ne 0) {
 
 $remoteZip = Join-Path $remoteDir "stackchan_alive_$Version.zip"
 $remoteZipSidecar = Join-Path $remoteDir "stackchan_alive_$Version.zip.sha256"
+$attestedPaths = @($expectedAssetEntries | ForEach-Object { $_.Path }) + @(
+  $companionAssetEntries | ForEach-Object { Join-Path $remoteDir $_.Name }
+)
+foreach ($attestedPath in $attestedPaths) {
+  Assert-GitHubProvenanceAttestation -Path $attestedPath -Repository $Repo
+}
 $remoteZipHashText = (Get-Content -LiteralPath $remoteZipSidecar -Raw).Trim()
 if ($remoteZipHashText -notmatch "^([a-f0-9]{64})  stackchan_alive_$([regex]::Escape($Version))\.zip$") {
   throw "Invalid published ZIP SHA256 sidecar format: $remoteZipHashText"

@@ -8,12 +8,20 @@ $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-desktop-pack
 $powerShellHost = (Get-Process -Id $PID).Path
 
 $checkerText = Get-Content -LiteralPath $checker -Raw
-foreach ($pattern in @("Test-MacOSSignatureNormalizedRuntimeIdentity", '"--verify", "--strict"', "LC_CODE_SIGNATURE", "Get-MachOCodeContentIdentity", 'contentIdentityStatus = "ready-signature-normalized"', "architectureProofs.ToArray()", "proofs.ToArray()")) {
+foreach ($pattern in @("Test-MacOSSignatureNormalizedRuntimeIdentity", '"--verify", "--strict"', "LC_CODE_SIGNATURE", "Get-MachOCodeContentIdentity", 'contentIdentityStatus = "ready-signature-normalized"', "architectureProofs.ToArray()", "proofs.ToArray()", "Test-WindowsDistributionTrust", "Get-AuthenticodeSignature", '"/pa", "/all", "/tw"', "Test-MacOSDistributionTrust", '"stapler", "validate"', "developer-id-notarized-stapled")) {
   if ($checkerText -notmatch [regex]::Escape($pattern)) {
     throw "Desktop package evidence must prove macOS installer rewrites by strict code-signature normalization: missing $pattern"
   }
 }
 Write-Host "[ok] macOS installer runtime identity requires strict code-signature normalization"
+
+$releaseWorkflowText = Get-Content -LiteralPath (Join-Path $repoRoot ".github/workflows/release.yml") -Raw
+foreach ($pattern in @("STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", ":app-desktop:notarizeDmg", "RequireDistributionTrust", "actions/attest@v4", "RequireDesktopDistributionTrust", "media/voice/*", "release_assets.json")) {
+  if ($releaseWorkflowText -notmatch [regex]::Escape($pattern)) {
+    throw "Tagged release workflow must fail closed on native desktop trust and provenance: missing $pattern"
+  }
+}
+Write-Host "[ok] tagged release requires native signing, notarization, and provenance attestation"
 
 function Get-Sha256Text {
   param([string]$Path)
@@ -227,6 +235,39 @@ try {
     $targetPackageSha = Get-Sha256Text $targetItem.FullName
     $processedFiles = @(Get-ChildItem -LiteralPath $processedRoot -File -Recurse)
     $processedBytes = [int64](($processedFiles | Measure-Object -Property Length -Sum).Sum)
+    $distributionTrust = [ordered]@{
+      required = $false
+      status = "not-required"
+      policy = "github-sigstore-attestation-at-publication"
+      packageSha256 = $targetPackageSha
+      signerSubject = ""
+      signerThumbprint = ""
+      timestampSubject = ""
+      timestampThumbprint = ""
+      signatureStatus = ""
+      notarizationStapled = $false
+      gatekeeperAccepted = $false
+      issue = ""
+    }
+    if ($target.platform -eq "windows") {
+      $distributionTrust.required = $true
+      $distributionTrust.status = "ready"
+      $distributionTrust.policy = "authenticode-sha256-timestamped"
+      $distributionTrust.signerSubject = "CN=Stackchan Release Fixture"
+      $distributionTrust.signerThumbprint = "1" * 40
+      $distributionTrust.timestampSubject = "CN=Timestamp Fixture"
+      $distributionTrust.timestampThumbprint = "2" * 40
+      $distributionTrust.signatureStatus = "Valid"
+    } elseif ($target.platform -eq "macos") {
+      $distributionTrust.required = $true
+      $distributionTrust.status = "ready"
+      $distributionTrust.policy = "developer-id-notarized-stapled"
+      $distributionTrust.signerSubject = "Developer ID Application: Stackchan Release Fixture"
+      $distributionTrust.signerThumbprint = "TEAMFIXTURE"
+      $distributionTrust.signatureStatus = "Valid"
+      $distributionTrust.notarizationStapled = $true
+      $distributionTrust.gatekeeperAccepted = $true
+    }
     $targetReport = [ordered]@{
       schema = "stackchan.desktop-package-evidence.v1"
       status = "ready"
@@ -284,6 +325,7 @@ try {
         pythonVersion = "Python 3.12.4"
         scope = "exact-native-package-extraction-and-headless-launch"
       }
+      distributionTrust = $distributionTrust
       issues = @()
     }
     if ($target.platform -eq "macos") {
@@ -328,6 +370,7 @@ try {
     -DesktopArtifactRoot $aggregateRoot `
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir $aggregateOut `
+    -RequireDesktopDistributionTrust `
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 0) { throw "Complete aggregate desktop package evidence unexpectedly failed: $aggregateOutput" }
   $aggregateReport = $aggregateOutput | ConvertFrom-Json
@@ -347,6 +390,7 @@ try {
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir (Join-Path $tempRoot "aggregate-tampered-out") `
     -RequireDesktopPackageEvidence `
+    -RequireDesktopDistributionTrust `
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not reject a tampered installer runtime: $aggregateTamperedOutput" }
   $aggregateTamperedReport = $aggregateTamperedOutput | ConvertFrom-Json
@@ -366,11 +410,34 @@ try {
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir (Join-Path $tempRoot "aggregate-stale-launch-out") `
     -RequireDesktopPackageEvidence `
+    -RequireDesktopDistributionTrust `
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 2 -or $staleLaunchOutput -notmatch "desktop-native-package-runtime-evidence") { throw "Strict aggregate evidence did not reject stale package launch evidence." }
   Write-Host "[ok] aggregate companion evidence rejects stale exact-package launch evidence"
   $macosReport.launchEvidence.packageSha256 = (Get-Sha256Text (Join-Path $aggregateRoot "stackchan-companion-macos-v1.0.0.dmg"))
   $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
+
+  $windowsReportPath = Join-Path $aggregateRoot "windows-package-evidence.json"
+  $windowsReport = Get-Content -LiteralPath $windowsReportPath -Raw | ConvertFrom-Json
+  $windowsReport.distributionTrust.status = "not-ready"
+  $windowsReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $windowsReportPath -Encoding UTF8
+  $trustTamperedOutput = & $powerShellHost -NoProfile -File $releaseExporter `
+    -Version v1.0.0 `
+    -Commit 1111111111111111111111111111111111111111 `
+    -DesktopArtifactRoot $aggregateRoot `
+    -DesktopPackageEvidenceRoot $aggregateRoot `
+    -OutDir (Join-Path $tempRoot "aggregate-trust-tampered-out") `
+    -RequireDesktopPackageEvidence `
+    -RequireDesktopDistributionTrust `
+    -Json 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not reject missing Windows distribution trust: $trustTamperedOutput" }
+  $trustTamperedReport = $trustTamperedOutput | ConvertFrom-Json
+  if (@($trustTamperedReport.pending) -notcontains "desktop-native-distribution-trust") {
+    throw "Strict aggregate evidence did not preserve the desktop distribution trust marker."
+  }
+  Write-Host "[ok] aggregate companion evidence rejects missing native distribution trust"
+  $windowsReport.distributionTrust.status = "ready"
+  $windowsReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $windowsReportPath -Encoding UTF8
 
   Remove-Item -LiteralPath $macosReportPath -Force
   $missingOut = Join-Path $tempRoot "aggregate-missing-out"
@@ -381,6 +448,7 @@ try {
     -DesktopPackageEvidenceRoot $aggregateRoot `
     -OutDir $missingOut `
     -RequireDesktopPackageEvidence `
+    -RequireDesktopDistributionTrust `
     -Json 2>&1 | Out-String
   if ($LASTEXITCODE -ne 2) { throw "Strict aggregate evidence did not fail when a native report was missing: $missingOutput" }
   $missingReport = $missingOutput | ConvertFrom-Json
