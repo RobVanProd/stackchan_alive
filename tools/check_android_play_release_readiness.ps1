@@ -246,15 +246,24 @@ function Test-PlayUploadSigningEnvironment {
       try {
         $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($certificate)
         if ($null -eq $rsa) {
-          $issues.Add("certificate RSA public key could not be read")
+          throw "RSA public key provider returned null."
         } else {
           $rsaKeySize = $rsa.KeySize
-          if ($rsaKeySize -lt 4096) {
-            $issues.Add("RSA key size is $rsaKeySize bits; project policy requires at least 4096 bits")
-          }
         }
       } catch {
-        $issues.Add("certificate RSA public key could not be read")
+        $keytoolListText = $listResult.output -join "`n"
+        $keySizeMatch = [regex]::Match(
+          $keytoolListText,
+          '(?im)^\s*Subject Public Key Algorithm:\s*(?<bits>\d+)-bit RSA(?:\s+key)?\s*$'
+        )
+        if ($keySizeMatch.Success) {
+          $rsaKeySize = [int]$keySizeMatch.Groups["bits"].Value
+        } else {
+          $issues.Add("certificate RSA public key size could not be read")
+        }
+      }
+      if ($rsaKeySize -gt 0 -and $rsaKeySize -lt 4096) {
+        $issues.Add("RSA key size is $rsaKeySize bits; project policy requires at least 4096 bits")
       }
     }
 
