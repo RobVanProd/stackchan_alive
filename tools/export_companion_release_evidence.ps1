@@ -779,6 +779,8 @@ function Get-DesktopPackageEvidence {
     $installerBytes = 0
     $installerBrainFiles = @()
     $installerExtractionMethod = ""
+    $installerContentIdentityStatus = ""
+    $installerSignatureNormalizedFileCount = 0
     if ($null -eq $installer) {
       $issues += "Installer-derived runtime evidence is missing for $platform."
     } else {
@@ -790,19 +792,53 @@ function Get-DesktopPackageEvidence {
       $installerBytes = [int64]$installer.runtimeBytes
       $installerBrainFiles = @($installer.requiredBrainFiles | ForEach-Object { [string]$_ })
       $installerExtractionMethod = [string]$installer.extractionMethod
+      $installerContentIdentityStatus = [string]$installer.contentIdentityStatus
       if ($installer.required -ne $true -or [string]$installer.status -ne "ready") { $issues += "Installer-derived runtime evidence is not required and ready for $platform." }
       if ($installerExtractionMethod -ne "native") { $issues += "Installer payload extraction was not performed natively for $platform." }
       if ([string]$installer.runtimeLocation -ne "native-app-resources" -or [string]::IsNullOrWhiteSpace([string]$installer.runtimeRootRelative)) { $issues += "Installer runtime is not external native app resources for $platform." }
       if ($installerAppJarName -notmatch '^app-desktop-.+\.jar$' -or $installerAppJarSha -notmatch '^[a-f0-9]{64}$') { $issues += "Installer application JAR evidence is invalid for $platform." }
       if ($installerPackageSha -ne $packageSha) { $issues += "Installer payload package hash mismatch for $platform." }
-      if ($installerRuntimeSha -ne $payloadSha -or $installerRuntimeSha -ne $processedSha) { $issues += "Installer runtime payload hash mismatch for $platform." }
+      $exactContentIdentity = $installerContentIdentityStatus -eq "ready-exact" -and
+        $installerRuntimeSha -eq $payloadSha -and $installerRuntimeSha -eq $processedSha
+      $signatureNormalizedContentIdentity = $false
+      if ($platform -eq "macos" -and $installerContentIdentityStatus -eq "ready-signature-normalized") {
+        $normalization = $installer.signatureNormalization
+        $normalizationFiles = @($normalization.files)
+        $installerSignatureNormalizedFileCount = [int]$normalization.changedFileCount
+        $normalizationFilesValid = $installerSignatureNormalizedFileCount -gt 0 -and
+          $normalizationFiles.Count -eq $installerSignatureNormalizedFileCount
+        $normalizationPaths = New-Object System.Collections.Generic.List[string]
+        foreach ($proof in $normalizationFiles) {
+          $proofPath = [string]$proof.path
+          $normalizationPaths.Add($proofPath)
+          if ([string]::IsNullOrWhiteSpace($proofPath) -or
+              ([string]$proof.processedFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+              ([string]$proof.installerFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+              ([string]$proof.normalizedFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+              ([string]$proof.processedFileSha256).ToLowerInvariant() -eq ([string]$proof.installerFileSha256).ToLowerInvariant()) {
+            $normalizationFilesValid = $false
+          }
+        }
+        if (@($normalizationPaths | Sort-Object -Unique).Count -ne $normalizationPaths.Count) {
+          $normalizationFilesValid = $false
+        }
+        $signatureNormalizedContentIdentity = $normalization.status -eq "ready" -and
+          [string]$normalization.tool -eq "codesign" -and
+          ([string]$normalization.processedPayloadSha256).ToLowerInvariant() -eq $processedSha -and
+          ([string]$normalization.installerPayloadSha256).ToLowerInvariant() -eq $installerRuntimeSha -and
+          $installerRuntimeSha -match '^[a-f0-9]{64}$' -and
+          $normalizationFilesValid
+      }
+      if (-not $exactContentIdentity -and -not $signatureNormalizedContentIdentity) {
+        $issues += "Installer runtime payload identity is invalid for $platform."
+      }
       if ([string]$installer.runtimeManifestSchema -ne "stackchan.desktop-python-runtime.v1" -or
           [string]$installer.runtimeManifestPlatform -ne $platform -or
-          ([string]$installer.runtimeManifestSha256).ToLowerInvariant() -ne $installerRuntimeSha) {
+          ([string]$installer.runtimeManifestSha256).ToLowerInvariant() -ne $payloadSha) {
         $issues += "Installer runtime manifest evidence is invalid for $platform."
       }
       if ($installerFileCount -ne [int64]$item.runtime.processedFileCount -or
-          $installerBytes -ne [int64]$item.runtime.processedBytes -or
+          ($exactContentIdentity -and $installerBytes -ne [int64]$item.runtime.processedBytes) -or
           $installerFileCount -lt 2 -or $installerBytes -le 0) {
         $issues += "Installer runtime payload summary does not match processed resources for $platform."
       }
@@ -842,6 +878,8 @@ function Get-DesktopPackageEvidence {
       installerRuntimeSha256 = $installerRuntimeSha
       installerRuntimeFileCount = $installerFileCount
       installerRuntimeBytes = $installerBytes
+      installerContentIdentityStatus = $installerContentIdentityStatus
+      installerSignatureNormalizedFileCount = $installerSignatureNormalizedFileCount
       installerBrainFiles = @($installerBrainFiles)
       launchPackageSha256 = $launchPackageSha
       launchPythonVersion = $launchPythonVersion

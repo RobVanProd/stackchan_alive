@@ -14,12 +14,12 @@ foreach ($pattern in @("desktop-runtime-validator-output", "outputReader.join(5_
 }
 Write-Host "[ok] desktop packaging runtime validation uses the bounded first-launch window"
 
-foreach ($pattern in @("[System.IO.File]::Copy", "GetUnixFileMode", "SetUnixFileMode", "materializedSymlinkCount")) {
+foreach ($pattern in @("[System.IO.File]::Copy", "GetUnixFileMode", "SetUnixFileMode", "materializedSymlinkCount", '$_.Name -eq ".gitignore"')) {
   if ($runtimePrepareText -notmatch [regex]::Escape($pattern)) {
     throw "Desktop runtime preparation must materialize Unix file symlinks deterministically: missing $pattern"
   }
 }
-Write-Host "[ok] desktop runtime preparation materializes Unix file symlinks with target modes"
+Write-Host "[ok] desktop runtime preparation materializes Unix file symlinks and excludes source-control-only files"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $checkScript = Join-Path $PSScriptRoot "check_desktop_python_runtime_payload.ps1"

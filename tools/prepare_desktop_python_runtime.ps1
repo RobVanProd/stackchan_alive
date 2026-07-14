@@ -161,6 +161,7 @@ function Copy-RuntimeDirectory {
 
     New-Item -ItemType Directory -Force -Path $CurrentTarget | Out-Null
     Get-ChildItem -LiteralPath $CurrentSource -File -Force | ForEach-Object {
+      if ($_.Name -eq ".gitignore") { return }
       $destination = Join-Path $CurrentTarget $_.Name
       $isUnixFileLink = $platform -ne "windows" -and -not [string]::IsNullOrWhiteSpace([string]$_.LinkType)
       if ($isUnixFileLink) {

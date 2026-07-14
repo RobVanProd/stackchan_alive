@@ -7,6 +7,14 @@ $releaseExporter = Join-Path $PSScriptRoot "export_companion_release_evidence.ps
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-desktop-package-evidence-" + [guid]::NewGuid().ToString("N"))
 $powerShellHost = (Get-Process -Id $PID).Path
 
+$checkerText = Get-Content -LiteralPath $checker -Raw
+foreach ($pattern in @("Test-MacOSSignatureNormalizedRuntimeIdentity", '"--verify", "--strict"', '"--remove-signature"', 'contentIdentityStatus = "ready-signature-normalized"')) {
+  if ($checkerText -notmatch [regex]::Escape($pattern)) {
+    throw "Desktop package evidence must prove macOS installer rewrites by strict code-signature normalization: missing $pattern"
+  }
+}
+Write-Host "[ok] macOS installer runtime identity requires strict code-signature normalization"
+
 function Get-Sha256Text {
   param([string]$Path)
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
@@ -166,6 +174,7 @@ try {
       $readyReport.installerPayload.status -ne "ready" -or
       $readyReport.installerPayload.runtimeLocation -ne "native-app-resources" -or
       $readyReport.installerPayload.runtimePayloadSha256 -ne $payloadHash -or
+      $readyReport.installerPayload.contentIdentityStatus -ne "ready-exact" -or
       $readyReport.launchEvidence.status -ne "ready" -or
       @($readyReport.installerPayload.requiredBrainFiles).Count -ne $requiredBrainFiles.Count) {
     throw "Complete desktop package evidence did not preserve the processed and installer runtime proof."
@@ -254,6 +263,15 @@ try {
         runtimeManifestSchema = "stackchan.desktop-python-runtime.v1"
         runtimeManifestPlatform = $target.platform
         runtimeManifestSha256 = $payloadHash
+        contentIdentityStatus = "ready-exact"
+        signatureNormalization = [ordered]@{
+          status = "not-required"
+          tool = ""
+          processedPayloadSha256 = ""
+          installerPayloadSha256 = ""
+          changedFileCount = 0
+          files = @()
+        }
         requiredBrainFiles = @($requiredBrainFiles)
       }
       launchEvidence = [ordered]@{
@@ -267,6 +285,25 @@ try {
         scope = "exact-native-package-extraction-and-headless-launch"
       }
       issues = @()
+    }
+    if ($target.platform -eq "macos") {
+      $macosInstallerPayloadSha = "b" * 64
+      $targetReport.installerPayload.runtimePayloadSha256 = $macosInstallerPayloadSha
+      $targetReport.installerPayload.runtimeBytes = $processedBytes + 128
+      $targetReport.installerPayload.contentIdentityStatus = "ready-signature-normalized"
+      $targetReport.installerPayload.signatureNormalization = [ordered]@{
+        status = "ready"
+        tool = "codesign"
+        processedPayloadSha256 = $payloadHash
+        installerPayloadSha256 = $macosInstallerPayloadSha
+        changedFileCount = 1
+        files = @([ordered]@{
+          path = "lib/libpython3.12.dylib"
+          processedFileSha256 = "c" * 64
+          installerFileSha256 = "d" * 64
+          normalizedFileSha256 = "e" * 64
+        })
+      }
     }
     $targetReport | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $aggregateRoot ("{0}-package-evidence.json" -f $target.platform)) -Encoding UTF8
   }
@@ -304,7 +341,7 @@ try {
     throw "Strict aggregate evidence did not preserve the installer runtime mismatch marker."
   }
   Write-Host "[ok] aggregate companion evidence rejects installer-derived runtime mismatch"
-  $macosReport.installerPayload.runtimePayloadSha256 = $payloadHash
+  $macosReport.installerPayload.runtimePayloadSha256 = $macosReport.installerPayload.signatureNormalization.installerPayloadSha256
   $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
 
   $macosReport.launchEvidence.packageSha256 = "0" * 64

@@ -150,6 +150,7 @@ function Get-RuntimeFileInventory {
       $full = [System.IO.Path]::GetFullPath($_.FullName)
       $relative = $full.Substring($prefix.Length).Replace("\", "/")
       $inventory[$relative] = [ordered]@{
+        fullPath = $full
         bytes = [int64]$_.Length
         sha256 = Get-Sha256Text $full
       }
@@ -179,6 +180,140 @@ function Compare-RuntimeFileInventories {
     if ($differences.Count -ge $Limit) { break }
   }
   return @($differences)
+}
+
+function Invoke-NativeCommandCapture {
+  param(
+    [string]$Command,
+    [string[]]$Arguments
+  )
+
+  $oldPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $output = & $Command @Arguments 2>&1 | Out-String
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldPreference
+  }
+  return [pscustomobject]@{ exitCode = $exitCode; output = $output.Trim() }
+}
+
+function Test-MacOSSignatureNormalizedRuntimeIdentity {
+  param(
+    [hashtable]$Expected,
+    [hashtable]$Actual,
+    [string]$ExpectedPayloadSha256,
+    [string]$ActualPayloadSha256
+  )
+
+  $result = [ordered]@{
+    status = "not-ready"
+    tool = "codesign"
+    processedPayloadSha256 = $ExpectedPayloadSha256
+    installerPayloadSha256 = $ActualPayloadSha256
+    changedFileCount = 0
+    files = @()
+    issue = ""
+  }
+  if ((Get-HostPlatform) -ne "macos" -or $Platform -ne "macos") {
+    $result.issue = "macOS signature normalization requires a native macOS host."
+    return [pscustomobject]$result
+  }
+
+  $codesign = Get-Command codesign -ErrorAction SilentlyContinue
+  $fileCommand = Get-Command file -ErrorAction SilentlyContinue
+  if ($null -eq $codesign -or $null -eq $fileCommand) {
+    $result.issue = "macOS signature normalization requires codesign and file."
+    return [pscustomobject]$result
+  }
+
+  $expectedPaths = @($Expected.Keys | Sort-Object)
+  $actualPaths = @($Actual.Keys | Sort-Object)
+  if ($expectedPaths.Count -ne $actualPaths.Count -or
+      (Compare-Object -ReferenceObject $expectedPaths -DifferenceObject $actualPaths).Count -ne 0) {
+    $result.issue = "Processed and installer runtime path sets differ."
+    return [pscustomobject]$result
+  }
+
+  $changedPaths = @($expectedPaths | Where-Object {
+    [int64]$Expected[$_].bytes -ne [int64]$Actual[$_].bytes -or
+    [string]$Expected[$_].sha256 -ne [string]$Actual[$_].sha256
+  })
+  if ($changedPaths.Count -lt 1) {
+    $result.issue = "No changed runtime files require signature normalization."
+    return [pscustomobject]$result
+  }
+
+  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-codesign-normalize-" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
+  try {
+    $proofs = New-Object System.Collections.Generic.List[object]
+    $index = 0
+    foreach ($path in $changedPaths) {
+      $expectedPath = [string]$Expected[$path].fullPath
+      $actualPath = [string]$Actual[$path].fullPath
+      $expectedFileType = Invoke-NativeCommandCapture -Command $fileCommand.Source -Arguments @("-b", $expectedPath)
+      $actualFileType = Invoke-NativeCommandCapture -Command $fileCommand.Source -Arguments @("-b", $actualPath)
+      if ($expectedFileType.exitCode -ne 0 -or $actualFileType.exitCode -ne 0 -or
+          $expectedFileType.output -notmatch "Mach-O" -or $actualFileType.output -notmatch "Mach-O") {
+        $result.issue = "Changed runtime file is not Mach-O on both sides: $path"
+        return [pscustomobject]$result
+      }
+
+      $actualVerify = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--verify", "--strict", "--verbose=2", $actualPath)
+      if ($actualVerify.exitCode -ne 0) {
+        $result.issue = "Installer runtime file does not have a valid strict code signature: $path"
+        return [pscustomobject]$result
+      }
+
+      $expectedCopy = Join-Path $tempRoot ("expected-{0:D3}" -f $index)
+      $actualCopy = Join-Path $tempRoot ("actual-{0:D3}" -f $index)
+      Copy-Item -LiteralPath $expectedPath -Destination $expectedCopy
+      Copy-Item -LiteralPath $actualPath -Destination $actualCopy
+
+      $expectedDisplay = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("-d", "--verbose=2", $expectedCopy)
+      if ($expectedDisplay.exitCode -eq 0) {
+        $expectedRemove = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--remove-signature", $expectedCopy)
+        if ($expectedRemove.exitCode -ne 0) {
+          $result.issue = "Could not remove the processed runtime code signature: $path"
+          return [pscustomobject]$result
+        }
+      } elseif ($expectedDisplay.output -notmatch "not signed at all") {
+        $result.issue = "Could not determine the processed runtime signature state: $path"
+        return [pscustomobject]$result
+      }
+
+      $actualRemove = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--remove-signature", $actualCopy)
+      if ($actualRemove.exitCode -ne 0) {
+        $result.issue = "Could not remove the installer runtime code signature: $path"
+        return [pscustomobject]$result
+      }
+
+      $expectedNormalizedSha = Get-Sha256Text $expectedCopy
+      $actualNormalizedSha = Get-Sha256Text $actualCopy
+      if ($expectedNormalizedSha -ne $actualNormalizedSha) {
+        $result.issue = "Runtime file content differs after code-signature removal: $path"
+        return [pscustomobject]$result
+      }
+      $proofs.Add([ordered]@{
+        path = $path
+        processedFileSha256 = [string]$Expected[$path].sha256
+        installerFileSha256 = [string]$Actual[$path].sha256
+        normalizedFileSha256 = $expectedNormalizedSha
+      })
+      $index++
+    }
+
+    $result.status = "ready"
+    $result.changedFileCount = $proofs.Count
+    $result.files = @($proofs)
+    return [pscustomobject]$result
+  } finally {
+    if (Test-Path -LiteralPath $tempRoot) {
+      Remove-Item -LiteralPath $tempRoot -Recurse -Force
+    }
+  }
 }
 
 function Add-Issue {
@@ -211,6 +346,15 @@ $installerPayload = [ordered]@{
   runtimeManifestSchema = ""
   runtimeManifestPlatform = ""
   runtimeManifestSha256 = ""
+  contentIdentityStatus = "not-ready"
+  signatureNormalization = [ordered]@{
+    status = "not-required"
+    tool = ""
+    processedPayloadSha256 = ""
+    installerPayloadSha256 = ""
+    changedFileCount = 0
+    files = @()
+  }
   requiredBrainFiles = @()
 }
 $launchEvidence = [ordered]@{
@@ -412,12 +556,36 @@ if ($RequireInstallerPayload) {
     }
   }
 
-  if ($null -ne $prepare -and -not [string]::IsNullOrWhiteSpace([string]$installerPayload.runtimePayloadSha256) -and
-      [string]$installerPayload.runtimePayloadSha256 -ne [string]$prepare.payloadSha256) {
-    Add-Issue "Installer runtime payload hash does not match runtime prepare evidence."
+  $installerRuntimeHash = [string]$installerPayload.runtimePayloadSha256
+  $runtimeContentIdentityReady = $false
+  if (-not [string]::IsNullOrWhiteSpace($processedHash) -and -not [string]::IsNullOrWhiteSpace($installerRuntimeHash) -and
+      $installerRuntimeHash -eq $processedHash) {
+    $installerPayload.contentIdentityStatus = "ready-exact"
+    $runtimeContentIdentityReady = $true
+  } elseif ($Platform -eq "macos" -and $null -ne $processedInventory -and $null -ne $installerInventory) {
+    $signatureIdentity = Test-MacOSSignatureNormalizedRuntimeIdentity `
+      -Expected $processedInventory `
+      -Actual $installerInventory `
+      -ExpectedPayloadSha256 $processedHash `
+      -ActualPayloadSha256 $installerRuntimeHash
+    $installerPayload.signatureNormalization = [ordered]@{
+      status = [string]$signatureIdentity.status
+      tool = [string]$signatureIdentity.tool
+      processedPayloadSha256 = [string]$signatureIdentity.processedPayloadSha256
+      installerPayloadSha256 = [string]$signatureIdentity.installerPayloadSha256
+      changedFileCount = [int]$signatureIdentity.changedFileCount
+      files = @($signatureIdentity.files)
+    }
+    if ($signatureIdentity.status -eq "ready") {
+      $installerPayload.contentIdentityStatus = "ready-signature-normalized"
+      $runtimeContentIdentityReady = $true
+    } else {
+      Add-Issue "Installer runtime signature-normalized identity was not proven: $($signatureIdentity.issue)"
+    }
   }
-  if (-not [string]::IsNullOrWhiteSpace($processedHash) -and -not [string]::IsNullOrWhiteSpace([string]$installerPayload.runtimePayloadSha256) -and
-      [string]$installerPayload.runtimePayloadSha256 -ne $processedHash) {
+  if (-not $runtimeContentIdentityReady -and
+      -not [string]::IsNullOrWhiteSpace($processedHash) -and
+      -not [string]::IsNullOrWhiteSpace($installerRuntimeHash)) {
     Add-Issue "Installer runtime payload hash does not match processed Gradle resources."
     if ($null -ne $processedInventory -and $null -ne $installerInventory) {
       foreach ($difference in Compare-RuntimeFileInventories -Expected $processedInventory -Actual $installerInventory) {
@@ -425,11 +593,15 @@ if ($RequireInstallerPayload) {
       }
     }
   }
+  if ($null -ne $prepare -and -not $runtimeContentIdentityReady) {
+    Add-Issue "Installer runtime payload identity does not match runtime prepare evidence."
+  }
   if ($processedFiles.Count -gt 0 -and [int]$installerPayload.runtimeFileCount -ne $processedFiles.Count) {
     Add-Issue "Installer runtime file count does not match processed Gradle resources."
   }
   $processedRuntimeBytes = [int64](($processedFiles | Measure-Object -Property Length -Sum).Sum)
-  if ($processedRuntimeBytes -gt 0 -and [int64]$installerPayload.runtimeBytes -ne $processedRuntimeBytes) {
+  if ($installerPayload.contentIdentityStatus -ne "ready-signature-normalized" -and
+      $processedRuntimeBytes -gt 0 -and [int64]$installerPayload.runtimeBytes -ne $processedRuntimeBytes) {
     Add-Issue "Installer runtime byte count does not match processed Gradle resources."
   }
   if ($issues.Count -eq $installerIssueStart) { $installerPayload.status = "ready" }
