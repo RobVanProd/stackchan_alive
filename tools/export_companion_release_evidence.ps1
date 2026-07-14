@@ -811,11 +811,28 @@ function Get-DesktopPackageEvidence {
         foreach ($proof in $normalizationFiles) {
           $proofPath = [string]$proof.path
           $normalizationPaths.Add($proofPath)
+          $architectureProofs = @($proof.architectures)
+          $architecturesValid = $architectureProofs.Count -gt 0
+          $architectureNames = New-Object System.Collections.Generic.List[string]
+          foreach ($architectureProof in $architectureProofs) {
+            $architectureNames.Add([string]$architectureProof.architecture)
+            if ([string]::IsNullOrWhiteSpace([string]$architectureProof.architecture) -or
+                ([string]$architectureProof.codeContentSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+                [int64]$architectureProof.codeBytes -le 0 -or
+                [int64]$architectureProof.processedSignatureBytes -le 0 -or
+                [int64]$architectureProof.installerSignatureBytes -le 0) {
+              $architecturesValid = $false
+            }
+          }
+          if (@($architectureNames | Sort-Object -Unique).Count -ne $architectureNames.Count) {
+            $architecturesValid = $false
+          }
           if ([string]::IsNullOrWhiteSpace($proofPath) -or
               ([string]$proof.processedFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
               ([string]$proof.installerFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
               ([string]$proof.normalizedFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
-              ([string]$proof.processedFileSha256).ToLowerInvariant() -eq ([string]$proof.installerFileSha256).ToLowerInvariant()) {
+              ([string]$proof.processedFileSha256).ToLowerInvariant() -eq ([string]$proof.installerFileSha256).ToLowerInvariant() -or
+              -not $architecturesValid) {
             $normalizationFilesValid = $false
           }
         }

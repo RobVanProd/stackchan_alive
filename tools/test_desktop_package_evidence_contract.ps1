@@ -8,7 +8,7 @@ $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-desktop-pack
 $powerShellHost = (Get-Process -Id $PID).Path
 
 $checkerText = Get-Content -LiteralPath $checker -Raw
-foreach ($pattern in @("Test-MacOSSignatureNormalizedRuntimeIdentity", '"--verify", "--strict"', '"--remove-signature"', 'contentIdentityStatus = "ready-signature-normalized"')) {
+foreach ($pattern in @("Test-MacOSSignatureNormalizedRuntimeIdentity", '"--verify", "--strict"', "LC_CODE_SIGNATURE", "Get-MachOCodeContentIdentity", 'contentIdentityStatus = "ready-signature-normalized"')) {
   if ($checkerText -notmatch [regex]::Escape($pattern)) {
     throw "Desktop package evidence must prove macOS installer rewrites by strict code-signature normalization: missing $pattern"
   }
@@ -302,6 +302,13 @@ try {
           processedFileSha256 = "c" * 64
           installerFileSha256 = "d" * 64
           normalizedFileSha256 = "e" * 64
+          architectures = @([ordered]@{
+            architecture = "arm64"
+            codeContentSha256 = "f" * 64
+            codeBytes = 1024
+            processedSignatureBytes = 256
+            installerSignatureBytes = 192
+          })
         })
       }
     }

@@ -199,6 +199,95 @@ function Invoke-NativeCommandCapture {
   return [pscustomobject]@{ exitCode = $exitCode; output = $output.Trim() }
 }
 
+function Get-Sha256Bytes {
+  param([byte[]]$Bytes)
+
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return (($sha.ComputeHash($Bytes) | ForEach-Object { $_.ToString("x2") }) -join "")
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+function Get-Sha256Utf8Text {
+  param([string]$Value)
+  return Get-Sha256Bytes ([System.Text.Encoding]::UTF8.GetBytes($Value))
+}
+
+function Read-MachOUInt32 {
+  param(
+    [byte[]]$Bytes,
+    [int]$Offset,
+    [bool]$LittleEndian
+  )
+
+  if ($Offset -lt 0 -or $Offset + 4 -gt $Bytes.Length) {
+    throw "Mach-O uint32 offset is outside the file."
+  }
+  $valueBytes = [byte[]]::new(4)
+  [Array]::Copy($Bytes, $Offset, $valueBytes, 0, 4)
+  if ([BitConverter]::IsLittleEndian -ne $LittleEndian) {
+    [Array]::Reverse($valueBytes)
+  }
+  return [BitConverter]::ToUInt32($valueBytes, 0)
+}
+
+function Get-MachOCodeContentIdentity {
+  param([string]$Path)
+
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  if ($bytes.Length -lt 32) { throw "Mach-O file is too short." }
+  $rawMagic = [BitConverter]::ToUInt32($bytes, 0)
+  switch ($rawMagic) {
+    4277009102 { $littleEndian = $true; $headerSize = 28 }
+    4277009103 { $littleEndian = $true; $headerSize = 32 }
+    3472551422 { $littleEndian = $false; $headerSize = 28 }
+    3489328638 { $littleEndian = $false; $headerSize = 32 }
+    default { throw "Mach-O file has an unsupported magic value." }
+  }
+
+  $commandCount = [int](Read-MachOUInt32 -Bytes $bytes -Offset 16 -LittleEndian $littleEndian)
+  $commandBytes = [int](Read-MachOUInt32 -Bytes $bytes -Offset 20 -LittleEndian $littleEndian)
+  if ($commandCount -lt 1 -or $headerSize + $commandBytes -gt $bytes.Length) {
+    throw "Mach-O load-command table is invalid."
+  }
+
+  $commandOffset = $headerSize
+  $signatureCommandOffset = -1
+  $signatureDataOffset = 0
+  $signatureDataSize = 0
+  for ($index = 0; $index -lt $commandCount; $index++) {
+    $command = Read-MachOUInt32 -Bytes $bytes -Offset $commandOffset -LittleEndian $littleEndian
+    $commandSize = [int](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 4) -LittleEndian $littleEndian)
+    if ($commandSize -lt 8 -or $commandOffset + $commandSize -gt $headerSize + $commandBytes) {
+      throw "Mach-O load command is invalid."
+    }
+    if ($command -eq 0x1d) {
+      if ($signatureCommandOffset -ge 0 -or $commandSize -ne 16) {
+        throw "Mach-O LC_CODE_SIGNATURE command is invalid or duplicated."
+      }
+      $signatureCommandOffset = $commandOffset
+      $signatureDataOffset = [int](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 8) -LittleEndian $littleEndian)
+      $signatureDataSize = [int](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 12) -LittleEndian $littleEndian)
+    }
+    $commandOffset += $commandSize
+  }
+  if ($signatureCommandOffset -lt 0 -or $signatureDataOffset -lt $headerSize + $commandBytes -or
+      $signatureDataSize -lt 1 -or $signatureDataOffset + $signatureDataSize -gt $bytes.Length) {
+    throw "Mach-O embedded code-signature range is invalid."
+  }
+
+  $canonical = [byte[]]::new($signatureDataOffset)
+  [Array]::Copy($bytes, 0, $canonical, 0, $signatureDataOffset)
+  [Array]::Clear($canonical, $signatureCommandOffset, 16)
+  return [pscustomobject]@{
+    sha256 = Get-Sha256Bytes $canonical
+    codeBytes = $signatureDataOffset
+    signatureBytes = $signatureDataSize
+  }
+}
+
 function Test-MacOSSignatureNormalizedRuntimeIdentity {
   param(
     [hashtable]$Expected,
@@ -223,8 +312,9 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
 
   $codesign = Get-Command codesign -ErrorAction SilentlyContinue
   $fileCommand = Get-Command file -ErrorAction SilentlyContinue
-  if ($null -eq $codesign -or $null -eq $fileCommand) {
-    $result.issue = "macOS signature normalization requires codesign and file."
+  $lipo = Get-Command lipo -ErrorAction SilentlyContinue
+  if ($null -eq $codesign -or $null -eq $fileCommand -or $null -eq $lipo) {
+    $result.issue = "macOS signature normalization requires codesign, file, and lipo."
     return [pscustomobject]$result
   }
 
@@ -261,46 +351,68 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
         return [pscustomobject]$result
       }
 
+      $expectedVerify = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--verify", "--strict", "--verbose=2", $expectedPath)
       $actualVerify = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--verify", "--strict", "--verbose=2", $actualPath)
-      if ($actualVerify.exitCode -ne 0) {
-        $result.issue = "Installer runtime file does not have a valid strict code signature: $path"
+      if ($expectedVerify.exitCode -ne 0 -or $actualVerify.exitCode -ne 0) {
+        $result.issue = "Processed and installer runtime files must both have valid strict code signatures: $path"
         return [pscustomobject]$result
       }
 
-      $expectedCopy = Join-Path $tempRoot ("expected-{0:D3}" -f $index)
-      $actualCopy = Join-Path $tempRoot ("actual-{0:D3}" -f $index)
-      Copy-Item -LiteralPath $expectedPath -Destination $expectedCopy
-      Copy-Item -LiteralPath $actualPath -Destination $actualCopy
+      $expectedArchResult = Invoke-NativeCommandCapture -Command $lipo.Source -Arguments @("-archs", $expectedPath)
+      $actualArchResult = Invoke-NativeCommandCapture -Command $lipo.Source -Arguments @("-archs", $actualPath)
+      $expectedArchitectures = @($expectedArchResult.output -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+      $actualArchitectures = @($actualArchResult.output -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+      if ($expectedArchResult.exitCode -ne 0 -or $actualArchResult.exitCode -ne 0 -or
+          $expectedArchitectures.Count -lt 1 -or $expectedArchitectures.Count -ne $actualArchitectures.Count -or
+          (Compare-Object -ReferenceObject $expectedArchitectures -DifferenceObject $actualArchitectures).Count -ne 0) {
+        $result.issue = "Processed and installer runtime architecture sets differ: $path"
+        return [pscustomobject]$result
+      }
 
-      $expectedDisplay = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("-d", "--verbose=2", $expectedCopy)
-      if ($expectedDisplay.exitCode -eq 0) {
-        $expectedRemove = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--remove-signature", $expectedCopy)
-        if ($expectedRemove.exitCode -ne 0) {
-          $result.issue = "Could not remove the processed runtime code signature: $path"
+      $architectureProofs = New-Object System.Collections.Generic.List[object]
+      foreach ($architecture in $expectedArchitectures) {
+        $expectedCopy = Join-Path $tempRoot ("expected-{0:D3}-{1}" -f $index, $architecture)
+        $actualCopy = Join-Path $tempRoot ("actual-{0:D3}-{1}" -f $index, $architecture)
+        if ($expectedArchitectures.Count -eq 1) {
+          Copy-Item -LiteralPath $expectedPath -Destination $expectedCopy
+          Copy-Item -LiteralPath $actualPath -Destination $actualCopy
+        } else {
+          $expectedThin = Invoke-NativeCommandCapture -Command $lipo.Source -Arguments @("-thin", $architecture, $expectedPath, "-output", $expectedCopy)
+          $actualThin = Invoke-NativeCommandCapture -Command $lipo.Source -Arguments @("-thin", $architecture, $actualPath, "-output", $actualCopy)
+          if ($expectedThin.exitCode -ne 0 -or $actualThin.exitCode -ne 0) {
+            $result.issue = "Could not extract matching Mach-O architecture '$architecture': $path"
+            return [pscustomobject]$result
+          }
+        }
+
+        try {
+          $expectedIdentity = Get-MachOCodeContentIdentity $expectedCopy
+          $actualIdentity = Get-MachOCodeContentIdentity $actualCopy
+        } catch {
+          $result.issue = "Could not parse Mach-O code-signature boundaries for '$architecture': $path ($($_.Exception.Message))"
           return [pscustomobject]$result
         }
-      } elseif ($expectedDisplay.output -notmatch "not signed at all") {
-        $result.issue = "Could not determine the processed runtime signature state: $path"
-        return [pscustomobject]$result
+        if ($expectedIdentity.sha256 -ne $actualIdentity.sha256 -or $expectedIdentity.codeBytes -ne $actualIdentity.codeBytes) {
+          $result.issue = "Mach-O code content differs outside LC_CODE_SIGNATURE for '$architecture': $path"
+          return [pscustomobject]$result
+        }
+        $architectureProofs.Add([ordered]@{
+          architecture = $architecture
+          codeContentSha256 = [string]$expectedIdentity.sha256
+          codeBytes = [int64]$expectedIdentity.codeBytes
+          processedSignatureBytes = [int64]$expectedIdentity.signatureBytes
+          installerSignatureBytes = [int64]$actualIdentity.signatureBytes
+        })
       }
-
-      $actualRemove = Invoke-NativeCommandCapture -Command $codesign.Source -Arguments @("--remove-signature", $actualCopy)
-      if ($actualRemove.exitCode -ne 0) {
-        $result.issue = "Could not remove the installer runtime code signature: $path"
-        return [pscustomobject]$result
-      }
-
-      $expectedNormalizedSha = Get-Sha256Text $expectedCopy
-      $actualNormalizedSha = Get-Sha256Text $actualCopy
-      if ($expectedNormalizedSha -ne $actualNormalizedSha) {
-        $result.issue = "Runtime file content differs after code-signature removal: $path"
-        return [pscustomobject]$result
-      }
+      $normalizedFileSha = Get-Sha256Utf8Text (($architectureProofs | ForEach-Object {
+        "$($_.architecture)`n$($_.codeContentSha256)`n$($_.codeBytes)`n"
+      }) -join "")
       $proofs.Add([ordered]@{
         path = $path
         processedFileSha256 = [string]$Expected[$path].sha256
         installerFileSha256 = [string]$Actual[$path].sha256
-        normalizedFileSha256 = $expectedNormalizedSha
+        normalizedFileSha256 = $normalizedFileSha
+        architectures = @($architectureProofs)
       })
       $index++
     }
