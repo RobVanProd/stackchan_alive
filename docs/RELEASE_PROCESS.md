@@ -345,10 +345,39 @@ the embedded test firmware, renders preview media, creates and verifies an audit
 builds upload-signed Android APK/AAB artifacts, builds runtime-bundled Windows MSI, Linux DEB,
 and macOS DMG packages on their native runners, and attaches the complete verified asset set
 to one GitHub release. Before the first public companion tag, provision the four
-`STACKCHAN_ANDROID_*` Actions secrets documented in `ANDROID_PLAY_RELEASE.md`, plus:
+`STACKCHAN_ANDROID_*` Actions secrets documented in `ANDROID_PLAY_RELEASE.md`. For Windows,
+the preferred production route is Azure Artifact Signing with GitHub OIDC. Create the
+`windows-code-signing` GitHub environment and set these environment variables:
+
+- `STACKCHAN_WINDOWS_SIGNING_PROVIDER=azure-artifact-signing`
+- `STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ENDPOINT`
+- `STACKCHAN_WINDOWS_ARTIFACT_SIGNING_ACCOUNT`
+- `STACKCHAN_WINDOWS_ARTIFACT_SIGNING_PROFILE`
+- `STACKCHAN_AZURE_CLIENT_ID`
+- `STACKCHAN_AZURE_TENANT_ID`
+- `STACKCHAN_AZURE_SUBSCRIPTION_ID`
+
+The three Azure IDs and Artifact Signing account metadata are identifiers, not private keys.
+The Entra application must have a federated credential whose subject is
+`repo:RobVanProd/stackchan_alive:environment:windows-code-signing`, and its service principal
+must have the `Artifact Signing Certificate Profile Signer` role on the selected certificate
+profile. The workflow requests a short-lived token with `id-token: write`; do not create or store
+an Azure client secret. Configure the GitHub environment to allow the reviewed release branch and
+version tags before dispatching readiness or a release.
+
+The explicit legacy fallback is `STACKCHAN_WINDOWS_SIGNING_PROVIDER=pfx` plus these Actions
+secrets:
 
 - `STACKCHAN_WINDOWS_PFX_B64`
 - `STACKCHAN_WINDOWS_PFX_PASSWORD`
+
+Use the fallback only when a currently valid publicly trusted certificate is already available as
+an exportable PFX. New publicly trusted OV certificates generally require hardware or cloud HSM
+key storage, so do not assume a newly issued certificate can be exported. A self-signed certificate
+never satisfies the public release gate.
+
+macOS remains a separate release gate and uses:
+
 - `STACKCHAN_MACOS_CERTIFICATE_B64`
 - `STACKCHAN_MACOS_CERTIFICATE_PASSWORD`
 - `STACKCHAN_MACOS_SIGNING_IDENTITY`
@@ -356,11 +385,13 @@ to one GitHub release. Before the first public companion tag, provision the four
 - `STACKCHAN_MACOS_NOTARIZATION_PASSWORD`
 - `STACKCHAN_MACOS_NOTARIZATION_TEAM_ID`
 
-The Windows certificate must be a trusted code-signing certificate exported as a password-protected
-PFX. The macOS certificate must be a Developer ID Application certificate exported as a
+Azure Artifact Signing keeps the Windows private key in Microsoft's managed HSM service and the
+workflow signs only the MSI digest. Its RFC3161 timestamp is still mandatory. The macOS certificate
+must be a Developer ID Application certificate exported as a
 password-protected PKCS#12 file; notarization uses an app-specific Apple password. Keep independent
-offline backups and do not add any certificate or password to the repository. The tag workflow
-fails before publishing when any signing credential or native trust proof is absent.
+offline backups of file-based credentials and do not add any certificate or password to the
+repository. The tag workflow fails before publishing when any signing identity, provider metadata,
+or native trust proof is absent.
 
 Before provisioning or rotating any signing material, run the source-checkout hygiene gate:
 
@@ -373,8 +404,8 @@ bundle extensions remain ignored and untracked, and that no tracked text file co
 marker. `package_release.ps1` runs the same gate before building, while companion CI runs its
 negative contract tests. The report exposes paths and status only, never credential contents.
 
-After provisioning all twelve companion signing secrets (four Android, two Windows, and six
-macOS), run the manual **Companion Signing Readiness** workflow before creating a tag:
+After provisioning Android, the selected Windows provider, and macOS, run the manual
+**Companion Signing Readiness** workflow before creating a tag:
 
 ```powershell
 gh workflow run companion-signing-readiness.yml --ref <release-branch>
@@ -384,16 +415,18 @@ gh run watch (gh run list --workflow companion-signing-readiness.yml --limit 1 -
 That workflow has read-only repository permission and does not build, upload, or publish release
 assets. Its Android job decodes the upload keystore only into runner temporary storage and verifies
 the selected private-key entry, both passwords, RSA 4096-bit minimum, non-debug subject, and Play
-certificate lifetime. Its native Windows job signs and verifies a temporary executable with the
-private code-signing certificate and SignTool; its native macOS job imports the Developer ID
+certificate lifetime. Its native Windows job either signs a temporary executable through Azure
+Artifact Signing using GitHub OIDC or exercises the explicit PFX fallback with SignTool. Both paths
+require a valid trusted Authenticode signature and RFC3161 timestamp. Its native macOS job imports the Developer ID
 identity into a temporary keychain, signs and verifies a temporary hardened-runtime executable,
 and asks Apple `notarytool` to authenticate the configured account, app-specific password, and team
 ID. The native desktop jobs also require the certificate chain to terminate at a root trusted by
 that host. The same strict preflights run again in the tag workflow before packaging. For a local
 desktop credential-material check, set the corresponding environment variables and run
 `tools\check_desktop_release_signing_readiness.cmd -Platform windows|macos -RequireReady -Json`;
-add `-RequireNativeToolchain` only on the matching OS. The checker emits certificate metadata and
-status only, never PKCS#12 bytes or passwords.
+add `-RequireNativeToolchain` only on the matching OS. The local Windows checker covers the PFX
+fallback; the cloud path is proven by the manual workflow's real signed probe. The checker emits
+certificate metadata and status only, never PKCS#12 bytes or passwords.
 
 If GitHub Actions cannot run, the manual helper remains available for a firmware-only recovery
 publication:
