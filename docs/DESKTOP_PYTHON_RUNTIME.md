@@ -72,10 +72,12 @@ cd companion
 ```
 
 CI or release scripts can use `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>` instead of the
-Gradle property. When either value is present, `:app-desktop:processResources` first runs
+Gradle property. When either value is present, `prepareDesktopNativeAppResources` first runs
 `validateDesktopPythonRuntimePayload`, which invokes
-`tools/check_desktop_python_runtime_payload.ps1`, then copies the runtime into packaged app
-resources as `python-runtime/`. If the runtime is missing a manifest, executable, or Python
+`tools/check_desktop_python_runtime_payload.ps1`, then copies the runtime into native app
+resources as an external `python-runtime/` directory beside the installed application. The
+runtime is deliberately excluded from the application JAR because an interpreter cannot execute
+from inside that archive. If the runtime is missing a manifest, executable, or Python
 3.10+ probe, the desktop package build fails before an installer is produced.
 
 ## Validation
@@ -107,15 +109,19 @@ resource that Gradle copied:
 
 ```powershell
 $extractRoot = Join-Path $env:TEMP "stackchan-package-extraction-windows-<unique-id>"
-.\tools\export_desktop_package_evidence.ps1 -Platform windows -PackagePath <msi> -RuntimePrepareJsonPath <windows-prepare.json> -ProcessedRuntimeRoot companion\app-desktop\build\resources\main\python-runtime -PackageExtractionRoot $extractRoot -Version <tag> -Commit <commit> -RequireInstallerPayload -Json
+.\tools\test_desktop_package_launch.ps1 -Platform windows -PackagePath <msi> -ExtractionRoot $extractRoot -OutPath output\desktop-python-runtime\windows-package-launch.json -Json
+.\tools\export_desktop_package_evidence.ps1 -Platform windows -PackagePath <msi> -RuntimePrepareJsonPath <windows-prepare.json> -ProcessedRuntimeRoot companion\app-desktop\build\generated\native-app-resources\common\python-runtime -PackageExtractionRoot $extractRoot -LaunchEvidencePath output\desktop-python-runtime\windows-package-launch.json -Version <tag> -Commit <commit> -RequireInstallerPayload -RequireLaunchEvidence -UseExistingPackageExtraction -Json
 ```
 
 Use `linux` with the DEB and `macos` with the DMG on their native runners. The exporter writes
 `stackchan.desktop-package-evidence.v1`, records the package SHA-256 and processed runtime SHA-256,
-then natively extracts the MSI, DEB, or DMG and opens its packaged `app-desktop-*.jar`. It hashes
-`python-runtime/` directly from that installer application JAR, validates its runtime manifest and
-Python executable, and requires the packaged bridge, provenance, and voice-proof resources. The
-report fails when installer content differs from the validated prepare report or Gradle resources.
+then natively extracts the MSI, DEB, or DMG. It hashes the external `python-runtime/` native app
+resources, validates their manifest and executable, and opens the installer application JAR only
+to require the packaged bridge, provenance, and voice-proof resources and to reject a duplicate
+JAR-embedded runtime. The launch helper invokes the exact extracted package launcher with a
+headless probe and binds its ready Python/brain result to the package SHA-256. The report fails
+when installer content differs from the validated prepare report, Gradle resources, or launch
+evidence. This extracted-package smoke does not replace target-machine installation acceptance.
 `tools/test_desktop_package_evidence_contract.ps1` covers extension, platform, processed-runtime,
 and installer-runtime tampering failures. Public release evidence requires one ready native report
 for every desktop platform and matches each report back to exactly one published package.

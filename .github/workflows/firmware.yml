@@ -353,6 +353,7 @@ jobs:
             artifact_path: |
               companion/app-desktop/build/compose/binaries/main/deb/*.deb
               output/desktop-python-runtime/linux-prepare.json
+              output/desktop-python-runtime/linux-package-launch.json
               output/desktop-python-runtime/linux-package-evidence.json
           - name: desktop-macos
             os: macos-latest
@@ -373,6 +374,7 @@ jobs:
             artifact_path: |
               companion/app-desktop/build/compose/binaries/main/dmg/*.dmg
               output/desktop-python-runtime/macos-prepare.json
+              output/desktop-python-runtime/macos-package-launch.json
               output/desktop-python-runtime/macos-package-evidence.json
           - name: desktop-windows
             os: windows-latest
@@ -393,6 +395,7 @@ jobs:
             artifact_path: |
               companion/app-desktop/build/compose/binaries/main/msi/*.msi
               output/desktop-python-runtime/windows-prepare.json
+              output/desktop-python-runtime/windows-package-launch.json
               output/desktop-python-runtime/windows-package-evidence.json
     name: companion-platform-builds (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -497,6 +500,21 @@ jobs:
             exit $status
           }
 
+      - name: Launch exact native desktop package headlessly
+        if: matrix.setup_desktop_runtime
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.desktop_platform }} desktop package; found $($packages.Count)."
+          }
+          ./tools/test_desktop_package_launch.ps1 `
+            -Platform "${{ matrix.desktop_platform }}" `
+            -PackagePath $packages[0].FullName `
+            -ExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.desktop_platform }}") `
+            -OutPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-launch.json" `
+            -Json
+
       - name: Export native desktop package evidence
         if: matrix.setup_desktop_runtime
         shell: pwsh
@@ -509,12 +527,15 @@ jobs:
             -Platform "${{ matrix.desktop_platform }}" `
             -PackagePath $packages[0].FullName `
             -RuntimePrepareJsonPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-prepare.json" `
-            -ProcessedRuntimeRoot "companion/app-desktop/build/resources/main/python-runtime" `
+            -ProcessedRuntimeRoot "companion/app-desktop/build/generated/native-app-resources/common/python-runtime" `
             -PackageExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.desktop_platform }}") `
+            -LaunchEvidencePath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-launch.json" `
             -Version "${{ github.sha }}" `
             -Commit "${{ github.sha }}" `
             -OutPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-evidence.json" `
             -RequireInstallerPayload `
+            -RequireLaunchEvidence `
+            -UseExistingPackageExtraction `
             -Json
 
       - name: Upload companion platform artifact

@@ -38,6 +38,7 @@ function Invoke-Evidence {
     [string]$PreparePath,
     [string]$ProcessedRoot,
     [string]$ExtractionRoot,
+    [string]$LaunchPath,
     [string]$OutPath
   )
   $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $checker `
@@ -46,10 +47,12 @@ function Invoke-Evidence {
     -RuntimePrepareJsonPath $PreparePath `
     -ProcessedRuntimeRoot $ProcessedRoot `
     -PackageExtractionRoot $ExtractionRoot `
+    -LaunchEvidencePath $LaunchPath `
     -Version v1.0.0 `
     -Commit 1111111111111111111111111111111111111111 `
     -OutPath $OutPath `
     -RequireInstallerPayload `
+    -RequireLaunchEvidence `
     -UseExistingPackageExtraction `
     -Json 2>&1 | Out-String
   return [ordered]@{ exitCode = $LASTEXITCODE; output = $output }
@@ -109,8 +112,6 @@ try {
     "brain/docs/media/voice/stackchan_spark_greeting.wav"
   )
   $jarRoot = Join-Path $tempRoot "jar-root"
-  $jarRuntimeRoot = Join-Path $jarRoot "python-runtime"
-  Copy-Item -LiteralPath $processedRoot -Destination $jarRuntimeRoot -Recurse
   foreach ($brainPath in $requiredBrainFiles) {
     $targetPath = Join-Path $jarRoot $brainPath
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
@@ -118,30 +119,72 @@ try {
   }
   $extractionRoot = Join-Path $tempRoot "package-extraction"
   New-Item -ItemType Directory -Force -Path $extractionRoot | Out-Null
+  $installerRuntimeRoot = Join-Path $extractionRoot "Stackchan Companion/python-runtime"
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installerRuntimeRoot) | Out-Null
+  Copy-Item -LiteralPath $processedRoot -Destination $installerRuntimeRoot -Recurse
   $fixtureJar = Join-Path $extractionRoot "app-desktop-1.0.0-fixture.jar"
   New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
 
+  $launchPath = Join-Path $tempRoot "windows-package-launch.json"
+  $launch = [ordered]@{
+    schema = "stackchan.desktop-package-launch-evidence.v1"
+    status = "ready"
+    platform = "windows"
+    package = [ordered]@{ name = (Split-Path -Leaf $packagePath); bytes = (Get-Item $packagePath).Length; sha256 = Get-Sha256Text $packagePath }
+    extractionMethod = "native"
+    extractionRoot = $extractionRoot
+    launcherPath = "fixture/Stackchan Companion.exe"
+    processExitCode = 0
+    probe = [ordered]@{
+      schema = "stackchan.desktop-packaged-runtime-smoke.v1"
+      status = "ready"
+      platform = "windows"
+      appVersion = "1.0.0"
+      protocol = "stackchan.bridge.v1"
+      runtimePresent = $true
+      pythonAvailable = $true
+      pythonVersion = "Python 3.12.4"
+      brainScriptAvailable = $true
+      issues = @()
+    }
+    scope = "exact-native-package-extraction-and-headless-launch"
+    substitutesForTargetInstall = $false
+    issues = @()
+  }
+  $launch | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $launchPath -Encoding UTF8
+
   $readyPath = Join-Path $tempRoot "ready.json"
-  $ready = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $readyPath
+  $ready = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath $readyPath
   if ($ready.exitCode -ne 0) { throw "Complete desktop package evidence was rejected: $($ready.output)" }
   $readyReport = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
   if ($readyReport.status -ne "ready" -or
       $readyReport.runtime.processedPayloadSha256 -ne $payloadHash -or
       $readyReport.installerPayload.status -ne "ready" -or
+      $readyReport.installerPayload.runtimeLocation -ne "native-app-resources" -or
       $readyReport.installerPayload.runtimePayloadSha256 -ne $payloadHash -or
+      $readyReport.launchEvidence.status -ne "ready" -or
       @($readyReport.installerPayload.requiredBrainFiles).Count -ne $requiredBrainFiles.Count) {
     throw "Complete desktop package evidence did not preserve the processed and installer runtime proof."
   }
   Write-Host "[ok] complete installer-derived desktop package evidence is accepted"
 
-  Set-Content -LiteralPath (Join-Path $jarRuntimeRoot "Lib/runtime.txt") -Value "tampered installer runtime" -Encoding ASCII
-  New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
-  $tamperedInstaller = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "tampered-installer.json")
+  Set-Content -LiteralPath (Join-Path $installerRuntimeRoot "Lib/runtime.txt") -Value "tampered installer runtime" -Encoding ASCII
+  $tamperedInstaller = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "tampered-installer.json")
   if ($tamperedInstaller.exitCode -eq 0 -or $tamperedInstaller.output -notmatch "Installer runtime payload hash does not match") {
     throw "Tampered installer runtime was not rejected."
   }
   Write-Host "[ok] installer runtime tampering is rejected"
-  Set-Content -LiteralPath (Join-Path $jarRuntimeRoot "Lib/runtime.txt") -Value "synthetic runtime" -Encoding ASCII
+  Set-Content -LiteralPath (Join-Path $installerRuntimeRoot "Lib/runtime.txt") -Value "synthetic runtime" -Encoding ASCII
+
+  $jarRuntimeRoot = Join-Path $jarRoot "python-runtime"
+  Copy-Item -LiteralPath $processedRoot -Destination $jarRuntimeRoot -Recurse
+  New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
+  $embeddedRuntime = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "embedded-runtime.json")
+  if ($embeddedRuntime.exitCode -eq 0 -or $embeddedRuntime.output -notmatch "must not contain the executable managed runtime") {
+    throw "JAR-embedded executable runtime was not rejected."
+  }
+  Write-Host "[ok] JAR-embedded executable runtime is rejected"
+  Remove-Item -LiteralPath $jarRuntimeRoot -Recurse -Force
   New-FixtureApplicationJar -JarRoot $jarRoot -JarPath $fixtureJar
 
   $aggregateRoot = Join-Path $tempRoot "aggregate"
@@ -185,6 +228,8 @@ try {
         appJarName = "app-desktop-1.0.0-fixture.jar"
         appJarSha256 = $payloadHash
         packageSha256 = $targetPackageSha
+        runtimeLocation = "native-app-resources"
+        runtimeRootRelative = "Stackchan Companion/python-runtime"
         runtimePayloadSha256 = $payloadHash
         runtimeFileCount = $processedFiles.Count
         runtimeBytes = $processedBytes
@@ -192,6 +237,16 @@ try {
         runtimeManifestPlatform = $target.platform
         runtimeManifestSha256 = $payloadHash
         requiredBrainFiles = @($requiredBrainFiles)
+      }
+      launchEvidence = [ordered]@{
+        required = $true
+        status = "ready"
+        packageSha256 = $targetPackageSha
+        extractionMethod = "native"
+        launcherPath = "fixture/Stackchan Companion"
+        processExitCode = 0
+        pythonVersion = "Python 3.12.4"
+        scope = "exact-native-package-extraction-and-headless-launch"
       }
       issues = @()
     }
@@ -234,6 +289,21 @@ try {
   $macosReport.installerPayload.runtimePayloadSha256 = $payloadHash
   $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
 
+  $macosReport.launchEvidence.packageSha256 = "0" * 64
+  $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
+  $staleLaunchOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
+    -Version v1.0.0 `
+    -Commit 1111111111111111111111111111111111111111 `
+    -DesktopArtifactRoot $aggregateRoot `
+    -DesktopPackageEvidenceRoot $aggregateRoot `
+    -OutDir (Join-Path $tempRoot "aggregate-stale-launch-out") `
+    -RequireDesktopPackageEvidence `
+    -Json 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 2 -or $staleLaunchOutput -notmatch "desktop-native-package-runtime-evidence") { throw "Strict aggregate evidence did not reject stale package launch evidence." }
+  Write-Host "[ok] aggregate companion evidence rejects stale exact-package launch evidence"
+  $macosReport.launchEvidence.packageSha256 = (Get-Sha256Text (Join-Path $aggregateRoot "stackchan-companion-macos-v1.0.0.dmg"))
+  $macosReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $macosReportPath -Encoding UTF8
+
   Remove-Item -LiteralPath $macosReportPath -Force
   $missingOut = Join-Path $tempRoot "aggregate-missing-out"
   $missingOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $releaseExporter `
@@ -253,19 +323,19 @@ try {
 
   $wrongExtension = Join-Path $tempRoot "Stackchan Companion-1.0.0.deb"
   Copy-Item -LiteralPath $packagePath -Destination $wrongExtension
-  $wrong = Invoke-Evidence $wrongExtension $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "wrong-extension.json")
+  $wrong = Invoke-Evidence $wrongExtension $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "wrong-extension.json")
   if ($wrong.exitCode -eq 0 -or $wrong.output -notmatch "must use .msi") { throw "Wrong desktop package extension was not rejected." }
   Write-Host "[ok] wrong platform package extension is rejected"
 
   Set-Content -LiteralPath (Join-Path $processedRoot "Lib/runtime.txt") -Value "tampered runtime" -Encoding ASCII
-  $tampered = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "tampered.json")
+  $tampered = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "tampered.json")
   if ($tampered.exitCode -eq 0 -or $tampered.output -notmatch "payload hash does not match") { throw "Tampered processed runtime was not rejected." }
   Write-Host "[ok] processed runtime tampering is rejected"
 
   $prepare.platform = "linux"
   $prepare.validation.platform = "linux"
   $prepare | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $preparePath -Encoding UTF8
-  $wrongPlatform = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot (Join-Path $tempRoot "wrong-platform.json")
+  $wrongPlatform = Invoke-Evidence $packagePath $preparePath $processedRoot $extractionRoot $launchPath (Join-Path $tempRoot "wrong-platform.json")
   if ($wrongPlatform.exitCode -eq 0 -or $wrongPlatform.output -notmatch "must be windows") { throw "Wrong runtime evidence platform was not rejected." }
   Write-Host "[ok] runtime prepare platform mismatch is rejected"
 } finally {

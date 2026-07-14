@@ -615,13 +615,19 @@ Test-TextEvidence `
   -Id "desktop-package-evidence-export" `
   -Name "Native desktop package/runtime evidence exporter" `
   -RelativePaths @("tools/export_desktop_package_evidence.ps1") `
-  -Patterns @("stackchan.desktop-package-evidence.v1", "stackchan.desktop-python-runtime-prepare.v1", "Get-RuntimePayloadHash", "Get-ArchiveRuntimePayloadSummary", "Expand-DesktopPackage", "RequireInstallerPayload", "installerPayload", "processedPayloadSha256", "processedFileCount", "Installer runtime payload hash does not match processed Gradle resources")
+  -Patterns @("stackchan.desktop-package-evidence.v1", "stackchan.desktop-python-runtime-prepare.v1", "Get-RuntimePayloadHash", "native-app-resources", "Expand-DesktopPackage", "RequireInstallerPayload", "RequireLaunchEvidence", "launchEvidence", "processedPayloadSha256", "processedFileCount", "Installer runtime payload hash does not match processed Gradle resources")
+
+Test-TextEvidence `
+  -Id "desktop-package-launch-smoke" `
+  -Name "Exact native desktop package launch smoke" `
+  -RelativePaths @("tools/test_desktop_package_launch.ps1", "tools/test_desktop_package_launch.cmd", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/PackagedRuntimeSmoke.kt") `
+  -Patterns @("stackchan.desktop-package-launch-evidence.v1", "stackchan.desktop-packaged-runtime-smoke.v1", "exact-native-package-extraction-and-headless-launch", "extracted-native-package-headless-runtime-probe", "substitutesForTargetInstall", "--package-smoke-output=")
 
 Test-TextEvidence `
   -Id "desktop-package-evidence-contract" `
   -Name "Native desktop package/runtime evidence contract test" `
   -RelativePaths @("tools/test_desktop_package_evidence_contract.ps1", "tools/test_desktop_package_evidence_contract.cmd") `
-  -Patterns @("complete installer-derived desktop package evidence is accepted", "installer runtime tampering is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")
+  -Patterns @("complete installer-derived desktop package evidence is accepted", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
@@ -657,7 +663,7 @@ Test-TextEvidence `
   -Id "desktop-python-runtime-payload-packaging" `
   -Name "Desktop managed Python runtime payload packaging hook" `
   -RelativePaths @("companion/app-desktop/build.gradle.kts") `
-  -Patterns @("stackchan.desktop.pythonRuntimeRoot", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "validateDesktopPythonRuntimePayload", "check_desktop_python_runtime_payload.ps1", "into(`"python-runtime`")", "desktopPythonRuntimeRoot")
+  -Patterns @("stackchan.desktop.pythonRuntimeRoot", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "validateDesktopPythonRuntimePayload", "prepareDesktopNativeAppResources", "appResourcesRootDir", "into(`"common/python-runtime`")", "desktopPythonRuntimeRoot")
 
 Test-TextEvidence `
   -Id "desktop-packaged-brain-script" `
@@ -951,7 +957,7 @@ Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
-  -Patterns @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-tests", "companion-android-emulator-smoke", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "python-version: `"3.12`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "system-images;android-35;aosp_atd;x86_64", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "stackchan.allowLabDebugReleaseSigning=true", "check_companion_release_version.ps1", "test_companion_release_version_contract.ps1", "check_android_play_release_readiness.ps1", "test_android_upload_signing_contract.ps1", "test_android_emulator_launch.ps1", "test_android_emulator_release_evidence_contract.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "test_desktop_package_evidence_contract.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireDesktopPackageEvidence")
+  -Patterns @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-tests", "companion-android-emulator-smoke", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "python-version: `"3.12`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "system-images;android-35;aosp_atd;x86_64", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "stackchan.allowLabDebugReleaseSigning=true", "check_companion_release_version.ps1", "test_companion_release_version_contract.ps1", "check_android_play_release_readiness.ps1", "test_android_upload_signing_contract.ps1", "test_android_emulator_launch.ps1", "test_android_emulator_release_evidence_contract.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "test_desktop_package_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDesktopPackageEvidence")
 
 Test-TextEvidence `
   -Id "companion-release-version-gate" `
@@ -969,7 +975,7 @@ Test-TextEvidence `
   -Id "companion-tag-release-workflow" `
   -Name "Companion all-platform tag release workflow" `
   -RelativePaths @(".github/workflows/release.yml") `
-  -Patterns @("companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "check_android_play_release_readiness.ps1", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "export_desktop_package_evidence.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "RequireInstallerPayload", "RequireUploadSigning", "RequireDesktopPackageEvidence", "Get-ReleaseCompanionAssetEntries", "COMPANION_RELEASE_EVIDENCE.json")
+  -Patterns @("companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "check_android_play_release_readiness.ps1", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireUploadSigning", "RequireDesktopPackageEvidence", "Get-ReleaseCompanionAssetEntries", "COMPANION_RELEASE_EVIDENCE.json")
 
 Test-TextEvidence `
   -Id "companion-release-signing-evidence" `

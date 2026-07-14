@@ -5,10 +5,12 @@ param(
   [string]$RuntimePrepareJsonPath,
   [string]$ProcessedRuntimeRoot,
   [string]$PackageExtractionRoot = "",
+  [string]$LaunchEvidencePath = "",
   [string]$Version = "",
   [string]$Commit = "",
   [string]$OutPath = "",
   [switch]$RequireInstallerPayload,
+  [switch]$RequireLaunchEvidence,
   [switch]$UseExistingPackageExtraction,
   [switch]$Json
 )
@@ -18,25 +20,21 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 
 function Get-Sha256Text {
   param([string]$Path)
-  return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  $ioPath = if ($env:OS -eq "Windows_NT" -and -not $fullPath.StartsWith("\\?\")) { "\\?\$fullPath" } else { $fullPath }
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  $stream = [System.IO.File]::OpenRead($ioPath)
+  try {
+    return (($sha.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") }) -join "")
+  } finally {
+    $stream.Dispose()
+    $sha.Dispose()
+  }
 }
 
 function Test-Sha256Text {
   param([string]$Value)
   return $Value -match '^[a-fA-F0-9]{64}$'
-}
-
-function Get-StreamSha256Text {
-  param($Entry)
-  $sha = [System.Security.Cryptography.SHA256]::Create()
-  $stream = $Entry.Open()
-  try {
-    $hash = $sha.ComputeHash($stream)
-    return (($hash | ForEach-Object { $_.ToString("x2") }) -join "")
-  } finally {
-    $stream.Dispose()
-    $sha.Dispose()
-  }
 }
 
 function Get-NormalizedZipEntryName {
@@ -50,57 +48,6 @@ function Get-ZipEntriesByName {
     [string]$Name
   )
   return @($Archive.Entries | Where-Object { (Get-NormalizedZipEntryName $_) -eq $Name })
-}
-
-function Get-ArchiveRuntimePayloadSummary {
-  param($Archive)
-
-  $prefix = "python-runtime/"
-  $allEntries = @($Archive.Entries | ForEach-Object {
-    $fullName = Get-NormalizedZipEntryName $_
-    if (-not [string]::IsNullOrWhiteSpace($_.Name) -and
-        $fullName.StartsWith($prefix, [System.StringComparison]::Ordinal)) {
-      [pscustomobject]@{
-        relative = $fullName.Substring($prefix.Length)
-        entry = $_
-      }
-    }
-  })
-  $payloadEntries = @($allEntries | Where-Object {
-    $_.relative -ne "stackchan-python-runtime.json" -and $_.relative -notmatch '(^|/)__pycache__/'
-  } | Sort-Object relative)
-
-  $sha = [System.Security.Cryptography.SHA256]::Create()
-  $utf8 = [System.Text.Encoding]::UTF8
-  foreach ($item in $payloadEntries) {
-    $pathBytes = $utf8.GetBytes("$($item.relative)`n")
-    $null = $sha.TransformBlock($pathBytes, 0, $pathBytes.Length, $pathBytes, 0)
-    $fileHash = Get-StreamSha256Text $item.entry
-    $hashBytes = $utf8.GetBytes("$fileHash`n")
-    $null = $sha.TransformBlock($hashBytes, 0, $hashBytes.Length, $hashBytes, 0)
-  }
-  $empty = [byte[]]@()
-  $null = $sha.TransformFinalBlock($empty, 0, 0)
-  $payloadHash = (($sha.Hash | ForEach-Object { $_.ToString("x2") }) -join "")
-  $sha.Dispose()
-
-  return [ordered]@{
-    payloadSha256 = $payloadHash
-    fileCount = $allEntries.Count
-    bytes = [int64](($allEntries | ForEach-Object { $_.entry.Length } | Measure-Object -Sum).Sum)
-  }
-}
-
-function Read-ZipJsonEntry {
-  param($Entry)
-  $stream = $Entry.Open()
-  $reader = [System.IO.StreamReader]::new($stream)
-  try {
-    return ($reader.ReadToEnd() | ConvertFrom-Json)
-  } finally {
-    $reader.Dispose()
-    $stream.Dispose()
-  }
 }
 
 function Get-HostPlatform {
@@ -143,9 +90,10 @@ function Expand-DesktopPackage {
         & $hdiutil.Source attach $SourcePackage -readonly -nobrowse -mountpoint $mountPoint | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "DMG mount failed with exit code $LASTEXITCODE." }
         $attached = $true
-        $mountedJars = @(Get-ChildItem -LiteralPath $mountPoint -Recurse -File -Filter "app-desktop-*.jar" -ErrorAction Stop)
-        if ($mountedJars.Count -ne 1) { throw "Expected one application JAR in mounted DMG; found $($mountedJars.Count)." }
-        Copy-Item -LiteralPath $mountedJars[0].FullName -Destination (Join-Path $DestinationRoot $mountedJars[0].Name)
+        $mountedApps = @(Get-ChildItem -LiteralPath $mountPoint -Directory -Filter "*.app" -ErrorAction Stop)
+        if ($mountedApps.Count -ne 1) { throw "Expected one application bundle in mounted DMG; found $($mountedApps.Count)." }
+        & (Get-Command ditto -ErrorAction Stop).Source $mountedApps[0].FullName (Join-Path $DestinationRoot $mountedApps[0].Name)
+        if ($LASTEXITCODE -ne 0) { throw "Application bundle copy failed with exit code $LASTEXITCODE." }
       } finally {
         if ($attached) {
           & $hdiutil.Source detach $mountPoint -force | Out-Null
@@ -203,9 +151,12 @@ $installerPayload = [ordered]@{
   required = [bool]$RequireInstallerPayload
   status = if ($RequireInstallerPayload) { "not-ready" } else { "not-required" }
   extractionMethod = ""
+  extractionRoot = ""
   appJarName = ""
   appJarSha256 = ""
   packageSha256 = ""
+  runtimeLocation = ""
+  runtimeRootRelative = ""
   runtimePayloadSha256 = ""
   runtimeFileCount = 0
   runtimeBytes = 0
@@ -213,6 +164,18 @@ $installerPayload = [ordered]@{
   runtimeManifestPlatform = ""
   runtimeManifestSha256 = ""
   requiredBrainFiles = @()
+}
+$launchEvidence = [ordered]@{
+  required = [bool]$RequireLaunchEvidence
+  status = if ($RequireLaunchEvidence) { "not-ready" } else { "not-required" }
+  path = $LaunchEvidencePath
+  packageSha256 = ""
+  extractionMethod = ""
+  extractionRoot = ""
+  launcherPath = ""
+  processExitCode = $null
+  pythonVersion = ""
+  scope = ""
 }
 
 if ([string]::IsNullOrWhiteSpace($PackagePath) -or -not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
@@ -293,6 +256,7 @@ if ($RequireInstallerPayload) {
       $PackageExtractionRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-package-extraction-$Platform-$extractionId"
     }
     $PackageExtractionRoot = [System.IO.Path]::GetFullPath($PackageExtractionRoot)
+    $installerPayload.extractionRoot = $PackageExtractionRoot
     if ($UseExistingPackageExtraction) {
       if (-not (Test-Path -LiteralPath $PackageExtractionRoot -PathType Container)) {
         Add-Issue "Existing package extraction root was not found: $PackageExtractionRoot"
@@ -326,39 +290,8 @@ if ($RequireInstallerPayload) {
         $installerPayload.packageSha256 = Get-Sha256Text $package.FullName
         $archive = [System.IO.Compression.ZipFile]::OpenRead($appJar.FullName)
         try {
-          $runtimeSummary = Get-ArchiveRuntimePayloadSummary $archive
-          $installerPayload.runtimePayloadSha256 = [string]$runtimeSummary.payloadSha256
-          $installerPayload.runtimeFileCount = [int]$runtimeSummary.fileCount
-          $installerPayload.runtimeBytes = [int64]$runtimeSummary.bytes
-          if ($runtimeSummary.fileCount -lt 2) { Add-Issue "Packaged application JAR contains too few managed runtime files." }
-
-          $manifestEntry = @(Get-ZipEntriesByName $archive "python-runtime/stackchan-python-runtime.json")
-          if ($manifestEntry.Count -ne 1) {
-            Add-Issue "Packaged application JAR is missing its unique managed runtime manifest."
-          } else {
-            try {
-              $installerManifest = Read-ZipJsonEntry $manifestEntry[0]
-              $installerPayload.runtimeManifestSchema = [string]$installerManifest.schema
-              $installerPayload.runtimeManifestPlatform = [string]$installerManifest.platform
-              $installerPayload.runtimeManifestSha256 = [string]$installerManifest.sha256
-              if ([string]$installerManifest.schema -ne "stackchan.desktop-python-runtime.v1") { Add-Issue "Packaged runtime manifest schema is invalid." }
-              if ([string]$installerManifest.platform -ne $Platform) { Add-Issue "Packaged runtime manifest platform must be $Platform." }
-              if ($null -ne $prepare -and [string]$installerManifest.sha256 -ne [string]$prepare.payloadSha256) { Add-Issue "Packaged runtime manifest SHA-256 does not match runtime prepare evidence." }
-            } catch {
-              Add-Issue "Packaged runtime manifest is invalid JSON: $($_.Exception.Message)"
-            }
-          }
-
-          $runtimeExecutables = switch ($Platform) {
-            "windows" { @("python-runtime/python.exe", "python-runtime/python/python.exe") }
-            default { @("python-runtime/bin/python3", "python-runtime/bin/python", "python-runtime/python3", "python-runtime/python") }
-          }
-          if (@($runtimeExecutables | Where-Object {
-            $name = $_
-            @(Get-ZipEntriesByName $archive $name).Count -eq 1
-          }).Count -lt 1) {
-            Add-Issue "Packaged application JAR does not contain the expected $Platform Python executable."
-          }
+          $jarRuntimeEntries = @($archive.Entries | Where-Object { (Get-NormalizedZipEntryName $_).StartsWith("python-runtime/") })
+          if ($jarRuntimeEntries.Count -ne 0) { Add-Issue "Packaged application JAR must not contain the executable managed runtime." }
 
           $requiredBrainFiles = @(
             "brain/bridge/lan_service.py",
@@ -377,6 +310,41 @@ if ($RequireInstallerPayload) {
           $installerPayload.requiredBrainFiles = @($presentBrainFiles)
         } finally {
           $archive.Dispose()
+        }
+      }
+
+      $runtimeRoots = @(Get-ChildItem -LiteralPath $PackageExtractionRoot -Recurse -Directory -Filter "python-runtime" -ErrorAction SilentlyContinue | Where-Object {
+        Test-Path -LiteralPath (Join-Path $_.FullName "stackchan-python-runtime.json") -PathType Leaf
+      })
+      if ($runtimeRoots.Count -ne 1) {
+        Add-Issue "Expected exactly one external managed runtime in native app resources; found $($runtimeRoots.Count)."
+      } else {
+        $runtimeRoot = $runtimeRoots[0].FullName
+        $installerPayload.runtimeLocation = "native-app-resources"
+        $extractionPrefix = $PackageExtractionRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+        $installerPayload.runtimeRootRelative = $runtimeRoot.Substring($extractionPrefix.Length).Replace("\", "/")
+        $runtimeFiles = @(Get-ChildItem -LiteralPath $runtimeRoot -File -Recurse -Force)
+        $installerPayload.runtimePayloadSha256 = Get-RuntimePayloadHash $runtimeRoot
+        $installerPayload.runtimeFileCount = $runtimeFiles.Count
+        $installerPayload.runtimeBytes = [int64](($runtimeFiles | Measure-Object -Property Length -Sum).Sum)
+        $installerManifestPath = Join-Path $runtimeRoot "stackchan-python-runtime.json"
+        try {
+          $installerManifest = Get-Content -LiteralPath $installerManifestPath -Raw | ConvertFrom-Json
+          $installerPayload.runtimeManifestSchema = [string]$installerManifest.schema
+          $installerPayload.runtimeManifestPlatform = [string]$installerManifest.platform
+          $installerPayload.runtimeManifestSha256 = [string]$installerManifest.sha256
+          if ([string]$installerManifest.schema -ne "stackchan.desktop-python-runtime.v1") { Add-Issue "Packaged runtime manifest schema is invalid." }
+          if ([string]$installerManifest.platform -ne $Platform) { Add-Issue "Packaged runtime manifest platform must be $Platform." }
+          if ($null -ne $prepare -and [string]$installerManifest.sha256 -ne [string]$prepare.payloadSha256) { Add-Issue "Packaged runtime manifest SHA-256 does not match runtime prepare evidence." }
+        } catch {
+          Add-Issue "Packaged runtime manifest is invalid JSON: $($_.Exception.Message)"
+        }
+        $runtimeExecutables = switch ($Platform) {
+          "windows" { @("python.exe", "python/python.exe") }
+          default { @("bin/python3", "bin/python", "python3", "python") }
+        }
+        if (@($runtimeExecutables | Where-Object { Test-Path -LiteralPath (Join-Path $runtimeRoot $_) -PathType Leaf }).Count -lt 1) {
+          Add-Issue "External managed runtime does not contain the expected $Platform Python executable."
         }
       }
     }
@@ -398,6 +366,44 @@ if ($RequireInstallerPayload) {
     Add-Issue "Installer runtime byte count does not match processed Gradle resources."
   }
   if ($issues.Count -eq $installerIssueStart) { $installerPayload.status = "ready" }
+}
+
+if ($RequireLaunchEvidence -or -not [string]::IsNullOrWhiteSpace($LaunchEvidencePath)) {
+  $launchIssueStart = $issues.Count
+  if ([string]::IsNullOrWhiteSpace($LaunchEvidencePath) -or -not (Test-Path -LiteralPath $LaunchEvidencePath -PathType Leaf)) {
+    Add-Issue "Exact desktop package launch evidence is missing: $LaunchEvidencePath"
+  } else {
+    try {
+      $launch = Get-Content -LiteralPath $LaunchEvidencePath -Raw | ConvertFrom-Json
+      $launchEvidence.path = [System.IO.Path]::GetFullPath($LaunchEvidencePath)
+      $launchEvidence.packageSha256 = ([string]$launch.package.sha256).ToLowerInvariant()
+      $launchEvidence.extractionMethod = [string]$launch.extractionMethod
+      $launchEvidence.extractionRoot = [string]$launch.extractionRoot
+      $launchEvidence.launcherPath = [string]$launch.launcherPath
+      $launchEvidence.processExitCode = $launch.processExitCode
+      $launchEvidence.pythonVersion = [string]$launch.probe.pythonVersion
+      $launchEvidence.scope = [string]$launch.scope
+      if ([string]$launch.schema -ne "stackchan.desktop-package-launch-evidence.v1" -or [string]$launch.status -ne "ready") { Add-Issue "Exact desktop package launch evidence is not ready." }
+      if ([string]$launch.platform -ne $Platform) { Add-Issue "Exact desktop package launch platform mismatch." }
+      if ($null -eq $package -or $launchEvidence.packageSha256 -ne (Get-Sha256Text $package.FullName)) { Add-Issue "Exact desktop package launch hash does not match the package." }
+      if ($launch.extractionMethod -ne "native" -or [int]$launch.processExitCode -ne 0) { Add-Issue "Exact desktop package was not natively extracted and launched successfully." }
+      if ($UseExistingPackageExtraction) {
+        $launchExtractionRoot = [System.IO.Path]::GetFullPath([string]$launch.extractionRoot).TrimEnd("\", "/")
+        if ($launchExtractionRoot -ne $PackageExtractionRoot.TrimEnd("\", "/")) {
+          Add-Issue "Exact desktop package launch used a different extraction root."
+        } else {
+          $installerPayload.extractionMethod = "native"
+        }
+      }
+      if ([string]$launch.probe.schema -ne "stackchan.desktop-packaged-runtime-smoke.v1" -or [string]$launch.probe.status -ne "ready") { Add-Issue "Packaged runtime smoke probe is not ready." }
+      if ($launch.probe.runtimePresent -ne $true -or $launch.probe.pythonAvailable -ne $true -or $launch.probe.brainScriptAvailable -ne $true) { Add-Issue "Packaged runtime smoke did not prove all runtime components." }
+      if (@($launch.probe.issues).Count -ne 0 -or $launch.substitutesForTargetInstall -ne $false) { Add-Issue "Exact desktop package launch evidence has invalid scope or issues." }
+      if ([string]$launch.scope -ne "exact-native-package-extraction-and-headless-launch") { Add-Issue "Exact desktop package launch scope is invalid." }
+    } catch {
+      Add-Issue "Exact desktop package launch evidence is invalid JSON: $($_.Exception.Message)"
+    }
+  }
+  if ($issues.Count -eq $launchIssueStart) { $launchEvidence.status = "ready" }
 }
 
 if ([string]::IsNullOrWhiteSpace($Commit)) {
@@ -431,6 +437,7 @@ $report = [ordered]@{
     processedBytes = $processedBytes
   }
   installerPayload = $installerPayload
+  launchEvidence = $launchEvidence
   issues = @($issues)
 }
 

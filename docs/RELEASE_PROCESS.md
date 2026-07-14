@@ -48,12 +48,14 @@ The strict gate requires upload-key-signed APK and AAB artifacts plus MSI, DEB, 
 packages. It also requires API 35 emulator launch evidence whose APK SHA-256 matches the release
 APK. Stale, failed, lower-API, wrong-package, service-missing, fatal-process, or physical-evidence
 substitution reports are rejected. The tag workflow prepares and validates a managed Python
-runtime for each desktop package before embedding it, then natively extracts each MSI, DEB, or
-DMG and opens its installer application JAR. The native report binds the package SHA-256 and
-application-JAR SHA-256 to the
-processed and installer-derived runtime SHA-256, manifest, file totals, and required brain
-resources. Missing, duplicate, stale-commit, staging-only, or mismatched native reports block
-release evidence.
+runtime for each desktop package before staging it as external native app resources. It then
+natively extracts each MSI, DEB, or DMG, runs the exact packaged launcher in headless probe mode,
+and opens its installer application JAR to validate brain resources and exclude an embedded
+interpreter. The native report binds the package SHA-256 and application-JAR SHA-256 to the launch
+result, processed and installer-derived runtime SHA-256, manifest, file totals, and required brain
+resources. Missing, duplicate, stale-commit, stale-package-launch, staging-only, or mismatched
+native reports block release evidence. Extracted-package launch evidence does not substitute for
+target-machine installation acceptance.
 
 Before tagging, push the exact candidate branch and dispatch the `Firmware` workflow from the
 Actions UI or with `gh workflow run firmware.yml --ref <candidate-branch>`. A manual dispatch
@@ -308,7 +310,7 @@ Audit an existing GitHub release after publication:
 The published-release verifier checks the firmware and companion asset set, compares sizes and
 SHA256 digests against package and companion evidence, requires upload-key signing for Android,
 requires ready Windows/Linux/macOS package evidence and matches each published desktop package
-to its recorded processed runtime hash,
+to its recorded processed runtime and exact-package launch hashes,
 confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP
 plus ZIP SHA256 sidecar, validates the sidecar, and runs the package verifier on that copy.
 

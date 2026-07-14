@@ -401,6 +401,12 @@ Then pass that root into desktop packaging with
 `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
 `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`. A platform runtime only validates the
 matching platform installer; Windows, macOS, and Linux require separate native payloads.
+The package build stages this interpreter as external native app resources rather than placing
+it inside the application JAR. On each native runner, run
+`tools/test_desktop_package_launch.ps1` against the exact MSI, DEB, or DMG before exporting
+desktop package evidence; the helper extracts and invokes the package launcher headlessly and
+binds Python/brain readiness to the package SHA-256. This smoke complements, but does not replace,
+target-machine installation acceptance.
 
 For PC Brain Mode lab bring-up, start the local brain bridge and selected voice TTS path:
 

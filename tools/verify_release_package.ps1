@@ -427,6 +427,8 @@ $requiredFiles = @(
   "tools/test_desktop_python_runtime_payload_contract.ps1",
   "tools/export_desktop_package_evidence.cmd",
   "tools/export_desktop_package_evidence.ps1",
+  "tools/test_desktop_package_launch.cmd",
+  "tools/test_desktop_package_launch.ps1",
   "tools/test_desktop_package_evidence_contract.cmd",
   "tools/test_desktop_package_evidence_contract.ps1",
   "tools/check_desktop_v1_evidence_bundle.cmd",
@@ -1103,7 +1105,7 @@ foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.p
 }
 
 $releaseWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/release.yml") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1", "STACKCHAN_ANDROID_KEYSTORE_B64", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireUploadSigning", "RequireDesktopPackageEvidence", '$releaseAssetPaths', '@releaseAssetPaths')) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1", "STACKCHAN_ANDROID_KEYSTORE_B64", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireUploadSigning", "RequireDesktopPackageEvidence", '$releaseAssetPaths', '@releaseAssetPaths')) {
   if ($releaseWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/release.yml missing release asset contract upload logic: $pattern"
   }
@@ -1119,7 +1121,7 @@ foreach ($pattern in @("Install bridge test dependencies", "sudo apt-get install
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
   }
 }
-foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12`"", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
+foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12`"", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing native desktop package/runtime PR evidence support: $pattern"
   }
@@ -2230,14 +2232,19 @@ foreach ($pattern in @("matching release APK evidence", "stale APK hash is rejec
 }
 
 $desktopPackageEvidenceExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_desktop_package_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-package-evidence.v1", "stackchan.desktop-python-runtime-prepare.v1", "stackchan.desktop-python-runtime-payload.v1", "Get-RuntimePayloadHash", "Get-ArchiveRuntimePayloadSummary", "Expand-DesktopPackage", "RequireInstallerPayload", "installerPayload", "processedPayloadSha256", "processedFileCount", "Installer runtime payload hash does not match processed Gradle resources", "PackageExtractionRoot")) {
+foreach ($pattern in @("stackchan.desktop-package-evidence.v1", "stackchan.desktop-python-runtime-prepare.v1", "stackchan.desktop-python-runtime-payload.v1", "Get-RuntimePayloadHash", "native-app-resources", "Expand-DesktopPackage", "RequireInstallerPayload", "RequireLaunchEvidence", "launchEvidence", "processedPayloadSha256", "processedFileCount", "Installer runtime payload hash does not match processed Gradle resources", "PackageExtractionRoot")) {
   if ($desktopPackageEvidenceExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_desktop_package_evidence.ps1 missing native package/runtime evidence logic: $pattern"
   }
 }
 
+$desktopPackageLaunchText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_package_launch.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-package-launch-evidence.v1", "stackchan.desktop-packaged-runtime-smoke.v1", "exact-native-package-extraction-and-headless-launch", "substitutesForTargetInstall", "--package-smoke-output=")) {
+  if ($desktopPackageLaunchText -notmatch [regex]::Escape($pattern)) { throw "tools/test_desktop_package_launch.ps1 missing exact-package launch logic: $pattern" }
+}
+
 $desktopPackageEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_package_evidence_contract.ps1") -Raw
-foreach ($pattern in @("complete installer-derived desktop package evidence is accepted", "installer runtime tampering is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")) {
+foreach ($pattern in @("complete installer-derived desktop package evidence is accepted", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")) {
   if ($desktopPackageEvidenceContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_package_evidence_contract.ps1 missing native package/runtime evidence contract coverage: $pattern"
   }

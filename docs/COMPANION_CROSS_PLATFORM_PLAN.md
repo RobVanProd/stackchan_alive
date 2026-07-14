@@ -260,10 +260,11 @@ three desktop operating systems.
    APK on an API 35 AOSP ATD emulator. The final manifest rejects evidence whose APK SHA-256 does
    not match the release input.
 4. `companion-desktop-release` runs natively on Ubuntu, macOS, and Windows. Each leg creates
-   and validates a managed Python payload, embeds it, builds DEB, DMG, or MSI output, then
-   natively extracts the installer and hashes `python-runtime/` from its application JAR. Native
-   evidence ties the installer, packaged JAR, processed runtime, manifest, and required brain
-   resources to one exact payload.
+   and validates a managed Python payload, stages it as external native app resources, builds DEB,
+   DMG, or MSI output, then natively extracts and headlessly launches that exact package. Native
+   evidence ties the installer SHA-256, launcher probe, packaged JAR brain resources, processed
+   runtime, and manifest to one exact executable payload. It does not replace target installation
+   acceptance.
 5. The final release job runs the firmware/package gates, exports strict companion evidence,
    requires all three native package/runtime reports, stages stable artifact names, and publishes
    the complete set in one GitHub Release.

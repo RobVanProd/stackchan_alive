@@ -242,6 +242,20 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Launch exact native desktop package headlessly
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.platform }} desktop package; found $($packages.Count)."
+          }
+          ./tools/test_desktop_package_launch.ps1 `
+            -Platform "${{ matrix.platform }}" `
+            -PackagePath $packages[0].FullName `
+            -ExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.platform }}") `
+            -OutPath "output/desktop-python-runtime/${{ matrix.platform }}-package-launch.json" `
+            -Json
+
       - name: Export native desktop package evidence
         shell: pwsh
         run: |
@@ -253,12 +267,15 @@ jobs:
             -Platform "${{ matrix.platform }}" `
             -PackagePath $packages[0].FullName `
             -RuntimePrepareJsonPath "output/desktop-python-runtime/${{ matrix.platform }}-prepare.json" `
-            -ProcessedRuntimeRoot "companion/app-desktop/build/resources/main/python-runtime" `
+            -ProcessedRuntimeRoot "companion/app-desktop/build/generated/native-app-resources/common/python-runtime" `
             -PackageExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.platform }}") `
+            -LaunchEvidencePath "output/desktop-python-runtime/${{ matrix.platform }}-package-launch.json" `
             -Version "${{ github.ref_name }}" `
             -Commit "${{ github.sha }}" `
             -OutPath "output/desktop-python-runtime/${{ matrix.platform }}-package-evidence.json" `
             -RequireInstallerPayload `
+            -RequireLaunchEvidence `
+            -UseExistingPackageExtraction `
             -Json
 
       - name: Upload desktop release input
@@ -268,6 +285,7 @@ jobs:
           path: |
             companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}/*.${{ matrix.extension }}
             output/desktop-python-runtime/${{ matrix.platform }}-prepare.json
+            output/desktop-python-runtime/${{ matrix.platform }}-package-launch.json
             output/desktop-python-runtime/${{ matrix.platform }}-package-evidence.json
           if-no-files-found: error
 

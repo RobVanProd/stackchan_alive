@@ -792,6 +792,7 @@ function Get-DesktopPackageEvidence {
       $installerExtractionMethod = [string]$installer.extractionMethod
       if ($installer.required -ne $true -or [string]$installer.status -ne "ready") { $issues += "Installer-derived runtime evidence is not required and ready for $platform." }
       if ($installerExtractionMethod -ne "native") { $issues += "Installer payload extraction was not performed natively for $platform." }
+      if ([string]$installer.runtimeLocation -ne "native-app-resources" -or [string]::IsNullOrWhiteSpace([string]$installer.runtimeRootRelative)) { $issues += "Installer runtime is not external native app resources for $platform." }
       if ($installerAppJarName -notmatch '^app-desktop-.+\.jar$' -or $installerAppJarSha -notmatch '^[a-f0-9]{64}$') { $issues += "Installer application JAR evidence is invalid for $platform." }
       if ($installerPackageSha -ne $packageSha) { $issues += "Installer payload package hash mismatch for $platform." }
       if ($installerRuntimeSha -ne $payloadSha -or $installerRuntimeSha -ne $processedSha) { $issues += "Installer runtime payload hash mismatch for $platform." }
@@ -808,6 +809,19 @@ function Get-DesktopPackageEvidence {
       foreach ($brainPath in $requiredBrainFiles) {
         if ($installerBrainFiles -notcontains $brainPath) { $issues += "Installer brain resource evidence is missing for $platform`: $brainPath" }
       }
+    }
+    $launch = $item.launchEvidence
+    $launchPackageSha = ""
+    $launchPythonVersion = ""
+    if ($null -eq $launch) {
+      $issues += "Exact desktop package launch evidence is missing for $platform."
+    } else {
+      $launchPackageSha = ([string]$launch.packageSha256).ToLowerInvariant()
+      $launchPythonVersion = [string]$launch.pythonVersion
+      if ($launch.required -ne $true -or [string]$launch.status -ne "ready") { $issues += "Exact desktop package launch evidence is not required and ready for $platform." }
+      if ($launchPackageSha -ne $packageSha) { $issues += "Exact desktop package launch hash mismatch for $platform." }
+      if ([string]$launch.extractionMethod -ne "native" -or [int]$launch.processExitCode -ne 0) { $issues += "Exact desktop package was not natively extracted and launched for $platform." }
+      if ([string]$launch.scope -ne "exact-native-package-extraction-and-headless-launch" -or [string]::IsNullOrWhiteSpace($launchPythonVersion)) { $issues += "Exact desktop package launch probe is incomplete for $platform." }
     }
     $summaries += [ordered]@{
       platform = $platform
@@ -829,6 +843,8 @@ function Get-DesktopPackageEvidence {
       installerRuntimeFileCount = $installerFileCount
       installerRuntimeBytes = $installerBytes
       installerBrainFiles = @($installerBrainFiles)
+      launchPackageSha256 = $launchPackageSha
+      launchPythonVersion = $launchPythonVersion
     }
   }
 

@@ -13,8 +13,24 @@ import java.awt.Frame
 import java.nio.file.Path
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.system.exitProcess
 
-fun main() {
+fun main(args: Array<String>) {
+    val packageSmokeOutput = args.firstOrNull { it.startsWith(PACKAGE_SMOKE_OUTPUT_PREFIX) }
+        ?.substringAfter(PACKAGE_SMOKE_OUTPUT_PREFIX)
+        ?.takeIf { it.isNotBlank() }
+    if (packageSmokeOutput != null || "--package-smoke" in args) {
+        val report = if (packageSmokeOutput == null) {
+            inspectPackagedRuntimeSmoke()
+        } else {
+            writePackagedRuntimeSmoke(Path.of(packageSmokeOutput))
+        }
+        if (packageSmokeOutput == null) {
+            println(report.toJson())
+        }
+        exitProcess(if (report.status == "ready") 0 else 2)
+    }
+
     val runtime = DesktopCompanionRuntime().start()
     Runtime.getRuntime().addShutdownHook(Thread { runtime.close() })
 
@@ -107,6 +123,8 @@ fun main() {
         }
     }
 }
+
+private const val PACKAGE_SMOKE_OUTPUT_PREFIX = "--package-smoke-output="
 
 private fun choosePersonaImportZip(): Path? {
     val dialog = FileDialog(null as Frame?, "Import Stackchan persona", FileDialog.LOAD)

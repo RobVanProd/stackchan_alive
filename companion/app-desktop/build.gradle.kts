@@ -103,6 +103,24 @@ val validateDesktopPythonRuntimePayload = tasks.register("validateDesktopPythonR
     }
 }
 
+val desktopNativeAppResourcesRoot = layout.buildDirectory.dir("generated/native-app-resources")
+val prepareDesktopNativeAppResources = tasks.register<Sync>("prepareDesktopNativeAppResources") {
+    group = "distribution"
+    description = "Stages executable managed-runtime files beside the native desktop application."
+    dependsOn(validateDesktopPythonRuntimePayload)
+    into(desktopNativeAppResourcesRoot)
+
+    desktopPythonRuntimeRoot.orNull?.trim()?.takeIf { it.isNotBlank() }?.let { runtimeRoot ->
+        from(runtimeRoot) {
+            into("common/python-runtime")
+        }
+    }
+}
+
+tasks.matching { it.name == "prepareAppResources" }.configureEach {
+    dependsOn(prepareDesktopNativeAppResources)
+}
+
 tasks.processResources {
     dependsOn(validateDesktopPythonRuntimePayload)
     inputs.property("desktopPythonRuntimeRoot", desktopPythonRuntimeRoot.orNull ?: "")
@@ -147,21 +165,18 @@ tasks.processResources {
         include("stackchan_spark_safety.wav")
         into("brain/docs/media/voice")
     }
-    desktopPythonRuntimeRoot.orNull?.trim()?.takeIf { it.isNotBlank() }?.let { runtimeRoot ->
-        from(runtimeRoot) {
-            into("python-runtime")
-        }
-    }
 }
 
 compose.desktop {
     application {
         mainClass = "dev.stackchan.companion.desktop.MainKt"
+        dependsOn("prepareDesktopNativeAppResources")
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Stackchan Companion"
             packageVersion = "1.0.0"
+            appResourcesRootDir.set(desktopNativeAppResourcesRoot)
         }
     }
 }
