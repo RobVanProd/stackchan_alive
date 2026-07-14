@@ -194,7 +194,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Install companion Android SDK packages
         run: |
@@ -477,7 +477,7 @@ jobs:
       - uses: android-actions/setup-android@v4
         if: matrix.setup_android
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Install companion Android SDK packages
         if: matrix.setup_android && matrix.shell == 'bash'

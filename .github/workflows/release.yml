@@ -23,7 +23,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Check companion release version
         shell: pwsh
@@ -196,7 +196,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Check companion release version
         shell: pwsh
