@@ -89,6 +89,40 @@ function Assert-Asset {
   }
 }
 
+function Assert-CompanionEvidenceHash {
+  param(
+    [object]$Evidence,
+    [string]$PublishedPath,
+    [string]$Extension,
+    [string]$RequiredEvidencePathPattern = ""
+  )
+
+  $entries = @($Evidence.artifacts | ForEach-Object { @($_.entries) } | Where-Object {
+    ([string]$_.path).EndsWith($Extension, [System.StringComparison]::OrdinalIgnoreCase) -and
+    ([string]::IsNullOrWhiteSpace($RequiredEvidencePathPattern) -or ([string]$_.path -match $RequiredEvidencePathPattern))
+  })
+  if ($entries.Count -ne 1) {
+    throw "Expected exactly one companion evidence entry for $Extension / $RequiredEvidencePathPattern; found $($entries.Count)."
+  }
+  $actualHash = Get-Sha256 $PublishedPath
+  if ($actualHash -ne ([string]$entries[0].sha256).ToLowerInvariant()) {
+    throw "Published companion artifact hash does not match release evidence: $(Split-Path -Leaf $PublishedPath)"
+  }
+}
+
+function Assert-GitHubProvenanceAttestation {
+  param(
+    [string]$Path,
+    [string]$Repository
+  )
+
+  $signerWorkflow = "$Repository/.github/workflows/release.yml"
+  $output = gh attestation verify $Path --repo $Repository --signer-workflow $signerWorkflow 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) {
+    throw "GitHub provenance attestation verification failed for $(Split-Path -Leaf $Path): $($output.Trim())"
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (git describe --tags --always --dirty).Trim()
 }
@@ -147,6 +181,8 @@ if (-not $release.isPrerelease -and -not $AllowNonPrerelease) {
 
 $assets = @($release.assets)
 $expectedAssetEntries = Get-ReleaseFinalAssetEntries -Version $Version -PackageRoot $PackageRoot -ZipPath $ZipPath -ZipSidecarPath $ZipSidecarPath
+$remoteDir = Join-Path $repoRoot "output/release/remote-$Version"
+$companionAssetEntries = Get-ReleaseCompanionAssetEntries -Version $Version -CompanionAssetRoot $remoteDir
 
 $releaseAssetManifestPath = Join-Path $PackageRoot "release_assets.json"
 Assert-File $releaseAssetManifestPath
@@ -214,14 +250,119 @@ foreach ($assetName in $manifestAuditAssetNames) {
   $allowedAssetNames[$assetName] = $true
 }
 
+foreach ($assetEntry in $companionAssetEntries) {
+  $matchingAssets = @($assets | Where-Object { $_.name -eq $assetEntry.Name })
+  if ($matchingAssets.Count -ne 1) {
+    throw "Expected exactly one companion release asset named $($assetEntry.Name); found $($matchingAssets.Count)"
+  }
+  $allowedAssetNames[$assetEntry.Name] = $true
+}
+
 foreach ($asset in $assets) {
   if (-not $allowedAssetNames.ContainsKey([string]$asset.name)) {
     throw "Unexpected release asset: $($asset.name)"
   }
 }
 
-$remoteDir = Join-Path $repoRoot "output/release/remote-$Version"
 New-Item -ItemType Directory -Force -Path $remoteDir | Out-Null
+
+foreach ($assetEntry in $companionAssetEntries) {
+  gh release download $Version --repo $Repo --pattern $assetEntry.Name --dir $remoteDir --clobber
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to download published companion asset $($assetEntry.Name) for $Version"
+  }
+  Assert-Asset -Assets $assets -Name $assetEntry.Name -ExpectedPath $assetEntry.Path
+}
+
+$companionEvidencePath = Join-Path $remoteDir "COMPANION_RELEASE_EVIDENCE.json"
+$companionEvidence = Get-Content -LiteralPath $companionEvidencePath -Raw | ConvertFrom-Json
+if ($companionEvidence.schema -ne "stackchan.companion-release-evidence.v1") {
+  throw "Companion release evidence schema mismatch: $($companionEvidence.schema)"
+}
+if ($companionEvidence.status -ne "complete") {
+  throw "Companion release evidence is not complete: $($companionEvidence.status)"
+}
+if ($companionEvidence.version -ne $Version) {
+  throw "Companion release evidence version mismatch: expected $Version, got $($companionEvidence.version)"
+}
+if ([string]$companionEvidence.commit -ne $ExpectedCommit) {
+  throw "Companion release evidence commit mismatch: expected $ExpectedCommit, got $($companionEvidence.commit)"
+}
+if ($companionEvidence.uploadSigningRequired -ne $true -or
+    $companionEvidence.androidSigning.signingProfile -ne "upload-key" -or
+    $companionEvidence.androidBundleSigning.signingProfile -ne "upload-key") {
+  throw "Companion Android release evidence is not pinned to APK and AAB upload-key signing."
+}
+if ($companionEvidence.packageEvidence.status -ne "present") {
+  throw "Companion release evidence does not include the release package provenance."
+}
+
+if ($companionEvidence.desktopPackageEvidenceRequired -ne $true -or
+    $companionEvidence.desktopDistributionTrustRequired -ne $true -or
+    $companionEvidence.desktopPackageEvidence.status -ne "ready") {
+  throw "Companion release evidence does not require ready native desktop package/runtime and distribution-trust evidence."
+}
+$desktopEvidencePlatforms = @($companionEvidence.desktopPackageEvidence.platforms)
+if ($desktopEvidencePlatforms.Count -ne 3 -or @($desktopEvidencePlatforms.platform | Select-Object -Unique).Count -ne 3) {
+  throw "Companion release evidence must contain one native package/runtime summary for Windows, Linux, and macOS."
+}
+$publishedDesktopPaths = [ordered]@{
+  windows = Join-Path $remoteDir "stackchan-companion-windows-$Version.msi"
+  linux = Join-Path $remoteDir "stackchan-companion-linux-$Version.deb"
+  macos = Join-Path $remoteDir "stackchan-companion-macos-$Version.dmg"
+}
+$requiredInstallerBrainFiles = @(
+  "brain/bridge/lan_service.py",
+  "brain/bridge/reference_bridge.py",
+  "brain/data/voice_source_provenance.yaml",
+  "brain/docs/media/voice/stackchan_spark_greeting.wav"
+)
+foreach ($platform in $publishedDesktopPaths.Keys) {
+  $summary = @($desktopEvidencePlatforms | Where-Object { [string]$_.platform -eq $platform })
+  if ($summary.Count -ne 1) { throw "Missing unique native desktop package/runtime evidence for $platform." }
+  if ((Get-Sha256 $publishedDesktopPaths[$platform]) -ne ([string]$summary[0].packageSha256).ToLowerInvariant()) {
+    throw "Published $platform desktop package does not match its native package evidence."
+  }
+  if ([string]$summary[0].runtimeSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+      [int64]$summary[0].processedFileCount -lt 2 -or
+      [int64]$summary[0].processedBytes -le 0) {
+    throw "Native desktop runtime evidence is incomplete for $platform."
+  }
+  if ([string]$summary[0].installerExtractionMethod -ne "native" -or
+      [string]$summary[0].installerAppJarName -notmatch '^app-desktop-.+\.jar$' -or
+      [string]$summary[0].installerAppJarSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+      ([string]$summary[0].installerPackageSha256).ToLowerInvariant() -ne ([string]$summary[0].packageSha256).ToLowerInvariant() -or
+      ([string]$summary[0].installerRuntimeSha256).ToLowerInvariant() -ne ([string]$summary[0].runtimeSha256).ToLowerInvariant() -or
+      [int64]$summary[0].installerRuntimeFileCount -ne [int64]$summary[0].processedFileCount -or
+      [int64]$summary[0].installerRuntimeBytes -ne [int64]$summary[0].processedBytes) {
+    throw "Installer-derived desktop runtime evidence is incomplete or inconsistent for $platform."
+  }
+  $installerBrainFiles = @($summary[0].installerBrainFiles | ForEach-Object { [string]$_ })
+  foreach ($brainPath in $requiredInstallerBrainFiles) {
+    if ($installerBrainFiles -notcontains $brainPath) { throw "Installer-derived desktop evidence is missing $brainPath for $platform." }
+  }
+  if ($platform -eq "windows" -and
+      ([string]$summary[0].distributionTrustStatus -ne "ready" -or
+       [string]$summary[0].distributionTrustPolicy -ne "authenticode-sha256-timestamped" -or
+       [string]::IsNullOrWhiteSpace([string]$summary[0].distributionTrustSigner) -or
+       $summary[0].distributionTrustTimestamped -ne $true)) {
+    throw "Published Windows package evidence does not prove timestamped Authenticode trust."
+  }
+  if ($platform -eq "macos" -and
+      ([string]$summary[0].distributionTrustStatus -ne "ready" -or
+       [string]$summary[0].distributionTrustPolicy -ne "developer-id-notarized-stapled" -or
+       [string]::IsNullOrWhiteSpace([string]$summary[0].distributionTrustSigner) -or
+       $summary[0].distributionTrustNotarizationStapled -ne $true -or
+       $summary[0].distributionTrustGatekeeperAccepted -ne $true)) {
+    throw "Published macOS package evidence does not prove Developer ID, notarization, and Gatekeeper trust."
+  }
+}
+
+Assert-CompanionEvidenceHash $companionEvidence (Join-Path $remoteDir "stackchan-companion-android-$Version.apk") ".apk" '(^|[\\/])release[\\/]'
+Assert-CompanionEvidenceHash $companionEvidence (Join-Path $remoteDir "stackchan-companion-android-$Version.aab") ".aab"
+Assert-CompanionEvidenceHash $companionEvidence (Join-Path $remoteDir "stackchan-companion-windows-$Version.msi") ".msi"
+Assert-CompanionEvidenceHash $companionEvidence (Join-Path $remoteDir "stackchan-companion-linux-$Version.deb") ".deb"
+Assert-CompanionEvidenceHash $companionEvidence (Join-Path $remoteDir "stackchan-companion-macos-$Version.dmg") ".dmg"
 
 gh release download $Version --repo $Repo --pattern "stackchan_alive_$Version.zip" --dir $remoteDir --clobber
 if ($LASTEXITCODE -ne 0) {
@@ -235,6 +376,12 @@ if ($LASTEXITCODE -ne 0) {
 
 $remoteZip = Join-Path $remoteDir "stackchan_alive_$Version.zip"
 $remoteZipSidecar = Join-Path $remoteDir "stackchan_alive_$Version.zip.sha256"
+$attestedPaths = @($expectedAssetEntries | ForEach-Object { $_.Path }) + @(
+  $companionAssetEntries | ForEach-Object { Join-Path $remoteDir $_.Name }
+)
+foreach ($attestedPath in $attestedPaths) {
+  Assert-GitHubProvenanceAttestation -Path $attestedPath -Repository $Repo
+}
 $remoteZipHashText = (Get-Content -LiteralPath $remoteZipSidecar -Raw).Trim()
 if ($remoteZipHashText -notmatch "^([a-f0-9]{64})  stackchan_alive_$([regex]::Escape($Version))\.zip$") {
   throw "Invalid published ZIP SHA256 sidecar format: $remoteZipHashText"

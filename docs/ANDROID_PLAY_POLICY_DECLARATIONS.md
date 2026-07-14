@@ -8,6 +8,8 @@ Authoritative policy references checked for this source review:
 
 - Google Play Data safety form:
   https://support.google.com/googleplay/android-developer/answer/10787469
+- Google Play User Data policy:
+  https://support.google.com/googleplay/android-developer/answer/10144311
 - Android foreground service type declaration:
   https://developer.android.com/develop/background-work/services/fgs/declare
 - Android 14+ foreground service type / Play Console declaration:
@@ -17,10 +19,17 @@ Authoritative policy references checked for this source review:
 
 ## Play Console App Content
 
-- Privacy policy URL: required before closed/open/production testing. The hosted
-  page must be derived from `docs/ANDROID_PLAY_PRIVACY_POLICY.md`, which is in
-  turn derived from `docs/PRIVACY.md` plus this declaration and names the
-  Android package `dev.stackchan.companion`.
+- Privacy policy URL:
+  https://robvanprod.github.io/stackchan_alive/privacy/. The hosted page source
+  is `site/privacy/index.html`; it is reviewed with
+  `docs/ANDROID_PLAY_PRIVACY_POLICY.md` and names the Android package
+  `dev.stackchan.companion`. GitHub Pages build `1094346889` published the exact
+  source bytes from commit `afbebbd3429e00a6f76cb238788ce7664f1b6fda` on
+  July 14, 2026. The HTTPS response returned `200` and matched source SHA-256
+  `28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47`.
+  `docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json` preserves the public
+  deployment identity; `tools/check_privacy_policy_deployment.ps1 -Json`
+  revalidates the current URL and exact bytes before a Play upload.
 - Ads: no ads.
 - App access: no login account. Access requires a Stack-chan robot on the same
   LAN for the meaningful connected flows. Review notes must explain that the app
@@ -39,16 +48,23 @@ Current source behavior for `dev.stackchan.companion`:
 | Financial info | Not collected | No payments or purchases. |
 | Location | Not collected | The app uses local-network state and LAN IPs, not Android location permissions. |
 | Photos/videos | Not collected | No camera/gallery permissions or upload path. Store screenshots are operator-created evidence outside app runtime. |
-| Audio files | Not collected | `RECORD_AUDIO` is used only after tapping Push-to-talk. Android SpeechRecognizer returns a transcript; raw microphone audio is not stored or exported by the app. |
-| Voice or sound recordings | Not collected | The app does not persist raw microphone audio. Diagnostics redact the last text turn to a presence-only flag. |
+| Audio files | Not collected | The app does not import, persist, or upload audio files. |
+| Voice or sound recordings | Collected only for optional, ephemeral app functionality | `RECORD_AUDIO` is used only after tapping Push-to-talk. The configured Android SpeechRecognizer may transmit microphone audio to its provider even though the app requests offline recognition. The app does not retain raw audio or export it in diagnostics. Confirm the exact Play form selections against the final test device and recognizer provider. |
 | App activity | Not collected by developer | Local settings, saved robots, trusted endpoints, model asset state, and diagnostics remain on-device unless the user explicitly shares an export. |
 | App info and performance | Not collected by developer | Crash/log exports are not automatic. Logcat capture is an external arrival-day evidence tool, not app telemetry upload. |
 | Device or other IDs | Not collected by developer | The app stores local endpoint IDs, robot IDs, fingerprints, and bridge URLs on-device for pairing. They are not uploaded by the app. |
 
-Data sharing: none by the app. The only external transfer is user-initiated sharing
-from Android's share sheet when exporting diagnostics. That export is local JSON,
-redacts transcript text, records model/provisioning state, and uses password
-placeholders for Wi-Fi provisioning with `password_redacted=true`.
+The app does not automatically send data to the developer or an analytics
+service. User-initiated or user-configured transfers are limited to the Android
+speech provider during Push-to-talk when it processes audio off-device, the
+user's Stack-chan bridge, a diagnostics share destination selected by the user,
+and the configured model host for an optional model download. The final Play
+form must apply Google's current collection, sharing, service-provider, and
+ephemeral-processing definitions to those paths.
+
+Diagnostics export is local JSON, redacts transcript text, records
+model/provisioning state, and uses password placeholders for Wi-Fi provisioning
+with `password_redacted=true`.
 
 Data deletion: users can remove saved robot rows and trusted companion rows from
 the app UI. Android app uninstall removes app-private local stores. Robot-side
@@ -56,8 +72,10 @@ unpairing still requires firmware support and must not be implied in Play copy.
 
 Security practices:
 
-- Data is transmitted only over the user's local network bridge, not to a cloud
-  endpoint controlled by this app.
+- Local bridge traffic is sent to the endpoint configured by the user. The v1
+  LAN bridge is not represented as end-to-end encrypted.
+- The app requests offline speech recognition, but the selected Android speech
+  service may use network processing under that provider's privacy policy.
 - No Play release may claim consumer-ready status until real hardware evidence,
   bundled voice hashes and final policy review are complete.
 
@@ -72,7 +90,7 @@ Security practices:
 | `POST_NOTIFICATIONS` | Shows the foreground bridge-service notification on Android 13+. |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Optional arrival-day reliability prompt for screen-off bridge soak testing. Do not present this as mandatory for ordinary app browsing. |
 | `WAKE_LOCK` | Keeps the active robot bridge session from sleeping during connected testing. |
-| `RECORD_AUDIO` | Enables explicit Push-to-talk. Denial leaves the turn unsent; raw audio is not exported in diagnostics. |
+| `RECORD_AUDIO` | Enables explicit Push-to-talk. Denial leaves the turn unsent. The app requests offline recognition, but the configured speech service may process audio off-device; raw audio is not retained or exported in diagnostics. |
 
 Foreground service Play Console draft:
 

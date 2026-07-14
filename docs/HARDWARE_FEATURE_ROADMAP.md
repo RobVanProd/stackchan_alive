@@ -6,12 +6,12 @@ then added one at a time so face, wake, bridge, voice, power, and motion stayed 
 recoverable. The status paragraphs distinguish current implementation from remaining promotion
 evidence; the numbered design bullets remain useful when adapting the software to another unit.
 
-Current status (2026-07-12): Gates 0-5 shipped in the Apache-2.0 `v0.2.0` release identified in
-`FIRST_DEPLOY_STATUS.md`. The exact release image passed formal no-motion, short actuator, and
-one-hour all-feature actuator qualifications; the one-hour result was `76/76` after `3601 s` with
-`706/706` good polls and zero reset, motion-timeout, power, camera, or terminal IMU failures. The
-owner accepted the subsequent interaction-aware run after more than five hours and explicitly
-waived the remaining duration for `v0.2.0`; it is release evidence, not a formal eight-hour pass.
+Current status (2026-07-13): Gates 0-5 shipped in the Apache-2.0 `v0.2.0` release identified in
+`FIRST_DEPLOY_STATUS.md`. The corrected exact release image passed native `261/261`, formal
+`76/76` no-motion, and formal `77/77` short actuator qualifications. It then completed the full
+all-feature actuator soak for `28807 s` with `5643/5643` successful polls, no reset,
+motion-timeout, power, camera, or terminal IMU failures, and a `77/77` formal checker result.
+Motion, servo rail, torque, and motion power authority were verified off after completion.
 
 Wake, full reply audio, synchronized mouth motion, power-coordinated servos, flowing RGB, touch,
 pickup/orientation events, authenticated camera capture, YuNet face acquisition, and bounded

@@ -29,6 +29,39 @@ corrected continuation at
 ended the release gate and explicitly waived its remaining duration. Preserve that evidence as an
 accepted release run, not a formal eight-hour pass.
 
+Overnight follow-up (2026-07-13): exact image SHA-256
+`c0314b375b86e8f350b6c4588422818526c54b2d6b0293b3a7233b95c06e740e` from source commit
+`2d0e61e28416df376499acab744ea91a5d56c2d4` passed its `76/76` no-motion and `77/77` actuator
+qualifications, then ran all features with actuators for `22953.5 s` at
+`output\pc-brain\single-owner-release-servo-8hr-20260712-2325`. The runner stopped on one
+recovered lifetime camera-timer maximum of `330105 us` against the `300000 us` limit. The final
+capture was back to `15036 us`; camera frames and paired target updates kept advancing, and power,
+thermal, display, bridge, audio, IMU, camera, and motion-session gates remained healthy. Treat the
+summary as a failed duration gate caused by a camera-latency policy breach, not as a blackout,
+reset, camera failure, or power fault.
+
+That historical exact image had two Core-1 tasks servicing the same HTTP server: priority-3
+`IntentTask` and priority-1 Arduino `loopTask`. This shared ownership had already produced one
+recovered malformed debug response in earlier evidence and can inflate the combined camera timer when the lower-
+priority caller is descheduled. Existing telemetry combines `esp_camera_fb_get()`, RGB565-to-gray
+conversion, and scheduler delay, so do not claim which substage caused the historical `330105 us`
+sample.
+
+Corrected exact-image acceptance (2026-07-13): clean source commit
+`ce66f8a0fadfadbc07eb59124522267ba66ee70a`, firmware SHA-256
+`69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8`, makes `IntentTask` the
+single runtime owner and passed `261/261` native tests plus exact-image formal `76/76` no-motion and
+`77/77` actuator qualifications. Its all-feature actuator soak at
+`output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750` passed for `28807 s` with
+`5643/5643` good polls, zero failed polls, zero motion timeouts, VBUS floors `4913/4909 mV`
+(sampled/reported), maximum temperature `66.5 C`, maximum display frame `41511 us`, maximum camera
+capture `223997 us`, and zero hard-floor, PMIC protective, IMU exhaustion/failure, camera capture,
+response-write, or authentication events. Motion, rail, torque, and motion power authority were
+verified off after completion. The saved formal checker result is
+`output\pc-brain\single-owner-runtime-servo-8hr-20260713-0750\checker.json` and passed `77/77`.
+Use this exact SHA and evidence sequence as the current private paired hardware candidate; never
+transfer its evidence to a different binary.
+
 External touch, pickup, putdown, tilt, and shake events are intended IMU feature evidence. For an
 interaction-aware soak, pass `-AllowExternalImuEvents` through the warm-soak wrapper and formal
 checker. This does not relax IMU health: terminal read failures, three consecutive exhausted read
@@ -176,8 +209,11 @@ If the Android companion is the bridge host, install the lab-signed release APK 
 phone, open Stackchan Companion, allow notifications when prompted on Android 13 or newer,
 and allow the app to ignore battery optimizations if prompted for screen-off bench testing.
 Build the APK from the source checkout with `.\tools\check_android_toolchain.cmd` and then
-`cd companion; .\gradlew.bat :app-android:assembleRelease`. The default lab release output
+`cd companion; .\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease`.
+This explicit property permits debug-certificate signing for lab evidence only. The output
 path is `companion\app-android\build\outputs\apk\release\app-android-release.apk`.
+The unqualified `cd companion; .\gradlew.bat :app-android:assembleRelease` command is
+intentionally rejected unless the production upload-key environment is configured.
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.
 Confirm the foreground notification reports the bridge as ready and advertised. The phone

@@ -19,6 +19,17 @@ The app intentionally declares the bridge service as `connectedDevice` only. Do 
 within Android's time-limited data-sync window. The bridge needs to stay reachable during
 screen-off robot sessions, which matches the connected-device foreground-service role.
 
+CI also runs an API 35 AOSP automated-test emulator smoke against the exact lab-signed release APK
+uploaded by the Android artifact build; it does not rebuild a second APK for this test.
+`tools/test_android_emulator_launch.ps1` installs the APK, pre-grants notification permission for
+a deterministic cold launch, verifies the package/version, waits for `MainActivity` and
+`CompanionBridgeService`, checks that the process remains alive, and captures scoped post-launch
+logcat evidence. `tools/check_android_emulator_release_evidence.ps1` then recomputes the release
+APK SHA-256 and requires it to match that JSON before aggregate evidence can pass. Its JSON
+explicitly sets `substitutesForPhysicalEvidence=false`: this catches
+packaging and launch regressions, but it does not satisfy any target-phone, physical robot,
+screen-off, microphone, Gemma accelerator, or Play internal-testing item in this plan.
+
 ## Preflight
 
 - [ ] Phone and robot are on the same Wi-Fi/LAN segment.
@@ -38,15 +49,32 @@ screen-off robot sessions, which matches the connected-device foreground-service
 
 When using adb, install the APK and capture the install evidence before discovery checks:
 
-Build the lab-signed release APK from the source checkout first. The v1 PR/CI release APK
-is signed with the Android debug key for physical testing, not for public distribution:
+Use either a locally built lab-signed release APK or an exact-source CI candidate. To use CI,
+download and verify the complete run before selecting its release APK:
+
+```powershell
+.\tools\download_companion_ci_candidate.cmd `
+  -RunId <successful-firmware-run-id> `
+  -Commit <40-character-branch-head-sha>
+```
+
+Use only the release APK under that candidate's `artifacts/companion-android-apks/apk/release/`
+and preserve its SHA-256 from `COMPANION_CI_CANDIDATE.json` in the phone evidence. The helper
+rejects a PR artifact whose embedded evidence records a merge commit instead of the requested
+branch head. CI candidate artifacts remain debug-key signed for physical testing, not public
+distribution.
+
+To build the lab-signed release APK from the source checkout instead:
 
 ```powershell
 .\tools\check_companion_v1_readiness.cmd
 .\tools\check_android_toolchain.cmd
 cd companion
-.\gradlew.bat :app-android:assembleRelease
+.\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease
 ```
+
+The unqualified `.\gradlew.bat :app-android:assembleRelease` command is intentionally rejected
+unless the production upload-key environment is configured.
 
 The companion readiness check verifies the v1 companion plan, protocol fixtures, KMP
 source tree, CI hooks, Android foreground service, and pending hardware gates before

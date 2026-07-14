@@ -6,10 +6,16 @@ param(
   [string]$AndroidArtifactRoot = "",
   [string]$DesktopArtifactRoot = "",
   [string]$DesktopPythonRuntimeRoot = "",
+  [string]$DesktopPackageEvidenceRoot = "",
+  [string]$AndroidEmulatorEvidencePath = "",
   [string]$ApkSignerPath = "",
   [string]$OutDir = "",
   [switch]$RequireArtifacts,
+  [switch]$RequireUploadSigning,
   [switch]$RequireDesktopPythonRuntime,
+  [switch]$RequireDesktopPackageEvidence,
+  [switch]$RequireDesktopDistributionTrust,
+  [switch]$RequireAndroidEmulatorEvidence,
   [switch]$Json
 )
 
@@ -520,6 +526,134 @@ function Test-AndroidReleaseBundleSignature {
   }
 }
 
+function Get-AndroidEmulatorReleaseEvidence {
+  $releaseEntry = Get-AndroidApkEntry $androidArtifacts "release"
+  if ($null -eq $releaseEntry) {
+    return [ordered]@{
+      status = "pending"
+      checker = ""
+      evidence = ""
+      releaseApk = ""
+      releaseApkSha256 = ""
+      smoke = $null
+      issues = @("Release APK artifact not found for emulator evidence binding.")
+    }
+  }
+
+  $releaseApkPath = [string]$releaseEntry["path"]
+  if (-not [System.IO.Path]::IsPathRooted($releaseApkPath)) {
+    $releaseApkPath = Join-Path $Root $releaseApkPath
+  }
+  if (-not (Test-Path -LiteralPath $releaseApkPath -PathType Leaf)) {
+    return [ordered]@{
+      status = "pending"
+      checker = ""
+      evidence = ""
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = ""
+      smoke = $null
+      issues = @("Release APK path does not exist for emulator evidence binding.")
+    }
+  }
+
+  $resolvedEvidencePath = ""
+  foreach ($candidatePath in @(
+    $AndroidEmulatorEvidencePath,
+    "output/android-emulator-smoke/latest/android_emulator_launch_smoke.json",
+    "output/companion/ci-artifacts/companion-android-emulator-smoke/android_emulator_launch_smoke.json",
+    "output/companion/release-input/android-emulator/android_emulator_launch_smoke.json"
+  )) {
+    if ([string]::IsNullOrWhiteSpace($candidatePath)) {
+      continue
+    }
+    $candidate = if ([System.IO.Path]::IsPathRooted($candidatePath)) { $candidatePath } else { Join-Path $Root $candidatePath }
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      $resolvedEvidencePath = [string](Resolve-Path -LiteralPath $candidate)
+      break
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($resolvedEvidencePath)) {
+    return [ordered]@{
+      status = "pending"
+      checker = ""
+      evidence = $AndroidEmulatorEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Android emulator launch evidence was not found.")
+    }
+  }
+
+  $checkerPath = Join-Path $Root "tools/check_android_emulator_release_evidence.ps1"
+  if (-not (Test-Path -LiteralPath $checkerPath -PathType Leaf)) {
+    return [ordered]@{
+      status = "failed"
+      checker = ""
+      evidence = Convert-ToRelativePath $resolvedEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Android emulator release evidence checker is missing.")
+    }
+  }
+
+  $powerShellRunner = Find-PowerShellRunner
+  if ([string]::IsNullOrWhiteSpace($powerShellRunner)) {
+    return [ordered]@{
+      status = "failed"
+      checker = Convert-ToRelativePath $checkerPath
+      evidence = Convert-ToRelativePath $resolvedEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Neither pwsh nor powershell was found for the Android emulator evidence checker.")
+    }
+  }
+
+  $checkerOutput = @()
+  $checkerExitCode = -1
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $checkerOutput = @(& $powerShellRunner -NoProfile -File $checkerPath -EvidencePath $resolvedEvidencePath -ReleaseApkPath $releaseApkPath -Json 2>&1)
+    $checkerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+  $checkerText = ($checkerOutput | Out-String).Trim()
+  try {
+    $checkerReport = $checkerText | ConvertFrom-Json
+  } catch {
+    return [ordered]@{
+      status = "failed"
+      checker = Convert-ToRelativePath $checkerPath
+      evidence = Convert-ToRelativePath $resolvedEvidencePath
+      releaseApk = [string]$releaseEntry["path"]
+      releaseApkSha256 = Get-Sha256Text $releaseApkPath
+      smoke = $null
+      issues = @("Android emulator evidence checker did not return valid JSON (exit $checkerExitCode).")
+    }
+  }
+
+  $checkerStatus = [string]$checkerReport.status
+  $checkerIssues = @($checkerReport.issues)
+  if (($checkerExitCode -eq 0) -ne ($checkerStatus -eq "ready")) {
+    $checkerStatus = "failed"
+    $checkerIssues += "Android emulator evidence checker status and exit code were inconsistent (status '$($checkerReport.status)', exit $checkerExitCode)."
+  }
+
+  return [ordered]@{
+    status = $checkerStatus
+    checkerExitCode = $checkerExitCode
+    checker = Convert-ToRelativePath $checkerPath
+    evidence = Convert-ToRelativePath $resolvedEvidencePath
+    releaseApk = [string]$releaseEntry["path"]
+    releaseApkSha256 = [string]$checkerReport.releaseApkSha256
+    smoke = $checkerReport.evidence
+    issues = $checkerIssues
+  }
+}
+
 function Get-DesktopPythonRuntimeEvidence {
   $checkerPath = Join-Path $Root "tools/check_desktop_python_runtime_payload.ps1"
   if (-not (Test-Path -LiteralPath $checkerPath -PathType Leaf)) {
@@ -580,6 +714,248 @@ function Get-DesktopPythonRuntimeEvidence {
   }
 }
 
+function Get-DesktopPackageEvidence {
+  $evidenceRoot = Find-FirstExistingDirectory @($DesktopPackageEvidenceRoot, $DesktopArtifactRoot)
+  if ([string]::IsNullOrWhiteSpace($evidenceRoot)) {
+    return [ordered]@{
+      status = "pending"
+      root = ""
+      platforms = @()
+      issues = @("Desktop package evidence root was not found.")
+    }
+  }
+
+  $issues = @()
+  $summaries = @()
+  $files = @(Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File -Filter "*-package-evidence.json" -ErrorAction SilentlyContinue)
+  $parsedReports = @()
+  foreach ($file in $files) {
+    try {
+      $parsedReports += [pscustomobject]@{ path = $file.FullName; report = (Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json) }
+    } catch {
+      $issues += "Desktop package evidence is invalid JSON: $($file.FullName)"
+    }
+  }
+
+  $expected = [ordered]@{ windows = ".msi"; linux = ".deb"; macos = ".dmg" }
+  $requiredBrainFiles = @(
+    "brain/bridge/lan_service.py",
+    "brain/bridge/reference_bridge.py",
+    "brain/data/voice_source_provenance.yaml",
+    "brain/docs/media/voice/stackchan_spark_greeting.wav"
+  )
+  foreach ($platform in $expected.Keys) {
+    $matches = @($parsedReports | Where-Object { [string]$_.report.platform -eq $platform })
+    if ($matches.Count -ne 1) {
+      $issues += "Expected exactly one desktop package evidence report for $platform; found $($matches.Count)."
+      continue
+    }
+    $path = $matches[0].path
+    $item = $matches[0].report
+    if ([string]$item.schema -ne "stackchan.desktop-package-evidence.v1") { $issues += "Desktop package evidence for $platform has unexpected schema." }
+    if ([string]$item.status -ne "ready") { $issues += "Desktop package evidence for $platform is not ready." }
+    if ([string]$item.version -ne $versionText) { $issues += "Desktop package evidence version mismatch for $platform." }
+    if ([string]$item.commit -ne $commitText) { $issues += "Desktop package evidence commit mismatch for $platform." }
+    if ([string]$item.package.extension -ne [string]$expected[$platform]) { $issues += "Desktop package evidence extension mismatch for $platform." }
+    $packageSha = ([string]$item.package.sha256).ToLowerInvariant()
+    if ($packageSha -notmatch '^[a-f0-9]{64}$') { $issues += "Desktop package evidence SHA-256 is invalid for $platform." }
+    $artifactMatches = @($desktopArtifacts.entries | Where-Object {
+      ([string]$_['sha256']).ToLowerInvariant() -eq $packageSha -and
+      ([string]$_['path']).EndsWith([string]$expected[$platform], [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($artifactMatches.Count -ne 1) { $issues += "Desktop package evidence does not match exactly one downloaded $platform artifact." }
+    $payloadSha = ([string]$item.runtime.payloadSha256).ToLowerInvariant()
+    $processedSha = ([string]$item.runtime.processedPayloadSha256).ToLowerInvariant()
+    if ($payloadSha -notmatch '^[a-f0-9]{64}$' -or $processedSha -ne $payloadSha) { $issues += "Processed runtime payload hash mismatch for $platform." }
+    if ([int64]$item.runtime.processedFileCount -lt 2 -or [int64]$item.runtime.processedBytes -le 0) { $issues += "Processed runtime payload summary is incomplete for $platform." }
+    foreach ($field in @("source", "pythonVersion", "probedPythonVersion")) {
+      if ([string]::IsNullOrWhiteSpace([string]$item.runtime.$field)) { $issues += "Desktop runtime $field is missing for $platform." }
+    }
+    $installer = $item.installerPayload
+    $installerAppJarName = ""
+    $installerAppJarSha = ""
+    $installerPackageSha = ""
+    $installerRuntimeSha = ""
+    $installerFileCount = 0
+    $installerBytes = 0
+    $installerBrainFiles = @()
+    $installerExtractionMethod = ""
+    $installerContentIdentityStatus = ""
+    $installerSignatureNormalizedFileCount = 0
+    $distributionTrustStatus = ""
+    $distributionTrustPolicy = ""
+    $distributionTrustSigner = ""
+    $distributionTrustTimestamped = $false
+    $distributionTrustNotarizationStapled = $false
+    $distributionTrustGatekeeperAccepted = $false
+    if ($null -eq $installer) {
+      $issues += "Installer-derived runtime evidence is missing for $platform."
+    } else {
+      $installerAppJarName = [string]$installer.appJarName
+      $installerAppJarSha = ([string]$installer.appJarSha256).ToLowerInvariant()
+      $installerPackageSha = ([string]$installer.packageSha256).ToLowerInvariant()
+      $installerRuntimeSha = ([string]$installer.runtimePayloadSha256).ToLowerInvariant()
+      $installerFileCount = [int64]$installer.runtimeFileCount
+      $installerBytes = [int64]$installer.runtimeBytes
+      $installerBrainFiles = @($installer.requiredBrainFiles | ForEach-Object { [string]$_ })
+      $installerExtractionMethod = [string]$installer.extractionMethod
+      $installerContentIdentityStatus = [string]$installer.contentIdentityStatus
+      if ($installer.required -ne $true -or [string]$installer.status -ne "ready") { $issues += "Installer-derived runtime evidence is not required and ready for $platform." }
+      if ($installerExtractionMethod -ne "native") { $issues += "Installer payload extraction was not performed natively for $platform." }
+      if ([string]$installer.runtimeLocation -ne "native-app-resources" -or [string]::IsNullOrWhiteSpace([string]$installer.runtimeRootRelative)) { $issues += "Installer runtime is not external native app resources for $platform." }
+      if ($installerAppJarName -notmatch '^app-desktop-.+\.jar$' -or $installerAppJarSha -notmatch '^[a-f0-9]{64}$') { $issues += "Installer application JAR evidence is invalid for $platform." }
+      if ($installerPackageSha -ne $packageSha) { $issues += "Installer payload package hash mismatch for $platform." }
+      $exactContentIdentity = $installerContentIdentityStatus -eq "ready-exact" -and
+        $installerRuntimeSha -eq $payloadSha -and $installerRuntimeSha -eq $processedSha
+      $signatureNormalizedContentIdentity = $false
+      if ($platform -eq "macos" -and $installerContentIdentityStatus -eq "ready-signature-normalized") {
+        $normalization = $installer.signatureNormalization
+        $normalizationFiles = @($normalization.files)
+        $installerSignatureNormalizedFileCount = [int]$normalization.changedFileCount
+        $normalizationFilesValid = $installerSignatureNormalizedFileCount -gt 0 -and
+          $normalizationFiles.Count -eq $installerSignatureNormalizedFileCount
+        $normalizationPaths = New-Object System.Collections.Generic.List[string]
+        foreach ($proof in $normalizationFiles) {
+          $proofPath = [string]$proof.path
+          $normalizationPaths.Add($proofPath)
+          $architectureProofs = @($proof.architectures)
+          $architecturesValid = $architectureProofs.Count -gt 0
+          $architectureNames = New-Object System.Collections.Generic.List[string]
+          foreach ($architectureProof in $architectureProofs) {
+            $architectureNames.Add([string]$architectureProof.architecture)
+            if ([string]::IsNullOrWhiteSpace([string]$architectureProof.architecture) -or
+                ([string]$architectureProof.codeContentSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+                [int64]$architectureProof.codeBytes -le 0 -or
+                [int64]$architectureProof.processedSignatureBytes -le 0 -or
+                [int64]$architectureProof.installerSignatureBytes -le 0 -or
+                $architectureProof.installerSignatureVerified -ne $true -or
+                [int64]$architectureProof.processedLinkEditFileBytes -le 0 -or
+                [int64]$architectureProof.installerLinkEditFileBytes -le 0 -or
+                [int64]$architectureProof.processedLinkEditVirtualBytes -le 0 -or
+                [int64]$architectureProof.installerLinkEditVirtualBytes -le 0) {
+              $architecturesValid = $false
+            }
+          }
+          if (@($architectureNames | Sort-Object -Unique).Count -ne $architectureNames.Count) {
+            $architecturesValid = $false
+          }
+          if ([string]::IsNullOrWhiteSpace($proofPath) -or
+              ([string]$proof.processedFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+              ([string]$proof.installerFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+              ([string]$proof.normalizedFileSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
+              ([string]$proof.processedFileSha256).ToLowerInvariant() -eq ([string]$proof.installerFileSha256).ToLowerInvariant() -or
+              -not $architecturesValid) {
+            $normalizationFilesValid = $false
+          }
+        }
+        if (@($normalizationPaths | Sort-Object -Unique).Count -ne $normalizationPaths.Count) {
+          $normalizationFilesValid = $false
+        }
+        $signatureNormalizedContentIdentity = $normalization.status -eq "ready" -and
+          [string]$normalization.tool -eq "codesign" -and
+          ([string]$normalization.processedPayloadSha256).ToLowerInvariant() -eq $processedSha -and
+          ([string]$normalization.installerPayloadSha256).ToLowerInvariant() -eq $installerRuntimeSha -and
+          $installerRuntimeSha -match '^[a-f0-9]{64}$' -and
+          $normalizationFilesValid
+      }
+      if (-not $exactContentIdentity -and -not $signatureNormalizedContentIdentity) {
+        $issues += "Installer runtime payload identity is invalid for $platform."
+      }
+      if ([string]$installer.runtimeManifestSchema -ne "stackchan.desktop-python-runtime.v1" -or
+          [string]$installer.runtimeManifestPlatform -ne $platform -or
+          ([string]$installer.runtimeManifestSha256).ToLowerInvariant() -ne $payloadSha) {
+        $issues += "Installer runtime manifest evidence is invalid for $platform."
+      }
+      if ($installerFileCount -ne [int64]$item.runtime.processedFileCount -or
+          ($exactContentIdentity -and $installerBytes -ne [int64]$item.runtime.processedBytes) -or
+          $installerFileCount -lt 2 -or $installerBytes -le 0) {
+        $issues += "Installer runtime payload summary does not match processed resources for $platform."
+      }
+      foreach ($brainPath in $requiredBrainFiles) {
+        if ($installerBrainFiles -notcontains $brainPath) { $issues += "Installer brain resource evidence is missing for $platform`: $brainPath" }
+      }
+    }
+    $launch = $item.launchEvidence
+    $launchPackageSha = ""
+    $launchPythonVersion = ""
+    if ($null -eq $launch) {
+      $issues += "Exact desktop package launch evidence is missing for $platform."
+    } else {
+      $launchPackageSha = ([string]$launch.packageSha256).ToLowerInvariant()
+      $launchPythonVersion = [string]$launch.pythonVersion
+      if ($launch.required -ne $true -or [string]$launch.status -ne "ready") { $issues += "Exact desktop package launch evidence is not required and ready for $platform." }
+      if ($launchPackageSha -ne $packageSha) { $issues += "Exact desktop package launch hash mismatch for $platform." }
+      if ([string]$launch.extractionMethod -ne "native" -or [int]$launch.processExitCode -ne 0) { $issues += "Exact desktop package was not natively extracted and launched for $platform." }
+      if ([string]$launch.scope -ne "exact-native-package-extraction-and-headless-launch" -or [string]::IsNullOrWhiteSpace($launchPythonVersion)) { $issues += "Exact desktop package launch probe is incomplete for $platform." }
+    }
+    $trust = $item.distributionTrust
+    if ($null -eq $trust) {
+      if ($RequireDesktopDistributionTrust -and $platform -ne "linux") {
+        $issues += "Native desktop distribution trust evidence is missing for $platform."
+      }
+    } else {
+      $distributionTrustStatus = [string]$trust.status
+      $distributionTrustPolicy = [string]$trust.policy
+      $distributionTrustSigner = [string]$trust.signerSubject
+      $distributionTrustTimestamped = -not [string]::IsNullOrWhiteSpace([string]$trust.timestampThumbprint)
+      $distributionTrustNotarizationStapled = [bool]$trust.notarizationStapled
+      $distributionTrustGatekeeperAccepted = [bool]$trust.gatekeeperAccepted
+      if ($RequireDesktopDistributionTrust -and $platform -ne "linux") {
+        $expectedTrustPolicy = if ($platform -eq "windows") { "authenticode-sha256-timestamped" } else { "developer-id-notarized-stapled" }
+        if ($trust.required -ne $true -or $distributionTrustStatus -ne "ready" -or
+            $distributionTrustPolicy -ne $expectedTrustPolicy -or
+            ([string]$trust.packageSha256).ToLowerInvariant() -ne $packageSha -or
+            [string]::IsNullOrWhiteSpace($distributionTrustSigner) -or
+            [string]$trust.signatureStatus -ne "Valid") {
+          $issues += "Native desktop distribution trust evidence is incomplete for $platform."
+        } elseif ($platform -eq "windows" -and -not $distributionTrustTimestamped) {
+          $issues += "Windows desktop distribution trust is missing its timestamp proof."
+        } elseif ($platform -eq "macos" -and (-not $distributionTrustNotarizationStapled -or -not $distributionTrustGatekeeperAccepted)) {
+          $issues += "macOS desktop distribution trust is missing notarization or Gatekeeper proof."
+        }
+      }
+    }
+    $summaries += [ordered]@{
+      platform = $platform
+      path = Convert-ToRelativePath $path
+      packageName = [string]$item.package.name
+      packageBytes = [int64]$item.package.bytes
+      packageSha256 = $packageSha
+      runtimeSha256 = $payloadSha
+      runtimeSource = [string]$item.runtime.source
+      pythonVersion = [string]$item.runtime.pythonVersion
+      probedPythonVersion = [string]$item.runtime.probedPythonVersion
+      processedFileCount = [int64]$item.runtime.processedFileCount
+      processedBytes = [int64]$item.runtime.processedBytes
+      installerExtractionMethod = $installerExtractionMethod
+      installerAppJarName = $installerAppJarName
+      installerAppJarSha256 = $installerAppJarSha
+      installerPackageSha256 = $installerPackageSha
+      installerRuntimeSha256 = $installerRuntimeSha
+      installerRuntimeFileCount = $installerFileCount
+      installerRuntimeBytes = $installerBytes
+      installerContentIdentityStatus = $installerContentIdentityStatus
+      installerSignatureNormalizedFileCount = $installerSignatureNormalizedFileCount
+      installerBrainFiles = @($installerBrainFiles)
+      launchPackageSha256 = $launchPackageSha
+      launchPythonVersion = $launchPythonVersion
+      distributionTrustStatus = $distributionTrustStatus
+      distributionTrustPolicy = $distributionTrustPolicy
+      distributionTrustSigner = $distributionTrustSigner
+      distributionTrustTimestamped = $distributionTrustTimestamped
+      distributionTrustNotarizationStapled = $distributionTrustNotarizationStapled
+      distributionTrustGatekeeperAccepted = $distributionTrustGatekeeperAccepted
+    }
+  }
+
+  return [ordered]@{
+    status = if ($issues.Count -eq 0 -and $summaries.Count -eq 3) { "ready" } else { "not-ready" }
+    root = Convert-ToRelativePath $evidenceRoot
+    platforms = @($summaries)
+    issues = @($issues)
+  }
+}
+
 $pending = @()
 if ([string]::IsNullOrWhiteSpace($planPath)) {
   $pending += "companion-cross-platform-plan"
@@ -621,16 +997,71 @@ $androidSigning = Test-AndroidReleaseApkSignature $androidArtifacts
 if ($androidSigning.status -ne "verified") {
   $pending += "android-release-apk-signature"
 }
+if ($RequireUploadSigning -and $androidSigning.signingProfile -ne "upload-key") {
+  $pending += "android-release-apk-upload-signing"
+}
 $androidBundleSigning = Test-AndroidReleaseBundleSignature $androidArtifacts
 if ($androidBundleSigning.status -ne "verified") {
   $pending += "android-release-aab-signature"
+}
+if ($RequireUploadSigning -and $androidBundleSigning.signingProfile -ne "upload-key") {
+  $pending += "android-release-aab-upload-signing"
+}
+$androidEmulatorEvidence = Get-AndroidEmulatorReleaseEvidence
+if ($androidEmulatorEvidence.status -ne "ready" -and ($RequireAndroidEmulatorEvidence -or -not [string]::IsNullOrWhiteSpace($AndroidEmulatorEvidencePath))) {
+  $pending += "android-emulator-release-apk-evidence"
 }
 $desktopPythonRuntime = Get-DesktopPythonRuntimeEvidence
 if ($desktopPythonRuntime.status -ne "ready" -and ($RequireDesktopPythonRuntime -or -not [string]::IsNullOrWhiteSpace($desktopPythonRuntime.runtimeRoot))) {
   $pending += "desktop-managed-python-runtime-payload"
 }
+$desktopPackageEvidence = Get-DesktopPackageEvidence
+if (($RequireDesktopPackageEvidence -or $RequireDesktopDistributionTrust) -and $desktopPackageEvidence.status -ne "ready") {
+  $pending += "desktop-native-package-runtime-evidence"
+}
+if ($RequireDesktopDistributionTrust -and $desktopPackageEvidence.status -ne "ready") {
+  $pending += "desktop-native-distribution-trust"
+}
 
-$status = if ($RequireArtifacts -and $pending.Count -gt 0) { "blocked-missing-artifacts" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
+$strictEvidenceRequired = $RequireArtifacts -or $RequireUploadSigning -or $RequireDesktopPythonRuntime -or $RequireDesktopPackageEvidence -or $RequireDesktopDistributionTrust -or $RequireAndroidEmulatorEvidence
+$blockingMarkers = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+function Add-BlockingMarkers {
+  param([string[]]$Markers)
+  foreach ($marker in $Markers) { [void]$blockingMarkers.Add($marker) }
+}
+
+if ($strictEvidenceRequired) {
+  Add-BlockingMarkers @("companion-cross-platform-plan", "companion-v1-readiness-check", "gradle-toolchain-pins")
+}
+if ($RequireArtifacts) {
+  Add-BlockingMarkers @(
+    "android-apk-artifacts",
+    "android-debug-apk-artifact",
+    "android-release-apk-artifact",
+    "android-release-aab-artifact",
+    "desktop-distribution-artifacts",
+    "desktop-linux-deb-artifact",
+    "desktop-macos-dmg-artifact",
+    "desktop-windows-msi-artifact"
+  )
+}
+if ($RequireUploadSigning) {
+  Add-BlockingMarkers @(
+    "android-release-apk-signature",
+    "android-release-apk-upload-signing",
+    "android-release-aab-signature",
+    "android-release-aab-upload-signing"
+  )
+}
+if ($RequireAndroidEmulatorEvidence) { Add-BlockingMarkers @("android-emulator-release-apk-evidence") }
+if ($RequireDesktopPythonRuntime) { Add-BlockingMarkers @("desktop-managed-python-runtime-payload") }
+if ($RequireDesktopPackageEvidence) { Add-BlockingMarkers @("desktop-native-package-runtime-evidence") }
+if ($RequireDesktopDistributionTrust) {
+  Add-BlockingMarkers @("desktop-native-package-runtime-evidence", "desktop-native-distribution-trust")
+}
+
+$blockingPending = @($pending | Where-Object { $blockingMarkers.Contains($_) })
+$status = if ($strictEvidenceRequired -and $blockingPending.Count -gt 0) { "blocked-release-evidence" } elseif ($pending.Count -gt 0) { "evidence-pending-artifacts" } else { "complete" }
 
 $report = [ordered]@{
   schema = "stackchan.companion-release-evidence.v1"
@@ -648,9 +1079,16 @@ $report = [ordered]@{
   artifacts = @($androidArtifacts, $desktopArtifacts)
   androidSigning = $androidSigning
   androidBundleSigning = $androidBundleSigning
+  uploadSigningRequired = [bool]$RequireUploadSigning
+  androidEmulatorEvidenceRequired = [bool]$RequireAndroidEmulatorEvidence
+  androidEmulatorEvidence = $androidEmulatorEvidence
   desktopPythonRuntime = $desktopPythonRuntime
+  desktopPackageEvidenceRequired = [bool]$RequireDesktopPackageEvidence
+  desktopDistributionTrustRequired = [bool]$RequireDesktopDistributionTrust
+  desktopPackageEvidence = $desktopPackageEvidence
   packageEvidence = Get-PackageEvidence
   pending = @($pending)
+  blockingPending = @($blockingPending)
 }
 
 $jsonPath = Join-Path $OutDir "COMPANION_RELEASE_EVIDENCE.json"
@@ -686,6 +1124,7 @@ foreach ($artifactGroup in $report.artifacts) {
 }
 $lines += ""
 $lines += "## Android Signing"
+$lines += "- Upload signing required: $([bool]$RequireUploadSigning)"
 $lines += "- Status: $($androidSigning.status)"
 $lines += "- APK: $($androidSigning.apk)"
 $lines += "- Scheme: $($androidSigning.scheme)"
@@ -702,6 +1141,22 @@ $lines += "- Signing profile: $($androidBundleSigning.signingProfile)"
 $lines += "- Verifier: $($androidBundleSigning.verifier)"
 $lines += "- Detail: $($androidBundleSigning.detail)"
 $lines += ""
+$lines += "## Android Emulator Release APK Evidence"
+$lines += "- Required: $([bool]$RequireAndroidEmulatorEvidence)"
+$lines += "- Status: $($androidEmulatorEvidence.status)"
+$lines += "- Evidence: $($androidEmulatorEvidence.evidence)"
+$lines += "- Release APK: $($androidEmulatorEvidence.releaseApk)"
+$lines += "- Release APK SHA-256: $($androidEmulatorEvidence.releaseApkSha256)"
+if ($null -ne $androidEmulatorEvidence.smoke) {
+  $lines += "- Emulator: $($androidEmulatorEvidence.smoke.model) / API $($androidEmulatorEvidence.smoke.apiLevel)"
+  $lines += "- Package: $($androidEmulatorEvidence.smoke.packageName) $($androidEmulatorEvidence.smoke.versionName) ($($androidEmulatorEvidence.smoke.versionCode))"
+  $lines += "- MainActivity resumed: $($androidEmulatorEvidence.smoke.mainActivityResumed)"
+  $lines += "- CompanionBridgeService present: $($androidEmulatorEvidence.smoke.bridgeServicePresent)"
+  $lines += "- Fatal process matches: $($androidEmulatorEvidence.smoke.fatalProcessMatches)"
+  $lines += "- Substitutes for physical evidence: $($androidEmulatorEvidence.smoke.substitutesForPhysicalEvidence)"
+}
+foreach ($issue in @($androidEmulatorEvidence.issues)) { $lines += "- Issue: $issue" }
+$lines += ""
 $lines += "## Desktop Managed Python Runtime"
 $lines += "- Status: $($desktopPythonRuntime.status)"
 $lines += "- Runtime root: $($desktopPythonRuntime.runtimeRoot)"
@@ -709,6 +1164,17 @@ $lines += "- Detail: $($desktopPythonRuntime.detail)"
 foreach ($check in @($desktopPythonRuntime.checks)) {
   $lines += "- [$($check.status)] $($check.id): $($check.detail)"
 }
+$lines += ""
+$lines += "## Native Desktop Package Runtime Evidence"
+$lines += "- Required: $([bool]$RequireDesktopPackageEvidence)"
+$lines += "- Native distribution trust required: $([bool]$RequireDesktopDistributionTrust)"
+$lines += "- Status: $($desktopPackageEvidence.status)"
+$lines += "- Root: $($desktopPackageEvidence.root)"
+foreach ($platform in @($desktopPackageEvidence.platforms)) {
+  $lines += "- $($platform.platform): package=$($platform.packageName) package_sha256=$($platform.packageSha256) runtime_sha256=$($platform.runtimeSha256) installer_runtime_sha256=$($platform.installerRuntimeSha256) app_jar_sha256=$($platform.installerAppJarSha256) python=$($platform.probedPythonVersion)"
+  $lines += "  - Distribution trust: $($platform.distributionTrustStatus) / $($platform.distributionTrustPolicy) / $($platform.distributionTrustSigner)"
+}
+foreach ($issue in @($desktopPackageEvidence.issues)) { $lines += "- Issue: $issue" }
 $lines += ""
 $lines += "## Pending"
 if ($pending.Count -eq 0) {
@@ -731,6 +1197,6 @@ if ($Json) {
   }
 }
 
-if ($RequireArtifacts -and $pending.Count -gt 0) {
+if ($strictEvidenceRequired -and $blockingPending.Count -gt 0) {
   exit 2
 }

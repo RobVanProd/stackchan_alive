@@ -315,6 +315,58 @@ function Test-DesktopArtifact {
   }
 }
 
+function Test-DesktopTargetInstallReport {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [object]$Reports,
+    [string]$ReportField,
+    [object]$Artifacts,
+    [string]$ArtifactField,
+    [string]$ExpectedPlatform,
+    [string]$ExpectedSourceCommit
+  )
+
+  $relativePath = [string](Get-Field $Reports $ReportField)
+  $path = Resolve-EvidencePath $relativePath
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    Add-Check $Id $Name "pending" "" "Record reports.$ReportField after installing the exact package on an operator target workstation."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    Add-Check $Id $Name "pending" (Convert-ToRelativePath $path) "Missing target-install report."
+    return
+  }
+
+  $artifact = Get-Field $Artifacts $ArtifactField
+  $expectedPackageSha = [string](Get-Field $artifact "sha256")
+  if (-not (Test-Hash $expectedPackageSha) -or -not (Test-Commit $ExpectedSourceCommit)) {
+    Add-Check $Id $Name "pending" "DESKTOP_V1_EVIDENCE_BUNDLE.json" "Record the final package SHA-256 and sourceCommit before checking target installation."
+    return
+  }
+
+  $checker = Join-Path $PSScriptRoot "check_desktop_target_install_evidence.ps1"
+  try {
+    $output = & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $checker `
+      -EvidencePath $path `
+      -ExpectedPlatform $ExpectedPlatform `
+      -ExpectedPackageSha256 $expectedPackageSha `
+      -ExpectedSourceCommit $ExpectedSourceCommit `
+      -RequireOperatorTarget `
+      -Json 2>&1 | Out-String
+    $exitCode = $LASTEXITCODE
+    $result = $output | ConvertFrom-Json
+    if ($exitCode -eq 0 -and [string]$result.status -eq "desktop-target-install-ready") {
+      Add-Check $Id $Name "pass" (Convert-ToRelativePath $path) "Exact package install and installed runtime launch are verified on an operator $ExpectedPlatform workstation."
+    } else {
+      $failedDetails = @($result.checks | Where-Object { $_.status -eq "fail" } | ForEach-Object { "$($_.id): $($_.detail)" })
+      Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) ($failedDetails -join " ")
+    }
+  } catch {
+    Add-Check $Id $Name "fail" (Convert-ToRelativePath $path) "Target-install checker failed: $($_.Exception.Message)"
+  }
+}
+
 function Write-DesktopV1EvidenceTemplate {
   New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceRoot "reports") | Out-Null
@@ -340,6 +392,9 @@ function Write-DesktopV1EvidenceTemplate {
       windowsRuntimePayloadReport = "reports/desktop_runtime_windows.json"
       macosRuntimePayloadReport = "reports/desktop_runtime_macos.json"
       linuxRuntimePayloadReport = "reports/desktop_runtime_linux.json"
+      windowsTargetInstallReport = "reports/desktop_target_install_windows.json"
+      macosTargetInstallReport = "reports/desktop_target_install_macos.json"
+      linuxTargetInstallReport = "reports/desktop_target_install_linux.json"
       pcBrainDeployCheckReport = "reports/pc_brain_deploy_check.json"
       pcBrainQuietSoakCheckReport = "reports/pc_brain_quiet_soak_check.json"
       voiceSourceReadinessReport = "reports/voice_source_readiness.json"
@@ -362,6 +417,7 @@ Required ready statuses:
 - ``stackchan.companion.c6-brain-supervisor-smoke.v1``: ``overall_ok=true``
 - ``stackchan.companion.c6-gui-rehearsal.v1``: ``overall_ok=true``
 - ``stackchan.desktop-python-runtime-payload.v1``: ``ready`` for Windows, macOS, and Linux
+- ``stackchan.desktop-target-install-evidence.v1``: ``installed-and-ready`` from an operator target workstation for Windows, macOS, and Linux
 - ``stackchan.pc-brain-deploy-evidence-check.v1``: ``pc-brain-deploy-ready`` with matching ``sourceCommit``
 - ``stackchan.pc-brain-quiet-soak-evidence-check.v1``: ``pc-brain-quiet-soak-ready`` with matching ``sourceCommit``
 - ``stackchan.voice-source-readiness.v1``: ``production-voice-source-ready`` with matching ``sourceCommit``
@@ -386,6 +442,7 @@ Complete after desktop package, runtime payload, and physical PC Brain evidence 
 - Overall desktop v1 decision: pending
 - Desktop package artifact decision: pending
 - Managed Python runtime decision: pending
+- Target installation decision: pending
 - C6 GUI/supervisor evidence decision: pending
 - PC Brain deploy audio decision: pending
 - PC Brain quiet-soak decision: pending
@@ -459,6 +516,9 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
     Test-RuntimePayloadSummary "runtime-windows-summary" "Windows runtime payload summary" $reports "windowsRuntimePayloadReport" "windows"
     Test-RuntimePayloadSummary "runtime-macos-summary" "macOS runtime payload summary" $reports "macosRuntimePayloadReport" "macos"
     Test-RuntimePayloadSummary "runtime-linux-summary" "Linux runtime payload summary" $reports "linuxRuntimePayloadReport" "linux"
+    Test-DesktopTargetInstallReport "target-install-windows" "Windows operator target installation" $reports "windowsTargetInstallReport" $artifacts "windowsMsi" "windows" ([string]$bundle.sourceCommit)
+    Test-DesktopTargetInstallReport "target-install-macos" "macOS operator target installation" $reports "macosTargetInstallReport" $artifacts "macosDmg" "macos" ([string]$bundle.sourceCommit)
+    Test-DesktopTargetInstallReport "target-install-linux" "Linux operator target installation" $reports "linuxTargetInstallReport" $artifacts "linuxDeb" "linux" ([string]$bundle.sourceCommit)
     Test-ReportStatus "pc-brain-deploy" "PC Brain deploy audio evidence report" $reports "pcBrainDeployCheckReport" "stackchan.pc-brain-deploy-evidence-check.v1" "pc-brain-deploy-ready"
     Test-ReportStatus "pc-brain-quiet-soak" "PC Brain quiet-soak evidence report" $reports "pcBrainQuietSoakCheckReport" "stackchan.pc-brain-quiet-soak-evidence-check.v1" "pc-brain-quiet-soak-ready"
     Test-ReportStatus "voice-source-ready" "Production voice-source readiness report" $reports "voiceSourceReadinessReport" "stackchan.voice-source-readiness.v1" "production-voice-source-ready"
@@ -479,6 +539,7 @@ if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
         "Overall desktop v1 decision: pass",
         "Desktop package artifact decision: pass",
         "Managed Python runtime decision: pass",
+        "Target installation decision: pass",
         "C6 GUI/supervisor evidence decision: pass",
         "PC Brain deploy audio decision: pass",
         "PC Brain quiet-soak decision: pass",

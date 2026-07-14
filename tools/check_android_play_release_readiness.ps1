@@ -1,5 +1,6 @@
 param(
   [string]$Root = "",
+  [switch]$RequireUploadSigning,
   [switch]$Json
 )
 
@@ -63,6 +64,49 @@ function Get-ConfiguredValue {
   }
 }
 
+function Invoke-KeytoolCommand {
+  param(
+    [string]$KeytoolPath,
+    [string[]]$Arguments
+  )
+
+  $output = @()
+  $exitCode = -1
+  $oldErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $output = @(& $KeytoolPath @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $output = @($_.Exception.Message)
+  } finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+  }
+
+  return [pscustomobject]@{
+    exitCode = $exitCode
+    output = @($output | ForEach-Object { [string]$_ })
+  }
+}
+
+function Get-CertificateFromPemOutput {
+  param([string[]]$Output)
+
+  $text = $Output -join "`n"
+  $match = [regex]::Match(
+    $text,
+    "-----BEGIN CERTIFICATE-----\s*(?<body>[A-Za-z0-9+/=\r\n]+?)\s*-----END CERTIFICATE-----",
+    [System.Text.RegularExpressions.RegexOptions]::Singleline
+  )
+  if (-not $match.Success) {
+    throw "keytool did not return a PEM certificate."
+  }
+
+  $base64 = $match.Groups["body"].Value -replace "\s", ""
+  $rawCertificate = [Convert]::FromBase64String($base64)
+  return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList (, $rawCertificate)
+}
+
 function Test-PlayUploadSigningEnvironment {
   $requiredNames = @(
     "STACKCHAN_ANDROID_KEYSTORE",
@@ -86,7 +130,7 @@ function Test-PlayUploadSigningEnvironment {
       -Name "Play upload signing environment" `
       -Status "pending" `
       -Evidence "STACKCHAN_ANDROID_KEYSTORE*" `
-      -Detail ("Upload signing credentials are not configured yet; missing " + ($missing -join ", ") + ". Lab APK/AAB builds remain debug-certificate signed until these exist.")
+      -Detail ("Upload signing credentials are not configured yet; missing " + ($missing -join ", ") + ". Release tasks fail closed; lab debug signing requires the explicit stackchan.allowLabDebugReleaseSigning property.")
     return
   }
 
@@ -102,12 +146,198 @@ function Test-PlayUploadSigningEnvironment {
     return
   }
 
-  Add-Check `
-    -Id "play-upload-signing-environment" `
-    -Name "Play upload signing environment" `
-    -Status "pass" `
-    -Evidence "STACKCHAN_ANDROID_KEYSTORE*" `
-    -Detail "Upload signing variables are configured and the keystore file exists."
+  $keytool = Get-Command keytool -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($null -eq $keytool) {
+    Add-Check `
+      -Id "play-upload-signing-environment" `
+      -Name "Play upload signing environment" `
+      -Status "fail" `
+      -Evidence "keytool" `
+      -Detail "Upload signing variables are configured, but keytool is unavailable for cryptographic validation."
+    return
+  }
+
+  $storePasswordEnvironmentName = "STACKCHAN_KEYTOOL_STORE_PASSWORD"
+  $keyPasswordEnvironmentName = "STACKCHAN_KEYTOOL_KEY_PASSWORD"
+  $destinationPasswordEnvironmentName = "STACKCHAN_KEYTOOL_DESTINATION_PASSWORD"
+  $temporaryEnvironment = [ordered]@{
+    $storePasswordEnvironmentName = [string]$configured["STACKCHAN_ANDROID_KEYSTORE_PASSWORD"].value
+    $keyPasswordEnvironmentName = [string]$configured["STACKCHAN_ANDROID_KEY_PASSWORD"].value
+    $destinationPasswordEnvironmentName = ([guid]::NewGuid().ToString("N") + "Aa1!")
+  }
+  $previousEnvironment = @{}
+  $temporaryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("stackchan-upload-key-check-" + [guid]::NewGuid().ToString("N"))
+  $temporaryKeyStore = Join-Path $temporaryDirectory "private-key-check.p12"
+  $certificate = $null
+  $rsa = $null
+  $sha256 = $null
+
+  try {
+    New-Item -ItemType Directory -Force -Path $temporaryDirectory | Out-Null
+    foreach ($entry in $temporaryEnvironment.GetEnumerator()) {
+      $previousEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key)
+      [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value)
+    }
+
+    $alias = [string]$configured["STACKCHAN_ANDROID_KEY_ALIAS"].value
+    $listResult = Invoke-KeytoolCommand -KeytoolPath $keytool.Source -Arguments @(
+      "-list",
+      "-v",
+      "-keystore", $resolvedKeystore,
+      "-storepass:env", $storePasswordEnvironmentName,
+      "-alias", $alias
+    )
+    if ($listResult.exitCode -ne 0) {
+      Add-Check `
+        -Id "play-upload-signing-environment" `
+        -Name "Play upload signing environment" `
+        -Status "fail" `
+        -Evidence "keytool keystore/alias validation" `
+        -Detail "The configured keystore could not be opened with the configured store password and alias."
+      return
+    }
+
+    # Importing only the selected entry into a disposable store proves that it is a private key
+    # and that both the store and key passwords are correct without modifying the source keystore.
+    $privateKeyResult = Invoke-KeytoolCommand -KeytoolPath $keytool.Source -Arguments @(
+      "-importkeystore",
+      "-srckeystore", $resolvedKeystore,
+      "-srcstorepass:env", $storePasswordEnvironmentName,
+      "-srcalias", $alias,
+      "-srckeypass:env", $keyPasswordEnvironmentName,
+      "-destkeystore", $temporaryKeyStore,
+      "-deststoretype", "PKCS12",
+      "-deststorepass:env", $destinationPasswordEnvironmentName,
+      "-destkeypass:env", $destinationPasswordEnvironmentName,
+      "-noprompt"
+    )
+    if ($privateKeyResult.exitCode -ne 0) {
+      Add-Check `
+        -Id "play-upload-signing-environment" `
+        -Name "Play upload signing environment" `
+        -Status "fail" `
+        -Evidence "keytool private-key validation" `
+        -Detail "The configured alias is not an exportable private-key entry with the configured key password."
+      return
+    }
+
+    $certificateResult = Invoke-KeytoolCommand -KeytoolPath $keytool.Source -Arguments @(
+      "-exportcert",
+      "-rfc",
+      "-keystore", $resolvedKeystore,
+      "-storepass:env", $storePasswordEnvironmentName,
+      "-alias", $alias
+    )
+    if ($certificateResult.exitCode -ne 0) {
+      Add-Check `
+        -Id "play-upload-signing-environment" `
+        -Name "Play upload signing environment" `
+        -Status "fail" `
+        -Evidence "keytool certificate validation" `
+        -Detail "The configured private-key certificate could not be exported for validation."
+      return
+    }
+
+    $certificate = Get-CertificateFromPemOutput -Output $certificateResult.output
+    $issues = New-Object System.Collections.Generic.List[string]
+    $rsaKeySize = 0
+    if ($certificate.PublicKey.Oid.Value -ne "1.2.840.113549.1.1.1") {
+      $issues.Add("certificate public key is not RSA")
+    } else {
+      try {
+        $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($certificate)
+        if ($null -eq $rsa) {
+          throw "RSA public key provider returned null."
+        } else {
+          $rsaParameters = $rsa.ExportParameters($false)
+          $rsaKeySize = [int]($rsaParameters.Modulus.Length * 8)
+        }
+      } catch {
+        $keytoolListText = $listResult.output -join "`n"
+        $keySizeMatch = [regex]::Match(
+          $keytoolListText,
+          '(?im)^\s*Subject Public Key Algorithm:\s*(?<bits>\d+)-bit RSA(?:\s+key)?\s*$'
+        )
+        if ($keySizeMatch.Success) {
+          $rsaKeySize = [int]$keySizeMatch.Groups["bits"].Value
+        } else {
+          $issues.Add("certificate RSA public key size could not be read")
+        }
+      }
+      if ($rsaKeySize -gt 0 -and $rsaKeySize -lt 4096) {
+        $issues.Add("RSA key size is $rsaKeySize bits; project policy requires at least 4096 bits")
+      }
+    }
+
+    if ($certificate.Subject -match "(?i)Android Debug") {
+      $issues.Add("certificate subject identifies an Android debug key")
+    }
+
+    $nowUtc = [DateTime]::UtcNow
+    $notBeforeUtc = $certificate.NotBefore.ToUniversalTime()
+    $notAfterUtc = $certificate.NotAfter.ToUniversalTime()
+    $playExpiryFloorUtc = [DateTime]::ParseExact(
+      "2033-10-23T00:00:00Z",
+      "yyyy-MM-dd'T'HH:mm:ss'Z'",
+      [System.Globalization.CultureInfo]::InvariantCulture,
+      [System.Globalization.DateTimeStyles]::AssumeUniversal
+    ).ToUniversalTime()
+    if ($notBeforeUtc -gt $nowUtc.AddMinutes(5)) {
+      $issues.Add("certificate is not valid yet")
+    }
+    if ($notAfterUtc -le $nowUtc) {
+      $issues.Add("certificate has expired")
+    } elseif ($notAfterUtc -lt $playExpiryFloorUtc) {
+      $issues.Add("certificate expires before the Google Play minimum of 2033-10-23 UTC")
+    }
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $fingerprintBytes = $sha256.ComputeHash($certificate.RawData)
+    $fingerprint = ($fingerprintBytes | ForEach-Object { $_.ToString("X2") }) -join ":"
+    if ($issues.Count -gt 0) {
+      Add-Check `
+        -Id "play-upload-signing-environment" `
+        -Name "Play upload signing environment" `
+        -Status "fail" `
+        -Evidence "keytool certificate/private-key validation" `
+        -Detail ("Upload key validation failed: " + ($issues -join "; ") + ".")
+      return
+    }
+
+    Add-Check `
+      -Id "play-upload-signing-environment" `
+      -Name "Play upload signing environment" `
+      -Status "pass" `
+      -Evidence "keytool certificate/private-key validation" `
+      -Detail ("Validated private-key entry: RSA $rsaKeySize bits, expires " + $notAfterUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") + ", certificate SHA-256 $fingerprint.")
+  } catch {
+    Add-Check `
+      -Id "play-upload-signing-environment" `
+      -Name "Play upload signing environment" `
+      -Status "fail" `
+      -Evidence "keytool certificate/private-key validation" `
+      -Detail "Upload signing material could not be validated. No credential values were emitted."
+  } finally {
+    if ($null -ne $sha256) {
+      $sha256.Dispose()
+    }
+    if ($null -ne $rsa) {
+      $rsa.Dispose()
+    }
+    if ($null -ne $certificate) {
+      $certificate.Dispose()
+    }
+    foreach ($entry in $temporaryEnvironment.GetEnumerator()) {
+      if ($null -eq $previousEnvironment[$entry.Key]) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $null)
+      } else {
+        [Environment]::SetEnvironmentVariable($entry.Key, $previousEnvironment[$entry.Key])
+      }
+    }
+    if (Test-Path -LiteralPath $temporaryDirectory) {
+      Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force
+    }
+  }
 }
 
 function Join-RootPath {
@@ -226,7 +456,7 @@ Test-TextPatterns `
   -Id "gradle-play-signing" `
   -Name "Gradle Play upload signing inputs" `
   -RelativePath "companion/app-android/build.gradle.kts" `
-  -Patterns @("STACKCHAN_ANDROID_KEYSTORE", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "playRelease", "isDebuggable = false")
+  -Patterns @("STACKCHAN_ANDROID_KEYSTORE", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "playRelease", "isDebuggable = false", "stackchan.allowLabDebugReleaseSigning", "verifyReleaseSigning", "Android release signing is not configured")
 
 Test-PlayUploadSigningEnvironment
 
@@ -237,10 +467,28 @@ Test-TextPatterns `
   -Patterns @(":app-android:bundleRelease", "companion/app-android/build/outputs/bundle/release/*.aab")
 
 Test-TextPatterns `
+  -Id "ci-android-emulator-launch-smoke" `
+  -Name "CI runs Android emulator launch smoke" `
+  -RelativePath ".github/workflows/firmware.yml" `
+  -Patterns @("companion-android-emulator-smoke", "companion-android-apks", "actions/download-artifact@v7", "system-images;android-35;aosp_atd;x86_64", 'export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"', "timeout 180 adb wait-for-device", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "output/android-emulator-smoke/latest/**")
+
+Test-TextPatterns `
+  -Id "tag-android-emulator-release-gate" `
+  -Name "Tag release validates upload key and exact release APK launch" `
+  -RelativePath ".github/workflows/release.yml" `
+  -Patterns @("Validate Android upload key", "check_android_play_release_readiness.ps1", "companion-android-emulator-smoke", "Download upload-signed Android release", 'export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"', "timeout 180 adb wait-for-device", "Run upload-signed Android emulator launch smoke", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence")
+
+Test-TextPatterns `
   -Id "release-evidence-aab" `
   -Name "Release evidence covers AAB signing" `
   -RelativePath "tools/export_companion_release_evidence.ps1" `
   -Patterns @("*.aab", "androidBundleSigning", "android-release-aab-signature", "jarsigner")
+
+Test-TextPatterns `
+  -Id "release-evidence-emulator-apk-binding" `
+  -Name "Release evidence binds emulator smoke to the release APK" `
+  -RelativePath "tools/export_companion_release_evidence.ps1" `
+  -Patterns @("AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "check_android_emulator_release_evidence.ps1", "androidEmulatorEvidenceRequired", "android-emulator-release-apk-evidence")
 
 Test-TextPatterns `
   -Id "play-store-evidence-checker" `
@@ -252,19 +500,79 @@ Test-TextPatterns `
   -Id "play-release-doc" `
   -Name "Play release checklist" `
   -RelativePath "docs/ANDROID_PLAY_RELEASE.md" `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "cryptographically validates", "test_android_upload_signing_contract.ps1", "certificate SHA-256 fingerprint", "CI runtime smoke", "API 35 AOSP ATD", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "site/privacy/index.html", ".github/workflows/pages.yml", "https://robvanprod.github.io/stackchan_alive/privacy/", "check_android_play_store_evidence.cmd", "Play Console internal testing", "RECORD_AUDIO")
 
 Test-TextPatterns `
   -Id "play-policy-declarations" `
   -Name "Play policy and data-safety declarations" `
   -RelativePath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" `
-  -Patterns @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "password_redacted=true", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
+  -Patterns @("Google Play Data safety form", "Google Play User Data policy", "Privacy policy URL", "https://robvanprod.github.io/stackchan_alive/privacy/", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Collected only for optional, ephemeral app functionality", "RECORD_AUDIO", "configured Android SpeechRecognizer may transmit microphone audio", "password_redacted=true", "not represented as end-to-end encrypted", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
 
 Test-TextPatterns `
   -Id "play-privacy-policy-page" `
   -Name "Play-facing privacy policy page" `
   -RelativePath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" `
-  -Patterns @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "https://robvanprod.github.io/stackchan_alive/privacy/", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "may process microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextPatterns `
+  -Id "play-privacy-policy-site" `
+  -Name "Deployable public privacy-policy site" `
+  -RelativePath "site/privacy/index.html" `
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextPatterns `
+  -Id "play-privacy-deployment-record" `
+  -Name "Published privacy-policy deployment record" `
+  -RelativePath "docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json" `
+  -Patterns @("stackchan.privacy-policy-deployment.v1", "deployed", "https://robvanprod.github.io/stackchan_alive/privacy/", "site/privacy/index.html", "afbebbd3429e00a6f76cb238788ce7664f1b6fda", "49cefe092920c0a12da50896356394d380df6904", "1094346889", "28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47", "httpsEnforced")
+
+Test-TextPatterns `
+  -Id "play-privacy-deployment-checker" `
+  -Name "Published privacy-policy deployment checker" `
+  -RelativePath "tools/check_privacy_policy_deployment.ps1" `
+  -Patterns @("stackchan.privacy-policy-deployment-check.v1", "privacy-policy-deployment-ready", "live-https", "Published policy byte identity", "Published policy disclosures", "sourceSha256", "servedSha256")
+
+Test-TextPatterns `
+  -Id "play-privacy-deployment-contract" `
+  -Name "Privacy-policy deployment contract" `
+  -RelativePath "tools/test_privacy_policy_deployment_contract.ps1" `
+  -Patterns @("exact published privacy policy bytes are accepted", "tampered published privacy policy bytes are rejected", "noncanonical privacy policy URL is rejected", "stale privacy policy source hash is rejected", "pending privacy policy deployment status is rejected", "5/5")
+
+Test-TextPatterns `
+  -Id "play-privacy-pages-workflow" `
+  -Name "Privacy-policy Pages deployment workflow" `
+  -RelativePath ".github/workflows/pages.yml" `
+  -Patterns @("Deploy privacy policy", "main", "site/**", "pages: write", "id-token: write", "actions/configure-pages@v5", "actions/upload-pages-artifact@v4", "path: site", "actions/deploy-pages@v4")
+
+Test-TextPatterns `
+  -Id "play-privacy-canonical-app-url" `
+  -Name "Canonical privacy-policy URL in companion identity" `
+  -RelativePath "companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt" `
+  -Patterns @("privacyPolicyUrl", "https://robvanprod.github.io/stackchan_alive/privacy/")
+
+Test-TextPatterns `
+  -Id "play-privacy-android-link" `
+  -Name "Android in-app privacy-policy link" `
+  -RelativePath "companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt" `
+  -Patterns @("onOpenPrivacyPolicy", "Intent.ACTION_VIEW", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextPatterns `
+  -Id "play-privacy-desktop-link" `
+  -Name "Desktop in-app privacy-policy link" `
+  -RelativePath "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt" `
+  -Patterns @("onOpenPrivacyPolicy", "Desktop.Action.BROWSE", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextPatterns `
+  -Id "play-privacy-ui-and-speech" `
+  -Name "Privacy link UI and offline speech preference" `
+  -RelativePath "companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt" `
+  -Patterns @("onOpenPrivacyPolicy", "Privacy policy", "Export logs")
+
+Test-TextPatterns `
+  -Id "play-speech-offline-preference" `
+  -Name "Android speech requests offline recognition" `
+  -RelativePath "companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt" `
+  -Patterns @("RecognizerIntent.EXTRA_PREFER_OFFLINE", "true")
 
 foreach ($relativePath in @(
   "fastlane/metadata/android/en-US/title.txt",
@@ -315,6 +623,7 @@ $report = [ordered]@{
   passed = @($checks | Where-Object { $_.status -eq "pass" }).Count
   pending = $pendingChecks.Count
   failed = $failedChecks.Count
+  uploadSigningRequired = [bool]$RequireUploadSigning
   checks = @($checks)
 }
 
@@ -332,3 +641,7 @@ if ($Json) {
 if ($failedChecks.Count -gt 0) {
   exit 1
 }
+if ($RequireUploadSigning -and $pendingChecks.Count -gt 0) {
+  exit 2
+}
+exit 0

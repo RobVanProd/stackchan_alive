@@ -1,8 +1,8 @@
 # Stackchan: Alive Companion — Cross-Platform Build & Distribution Plan
 
-Status: proposed implementation contract for building the `ANDROID_COMPANION_SPEC.md` app as
-one codebase targeting Android + Windows + Linux (+ macOS), with a single release pipeline
-that pushes updates to every platform from one git tag.
+Status: implementation in progress. The shared Android + Windows + Linux + macOS source and
+tag release pipeline are implemented. Public promotion still requires repository upload-signing
+secrets, a successful tag run, and the remaining hardware/account evidence gates.
 
 This document is a sibling to `ANDROID_COMPANION_SPEC.md`. That spec defines *what* the
 companion is (protocol, owner semantics, settings surface, gates). This document defines
@@ -18,14 +18,13 @@ companion is (protocol, owner semantics, settings surface, gates). This document
 - The existing Python bridge stays canonical for PC Brain Mode. The desktop app does not
   reimplement STT/LLM/TTS; it supervises `bridge/lan_service.py` as a subprocess and
   additionally connects to the robot as its own observer endpoint for settings/diagnostics.
-- One `v*` tag → one GitHub Actions run → all artifacts: signed APK to GitHub Releases,
-  and self-updating Windows (MSIX), Linux (deb + apt repo), and macOS (Sparkle) packages
-  built by Hydraulic Conveyor from a single Linux runner.
-- Update distribution answer (the "or that might not be possible idk" question): **desktop
-  updates are fully automatic** (MSIX background updates on Windows, apt on Linux, Sparkle
-  prompt on macOS). **Android cannot silently self-update outside a store**; the honest
-  ceiling is one-tap updates via an in-app updater or Obtainium, or full auto-update by
-  publishing a Play closed track later. Details in "Update Distribution".
+- One `v*` tag runs the firmware release plus upload-signed Android APK/AAB packaging and
+  native Windows MSI, Linux DEB, and macOS DMG packaging. Desktop packages include the
+  platform-managed Python runtime payload used by PC Brain Mode.
+- Current updates are manual GitHub Release installs on every platform. Hydraulic Conveyor,
+  MSIX/AppInstaller, apt metadata, Sparkle, and an in-app Android updater remain C8 follow-on
+  work. **Android cannot silently self-update outside a store**; Obtainium or a Play track can
+  improve that experience without overstating what the current app implements.
 - The Kotlin protocol module is validated against the same JSON fixtures and the same
   Python virtual robot (`bridge/hardware_simulator.py`) that already gate the firmware and
   bridge, so the two implementations cannot silently drift.
@@ -213,111 +212,150 @@ Extend the existing workflows; do not create a second release universe.
 
 Current PR gate in `.github/workflows/firmware.yml`: companion changes run the shared
 `companion-tests` job plus `companion-platform-builds`, a four-leg matrix that builds
-Android debug/release APKs on Ubuntu, a Linux `.deb` on Ubuntu, a macOS `.dmg` on macOS,
-and a Windows `.msi` on Windows. Every leg provisions JDK 21 and Android SDK Platform 36 so
-the shared KMP Android targets are configured consistently even during desktop packaging,
-and every leg uploads its produced platform artifact with `if-no-files-found: error`.
-A follow-on `companion-release-evidence` job downloads those four platform artifacts,
-runs `tools/export_companion_release_evidence.ps1 -RequireArtifacts`, verifies the Android
-release APK with `apksigner`, and uploads `COMPANION_RELEASE_EVIDENCE.json/md` with
-artifact paths, byte counts, SHA256 hashes, the producing commit, Gradle toolchain pins,
-and Android signing status. That evidence job fails if the manifest does not include both
-Android debug/release APKs, a verified signed release APK, plus Linux `.deb`, macOS `.dmg`,
-and Windows `.msi` desktop packages.
+Android debug/release APKs and AABs on Ubuntu, a Linux `.deb` on Ubuntu, a macOS `.dmg` on
+macOS, and a Windows `.msi` on Windows. Every leg provisions JDK 21 and Android SDK Platform
+36. Each native desktop leg also provisions Python 3.12, prepares and validates the managed
+runtime payload, embeds that payload in the installer, and exports evidence binding the package
+SHA-256 to the processed runtime SHA-256. PR builds pass
+`-Pstackchan.allowLabDebugReleaseSigning=true` explicitly; this keeps
+debug-signed release artifacts available for CI without allowing public release tasks to
+silently fall back to the debug key. The companion test gate also verifies that every source
+version agrees with the release tag convention.
 
-Evidence snapshot: PR #194 run `28711092216` on 2026-07-04 passed `bridge-tests`,
+The same workflow supports `workflow_dispatch`; a manual run forces `companion-tests`, all four
+native build legs, and aggregate package evidence even when path filtering would skip them. Use
+it for a pushed candidate-branch rehearsal before creating a release tag.
+
+The Android build leg uploads one lab-signed release APK. A dependent API 35 AOSP ATD job installs
+and cold-launches that exact artifact, verifies `MainActivity`, the foreground
+`CompanionBridgeService`, and zero scoped fatal-process matches, then uploads bounded smoke JSON.
+The aggregate gate recomputes the release APK SHA-256 and rejects stale or separately rebuilt
+emulator evidence. This remains packaging/runtime smoke only and never substitutes for target-phone
+or physical-robot qualification.
+
+A follow-on `companion-release-evidence` job downloads those platform artifacts and runs
+`tools/export_companion_release_evidence.ps1 -RequireArtifacts
+-RequireAndroidEmulatorEvidence -RequireDesktopPackageEvidence`. PR evidence records the lab
+signing profile, exact release-APK emulator launch binding, package hashes,
+and one ready native package/runtime report for Windows, Linux, and macOS, but it is not promotion
+evidence. Public promotion additionally uses `-RequireUploadSigning`, which requires both Android
+release artifacts to report the `upload-key` signing profile.
+
+Exact-source rehearsal handoff is now fail-closed. Every checkout and evidence exporter in the
+Firmware workflow uses `STACKCHAN_CI_SOURCE_SHA`, resolving to the PR branch head for pull requests
+and `github.sha` otherwise. `tools/download_companion_ci_candidate.ps1` accepts only a successful
+11-job Firmware run whose reported head matches the requested 40-character commit, then downloads
+the Android, emulator, Windows, macOS, Linux, and aggregate-evidence artifacts. It recomputes every
+distribution hash and requires the embedded `COMPANION_RELEASE_EVIDENCE.json` commit and version
+to match before writing `COMPANION_CI_CANDIDATE.json`. The manifest says explicitly that these are
+lab rehearsal artifacts, not production-signed, tagged, or physical evidence.
+
+The correction was motivated by observed PR run `29318315665`: GitHub associated that successful
+run with branch head `d68d10db5b00d36cd7d02922c0e2660838b24c9a`, while its downloadable
+`COMPANION_RELEASE_EVIDENCE.json` recorded PR merge commit
+`3343fef30ec0b65de08f2eab099044e1249d2220`. That run remains useful CI regression evidence but
+must not be handed to physical testing as an exact-head binary set. The new downloader rejects
+that mismatch. A later run is authoritative only when its candidate manifest passes.
+
+Historical evidence snapshot: PR #194 run `28711092216` on 2026-07-04 passed `bridge-tests`,
 `native-tests`, firmware `build`, `companion-tests`, all four platform artifact legs, and
 `companion-release-evidence`. Uploaded companion artifacts included `companion-android-apks`,
 `companion-desktop-linux`, `companion-desktop-macos`, `companion-desktop-windows`, and a
 complete `COMPANION_RELEASE_EVIDENCE.json/md` manifest. The release APK entry is
 `app-android-release.apk`; the signing evidence records APK Signature Scheme v2 with the
-Android debug certificate for lab/arrival-day testing.
+Android debug certificate for lab/arrival-day testing. That run predates managed-runtime package
+evidence and is not proof of the current native package gate; a new PR must establish it on all
+three desktop operating systems. The current PR #197 rehearsal above supersedes that packaging
+snapshot.
 
-**PR / push (`firmware.yml` additions, path-filtered to `companion/**` and
-`protocol-fixtures/**`):**
+**Tag `v*` (`release.yml`):**
 
-```yaml
-  companion-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: "21" }
-      - uses: gradle/actions/setup-gradle@v4
-      - run: cd companion && ./gradlew check koverXmlReport
-      - name: Cross-implementation conformance
-        run: |
-          python -m unittest bridge.test_protocol_fixtures
-          cd companion && ./gradlew :core:jvmTest --tests "*FixtureConformance*"
-      - name: Kotlin endpoint vs Python virtual robot smoke
-        run: cd companion && ./gradlew :mockrobot:lanSmoke   # drives hardware_simulator.py
-```
+1. `tools/check_companion_release_version.ps1 -ExpectedVersion <tag>` rejects source/tag drift.
+2. `companion-android-release` decodes the upload keystore and builds upload-signed APK/AAB
+   artifacts. Missing or incomplete credentials fail before Gradle produces release output.
+3. `companion-android-emulator-smoke` installs and cold-launches that exact upload-signed release
+   APK on an API 35 AOSP ATD emulator. The final manifest rejects evidence whose APK SHA-256 does
+   not match the release input.
+4. `companion-desktop-release` runs natively on Ubuntu, macOS, and Windows. Each leg creates
+   and validates a managed Python payload, stages it as external native app resources, builds DEB,
+   DMG, or MSI output, then natively extracts and headlessly launches that exact package. Native
+   evidence ties the installer SHA-256, launcher probe, packaged JAR brain resources, processed
+   runtime, and manifest to one exact executable payload. It does not replace target installation
+   acceptance.
+5. The final release job runs the firmware/package gates, exports strict companion evidence,
+   requires all three native package/runtime reports, stages stable artifact names, and publishes
+   the complete set in one GitHub Release.
+6. `tools/verify_published_release.ps1` downloads the release and checks the tag commit,
+   expected asset set, hashes, package evidence, and upload-signing evidence.
 
-**Tag `v*` (`release.yml` additions):**
+The tag is intentionally created as a GitHub prerelease. After it exists,
+`tools/install_desktop_companion_package.ps1` installs the exact downloaded MSI, DEB, or DMG on a
+matching workstation and launches the installed managed runtime. The standalone checker binds that
+report to the package SHA-256 and source commit. The final Desktop v1 aggregate requires one
+`operator-target-workstation` report for every desktop OS; CI rehearsal and extraction reports are
+not accepted as substitutes, and human acceptance remains a separate review item. On Windows, a
+pre-existing Stackchan installation must be explicitly replaced with `-AllowReplace`; the evidence
+records the pre-install registration, its successful uninstall, and the post-install registration
+so same-version MSI maintenance cannot be mistaken for a fresh exact-package install.
 
-```yaml
-  companion-android:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: "21" }
-      - name: Decode keystore
-        run: echo "$ANDROID_KEYSTORE_B64" | base64 -d > companion/release.keystore
-        env: { ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }} }
-      - run: cd companion && ./gradlew :app-android:assembleRelease
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: companion
-      - run: sha256sum companion/app-android/build/outputs/apk/release/*.apk > APK_SHA256.txt
-      - uses: softprops/action-gh-release@v2
-        with: { files: "companion/app-android/build/outputs/apk/release/*.apk,APK_SHA256.txt" }
+Repository secrets required before the first public tag:
 
-  companion-desktop:
-    runs-on: ubuntu-latest        # Conveyor cross-builds Win/mac/Linux from Linux
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: "21" }
-      - run: cd companion && ./gradlew :app-desktop:jvmJar
-      - uses: hydraulic-software/conveyor/actions/build@master
-        with:
-          command: make copied-site
-          signing_key: ${{ secrets.CONVEYOR_SIGNING_KEY }}
-          agree_to_license: 1
-      - uses: softprops/action-gh-release@v2
-        with: { files: "output/*" }   # packages + update metadata to the release
-```
+- `STACKCHAN_ANDROID_KEYSTORE_B64`
+- `STACKCHAN_ANDROID_KEYSTORE_PASSWORD`
+- `STACKCHAN_ANDROID_KEY_ALIAS`
+- `STACKCHAN_ANDROID_KEY_PASSWORD`
+- `STACKCHAN_WINDOWS_PFX_B64`
+- `STACKCHAN_WINDOWS_PFX_PASSWORD`
+- `STACKCHAN_MACOS_CERTIFICATE_B64`
+- `STACKCHAN_MACOS_CERTIFICATE_PASSWORD`
+- `STACKCHAN_MACOS_SIGNING_IDENTITY`
+- `STACKCHAN_MACOS_NOTARIZATION_APPLE_ID`
+- `STACKCHAN_MACOS_NOTARIZATION_PASSWORD`
+- `STACKCHAN_MACOS_NOTARIZATION_TEAM_ID`
 
-Secrets to provision once: `ANDROID_KEYSTORE_B64` + passwords (generate the keystore
-locally, back it up — losing it breaks Android update continuity permanently),
-`CONVEYOR_SIGNING_KEY` (self-signed root generated by `conveyor keys generate`). Optional
-later: a real Windows code-signing cert and an Apple Developer ID for notarization.
+Back up the upload keystore outside the repository; losing it breaks Android update
+continuity. Back up the Windows signing PFX and macOS Developer ID PKCS#12 independently as well.
+Run `tools/check_release_credential_hygiene.cmd -Json` before provisioning or rotating those files;
+it fails if private-key bundle extensions are not ignored, if one is tracked, or if a tracked text
+file contains a private-key marker. Release packaging and companion CI enforce the same boundary,
+and the checker reports paths only rather than credential contents.
+The tag workflow now fails closed unless the MSI has a valid timestamped Authenticode signature and
+the DMG contains a Developer ID signed app accepted by Gatekeeper plus a stapled Apple notarization
+ticket. Every final asset also receives a GitHub Sigstore-backed provenance attestation before the
+prerelease is created. The repository currently has none of these Actions secrets configured, so a
+consumer tag remains externally blocked until the owner provisions and backs them up.
+Once provisioned, the manual `Companion Signing Readiness` workflow validates the Android upload
+keystore, selected private-key entry, passwords, RSA 4096-bit minimum, non-debug subject, and Play
+certificate lifetime in temporary runner storage. It also uses the Windows private code-signing
+certificate and native SignTool to sign and verify a temporary executable, imports the macOS
+Developer ID identity into a temporary keychain to sign and verify a hardened-runtime probe,
+requires each desktop certificate chain to terminate at a native-host trusted root, and validates
+Apple notarization authentication without publishing any artifact. The tag workflow repeats these
+preflights before building the AAB, MSI, or DMG.
 
-Every release job also emits `RELEASE_EVIDENCE.json` — artifact paths, sha256 sums, git
-commit, toolchain pins — matching the provenance pattern the repo already uses.
+Every release job also emits `RELEASE_EVIDENCE.json` and
+`COMPANION_RELEASE_EVIDENCE.json/md` with artifact paths, SHA-256 hashes, source commit,
+toolchain pins, package-runtime evidence, Android signing status, and exact release-APK emulator
+launch evidence.
 
 ## Update Distribution
 
 The direct answer to "distribute updates to all — or is that not possible":
 
-| Platform | Mechanism | User experience after v1 install | Automatic? |
+| Platform | Implemented v1 artifact | Current update path | Automatic? |
 | --- | --- | --- | --- |
-| Windows | Conveyor MSIX + `.appinstaller` on GitHub Releases | Windows updates it in the background, even when not running | Yes, silent |
-| Linux (Debian/Ubuntu) | Conveyor-generated deb + apt repo (flat files on the release/Pages) | Updates arrive with normal `apt upgrade` / Software Updater | Yes, with system updates |
-| Linux (other) | Tarball | Manual download | No |
-| macOS | Conveyor app bundle with Sparkle 2 | Sparkle prompts "update available", one click | Yes, prompted |
-| Android (chosen path) | APK on GitHub Releases + in-app updater: check releases API → download → PackageInstaller session | App shows "update available", user taps once, system install dialog confirms | Semi — one tap per update, OS-enforced |
-| Android (zero-code alt) | Obtainium pointed at the repo | Obtainium notifies and installs on tap | Semi |
-| Android (full auto) | Play Store closed track | Silent background updates | Yes, but Play account, review, and data-safety forms |
+| Windows | Compose Desktop MSI | Download and install the newer GitHub Release MSI | No |
+| Linux (Debian/Ubuntu) | Compose Desktop DEB | Download and install the newer GitHub Release DEB | No |
+| macOS | Compose Desktop DMG | Download and install the newer GitHub Release DMG | No |
+| Android direct | Upload-signed APK | Download/install from GitHub Releases, or track with Obtainium | No in app; Obtainium can notify |
+| Android Play | Upload-signed AAB | Play closed track after account and policy gates | Yes after Play publication |
 
-So: one tag updates everything, with exactly one caveat — Android's sandbox forbids silent
-self-updates for sideloaded apps by design. One-tap is the honest ceiling until/unless a
-Play track is worth the overhead. Recommendation: ship the in-app updater (it also verifies
-the APK sha256 from `RELEASE_EVIDENCE.json` before invoking the installer) and document
-Obtainium as the alternative.
+One tag publishes packages for every supported platform, but it does not currently update
+installed copies automatically. The app has no release API downloader or package installer.
+Hydraulic Conveyor desktop updates and an Android in-app updater remain C8 candidates; neither
+is a v1 source-complete claim. Android cannot silently self-update outside a store.
 
-`conveyor.conf` starting point:
+The following `conveyor.conf` is a deferred starting point, not a file currently used by CI:
 
 ```hocon
 include required("/stdlib/jdk/21/openjdk.conf")
@@ -333,11 +371,10 @@ app {
 }
 ```
 
-Known rough edges, stated up front rather than discovered later: self-signed Windows
-packages trip SmartScreen on first install (users click through once; a paid cert removes
-it); un-notarized macOS builds need right-click → Open (an Apple Developer ID, $99/yr,
-removes it); the apt path covers Debian-family only. None of these block the lab/streaming
-use case.
+Known rough edges, stated up front rather than discovered later: secret-free PR/CI rehearsal
+packages are intentionally unsigned and are not consumer candidates; a newly issued Windows
+certificate can still need reputation before SmartScreen becomes quiet; and the DEB path covers
+Debian-family systems only. Tagged consumer candidates cannot use the unsigned rehearsal path.
 
 **Out of scope, explicitly:** robot firmware updates. Those remain the PlatformIO/USB flow
 in `docs/RELEASE_PROCESS.md`. The companion spec grants the app no firmware-flash
@@ -429,11 +466,19 @@ and benchmark gates as the PC path before the UI may label it a real brain candi
 Until then the label stays "fake engine".
 
 **C8 — Distribution hardening.**
-Keystore + Conveyor keys provisioned; release workflow additions live; in-app Android
-updater with sha256 verification; first end-to-end tagged release.
-*Gate C8:* from tag push with no manual steps: APK installs and later self-update-prompts
-on a phone; Windows package background-updates across two consecutive test tags; Linux apt
-upgrade works on the workstation; `RELEASE_EVIDENCE.json` complete.
+The native all-platform tag workflow, strict package evidence, and operator target-install
+collector/checker contracts are source-complete. Remaining work is upload-keystore provisioning,
+Windows/macOS signing credential provisioning, native tag evidence, executing the three target
+installs and human reviews, and the first end-to-end tagged prerelease and promotion. Conveyor or another updater
+may be evaluated only after the native packages are accepted.
+*Gate C8:* one tag publishes verified APK/AAB/MSI/DEB/DMG artifacts, the Android artifacts
+are upload-key signed, each desktop package contains its validated managed runtime, each package
+hash and extracted application JAR are bound to its processed runtime hash by native evidence,
+the MSI is timestamped Authenticode signed, the DMG is Developer ID signed and notarized with a
+stapled ticket, every final asset has GitHub provenance, required brain resources are present,
+target install checks pass, and
+`RELEASE_EVIDENCE.json` plus `COMPANION_RELEASE_EVIDENCE.json` are complete. Automatic update
+behavior requires a separate implemented and tested gate.
 
 Sequencing note: C1–C5 run entirely against simulators and need no hardware; C2's LAN leg
 and everything in C7–C8 want the real phone and workstation. Firmware-side work the spec

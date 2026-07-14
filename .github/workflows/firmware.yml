@@ -1,6 +1,7 @@
 name: Firmware
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -10,6 +11,9 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  STACKCHAN_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -17,30 +21,72 @@ jobs:
       companion: ${{ steps.filter.outputs.companion }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
       - uses: dorny/paths-filter@v4
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             companion:
+              - '.gitignore'
               - '.github/workflows/firmware.yml'
               - 'companion/**'
               - 'protocol-fixtures/**'
               - 'docs/ANDROID_COMPANION_SPEC.md'
+              - 'docs/ANDROID_COMPANION_TEST_PLAN.md'
+              - 'docs/ANDROID_PLAY_RELEASE.md'
+              - 'docs/ANDROID_PLAY_POLICY_DECLARATIONS.md'
+              - 'docs/ANDROID_PLAY_PRIVACY_POLICY.md'
+              - 'docs/store-assets/play/**'
+              - 'site/**'
               - 'docs/BRIDGE_PROTOCOL.md'
               - 'docs/COMPANION_CROSS_PLATFORM_PLAN.md'
+              - 'docs/RELEASE_PROCESS.md'
+              - 'docs/RELEASE_QUICKSTART.md'
               - 'tools/check_android_toolchain.*'
+              - 'tools/check_android_play_release_readiness.*'
+              - 'tools/check_privacy_policy_deployment.*'
+              - 'tools/test_privacy_policy_deployment_contract.*'
+              - 'tools/test_android_upload_signing_contract.*'
+              - 'tools/test_android_emulator_launch.*'
+              - 'tools/check_android_emulator_release_evidence.*'
+              - 'tools/test_android_emulator_release_evidence_contract.*'
               - 'tools/check_companion_v1_readiness.*'
               - 'tools/check_companion_v1_evidence_bundle.*'
               - 'tools/test_companion_v1_evidence_bundle_contract.*'
+              - 'tools/verify_consumer_promotion.*'
+              - 'tools/test_consumer_promotion_contract.*'
+              - 'tools/start_hardware_evidence.*'
               - 'tools/check_desktop_v1_evidence_bundle.*'
               - 'tools/test_desktop_v1_evidence_bundle_contract.*'
               - 'tools/export_companion_release_evidence.*'
+              - 'tools/check_companion_release_version.*'
+              - 'tools/test_companion_release_version_contract.*'
+              - 'tools/prepare_desktop_python_runtime.*'
+              - 'tools/check_desktop_python_runtime_payload.*'
+              - 'tools/test_desktop_python_runtime_payload_contract.*'
+              - 'tools/export_desktop_package_evidence.*'
+              - 'tools/test_desktop_package_evidence_contract.*'
+              - 'tools/check_desktop_release_signing_readiness.*'
+              - 'tools/test_desktop_release_signing_readiness_contract.*'
+              - 'tools/check_release_credential_hygiene.*'
+              - 'tools/test_release_credential_hygiene_contract.*'
+              - 'tools/download_companion_ci_candidate.*'
+              - 'tools/test_companion_ci_candidate_contract.*'
+              - 'tools/install_desktop_companion_package.*'
+              - 'tools/check_desktop_target_install_evidence.*'
+              - 'tools/test_desktop_target_install_evidence_contract.*'
+              - '.github/workflows/companion-signing-readiness.yml'
+              - '.github/workflows/release.yml'
 
   bridge-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
       - uses: actions/setup-python@v6
         with:
@@ -134,10 +180,12 @@ jobs:
 
   companion-tests:
     needs: changes
-    if: needs.changes.outputs.companion == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
       - uses: actions/setup-java@v5
         with:
@@ -146,7 +194,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Install companion Android SDK packages
         run: |
@@ -158,13 +206,31 @@ jobs:
           cd companion
           ./gradlew check :app-desktop:c0Spike
 
+      - name: Check companion release version contract
+        shell: pwsh
+        run: |
+          ./tools/check_companion_release_version.ps1 -Json
+          ./tools/test_companion_release_version_contract.ps1
+
       - name: Run Android Play release readiness check
         shell: pwsh
         run: ./tools/check_android_play_release_readiness.ps1 -Json
 
+      - name: Run Android upload signing contract
+        shell: pwsh
+        run: ./tools/test_android_upload_signing_contract.ps1
+
+      - name: Run Android emulator release evidence contract
+        shell: pwsh
+        run: ./tools/test_android_emulator_release_evidence_contract.ps1
+
       - name: Run Android Play Store evidence contract
         shell: pwsh
         run: ./tools/test_android_play_store_evidence_contract.ps1
+
+      - name: Run privacy policy deployment contract
+        shell: pwsh
+        run: ./tools/test_privacy_policy_deployment_contract.ps1
 
       - name: Run Android v1 evidence bundle contract
         shell: pwsh
@@ -174,6 +240,26 @@ jobs:
         shell: pwsh
         run: ./tools/test_desktop_python_runtime_payload_contract.ps1
 
+      - name: Run native desktop package evidence contract
+        shell: pwsh
+        run: ./tools/test_desktop_package_evidence_contract.ps1
+
+      - name: Run desktop release signing readiness contract
+        shell: pwsh
+        run: ./tools/test_desktop_release_signing_readiness_contract.ps1
+
+      - name: Run release credential hygiene contract
+        shell: pwsh
+        run: ./tools/test_release_credential_hygiene_contract.ps1
+
+      - name: Run exact-source companion CI candidate contract
+        shell: pwsh
+        run: ./tools/test_companion_ci_candidate_contract.ps1
+
+      - name: Run native desktop target-install evidence contract
+        shell: pwsh
+        run: ./tools/test_desktop_target_install_evidence_contract.ps1
+
       - name: Run Desktop v1 evidence bundle contract
         shell: pwsh
         run: ./tools/test_desktop_v1_evidence_bundle_contract.ps1
@@ -182,15 +268,108 @@ jobs:
         shell: pwsh
         run: ./tools/test_companion_v1_evidence_bundle_contract.ps1
 
+      - name: Run consumer promotion binding contract
+        shell: pwsh
+        run: ./tools/test_consumer_promotion_contract.ps1
+
       - name: Upload companion C0 spike report
         uses: actions/upload-artifact@v7
         with:
           name: companion-c0-spike
           path: output/companion/c0-spike/SPIKE.md
 
+  companion-android-emulator-smoke:
+    needs: [changes, companion-platform-builds]
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Download companion Android APK artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-apks
+          path: output/companion/ci-artifacts/companion-android-apks
+
+      - name: Install emulator SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "emulator" \
+            "system-images;android-35;aosp_atd;x86_64"
+
+      - name: Locate release APK
+        shell: pwsh
+        run: |
+          $releaseApks = @(
+            Get-ChildItem "output/companion/ci-artifacts/companion-android-apks" -Recurse -File -Filter "*.apk" |
+              Where-Object { $_.FullName -match '[\\/]release[\\/]' }
+          )
+          if ($releaseApks.Count -ne 1) {
+            throw "Expected one release APK for emulator smoke; found $($releaseApks.Count)."
+          }
+          "STACKCHAN_EMULATOR_APK=$($releaseApks[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Start API 35 automated-test emulator
+        shell: bash
+        run: |
+          mkdir -p output/android-emulator-smoke/latest
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd \
+            --force \
+            --name stackchan_ci_api35_atd \
+            --package "system-images;android-35;aosp_atd;x86_64" \
+            --device pixel_2
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd stackchan_ci_api35_atd \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -wipe-data \
+            -memory 2048 \
+            -cores 2 \
+            > output/android-emulator-smoke/latest/emulator.stdout.log \
+            2> output/android-emulator-smoke/latest/emulator.stderr.log &
+          timeout 180 adb wait-for-device
+          timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb devices -l
+
+      - name: Run Android emulator install and launch smoke
+        shell: pwsh
+        run: |
+          ./tools/test_android_emulator_launch.ps1 `
+            -ApkPath "$env:STACKCHAN_EMULATOR_APK" `
+            -OutputDir output/android-emulator-smoke/latest `
+            -Json
+
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: adb emu kill || true
+
+      - name: Upload Android emulator launch evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/android-emulator-smoke/latest/**
+          if-no-files-found: error
+
   companion-platform-builds:
     needs: changes
-    if: needs.changes.outputs.companion == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -199,13 +378,17 @@ jobs:
             os: ubuntu-latest
             setup_android: true
             setup_linux_packaging: false
+            setup_desktop_runtime: false
+            desktop_platform: ''
+            package_dir: ''
+            extension: ''
             shell: bash
             install_android_command: |
               yes | sdkmanager --licenses || true
               sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
             command: |
               cd companion
-              ./gradlew :app-android:assembleDebug :app-android:assembleRelease :app-android:bundleRelease
+              ./gradlew :app-android:assembleDebug :app-android:assembleRelease :app-android:bundleRelease -Pstackchan.allowLabDebugReleaseSigning=true
             artifact_name: companion-android-apks
             artifact_path: |
               companion/app-android/build/outputs/apk/debug/*.apk
@@ -215,6 +398,10 @@ jobs:
             os: ubuntu-latest
             setup_android: true
             setup_linux_packaging: true
+            setup_desktop_runtime: true
+            desktop_platform: linux
+            package_dir: deb
+            extension: deb
             shell: bash
             install_android_command: |
               yes | sdkmanager --licenses || true
@@ -223,11 +410,19 @@ jobs:
               cd companion
               ./gradlew :app-desktop:packageDistributionForCurrentOS
             artifact_name: companion-desktop-linux
-            artifact_path: companion/app-desktop/build/compose/binaries/main/deb/*.deb
+            artifact_path: |
+              companion/app-desktop/build/compose/binaries/main/deb/*.deb
+              output/desktop-python-runtime/linux-prepare.json
+              output/desktop-python-runtime/linux-package-launch.json
+              output/desktop-python-runtime/linux-package-evidence.json
           - name: desktop-macos
             os: macos-latest
             setup_android: true
             setup_linux_packaging: false
+            setup_desktop_runtime: true
+            desktop_platform: macos
+            package_dir: dmg
+            extension: dmg
             shell: bash
             install_android_command: |
               yes | sdkmanager --licenses || true
@@ -236,11 +431,19 @@ jobs:
               cd companion
               ./gradlew :app-desktop:packageDistributionForCurrentOS
             artifact_name: companion-desktop-macos
-            artifact_path: companion/app-desktop/build/compose/binaries/main/dmg/*.dmg
+            artifact_path: |
+              companion/app-desktop/build/compose/binaries/main/dmg/*.dmg
+              output/desktop-python-runtime/macos-prepare.json
+              output/desktop-python-runtime/macos-package-launch.json
+              output/desktop-python-runtime/macos-package-evidence.json
           - name: desktop-windows
             os: windows-latest
             setup_android: true
             setup_linux_packaging: false
+            setup_desktop_runtime: true
+            desktop_platform: windows
+            package_dir: msi
+            extension: msi
             shell: pwsh
             install_android_command: |
               1..20 | ForEach-Object { 'y' } | sdkmanager --licenses
@@ -249,11 +452,22 @@ jobs:
               cd companion
               .\gradlew.bat :app-desktop:packageDistributionForCurrentOS
             artifact_name: companion-desktop-windows
-            artifact_path: companion/app-desktop/build/compose/binaries/main/msi/*.msi
+            artifact_path: |
+              companion/app-desktop/build/compose/binaries/main/msi/*.msi
+              output/desktop-python-runtime/windows-prepare.json
+              output/desktop-python-runtime/windows-package-launch.json
+              output/desktop-python-runtime/windows-package-evidence.json
     name: companion-platform-builds (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
+
+      - uses: actions/setup-python@v6
+        if: matrix.setup_desktop_runtime
+        with:
+          python-version: "3.12"
 
       - uses: actions/setup-java@v5
         with:
@@ -263,7 +477,7 @@ jobs:
       - uses: android-actions/setup-android@v4
         if: matrix.setup_android
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Install companion Android SDK packages
         if: matrix.setup_android && matrix.shell == 'bash'
@@ -281,6 +495,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y fakeroot
+
+      - name: Prepare managed Python runtime for desktop package
+        if: matrix.setup_desktop_runtime
+        shell: pwsh
+        run: |
+          $runtimeRoot = Join-Path "${{ github.workspace }}" "output/desktop-python-runtime/${{ matrix.desktop_platform }}"
+          ./tools/prepare_desktop_python_runtime.ps1 `
+            -SourcePython (Get-Command python).Source `
+            -RuntimeRoot $runtimeRoot `
+            -SourceName "github-actions-pr-${{ runner.os }}-${{ runner.arch }}-python-3.12" `
+            -Force `
+            -Json | Set-Content "output/desktop-python-runtime/${{ matrix.desktop_platform }}-prepare.json" -Encoding utf8
+          "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build companion platform artifact
         if: matrix.shell == 'bash'
@@ -335,6 +562,44 @@ jobs:
             exit $status
           }
 
+      - name: Launch exact native desktop package headlessly
+        if: matrix.setup_desktop_runtime
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.desktop_platform }} desktop package; found $($packages.Count)."
+          }
+          ./tools/test_desktop_package_launch.ps1 `
+            -Platform "${{ matrix.desktop_platform }}" `
+            -PackagePath $packages[0].FullName `
+            -ExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.desktop_platform }}") `
+            -OutPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-launch.json" `
+            -Json
+
+      - name: Export native desktop package evidence
+        if: matrix.setup_desktop_runtime
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.desktop_platform }} desktop package; found $($packages.Count)."
+          }
+          ./tools/export_desktop_package_evidence.ps1 `
+            -Platform "${{ matrix.desktop_platform }}" `
+            -PackagePath $packages[0].FullName `
+            -RuntimePrepareJsonPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-prepare.json" `
+            -ProcessedRuntimeRoot "companion/app-desktop/build/generated/native-app-resources/common/python-runtime" `
+            -PackageExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.desktop_platform }}") `
+            -LaunchEvidencePath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-launch.json" `
+            -Version "${{ env.STACKCHAN_CI_SOURCE_SHA }}" `
+            -Commit "${{ env.STACKCHAN_CI_SOURCE_SHA }}" `
+            -OutPath "output/desktop-python-runtime/${{ matrix.desktop_platform }}-package-evidence.json" `
+            -RequireInstallerPayload `
+            -RequireLaunchEvidence `
+            -UseExistingPackageExtraction `
+            -Json
+
       - name: Upload companion platform artifact
         uses: actions/upload-artifact@v7
         with:
@@ -343,11 +608,13 @@ jobs:
           if-no-files-found: error
 
   companion-release-evidence:
-    needs: [changes, companion-platform-builds]
-    if: needs.changes.outputs.companion == 'true'
+    needs: [changes, companion-platform-builds, companion-android-emulator-smoke]
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.companion == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
       - uses: actions/setup-java@v5
         with:
@@ -367,6 +634,12 @@ jobs:
         with:
           name: companion-android-apks
           path: output/companion/ci-artifacts/companion-android-apks
+
+      - name: Download Android emulator launch evidence
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/companion/ci-artifacts/companion-android-emulator-smoke
 
       - name: Download companion Linux desktop artifacts
         uses: actions/download-artifact@v7
@@ -390,13 +663,17 @@ jobs:
         shell: pwsh
         run: |
           ./tools/export_companion_release_evidence.ps1 `
-            -Version "${{ github.sha }}" `
-            -Commit "${{ github.sha }}" `
+            -Version "${{ env.STACKCHAN_CI_SOURCE_SHA }}" `
+            -Commit "${{ env.STACKCHAN_CI_SOURCE_SHA }}" `
             -AndroidArtifactRoot "output/companion/ci-artifacts/companion-android-apks" `
+            -AndroidEmulatorEvidencePath "output/companion/ci-artifacts/companion-android-emulator-smoke/android_emulator_launch_smoke.json" `
             -DesktopArtifactRoot "output/companion/ci-artifacts" `
+            -DesktopPackageEvidenceRoot "output/companion/ci-artifacts" `
             -ApkSignerPath "$env:ANDROID_HOME/build-tools/36.0.0/apksigner" `
             -OutDir "output/companion/release-evidence/ci" `
             -RequireArtifacts `
+            -RequireAndroidEmulatorEvidence `
+            -RequireDesktopPackageEvidence `
             -Json
 
       - name: Upload companion release evidence
@@ -412,6 +689,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
       - uses: actions/setup-python@v6
         with:
@@ -432,6 +711,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.STACKCHAN_CI_SOURCE_SHA }}
 
       - uses: actions/setup-python@v6
         with:

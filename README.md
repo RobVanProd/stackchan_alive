@@ -14,7 +14,7 @@ no face sprite sheets or character-image assets in the runtime.
 
 ## Project Status
 
-Status as of July 12, 2026: **public v0.2 release candidate, physically validated on the
+Status as of July 13, 2026: **public v0.2 release candidate, physically validated on the
 reference Stackchan**.
 
 What is working in the repository now:
@@ -42,9 +42,9 @@ What is working in the repository now:
 
 Release notes:
 
-- The exact paired candidate passed its formal one-hour actuator acceptance and continued through
-  more than five hours of the all-feature run with no strict hardware bad state. The repository
-  owner accepted that evidence for this release and waived the remaining duration requirement.
+- The corrected exact paired candidate completed the full all-feature actuator soak for `28807 s`
+  with `5643/5643` successful polls and a `77/77` formal checker result. Motion, servo rail,
+  torque, and motion power authority were verified off after its bounded final stop.
 - The public build and release package contain no Wi-Fi credentials, OTA token, or camera pairing
   data. The active production RVC model and index are included as public release assets.
 - PC/mobile owner failover remains a companion-platform follow-up.

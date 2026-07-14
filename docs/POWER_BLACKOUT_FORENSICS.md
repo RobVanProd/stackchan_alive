@@ -1,9 +1,10 @@
 # Stackchan Power Blackout Forensics
 
-Status: the `v0.2.0` exact-image candidate passed short no-motion, short actuator, and one-hour
-actuator qualification. Its later all-feature actuator continuation ran for more than five hours
-before the owner ended the gate and accepted it for release; that is not a formal eight-hour pass.
-Historical full-off root cause remains unidentified.
+Status: the corrected `v0.2.0` exact-image candidate passed native `261/261`, formal `76/76`
+no-motion, and formal `77/77` short actuator qualification. Its exact installed firmware then
+completed the full all-feature actuator soak for `28807 s` with `5643/5643` successful polls and a
+`77/77` formal checker result; bounded final stop evidence verified motion, servo rail, torque, and
+motion power authority off. Historical full-off root cause remains unidentified.
 
 ## What The Evidence Says
 

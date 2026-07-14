@@ -91,8 +91,18 @@ Capture companion release evidence after APK or desktop package artifacts exist:
 This writes `COMPANION_RELEASE_EVIDENCE.json` and `COMPANION_RELEASE_EVIDENCE.md` with the
 artifact hashes, source commit, and companion toolchain provenance used by the release gate.
 
-Before a signed C8 distribution is promoted, rerun it with `-RequireArtifacts` so missing
-APK or desktop package hashes block the release evidence.
+Before a signed C8 distribution is promoted, rerun the PowerShell exporter with all strict gates:
+
+```powershell
+.\tools\export_companion_release_evidence.ps1 `
+  -RequireArtifacts `
+  -RequireUploadSigning `
+  -RequireAndroidEmulatorEvidence `
+  -RequireDesktopPackageEvidence
+```
+
+The emulator JSON must come from the exact release APK; the exporter recomputes its hash and
+blocks stale or separately rebuilt launch evidence.
 
 Run the socket-level LAN bridge smoke report:
 
@@ -318,8 +328,11 @@ Build the Android companion APK from the source checkout before this step:
 ```powershell
 .\tools\check_android_toolchain.cmd
 cd companion
-.\gradlew.bat :app-android:assembleRelease
+.\gradlew.bat "-Pstackchan.allowLabDebugReleaseSigning=true" :app-android:assembleRelease
 ```
+
+The unqualified `.\gradlew.bat :app-android:assembleRelease` command is intentionally rejected
+unless the production upload-key environment is configured.
 
 The toolchain check verifies `JAVA_HOME`/`java.exe`, Android SDK root, `platform-tools`/`adb.exe`,
 and SDK Platform 36 before Gradle starts.
@@ -388,6 +401,30 @@ Then pass that root into desktop packaging with
 `-Pstackchan.desktop.pythonRuntimeRoot=<path>` or
 `STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=<path>`. A platform runtime only validates the
 matching platform installer; Windows, macOS, and Linux require separate native payloads.
+The package build stages this interpreter as external native app resources rather than placing
+it inside the application JAR. On each native runner, run
+`tools/test_desktop_package_launch.ps1` against the exact MSI, DEB, or DMG before exporting
+desktop package evidence; the helper extracts and invokes the package launcher headlessly and
+binds Python/brain readiness to the package SHA-256. This smoke complements, but does not replace,
+target-machine installation acceptance.
+
+The tag workflow creates a GitHub prerelease. Download its exact MSI, DEB, and DMG to real
+matching workstations and collect installed-launch evidence before promotion. Windows must run
+from an elevated PowerShell session:
+
+```powershell
+.\tools\install_desktop_companion_package.ps1 -Platform <windows|linux|macos> -PackagePath <package> -SourceCommit <40-character-commit> -OutputDir output\desktop-target-install\<platform> -Json
+.\tools\check_desktop_target_install_evidence.ps1 -EvidencePath output\desktop-target-install\<platform>\<platform>-target-install.json -ExpectedPlatform <platform> -ExpectedPackageSha256 <release-package-sha256> -ExpectedSourceCommit <40-character-commit> -RequireOperatorTarget -Json
+```
+
+For a pre-existing Windows installation, preserve the prior evidence and pass `-AllowReplace` to
+the installer helper. It records the old product registration, removes only the registered
+Stackchan MSI, installs the exact requested package, and records the replacement. The checker
+rejects evidence that could have come from same-version MSI maintenance mode.
+
+Repeat on all three desktop operating systems. A CI runner report and an extracted launcher probe
+are deliberately rejected by the final desktop v1 gate. Installed-launch evidence also does not
+replace the human desktop review.
 
 For PC Brain Mode lab bring-up, start the local brain bridge and selected voice TTS path:
 
@@ -425,9 +462,9 @@ It must report `pc-brain-quiet-soak-ready`, proving the bridge stays connected/r
 the full quiet window without parse/timeouts/playback errors or unexpected audio streams,
 and it must emit the same `sourceCommit` as the deploy packet and desktop v1 evidence bundle.
 
-Assemble the final desktop/PC Brain aggregate packet after the three platform runtime
-payload reports, package hashes, C6 evidence, deploy evidence, quiet-soak evidence, and
-production voice-source readiness are captured:
+Assemble the final desktop/PC Brain aggregate packet after the three platform runtime payload
+reports, three operator target-install reports, package hashes, C6 evidence, deploy evidence,
+quiet-soak evidence, and production voice-source readiness are captured:
 
 ```powershell
 .\tools\check_desktop_v1_evidence_bundle.cmd -EvidenceRoot output\desktop-v1-evidence\latest -WriteTemplate
@@ -438,7 +475,8 @@ The checker must report `desktop-v1-evidence-ready` before treating desktop inst
 v1 release-ready. The `DESKTOP_V1_REVIEW.md` source commit must match
 `DESKTOP_V1_EVIDENCE_BUNDLE.json.sourceCommit`; the PC Brain deploy report, PC Brain
 quiet-soak report, and production voice-source readiness report must all carry that same
-`sourceCommit`.
+`sourceCommit`. Each target-install report must carry that commit and the SHA-256 of its matching
+MSI, DEB, or DMG, and `DESKTOP_V1_REVIEW.md` must mark `Target installation decision: pass`.
 
 After Android v1, desktop v1, hardware, Play, production voice-source, release package,
 GitHub Actions, and rollout evidence are all ready for the same commit, assemble the final
@@ -459,6 +497,13 @@ source commit. The Android v1 bundle report must also carry the Gemma benchmark 
 required dashboard media IDs from the final Android aggregate gate. The rollout report must
 point at the same strict hardware evidence packet and hardware metadata commit recorded in
 the final bundle.
+
+The terminal consumer-promotion command must pass this packet as `-CompanionV1EvidenceRoot`.
+It reruns the aggregate checker with `-RequireReady` and independently binds the source commit,
+exact installed `firmwareSourceCommit`, release version, exact release ZIP SHA-256, and strict
+hardware evidence root. A ready rollout report or completed hardware packet cannot substitute for
+the Android real-device, Play, and three-platform desktop operator evidence carried by the
+aggregate packet.
 
 Open `BENCH_STATUS.md` in the evidence packet for the current next action, then `NEXT_STEPS.md` for the short bench run order and hard stops. The longer `README.md` remains the detailed reference.
 
@@ -565,16 +610,20 @@ Then run:
 .\RUN_EVIDENCE_VERIFY.cmd
 ```
 
-After that passes, run the full consumer promotion gate:
+After that passes, complete the aggregate Companion v1 packet and confirm its checker reports
+`companion-v1-evidence-ready`, then run the full consumer promotion gate:
 
 ```powershell
 .\RUN_CONSUMER_PROMOTION_CHECK.cmd
 ```
 
-The generated command assumes the package commit and tested firmware source commit are identical.
+The generated command uses `output\companion-v1-evidence\latest` by default and requires the exact
+release ZIP. Pending aggregate evidence cannot pass consumer promotion. The generated command also
+assumes the package commit and tested firmware source commit are identical.
 If documentation or host-only release commits were made after the exact firmware image was flashed,
 run `tools\verify_consumer_promotion.cmd` directly and pass both `-ExpectedCommit` for the package
-and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence.
+and `-ExpectedFirmwareSourceCommit` for the physical camera, body-sensor, and soak evidence, plus
+`-CompanionV1EvidenceRoot` for the completed aggregate packet.
 
 That final gate also records GitHub Actions status. If hosted jobs cannot start because of account
 billing or runner allocation, preserve the local verification report and publish the limitation.

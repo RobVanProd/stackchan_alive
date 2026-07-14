@@ -81,6 +81,7 @@ function Write-StatusReport {
     [string]$SourceCommit = "",
     [string]$Version = "",
     [string]$EvidenceRoot = "",
+    [string]$EvidenceCommit = "",
     [string]$ReleaseApkSha256 = "",
     [string]$ReleaseAabSha256 = "",
     [string]$WindowsMsiSha256 = "",
@@ -106,10 +107,11 @@ function Write-StatusReport {
     $report.version = $Version
   }
   if (-not [string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+    $metadataCommit = if ([string]::IsNullOrWhiteSpace($EvidenceCommit)) { $Commit } else { $EvidenceCommit }
     $report.evidenceRoot = $EvidenceRoot
     $report.evidence = [ordered]@{
       metadata = [ordered]@{
-        commit = $Commit
+        commit = $metadataCommit
       }
     }
   }
@@ -153,6 +155,36 @@ function Write-StatusReport {
     $report.artifacts = @($artifactGroups)
   }
   if ($Schema -eq "stackchan.companion-release-evidence.v1") {
+    $report.desktopDistributionTrustRequired = $true
+    $report.desktopPackageEvidence = [ordered]@{
+      status = "ready"
+      platforms = @(
+        [ordered]@{
+          platform = "windows"
+          distributionTrustStatus = "ready"
+          distributionTrustPolicy = "authenticode-sha256-timestamped"
+          distributionTrustTimestamped = $true
+          distributionTrustNotarizationStapled = $false
+          distributionTrustGatekeeperAccepted = $false
+        },
+        [ordered]@{
+          platform = "linux"
+          distributionTrustStatus = "not-required"
+          distributionTrustPolicy = "github-sigstore-attestation-at-publication"
+          distributionTrustTimestamped = $false
+          distributionTrustNotarizationStapled = $false
+          distributionTrustGatekeeperAccepted = $false
+        },
+        [ordered]@{
+          platform = "macos"
+          distributionTrustStatus = "ready"
+          distributionTrustPolicy = "developer-id-notarized-stapled"
+          distributionTrustTimestamped = $false
+          distributionTrustNotarizationStapled = $true
+          distributionTrustGatekeeperAccepted = $true
+        }
+      )
+    }
     $report.packageEvidence = [ordered]@{
       status = "present"
       root = "output/release/v1.0.0"
@@ -175,13 +207,14 @@ try {
   if ($templateResult.report.status -ne "pending-companion-v1-evidence-bundle") {
     throw "Expected placeholder bundle to be pending, got $($templateResult.report.status)."
   }
-  foreach ($id in @("source-commit", "release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-v1-review")) {
+  foreach ($id in @("source-commit", "firmware-source-commit", "release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-v1-review")) {
     Assert-CheckStatus -Report $templateResult.report -Id $id -Status "pending"
   }
   Write-Host "[ok] placeholder Companion v1 evidence bundle is pending"
 
   $readyRoot = New-TempEvidenceRoot
   $sourceCommit = "d" * 40
+  $firmwareSourceCommit = "f" * 40
   $releaseVersion = "v1.0.0"
   $releaseApkSha = "9" * 64
   $releaseAabSha = "a" * 64
@@ -207,6 +240,7 @@ try {
       schema = "stackchan.companion-v1-evidence-bundle.v1"
       status = "ready"
       sourceCommit = $sourceCommit
+      firmwareSourceCommit = $firmwareSourceCommit
       releaseVersion = $releaseVersion
       releasePackage = [ordered]@{
         path = "artifacts/stackchan_alive_v1.0.0.zip"
@@ -222,7 +256,7 @@ try {
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReadinessReport) -Schema "stackchan.companion-v1-readiness.v1" -Status "source-ready-pending-hardware" -SourceCommit $sourceCommit
   Write-StatusReport -Path (Join-Path $readyRoot $reports.companionReleaseEvidenceReport) -Schema "stackchan.companion-release-evidence.v1" -Status "complete" -Commit $sourceCommit -Version $releaseVersion -ReleaseApkSha256 $releaseApkSha -ReleaseAabSha256 $releaseAabSha -WindowsMsiSha256 $windowsMsiSha -MacosDmgSha256 $macosDmgSha -LinuxDebSha256 $linuxDebSha
   Write-StatusReport -Path (Join-Path $readyRoot $reports.githubActionsStatusReport) -Schema "stackchan.github-actions-status.v1" -Status "success" -Commit $sourceCommit -Version $releaseVersion
-  Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot
+  Write-StatusReport -Path (Join-Path $readyRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot -EvidenceCommit $firmwareSourceCommit
   Write-JsonFile -Path (Join-Path $readyRoot $reports.androidV1BundleReport) -Value ([ordered]@{
       schema = "stackchan.android-v1-evidence-bundle-check.v1"
       status = "android-v1-evidence-ready"
@@ -287,16 +321,43 @@ try {
   if ($readyResult.report.status -ne "companion-v1-evidence-ready") {
     throw "Expected companion-v1-evidence-ready, got $($readyResult.report.status)."
   }
-  if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
-    throw "Expected Companion v1 bundle check report to emit sourceCommit and releaseVersion."
+  if ($readyResult.report.sourceCommit -ne $sourceCommit -or $readyResult.report.firmwareSourceCommit -ne $firmwareSourceCommit -or $readyResult.report.releaseVersion -ne $releaseVersion) {
+    throw "Expected Companion v1 bundle check report to emit sourceCommit, firmwareSourceCommit, and releaseVersion."
   }
   if ($readyResult.report.androidGemmaBenchmarkProfile -ne "gemma4-e2b-litert-lm" -or [double]$readyResult.report.androidGemmaBenchmarkMedianMs -ne 1200.0 -or [double]$readyResult.report.androidGemmaBenchmarkMedianTokensPerSec -ne 8.5 -or "phone-live-dashboard" -notin @($readyResult.report.androidDashboardMediaIds)) {
     throw "Expected Companion v1 bundle check report to emit Android Gemma benchmark and dashboard media summaries."
   }
-  foreach ($id in @("release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
+  foreach ($id in @("firmware-source-commit", "release-package", "hardware-evidence", "android-v1-status", "desktop-v1-status", "companion-readiness", "companion-release-evidence", "github-actions", "rollout-status", "android-v1-bundle", "desktop-v1-bundle", "voice-source-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-commit-match", "android-v1-commit-match", "desktop-v1-commit-match", "release-evidence-version-match", "github-actions-version-match", "rollout-status-version-match", "voice-source-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "rollout-hardware-root-match", "rollout-hardware-commit-match", "companion-v1-review")) {
     Assert-CheckStatus -Report $readyResult.report -Id $id -Status "pass"
   }
-  Write-Host "[ok] complete Companion v1 evidence bundle is accepted"
+  Write-Host "[ok] complete Companion v1 evidence bundle with distinct release and firmware commits is accepted"
+
+  $desktopTrustMissingRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $desktopTrustMissingRoot -Recurse -Force
+  $desktopTrustMissingPath = Join-Path $desktopTrustMissingRoot $reports.companionReleaseEvidenceReport
+  $desktopTrustMissingReport = Get-Content -LiteralPath $desktopTrustMissingPath -Raw | ConvertFrom-Json
+  $desktopTrustMissingReport.desktopDistributionTrustRequired = $false
+  $desktopTrustMissingReport.desktopPackageEvidence.platforms[0].distributionTrustStatus = "not-ready"
+  Write-JsonFile -Path $desktopTrustMissingPath -Value $desktopTrustMissingReport
+  $desktopTrustMissingResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $desktopTrustMissingRoot
+  if ([int]$desktopTrustMissingResult.exitCode -eq 0) {
+    throw "Expected missing desktop distribution trust to fail Companion v1 evidence."
+  }
+  Assert-CheckStatus -Report $desktopTrustMissingResult.report -Id "desktop-v1-artifact-hashes-match" -Status "fail"
+  Write-Host "[ok] missing desktop distribution trust is rejected by final Companion v1 evidence"
+
+  $legacyCommitRoot = New-TempEvidenceRoot
+  Copy-Item -Path (Join-Path $readyRoot "*") -Destination $legacyCommitRoot -Recurse -Force
+  $legacyCommitBundlePath = Join-Path $legacyCommitRoot "COMPANION_V1_EVIDENCE_BUNDLE.json"
+  $legacyCommitBundle = Get-Content -LiteralPath $legacyCommitBundlePath -Raw | ConvertFrom-Json
+  $legacyCommitBundle.PSObject.Properties.Remove("firmwareSourceCommit")
+  Write-JsonFile -Path $legacyCommitBundlePath -Value $legacyCommitBundle
+  Write-StatusReport -Path (Join-Path $legacyCommitRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot -EvidenceCommit $sourceCommit
+  $legacyCommitResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $legacyCommitRoot -RequireReady
+  if ([int]$legacyCommitResult.exitCode -ne 0 -or $legacyCommitResult.report.firmwareSourceCommit -ne $sourceCommit) {
+    throw "Expected a legacy same-commit Companion v1 packet to fall back firmwareSourceCommit to sourceCommit."
+  }
+  Write-Host "[ok] legacy same-commit Companion v1 evidence bundle remains accepted"
 
   $androidSummaryMissingRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $androidSummaryMissingRoot -Recurse -Force
@@ -369,7 +430,7 @@ try {
 
   $hardwareRootMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $hardwareRootMismatchRoot -Recurse -Force
-  Write-StatusReport -Path (Join-Path $hardwareRootMismatchRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot (Join-Path $hardwareRootMismatchRoot "hardware-evidence/other")
+  Write-StatusReport -Path (Join-Path $hardwareRootMismatchRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot (Join-Path $hardwareRootMismatchRoot "hardware-evidence/other") -EvidenceCommit $firmwareSourceCommit
   $hardwareRootMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $hardwareRootMismatchRoot
   if ([int]$hardwareRootMismatchResult.exitCode -eq 0) {
     throw "Expected mismatched Companion v1 hardware evidence root to fail."
@@ -379,7 +440,7 @@ try {
 
   $hardwareCommitMismatchRoot = New-TempEvidenceRoot
   Copy-Item -Path (Join-Path $readyRoot "*") -Destination $hardwareCommitMismatchRoot -Recurse -Force
-  Write-StatusReport -Path (Join-Path $hardwareCommitMismatchRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit ("e" * 40) -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot
+  Write-StatusReport -Path (Join-Path $hardwareCommitMismatchRoot $reports.rolloutStatusReport) -Schema "stackchan.rollout-status.v1" -Status "consumer-promotion-ready" -Commit $sourceCommit -Version $releaseVersion -EvidenceRoot $hardwareEvidenceRoot -EvidenceCommit ("e" * 40)
   $hardwareCommitMismatchResult = Invoke-CompanionV1BundleCheck -EvidenceRoot $hardwareCommitMismatchRoot
   if ([int]$hardwareCommitMismatchResult.exitCode -eq 0) {
     throw "Expected mismatched Companion v1 hardware evidence commit to fail."

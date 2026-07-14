@@ -4,8 +4,13 @@
 - `icon-512.png` is the 512 x 512 PNG upload asset.
 - `feature-graphic-1024x500.png` is the Play feature graphic upload asset.
 - `SCREENSHOT_CAPTURE_PLAN.md` defines the required final-build screenshot coverage.
-- `docs/ANDROID_PLAY_PRIVACY_POLICY.md` is the source-side privacy-policy page
-  content to host before Play Console submission.
+- `docs/ANDROID_PLAY_PRIVACY_POLICY.md` is the reviewed policy record.
+- `site/privacy/index.html` is the public policy page source for
+  https://robvanprod.github.io/stackchan_alive/privacy/.
+- `PRIVACY_POLICY_DEPLOYMENT.json` binds the live HTTPS response to its source hash,
+  deployment commit, and GitHub Pages build.
+- `tools/check_privacy_policy_deployment.ps1 -Json` re-fetches and verifies the live page.
+- `.github/workflows/pages.yml` deploys the static policy site from `main`.
 
 The visual language matches the in-app Stack-chan face preview: dark square
 display, cyan display edge, white block eyes, black pupils, white brows, and pink

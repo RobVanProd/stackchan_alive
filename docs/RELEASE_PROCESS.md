@@ -34,8 +34,81 @@ For the companion C8 distribution path, run `tools/export_companion_release_evid
 after Android APK or desktop package artifacts are built. It writes
 `COMPANION_RELEASE_EVIDENCE.json/md` with artifact SHA256s, git commit,
 `companion/gradle/libs.versions.toml` toolchain pins, and Android release APK signing
-status from `apksigner`; use `-RequireArtifacts` when the signed release APK and desktop
-packages are required for promotion.
+status from `apksigner`. For promotion, use:
+
+```powershell
+tools/export_companion_release_evidence.ps1 `
+  -RequireArtifacts `
+  -RequireUploadSigning `
+  -RequireAndroidEmulatorEvidence `
+  -RequireDesktopPackageEvidence `
+  -RequireDesktopDistributionTrust
+```
+
+The strict gate requires upload-key-signed APK and AAB artifacts plus MSI, DEB, and DMG
+packages. It also requires API 35 emulator launch evidence whose APK SHA-256 matches the release
+APK. Stale, failed, lower-API, wrong-package, service-missing, fatal-process, or physical-evidence
+substitution reports are rejected. The tag workflow prepares and validates a managed Python
+runtime for each desktop package before staging it as external native app resources. It then
+natively extracts each MSI, DEB, or DMG, runs the exact packaged launcher in headless probe mode,
+and opens its installer application JAR to validate brain resources and exclude an embedded
+interpreter. The native report binds the package SHA-256 and application-JAR SHA-256 to the launch
+result, processed and installer-derived runtime SHA-256, manifest, file totals, and required brain
+resources. Missing, duplicate, stale-commit, stale-package-launch, staging-only, or mismatched
+native reports block release evidence. Extracted-package launch evidence does not substitute for
+target-machine installation acceptance. Tagged Windows packages must additionally pass timestamped
+SHA-256 Authenticode verification. Tagged macOS packages must be Developer ID signed, accepted by
+Gatekeeper, notarized by Apple, and carry a stapled ticket. The final release job creates GitHub
+Sigstore-backed provenance attestations for every staged firmware, companion, evidence, ZIP, and
+checksum asset before publication.
+
+The tag workflow creates the GitHub Release with `--prerelease`. Before promotion, download the
+exact MSI, DEB, and DMG and run the native installer helper on a matching operator workstation:
+
+```powershell
+tools/install_desktop_companion_package.ps1 `
+  -Platform <windows|linux|macos> `
+  -PackagePath <downloaded-package> `
+  -SourceCommit <tag-commit> `
+  -OutputDir output/desktop-target-install/<platform> `
+  -Json
+```
+
+Windows requires an elevated PowerShell session; Linux requires root or passwordless `sudo`; the
+macOS helper performs the normal DMG application copy. Check each result with
+`tools/check_desktop_target_install_evidence.ps1 -RequireOperatorTarget`, bind it to the published
+package SHA-256 and tag commit, and copy all three reports into the Desktop v1 aggregate packet.
+If Windows already has Stackchan Companion registered, preserve its evidence and rerun the helper
+with `-AllowReplace`. The helper then records and removes only the existing Stackchan MSI product
+before installing the exact release MSI; implicit same-version MSI maintenance is rejected.
+CI-native installation rehearsals, MSI administrative extraction, and DMG/DEB extraction do not
+satisfy this gate. Installed-launch evidence proves package installation and bundled runtime
+startup only; the human Desktop v1 review remains required.
+
+Before tagging, push the exact candidate branch and dispatch the `Firmware` workflow from the
+Actions UI or with `gh workflow run firmware.yml --ref <candidate-branch>`. A manual dispatch
+forces companion tests plus the Android, Linux, macOS, and Windows package matrix and aggregate
+evidence even when no companion path changed in the candidate commit.
+
+For a PR or manually dispatched Firmware run, download one exact-source rehearsal candidate with:
+
+```powershell
+tools\download_companion_ci_candidate.cmd `
+  -RunId <successful-firmware-run-id> `
+  -Commit <40-character-branch-head-sha> `
+  -Json
+```
+
+The Firmware workflow checks out `STACKCHAN_CI_SOURCE_SHA`, which is the PR branch head for pull
+requests and `github.sha` for push or manual-dispatch runs. The downloader independently requires
+all 11 jobs and all six companion artifact groups to be successful and present, rejects expired
+artifacts, and recomputes every APK/AAB/MSI/DEB/DMG hash against the embedded
+`COMPANION_RELEASE_EVIDENCE.json`. It writes
+`output/companion/ci-candidates/<commit>-run-<id>/COMPANION_CI_CANDIDATE.json` as the handoff to
+phone or workstation testing. A PR status check associated with a branch head is not sufficient
+when the downloaded evidence records a different merge commit; the helper rejects that mismatch.
+The manifest is explicitly scoped to CI rehearsal and does not substitute for upload signing,
+desktop production trust, a tagged release, or physical evidence.
 
 ## Exact Tested Lead Versus Public Package
 
@@ -222,14 +295,16 @@ Before promoting a prerelease, verify the completed hardware evidence packet:
 .\tools\verify_hardware_evidence.cmd -EvidenceRoot output\hardware-evidence\<packet-folder>
 ```
 
-Then run the full release gate, which composes package verification, hardware evidence
-verification, GitHub Actions status, and production voice hash verification:
+Then run the full release gate, which composes package verification, strict hardware evidence,
+the ready aggregate Companion v1 packet, GitHub Actions status, and production voice hash
+verification:
 
 ```powershell
 .\tools\verify_consumer_promotion.cmd `
   -Version <version> `
   -PackageZip output\release\stackchan_alive_<version>.zip `
   -EvidenceRoot output\hardware-evidence\<packet-folder> `
+  -CompanionV1EvidenceRoot output\companion-v1-evidence\<version> `
   -ExpectedCommit <release-commit> `
   -ExpectedFirmwareSourceCommit <tested-firmware-source-commit> `
   -CameraFollowSummaryPath <camera-summary.json> `
@@ -242,6 +317,14 @@ verification, GitHub Actions status, and production voice hash verification:
 `-ExpectedFirmwareSourceCommit` independently pins camera, body-sensor, and final-soak evidence to
 the source used for the installed firmware. They default to the same value, but must be supplied
 separately when documentation or host-only changes follow the exact physical firmware build.
+
+Final consumer promotion requires `-PackageZip`; `-PackageRoot` is insufficient for the terminal
+decision because the exact archive SHA-256 must be bound to the aggregate evidence. The Companion
+v1 checker must return `companion-v1-evidence-ready`. Promotion independently verifies that the
+aggregate release source commit, exact installed `firmwareSourceCommit`, release version, release
+ZIP hash, and hardware evidence root match the values being promoted. This makes the Android
+real-device, Play, desktop target-install, hardware, CI, voice, and release evidence mandatory
+inputs to the final decision instead of parallel records.
 
 The promotion gate fails while the package voice source remains `pending-production-source` or while GitHub Actions status is not successful. By default it refreshes GitHub Actions status live for the exact release commit, after the tag-triggered `Release` workflow has finished. This avoids asking a ZIP created inside that workflow to prove its own future success. Pass `-ActionsStatusPath` only with a separately captured, exact-commit `stackchan.github-actions-status.v1` report. The status snapshot inside the ZIP remains package-generation provenance, not the terminal promotion decision.
 
@@ -257,15 +340,72 @@ git tag <version>
 git push origin <version>
 ```
 
-The release workflow builds both firmware variants, runs native logic tests, compile-checks the embedded test firmware, renders preview media, creates and verifies an auditable package, and attaches the package, ZIP SHA256 sidecar, individual preview media, expression-sheet, and firmware files to a GitHub release.
+The release workflow builds both firmware variants, runs native logic tests, compile-checks
+the embedded test firmware, renders preview media, creates and verifies an auditable package,
+builds upload-signed Android APK/AAB artifacts, builds runtime-bundled Windows MSI, Linux DEB,
+and macOS DMG packages on their native runners, and attaches the complete verified asset set
+to one GitHub release. Before the first public companion tag, provision the four
+`STACKCHAN_ANDROID_*` Actions secrets documented in `ANDROID_PLAY_RELEASE.md`, plus:
 
-If GitHub Actions cannot run, publish the already verified package with the manual release helper:
+- `STACKCHAN_WINDOWS_PFX_B64`
+- `STACKCHAN_WINDOWS_PFX_PASSWORD`
+- `STACKCHAN_MACOS_CERTIFICATE_B64`
+- `STACKCHAN_MACOS_CERTIFICATE_PASSWORD`
+- `STACKCHAN_MACOS_SIGNING_IDENTITY`
+- `STACKCHAN_MACOS_NOTARIZATION_APPLE_ID`
+- `STACKCHAN_MACOS_NOTARIZATION_PASSWORD`
+- `STACKCHAN_MACOS_NOTARIZATION_TEAM_ID`
+
+The Windows certificate must be a trusted code-signing certificate exported as a password-protected
+PFX. The macOS certificate must be a Developer ID Application certificate exported as a
+password-protected PKCS#12 file; notarization uses an app-specific Apple password. Keep independent
+offline backups and do not add any certificate or password to the repository. The tag workflow
+fails before publishing when any signing credential or native trust proof is absent.
+
+Before provisioning or rotating any signing material, run the source-checkout hygiene gate:
+
+```powershell
+.\tools\check_release_credential_hygiene.cmd -Json
+```
+
+It verifies that Android keystores, Windows PFX, macOS PKCS#12, Apple API keys, and other private-key
+bundle extensions remain ignored and untracked, and that no tracked text file contains a private-key
+marker. `package_release.ps1` runs the same gate before building, while companion CI runs its
+negative contract tests. The report exposes paths and status only, never credential contents.
+
+After provisioning all twelve companion signing secrets (four Android, two Windows, and six
+macOS), run the manual **Companion Signing Readiness** workflow before creating a tag:
+
+```powershell
+gh workflow run companion-signing-readiness.yml --ref <release-branch>
+gh run watch (gh run list --workflow companion-signing-readiness.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
+```
+
+That workflow has read-only repository permission and does not build, upload, or publish release
+assets. Its Android job decodes the upload keystore only into runner temporary storage and verifies
+the selected private-key entry, both passwords, RSA 4096-bit minimum, non-debug subject, and Play
+certificate lifetime. Its native Windows job signs and verifies a temporary executable with the
+private code-signing certificate and SignTool; its native macOS job imports the Developer ID
+identity into a temporary keychain, signs and verifies a temporary hardened-runtime executable,
+and asks Apple `notarytool` to authenticate the configured account, app-specific password, and team
+ID. The native desktop jobs also require the certificate chain to terminate at a root trusted by
+that host. The same strict preflights run again in the tag workflow before packaging. For a local
+desktop credential-material check, set the corresponding environment variables and run
+`tools\check_desktop_release_signing_readiness.cmd -Platform windows|macos -RequireReady -Json`;
+add `-RequireNativeToolchain` only on the matching OS. The checker emits certificate metadata and
+status only, never PKCS#12 bytes or passwords.
+
+If GitHub Actions cannot run, the manual helper remains available for a firmware-only recovery
+publication:
 
 ```powershell
 .\tools\publish_release.cmd -Version <version> -CreateTag -PushCurrentBranch -PushTag
 ```
 
-The manual helper verifies the local ZIP, uploads the same assets as the workflow, downloads the GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.
+The manual helper verifies the local ZIP, uploads the firmware package assets, downloads the
+GitHub-hosted ZIP plus ZIP SHA256 sidecar, and verifies that remote copy against the tag commit.
+It does not cross-build or upload companion packages and therefore cannot satisfy the full
+companion release asset contract by itself.
 
 Audit an existing GitHub release after publication:
 
@@ -273,7 +413,14 @@ Audit an existing GitHub release after publication:
 .\tools\verify_published_release.cmd -Version <version>
 ```
 
-The published-release verifier checks the uploaded asset set, compares asset sizes and SHA256 digests against the local package, confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP plus ZIP SHA256 sidecar, validates the sidecar against the downloaded ZIP, and runs the package verifier on that downloaded copy.
+The published-release verifier checks the firmware and companion asset set, compares sizes and
+SHA256 digests against package and companion evidence, requires upload-key signing for Android,
+requires ready Windows/Linux/macOS package evidence and matches each published desktop package
+to its recorded processed runtime and exact-package launch hashes,
+requires timestamped Authenticode evidence for Windows and Developer ID, Gatekeeper, and stapled
+notarization evidence for macOS, verifies GitHub provenance attestations for the downloaded assets,
+confirms the remote GitHub tag resolves to the expected package commit, downloads the GitHub ZIP
+plus ZIP SHA256 sidecar, validates the sidecar, and runs the package verifier on that copy.
 
 For a single post-publish operator summary, run:
 

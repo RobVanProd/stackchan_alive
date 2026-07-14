@@ -7,9 +7,423 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
+  companion-android-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Check companion release version
+        shell: pwsh
+        run: ./tools/check_companion_release_version.ps1 -ExpectedVersion "${{ github.ref_name }}" -Json
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Prepare Android upload signing
+        shell: bash
+        env:
+          STACKCHAN_ANDROID_KEYSTORE_B64: ${{ secrets.STACKCHAN_ANDROID_KEYSTORE_B64 }}
+          STACKCHAN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.STACKCHAN_ANDROID_KEYSTORE_PASSWORD }}
+          STACKCHAN_ANDROID_KEY_ALIAS: ${{ secrets.STACKCHAN_ANDROID_KEY_ALIAS }}
+          STACKCHAN_ANDROID_KEY_PASSWORD: ${{ secrets.STACKCHAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in STACKCHAN_ANDROID_KEYSTORE_B64 STACKCHAN_ANDROID_KEYSTORE_PASSWORD STACKCHAN_ANDROID_KEY_ALIAS STACKCHAN_ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is required for a tagged companion release."
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/stackchan-companion-upload.jks"
+          printf '%s' "$STACKCHAN_ANDROID_KEYSTORE_B64" | base64 --decode > "$keystore"
+          test -s "$keystore"
+          echo "STACKCHAN_ANDROID_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+          echo "STACKCHAN_ANDROID_KEYSTORE_PASSWORD=$STACKCHAN_ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STACKCHAN_ANDROID_KEY_ALIAS=$STACKCHAN_ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STACKCHAN_ANDROID_KEY_PASSWORD=$STACKCHAN_ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Validate Android upload key
+        shell: pwsh
+        run: ./tools/check_android_play_release_readiness.ps1 -RequireUploadSigning -Json
+
+      - name: Build upload-signed Android release
+        shell: bash
+        run: |
+          cd companion
+          ./gradlew :app-android:assembleDebug :app-android:assembleRelease :app-android:bundleRelease
+
+      - name: Upload Android release inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-android-release
+          path: |
+            companion/app-android/build/outputs/apk/debug/*.apk
+            companion/app-android/build/outputs/apk/release/*.apk
+            companion/app-android/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+  companion-android-emulator-smoke:
+    needs: companion-android-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Download upload-signed Android release
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-release
+          path: output/companion/release-input/android
+
+      - name: Install emulator SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "emulator" \
+            "system-images;android-35;aosp_atd;x86_64"
+
+      - name: Locate upload-signed release APK
+        shell: pwsh
+        run: |
+          $releaseApks = @(
+            Get-ChildItem "output/companion/release-input/android" -Recurse -File -Filter "*.apk" |
+              Where-Object { $_.FullName -match '[\\/]release[\\/]' }
+          )
+          if ($releaseApks.Count -ne 1) {
+            throw "Expected one upload-signed release APK for emulator smoke; found $($releaseApks.Count)."
+          }
+          "STACKCHAN_EMULATOR_APK=$($releaseApks[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Start API 35 automated-test emulator
+        shell: bash
+        run: |
+          mkdir -p output/android-emulator-smoke/latest
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd \
+            --force \
+            --name stackchan_release_api35_atd \
+            --package "system-images;android-35;aosp_atd;x86_64" \
+            --device pixel_2
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd stackchan_release_api35_atd \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -wipe-data \
+            -memory 2048 \
+            -cores 2 \
+            > output/android-emulator-smoke/latest/emulator.stdout.log \
+            2> output/android-emulator-smoke/latest/emulator.stderr.log &
+          timeout 180 adb wait-for-device
+          timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb devices -l
+
+      - name: Run upload-signed Android emulator launch smoke
+        shell: pwsh
+        run: |
+          ./tools/test_android_emulator_launch.ps1 `
+            -ApkPath "$env:STACKCHAN_EMULATOR_APK" `
+            -OutputDir output/android-emulator-smoke/latest `
+            -Json
+
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: adb emu kill || true
+
+      - name: Upload Android emulator launch evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/android-emulator-smoke/latest/**
+          if-no-files-found: error
+
+  companion-desktop-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            package_dir: deb
+            extension: deb
+          - platform: macos
+            os: macos-latest
+            package_dir: dmg
+            extension: dmg
+          - platform: windows
+            os: windows-latest
+            package_dir: msi
+            extension: msi
+    name: companion-desktop-release (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Check companion release version
+        shell: pwsh
+        run: ./tools/check_companion_release_version.ps1 -ExpectedVersion "${{ github.ref_name }}" -Json
+
+      - name: Install Android SDK packages
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install Android SDK packages on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          1..20 | ForEach-Object { 'y' } | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install Linux packaging prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot
+
+      - name: Prepare managed Python runtime
+        shell: pwsh
+        run: |
+          $runtimeRoot = Join-Path "${{ github.workspace }}" "output/desktop-python-runtime/${{ matrix.platform }}"
+          ./tools/prepare_desktop_python_runtime.ps1 `
+            -SourcePython (Get-Command python).Source `
+            -RuntimeRoot $runtimeRoot `
+            -SourceName "github-actions-${{ runner.os }}-${{ runner.arch }}-python-3.12" `
+            -Force `
+            -Json | Set-Content "output/desktop-python-runtime/${{ matrix.platform }}-prepare.json" -Encoding utf8
+          "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT=$runtimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Validate production desktop signing credentials
+        if: matrix.platform == 'windows' || matrix.platform == 'macos'
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+          STACKCHAN_MACOS_CERTIFICATE_B64: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_B64 }}
+          STACKCHAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_PASSWORD }}
+          STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
+          STACKCHAN_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_APPLE_ID }}
+          STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
+          STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
+        run: |
+          $arguments = @{
+            Platform = "${{ matrix.platform }}"
+            RequireReady = $true
+            RequireNativeToolchain = $true
+            Json = $true
+          }
+          if ("${{ matrix.platform }}" -eq "macos") {
+            $arguments.ValidateAppleNotaryCredentials = $true
+          }
+          ./tools/check_desktop_release_signing_readiness.ps1 @arguments
+
+      - name: Prepare macOS Developer ID keychain
+        if: matrix.platform == 'macos'
+        shell: pwsh
+        env:
+          STACKCHAN_MACOS_CERTIFICATE_B64: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_B64 }}
+          STACKCHAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_PASSWORD }}
+          STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
+          STACKCHAN_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_APPLE_ID }}
+          STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
+          STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
+        run: |
+          $required = @(
+            "STACKCHAN_MACOS_CERTIFICATE_B64",
+            "STACKCHAN_MACOS_CERTIFICATE_PASSWORD",
+            "STACKCHAN_MACOS_SIGNING_IDENTITY",
+            "STACKCHAN_MACOS_NOTARIZATION_APPLE_ID",
+            "STACKCHAN_MACOS_NOTARIZATION_PASSWORD",
+            "STACKCHAN_MACOS_NOTARIZATION_TEAM_ID"
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is required for a tagged macOS companion release."
+            }
+          }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP "stackchan-developer-id.p12"
+          $keychainPath = Join-Path $env:RUNNER_TEMP "stackchan-release.keychain-db"
+          $keychainPassword = [guid]::NewGuid().ToString("N")
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:STACKCHAN_MACOS_CERTIFICATE_B64))
+          Write-Output "::add-mask::$keychainPassword"
+          & security create-keychain -p $keychainPassword $keychainPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & security set-keychain-settings -lut 21600 $keychainPath
+          & security unlock-keychain -p $keychainPassword $keychainPath
+          & security import $certificatePath -k $keychainPath -P $env:STACKCHAN_MACOS_CERTIFICATE_PASSWORD -T /usr/bin/codesign -T /usr/bin/security
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $keychainPassword $keychainPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $existingKeychains = @(& security list-keychains -d user | ForEach-Object { $_.Trim().Trim('"') })
+          & security list-keychains -d user -s $keychainPath @existingKeychains
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          "STACKCHAN_MACOS_CERTIFICATE_PATH=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "STACKCHAN_MACOS_KEYCHAIN=$keychainPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build native Windows or Linux package
+        if: matrix.platform != 'macos'
+        shell: pwsh
+        working-directory: companion
+        run: |
+          if ($IsWindows) {
+            ./gradlew.bat :app-desktop:packageDistributionForCurrentOS
+          } else {
+            ./gradlew :app-desktop:packageDistributionForCurrentOS
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build, sign, and notarize native macOS package
+        if: matrix.platform == 'macos'
+        shell: pwsh
+        working-directory: companion
+        env:
+          STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
+          STACKCHAN_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_APPLE_ID }}
+          STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
+          STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
+        run: |
+          ./gradlew :app-desktop:notarizeDmg
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Authenticode sign Windows package
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+        run: |
+          foreach ($name in @("STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_WINDOWS_PFX_PASSWORD")) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is required for a tagged Windows companion release."
+            }
+          }
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/msi" -File -Filter "*.msi")
+          if ($packages.Count -ne 1) { throw "Expected one Windows MSI; found $($packages.Count)." }
+          $pfxPath = Join-Path $env:RUNNER_TEMP "stackchan-authenticode.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:STACKCHAN_WINDOWS_PFX_B64))
+            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -File -Filter signtool.exe |
+              Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if ($null -eq $signTool) { throw "signtool.exe was not found in the Windows SDK." }
+            & $signTool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfxPath /p $env:STACKCHAN_WINDOWS_PFX_PASSWORD /d "Stackchan Companion" /du "https://github.com/RobVanProd/stackchan_alive" $packages[0].FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $signTool.FullName verify /pa /all /tw /v $packages[0].FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Launch exact native desktop package headlessly
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.platform }} desktop package; found $($packages.Count)."
+          }
+          ./tools/test_desktop_package_launch.ps1 `
+            -Platform "${{ matrix.platform }}" `
+            -PackagePath $packages[0].FullName `
+            -ExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.platform }}") `
+            -OutPath "output/desktop-python-runtime/${{ matrix.platform }}-package-launch.json" `
+            -Json
+
+      - name: Export native desktop package evidence
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem "companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}" -File -Filter "*.${{ matrix.extension }}")
+          if ($packages.Count -ne 1) {
+            throw "Expected one ${{ matrix.platform }} desktop package; found $($packages.Count)."
+          }
+          $distributionTrustArguments = @{}
+          if (@("windows", "macos") -contains "${{ matrix.platform }}") {
+            $distributionTrustArguments.RequireDistributionTrust = $true
+          }
+          ./tools/export_desktop_package_evidence.ps1 `
+            -Platform "${{ matrix.platform }}" `
+            -PackagePath $packages[0].FullName `
+            -RuntimePrepareJsonPath "output/desktop-python-runtime/${{ matrix.platform }}-prepare.json" `
+            -ProcessedRuntimeRoot "companion/app-desktop/build/generated/native-app-resources/common/python-runtime" `
+            -PackageExtractionRoot (Join-Path $env:RUNNER_TEMP "stackchan-package-extraction-${{ matrix.platform }}") `
+            -LaunchEvidencePath "output/desktop-python-runtime/${{ matrix.platform }}-package-launch.json" `
+            -Version "${{ github.ref_name }}" `
+            -Commit "${{ github.sha }}" `
+            -OutPath "output/desktop-python-runtime/${{ matrix.platform }}-package-evidence.json" `
+            -RequireInstallerPayload `
+            -RequireLaunchEvidence `
+            @distributionTrustArguments `
+            -UseExistingPackageExtraction `
+            -Json
+
+      - name: Remove macOS release keychain
+        if: always() && matrix.platform == 'macos'
+        shell: pwsh
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:STACKCHAN_MACOS_KEYCHAIN) -and (Test-Path -LiteralPath $env:STACKCHAN_MACOS_KEYCHAIN)) {
+            & security delete-keychain $env:STACKCHAN_MACOS_KEYCHAIN
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:STACKCHAN_MACOS_CERTIFICATE_PATH)) {
+            Remove-Item -LiteralPath $env:STACKCHAN_MACOS_CERTIFICATE_PATH -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload desktop release input
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-desktop-release-${{ matrix.platform }}
+          path: |
+            companion/app-desktop/build/compose/binaries/main/${{ matrix.package_dir }}/*.${{ matrix.extension }}
+            output/desktop-python-runtime/${{ matrix.platform }}-prepare.json
+            output/desktop-python-runtime/${{ matrix.platform }}-package-launch.json
+            output/desktop-python-runtime/${{ matrix.platform }}-package-evidence.json
+          if-no-files-found: error
+
   release:
+    needs: [companion-android-release, companion-android-emulator-smoke, companion-desktop-release]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -17,6 +431,47 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android signing verifier
+        shell: pwsh
+        run: sdkmanager "build-tools;36.0.0"
+
+      - name: Download Android companion artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-release
+          path: output/companion/release-input/android
+
+      - name: Download Android emulator launch evidence
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-android-emulator-smoke
+          path: output/companion/release-input/android-emulator
+
+      - name: Download Linux companion artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-release-linux
+          path: output/companion/release-input/linux
+
+      - name: Download macOS companion artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-release-macos
+          path: output/companion/release-input/macos
+
+      - name: Download Windows companion artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: companion-desktop-release-windows
+          path: output/companion/release-input/windows
 
       - name: Install tooling
         run: python -m pip install --upgrade pip platformio -r requirements-preview.txt
@@ -42,6 +497,91 @@ jobs:
         shell: pwsh
         run: ./tools/verify_release_package.ps1 -Version "${{ github.ref_name }}" -ZipPath "output/release/stackchan_alive_${{ github.ref_name }}.zip" -ExpectedCommit "${{ github.sha }}"
 
+      - name: Export strict companion release evidence
+        shell: pwsh
+        run: |
+          ./tools/export_companion_release_evidence.ps1 `
+            -Version "${{ github.ref_name }}" `
+            -Commit "${{ github.sha }}" `
+            -PackageRoot "output/release/${{ github.ref_name }}" `
+            -AndroidArtifactRoot "output/companion/release-input/android" `
+            -AndroidEmulatorEvidencePath "output/companion/release-input/android-emulator/android_emulator_launch_smoke.json" `
+            -DesktopArtifactRoot "output/companion/release-input" `
+            -DesktopPackageEvidenceRoot "output/companion/release-input" `
+            -ApkSignerPath "$env:ANDROID_HOME/build-tools/36.0.0/apksigner.bat" `
+            -OutDir "output/companion/release-evidence/${{ github.ref_name }}" `
+            -RequireArtifacts `
+            -RequireUploadSigning `
+            -RequireAndroidEmulatorEvidence `
+            -RequireDesktopPackageEvidence `
+            -RequireDesktopDistributionTrust `
+            -Json
+
+      - name: Upload companion release evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: companion-release-evidence-${{ github.ref_name }}
+          path: |
+            output/companion/release-evidence/${{ github.ref_name }}/COMPANION_RELEASE_EVIDENCE.json
+            output/companion/release-evidence/${{ github.ref_name }}/COMPANION_RELEASE_EVIDENCE.md
+          if-no-files-found: error
+
+      - name: Stage final release assets
+        shell: pwsh
+        run: |
+          . ./tools/release_asset_contract.ps1
+          $version = "${{ github.ref_name }}"
+          $packageRoot = "output/release/$version"
+          $zipPath = "output/release/stackchan_alive_$version.zip"
+          $zipSidecarPath = "$zipPath.sha256"
+          $stageDir = "output/release/workflow-assets-$version"
+          $companionStageDir = "output/release/companion-assets-$version"
+          New-Item -ItemType Directory -Force -Path $stageDir, $companionStageDir | Out-Null
+          Copy-Item "$packageRoot/firmware/display_only/firmware.bin" "$stageDir/firmware-display-only.bin"
+          Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
+          Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
+          Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
+
+          function Copy-SingleCompanionArtifact([string]$Pattern, [string]$Destination, [string]$RequiredPathFragment = "") {
+            $matches = @(Get-ChildItem "output/companion/release-input" -Recurse -File -Filter $Pattern | Where-Object {
+              [string]::IsNullOrWhiteSpace($RequiredPathFragment) -or $_.FullName.Replace('\', '/') -match $RequiredPathFragment
+            })
+            if ($matches.Count -ne 1) {
+              throw "Expected one companion artifact matching $Pattern / $RequiredPathFragment; found $($matches.Count)."
+            }
+            Copy-Item -LiteralPath $matches[0].FullName -Destination $Destination
+          }
+
+          Copy-SingleCompanionArtifact "*.apk" "$companionStageDir/stackchan-companion-android-$version.apk" "(^|/)release/"
+          Copy-SingleCompanionArtifact "*.aab" "$companionStageDir/stackchan-companion-android-$version.aab"
+          Copy-SingleCompanionArtifact "*.msi" "$companionStageDir/stackchan-companion-windows-$version.msi"
+          Copy-SingleCompanionArtifact "*.deb" "$companionStageDir/stackchan-companion-linux-$version.deb"
+          Copy-SingleCompanionArtifact "*.dmg" "$companionStageDir/stackchan-companion-macos-$version.dmg"
+          Copy-Item "output/companion/release-evidence/$version/COMPANION_RELEASE_EVIDENCE.json" $companionStageDir
+          Copy-Item "output/companion/release-evidence/$version/COMPANION_RELEASE_EVIDENCE.md" $companionStageDir
+
+          ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
+          $releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
+          $companionAssetEntries = Get-ReleaseCompanionAssetEntries -Version $version -CompanionAssetRoot $companionStageDir
+          $releaseAssetPaths = @($releaseAssetEntries + $companionAssetEntries | ForEach-Object { $_.Path })
+          if ($releaseAssetPaths.Count -lt 10) {
+            throw "Expected the complete staged release asset set; found $($releaseAssetPaths.Count)."
+          }
+
+      - name: Attest final release assets
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            output/release/stackchan_alive_${{ github.ref_name }}.zip
+            output/release/stackchan_alive_${{ github.ref_name }}.zip.sha256
+            output/release/workflow-assets-${{ github.ref_name }}/*
+            output/release/companion-assets-${{ github.ref_name }}/*
+            output/release/${{ github.ref_name }}/media/*
+            output/release/${{ github.ref_name }}/media/voice/*
+            output/release/${{ github.ref_name }}/GITHUB_ACTIONS_STATUS.md
+            output/release/${{ github.ref_name }}/github_actions_status.json
+            output/release/${{ github.ref_name }}/release_assets.json
+
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -53,14 +593,10 @@ jobs:
           $zipPath = "output/release/stackchan_alive_$version.zip"
           $zipSidecarPath = "$zipPath.sha256"
           $stageDir = "output/release/workflow-assets-$version"
-          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
-          Copy-Item "$packageRoot/firmware/display_only/firmware.bin" "$stageDir/firmware-display-only.bin"
-          Copy-Item "$packageRoot/firmware/servo_calibration/firmware.bin" "$stageDir/firmware-servo-calibration.bin"
-          Copy-Item "$packageRoot/firmware/display_only/bootloader.bin" "$stageDir/bootloader.bin"
-          Copy-Item "$packageRoot/firmware/display_only/partitions.bin" "$stageDir/partitions.bin"
-          ./tools/verify_release_asset_contract.ps1 -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
+          $companionStageDir = "output/release/companion-assets-$version"
           $releaseAssetEntries = Get-ReleaseFinalAssetEntries -Version $version -PackageRoot $packageRoot -ZipPath $zipPath -ZipSidecarPath $zipSidecarPath -FirmwareAssetRoot $stageDir -FirmwareAssetPathMode Stage
-          $releaseAssetPaths = @($releaseAssetEntries | ForEach-Object { $_.Path })
+          $companionAssetEntries = Get-ReleaseCompanionAssetEntries -Version $version -CompanionAssetRoot $companionStageDir
+          $releaseAssetPaths = @($releaseAssetEntries + $companionAssetEntries | ForEach-Object { $_.Path })
           gh release create "${{ github.ref_name }}" `
             @releaseAssetPaths `
             --repo "${{ github.repository }}" `

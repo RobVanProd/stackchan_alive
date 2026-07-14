@@ -64,7 +64,14 @@ if ($restrictedVoicePayloads.Count -gt 0) {
 
 function Join-PackagePath {
   param([string]$RelativePath)
-  return Join-Path $packageRootPath ($RelativePath -replace "/", "\")
+  $path = Join-Path $packageRootPath ($RelativePath -replace "/", "\")
+  if ($env:OS -eq "Windows_NT" -and $path.Length -ge 260 -and -not $path.StartsWith("\\?\")) {
+    if ($path.StartsWith("\\")) {
+      return "\\?\UNC\$($path.TrimStart('\'))"
+    }
+    return "\\?\$path"
+  }
+  return $path
 }
 
 function Assert-File {
@@ -174,10 +181,14 @@ $requiredFiles = @(
   "docs/ANDROID_PLAY_RELEASE.md",
   "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md",
   "docs/ANDROID_PLAY_PRIVACY_POLICY.md",
+  "site/.nojekyll",
+  "site/index.html",
+  "site/privacy/index.html",
   "docs/store-assets/play/icon-512.png",
   "docs/store-assets/play/icon-512.svg",
   "docs/store-assets/play/feature-graphic-1024x500.png",
   "docs/store-assets/play/README.md",
+  "provenance/pages.yml",
   "docs/BRAIN_MODEL.md",
   "docs/COMPANION_CROSS_PLATFORM_PLAN.md",
   "docs/CONVERSATION_V2_ROADMAP.md",
@@ -425,6 +436,29 @@ $requiredFiles = @(
   "tools/check_desktop_python_runtime_payload.ps1",
   "tools/test_desktop_python_runtime_payload_contract.cmd",
   "tools/test_desktop_python_runtime_payload_contract.ps1",
+  "tools/export_desktop_package_evidence.cmd",
+  "tools/export_desktop_package_evidence.ps1",
+  "tools/test_desktop_package_launch.cmd",
+  "tools/test_desktop_package_launch.ps1",
+  "tools/test_desktop_package_evidence_contract.cmd",
+  "tools/test_desktop_package_evidence_contract.ps1",
+  "tools/check_desktop_release_signing_readiness.cmd",
+  "tools/check_desktop_release_signing_readiness.ps1",
+  "tools/test_desktop_release_signing_readiness_contract.ps1",
+  "tools/check_release_credential_hygiene.cmd",
+  "tools/check_release_credential_hygiene.ps1",
+  "tools/test_release_credential_hygiene_contract.cmd",
+  "tools/test_release_credential_hygiene_contract.ps1",
+  "tools/download_companion_ci_candidate.cmd",
+  "tools/download_companion_ci_candidate.ps1",
+  "tools/test_companion_ci_candidate_contract.cmd",
+  "tools/test_companion_ci_candidate_contract.ps1",
+  "tools/install_desktop_companion_package.cmd",
+  "tools/install_desktop_companion_package.ps1",
+  "tools/check_desktop_target_install_evidence.cmd",
+  "tools/check_desktop_target_install_evidence.ps1",
+  "tools/test_desktop_target_install_evidence_contract.cmd",
+  "tools/test_desktop_target_install_evidence_contract.ps1",
   "tools/check_desktop_v1_evidence_bundle.cmd",
   "tools/check_desktop_v1_evidence_bundle.ps1",
   "tools/test_desktop_v1_evidence_bundle_contract.cmd",
@@ -440,6 +474,18 @@ $requiredFiles = @(
   "tools/check_android_toolchain.ps1",
   "tools/check_android_play_release_readiness.cmd",
   "tools/check_android_play_release_readiness.ps1",
+  "tools/check_privacy_policy_deployment.cmd",
+  "tools/check_privacy_policy_deployment.ps1",
+  "tools/test_privacy_policy_deployment_contract.cmd",
+  "tools/test_privacy_policy_deployment_contract.ps1",
+  "tools/test_android_upload_signing_contract.cmd",
+  "tools/test_android_upload_signing_contract.ps1",
+  "tools/test_android_emulator_launch.cmd",
+  "tools/test_android_emulator_launch.ps1",
+  "tools/check_android_emulator_release_evidence.cmd",
+  "tools/check_android_emulator_release_evidence.ps1",
+  "tools/test_android_emulator_release_evidence_contract.cmd",
+  "tools/test_android_emulator_release_evidence_contract.ps1",
   "tools/check_android_play_store_evidence.cmd",
   "tools/check_android_play_store_evidence.ps1",
   "tools/check_android_v1_evidence_bundle.cmd",
@@ -878,9 +924,16 @@ foreach ($pattern in @("-All", "output/share", "Test-ShareOwnedProcess", "skippe
 }
 
 $hardwareStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_hardware_evidence.ps1") -Raw
-foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_HARDWARE_SIM_BASELINE.cmd", "hardware_simulation_baseline.log", "simulation/hardware-sim/latest", "comparison baseline only", "run_hardware_simulation.ps1", "RUN_SIM_HARDWARE_COMPARE.cmd", "compare_hardware_sim_baseline.ps1", "SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json", "advisory sim-vs-real", "compareCommand", "compareReport", "RUN_ANDROID_APK_INSTALL.cmd", "install_android_companion_apk.ps1", "android/apk-install", "apkInstallCommand", "android_apk_install.json", "RUN_ANDROID_COMPANION_PROBE.cmd", "run_android_companion_probe.ps1", "android/companion-probe", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "run_android_companion_soak.ps1", "android/screen-off-soak", "screenOffSoakCommand", "android_companion_soak.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "run_android_udp_beacon_probe.ps1", "android/udp-beacon-probe", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "capture_android_companion_logcat.ps1", "android/logcat", "logcatCommand", "android_companion_logcat.json", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "androidCompanionProbes", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speechDir", "lead_voice.speech_envelope.json", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
+foreach ($pattern in @("NEXT_STEPS.md", "Stackchan Evidence Next Steps", "Run Order", "Gates Still Expected", "Hard Stops", "BENCH_STATUS.md", "BENCH_STATUS.json", "stackchan.bench-status.v1", "benchStatus", "RELEASE_ACCEPTANCE.md", "release_acceptance.json", "AUDIO_REVIEW.md", "Stackchan Audio Review", "Speaker recording file", "Intelligible through device speaker", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "stackchan.ci-account-block-exception.v1", "starts unapproved", "false proof booleans", "TBD - accountable approver required", "TBD - CI account owner", "Copy-AcceptanceArtifactsFromZip", "Copy-AcceptanceArtifactsFromRoot", "Copy-VoiceLeadArtifactsFromZip", "Copy-ShareVerificationArtifactsFromRoot", "Write-EvidenceChecklist", "Set-ChecklistItemState", "Pre-marked no-hardware gates were proven", "GitHub Actions, production voice-source, media, audio, and promotion gates still require explicit evidence", "shareVerification", "HOSTED_MEDIA_REFERENCE.md", "share/share_verification_report.json", "share/VERIFIED_URL.txt", "verifiedUrl", "verifiedUrlFile", "urlKind", "voiceLeadAudition", "RVC_LEAD_AUDITION.md", "reference_audio", "RUN_PLAY_LEAD_VOICE.cmd", "RUN_HARDWARE_SIM_BASELINE.cmd", "hardware_simulation_baseline.log", "simulation/hardware-sim/latest", "comparison baseline only", "run_hardware_simulation.ps1", "RUN_SIM_HARDWARE_COMPARE.cmd", "compare_hardware_sim_baseline.ps1", "SIM_HARDWARE_COMPARE.md", "SIM_HARDWARE_COMPARE.json", "advisory sim-vs-real", "compareCommand", "compareReport", "RUN_ANDROID_APK_INSTALL.cmd", "install_android_companion_apk.ps1", "android/apk-install", "apkInstallCommand", "android_apk_install.json", "RUN_ANDROID_COMPANION_PROBE.cmd", "run_android_companion_probe.ps1", "android/companion-probe", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "run_android_companion_soak.ps1", "android/screen-off-soak", "screenOffSoakCommand", "android_companion_soak.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "run_android_udp_beacon_probe.ps1", "android/udp-beacon-probe", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "capture_android_companion_logcat.ps1", "android/logcat", "logcatCommand", "android_companion_logcat.json", "Android dashboard connected state", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state", "androidCompanionProbes", "RUN_SPEECH_MOUTH_DEMO.cmd", "RUN_SPEAK_ALL_INTENTS.cmd", "speak_all_intents_serial.log", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speechDir", "lead_voice.speech_envelope.json", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "leadAudition", "leadSourcePath", "RUN_ADD_MEDIA.cmd", "add_hardware_evidence_media.ps1", "media_manifest.json", "RUN_PROGRESS_CHECK.cmd", "check_hardware_evidence_progress.ps1", "RUN_ROLLOUT_STATUS.cmd", "export_rollout_status.ps1", "ROLLOUT_STATUS.md", "RUN_CONSUMER_PROMOTION_CHECK.cmd", "verify_consumer_promotion.ps1", "CompanionV1EvidenceRoot", "companion-v1-evidence-ready", "companionV1EvidenceRoot", "New-PowerShellCommandFile", "`$global:LASTEXITCODE", "exit /b %ERRORLEVEL%")) {
   if ($hardwareStarterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_hardware_evidence.ps1 missing acceptance artifact capture logic: $pattern"
+  }
+}
+
+$androidEvidencePacketContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_evidence_packet_contract.ps1") -Raw
+foreach ($pattern in @("CompanionV1EvidenceRoot", "consumerPromotionPackageArg", "companion-v1-evidence-ready", "companionV1EvidenceRoot", "Consumer promotion requires the exact release ZIP", "Android evidence packet contract tests passed")) {
+  if ($androidEvidencePacketContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_evidence_packet_contract.ps1 missing promotion command generator coverage: $pattern"
   }
 }
 
@@ -1053,7 +1106,7 @@ foreach ($pattern in @("stackchan.ci-account-block-exception.v1", "stackchan.git
 }
 
 $consumerPromotionVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_consumer_promotion.ps1") -Raw
-foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "ActionsStatusPath", "export_github_actions_status.ps1", "successful live GitHub Actions status", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "ExternalAccountCiExceptionPath", "Assert-CiExceptionRecord", "stackchan.ci-account-block-exception.v1", "riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady", "voice_source_provenance.yaml", "pending-production-source", "Assert-VoiceStatusReportsReady", "voice_source_status.json is not production-source-ready", "rvc_voice_base_status.json is not consumer approved", "rvc_voice_base_status.json is not distribution approved", "ProjectLicensePath", "Assert-ProjectLicenseReady", "CameraFollowSummaryPath", "Assert-CameraFollowReady", "BodySensorReportPath", "Assert-BodySensorReady", "FullSystemSoakSummaryPath", "Assert-FinalSoakReady", "ExpectedFirmwareSourceCommit", "same installed firmware SHA-256", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence")) {
+foreach ($pattern in @("verify_release_package.ps1", "verify_hardware_evidence.ps1", "github_actions_status.json", "ActionsStatusPath", "export_github_actions_status.ps1", "successful live GitHub Actions status", "missingRequiredWorkflows", "required workflow evidence", "external-account-billing-or-spending-limit", "ExternalAccountCiExceptionPath", "Assert-CiExceptionRecord", "stackchan.ci-account-block-exception.v1", "riskAccepted", "localReleaseVerificationPassed", "strictHardwareEvidencePassed", "productionVoiceSourceReady", "voice_source_provenance.yaml", "pending-production-source", "Assert-VoiceStatusReportsReady", "voice_source_status.json is not production-source-ready", "rvc_voice_base_status.json is not consumer approved", "rvc_voice_base_status.json is not distribution approved", "ProjectLicensePath", "Assert-ProjectLicenseReady", "CameraFollowSummaryPath", "Assert-CameraFollowReady", "BodySensorReportPath", "Assert-BodySensorReady", "FullSystemSoakSummaryPath", "Assert-FinalSoakReady", "ExpectedFirmwareSourceCommit", "same installed firmware SHA-256", "Consumer promotion gate verified", "AllowMissingMedia cannot be used for consumer promotion", "strict media evidence", "CompanionV1EvidenceRoot", "Assert-CompanionV1PromotionReady", "check_companion_v1_evidence_bundle.ps1", "stackchan.companion-v1-evidence-bundle-check.v1", "companion-v1-evidence-ready", "Companion v1 aggregate source commit mismatch", "Companion v1 aggregate firmware source commit mismatch", "Companion v1 aggregate release version mismatch", "Companion v1 hardware evidence root does not match the packet being promoted", "Companion v1 release ZIP SHA-256 does not match the package being promoted", "Consumer promotion requires -PackageZip")) {
   if ($consumerPromotionVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_consumer_promotion.ps1 missing promotion gate logic: $pattern"
   }
@@ -1062,8 +1115,15 @@ if ($consumerPromotionVerifierText -match "evidenceArgs\s*\+=\s*['`"]-AllowMissi
   throw "tools/verify_consumer_promotion.ps1 must not forward AllowMissingMedia to hardware evidence verification"
 }
 
+$consumerPromotionContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_consumer_promotion_contract.ps1") -Raw
+foreach ($pattern in @("CompanionV1EvidenceRoot", "Assert-CompanionV1PromotionReady", "-ExpectedSourceCommit `$ExpectedCommit", "-ExpectedFirmwareSourceCommit `$ExpectedFirmwareSourceCommit", "-ExpectedHardwareEvidenceRoot `$EvidenceRoot", "-ExpectedPackageZipSha256 `$promotionPackageZipSha256", "Consumer promotion contract verified")) {
+  if ($consumerPromotionContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_consumer_promotion_contract.ps1 missing aggregate Companion v1 promotion coverage: $pattern"
+  }
+}
+
 $releaseAssetContractText = Get-Content -LiteralPath (Join-PackagePath "tools/release_asset_contract.ps1") -Raw
-foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3")) {
+foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "Get-ReleaseCompanionAssetEntries", "firmware-display-only.bin", "firmware-servo-calibration.bin", "stackchan_spark_audition_bright_robot_greeting.mp3", "stackchan_spark_thinking.mp3", "stackchan-companion-android-`$Version.apk", "stackchan-companion-android-`$Version.aab", "stackchan-companion-windows-`$Version.msi", "stackchan-companion-linux-`$Version.deb", "stackchan-companion-macos-`$Version.dmg", "COMPANION_RELEASE_EVIDENCE.json")) {
   if ($releaseAssetContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/release_asset_contract.ps1 missing required release asset contract logic: $pattern"
   }
@@ -1077,7 +1137,7 @@ foreach ($pattern in @("Get-ReleaseBaseAssetEntries", "Get-ReleaseFinalAssetEntr
 }
 
 $publishedVerifierText = Get-Content -LiteralPath (Join-PackagePath "tools/verify_published_release.ps1") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "release_assets.json", "stackchan.release-assets.v1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "allowedAssetNames", "Unexpected release asset")) {
+foreach ($pattern in @("release_asset_contract.ps1", "release_assets.json", "stackchan.release-assets.v1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseAllowedAuditAssetEntries", "Get-ReleaseCompanionAssetEntries", "ZipSidecarPath", ".zip.sha256", "Published ZIP SHA256 sidecar", "allowedAssetNames", "Unexpected release asset", "stackchan.companion-release-evidence.v1", "uploadSigningRequired", "upload-key", "desktopPackageEvidenceRequired", "desktopDistributionTrustRequired", "authenticode-sha256-timestamped", "developer-id-notarized-stapled", "Assert-GitHubProvenanceAttestation", "gh attestation verify", "attestedPaths", "expectedAssetEntries", "packageSha256", "runtimeSha256", "processedFileCount", "installerAppJarSha256", "installerRuntimeSha256", "installerBrainFiles", "Assert-CompanionEvidenceHash")) {
   if ($publishedVerifierText -notmatch [regex]::Escape($pattern)) {
     throw "tools/verify_published_release.ps1 missing required published ZIP sidecar verification logic: $pattern"
   }
@@ -1091,7 +1151,7 @@ foreach ($pattern in @("stackchan.release-audit.v1", "verify_published_release.p
 }
 
 $releaseWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/release.yml") -Raw
-foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", '$releaseAssetPaths', '@releaseAssetPaths')) {
+foreach ($pattern in @("release_asset_contract.ps1", "verify_release_asset_contract.ps1", "Get-ReleaseFinalAssetEntries", "Get-ReleaseCompanionAssetEntries", "FirmwareAssetRoot `$stageDir", "FirmwareAssetPathMode Stage", "workflow-assets-", "companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "gradle/actions/setup-gradle@v6", "check_companion_release_version.ps1", "check_android_play_release_readiness.ps1 -RequireUploadSigning -Json", "check_desktop_release_signing_readiness.ps1", "Validate production desktop signing credentials", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", ":app-desktop:notarizeDmg", "actions/attest@v4", "media/voice/*", "release_assets.json", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", '$releaseAssetPaths', '@releaseAssetPaths')) {
   if ($releaseWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/release.yml missing release asset contract upload logic: $pattern"
   }
@@ -1101,10 +1161,55 @@ if ($releaseWorkflowText -notmatch 'package_release\.ps1 -Version' -or
   throw "provenance/release.yml must let package_release.ps1 build all required firmware profiles on a clean tag runner."
 }
 
+$signingReadinessWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/companion-signing-readiness.yml") -Raw
+foreach ($pattern in @("workflow_dispatch", "contents: read", "android-upload-key", "actions/setup-java@v5", "STACKCHAN_ANDROID_KEYSTORE_B64", "check_android_play_release_readiness.ps1", "RequireUploadSigning", "check_desktop_release_signing_readiness.ps1", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_MACOS_CERTIFICATE_B64", "RequireNativeToolchain", "ValidateAppleNotaryCredentials")) {
+  if ($signingReadinessWorkflowText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/companion-signing-readiness.yml missing safe credential validation logic: $pattern"
+  }
+}
+foreach ($forbidden in @("gh release", "upload-artifact", "contents: write")) {
+  if ($signingReadinessWorkflowText -match [regex]::Escape($forbidden)) {
+    throw "provenance/companion-signing-readiness.yml must not publish release assets: $forbidden"
+  }
+}
+
+$releaseCredentialHygieneText = Get-Content -LiteralPath (Join-PackagePath "tools/check_release_credential_hygiene.ps1") -Raw
+foreach ($pattern in @("stackchan.release-credential-hygiene.v1", "release-credential-hygiene-ready", "blocked-release-credential-hygiene", "check-ignore", "ls-files", "tracked-private-key-bundles", "tracked-private-key-markers", "ignore-pattern-pfx", "ignore-pattern-pkcs12")) {
+  if ($releaseCredentialHygieneText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_release_credential_hygiene.ps1 missing private signing credential protection: $pattern"
+  }
+}
+
+$releaseCredentialHygieneContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_release_credential_hygiene_contract.ps1") -Raw
+foreach ($pattern in @("current source tree has no tracked private signing credentials", "all private-key bundle extensions are ignored", "tracked private-key bundle extensions are rejected", "tracked PEM private key markers are rejected", "missing private-key ignore patterns are rejected", "every release package runs credential hygiene before building", "companion CI runs the release credential hygiene contract", "Release credential hygiene contract tests passed")) {
+  if ($releaseCredentialHygieneContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_release_credential_hygiene_contract.ps1 missing credential hygiene coverage: $pattern"
+  }
+}
+
+$companionCiCandidateText = Get-Content -LiteralPath (Join-PackagePath "tools/download_companion_ci_candidate.ps1") -Raw
+foreach ($pattern in @("stackchan.companion-ci-candidate.v1", "companion-ci-candidate-ready", "exact-source-ci-rehearsal-artifacts", "substitutesForTaggedRelease", "substitutesForPhysicalEvidence", "publicReleaseReady", "COMPANION_RELEASE_EVIDENCE.json", "release evidence source mismatch", "does not match companion release evidence")) {
+  if ($companionCiCandidateText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/download_companion_ci_candidate.ps1 missing exact-source artifact handoff protection: $pattern"
+  }
+}
+
+$companionCiCandidateContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_companion_ci_candidate_contract.ps1") -Raw
+foreach ($pattern in @("Firmware workflow checks out and records the exact PR branch head", "complete exact-source CI candidate is accepted and inventoried", "PR merge/head source mismatch is rejected", "failed companion job is rejected", "missing platform artifact is rejected", "expired candidate artifact is rejected", "stale embedded release evidence is rejected", "downloaded artifact hash tampering is rejected", "Companion CI candidate contract tests passed")) {
+  if ($companionCiCandidateContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_companion_ci_candidate_contract.ps1 missing exact-source candidate coverage: $pattern"
+  }
+}
+
 $firmwareWorkflowText = Get-Content -LiteralPath (Join-PackagePath "provenance/firmware.yml") -Raw
 foreach ($pattern in @("Install bridge test dependencies", "sudo apt-get install -y ffmpeg", "python -m pip install -r bridge/requirements-vision.txt", "Verify bundled persona packs", "verify_persona_pack.py glow", "Compile native logic with Glow persona", "STACKCHAN_PERSONA: glow", "Run LiteRT-LM contract smoke", "litert_lm_contract_smoke.py", "litert-lm-contract-smoke", "LITERT_LM_SMOKE.md")) {
   if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/firmware.yml missing LiteRT-LM contract smoke workflow support: $pattern"
+  }
+}
+foreach ($pattern in @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "STACKCHAN_CI_SOURCE_SHA", "github.event.pull_request.head.sha", "companion-platform-builds", "companion-android-emulator-smoke", "python-version: `"3.12`"", "gradle/actions/setup-gradle@v6", "test_android_emulator_release_evidence_contract.ps1", "test_desktop_package_evidence_contract.ps1", "test_desktop_release_signing_readiness_contract.ps1", "test_release_credential_hygiene_contract.ps1", "Run release credential hygiene contract", "test_companion_ci_candidate_contract.ps1", "Run exact-source companion CI candidate contract", "test_desktop_target_install_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "linux-package-evidence.json", "macos-package-evidence.json", "windows-package-evidence.json", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence")) {
+  if ($firmwareWorkflowText -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/firmware.yml missing native desktop package/runtime PR evidence support: $pattern"
   }
 }
 
@@ -1125,7 +1230,7 @@ foreach ($docPath in @("README.md", "docs/RELEASE_PROCESS.md")) {
 }
 
 $releaseProcessText = Get-Content -LiteralPath (Join-PackagePath "docs/RELEASE_PROCESS.md") -Raw
-foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json/md", "artifact SHA256s", "libs.versions.toml", "-RequireArtifacts")) {
+foreach ($pattern in @("export_companion_release_evidence.cmd", "COMPANION_RELEASE_EVIDENCE.json/md", "artifact SHA256s", "libs.versions.toml", "-RequireArtifacts", "-RequireUploadSigning", "-RequireAndroidEmulatorEvidence", "-RequireDesktopPackageEvidence", "-RequireDesktopDistributionTrust", "Companion Signing Readiness", "check_desktop_release_signing_readiness.cmd", "check_release_credential_hygiene.cmd", "download_companion_ci_candidate.cmd", "COMPANION_CI_CANDIDATE.json", "STACKCHAN_CI_SOURCE_SHA", "RequireNativeToolchain", "timestamped Authenticode", "Developer ID", "stapled", "provenance attestations", "API 35 emulator launch evidence", "APK SHA-256 matches the release", "package SHA-256", "installer application JAR", "installer-derived runtime SHA-256")) {
   if ($releaseProcessText -notmatch [regex]::Escape($pattern)) {
     throw "docs/RELEASE_PROCESS.md missing companion C8 release evidence guidance: $pattern"
   }
@@ -1160,9 +1265,30 @@ foreach ($pattern in @("On-device wake phrase", "microphone capture", "wake-gate
     throw "README.md missing mic capture status guidance: $pattern"
   }
 }
-foreach ($pattern in @("public v0.2 release candidate", "formal one-hour actuator acceptance", "more than five hours", "exact paired candidate", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
+foreach ($pattern in @("public v0.2 release candidate", "Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop", "public build", "FIRST_DEPLOY_STATUS.md", "CONVERSATION_V2_ROADMAP.md")) {
   if ($repoReadmeText -notmatch [regex]::Escape($pattern)) {
     throw "README.md missing current release-candidate status or navigation: $pattern"
+  }
+}
+
+$productionReadinessText = Get-Content -LiteralPath (Join-PackagePath "docs/PRODUCTION_READINESS.md") -Raw
+foreach ($pattern in @("Current status (2026-07-13)", "corrected single-owner exact-image", "28807 s", "5643/5643", "77/77", "bounded final motion stop evidence")) {
+  if ($productionReadinessText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/PRODUCTION_READINESS.md missing corrected exact-image soak evidence: $pattern"
+  }
+}
+
+$hardwareFeatureRoadmapText = Get-Content -LiteralPath (Join-PackagePath "docs/HARDWARE_FEATURE_ROADMAP.md") -Raw
+foreach ($pattern in @("Current status (2026-07-13)", "corrected exact release image", "28807 s", "5643/5643", "77/77", "verified off after completion")) {
+  if ($hardwareFeatureRoadmapText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/HARDWARE_FEATURE_ROADMAP.md missing corrected exact-image soak evidence: $pattern"
+  }
+}
+
+$powerBlackoutForensicsText = Get-Content -LiteralPath (Join-PackagePath "docs/POWER_BLACKOUT_FORENSICS.md") -Raw
+foreach ($pattern in @('corrected `v0.2.0` exact-image candidate', "28807 s", "5643/5643", "77/77", "bounded final stop evidence", "Historical full-off root cause remains unidentified")) {
+  if ($powerBlackoutForensicsText -notmatch [regex]::Escape($pattern)) {
+    throw "docs/POWER_BLACKOUT_FORENSICS.md missing corrected exact-image soak evidence: $pattern"
   }
 }
 
@@ -1416,6 +1542,18 @@ foreach ($pattern in @("gFaceControlQueue", "gMotionControlQueue", "FaceControlI
     throw "provenance/src/main.cpp missing bench control support: $pattern"
   }
 }
+$singleOwnerCalls = [ordered]@{
+  'updateBridgeNetwork\s*\(' = 2
+  'pollBridgeOutputs\s*\(' = 4
+  'pollBridgeDebugServer\s*\(' = 2
+  'ensureWakeSrStarted\s*\(' = 2
+}
+foreach ($entry in $singleOwnerCalls.GetEnumerator()) {
+  $actualCount = [regex]::Matches($mainText, $entry.Key).Count
+  if ($actualCount -ne $entry.Value) {
+    throw "provenance/src/main.cpp violates single-owner bridge runtime contract for $($entry.Key): expected $($entry.Value), found $actualCount"
+  }
+}
 foreach ($pattern in @("submitCapturedAudioWindowToBridgeUplink", "lastPcmWindow", "lastPcmSampleCount", "submitPcmChunk", "audioWindowsBefore")) {
   if ($mainText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/main.cpp missing mic capture to uplink handoff support: $pattern"
@@ -1452,7 +1590,7 @@ foreach ($pattern in @("stackchan.android-toolchain-check.v1", "JAVA_HOME", "jav
 }
 
 $androidPlayReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_play_release_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-listing-full-description", "Gemma-4-E2B", "raw microphone audio is not stored")) {
+foreach ($pattern in @("stackchan.android-play-release-readiness.v1", "RequireUploadSigning", "uploadSigningRequired", "ExportParameters", "Play high-resolution icon", "Gradle Play upload signing inputs", "stackchan.allowLabDebugReleaseSigning", "Release tasks fail closed", "keytool private-key validation", "RSACertificateExtensions", "project policy requires at least 4096 bits", "2033-10-23 UTC", "certificate SHA-256", "CI builds Android release bundle", "CI runs Android emulator launch smoke", "Tag release validates upload key and exact release APK launch", "system-images;android-35;aosp_atd;x86_64", "test_android_emulator_launch.ps1", "RequireAndroidEmulatorEvidence", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-listing-full-description", "Gemma-4-E2B", "raw microphone audio is not stored")) {
   if ($androidPlayReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_release_readiness.ps1 missing Android Play release readiness logic: $pattern"
   }
@@ -1462,6 +1600,20 @@ $androidPlayStoreEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePat
 foreach ($pattern in @("stackchan.android-play-store-evidence.v1", "play-internal-testing-ready", "internal-testing-ready", "applicationId", "releaseAabSha256", "releaseAabSha256 =", "versionName =", "versionCode =", "playSigningEnabled", "playConsoleReleaseName", "testerGroup", "uploadedAtUtc", "play-console-release", "tester-group", "uploaded-at-utc", "internalTestingInstallStatus", "screenshots", "sourceCommit for", "appVersion for", "Source commit:", "App version:", "Decision: pass", "DATA_SAFETY_REVIEW.md", "POLICY_REVIEW.md")) {
   if ($androidPlayStoreEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_android_play_store_evidence.ps1 missing Android Play Store evidence logic: $pattern"
+  }
+}
+
+$privacyPolicyDeploymentCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_privacy_policy_deployment.ps1") -Raw
+foreach ($pattern in @("stackchan.privacy-policy-deployment-check.v1", "privacy-policy-deployment-ready", "live-https", "Published policy byte identity", "Published policy disclosures", "sourceSha256", "servedSha256")) {
+  if ($privacyPolicyDeploymentCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_privacy_policy_deployment.ps1 missing privacy-policy deployment verification logic: $pattern"
+  }
+}
+
+$privacyPolicyDeploymentContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_privacy_policy_deployment_contract.ps1") -Raw
+foreach ($pattern in @("exact published privacy policy bytes are accepted", "tampered published privacy policy bytes are rejected", "noncanonical privacy policy URL is rejected", "stale privacy policy source hash is rejected", "pending privacy policy deployment status is rejected", "5/5")) {
+  if ($privacyPolicyDeploymentContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_privacy_policy_deployment_contract.ps1 missing privacy-policy deployment contract coverage: $pattern"
   }
 }
 
@@ -1578,14 +1730,14 @@ foreach ($pattern in @("complete Android Gemma benchmark evidence is accepted", 
 }
 
 $companionReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_readiness.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-screen-off-soak-evidence-contract", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-speech-evidence-contract", "android-controls-evidence-check", "android-controls-evidence-contract", "android-pairing-evidence-check", "android-pairing-evidence-contract", "android-wifi-evidence-check", "android-wifi-evidence-contract", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
+foreach ($pattern in @("stackchan.companion-v1-readiness.v1", "COMPANION_CROSS_PLATFORM_PLAN.md", "protocol-fixtures", "provenance/protocol-fixtures", "ProtocolFixtureConformanceTest.kt", "C0Spike.kt", "android-screen-off-soak-helper", "android-screen-off-soak-evidence-check", "android-screen-off-soak-evidence-contract", "android-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-check", "desktop-v1-evidence-bundle-contract", "companion-v1-consumer-promotion-binding", "desktop-package-evidence-export", "desktop-package-evidence-contract", "desktop-managed-runtime-native-package-matrix", "desktop-target-install-evidence", "desktop-target-install-evidence-contract", "voice-source-readiness-contract", "android-play-release-prep", "android-play-store-evidence-check", "android-diagnostics-export-evidence-check", "android-diagnostics-export-evidence-contract", "android-speech-evidence-check", "android-speech-evidence-contract", "android-controls-evidence-check", "android-controls-evidence-contract", "android-pairing-evidence-check", "android-pairing-evidence-contract", "android-wifi-evidence-check", "android-wifi-evidence-contract", "android-gemma-evidence-check", "android-gemma-evidence-contract", "google-play-store-screenshots", "google-play-internal-testing-upload", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "bridge/android_companion_soak.py", "check_android_screen_off_soak_evidence.ps1", "physical-robot-hardware-validation", "android-push-to-talk-stt-on-target-phone", "android-settings-handoff-on-target-robot", "android-qr-short-code-pairing-on-target-robot", "android-wifi-provisioning-on-target-robot", "desktop-target-installs-on-operator-workstations", "desktop-production-signing-credentials", "c8-tagged-release-distribution", "source-ready-pending-hardware")) {
   if ($companionReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_readiness.ps1 missing companion v1 readiness logic: $pattern"
   }
 }
 
 $companionReleaseEvidenceExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_companion_release_evidence.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-release-evidence.v1", "COMPANION_RELEASE_EVIDENCE.json", "COMPANION_RELEASE_EVIDENCE.md", "toolchainPins", "Get-FileHash", "AndroidArtifactRoot", "DesktopArtifactRoot", "ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "androidBundleSigning", "android-release-aab-signature", "jarsigner", "RequireArtifacts", "evidence-pending-artifacts", "blocked-missing-artifacts")) {
+foreach ($pattern in @("stackchan.companion-release-evidence.v1", "COMPANION_RELEASE_EVIDENCE.json", "COMPANION_RELEASE_EVIDENCE.md", "toolchainPins", "Get-FileHash", "AndroidArtifactRoot", "AndroidEmulatorEvidencePath", "DesktopArtifactRoot", "DesktopPackageEvidenceRoot", "ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "androidBundleSigning", "android-release-aab-signature", "jarsigner", "RequireArtifacts", "RequireUploadSigning", "RequireAndroidEmulatorEvidence", "androidEmulatorEvidenceRequired", "android-emulator-release-apk-evidence", "check_android_emulator_release_evidence.ps1", "RequireDesktopPackageEvidence", "desktopPackageEvidenceRequired", "RequireDesktopDistributionTrust", "desktopDistributionTrustRequired", "distributionTrustStatus", "authenticode-sha256-timestamped", "developer-id-notarized-stapled", "installerAppJarSha256", "installerRuntimeSha256", "installerBrainFiles", "desktop-native-package-runtime-evidence", "desktop-native-distribution-trust", "blockingPending", "evidence-pending-artifacts", "blocked-release-evidence")) {
   if ($companionReleaseEvidenceExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_companion_release_evidence.ps1 missing companion release evidence export logic: $pattern"
   }
@@ -2145,7 +2297,7 @@ foreach ($pattern in @("STACKCHAN_ENABLE_WIFI_BRIDGE", "STACKCHAN_WIFI_SSID", "S
 }
 
 $desktopPythonRuntimeDocText = Get-Content -LiteralPath (Join-PackagePath "docs/DESKTOP_PYTHON_RUNTIME.md") -Raw
-foreach ($pattern in @("Desktop Managed Python Runtime", "python-runtime/", "runtime/python/", "stackchan-python-runtime.json", "prepare_desktop_python_runtime.ps1", "check_desktop_python_runtime_payload.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT")) {
+foreach ($pattern in @("Desktop Managed Python Runtime", "python-runtime/", "runtime/python/", "stackchan-python-runtime.json", "prepare_desktop_python_runtime.ps1", "check_desktop_python_runtime_payload.ps1", "export_desktop_package_evidence.ps1", "PackageExtractionRoot", "RequireInstallerPayload", "installer application JAR", "package SHA-256", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT")) {
   if ($desktopPythonRuntimeDocText -notmatch [regex]::Escape($pattern)) {
     throw "docs/DESKTOP_PYTHON_RUNTIME.md missing managed runtime guidance: $pattern"
   }
@@ -2172,29 +2324,105 @@ foreach ($pattern in @("placeholder sha256 is rejected", "placeholder runtime so
   }
 }
 
+$androidUploadSigningContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_upload_signing_contract.ps1") -Raw
+foreach ($pattern in @("manual signing readiness workflow validates Android upload key without publishing", "tagged Android release requires upload signing readiness", "required upload signing credentials fail closed when missing", "valid 4096-bit private upload key is accepted", "missing upload-key alias is rejected", "wrong keystore password is rejected", "wrong private-key password is rejected", "weak 2048-bit upload key is rejected", "Android debug certificate subject is rejected", "upload certificate expiring before the Play minimum is rejected", "output exposed a contract credential")) {
+  if ($androidUploadSigningContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_upload_signing_contract.ps1 missing Android upload signing contract logic: $pattern"
+  }
+}
+
+$androidEmulatorLaunchSmokeText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_emulator_launch.ps1") -Raw
+foreach ($pattern in @("stackchan.android-emulator-launch-smoke.v1", "ro.kernel.qemu=1", "POST_NOTIFICATIONS", "MainActivity is not the top resumed activity", "CompanionBridgeService is absent after launch", "fatalProcessMatches", "substitutesForPhysicalEvidence", "emulator-install-launch-service-smoke-only")) {
+  if ($androidEmulatorLaunchSmokeText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_emulator_launch.ps1 missing Android emulator launch smoke logic: $pattern"
+  }
+}
+
+$androidEmulatorReleaseEvidenceCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_android_emulator_release_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.android-emulator-release-evidence-check.v1", "stackchan.android-emulator-launch-smoke.v1", "MinApiLevel = 35", "dev.stackchan.companion", "MainActivity was not resumed", "CompanionBridgeService was not present", "fatalProcessMatches must be zero", "substitutesForPhysicalEvidence=false", "APK SHA-256 does not match the release APK")) {
+  if ($androidEmulatorReleaseEvidenceCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_android_emulator_release_evidence.ps1 missing release APK binding logic: $pattern"
+  }
+}
+
+$androidEmulatorReleaseEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_android_emulator_release_evidence_contract.ps1") -Raw
+foreach ($pattern in @("matching release APK evidence", "stale APK hash is rejected", "old emulator API is rejected", "failed launch smoke is rejected", "non-resumed activity is rejected", "missing bridge service is rejected", "fatal process match is rejected", "physical-evidence substitution is rejected", "wrong package identity is rejected", "9/9 passed")) {
+  if ($androidEmulatorReleaseEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_android_emulator_release_evidence_contract.ps1 missing contract coverage: $pattern"
+  }
+}
+
+$desktopPackageEvidenceExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_desktop_package_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-package-evidence.v1", "stackchan.desktop-python-runtime-prepare.v1", "stackchan.desktop-python-runtime-payload.v1", "Get-RuntimePayloadHash", "native-app-resources", "Expand-DesktopPackage", "RequireInstallerPayload", "RequireLaunchEvidence", "launchEvidence", "processedPayloadSha256", "processedFileCount", "Installer runtime payload hash does not match processed Gradle resources", "PackageExtractionRoot")) {
+  if ($desktopPackageEvidenceExporterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/export_desktop_package_evidence.ps1 missing native package/runtime evidence logic: $pattern"
+  }
+}
+
+$desktopPackageLaunchText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_package_launch.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-package-launch-evidence.v1", "stackchan.desktop-packaged-runtime-smoke.v1", "exact-native-package-extraction-and-headless-launch", "package-extraction", "substitutesForTargetInstall", "--package-smoke-output=", "--package-smoke-context=")) {
+  if ($desktopPackageLaunchText -notmatch [regex]::Escape($pattern)) { throw "tools/test_desktop_package_launch.ps1 missing exact-package launch logic: $pattern" }
+}
+
+$desktopTargetInstallToolText = Get-Content -LiteralPath (Join-PackagePath "tools/install_desktop_companion_package.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-target-install-evidence.v1", "operator-target-workstation", "ci-native-runner", "msiexec-install", "dpkg-install", "dmg-application-copy", "installed-native-package-headless-runtime-probe", "exact-native-package-install-and-headless-launch", "substitutesForHumanAcceptance", "preExistingRegistrations", "replacementRequested", "replacementPerformed", "uninstallAttempts", "postInstallRegistrations", "elevatedAdministrator")) {
+  if ($desktopTargetInstallToolText -notmatch [regex]::Escape($pattern)) { throw "tools/install_desktop_companion_package.ps1 missing native target-install evidence logic: $pattern" }
+}
+
+$desktopTargetInstallCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_target_install_evidence.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-target-install-evidence-check.v1", "desktop-target-install-ready", "RequireOperatorTarget", "expected-package-sha256", "expected-source-commit", "installed-runtime-probe", "human-acceptance-scope", "windows-elevation", "windows-install-registration", "windows-exact-package-replacement")) {
+  if ($desktopTargetInstallCheckerText -notmatch [regex]::Escape($pattern)) { throw "tools/check_desktop_target_install_evidence.ps1 missing native target-install validation: $pattern" }
+}
+
+$desktopTargetInstallContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_target_install_evidence_contract.ps1") -Raw
+foreach ($pattern in @("operator target-install evidence is accepted for Windows, Linux, and macOS", "explicit Windows replacement evidence is accepted", "implicit Windows maintenance-mode replacement is rejected", "non-elevated Windows install evidence is rejected", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")) {
+  if ($desktopTargetInstallContractText -notmatch [regex]::Escape($pattern)) { throw "tools/test_desktop_target_install_evidence_contract.ps1 missing target-install contract coverage: $pattern" }
+}
+
+$desktopPackageEvidenceContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_package_evidence_contract.ps1") -Raw
+foreach ($pattern in @("tagged release requires native signing, notarization, and provenance attestation", "complete installer-derived desktop package evidence is accepted", "installed launch context cannot replace package-extraction evidence", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "aggregate companion evidence rejects missing native distribution trust", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")) {
+  if ($desktopPackageEvidenceContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_desktop_package_evidence_contract.ps1 missing native package/runtime evidence contract coverage: $pattern"
+  }
+}
+
+$desktopSigningReadinessCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_release_signing_readiness.ps1") -Raw
+foreach ($pattern in @("stackchan.desktop-signing-readiness.v1", "private code-signing certificate", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "notarytool", "signtool.exe", "does not chain to a root trusted by the native host", "temporary Authenticode signing probe", "temporary Developer ID signing probe", "pending-credentials")) {
+  if ($desktopSigningReadinessCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_desktop_release_signing_readiness.ps1 missing signing credential validation: $pattern"
+  }
+}
+
+$desktopSigningReadinessContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_release_signing_readiness_contract.ps1") -Raw
+foreach ($pattern in @("manual signing readiness workflow validates without publishing", "tagged release runs native desktop signing preflight", "companion CI runs the desktop signing readiness contract", "invalid Windows PKCS12 base64 is rejected", "wrong Windows PKCS12 password is rejected", "Windows certificate without code-signing EKU is rejected", "near-expiry Windows certificate is rejected", "undersized Windows signing key is rejected", "valid Windows signing credential material is accepted", "valid macOS Developer ID credential material is accepted", "mismatched macOS signing identity is rejected", "mismatched Apple team ID is rejected", "invalid Apple notarization account shape is rejected", "Desktop release signing readiness contract passed")) {
+  if ($desktopSigningReadinessContractText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/test_desktop_release_signing_readiness_contract.ps1 missing signing credential contract coverage: $pattern"
+  }
+}
+
 $desktopV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_desktop_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "runtimeSource", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "stackchan.desktop-target-install-evidence.v1", "windowsTargetInstallReport", "macosTargetInstallReport", "linuxTargetInstallReport", "Test-DesktopTargetInstallReport", "RequireOperatorTarget", "Target installation decision: pass", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "runtimeSource", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")) {
   if ($desktopV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_desktop_v1_evidence_bundle.ps1 missing desktop v1 evidence bundle logic: $pattern"
   }
 }
 
 $desktopV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_desktop_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "missing Desktop v1 runtime payload summary is rejected", "missing Desktop v1 runtime payload source is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "elevatedAdministrator", "postInstallRegistrations", "missing Desktop v1 runtime payload summary is rejected", "missing Desktop v1 runtime payload source is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "stale Desktop v1 target-install package hash is rejected", "CI install rehearsal cannot replace Desktop v1 operator target evidence", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")) {
   if ($desktopV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_desktop_v1_evidence_bundle_contract.ps1 missing desktop v1 evidence bundle contract coverage: $pattern"
   }
 }
 
 $companionV1BundleCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_companion_v1_evidence_bundle.ps1") -Raw
-foreach ($pattern in @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "android-v1-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "gemmaBenchmarkProfile", "gemmaBenchmarkMedianMs", "androidGemmaBenchmarkProfile", "androidGemmaBenchmarkMedianMs", "androidDashboardMediaIds", "phone-live-dashboard", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-commit-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "voice-source-commit-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "sourceCommit", "releaseVersion", "applicationId", "apkSha256", "versionCode", "packageEvidence", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Get-Sha256Text", "Convert-ToAndroidVersionName", "Get-AndroidSourceApplicationId", "Test-AndroidApplicationIdMatchesSource", "Get-AndroidSourceVersionCode", "Test-AndroidVersionCodeMatchesSource", "Test-AndroidV1EvidenceSummary", "Test-AndroidReleaseApkHashMatchesReleaseEvidence", "Test-AndroidReleaseAabHashMatchesReleaseEvidence", "Test-DesktopArtifactHashesMatchReleaseEvidence", "Test-ReleasePackageEvidencePresent", "Test-RolloutHardwareEvidence", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")) {
+foreach ($pattern in @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "android-v1-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "gemmaBenchmarkProfile", "gemmaBenchmarkMedianMs", "androidGemmaBenchmarkProfile", "androidGemmaBenchmarkMedianMs", "androidDashboardMediaIds", "phone-live-dashboard", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-commit-match", "desktop-v1-artifact-hashes-match", "desktopDistributionTrustRequired", "authenticode-sha256-timestamped", "developer-id-notarized-stapled", "release-package-evidence-present", "voice-source-commit-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "sourceCommit", "firmwareSourceCommit", "firmware-source-commit", "releaseVersion", "applicationId", "apkSha256", "versionCode", "packageEvidence", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Get-Sha256Text", "Convert-ToAndroidVersionName", "Get-AndroidSourceApplicationId", "Test-AndroidApplicationIdMatchesSource", "Get-AndroidSourceVersionCode", "Test-AndroidVersionCodeMatchesSource", "Test-AndroidV1EvidenceSummary", "Test-AndroidReleaseApkHashMatchesReleaseEvidence", "Test-AndroidReleaseAabHashMatchesReleaseEvidence", "Test-DesktopArtifactHashesMatchReleaseEvidence", "Test-ReleasePackageEvidencePresent", "Test-RolloutHardwareEvidence", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")) {
   if ($companionV1BundleCheckerText -notmatch [regex]::Escape($pattern)) {
     throw "tools/check_companion_v1_evidence_bundle.ps1 missing companion v1 evidence bundle logic: $pattern"
   }
 }
 
 $companionV1BundleContractText = Get-Content -LiteralPath (Join-PackagePath "tools/test_companion_v1_evidence_bundle_contract.ps1") -Raw
-foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "stale Companion v1 Android evidence summary is rejected", "slow or incomplete Companion v1 Android evidence summary is rejected", "Android Gemma benchmark and dashboard media summaries", "mismatched Companion v1 release ZIP hash is rejected", "missing Companion v1 release package evidence is rejected", "mismatched Companion v1 source-readiness commit is rejected", "mismatched Companion v1 hardware evidence root is rejected", "mismatched Companion v1 hardware evidence commit is rejected", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 Android bundle commit is rejected", "mismatched Companion v1 Android applicationId is rejected", "mismatched Companion v1 Android app version is rejected", "mismatched Companion v1 Android app versionCode is rejected", "mismatched Companion v1 Android release APK hash is rejected", "mismatched Companion v1 Android release AAB hash is rejected", "mismatched Companion v1 Desktop package hash is rejected", "mismatched Companion v1 Desktop bundle commit is rejected", "mismatched Companion v1 voice-source commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")) {
+foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle with distinct release and firmware commits is accepted", "missing desktop distribution trust is rejected by final Companion v1 evidence", "legacy same-commit Companion v1 evidence bundle remains accepted", "stale Companion v1 Android evidence summary is rejected", "slow or incomplete Companion v1 Android evidence summary is rejected", "Android Gemma benchmark and dashboard media summaries", "mismatched Companion v1 release ZIP hash is rejected", "missing Companion v1 release package evidence is rejected", "mismatched Companion v1 source-readiness commit is rejected", "mismatched Companion v1 hardware evidence root is rejected", "mismatched Companion v1 hardware evidence commit is rejected", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 Android bundle commit is rejected", "mismatched Companion v1 Android applicationId is rejected", "mismatched Companion v1 Android app version is rejected", "mismatched Companion v1 Android app versionCode is rejected", "mismatched Companion v1 Android release APK hash is rejected", "mismatched Companion v1 Android release AAB hash is rejected", "mismatched Companion v1 Desktop package hash is rejected", "mismatched Companion v1 Desktop bundle commit is rejected", "mismatched Companion v1 voice-source commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")) {
   if ($companionV1BundleContractText -notmatch [regex]::Escape($pattern)) {
     throw "tools/test_companion_v1_evidence_bundle_contract.ps1 missing companion v1 evidence bundle contract coverage: $pattern"
   }
@@ -2570,6 +2798,18 @@ if ($manifest.androidPlayPrivacyPolicy -ne "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
   throw "Manifest androidPlayPrivacyPolicy mismatch: $($manifest.androidPlayPrivacyPolicy)"
 }
 
+if ($manifest.androidPlayPrivacyPolicySite -ne "site/privacy/index.html") {
+  throw "Manifest androidPlayPrivacyPolicySite mismatch: $($manifest.androidPlayPrivacyPolicySite)"
+}
+
+if ($manifest.androidPlayPrivacyPolicyUrl -ne "https://robvanprod.github.io/stackchan_alive/privacy/") {
+  throw "Manifest androidPlayPrivacyPolicyUrl mismatch: $($manifest.androidPlayPrivacyPolicyUrl)"
+}
+
+if ($manifest.pagesWorkflow -ne "provenance/pages.yml") {
+  throw "Manifest pagesWorkflow mismatch: $($manifest.pagesWorkflow)"
+}
+
 if ($manifest.androidPlayIcon -ne "docs/store-assets/play/icon-512.png") {
   throw "Manifest androidPlayIcon mismatch: $($manifest.androidPlayIcon)"
 }
@@ -2603,6 +2843,7 @@ foreach ($pattern in @("Persona pack author is required", "Persona pack author m
     throw "bridge/persona_pack.py missing author provenance guard: $pattern"
   }
 }
+
 foreach ($pattern in @("stackchan.persona-index.v1", "runtime_hot_swap", "persona pack file escapes pack root")) {
   if ($personaPackLibraryText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/persona_pack.py missing persona index guard: $pattern"
@@ -3261,9 +3502,18 @@ foreach ($pattern in @("Cross-Platform Build & Distribution Plan", "Kotlin Multi
 }
 
 $androidCompanionTestPlan = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_COMPANION_TEST_PLAN.md") -Raw
-foreach ($pattern in @("Android Companion Physical Test Plan", "foreground bridge service", "UDP beacon fallback", "manual URL fallback", "check_companion_v1_readiness.cmd", "protocol fixtures", "pending hardware gates", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "tools\install_android_companion_apk.cmd", "android/apk-install/", "android_apk_install.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "tools\run_android_companion_soak.cmd", "android/screen-off-soak/", "android_companion_soak.json", "check_android_screen_off_soak_evidence.cmd", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android-screen-off-soak-ready", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "tools\capture_android_companion_logcat.cmd", "android/logcat/", "android_companion_logcat.txt", "check_android_speech_evidence.cmd", "ANDROID_SPEECH_REVIEW.md", "android-speech-ready", "robot_speech_serial.log", "check_android_controls_evidence.cmd", "ANDROID_CONTROLS_REVIEW.md", "android-controls-ready", "robot_controls_serial.log", "robot_hello_required", "check_android_pairing_evidence.cmd", "ANDROID_PAIRING_REVIEW.md", "android-pairing-ready", "robot_pairing_serial.log", "android_pairing_setup.jpg", "bridge_url_applied", "check_android_wifi_evidence.cmd", "ANDROID_WIFI_REVIEW.md", "android-wifi-ready", "robot_wifi_serial.log", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "check_android_gemma_evidence.cmd", "ANDROID_GEMMA_REVIEW.md", "android-gemma-real-device-ready", "mobile_brain_litert_turn", "mobile_brain_litert_error", "endpoint_hello", "screen off", "robot serial log", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "app_text_turn", "audio_stream_start", "response_end", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "redacts the last text turn", "Removing a stored trusted companion endpoint", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state")) {
+foreach ($pattern in @("Android Companion Physical Test Plan", "API 35 AOSP automated-test emulator smoke", "test_android_emulator_launch.ps1", "substitutesForPhysicalEvidence=false", "foreground bridge service", "UDP beacon fallback", "manual URL fallback", "check_companion_v1_readiness.cmd", "protocol fixtures", "pending hardware gates", "check_android_toolchain.cmd", "SDK Platform 36", "cd companion", ".\gradlew.bat :app-android:assembleRelease", "companion\app-android\build\outputs\apk\release\app-android-release.apk", "RUN_ANDROID_APK_INSTALL.cmd -ApkPath <path-to-apk> -SourceCommit <git-commit>", "source commit", "tools\install_android_companion_apk.cmd", "android/apk-install/", "android_apk_install.json", "RUN_ANDROID_UDP_BEACON_PROBE.cmd", "android/udp-beacon-probe/", "RUN_ANDROID_COMPANION_PROBE.cmd -Url ws://<phone-lan-ip>:8765/bridge", "android/companion-probe/", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd -Url ws://<phone-lan-ip>:8765/bridge", "tools\run_android_companion_soak.cmd", "android/screen-off-soak/", "android_companion_soak.json", "check_android_screen_off_soak_evidence.cmd", "ANDROID_SCREEN_OFF_SOAK_REVIEW.md", "android-screen-off-soak-ready", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "tools\capture_android_companion_logcat.cmd", "android/logcat/", "android_companion_logcat.txt", "check_android_speech_evidence.cmd", "ANDROID_SPEECH_REVIEW.md", "android-speech-ready", "robot_speech_serial.log", "check_android_controls_evidence.cmd", "ANDROID_CONTROLS_REVIEW.md", "android-controls-ready", "robot_controls_serial.log", "robot_hello_required", "check_android_pairing_evidence.cmd", "ANDROID_PAIRING_REVIEW.md", "android-pairing-ready", "robot_pairing_serial.log", "android_pairing_setup.jpg", "bridge_url_applied", "check_android_wifi_evidence.cmd", "ANDROID_WIFI_REVIEW.md", "android-wifi-ready", "robot_wifi_serial.log", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "check_android_gemma_evidence.cmd", "ANDROID_GEMMA_REVIEW.md", "android-gemma-real-device-ready", "mobile_brain_litert_turn", "mobile_brain_litert_error", "endpoint_hello", "screen off", "robot serial log", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "app_text_turn", "audio_stream_start", "response_end", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "redacts the last text turn", "Removing a stored trusted companion endpoint", "robot identity", "firmware/version signal", "last bridge frame", "active brain owner", "foreground service state")) {
   if ($androidCompanionTestPlan -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_COMPANION_TEST_PLAN.md missing expected Android physical test guidance: $pattern"
+  }
+}
+
+foreach ($relativePath in @("docs/DEVICE_BRINGUP.md", "docs/ARRIVAL_DAY_RUNBOOK.md", "QUICKSTART.md", "docs/ANDROID_COMPANION_TEST_PLAN.md", "tools/install_android_companion_apk.ps1")) {
+  $labSigningText = Get-Content -LiteralPath (Join-PackagePath $relativePath) -Raw
+  foreach ($pattern in @("stackchan.allowLabDebugReleaseSigning=true", "intentionally rejected")) {
+    if ($labSigningText -notmatch [regex]::Escape($pattern)) {
+      throw "$relativePath missing explicit fail-closed Android lab signing guidance: $pattern"
+    }
   }
 }
 
@@ -3275,24 +3525,64 @@ foreach ($pattern in @("robotHelloReceived", "robot_hello_required", "audio, set
 }
 
 $androidPlayRelease = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_RELEASE.md") -Raw
-foreach ($pattern in @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "physical robot validation", "Play Console internal testing")) {
+foreach ($pattern in @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "One-Time Upload Key Provisioning", "keytool -genkeypair", "cryptographically validates", "test_android_upload_signing_contract.ps1", "certificate SHA-256 fingerprint", "2033-10-22", "CI runtime smoke", "API 35 AOSP ATD", "exact release APK artifact", "RequireAndroidEmulatorEvidence", "gh secret set STACKCHAN_ANDROID_KEYSTORE_B64", "gh secret list --app actions", "Companion Signing Readiness", "companion-signing-readiness.yml", "two independent offline media", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "physical robot validation", "Play Console internal testing")) {
   if ($androidPlayRelease -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_PLAY_RELEASE.md missing expected Play release guidance: $pattern"
   }
 }
 
 $androidPlayPolicyDeclarations = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md") -Raw
-foreach ($pattern in @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "Foreground service Play Console draft", "connectedDevice", "not directed to children")) {
+foreach ($pattern in @("Google Play Data safety form", "Google Play User Data policy", "Privacy policy URL", "https://robvanprod.github.io/stackchan_alive/privacy/", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Collected only for optional, ephemeral app functionality", "RECORD_AUDIO", "configured Android SpeechRecognizer may transmit microphone audio", "not represented as end-to-end encrypted", "Foreground service Play Console draft", "connectedDevice", "not directed to children")) {
   if ($androidPlayPolicyDeclarations -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_PLAY_POLICY_DECLARATIONS.md missing expected Play policy guidance: $pattern"
   }
 }
 
 $androidPlayPrivacyPolicy = Get-Content -LiteralPath (Join-PackagePath "docs/ANDROID_PLAY_PRIVACY_POLICY.md") -Raw
-foreach ($pattern in @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")) {
+foreach ($pattern in @("Stackchan Companion Privacy Policy", "July 14, 2026", "https://robvanprod.github.io/stackchan_alive/privacy/", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "configured Android speech-recognition service", "may process microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not represented as end-to-end encrypted", "not directed to children")) {
   if ($androidPlayPrivacyPolicy -notmatch [regex]::Escape($pattern)) {
     throw "ANDROID_PLAY_PRIVACY_POLICY.md missing expected Play privacy policy guidance: $pattern"
   }
+}
+
+$privacySite = Get-Content -LiteralPath (Join-PackagePath "site/privacy/index.html") -Raw
+foreach ($pattern in @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")) {
+  if ($privacySite -notmatch [regex]::Escape($pattern)) {
+    throw "site/privacy/index.html missing expected public privacy-policy content: $pattern"
+  }
+}
+
+$privacyDeploymentRecord = Get-Content -LiteralPath (Join-PackagePath "docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json") -Raw | ConvertFrom-Json
+if ($privacyDeploymentRecord.schema -ne "stackchan.privacy-policy-deployment.v1" -or
+    $privacyDeploymentRecord.status -ne "deployed" -or
+    $privacyDeploymentRecord.canonicalUrl -ne "https://robvanprod.github.io/stackchan_alive/privacy/" -or
+    $privacyDeploymentRecord.sourcePath -ne "site/privacy/index.html" -or
+    $privacyDeploymentRecord.sourceSha256 -ne $privacyDeploymentRecord.servedSha256 -or
+    $privacyDeploymentRecord.pagesBuildStatus -ne "built" -or
+    -not [bool]$privacyDeploymentRecord.httpsEnforced) {
+  throw "PRIVACY_POLICY_DEPLOYMENT.json does not bind a built HTTPS deployment to the tracked policy source."
+}
+
+$pagesWorkflow = Get-Content -LiteralPath (Join-PackagePath "provenance/pages.yml") -Raw
+foreach ($pattern in @("Deploy privacy policy", "branches:", "main", "site/**", "pages: write", "id-token: write", "actions/configure-pages@v5", "actions/upload-pages-artifact@v4", "path: site", "actions/deploy-pages@v4")) {
+  if ($pagesWorkflow -notmatch [regex]::Escape($pattern)) {
+    throw "provenance/pages.yml missing expected Pages deployment control: $pattern"
+  }
+}
+
+$companionIdentitySource = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt") -Raw
+if ($companionIdentitySource -notmatch [regex]::Escape('privacyPolicyUrl = "https://robvanprod.github.io/stackchan_alive/privacy/"')) {
+  throw "CompanionIdentity.kt must bind the app to the canonical privacy-policy URL."
+}
+
+$androidMainSource = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") -Raw
+if ($androidMainSource -notmatch [regex]::Escape("Intent.ACTION_VIEW") -or $androidMainSource -notmatch [regex]::Escape("CompanionIdentity.privacyPolicyUrl")) {
+  throw "Android MainActivity.kt must open the canonical privacy-policy URL."
+}
+
+$desktopMainSource = Get-Content -LiteralPath (Join-PackagePath "provenance/companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt") -Raw
+if ($desktopMainSource -notmatch [regex]::Escape("Desktop.Action.BROWSE") -or $desktopMainSource -notmatch [regex]::Escape("CompanionIdentity.privacyPolicyUrl")) {
+  throw "Desktop Main.kt must open the canonical privacy-policy URL."
 }
 
 $johnnyAlivePathway = Get-Content -LiteralPath (Join-PackagePath "docs/JOHNNY_ALIVE_PATHWAY.md") -Raw

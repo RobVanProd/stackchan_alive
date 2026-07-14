@@ -50,6 +50,13 @@ Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "preview_python_resolver.ps1")
 . (Join-Path $PSScriptRoot "release_asset_contract.ps1")
 
+$credentialHygieneJson = (& (Join-Path $PSScriptRoot "check_release_credential_hygiene.ps1") -Root $repoRoot -Json | Out-String)
+$credentialHygieneReport = $credentialHygieneJson | ConvertFrom-Json
+if ($credentialHygieneReport.status -ne "release-credential-hygiene-ready" -or [int]$credentialHygieneReport.failed -ne 0) {
+  throw "Release credential hygiene failed; refusing to build or package from this checkout."
+}
+Write-Host $credentialHygieneJson.Trim()
+
 $releaseLegacyPlatformioCore = Get-StackchanPlatformioCoreDir
 $releasePlatformioCoreRoot = if ($env:OS -eq "Windows_NT") {
   # The repository may be running through a temporary subst drive. Keep the
@@ -176,6 +183,8 @@ $fullOnlineFirmwareDir = Join-Path $firmwareDir "full_online"
 $mediaDir = Join-Path $outDir "media"
 $faceArtifactDir = Join-Path $outDir "artifacts/face"
 $docsDir = Join-Path $outDir "docs"
+$siteDir = Join-Path $outDir "site"
+$privacySiteDir = Join-Path $siteDir "privacy"
 $dataDir = Join-Path $outDir "data"
 $bridgeDir = Join-Path $outDir "bridge"
 $bridgeModelsDir = Join-Path $bridgeDir "models"
@@ -183,7 +192,7 @@ $companionEvidenceDir = Join-Path $outDir "companion/evidence"
 $provenanceDir = Join-Path $outDir "provenance"
 $thirdPartyLicensesDir = Join-Path $outDir "third_party_licenses"
 $toolsDir = Join-Path $outDir "tools"
-New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $fullOnlineFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $dataDir, $bridgeDir, $bridgeModelsDir, $companionEvidenceDir, $provenanceDir, $thirdPartyLicensesDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $displayFirmwareDir, $servoFirmwareDir, $fullOnlineFirmwareDir, $mediaDir, $faceArtifactDir, $docsDir, $siteDir, $privacySiteDir, $dataDir, $bridgeDir, $bridgeModelsDir, $companionEvidenceDir, $provenanceDir, $thirdPartyLicensesDir, $toolsDir | Out-Null
 
 $releaseRootPrefix = [System.IO.Path]::GetFullPath($outDir).TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 
@@ -425,6 +434,9 @@ Copy-Item -LiteralPath "docs/ANDROID_COMPANION_TEST_PLAN.md" -Destination $docsD
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_RELEASE.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ANDROID_PLAY_PRIVACY_POLICY.md" -Destination $docsDir
+Copy-Item -LiteralPath "site/.nojekyll" -Destination $siteDir
+Copy-Item -LiteralPath "site/index.html" -Destination $siteDir
+Copy-Item -LiteralPath "site/privacy/index.html" -Destination $privacySiteDir
 Copy-Item -LiteralPath "docs/BRAIN_MODEL.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/COMPANION_CROSS_PLATFORM_PLAN.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/CONVERSATION_V2_ROADMAP.md" -Destination $docsDir
@@ -659,6 +671,29 @@ $releaseTools = @(
   "tools/check_desktop_python_runtime_payload.ps1",
   "tools/test_desktop_python_runtime_payload_contract.cmd",
   "tools/test_desktop_python_runtime_payload_contract.ps1",
+  "tools/export_desktop_package_evidence.cmd",
+  "tools/export_desktop_package_evidence.ps1",
+  "tools/test_desktop_package_launch.cmd",
+  "tools/test_desktop_package_launch.ps1",
+  "tools/test_desktop_package_evidence_contract.cmd",
+  "tools/test_desktop_package_evidence_contract.ps1",
+  "tools/check_desktop_release_signing_readiness.cmd",
+  "tools/check_desktop_release_signing_readiness.ps1",
+  "tools/test_desktop_release_signing_readiness_contract.ps1",
+  "tools/check_release_credential_hygiene.cmd",
+  "tools/check_release_credential_hygiene.ps1",
+  "tools/test_release_credential_hygiene_contract.cmd",
+  "tools/test_release_credential_hygiene_contract.ps1",
+  "tools/download_companion_ci_candidate.cmd",
+  "tools/download_companion_ci_candidate.ps1",
+  "tools/test_companion_ci_candidate_contract.cmd",
+  "tools/test_companion_ci_candidate_contract.ps1",
+  "tools/install_desktop_companion_package.cmd",
+  "tools/install_desktop_companion_package.ps1",
+  "tools/check_desktop_target_install_evidence.cmd",
+  "tools/check_desktop_target_install_evidence.ps1",
+  "tools/test_desktop_target_install_evidence_contract.cmd",
+  "tools/test_desktop_target_install_evidence_contract.ps1",
   "tools/check_desktop_v1_evidence_bundle.cmd",
   "tools/check_desktop_v1_evidence_bundle.ps1",
   "tools/test_desktop_v1_evidence_bundle_contract.cmd",
@@ -674,6 +709,18 @@ $releaseTools = @(
   "tools/check_android_toolchain.ps1",
   "tools/check_android_play_release_readiness.cmd",
   "tools/check_android_play_release_readiness.ps1",
+  "tools/check_privacy_policy_deployment.cmd",
+  "tools/check_privacy_policy_deployment.ps1",
+  "tools/test_privacy_policy_deployment_contract.cmd",
+  "tools/test_privacy_policy_deployment_contract.ps1",
+  "tools/test_android_upload_signing_contract.cmd",
+  "tools/test_android_upload_signing_contract.ps1",
+  "tools/test_android_emulator_launch.cmd",
+  "tools/test_android_emulator_launch.ps1",
+  "tools/check_android_emulator_release_evidence.cmd",
+  "tools/check_android_emulator_release_evidence.ps1",
+  "tools/test_android_emulator_release_evidence_contract.cmd",
+  "tools/test_android_emulator_release_evidence_contract.ps1",
   "tools/check_android_play_store_evidence.cmd",
   "tools/check_android_play_store_evidence.ps1",
   "tools/check_android_v1_evidence_bundle.cmd",
@@ -682,6 +729,10 @@ $releaseTools = @(
   "tools/check_android_diagnostics_export_evidence.ps1",
   "tools/check_companion_v1_readiness.cmd",
   "tools/check_companion_v1_readiness.ps1",
+  "tools/check_companion_release_version.cmd",
+  "tools/check_companion_release_version.ps1",
+  "tools/test_companion_release_version_contract.cmd",
+  "tools/test_companion_release_version_contract.ps1",
   "tools/export_companion_release_evidence.cmd",
   "tools/export_companion_release_evidence.ps1",
   "tools/preview_python_resolver.ps1",
@@ -904,6 +955,8 @@ Copy-Item -LiteralPath "partitions_esp_sr_16.csv" -Destination $provenanceDir
 Copy-Item -LiteralPath "requirements-preview.txt" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/firmware.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceDir
+Copy-Item -LiteralPath ".github/workflows/pages.yml" -Destination $provenanceDir
+Copy-Item -LiteralPath ".github/workflows/companion-signing-readiness.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
 Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
 Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
@@ -1354,6 +1407,9 @@ $manifest = [ordered]@{
   androidPlayRelease = "docs/ANDROID_PLAY_RELEASE.md"
   androidPlayPolicyDeclarations = "docs/ANDROID_PLAY_POLICY_DECLARATIONS.md"
   androidPlayPrivacyPolicy = "docs/ANDROID_PLAY_PRIVACY_POLICY.md"
+  androidPlayPrivacyPolicySite = "site/privacy/index.html"
+  androidPlayPrivacyPolicyUrl = "https://robvanprod.github.io/stackchan_alive/privacy/"
+  pagesWorkflow = "provenance/pages.yml"
   androidPlayIcon = "docs/store-assets/play/icon-512.png"
   androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
@@ -1482,6 +1538,21 @@ $manifest = [ordered]@{
     "tools/check_desktop_python_runtime_payload.ps1",
     "tools/test_desktop_python_runtime_payload_contract.cmd",
     "tools/test_desktop_python_runtime_payload_contract.ps1",
+    "tools/export_desktop_package_evidence.cmd",
+    "tools/export_desktop_package_evidence.ps1",
+    "tools/test_desktop_package_launch.cmd",
+    "tools/test_desktop_package_launch.ps1",
+    "tools/test_desktop_package_evidence_contract.cmd",
+    "tools/test_desktop_package_evidence_contract.ps1",
+    "tools/check_desktop_release_signing_readiness.cmd",
+    "tools/check_desktop_release_signing_readiness.ps1",
+    "tools/test_desktop_release_signing_readiness_contract.ps1",
+    "tools/install_desktop_companion_package.cmd",
+    "tools/install_desktop_companion_package.ps1",
+    "tools/check_desktop_target_install_evidence.cmd",
+    "tools/check_desktop_target_install_evidence.ps1",
+    "tools/test_desktop_target_install_evidence_contract.cmd",
+    "tools/test_desktop_target_install_evidence_contract.ps1",
     "tools/check_desktop_v1_evidence_bundle.cmd",
     "tools/check_desktop_v1_evidence_bundle.ps1",
     "tools/test_desktop_v1_evidence_bundle_contract.cmd",
@@ -1497,6 +1568,18 @@ $manifest = [ordered]@{
     "tools/check_android_toolchain.ps1",
     "tools/check_android_play_release_readiness.cmd",
     "tools/check_android_play_release_readiness.ps1",
+    "tools/check_privacy_policy_deployment.cmd",
+    "tools/check_privacy_policy_deployment.ps1",
+    "tools/test_privacy_policy_deployment_contract.cmd",
+    "tools/test_privacy_policy_deployment_contract.ps1",
+    "tools/test_android_upload_signing_contract.cmd",
+    "tools/test_android_upload_signing_contract.ps1",
+    "tools/test_android_emulator_launch.cmd",
+    "tools/test_android_emulator_launch.ps1",
+    "tools/check_android_emulator_release_evidence.cmd",
+    "tools/check_android_emulator_release_evidence.ps1",
+    "tools/test_android_emulator_release_evidence_contract.cmd",
+    "tools/test_android_emulator_release_evidence_contract.ps1",
     "tools/check_android_play_store_evidence.cmd",
     "tools/check_android_play_store_evidence.ps1",
     "tools/check_android_v1_evidence_bundle.cmd",
@@ -1505,6 +1588,10 @@ $manifest = [ordered]@{
     "tools/check_android_diagnostics_export_evidence.ps1",
     "tools/check_companion_v1_readiness.cmd",
     "tools/check_companion_v1_readiness.ps1",
+    "tools/check_companion_release_version.cmd",
+    "tools/check_companion_release_version.ps1",
+    "tools/test_companion_release_version_contract.cmd",
+    "tools/test_companion_release_version_contract.ps1",
     "tools/export_companion_release_evidence.cmd",
     "tools/export_companion_release_evidence.ps1",
     "tools/preview_python_resolver.ps1",
@@ -1769,6 +1856,7 @@ $manifest = [ordered]@{
     "provenance/protocol-fixtures/invalid/wrong_protocol.json",
     "provenance/firmware.yml",
     "provenance/release.yml",
+    "provenance/companion-signing-readiness.yml",
     "provenance/data/commands.yaml",
     "provenance/personas/spark/pack.yaml",
     "provenance/personas/spark/character.yaml",

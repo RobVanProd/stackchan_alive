@@ -13,19 +13,76 @@ if ([string]::IsNullOrWhiteSpace($Root)) {
 
 $checks = @()
 $pendingGates = @(
-  "physical-robot-hardware-validation",
-  "android-apk-install-on-target-phone",
-  "android-dashboard-connected-state-media",
-  "android-push-to-talk-stt-on-target-phone",
-  "android-settings-handoff-on-target-robot",
-  "android-qr-short-code-pairing-on-target-robot",
-  "android-wifi-provisioning-on-target-robot",
-  "screen-off-bridge-soak",
-  "google-play-store-screenshots",
-  "google-play-internal-testing-upload",
-  "gemma4-e2b-real-device-download-and-inference-validation",
-  "desktop-managed-python-runtime-binary-payload",
-  "c8-tagged-release-distribution"
+  [ordered]@{
+    name = "physical-robot-hardware-validation"
+    evidence = "output/hardware-evidence/<candidate>"
+    detail = "Complete the physical packet, then run tools\verify_hardware_evidence.cmd -EvidenceRoot <packet> and tools\export_rollout_status.cmd with the same exact release candidate."
+  },
+  [ordered]@{
+    name = "android-apk-install-on-target-phone"
+    evidence = "output/android-apk-install/<candidate>/android_apk_install.json"
+    detail = "Connect the target phone and run tools\install_android_companion_apk.cmd -ApkPath <release-apk> -SourceCommit <40-character-sha>."
+  },
+  [ordered]@{
+    name = "android-dashboard-connected-state-media"
+    evidence = "output/hardware-evidence/<candidate>/media/phone-live-dashboard*"
+    detail = "Capture the exact installed build connected to the robot, register media id phone-live-dashboard, and pass the strict Android dashboard evidence gate in tools\verify_hardware_evidence.cmd."
+  },
+  [ordered]@{
+    name = "android-push-to-talk-stt-on-target-phone"
+    evidence = "output/android-speech/<candidate>"
+    detail = "Capture phone diagnostics/logcat and robot response frames, review ANDROID_SPEECH_REVIEW.md, then run tools\check_android_speech_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "android-settings-handoff-on-target-robot"
+    evidence = "output/android-controls/<candidate>"
+    detail = "Capture settings_set, claim_brain, release_brain, owner_status, and pre-hello rejection, then run tools\check_android_controls_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "android-qr-short-code-pairing-on-target-robot"
+    evidence = "output/android-pairing/<candidate>"
+    detail = "Capture QR/manual-code success, wrong-code rejection, trusted endpoint state, and setup media, then run tools\check_android_pairing_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "android-wifi-provisioning-on-target-robot"
+    evidence = "output/android-wifi/<candidate>"
+    detail = "Capture persisted provisioning, power-cycle reload, clear behavior, and password redaction, then run tools\check_android_wifi_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "screen-off-bridge-soak"
+    evidence = "output/android-companion-soak/<candidate>"
+    detail = "Run the target-phone screen-off soak, review its packet, then run tools\check_android_screen_off_soak_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "google-play-store-screenshots"
+    evidence = "output/android-play-store/<candidate>/screenshots"
+    detail = "Capture the four required final-build screenshot ids on the target phone and validate them with tools\check_android_play_store_evidence.cmd -EvidenceRoot <packet> -Json."
+  },
+  [ordered]@{
+    name = "google-play-internal-testing-upload"
+    evidence = "output/android-play-store/<candidate>/ANDROID_PLAY_STORE_EVIDENCE.json"
+    detail = "Provision upload signing, pass the read-only Companion Signing Readiness workflow, upload the exact AAB, install from the internal track, record the hosted privacy URL/release/tester/timestamp fields, and pass tools\check_android_play_store_evidence.cmd."
+  },
+  [ordered]@{
+    name = "gemma4-e2b-real-device-download-and-inference-validation"
+    evidence = "output/android-gemma/<candidate>"
+    detail = "On the target phone complete verified download, load/eject/reload, non-dry-run benchmark, one LiteRT turn, and robot audio/TTS review; then run tools\check_android_gemma_evidence.cmd -SourceCommit <40-character-sha> -RequireReady -Json."
+  },
+  [ordered]@{
+    name = "desktop-target-installs-on-operator-workstations"
+    evidence = "output/desktop-target-install/<windows|linux|macos>/<platform>-target-install.json"
+    detail = "Install the exact tagged MSI, DEB, and DMG with tools\install_desktop_companion_package.ps1 on native operator workstations, then pass tools\check_desktop_target_install_evidence.ps1 -RequireOperatorTarget for each package hash."
+  },
+  [ordered]@{
+    name = "desktop-production-signing-credentials"
+    evidence = "GitHub Actions secrets for Windows Authenticode and macOS Developer ID/notarization"
+    detail = "Provision the two STACKCHAN_WINDOWS_* and six STACKCHAN_MACOS_* release secrets, then run the Companion Signing Readiness workflow. The tag workflow fails closed until it can verify timestamped Authenticode, Developer ID, Gatekeeper, and stapled notarization evidence."
+  },
+  [ordered]@{
+    name = "c8-tagged-release-distribution"
+    evidence = "GitHub prerelease assets plus COMPANION_RELEASE_EVIDENCE.json and output/companion-v1-evidence/<candidate>"
+    detail = "Create the exact upload-signed prerelease tag, run tools\verify_published_release.cmd -Version <tag>, assemble Android/Desktop/rollout evidence, and pass tools\check_companion_v1_evidence_bundle.cmd -EvidenceRoot <packet> -RequireReady -Json."
+  }
 )
 
 function Add-Check {
@@ -283,7 +340,7 @@ function Test-CompanionSourceTree {
 
 function Add-PendingGateChecks {
   foreach ($gate in $pendingGates) {
-    Add-Check ("pending-" + $gate) $gate "pending" "" "Requires target hardware, release signing/distribution, or production-source evidence outside this source/package check."
+    Add-Check ("pending-" + $gate.name) $gate.name "pending" $gate.evidence $gate.detail
   }
 }
 
@@ -292,6 +349,30 @@ Test-TextEvidence `
   -Name "Drive cross-platform plan packaged" `
   -RelativePaths @("docs/COMPANION_CROSS_PLATFORM_PLAN.md") `
   -Patterns @("Cross-Platform Build & Distribution Plan", "Kotlin Multiplatform", "Compose Multiplatform", "Hydraulic Conveyor", "C0", "C1", "C8", "RELEASE_EVIDENCE.json")
+
+Test-TextEvidence `
+  -Id "readme-current-eight-hour-evidence" `
+  -Name "Public README carries corrected exact-image soak evidence" `
+  -RelativePaths @("README.md") `
+  -Patterns @("Status as of July 13, 2026", "corrected exact paired candidate", "28807 s", "5643/5643", "77/77", "bounded final stop")
+
+Test-TextEvidence `
+  -Id "production-readiness-current-eight-hour-evidence" `
+  -Name "Production readiness carries corrected exact-image soak evidence" `
+  -RelativePaths @("docs/PRODUCTION_READINESS.md") `
+  -Patterns @("Current status (2026-07-13)", "corrected single-owner exact-image", "28807 s", "5643/5643", "77/77", "bounded final motion stop evidence")
+
+Test-TextEvidence `
+  -Id "hardware-roadmap-current-eight-hour-evidence" `
+  -Name "Hardware roadmap carries corrected exact-image soak evidence" `
+  -RelativePaths @("docs/HARDWARE_FEATURE_ROADMAP.md") `
+  -Patterns @("Current status (2026-07-13)", "corrected exact release image", "28807 s", "5643/5643", "77/77", "verified off after completion")
+
+Test-TextEvidence `
+  -Id "power-forensics-current-eight-hour-evidence" `
+  -Name "Power forensics carries corrected exact-image soak evidence" `
+  -RelativePaths @("docs/POWER_BLACKOUT_FORENSICS.md") `
+  -Patterns @('corrected `v0.2.0` exact-image candidate', "28807 s", "5643/5643", "77/77", "bounded final stop evidence", "Historical full-off root cause remains unidentified")
 
 Test-TextEvidence `
   -Id "android-companion-spec" `
@@ -303,7 +384,7 @@ Test-TextEvidence `
   -Id "android-test-plan" `
   -Name "Android physical test plan" `
   -RelativePaths @("docs/ANDROID_COMPANION_TEST_PLAN.md") `
-  -Patterns @("Android Companion Physical Test Plan", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "Robot Wi-Fi setup", "wifi set ssid ""<network-name>"" pass ""<network-password>"" url ""ws://<phone-lan-ip>:8765/bridge""", "tools\provision_stackchan_wifi.cmd", "wifi clear", "password redaction", "check_android_wifi_evidence.cmd", "android-wifi-ready", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "pairing code", "phone fingerprint", "stackchan://pair", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing code <ABC123>", "pairing clear", "pairing_code_mismatch", "check_android_pairing_evidence.cmd", "android-pairing-ready", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "bridge_url_applied", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "check_android_speech_evidence.cmd", "android-speech-ready", "ANDROID_SPEECH_REVIEW.md", "robot_speech_serial.log", "Gemma-4-E2B", "download, load, eject", "staging the verified asset", "real inference is gated on LiteRT runtime validation", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "check_android_gemma_evidence.cmd", "android-gemma-real-device-ready", "mobile_brain_litert_turn", "mobile_brain_litert_error", "ANDROID_GEMMA_REVIEW.md", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "check_android_controls_evidence.cmd", "android-controls-ready", "ANDROID_CONTROLS_REVIEW.md", "robot_controls_serial.log", "robot_hello_required", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
+  -Patterns @("Android Companion Physical Test Plan", "API 35 AOSP automated-test emulator smoke", "test_android_emulator_launch.ps1", "substitutesForPhysicalEvidence=false", "lab-signed release APK", "app-android-release.apk", "check_android_toolchain.cmd", "RUN_ANDROID_APK_INSTALL.cmd", "RUN_ANDROID_COMPANION_PROBE.cmd", "RUN_ANDROID_SCREEN_OFF_SOAK.cmd", "android/screen-off-soak/", "RUN_ANDROID_LOGCAT_CAPTURE.cmd", "Android dashboard switches from waiting to connected", "Add your Stack-chan", "Wi-Fi bootstrap", "Open Wi-Fi settings", "Join Wi-Fi", "Start phone bridge", "Connect Stack-chan", "Confirm robot ready", "current next step", "Pair on Stack-chan", "Ready to test", "Robot Wi-Fi setup", "wifi set ssid ""<network-name>"" pass ""<network-password>"" url ""ws://<phone-lan-ip>:8765/bridge""", "tools\provision_stackchan_wifi.cmd", "wifi clear", "password redaction", "check_android_wifi_evidence.cmd", "android-wifi-ready", "ANDROID_WIFI_REVIEW.md", "robot_wifi_serial.log", "bridge_wifi_store_loads", "bridge_wifi_store_has_record=1", "pairing code", "phone fingerprint", "stackchan://pair", "endpoint_hello.pairing_code", "STACKCHAN_PAIRING_SHORT_CODE", "pairing code <ABC123>", "pairing clear", "pairing_code_mismatch", "check_android_pairing_evidence.cmd", "android-pairing-ready", "ANDROID_PAIRING_REVIEW.md", "robot_pairing_serial.log", "android_pairing_setup.jpg", "bridge_url_applied", "saved robots", "waiting/setup action", "trusted companion nodes are stored", "raw WebSocket connection without the robot", "Talk screen enables text input", "Push-to-talk", "RECORD_AUDIO", "check_android_speech_evidence.cmd", "android-speech-ready", "ANDROID_SPEECH_REVIEW.md", "robot_speech_serial.log", "Gemma-4-E2B", "download, load, eject", "staging the verified asset", "real inference is gated on LiteRT runtime validation", "gemma-4-E2B-it.litertlm", "2588147712", "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "check_android_gemma_evidence.cmd", "android-gemma-real-device-ready", "mobile_brain_litert_turn", "mobile_brain_litert_error", "ANDROID_GEMMA_REVIEW.md", "persona import/export", "stackchan.persona-pack.v1", "app_text_turn", "audio_stream_start", "response_end", "settings, diagnostics, persona, and handoff status", "settings_set", "settings_result", "claim_brain", "release_brain", "owner_status", "check_android_controls_evidence.cmd", "android-controls-ready", "ANDROID_CONTROLS_REVIEW.md", "robot_controls_serial.log", "robot_hello_required", "Removing a stored trusted companion endpoint", "Forget removes", "ANDROID_DIAGNOSTICS_EXPORT.json", "stackchan.android.diagnostics-export.v1", "saved robot/trusted endpoint state", "redacts the last text turn")
 
 Test-TextEvidence `
   -Id "robot-hello-write-gate" `
@@ -612,28 +693,76 @@ Test-TextEvidence `
   -Patterns @("placeholder sha256 is rejected", "placeholder runtime source is rejected", "platform mismatch is rejected", "pythonVersion mismatch is rejected", "valid desktop runtime payload is accepted", "platform, pythonVersion, probedPythonVersion, runtimeSha256, and runtimeSource", "Desktop Python runtime payload contract tests passed")
 
 Test-TextEvidence `
+  -Id "desktop-package-evidence-export" `
+  -Name "Native desktop package/runtime evidence exporter" `
+  -RelativePaths @("tools/export_desktop_package_evidence.ps1") `
+  -Patterns @("stackchan.desktop-package-evidence.v1", "stackchan.desktop-python-runtime-prepare.v1", "Get-RuntimePayloadHash", "native-app-resources", "Expand-DesktopPackage", "RequireInstallerPayload", "RequireLaunchEvidence", "launchEvidence", "processedPayloadSha256", "processedFileCount", "Installer runtime payload hash does not match processed Gradle resources")
+
+Test-TextEvidence `
+  -Id "desktop-package-launch-smoke" `
+  -Name "Exact native desktop package launch smoke" `
+  -RelativePaths @("tools/test_desktop_package_launch.ps1", "tools/test_desktop_package_launch.cmd", "companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/PackagedRuntimeSmoke.kt") `
+  -Patterns @("stackchan.desktop-package-launch-evidence.v1", "stackchan.desktop-packaged-runtime-smoke.v1", "exact-native-package-extraction-and-headless-launch", "extracted-native-package-headless-runtime-probe", "package-extraction", "substitutesForTargetInstall", "--package-smoke-output=", "--package-smoke-context=")
+
+Test-AggregateTextEvidence `
+  -Id "desktop-target-install-evidence" `
+  -Name "Native desktop operator target-install evidence" `
+  -RelativePaths @("tools/install_desktop_companion_package.ps1", "tools/check_desktop_target_install_evidence.ps1") `
+  -Patterns @("stackchan.desktop-target-install-evidence.v1", "stackchan.desktop-target-install-evidence-check.v1", "installed-and-ready", "operator-target-workstation", "ci-native-runner", "exact-native-package-install-and-headless-launch", "installed-native-package-headless-runtime-probe", "RequireOperatorTarget", "substitutesForHumanAcceptance", "preExistingRegistrations", "replacementRequested", "replacementPerformed", "uninstallAttempts", "postInstallRegistrations", "elevatedAdministrator", "windows-elevation", "windows-exact-package-replacement")
+
+Test-TextEvidence `
+  -Id "desktop-target-install-evidence-contract" `
+  -Name "Native desktop target-install evidence contract" `
+  -RelativePaths @("tools/test_desktop_target_install_evidence_contract.ps1", "tools/test_desktop_target_install_evidence_contract.cmd") `
+  -Patterns @("operator target-install evidence is accepted for Windows, Linux, and macOS", "explicit Windows replacement evidence is accepted", "implicit Windows maintenance-mode replacement is rejected", "non-elevated Windows install evidence is rejected", "stale target-install package hash is rejected", "CI native-runner evidence cannot replace operator target evidence", "package extraction cannot replace installed launcher evidence", "missing install and launch exit codes are rejected", "mismatched target-install source commit is rejected", "Desktop target install evidence contract tests passed")
+
+Test-TextEvidence `
+  -Id "desktop-package-evidence-contract" `
+  -Name "Native desktop package/runtime evidence contract test" `
+  -RelativePaths @("tools/test_desktop_package_evidence_contract.ps1", "tools/test_desktop_package_evidence_contract.cmd") `
+  -Patterns @("tagged release requires native signing, notarization, and provenance attestation", "complete installer-derived desktop package evidence is accepted", "installed launch context cannot replace package-extraction evidence", "installer runtime tampering is rejected", "JAR-embedded executable runtime is rejected", "aggregate companion evidence accepts all three native package reports", "aggregate companion evidence rejects installer-derived runtime mismatch", "aggregate companion evidence rejects stale exact-package launch evidence", "aggregate companion evidence rejects missing native distribution trust", "strict aggregate evidence rejects a missing native package report", "wrong platform package extension is rejected", "processed runtime tampering is rejected", "runtime prepare platform mismatch is rejected", "Desktop package evidence contract tests passed")
+
+Test-AggregateTextEvidence `
+  -Id "desktop-release-signing-readiness" `
+  -Name "Desktop release signing credential preflight" `
+  -RelativePaths @("tools/check_desktop_release_signing_readiness.ps1", "tools/test_desktop_release_signing_readiness_contract.ps1", ".github/workflows/companion-signing-readiness.yml", ".github/workflows/firmware.yml") `
+  -Patterns @("stackchan.desktop-signing-readiness.v1", "private code-signing certificate", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "does not chain to a root trusted by the native host", "temporary Authenticode signing probe", "temporary Developer ID signing probe", "manual signing readiness workflow validates without publishing", "tagged release runs native desktop signing preflight", "companion CI runs the desktop signing readiness contract", "invalid Windows PKCS12 base64 is rejected", "wrong Windows PKCS12 password is rejected", "Windows certificate without code-signing EKU is rejected", "near-expiry Windows certificate is rejected", "undersized Windows signing key is rejected", "mismatched macOS signing identity is rejected", "mismatched Apple team ID is rejected", "Desktop release signing readiness contract passed", "workflow_dispatch", "contents: read")
+
+Test-AggregateTextEvidence `
+  -Id "release-credential-hygiene" `
+  -Name "Release private signing credential hygiene" `
+  -RelativePaths @("tools/check_release_credential_hygiene.ps1", "tools/test_release_credential_hygiene_contract.ps1") `
+  -Patterns @("stackchan.release-credential-hygiene.v1", "release-credential-hygiene-ready", "blocked-release-credential-hygiene", "tracked-private-key-bundles", "tracked-private-key-markers", "ignore-pattern-pfx", "ignore-pattern-pkcs12", "current source tree has no tracked private signing credentials", "every release package runs credential hygiene before building", "companion CI runs the release credential hygiene contract", "tracked private-key bundle extensions are rejected", "tracked PEM private key markers are rejected", "missing private-key ignore patterns are rejected", "Release credential hygiene contract tests passed")
+
+Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-check" `
   -Name "Desktop v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_desktop_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "runtimeSource", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.desktop-v1-evidence-bundle.v1", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "stackchan.desktop-python-runtime-payload.v1", "stackchan.desktop-target-install-evidence.v1", "windowsTargetInstallReport", "macosTargetInstallReport", "linuxTargetInstallReport", "Test-DesktopTargetInstallReport", "RequireOperatorTarget", "Target installation decision: pass", "pc-brain-deploy-ready", "pc-brain-quiet-soak-ready", "production-voice-source-ready", "companion-readiness-source-commit-match", "pc-brain-deploy-commit-match", "pc-brain-quiet-soak-commit-match", "voice-source-commit-match", "sourceCommit", "windowsMsiSha256", "macosDmgSha256", "linuxDebSha256", "runtime-windows-summary", "runtime-macos-summary", "runtime-linux-summary", "Test-RuntimePayloadSummary", "runtimeSha256", "runtimeSource", "probedPythonVersion", "Get-ReviewSourceCommit", "Source commit:", "DESKTOP_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "desktop-v1-evidence-bundle-contract" `
   -Name "Desktop v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_desktop_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "missing Desktop v1 runtime payload summary is rejected", "missing Desktop v1 runtime payload source is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Desktop v1 evidence bundle is pending", "complete Desktop v1 evidence bundle is accepted", "desktop package artifact hashes", "elevatedAdministrator", "postInstallRegistrations", "missing Desktop v1 runtime payload summary is rejected", "missing Desktop v1 runtime payload source is rejected", "mismatched Desktop v1 runtime payload platform is rejected", "stale Desktop v1 target-install package hash is rejected", "CI install rehearsal cannot replace Desktop v1 operator target evidence", "mismatched Desktop v1 companion readiness source commit is rejected", "mismatched Desktop v1 review source commit is rejected", "mismatched Desktop v1 voice-source commit is rejected", "mismatched Desktop v1 PC Brain deploy commit is rejected", "mismatched Desktop v1 PC Brain quiet-soak commit is rejected", "desktop-v1-evidence-ready", "pending-desktop-v1-evidence-bundle", "Desktop v1 evidence bundle contract tests passed")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-check" `
   -Name "Companion v1 aggregate evidence bundle check" `
   -RelativePaths @("tools/check_companion_v1_evidence_bundle.ps1") `
-  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "android-v1-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "gemmaBenchmarkProfile", "gemmaBenchmarkMedianMs", "androidGemmaBenchmarkProfile", "androidGemmaBenchmarkMedianMs", "androidDashboardMediaIds", "phone-live-dashboard", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-commit-match", "desktop-v1-artifact-hashes-match", "release-package-evidence-present", "voice-source-commit-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "sourceCommit", "releaseVersion", "applicationId", "apkSha256", "versionCode", "packageEvidence", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Get-Sha256Text", "Convert-ToAndroidVersionName", "Get-AndroidSourceApplicationId", "Test-AndroidApplicationIdMatchesSource", "Get-AndroidSourceVersionCode", "Test-AndroidVersionCodeMatchesSource", "Test-AndroidV1EvidenceSummary", "Test-AndroidReleaseApkHashMatchesReleaseEvidence", "Test-AndroidReleaseAabHashMatchesReleaseEvidence", "Test-DesktopArtifactHashesMatchReleaseEvidence", "Test-ReleasePackageEvidencePresent", "Test-RolloutHardwareEvidence", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
+  -Patterns @("stackchan.companion-v1-evidence-bundle.v1", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "stackchan.android-v1-evidence-bundle-check.v1", "stackchan.desktop-v1-evidence-bundle-check.v1", "stackchan.rollout-status.v1", "consumer-promotion-ready", "companion-readiness-commit-match", "release-evidence-commit-match", "github-actions-commit-match", "rollout-status-version-match", "android-v1-commit-match", "android-v1-application-id-match", "android-v1-version-name-match", "android-v1-version-code-match", "android-v1-gemma-benchmark-summary", "android-v1-dashboard-media-summary", "gemmaBenchmarkProfile", "gemmaBenchmarkMedianMs", "androidGemmaBenchmarkProfile", "androidGemmaBenchmarkMedianMs", "androidDashboardMediaIds", "phone-live-dashboard", "android-v1-release-apk-hash-match", "android-v1-release-aab-hash-match", "desktop-v1-commit-match", "desktop-v1-artifact-hashes-match", "desktopDistributionTrustRequired", "authenticode-sha256-timestamped", "developer-id-notarized-stapled", "release-package-evidence-present", "voice-source-commit-match", "rollout-hardware-root-match", "rollout-hardware-commit-match", "sourceCommit", "firmwareSourceCommit", "firmware-source-commit", "releaseVersion", "applicationId", "apkSha256", "versionCode", "packageEvidence", "Get-ReviewSourceCommit", "Get-ReviewReleaseVersion", "Get-Sha256Text", "Convert-ToAndroidVersionName", "Get-AndroidSourceApplicationId", "Test-AndroidApplicationIdMatchesSource", "Get-AndroidSourceVersionCode", "Test-AndroidVersionCodeMatchesSource", "Test-AndroidV1EvidenceSummary", "Test-AndroidReleaseApkHashMatchesReleaseEvidence", "Test-AndroidReleaseAabHashMatchesReleaseEvidence", "Test-DesktopArtifactHashesMatchReleaseEvidence", "Test-ReleasePackageEvidencePresent", "Test-RolloutHardwareEvidence", "Source commit:", "Release version:", "COMPANION_V1_REVIEW.md", "RequireReady")
 
 Test-TextEvidence `
   -Id "companion-v1-evidence-bundle-contract" `
   -Name "Companion v1 aggregate evidence bundle contract test" `
   -RelativePaths @("tools/test_companion_v1_evidence_bundle_contract.ps1") `
-  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle is accepted", "stale Companion v1 Android evidence summary is rejected", "slow or incomplete Companion v1 Android evidence summary is rejected", "Android Gemma benchmark and dashboard media summaries", "mismatched Companion v1 release ZIP hash is rejected", "mismatched Companion v1 source-readiness commit is rejected", "mismatched Companion v1 hardware evidence root is rejected", "mismatched Companion v1 hardware evidence commit is rejected", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 Android bundle commit is rejected", "mismatched Companion v1 Android applicationId is rejected", "mismatched Companion v1 Android app version is rejected", "mismatched Companion v1 Android app versionCode is rejected", "mismatched Companion v1 Android release APK hash is rejected", "mismatched Companion v1 Android release AAB hash is rejected", "mismatched Companion v1 Desktop package hash is rejected", "mismatched Companion v1 Desktop bundle commit is rejected", "mismatched Companion v1 voice-source commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
+  -Patterns @("placeholder Companion v1 evidence bundle is pending", "complete Companion v1 evidence bundle with distinct release and firmware commits is accepted", "missing desktop distribution trust is rejected by final Companion v1 evidence", "legacy same-commit Companion v1 evidence bundle remains accepted", "stale Companion v1 Android evidence summary is rejected", "slow or incomplete Companion v1 Android evidence summary is rejected", "Android Gemma benchmark and dashboard media summaries", "mismatched Companion v1 release ZIP hash is rejected", "mismatched Companion v1 source-readiness commit is rejected", "mismatched Companion v1 hardware evidence root is rejected", "mismatched Companion v1 hardware evidence commit is rejected", "mismatched Companion v1 report commit is rejected", "mismatched Companion v1 Android bundle commit is rejected", "mismatched Companion v1 Android applicationId is rejected", "mismatched Companion v1 Android app version is rejected", "mismatched Companion v1 Android app versionCode is rejected", "mismatched Companion v1 Android release APK hash is rejected", "mismatched Companion v1 Android release AAB hash is rejected", "mismatched Companion v1 Desktop package hash is rejected", "mismatched Companion v1 Desktop bundle commit is rejected", "mismatched Companion v1 voice-source commit is rejected", "mismatched Companion v1 review source commit is rejected", "mismatched Companion v1 review release version is rejected", "companion-v1-evidence-ready", "pending-companion-v1-evidence-bundle", "Companion v1 evidence bundle contract tests passed")
+
+Test-TextEvidence `
+  -Id "companion-v1-consumer-promotion-binding" `
+  -Name "Consumer promotion binds aggregate Companion v1 evidence" `
+  -RelativePaths @("tools/verify_consumer_promotion.ps1", "tools/test_consumer_promotion_contract.ps1", "tools/start_hardware_evidence.ps1", "docs/RELEASE_PROCESS.md") `
+  -Patterns @("CompanionV1EvidenceRoot", "Assert-CompanionV1PromotionReady", "check_companion_v1_evidence_bundle.ps1", "-RequireReady", "companion-v1-evidence-ready", "Companion v1 aggregate source commit mismatch", "Companion v1 aggregate firmware source commit mismatch", "Companion v1 aggregate release version mismatch", "Companion v1 hardware evidence root does not match the packet being promoted", "Companion v1 release ZIP SHA-256 does not match the package being promoted", "Consumer promotion requires -PackageZip", "companionV1EvidenceRoot")
 
 Test-TextEvidence `
   -Id "desktop-python-runtime-payload-prep-tool" `
@@ -645,7 +774,7 @@ Test-TextEvidence `
   -Id "desktop-python-runtime-payload-packaging" `
   -Name "Desktop managed Python runtime payload packaging hook" `
   -RelativePaths @("companion/app-desktop/build.gradle.kts") `
-  -Patterns @("stackchan.desktop.pythonRuntimeRoot", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "validateDesktopPythonRuntimePayload", "check_desktop_python_runtime_payload.ps1", "into(`"python-runtime`")", "desktopPythonRuntimeRoot")
+  -Patterns @("stackchan.desktop.pythonRuntimeRoot", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "validateDesktopPythonRuntimePayload", "prepareDesktopNativeAppResources", "appResourcesRootDir", "into(`"common/python-runtime`")", "desktopPythonRuntimeRoot")
 
 Test-TextEvidence `
   -Id "desktop-packaged-brain-script" `
@@ -831,25 +960,109 @@ Test-TextEvidence `
   -Id "android-play-release-prep" `
   -Name "Android Play release preparation" `
   -RelativePaths @("docs/ANDROID_PLAY_RELEASE.md", "provenance/docs/ANDROID_PLAY_RELEASE.md") `
-  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "physical robot validation", "RECORD_AUDIO", "Play Console internal testing")
+  -Patterns @("Android Play Release Checklist", "app-android-release.aab", "Play App Signing", "STACKCHAN_ANDROID_KEYSTORE", "One-Time Upload Key Provisioning", "keytool -genkeypair", "cryptographically validates", "test_android_upload_signing_contract.ps1", "certificate SHA-256 fingerprint", "2033-10-22", "exact release APK artifact", "RequireAndroidEmulatorEvidence", "gh secret set STACKCHAN_ANDROID_KEYSTORE_B64", "gh secret list --app actions", "Companion Signing Readiness", "companion-signing-readiness.yml", "two independent offline media", "docs/store-assets/play/icon-512.png", "feature-graphic-1024x500.png", "SCREENSHOT_CAPTURE_PLAN.md", "fastlane/metadata/android/en-US/", "ANDROID_PLAY_POLICY_DECLARATIONS.md", "ANDROID_PLAY_PRIVACY_POLICY.md", "physical robot validation", "RECORD_AUDIO", "Play Console internal testing")
 
 Test-TextEvidence `
   -Id "android-play-policy-declarations" `
   -Name "Android Play policy and data-safety declarations" `
   -RelativePaths @("docs/ANDROID_PLAY_POLICY_DECLARATIONS.md", "provenance/docs/ANDROID_PLAY_POLICY_DECLARATIONS.md") `
-  -Patterns @("Google Play Data safety form", "Privacy policy URL", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Not collected", "RECORD_AUDIO", "raw microphone audio is not stored", "password_redacted=true", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
+  -Patterns @("Google Play Data safety form", "Google Play User Data policy", "Privacy policy URL", "https://robvanprod.github.io/stackchan_alive/privacy/", "ANDROID_PLAY_PRIVACY_POLICY.md", "Data Safety Draft", "Collected only for optional, ephemeral app functionality", "RECORD_AUDIO", "configured Android SpeechRecognizer may transmit microphone audio", "password_redacted=true", "not represented as end-to-end encrypted", "Foreground service Play Console draft", "connectedDevice", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "not directed to children")
 
 Test-TextEvidence `
   -Id "android-play-privacy-policy-page" `
   -Name "Android Play privacy policy page" `
   -RelativePaths @("docs/ANDROID_PLAY_PRIVACY_POLICY.md", "provenance/docs/ANDROID_PLAY_PRIVACY_POLICY.md") `
-  -Patterns @("Stackchan Companion Privacy Policy", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not directed to children")
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "https://robvanprod.github.io/stackchan_alive/privacy/", "dev.stackchan.companion", "does not create accounts", "does not persist raw microphone audio", "may process microphone audio", "diagnostics export", "password_redacted=true", "optional Mobile Brain model", "saved robot and trusted companion records", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-policy-site" `
+  -Name "Deployable public privacy-policy site" `
+  -RelativePaths @("site/privacy/index.html") `
+  -Patterns @("Stackchan Companion Privacy Policy", "July 14, 2026", "dev.stackchan.companion", "Privacy inquiries", "configured Android speech-recognition service", "may process audio", "password_redacted=true", "not represented as end-to-end encrypted", "not directed to children")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-deployment-record" `
+  -Name "Published privacy-policy deployment record" `
+  -RelativePaths @("docs/store-assets/play/PRIVACY_POLICY_DEPLOYMENT.json") `
+  -Patterns @("stackchan.privacy-policy-deployment.v1", "deployed", "https://robvanprod.github.io/stackchan_alive/privacy/", "site/privacy/index.html", "afbebbd3429e00a6f76cb238788ce7664f1b6fda", "49cefe092920c0a12da50896356394d380df6904", "1094346889", "28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47", "httpsEnforced")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-deployment-checker" `
+  -Name "Published privacy-policy deployment checker" `
+  -RelativePaths @("tools/check_privacy_policy_deployment.ps1", "provenance/tools/check_privacy_policy_deployment.ps1") `
+  -Patterns @("stackchan.privacy-policy-deployment-check.v1", "privacy-policy-deployment-ready", "live-https", "Published policy byte identity", "Published policy disclosures", "sourceSha256", "servedSha256")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-deployment-contract" `
+  -Name "Privacy-policy deployment contract" `
+  -RelativePaths @("tools/test_privacy_policy_deployment_contract.ps1", "provenance/tools/test_privacy_policy_deployment_contract.ps1") `
+  -Patterns @("exact published privacy policy bytes are accepted", "tampered published privacy policy bytes are rejected", "noncanonical privacy policy URL is rejected", "stale privacy policy source hash is rejected", "pending privacy policy deployment status is rejected", "5/5")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-pages-workflow" `
+  -Name "Privacy-policy Pages deployment workflow" `
+  -RelativePaths @(".github/workflows/pages.yml", "provenance/pages.yml") `
+  -Patterns @("Deploy privacy policy", "main", "site/**", "pages: write", "id-token: write", "actions/configure-pages@v5", "actions/upload-pages-artifact@v4", "path: site", "actions/deploy-pages@v4")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-app-identity" `
+  -Name "Canonical privacy-policy URL in companion identity" `
+  -RelativePaths @("companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt", "provenance/companion/core/src/commonMain/kotlin/dev/stackchan/companion/core/CompanionIdentity.kt") `
+  -Patterns @("privacyPolicyUrl", "https://robvanprod.github.io/stackchan_alive/privacy/")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-android-link" `
+  -Name "Android in-app privacy-policy link" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/MainActivity.kt") `
+  -Patterns @("onOpenPrivacyPolicy", "Intent.ACTION_VIEW", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-desktop-link" `
+  -Name "Desktop in-app privacy-policy link" `
+  -RelativePaths @("companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt", "provenance/companion/app-desktop/src/main/kotlin/dev/stackchan/companion/desktop/Main.kt") `
+  -Patterns @("onOpenPrivacyPolicy", "Desktop.Action.BROWSE", "CompanionIdentity.privacyPolicyUrl")
+
+Test-TextEvidence `
+  -Id "android-play-privacy-shared-ui" `
+  -Name "Shared in-app privacy-policy command" `
+  -RelativePaths @("companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt", "provenance/companion/ui/src/commonMain/kotlin/dev/stackchan/companion/ui/CompanionConsole.kt") `
+  -Patterns @("onOpenPrivacyPolicy", "Privacy policy", "Export logs")
+
+Test-TextEvidence `
+  -Id "android-play-speech-offline-preference" `
+  -Name "Android speech requests offline recognition" `
+  -RelativePaths @("companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt", "provenance/companion/app-android/src/main/kotlin/dev/stackchan/companion/android/AndroidSpeechTurnController.kt") `
+  -Patterns @("RecognizerIntent.EXTRA_PREFER_OFFLINE", "true")
 
 Test-TextEvidence `
   -Id "android-play-readiness-check" `
   -Name "Android Play source readiness check" `
   -RelativePaths @("tools/check_android_play_release_readiness.ps1", "provenance/tools/check_android_play_release_readiness.ps1") `
-  -Patterns @("stackchan.android-play-release-readiness.v1", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "CI builds Android release bundle", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-policy-declarations", "play-privacy-policy-page")
+  -Patterns @("stackchan.android-play-release-readiness.v1", "RequireUploadSigning", "uploadSigningRequired", "ExportParameters", "Play high-resolution icon", "Play screenshot capture plan", "Gradle Play upload signing inputs", "keytool private-key validation", "RSACertificateExtensions", "project policy requires at least 4096 bits", "2033-10-23 UTC", "certificate SHA-256", "CI builds Android release bundle", "CI runs Android emulator launch smoke", "Tag release validates upload key and exact release APK launch", "RequireAndroidEmulatorEvidence", "Release evidence covers AAB signing", "play-store-evidence-checker", "applicationId", "play-policy-declarations", "play-privacy-policy-page", "play-privacy-policy-site", "play-privacy-pages-workflow", "play-privacy-android-link", "play-privacy-desktop-link", "play-speech-offline-preference")
+
+Test-TextEvidence `
+  -Id "android-upload-signing-contract" `
+  -Name "Android upload signing contract test" `
+  -RelativePaths @("tools/test_android_upload_signing_contract.ps1", "provenance/tools/test_android_upload_signing_contract.ps1") `
+  -Patterns @("manual signing readiness workflow validates Android upload key without publishing", "tagged Android release requires upload signing readiness", "required upload signing credentials fail closed when missing", "valid 4096-bit private upload key is accepted", "missing upload-key alias is rejected", "wrong keystore password is rejected", "wrong private-key password is rejected", "weak 2048-bit upload key is rejected", "Android debug certificate subject is rejected", "upload certificate expiring before the Play minimum is rejected", "output exposed a contract credential")
+
+Test-TextEvidence `
+  -Id "android-emulator-launch-smoke" `
+  -Name "Android emulator install and launch smoke" `
+  -RelativePaths @("tools/test_android_emulator_launch.ps1", "provenance/tools/test_android_emulator_launch.ps1") `
+  -Patterns @("stackchan.android-emulator-launch-smoke.v1", "ro.kernel.qemu=1", "POST_NOTIFICATIONS", "MainActivity is not the top resumed activity", "CompanionBridgeService is absent after launch", "fatalProcessMatches", "substitutesForPhysicalEvidence", "emulator-install-launch-service-smoke-only")
+
+Test-TextEvidence `
+  -Id "android-emulator-release-evidence-check" `
+  -Name "Android emulator release APK evidence binding" `
+  -RelativePaths @("tools/check_android_emulator_release_evidence.ps1", "provenance/tools/check_android_emulator_release_evidence.ps1") `
+  -Patterns @("stackchan.android-emulator-release-evidence-check.v1", "stackchan.android-emulator-launch-smoke.v1", "MinApiLevel = 35", "dev.stackchan.companion", "MainActivity was not resumed", "CompanionBridgeService was not present", "fatalProcessMatches must be zero", "substitutesForPhysicalEvidence=false", "APK SHA-256 does not match the release APK")
+
+Test-TextEvidence `
+  -Id "android-emulator-release-evidence-contract" `
+  -Name "Android emulator release evidence contract test" `
+  -RelativePaths @("tools/test_android_emulator_release_evidence_contract.ps1", "provenance/tools/test_android_emulator_release_evidence_contract.ps1") `
+  -Patterns @("matching release APK evidence", "stale APK hash is rejected", "old emulator API is rejected", "failed launch smoke is rejected", "non-resumed activity is rejected", "missing bridge service is rejected", "fatal process match is rejected", "physical-evidence substitution is rejected", "wrong package identity is rejected", "9/9 passed")
 
 Test-TextEvidence `
   -Id "android-play-store-evidence-check" `
@@ -915,13 +1128,43 @@ Test-TextEvidence `
   -Id "ci-companion-tests" `
   -Name "Companion CI pre-arrival checks" `
   -RelativePaths @(".github/workflows/firmware.yml", "provenance/firmware.yml") `
-  -Patterns @("companion-tests", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "android-actions/setup-android", "platforms;android-36", "build-tools;36.0.0", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "check_android_play_release_readiness.ps1")
+  -Patterns @("workflow_dispatch", "github.event_name != 'workflow_dispatch'", "github.event_name == 'workflow_dispatch'", "STACKCHAN_CI_SOURCE_SHA", "github.event.pull_request.head.sha", "companion-tests", "companion-android-emulator-smoke", "companion-platform-builds", "companion-release-evidence", "export_companion_release_evidence.ps1", "java-version: `"21`"", "python-version: `"3.12`"", "android-actions/setup-android", "gradle/actions/setup-gradle@v6", "platforms;android-36", "build-tools;36.0.0", "system-images;android-35;aosp_atd;x86_64", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "./gradlew check :app-desktop:c0Spike", ":app-android:bundleRelease", "stackchan.allowLabDebugReleaseSigning=true", "check_companion_release_version.ps1", "test_companion_release_version_contract.ps1", "check_android_play_release_readiness.ps1", "test_android_upload_signing_contract.ps1", "test_android_emulator_launch.ps1", "test_android_emulator_release_evidence_contract.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "test_desktop_package_evidence_contract.ps1", "test_desktop_package_launch.ps1", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDesktopPackageEvidence")
+
+Test-AggregateTextEvidence `
+  -Id "companion-ci-candidate-handoff" `
+  -Name "Exact-source all-platform CI candidate handoff" `
+  -RelativePaths @("tools/download_companion_ci_candidate.ps1", "tools/download_companion_ci_candidate.cmd", "tools/test_companion_ci_candidate_contract.ps1", "tools/test_companion_ci_candidate_contract.cmd") `
+  -Patterns @("stackchan.companion-ci-candidate.v1", "companion-ci-candidate-ready", "exact-source-ci-rehearsal-artifacts", "substitutesForTaggedRelease", "substitutesForPhysicalEvidence", "publicReleaseReady", "COMPANION_RELEASE_EVIDENCE.json", "companion-android-apks", "companion-desktop-windows", "companion-desktop-macos", "companion-desktop-linux", "release evidence source mismatch", "does not match companion release evidence", "PR merge/head source mismatch is rejected", "downloaded artifact hash tampering is rejected", "Companion CI candidate contract tests passed")
+
+Test-TextEvidence `
+  -Id "desktop-managed-runtime-native-package-matrix" `
+  -Name "Desktop managed Python runtimes in native package matrix" `
+  -RelativePaths @(".github/workflows/firmware.yml", ".github/workflows/release.yml") `
+  -Patterns @("desktop-windows", "desktop-linux", "desktop-macos", "Prepare managed Python runtime for desktop package", "prepare_desktop_python_runtime.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "Export native desktop package evidence", "export_desktop_package_evidence.ps1", "RequireInstallerPayload", "RequireLaunchEvidence", "windows-package-evidence.json", "linux-package-evidence.json", "macos-package-evidence.json")
+
+Test-TextEvidence `
+  -Id "companion-release-version-gate" `
+  -Name "Companion cross-platform release version gate" `
+  -RelativePaths @("tools/check_companion_release_version.ps1") `
+  -Patterns @("stackchan.companion-release-version.v1", "ExpectedVersion", "versionName", "versionCode", "packageVersion", "CompanionIdentity.kt", "appVersion", "blocked-version-mismatch", "Tag/version mismatch")
+
+Test-TextEvidence `
+  -Id "companion-release-version-contract" `
+  -Name "Companion release version contract test" `
+  -RelativePaths @("tools/test_companion_release_version_contract.ps1", "tools/test_companion_release_version_contract.cmd") `
+  -Patterns @("current companion declarations match", "mismatched release tag is rejected", "cross-platform version drift is rejected", "Companion release version contract tests passed")
+
+Test-TextEvidence `
+  -Id "companion-tag-release-workflow" `
+  -Name "Companion all-platform tag release workflow" `
+  -RelativePaths @(".github/workflows/release.yml") `
+  -Patterns @("companion-android-release", "companion-android-emulator-smoke", "companion-desktop-release", "gradle/actions/setup-gradle@v6", "STACKCHAN_ANDROID_KEYSTORE_B64", "STACKCHAN_ANDROID_KEYSTORE_PASSWORD", "STACKCHAN_ANDROID_KEY_ALIAS", "STACKCHAN_ANDROID_KEY_PASSWORD", "STACKCHAN_WINDOWS_PFX_B64", "STACKCHAN_WINDOWS_PFX_PASSWORD", "STACKCHAN_MACOS_CERTIFICATE_B64", "STACKCHAN_MACOS_CERTIFICATE_PASSWORD", "STACKCHAN_MACOS_SIGNING_IDENTITY", "STACKCHAN_MACOS_NOTARIZATION_APPLE_ID", "STACKCHAN_MACOS_NOTARIZATION_PASSWORD", "STACKCHAN_MACOS_NOTARIZATION_TEAM_ID", "check_android_play_release_readiness.ps1 -RequireUploadSigning -Json", "check_desktop_release_signing_readiness.ps1", "Validate production desktop signing credentials", "RequireNativeToolchain", "ValidateAppleNotaryCredentials", "ANDROID_AVD_HOME", "timeout 180 adb wait-for-device", "test_android_emulator_launch.ps1", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "prepare_desktop_python_runtime.ps1", "test_desktop_package_launch.ps1", "export_desktop_package_evidence.ps1", "STACKCHAN_DESKTOP_PYTHON_RUNTIME_ROOT", "RequireInstallerPayload", "RequireLaunchEvidence", "RequireDistributionTrust", "RequireUploadSigning", "RequireDesktopPackageEvidence", "RequireDesktopDistributionTrust", ":app-desktop:notarizeDmg", "actions/attest@v4", "Get-ReleaseCompanionAssetEntries", "COMPANION_RELEASE_EVIDENCE.json")
 
 Test-TextEvidence `
   -Id "companion-release-signing-evidence" `
-  -Name "Companion release APK signing evidence" `
+  -Name "Companion release signing and native trust evidence" `
   -RelativePaths @("tools/export_companion_release_evidence.ps1") `
-  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2", "androidBundleSigning", "android-release-aab-signature", "jarsigner", "DesktopPythonRuntimeRoot", "check_desktop_python_runtime_payload.ps1", "desktopPythonRuntime", "desktop-managed-python-runtime-payload")
+  -Patterns @("ApkSignerPath", "apksigner", "androidSigning", "android-release-apk-signature", "APK Signature Scheme v2", "androidBundleSigning", "android-release-aab-signature", "jarsigner", "RequireUploadSigning", "upload-key", "blocked-release-evidence", "blockingPending", "AndroidEmulatorEvidencePath", "RequireAndroidEmulatorEvidence", "androidEmulatorEvidenceRequired", "android-emulator-release-apk-evidence", "check_android_emulator_release_evidence.ps1", "DesktopPythonRuntimeRoot", "check_desktop_python_runtime_payload.ps1", "desktopPythonRuntime", "desktop-managed-python-runtime-payload", "DesktopPackageEvidenceRoot", "RequireDesktopPackageEvidence", "desktopPackageEvidenceRequired", "RequireDesktopDistributionTrust", "desktopDistributionTrustRequired", "distributionTrustStatus", "authenticode-sha256-timestamped", "developer-id-notarized-stapled", "installerAppJarSha256", "installerRuntimeSha256", "installerBrainFiles", "desktop-native-package-runtime-evidence", "desktop-native-distribution-trust")
 
 Test-TextEvidence `
   -Id "android-toolchain-check" `

@@ -1,0 +1,21 @@
+{
+  "schema": "stackchan.privacy-policy-deployment.v1",
+  "status": "deployed",
+  "canonicalUrl": "https://robvanprod.github.io/stackchan_alive/privacy/",
+  "sourcePath": "site/privacy/index.html",
+  "sourceCommit": "afbebbd3429e00a6f76cb238788ce7664f1b6fda",
+  "sourceSha256": "28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47",
+  "sourceGitBlob": "be9032e532f85cf38448d54f770ff9d915e27a54",
+  "deploymentMethod": "github-pages-branch",
+  "deploymentBranch": "gh-pages",
+  "deploymentCommit": "49cefe092920c0a12da50896356394d380df6904",
+  "pagesBuildId": 1094346889,
+  "pagesBuildStatus": "built",
+  "pagesBuiltAtUtc": "2026-07-14T05:05:42Z",
+  "verifiedAtUtc": "2026-07-14T05:06:53Z",
+  "httpStatus": 200,
+  "finalUrl": "https://robvanprod.github.io/stackchan_alive/privacy/",
+  "servedSha256": "28d1cca7889f8d95c0587025ee5d46c213a85ac814c538e3c36090b377fd1f47",
+  "httpsEnforced": true,
+  "notes": "Initial public deployment uses the isolated gh-pages branch. After the Pages workflow reaches main, switch the Pages build source to GitHub Actions and re-run the deployment checker."
+}

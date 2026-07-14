@@ -1,0 +1,98 @@
+name: Companion Signing Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-upload-key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Validate Android upload signing credentials
+        shell: pwsh
+        env:
+          STACKCHAN_ANDROID_KEYSTORE_B64: ${{ secrets.STACKCHAN_ANDROID_KEYSTORE_B64 }}
+          STACKCHAN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.STACKCHAN_ANDROID_KEYSTORE_PASSWORD }}
+          STACKCHAN_ANDROID_KEY_ALIAS: ${{ secrets.STACKCHAN_ANDROID_KEY_ALIAS }}
+          STACKCHAN_ANDROID_KEY_PASSWORD: ${{ secrets.STACKCHAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          $required = @(
+            "STACKCHAN_ANDROID_KEYSTORE_B64",
+            "STACKCHAN_ANDROID_KEYSTORE_PASSWORD",
+            "STACKCHAN_ANDROID_KEY_ALIAS",
+            "STACKCHAN_ANDROID_KEY_PASSWORD"
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is required for Android upload signing readiness."
+            }
+          }
+
+          $keystorePath = Join-Path $env:RUNNER_TEMP "stackchan-companion-upload-readiness.jks"
+          $keystoreBytes = $null
+          try {
+            try {
+              $keystoreBytes = [Convert]::FromBase64String($env:STACKCHAN_ANDROID_KEYSTORE_B64)
+            } catch {
+              throw "STACKCHAN_ANDROID_KEYSTORE_B64 is not valid base64."
+            }
+            if ($keystoreBytes.Length -eq 0) {
+              throw "STACKCHAN_ANDROID_KEYSTORE_B64 decoded to an empty keystore."
+            }
+            [IO.File]::WriteAllBytes($keystorePath, $keystoreBytes)
+            $env:STACKCHAN_ANDROID_KEYSTORE = $keystorePath
+            ./tools/check_android_play_release_readiness.ps1 -RequireUploadSigning -Json
+          } finally {
+            if ($null -ne $keystoreBytes) {
+              [Array]::Clear($keystoreBytes, 0, $keystoreBytes.Length)
+            }
+            Remove-Item -LiteralPath $keystorePath -Force -ErrorAction SilentlyContinue
+          }
+
+  windows-authenticode:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Windows Authenticode credentials
+        shell: pwsh
+        env:
+          STACKCHAN_WINDOWS_PFX_B64: ${{ secrets.STACKCHAN_WINDOWS_PFX_B64 }}
+          STACKCHAN_WINDOWS_PFX_PASSWORD: ${{ secrets.STACKCHAN_WINDOWS_PFX_PASSWORD }}
+        run: |
+          ./tools/check_desktop_release_signing_readiness.ps1 `
+            -Platform windows `
+            -RequireReady `
+            -RequireNativeToolchain `
+            -Json
+
+  macos-developer-id:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Developer ID and notarization credentials
+        shell: pwsh
+        env:
+          STACKCHAN_MACOS_CERTIFICATE_B64: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_B64 }}
+          STACKCHAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.STACKCHAN_MACOS_CERTIFICATE_PASSWORD }}
+          STACKCHAN_MACOS_SIGNING_IDENTITY: ${{ secrets.STACKCHAN_MACOS_SIGNING_IDENTITY }}
+          STACKCHAN_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_APPLE_ID }}
+          STACKCHAN_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_PASSWORD }}
+          STACKCHAN_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.STACKCHAN_MACOS_NOTARIZATION_TEAM_ID }}
+        run: |
+          ./tools/check_desktop_release_signing_readiness.ps1 `
+            -Platform macos `
+            -RequireReady `
+            -RequireNativeToolchain `
+            -ValidateAppleNotaryCredentials `
+            -Json

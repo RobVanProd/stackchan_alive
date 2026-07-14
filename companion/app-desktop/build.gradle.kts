@@ -52,12 +52,24 @@ val validateDesktopPythonRuntimePayload = tasks.register("validateDesktopPythonR
             val process = ProcessBuilder(command)
                 .redirectErrorStream(true)
                 .start()
-            val finished = process.waitFor(30, TimeUnit.SECONDS)
+            val output = StringBuilder()
+            val outputReader = Thread {
+                process.inputStream.bufferedReader().use { reader ->
+                    output.append(reader.readText())
+                }
+            }.apply {
+                name = "desktop-runtime-validator-output"
+                isDaemon = true
+                start()
+            }
+            val finished = process.waitFor(120, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
+                outputReader.join(5_000)
                 return 124 to "Command timed out: ${command.joinToString(" ")}"
             }
-            return process.exitValue() to process.inputStream.bufferedReader().readText()
+            outputReader.join(5_000)
+            return process.exitValue() to output.toString()
         }
 
         val checker = rootProject.layout.projectDirectory
@@ -89,6 +101,24 @@ val validateDesktopPythonRuntimePayload = tasks.register("validateDesktopPythonR
         }
         logger.lifecycle("Desktop Python runtime payload validated: $runtimeRoot")
     }
+}
+
+val desktopNativeAppResourcesRoot = layout.buildDirectory.dir("generated/native-app-resources")
+val prepareDesktopNativeAppResources = tasks.register<Sync>("prepareDesktopNativeAppResources") {
+    group = "distribution"
+    description = "Stages executable managed-runtime files beside the native desktop application."
+    dependsOn(validateDesktopPythonRuntimePayload)
+    into(desktopNativeAppResourcesRoot)
+
+    desktopPythonRuntimeRoot.orNull?.trim()?.takeIf { it.isNotBlank() }?.let { runtimeRoot ->
+        from(runtimeRoot) {
+            into("common/python-runtime")
+        }
+    }
+}
+
+tasks.matching { it.name == "prepareAppResources" }.configureEach {
+    dependsOn(prepareDesktopNativeAppResources)
 }
 
 tasks.processResources {
@@ -135,21 +165,36 @@ tasks.processResources {
         include("stackchan_spark_safety.wav")
         into("brain/docs/media/voice")
     }
-    desktopPythonRuntimeRoot.orNull?.trim()?.takeIf { it.isNotBlank() }?.let { runtimeRoot ->
-        from(runtimeRoot) {
-            into("python-runtime")
-        }
-    }
 }
 
 compose.desktop {
     application {
         mainClass = "dev.stackchan.companion.desktop.MainKt"
+        dependsOn("prepareDesktopNativeAppResources")
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Stackchan Companion"
             packageVersion = "1.0.0"
+            appResourcesRootDir.set(desktopNativeAppResourcesRoot)
+
+            macOS {
+                bundleID = "dev.stackchan.companion"
+                signing {
+                    sign.set(
+                        providers.environmentVariable("STACKCHAN_MACOS_SIGNING_IDENTITY")
+                            .map { it.isNotBlank() }
+                            .orElse(false)
+                    )
+                    identity.set(providers.environmentVariable("STACKCHAN_MACOS_SIGNING_IDENTITY"))
+                    keychain.set(providers.environmentVariable("STACKCHAN_MACOS_KEYCHAIN"))
+                }
+                notarization {
+                    appleID.set(providers.environmentVariable("STACKCHAN_MACOS_NOTARIZATION_APPLE_ID"))
+                    password.set(providers.environmentVariable("STACKCHAN_MACOS_NOTARIZATION_PASSWORD"))
+                    teamID.set(providers.environmentVariable("STACKCHAN_MACOS_NOTARIZATION_TEAM_ID"))
+                }
+            }
         }
     }
 }

@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$materializedSymlinkCount = 0
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $platform = if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
@@ -160,7 +161,17 @@ function Copy-RuntimeDirectory {
 
     New-Item -ItemType Directory -Force -Path $CurrentTarget | Out-Null
     Get-ChildItem -LiteralPath $CurrentSource -File -Force | ForEach-Object {
-      Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $CurrentTarget $_.Name)
+      if ($_.Name -eq ".gitignore") { return }
+      $destination = Join-Path $CurrentTarget $_.Name
+      $isUnixFileLink = $platform -ne "windows" -and -not [string]::IsNullOrWhiteSpace([string]$_.LinkType)
+      if ($isUnixFileLink) {
+        [System.IO.File]::Copy($_.FullName, $destination, $true)
+        $sourceMode = [System.IO.File]::GetUnixFileMode($_.FullName)
+        [System.IO.File]::SetUnixFileMode($destination, $sourceMode)
+        $script:materializedSymlinkCount++
+      } else {
+        Copy-Item -LiteralPath $_.FullName -Destination $destination
+      }
     }
     Get-ChildItem -LiteralPath $CurrentSource -Directory -Force | ForEach-Object {
       if ($excludedDirectoryNames.ContainsKey($_.Name)) { return }
@@ -232,10 +243,12 @@ $result = [ordered]@{
   pythonVersion = $versionCheck.version
   source = $SourceName
   dryRun = [bool]$DryRun
+  materializedSymlinkCount = $materializedSymlinkCount
 }
 
 if (-not $DryRun) {
   Copy-RuntimeDirectory -SourceRoot $sourceRoot -TargetRoot $RuntimeRoot
+  $result.materializedSymlinkCount = $materializedSymlinkCount
   $payloadHash = Get-RuntimePayloadHash $RuntimeRoot
   $manifest = [ordered]@{
     schema = "stackchan.desktop-python-runtime.v1"

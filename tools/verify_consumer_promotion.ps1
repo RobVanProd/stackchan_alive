@@ -3,6 +3,7 @@ param(
   [string]$PackageRoot,
   [string]$PackageZip,
   [string]$EvidenceRoot,
+  [string]$CompanionV1EvidenceRoot,
   [string]$VoiceSourceProvenancePath,
   [string]$VoiceSourceTemplatePath,
   [string]$ProjectLicensePath,
@@ -42,6 +43,8 @@ if ([string]::IsNullOrWhiteSpace($ExpectedFirmwareSourceCommit)) {
 
 $cleanupDir = $null
 $actionsStatusTempDir = $null
+$promotionPackageZipPath = ""
+$promotionPackageZipSha256 = ""
 
 function Join-ResolvedPath {
   param(
@@ -72,6 +75,91 @@ function Read-JsonFile {
 
   Assert-FilePath $Path 10
   return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+}
+
+function Resolve-PromotionPath {
+  param([string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return ""
+  }
+  $fullPath = if ([System.IO.Path]::IsPathRooted($Path)) {
+    [System.IO.Path]::GetFullPath($Path)
+  } else {
+    [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
+  }
+  if (Test-Path -LiteralPath $fullPath) {
+    return (Resolve-Path -LiteralPath $fullPath).Path
+  }
+  return $fullPath
+}
+
+function Assert-CompanionV1PromotionReady {
+  param(
+    [string]$EvidenceRootPath,
+    [string]$ExpectedVersion,
+    [string]$ExpectedSourceCommit,
+    [string]$ExpectedFirmwareSourceCommit,
+    [string]$ExpectedHardwareEvidenceRoot,
+    [string]$ExpectedPackageZipPath,
+    [string]$ExpectedPackageZipSha256
+  )
+
+  $resolvedRoot = Resolve-PromotionPath $EvidenceRootPath
+  if ([string]::IsNullOrWhiteSpace($resolvedRoot) -or -not (Test-Path -LiteralPath $resolvedRoot -PathType Container)) {
+    throw "Consumer promotion requires a completed Companion v1 aggregate evidence directory: $EvidenceRootPath"
+  }
+
+  $checker = Join-Path $PSScriptRoot "check_companion_v1_evidence_bundle.ps1"
+  $checkerOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $checker `
+    -Root $repoRoot `
+    -EvidenceRoot $resolvedRoot `
+    -RequireReady `
+    -Json 2>&1
+  $checkerExitCode = $LASTEXITCODE
+  $checkerText = ($checkerOutput | Out-String).Trim()
+  if ($checkerExitCode -ne 0) {
+    throw "Companion v1 aggregate evidence is not promotion-ready: $checkerText"
+  }
+  try {
+    $checkerReport = $checkerText | ConvertFrom-Json
+  } catch {
+    throw "Companion v1 aggregate checker did not return valid JSON: $($_.Exception.Message)"
+  }
+  if ($checkerReport.schema -ne "stackchan.companion-v1-evidence-bundle-check.v1" -or
+      $checkerReport.status -ne "companion-v1-evidence-ready" -or
+      [int]$checkerReport.failed -ne 0 -or [int]$checkerReport.pending -ne 0) {
+    throw "Companion v1 aggregate evidence did not return companion-v1-evidence-ready."
+  }
+  if ([string]$checkerReport.sourceCommit -ne $ExpectedSourceCommit) {
+    throw "Companion v1 aggregate source commit mismatch: expected $ExpectedSourceCommit, got $($checkerReport.sourceCommit)"
+  }
+  if ([string]$checkerReport.firmwareSourceCommit -ne $ExpectedFirmwareSourceCommit) {
+    throw "Companion v1 aggregate firmware source commit mismatch: expected $ExpectedFirmwareSourceCommit, got $($checkerReport.firmwareSourceCommit)"
+  }
+  if ([string]$checkerReport.releaseVersion -ne $ExpectedVersion) {
+    throw "Companion v1 aggregate release version mismatch: expected $ExpectedVersion, got $($checkerReport.releaseVersion)"
+  }
+
+  $bundlePath = Join-Path $resolvedRoot "COMPANION_V1_EVIDENCE_BUNDLE.json"
+  $bundle = Read-JsonFile $bundlePath
+  $bundleHardwareRoot = Resolve-PromotionPath ([string]$bundle.hardwareEvidenceRoot)
+  $promotionHardwareRoot = Resolve-PromotionPath $ExpectedHardwareEvidenceRoot
+  if ([string]::IsNullOrWhiteSpace($bundleHardwareRoot) -or
+      -not $bundleHardwareRoot.Equals($promotionHardwareRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Companion v1 hardware evidence root does not match the packet being promoted: expected $promotionHardwareRoot, got $bundleHardwareRoot"
+  }
+
+  $bundlePackageSha256 = ([string]$bundle.releasePackage.sha256).ToLowerInvariant()
+  if ($bundlePackageSha256 -ne $ExpectedPackageZipSha256.ToLowerInvariant()) {
+    throw "Companion v1 release ZIP SHA-256 does not match the package being promoted: $ExpectedPackageZipPath"
+  }
+
+  return [pscustomobject]@{
+    root = $resolvedRoot
+    report = $checkerReport
+    bundle = $bundle
+  }
 }
 
 function Assert-ObjectTextComplete {
@@ -305,12 +393,18 @@ function Assert-VoiceSourceReady {
   }
 }
 
+if ([string]::IsNullOrWhiteSpace($PackageZip)) {
+  throw "Consumer promotion requires -PackageZip so the exact release archive can be bound to Companion v1 evidence."
+}
+
 if (-not [string]::IsNullOrWhiteSpace($PackageZip)) {
   Assert-FilePath $PackageZip 100000
+  $promotionPackageZipPath = (Resolve-Path -LiteralPath $PackageZip).Path
+  $promotionPackageZipSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $promotionPackageZipPath).Hash.ToLowerInvariant()
   $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "stackchan-consumer-promotion"
   $cleanupDir = Join-Path $tempRoot ([System.Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $cleanupDir | Out-Null
-  Expand-Archive -LiteralPath $PackageZip -DestinationPath $cleanupDir
+  Expand-Archive -LiteralPath $promotionPackageZipPath -DestinationPath $cleanupDir
   $PackageRoot = $cleanupDir
 }
 
@@ -340,6 +434,18 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "Hardware evidence verification failed."
   }
+
+  if ([string]::IsNullOrWhiteSpace($CompanionV1EvidenceRoot)) {
+    throw "Consumer promotion requires -CompanionV1EvidenceRoot with a completed aggregate Companion v1 evidence packet."
+  }
+  $companionV1Evidence = Assert-CompanionV1PromotionReady `
+    -EvidenceRootPath $CompanionV1EvidenceRoot `
+    -ExpectedVersion $Version `
+    -ExpectedSourceCommit $ExpectedCommit `
+    -ExpectedFirmwareSourceCommit $ExpectedFirmwareSourceCommit `
+    -ExpectedHardwareEvidenceRoot $EvidenceRoot `
+    -ExpectedPackageZipPath $promotionPackageZipPath `
+    -ExpectedPackageZipSha256 $promotionPackageZipSha256
 
   if ([string]::IsNullOrWhiteSpace($ProjectLicensePath)) {
     $ProjectLicensePath = Join-Path $repoRoot "LICENSE"
@@ -425,6 +531,8 @@ try {
   Write-Host "Firmware source commit: $ExpectedFirmwareSourceCommit"
   Write-Host "Package: $packageRootPath"
   Write-Host "Evidence: $EvidenceRoot"
+  Write-Host "Companion v1 evidence: $($companionV1Evidence.root)"
+  Write-Host "Release ZIP SHA256: $promotionPackageZipSha256"
   Write-Host "Installed firmware SHA256: $($firmwareHashes[0])"
   if ($null -ne $ciException) {
     Write-Host "CI exception: $ExternalAccountCiExceptionPath"

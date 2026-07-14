@@ -1,10 +1,12 @@
 # Production Readiness
 
-Current status (2026-07-12): the integrated physical release candidate passed exact-image
-no-motion, actuator, voice, camera, body-sensor, OTA, and formal one-hour acceptance gates, then
-completed more than five hours of extended all-feature operation without a strict hardware bad
-state. The repository owner accepted that evidence and waived the remaining eight-hour duration.
-The Apache-2.0 release includes the active production RVC model and index.
+Current status (2026-07-13): the corrected single-owner exact-image physical candidate passed
+native `261/261`, formal `76/76` no-motion, formal `77/77` short actuator, voice, camera,
+body-sensor, and OTA gates. Its exact installed firmware then completed the full all-feature
+actuator soak for `28807 s` with `5643/5643` successful polls and the formal checker passed
+`77/77`; motion, rail, torque, and motion power authority were verified off afterward. The exact
+source commit, firmware SHA-256, and evidence root are recorded in `FIRST_DEPLOY_STATUS.md`. The
+Apache-2.0 release includes the active production RVC model and index.
 
 ## Proven Now
 
@@ -44,10 +46,10 @@ The Apache-2.0 release includes the active production RVC model and index.
 - Servo-enabled flashing requires an explicit `-ConfirmServoRisk` operator acknowledgment.
 - Display rendering uses the M5 display backend, not a stub.
 - Preview media can be generated without hardware.
-- The exact installed paired firmware passed a formally checked one-hour actuator acceptance with
-  every poll and motion sample good, no reset, timeout, power, camera, or peripheral fault, and a
-  verified motion stop. The exact SHA-256 and evidence root are recorded in
-  `FIRST_DEPLOY_STATUS.md`.
+- The corrected exact installed paired firmware passed a formally checked `28807 s` all-feature
+  actuator soak with every one of `5643` polls successful, motion and unsuppressed-motion sample
+  ratios both `1.0`, no reset, timeout, power, camera, or peripheral fault, and a verified bounded
+  motion stop. The exact SHA-256 and evidence root are recorded in `FIRST_DEPLOY_STATUS.md`.
 - Physical wake, Whisper/Gemma/RVC reply transport, complete speaker playback, synchronized mouth
   motion, bounded camera following, power-coordinated servos, RGB behavior, touch, IMU interaction,
   and LAN OTA rollback/confirmation have all been exercised on the real robot.
@@ -59,8 +61,8 @@ The Apache-2.0 release includes the active production RVC model and index.
 
 ## Post-Release Follow-Up
 
-- Continue longer-duration community and lab runs as regression evidence; the owner waived the
-  remaining duration of the interrupted launch run for this release.
+- Continue community and lab runs as regression evidence; the corrected exact-image candidate has
+  already completed the required eight-hour all-feature actuator duration.
 - Audit downloaded release assets against the published SHA-256 sidecars.
 - PC/mobile owner failover and target-store distribution evidence for whichever companion targets
   are presented as consumer-ready. These do not block the current PC-hosted public release.
@@ -76,8 +78,8 @@ Do not call this consumer-ready until all of these are evidenced for the release
    motion, servos, camera following, RGB, touch, and IMU gates pass on the integrated candidate.
 3. Power-cycle, OTA confirmation/rollback, actuator stop, power, thermal, and display recovery
    evidence pass without unsupported root-cause claims.
-4. The formally checked one-hour actuator acceptance passes and the owner records the accepted
-   extended-run evidence for the release.
+4. The formally checked actuator acceptance and required long-duration soak pass for the exact
+   installed firmware, with bounded final motion stop evidence.
 5. The tested release ZIP is independently extracted and verified, with a matching
    `logs/package_verify.log`, manifest commit, and published-asset SHA-256.
 6. Bundled production voice files match the recorded release hashes.
