@@ -254,6 +254,24 @@ function Read-MachOUInt32 {
   return [BitConverter]::ToUInt32($valueBytes, 0)
 }
 
+function Read-MachOUInt64 {
+  param(
+    [byte[]]$Bytes,
+    [int]$Offset,
+    [bool]$LittleEndian
+  )
+
+  if ($Offset -lt 0 -or $Offset + 8 -gt $Bytes.Length) {
+    throw "Mach-O uint64 offset is outside the file."
+  }
+  $valueBytes = [byte[]]::new(8)
+  [Array]::Copy($Bytes, $Offset, $valueBytes, 0, 8)
+  if ([BitConverter]::IsLittleEndian -ne $LittleEndian) {
+    [Array]::Reverse($valueBytes)
+  }
+  return [BitConverter]::ToUInt64($valueBytes, 0)
+}
+
 function Get-MachOCodeContentIdentity {
   param([string]$Path)
 
@@ -278,6 +296,12 @@ function Get-MachOCodeContentIdentity {
   $signatureCommandOffset = -1
   $signatureDataOffset = 0
   $signatureDataSize = 0
+  $linkEditVirtualSizeOffset = -1
+  $linkEditFileSizeOffset = -1
+  $linkEditSizeFieldBytes = 0
+  $linkEditFileOffset = 0
+  $linkEditFileSize = 0
+  $linkEditVirtualSize = 0
   for ($index = 0; $index -lt $commandCount; $index++) {
     $command = Read-MachOUInt32 -Bytes $bytes -Offset $commandOffset -LittleEndian $littleEndian
     $commandSize = [int](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 4) -LittleEndian $littleEndian)
@@ -292,20 +316,53 @@ function Get-MachOCodeContentIdentity {
       $signatureDataOffset = [int](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 8) -LittleEndian $littleEndian)
       $signatureDataSize = [int](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 12) -LittleEndian $littleEndian)
     }
+    if ($command -eq 0x19 -or $command -eq 0x1) {
+      $segmentName = [System.Text.Encoding]::ASCII.GetString($bytes, $commandOffset + 8, 16).Trim([char]0)
+      if ($segmentName -eq "__LINKEDIT") {
+        if ($linkEditFileSizeOffset -ge 0) { throw "Mach-O has duplicate __LINKEDIT segments." }
+        if ($command -eq 0x19) {
+          if ($commandSize -lt 72) { throw "Mach-O __LINKEDIT segment command is too short." }
+          $linkEditVirtualSizeOffset = $commandOffset + 32
+          $linkEditFileSizeOffset = $commandOffset + 48
+          $linkEditSizeFieldBytes = 8
+          $linkEditVirtualSize = [int64](Read-MachOUInt64 -Bytes $bytes -Offset $linkEditVirtualSizeOffset -LittleEndian $littleEndian)
+          $linkEditFileOffset = [int64](Read-MachOUInt64 -Bytes $bytes -Offset ($commandOffset + 40) -LittleEndian $littleEndian)
+          $linkEditFileSize = [int64](Read-MachOUInt64 -Bytes $bytes -Offset $linkEditFileSizeOffset -LittleEndian $littleEndian)
+        } else {
+          if ($commandSize -lt 56) { throw "Mach-O __LINKEDIT segment command is too short." }
+          $linkEditVirtualSizeOffset = $commandOffset + 28
+          $linkEditFileSizeOffset = $commandOffset + 36
+          $linkEditSizeFieldBytes = 4
+          $linkEditVirtualSize = [int64](Read-MachOUInt32 -Bytes $bytes -Offset $linkEditVirtualSizeOffset -LittleEndian $littleEndian)
+          $linkEditFileOffset = [int64](Read-MachOUInt32 -Bytes $bytes -Offset ($commandOffset + 32) -LittleEndian $littleEndian)
+          $linkEditFileSize = [int64](Read-MachOUInt32 -Bytes $bytes -Offset $linkEditFileSizeOffset -LittleEndian $littleEndian)
+        }
+      }
+    }
     $commandOffset += $commandSize
   }
   if ($signatureCommandOffset -lt 0 -or $signatureDataOffset -lt $headerSize + $commandBytes -or
       $signatureDataSize -lt 1 -or $signatureDataOffset + $signatureDataSize -gt $bytes.Length) {
     throw "Mach-O embedded code-signature range is invalid."
   }
+  if ($linkEditFileSizeOffset -lt 0 -or $linkEditFileOffset -lt 0 -or $linkEditFileSize -lt 1 -or
+      $signatureDataOffset -lt $linkEditFileOffset -or
+      $signatureDataOffset + $signatureDataSize -ne $linkEditFileOffset + $linkEditFileSize -or
+      $linkEditFileOffset + $linkEditFileSize -gt $bytes.Length) {
+    throw "Mach-O code signature is not the validated tail of __LINKEDIT."
+  }
 
   $canonical = [byte[]]::new($signatureDataOffset)
   [Array]::Copy($bytes, 0, $canonical, 0, $signatureDataOffset)
   [Array]::Clear($canonical, $signatureCommandOffset, 16)
+  [Array]::Clear($canonical, $linkEditVirtualSizeOffset, $linkEditSizeFieldBytes)
+  [Array]::Clear($canonical, $linkEditFileSizeOffset, $linkEditSizeFieldBytes)
   return [pscustomobject]@{
     sha256 = Get-Sha256Bytes $canonical
     codeBytes = $signatureDataOffset
     signatureBytes = $signatureDataSize
+    linkEditFileBytes = $linkEditFileSize
+    linkEditVirtualBytes = $linkEditVirtualSize
     canonicalBytes = $canonical
   }
 }
@@ -425,6 +482,10 @@ function Test-MacOSSignatureNormalizedRuntimeIdentity {
           codeBytes = [int64]$expectedIdentity.codeBytes
           processedSignatureBytes = [int64]$expectedIdentity.signatureBytes
           installerSignatureBytes = [int64]$actualIdentity.signatureBytes
+          processedLinkEditFileBytes = [int64]$expectedIdentity.linkEditFileBytes
+          installerLinkEditFileBytes = [int64]$actualIdentity.linkEditFileBytes
+          processedLinkEditVirtualBytes = [int64]$expectedIdentity.linkEditVirtualBytes
+          installerLinkEditVirtualBytes = [int64]$actualIdentity.linkEditVirtualBytes
         })
       }
       $normalizedFileSha = Get-Sha256Utf8Text (($architectureProofs | ForEach-Object {

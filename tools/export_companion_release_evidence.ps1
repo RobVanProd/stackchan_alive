@@ -820,7 +820,11 @@ function Get-DesktopPackageEvidence {
                 ([string]$architectureProof.codeContentSha256).ToLowerInvariant() -notmatch '^[a-f0-9]{64}$' -or
                 [int64]$architectureProof.codeBytes -le 0 -or
                 [int64]$architectureProof.processedSignatureBytes -le 0 -or
-                [int64]$architectureProof.installerSignatureBytes -le 0) {
+                [int64]$architectureProof.installerSignatureBytes -le 0 -or
+                [int64]$architectureProof.processedLinkEditFileBytes -le 0 -or
+                [int64]$architectureProof.installerLinkEditFileBytes -le 0 -or
+                [int64]$architectureProof.processedLinkEditVirtualBytes -le 0 -or
+                [int64]$architectureProof.installerLinkEditVirtualBytes -le 0) {
               $architecturesValid = $false
             }
           }
