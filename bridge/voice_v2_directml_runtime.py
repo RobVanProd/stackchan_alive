@@ -15,6 +15,8 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from voice_device_truth import directml_device_truth
+
 
 TIMING_PATTERN = re.compile(
     r"npy:\s*([0-9.]+)s,\s*f0:\s*([0-9.]+)s,\s*infer:\s*([0-9.]+)s",
@@ -99,6 +101,14 @@ class DirectMlRvcRuntime:
     @property
     def device(self) -> str:
         return str(self.config.device)
+
+    @property
+    def device_name(self) -> str:
+        return directml_device_truth(self.device)[0]
+
+    @property
+    def device_available(self) -> bool:
+        return directml_device_truth(self.device)[1]
 
     def _warmup(self) -> dict[str, object]:
         sample_rate = 16000

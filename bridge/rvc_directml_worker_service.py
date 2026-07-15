@@ -34,6 +34,8 @@ class Worker:
             "ready": True,
             "backend": "torch-directml",
             "device": self.runtime.device,
+            "device_name": self.runtime.device_name,
+            "device_available": self.runtime.device_available,
             "method": self.runtime.f0_method,
             "model": str(self.runtime.model_path),
             "index": str(self.runtime.index_path),

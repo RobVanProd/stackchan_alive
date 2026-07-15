@@ -458,6 +458,7 @@ Copy-Item -LiteralPath "docs/SPEAKER_AUDIO_RESEARCH.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_V2_DIRECTML.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRIDGE_DASHBOARD.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/FIRST_DEPLOY_STATUS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ARRIVAL_DAY_RUNBOOK.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/stackchan_procedural_runtime_design.pdf" -Destination $docsDir
@@ -527,6 +528,8 @@ $bridgePackageFiles = @(
   "test_tts_adapter.py",
   "lan_service.py",
   "test_lan_service.py",
+  "dashboard_service.py",
+  "test_dashboard_service.py",
   "ollama_stackchan_runner.py",
   "test_ollama_stackchan_runner.py",
   "pc_brain_probe.py",
@@ -562,6 +565,7 @@ $bridgePackageFiles = @(
 foreach ($bridgeFile in $bridgePackageFiles) {
   Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
 }
+Copy-Item -LiteralPath "bridge/dashboard" -Destination $bridgeDir -Recurse
 Copy-Item -LiteralPath "bridge/models/README.md" -Destination $bridgeModelsDir
 Copy-Item -LiteralPath "bridge/models/LICENSE" -Destination $bridgeModelsDir
 Copy-Item -LiteralPath "bridge/models/face_detection_yunet_2023mar.onnx" -Destination $bridgeModelsDir
@@ -836,6 +840,13 @@ $releaseTools = @(
   "tools/setup_whisper_cpp.ps1",
   "tools/start_pc_brain.cmd",
   "tools/start_pc_brain.ps1",
+  "tools/start_pc_brain_directml.ps1",
+  "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/start_stackchan_dashboard.cmd",
+  "tools/start_stackchan_dashboard.ps1",
+  "tools/install_stackchan_dashboard_shortcut.ps1",
+  "tools/test_stackchan_dashboard_launcher_contract.cmd",
+  "tools/test_stackchan_dashboard_launcher_contract.ps1",
   "tools/start_rvc_worker.ps1",
   "tools/setup_voice_v2_directml.ps1",
   "tools/voice_v2_directml_constraints.txt",
@@ -1412,6 +1423,7 @@ $manifest = [ordered]@{
   pagesWorkflow = "provenance/pages.yml"
   androidPlayIcon = "docs/store-assets/play/icon-512.png"
   androidPlayFeatureGraphic = "docs/store-assets/play/feature-graphic-1024x500.png"
+  desktopShortcutIcon = "docs/store-assets/desktop/stackchan-alive.ico"
   companionCrossPlatformPlan = "docs/COMPANION_CROSS_PLATFORM_PLAN.md"
   conversationV2Roadmap = "docs/CONVERSATION_V2_ROADMAP.md"
   androidCompanionSource = "provenance/companion"
@@ -1463,6 +1475,9 @@ $manifest = [ordered]@{
   characterRedTeamReport = "character-red-team/CHARACTER_RED_TEAM.md"
   characterRedTeamReportJson = "character-red-team/character_red_team.json"
   bridgeProtocol = "docs/BRIDGE_PROTOCOL.md"
+  bridgeDashboard = "docs/BRIDGE_DASHBOARD.md"
+  bridgeDashboardService = "bridge/dashboard_service.py"
+  bridgeDashboardLauncher = "tools/start_stackchan_dashboard.ps1"
   privacyModel = "docs/PRIVACY.md"
   expressionProfiles = "data/expressions.yaml"
   voicePersona = "data/voice_persona.yaml"
@@ -1671,6 +1686,13 @@ $manifest = [ordered]@{
     "tools/run_lan_smoke.ps1",
     "tools/start_pc_brain.cmd",
     "tools/start_pc_brain.ps1",
+    "tools/start_pc_brain_directml.ps1",
+    "tools/test_start_pc_brain_directml_contract.ps1",
+    "tools/start_stackchan_dashboard.cmd",
+    "tools/start_stackchan_dashboard.ps1",
+    "tools/install_stackchan_dashboard_shortcut.ps1",
+    "tools/test_stackchan_dashboard_launcher_contract.cmd",
+    "tools/test_stackchan_dashboard_launcher_contract.ps1",
     "tools/start_rvc_worker.ps1",
     "tools/setup_voice_v2_directml.ps1",
     "tools/voice_v2_directml_constraints.txt",
@@ -1831,6 +1853,11 @@ $manifest = [ordered]@{
     "provenance/bridge/test_tts_adapter.py",
     "provenance/bridge/lan_service.py",
     "provenance/bridge/test_lan_service.py",
+    "provenance/bridge/dashboard_service.py",
+    "provenance/bridge/test_dashboard_service.py",
+    "provenance/bridge/dashboard/index.html",
+    "provenance/bridge/dashboard/styles.css",
+    "provenance/bridge/dashboard/app.js",
     "provenance/bridge/ollama_stackchan_runner.py",
     "provenance/bridge/test_ollama_stackchan_runner.py",
     "provenance/bridge/windows_speech_tts.py",

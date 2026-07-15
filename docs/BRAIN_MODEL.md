@@ -87,7 +87,9 @@ The production LAN bridge passes two separate trusted context channels into this
 
 - `memory_lines` comes from `BridgeMemory.context_lines()`. It contains only bounded,
   privacy-filtered `user.*` and `project.*` facts plus counters; secrets, health, finance,
-  relationship, third-party, and raw-audio content never enter this view.
+  relationship, third-party, and raw-audio content never enter this view. Memory v4 adds one
+  recent session episode and at most one due `ask_about` callback during the first two turns,
+  within a hard 1800-character relationship-card budget.
 - `embodiment_lines` comes from typed live robot telemetry. It is explicitly data rather than
   instructions and cannot authorize hardware control.
 
@@ -100,8 +102,24 @@ acknowledgment without a bounded `user.*` or `project.*` `memory_write` fails th
 Opt-in Conversation v2 adds a third, explicitly separate channel: up to four completed turns from
 the current conversation lease. This history is bounded and labeled as session data rather than
 approved memory. It is committed only after authoritative playback completion, is never persisted
-to `BridgeMemory`, and is erased on exit, timeout, failure, cancellation, or bridge loss. Robot
+raw to `BridgeMemory`, and is erased on exit, timeout, failure, cancellation, or bridge loss. Robot
 telemetry reports only the number of retained turns, never their text.
+
+Memory v4 persists only sanitized derivatives, never raw lease turns. At session close the host
+deterministically records a bounded topic/count episode from non-research turns; it skips a
+one-turn session with no eligible topic. Precision-biased transcript rules may also capture a due
+callback when a first-person future statement and a near-term date occur together. Questions,
+negations, web-derived turns, medical/health details, relationship details, contacts, finance,
+credentials, and third-party data are rejected. A callback is injected once per session and is
+marked asked only when the spoken reply overlaps at least two content terms.
+
+`--enable-episode-distillation` or `STACKCHAN_ENABLE_EPISODE_DISTILLATION=1` opts into one local
+post-close model call over at most four in-memory lease turns. The flag defaults off. This is a
+deliberate privacy-policy delta: a strictly validated episode and optional callback may persist
+after the raw lease is erased. The distillation transport accepts only a loopback HTTP Ollama
+endpoint. Any malformed, oversized, wrong-typed, or denied result is dropped as a whole with no
+retry and increments `distill_dropped`. The default host-derived path makes no additional model
+call.
 
 ### Trusted Local Facts And Tool Routing
 
@@ -155,11 +173,12 @@ auto-routed. Web evidence is labeled untrusted, receives one grounded second pas
 URLs in `response_start`, and cannot write or delete memory.
 
 `BridgeMemory.context_lines(user_text)` ranks durable and recent facts against the current query,
-keeps identity available, injects at most eight non-identity records, and refreshes `last_used_at`
-only for records actually supplied to the model. This prevents unrelated facts from crowding out
-the item the user is asking Stackchan to remember. For a nonempty production query, a record with
-no key or value term overlap is omitted entirely rather than being used as importance-ranked fill.
-The empty-query developer preview remains a bounded store inspection, not the production turn path.
+keeps identity available, injects at most eight non-identity fact records, and refreshes
+`last_used_at` only for records actually supplied to the model. Durable fact lines keep their
+visible exact keys for deterministic forget behavior. The relationship card prioritizes identity,
+one due callback, relevant facts, and the most recent episode, then preserves a short style
+directive within 1800 characters. For a nonempty production query, a fact with no key or value
+term overlap is omitted entirely. The empty-query developer preview remains bounded.
 
 Use one of these command sources to run a real local model:
 

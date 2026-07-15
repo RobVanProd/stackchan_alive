@@ -11,6 +11,10 @@ on `8765`, and a bounded clear local speech fallback if the worker is unavailabl
 is intentionally intelligible rather than voice-matched and is exposed in TTS telemetry; strict
 validation can set `STACKCHAN_VOICE_REQUIRE_DIRECTML=1` to reject fallback.
 
+Both DirectML and ROCm worker `/health` responses report the requested device, the adapter name
+actually exposed by the runtime, an availability flag, uptime, and conversion counters. The full
+system soak fails if worker uptime or the conversion count regresses between health samples.
+
 Start or repair the production host path with:
 
 ```powershell

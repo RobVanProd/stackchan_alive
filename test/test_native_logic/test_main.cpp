@@ -3622,7 +3622,7 @@ void test_speech_planner_keeps_idle_quiet_until_emotion_moves() {
   cue = planner.plan(CharacterMode::Idle, emotion);
   TEST_ASSERT_TRUE(cue.shouldSpeak());
   TEST_ASSERT_EQUAL(SpeechIntent::Idle, cue.intent);
-  TEST_ASSERT_EQUAL_STRING("Curiosity level rising.", cue.text);
+  TEST_ASSERT_EQUAL_STRING("Still observing. Curiosity remains undefeated.", cue.text);
   TEST_ASSERT_EQUAL(SpeechEarcon::Think, cue.earcon);
 }
 

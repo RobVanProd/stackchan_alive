@@ -29,6 +29,7 @@ from lan_service import (
     encode_ws_text,
     is_identity_question,
     explicit_research_request,
+    natural_research_request,
     mouth_frame_for_audio_window,
     prompt_case_for_text,
     read_ws_frame,
@@ -402,6 +403,28 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(4, request["arguments"]["max_results"])
         self.assertIsNone(explicit_research_request("Search the web for my API key"))
         self.assertIsNone(explicit_research_request("Tell me a joke"))
+
+    def test_natural_research_routes_fresh_public_questions_without_search_wording(self):
+        for question in (
+            "What is the weather tomorrow?",
+            "Who is the current CEO of Framework?",
+            "What happened in robotics news today?",
+        ):
+            with self.subTest(question=question):
+                request, routing = natural_research_request(question)
+                self.assertEqual("freshness_policy", routing)
+                self.assertEqual("web_search", request["name"])
+                self.assertEqual(question, request["arguments"]["query"])
+
+        for private_or_local in (
+            "How are you feeling right now?",
+            "What is your current battery level?",
+            "What is on my calendar today?",
+            "What is the current password policy?",
+            "Tell me a joke",
+        ):
+            with self.subTest(private_or_local=private_or_local):
+                self.assertEqual((None, ""), natural_research_request(private_or_local))
 
     def test_stackchan_wake_phrase_matches_common_stt_variants(self):
         self.assertTrue(contains_stackchan_wake_phrase("Hey Stackchan"))
@@ -1342,9 +1365,17 @@ class LanServiceTests(unittest.TestCase):
         second_started = threading.Event()
         release_second = threading.Event()
         calls = []
+        styles = []
 
-        def fake_synthesize(text, **_kwargs):
+        def fake_synthesize(text, **kwargs):
             calls.append(text)
+            styles.append(
+                {
+                    "mode": kwargs["mode"],
+                    "arousal": kwargs["arousal"],
+                    "valence": kwargs["valence"],
+                }
+            )
             if text.startswith("Second"):
                 second_started.set()
                 self.assertTrue(release_second.wait(timeout=1.0))
@@ -1390,6 +1421,10 @@ class LanServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(["First phrase.", "Second phrase."], calls)
+        self.assertEqual(
+            [{"mode": "speak", "arousal": 0.0, "valence": 0.0}] * 2,
+            styles,
+        )
         self.assertEqual("", error)
         self.assertTrue(summary["tts_stream_complete"])
         self.assertEqual(2, summary["tts_phrases_completed"])
@@ -1619,6 +1654,103 @@ class LanServiceTests(unittest.TestCase):
             ),
             runner.call_args.kwargs["conversation_lines"],
         )
+
+    def test_natural_research_turn_creates_no_v4_memory(self):
+        def result(spoken_text, memory_write=None):
+            return SimpleNamespace(
+                raw_response=json.dumps(
+                    {
+                        "spoken_text": spoken_text,
+                        "mode": "speak",
+                        "earcon": "none",
+                        "emotion": {"arousal": 0.0, "valence": 0.0},
+                        "memory_write": memory_write or {},
+                        "memory_forget": [],
+                    }
+                ),
+                command_source="test",
+                elapsed_ms=1.0,
+                approx_tokens_per_sec=10.0,
+            )
+
+        broker = SimpleNamespace(
+            execute=lambda request: {
+                "schema": "stackchan.research.v1",
+                "tool": "web_search",
+                "query": "fixture",
+                "results": [
+                    {
+                        "title": "Fixture",
+                        "url": "https://example.com/source",
+                        "excerpt": "Recorded evidence",
+                    }
+                ],
+            }
+        )
+        session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True),
+            research_broker=broker,
+        )
+        user_text = "I have a demo tomorrow; tell me the current Stackchan release"
+        with patch(
+            "lan_service.run_runner_profile",
+            side_effect=[result("Let me check."), result("The release is current.", {"project.web": "result"})],
+        ):
+            session.handle_text(json.dumps({"type": "utterance_end", "seq": 90, "text": user_text}))
+
+        self.assertEqual(0, session.memory.episode_count)
+        self.assertEqual(0, session.memory.open_loop_count)
+        self.assertEqual([], session._session_topics)
+        self.assertEqual(0, session._session_non_research_turns)
+        self.assertNotIn("project.web", {item["key"] for item in session.memory.to_dict()["durable_facts"]})
+
+    def test_session_close_adds_only_deterministic_topic_episode(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(conversation_v2_enabled=True, tts_command="fixture-tts")
+        )
+        session.conversation.wake(0, "fixture")
+        session._session_topics.extend(("servos", "voice"))
+        session._session_non_research_turns = 2
+
+        transition = session.conversation.cancel(1, "fixture_close")
+        session._conversation_payload(transition, observed_ms=1)
+
+        self.assertEqual(1, session.memory.episode_count)
+        self.assertEqual(0, session.memory.open_loop_count)
+        self.assertEqual((), tuple(session._lease_turns))
+
+    def test_injected_open_loop_is_consumed_and_not_injected_again(self):
+        memory = BridgeMemory().add_open_loop(
+            "I have a servo calibration demo tomorrow",
+            due_at="2026-07-14T00:00:00Z",
+            now="2026-07-13T00:00:00Z",
+        )
+        runner_result = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "How did the servo calibration go?",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.1, "valence": 0.2},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+        session = LanBridgeSession(LanBridgeConfig(), memory=memory)
+
+        with patch("bridge_memory._utc_now", return_value="2026-07-15T00:00:00Z"), patch(
+            "lan_service.run_runner_profile", return_value=runner_result
+        ) as runner:
+            session.handle_text(json.dumps({"type": "utterance_end", "seq": 91, "text": "Hello there"}))
+            session.handle_text(json.dumps({"type": "utterance_end", "seq": 92, "text": "Hello again"}))
+
+        self.assertTrue(any(line.startswith("ask_about:") for line in runner.call_args_list[0].kwargs["memory_lines"]))
+        self.assertFalse(any(line.startswith("ask_about:") for line in runner.call_args_list[1].kwargs["memory_lines"]))
+        self.assertEqual("asked", session.memory.to_dict()["open_loops"][0]["status"])
 
 
 if __name__ == "__main__":

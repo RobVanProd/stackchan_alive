@@ -3,6 +3,7 @@ import json
 import unittest
 import urllib.error
 from email.message import Message
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -54,6 +55,25 @@ class FakeOpener:
 
 
 class ResearchBrokerTests(unittest.TestCase):
+    def test_recorded_searxng_json_fixture_matches_broker_contract(self):
+        fixture = Path(__file__).resolve().parent / "fixtures" / "searxng_search_response.json"
+        opener = FakeOpener([FakeResponse(fixture.read_bytes())])
+        broker = ResearchBroker(
+            ResearchBrokerConfig(searxng_url="http://127.0.0.1:8080"),
+            resolver=resolver({"127.0.0.1": "127.0.0.1"}),
+            opener=opener,
+        )
+
+        result = broker.web_search("Stackchan open source robot", max_results=2)
+
+        self.assertEqual("stackchan.research.v1", result["schema"])
+        self.assertEqual(2, len(result["results"]))
+        self.assertEqual(
+            ("https://example.com/stackchan", "https://example.org/notes"),
+            source_urls(result),
+        )
+        self.assertTrue(all(row["source_type"] == "search_result" for row in result["results"]))
+
     def test_blocks_private_and_non_https_fetch_targets(self):
         with self.assertRaisesRegex(ResearchPolicyError, "https_required"):
             validate_public_https_url("http://example.com", resolver=resolver({}))
@@ -250,6 +270,33 @@ class ResearchBrokerTests(unittest.TestCase):
         self.assertIn("latest Stackchan release", broker.request["arguments"]["query"])
         response = next(frame for frame in frames if isinstance(frame, dict) and frame.get("type") == "response_start")
         self.assertEqual(["https://example.com/current"], response["citations"])
+
+        natural_broker = FakeBroker()
+        natural_session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True, disable_audio_downlink=True),
+            research_broker=natural_broker,
+        )
+        with patch("lan_service.run_runner_profile", side_effect=[ordinary_answer, grounded_answer]) as natural_runner:
+            natural_frames = natural_session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 11,
+                        "text": "Who is the current CEO of Framework?",
+                    }
+                )
+            )
+
+        self.assertEqual(2, natural_runner.call_count)
+        self.assertEqual("web_search", natural_broker.request["name"])
+        self.assertEqual(
+            "Who is the current CEO of Framework?",
+            natural_broker.request["arguments"]["query"],
+        )
+        natural_response = next(
+            frame for frame in natural_frames if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual(["https://example.com/current"], natural_response["citations"])
 
 
 if __name__ == "__main__":

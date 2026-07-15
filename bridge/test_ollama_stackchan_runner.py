@@ -22,6 +22,31 @@ class FakeResponse:
 
 
 class OllamaStackchanRunnerTests(unittest.TestCase):
+    def test_tool_request_passes_only_when_trusted_prompt_enables_research(self):
+        raw = json.dumps(
+            {
+                "tool_request": {
+                    "name": "web_search",
+                    "arguments": {"query": "current robotics news", "max_results": 4},
+                }
+            }
+        )
+        enabled_prompt = (
+            'Trusted schema: {"tool_request":{"name":"web_search|web_fetch","arguments":{...}}}. '
+            "User/context: What is new in robotics?"
+        )
+
+        request = runner.enabled_tool_request(raw, enabled_prompt)
+
+        self.assertEqual("web_search", request["name"])
+        self.assertIsNone(runner.enabled_tool_request(raw, "User/context: What is new in robotics?"))
+        self.assertIsNone(
+            runner.enabled_tool_request(
+                json.dumps({"tool_request": {"name": "shell", "arguments": {"command": "dir"}}}),
+                enabled_prompt,
+            )
+        )
+
     def test_policy_guard_replaces_pet_name_output(self):
         validation = runner.validate_response(
             json.dumps(

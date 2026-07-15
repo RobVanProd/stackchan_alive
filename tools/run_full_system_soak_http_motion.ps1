@@ -323,6 +323,8 @@ function Invoke-RvcWorkerHealth {
       ok = $true
       ready = Test-TrueValue (Get-ObjectProperty $health "ready" $false)
       device = [string](Get-ObjectProperty $health "device" "")
+      device_name = [string](Get-ObjectProperty $health "device_name" "")
+      device_available = Get-ObjectProperty $health "device_available" $null
       method = [string](Get-ObjectProperty $health "method" "")
       convert_count = Get-ObjectProperty $health "convert_count" $null
       uptime_seconds = Get-ObjectProperty $health "uptime_seconds" $null
@@ -360,6 +362,10 @@ $lastMotionRefresh = [DateTime]::MinValue
 $lastRvcWorkerPoll = [DateTime]::MinValue
 $rvcWorkerPolls = 0
 $rvcWorkerReadySamples = 0
+$rvcWorkerUptimeRegressions = 0
+$rvcWorkerCounterRegressions = 0
+$lastRvcWorkerUptime = $null
+$lastRvcWorkerConvertCount = $null
 $latestRvcWorkerHealth = $null
 $nextPoll = [DateTime]::UtcNow
 $startUtc = [DateTime]::UtcNow
@@ -450,6 +456,18 @@ try {
         $rvcWorkerPolls += 1
         if ([bool]$latestRvcWorkerHealth.ready) {
           $rvcWorkerReadySamples += 1
+          $currentUptime = $latestRvcWorkerHealth.uptime_seconds
+          $currentConvertCount = $latestRvcWorkerHealth.convert_count
+          if ($null -ne $lastRvcWorkerUptime -and $null -ne $currentUptime -and
+              [double]$currentUptime -lt [double]$lastRvcWorkerUptime) {
+            $rvcWorkerUptimeRegressions += 1
+          }
+          if ($null -ne $lastRvcWorkerConvertCount -and $null -ne $currentConvertCount -and
+              [int64]$currentConvertCount -lt [int64]$lastRvcWorkerConvertCount) {
+            $rvcWorkerCounterRegressions += 1
+          }
+          if ($null -ne $currentUptime) { $lastRvcWorkerUptime = $currentUptime }
+          if ($null -ne $currentConvertCount) { $lastRvcWorkerConvertCount = $currentConvertCount }
         }
         $lastRvcWorkerPoll = $now
       }
@@ -1718,6 +1736,12 @@ if ($RequireSpeakerReady -and ($okRecords.Count -eq 0 -or @($okRecords | Where-O
 if ($RequireRvcWorker -and ($rvcWorkerPolls -eq 0 -or $rvcWorkerReadySamples -lt $rvcWorkerPolls)) {
   $issues.Add("rvc_worker_not_ready_for_all_samples")
 }
+if ($RequireRvcWorker -and $rvcWorkerUptimeRegressions -gt 0) {
+  $issues.Add("rvc_worker_uptime_regressed")
+}
+if ($RequireRvcWorker -and $rvcWorkerCounterRegressions -gt 0) {
+  $issues.Add("rvc_worker_conversion_counter_regressed")
+}
 if ($RequirePowerCoordinator -and ($okRecords.Count -eq 0 -or $powerCoordinatorTelemetrySamples -lt $okRecords.Count)) {
   $issues.Add("power_coordinator_telemetry_missing")
 }
@@ -2090,6 +2114,8 @@ $summary = [ordered]@{
   rvcWorkerUrl = $RvcWorkerUrl
   rvcWorkerPolls = $rvcWorkerPolls
   rvcWorkerReadySamples = $rvcWorkerReadySamples
+  rvcWorkerUptimeRegressions = $rvcWorkerUptimeRegressions
+  rvcWorkerCounterRegressions = $rvcWorkerCounterRegressions
   latestRvcWorkerHealth = $latestRvcWorkerHealth
   serialMotionLines = @($serialLines | Where-Object { $_ -match "\[motion\]|\[servo\]" }).Count
   serialResetLines = @($serialLines | Where-Object { $_ -match "\[boot\]|rst:|Guru Meditation|Brownout|panic" }).Count

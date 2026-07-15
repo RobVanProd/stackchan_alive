@@ -25,6 +25,11 @@ param(
   [switch]$DeterministicRunner,
   [switch]$EnableResearch,
   [string]$SearxngUrl = "http://127.0.0.1:8080",
+  [switch]$EnableDashboard,
+  [string]$DashboardHost = "127.0.0.1",
+  [int]$DashboardPort = 8766,
+  [string]$RobotHost = "",
+  [int]$RobotHttpPort = 8789,
   [switch]$EnableAudioDownlink,
   [switch]$Once,
   [switch]$Background,
@@ -137,6 +142,21 @@ if ($EnableResearch) {
   )
 }
 
+if ($EnableDashboard) {
+  if ($DashboardHost -notin @("127.0.0.1", "::1", "localhost")) {
+    throw "DashboardHost must be loopback-only."
+  }
+  $ArgsList += @(
+    "--dashboard",
+    "--dashboard-host", $DashboardHost,
+    "--dashboard-port", "$DashboardPort",
+    "--robot-http-port", "$RobotHttpPort"
+  )
+  if (-not [string]::IsNullOrWhiteSpace($RobotHost)) {
+    $ArgsList += @("--robot-host", $RobotHost)
+  }
+}
+
 if ($AutoTurnText) {
   $ArgsList += @("--auto-turn-text", $AutoTurnText)
 }
@@ -163,6 +183,7 @@ if ($Background) {
   Write-Host "Memory: $MemoryFile"
   Write-Host "Turn log: $TurnLogFile"
   Write-Host "Audio evidence: $AudioEvidenceDir"
+  if ($EnableDashboard) { Write-Host "Dashboard: http://$DashboardHost`:$DashboardPort/" }
   exit 0
 }
 

@@ -6,6 +6,7 @@ param(
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [switch]$EnableResearch,
   [string]$SearxngUrl = "http://127.0.0.1:8080",
+  [int]$DashboardPort = 8766,
   [string]$EvidenceRoot = "",
   [switch]$RepairMemory,
   [switch]$StopWarmRocmWorker,
@@ -103,9 +104,11 @@ $env:STACKCHAN_RVC_DIRECTML_WORKER_URL = $WorkerUrl
 $bridgeStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_pc_brain.ps1")).Path.Replace("'", "''")
 $escapedMemoryFile = $MemoryFile.Replace("'", "''")
 $escapedSearxngUrl = $SearxngUrl.Replace("'", "''")
+$escapedDeviceHost = $DeviceHost.Replace("'", "''")
 $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; `$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
   "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
+  "-EnableDashboard -DashboardHost '127.0.0.1' -DashboardPort $DashboardPort -RobotHost '$escapedDeviceHost' " +
   "-TtsCommand 'python bridge\rvc_production_tts_client.py' " +
   "-TtsVoice 'stackchan-rvc-directml-v2' " +
   "-TtsPhraseMaxChars 96 -DownlinkAudioChunkBytes 4096 " +
@@ -144,7 +147,6 @@ if (-not $SocketReady -or -not $Debug -or $Debug.bridge_state -ne "ready") {
 $runtimeChecker = (Resolve-Path (Join-Path $PSScriptRoot "check_pc_brain_runtime.ps1")).Path
 $escapedRepoRoot = $RepoRoot.Path.Replace("'", "''")
 $escapedRuntimeChecker = $runtimeChecker.Replace("'", "''")
-$escapedDeviceHost = $DeviceHost.Replace("'", "''")
 $escapedWorkerUrl = $WorkerUrl.Replace("'", "''")
 $runtimeScript = "Set-Location '$escapedRepoRoot'; " +
   "& '$escapedRuntimeChecker' -Port $BridgePort -DeviceHost '$escapedDeviceHost' " +
@@ -180,6 +182,7 @@ $Result = [ordered]@{
   evidenceRoot = $EvidencePath
   bridgePid = $BridgePid
   bridgePort = $BridgePort
+  dashboardUrl = "http://127.0.0.1`:$DashboardPort/"
   workerUrl = $WorkerUrl
   workerSchema = $WorkerHealth.schema
   workerDevice = $WorkerHealth.device

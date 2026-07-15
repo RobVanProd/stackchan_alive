@@ -15,6 +15,17 @@ from character_harness import MODEL_PROFILES, PROMPT_SUITE, HarnessResult, build
 from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
 DEFAULT_PROFILE = "gemma4-e2b-gguf"
+RUNTIME_ACCEPTANCE_TARGETS = {
+    "greeting": "Respond naturally with useful substance. If low-stakes, make the second sentence a brief wry situational beat.",
+    "picked_up": "React to the trusted physical event with brief surprise or delight and no invented danger.",
+    "low_battery": "Give calm, grounded power guidance using trusted telemetry only; do not invent a percentage.",
+    "question": "Answer directly with concrete useful detail and no bluffing. If low-stakes, make the second sentence a brief wry situational beat.",
+    "confused": "State what is unclear and ask for exactly one missing detail.",
+    "remember": "Acknowledge the actual safe durable fact and write only its matching allowed memory key and value.",
+    "forget": "Confirm the actual request and forget only the matching allowed memory key or namespace.",
+    "callback_open_loop": "Ask once about the due callback in memory and do not copy it into memory_write.",
+    "episode_greeting": "Greet naturally and weave in the prior episode without reciting memory.",
+}
 GENERIC_COMMAND_ENV = "STACKCHAN_MODEL_COMMAND"
 
 RUNNER_PROFILES: dict[str, dict[str, str]] = {
@@ -94,6 +105,22 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "emotion": {"arousal": 0.0, "valence": -0.1},
         "memory_write": {},
         "memory_forget": ["project."],
+    },
+    "callback_open_loop": {
+        "spoken_text": "How did the servo calibration go?",
+        "mode": "attend",
+        "earcon": "none",
+        "emotion": {"arousal": 0.1, "valence": 0.15},
+        "memory_write": {},
+        "memory_forget": [],
+    },
+    "episode_greeting": {
+        "spoken_text": "Hello again. Did the voice calibration behave?",
+        "mode": "happy",
+        "earcon": "none",
+        "emotion": {"arousal": 0.15, "valence": 0.2},
+        "memory_write": {},
+        "memory_forget": [],
     },
 }
 
@@ -238,6 +265,14 @@ def run_runner_profile(
     case = dict(prompt_case_by_name(case_name))
     if user_text.strip():
         case["user"] = user_text.strip()
+        case["expect"] = RUNTIME_ACCEPTANCE_TARGETS[case_name]
+        for benchmark_key in (
+            "requires_memory_write",
+            "required_memory_write",
+            "requires_memory_forget",
+            "benchmark_memory_lines",
+        ):
+            case.pop(benchmark_key, None)
     prompt = build_prompt(
         case,
         persona,

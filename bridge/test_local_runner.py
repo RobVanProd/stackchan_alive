@@ -119,6 +119,29 @@ class LocalRunnerTests(unittest.TestCase):
 
         self.assertIn("User/context: Tell me whether the power monitor is healthy.", result.prompt)
         self.assertNotIn("Rob walks into the room and says hello.", result.prompt)
+        self.assertIn("Acceptance target: Respond naturally with useful substance", result.prompt)
+
+    def test_runtime_question_does_not_inherit_identity_benchmark_target(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="question",
+                user_text="Why do USB cables fail at the worst moment?",
+            )
+
+        self.assertIn("Answer directly with concrete useful detail and no bluffing", result.prompt)
+        self.assertNotIn("Answer with one short identity sentence", result.prompt)
+
+    def test_runtime_memory_request_does_not_inherit_teal_benchmark_fact(self):
+        with patch.dict(os.environ, RUNNER_ENV, clear=False):
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="remember",
+                user_text="Remember that my preferred greeting is good morning.",
+            )
+
+        self.assertIn("Acknowledge the actual safe durable fact", result.prompt)
+        self.assertNotIn("favorite color is teal", result.prompt)
 
     def test_live_embodiment_is_delimited_and_kept_out_of_user_context(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):

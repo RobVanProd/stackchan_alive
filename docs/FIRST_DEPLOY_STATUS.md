@@ -468,9 +468,9 @@ support compiled with motion disabled at boot.
   OTA-slot confirmation records. The older 60-minute accepted power-coordinator archive remains
   preserved as historical stability evidence.
 - Current PC STT: `python bridge\whisper_cpp_stt.py`
-- Current PC TTS/RVC: `python bridge\rvc_production_tts_client.py`, phrase-streamed through
+- Qualified PC TTS/RVC: `python bridge\rvc_production_tts_client.py`, phrase-streamed through
   DirectML with a bounded clear local fallback.
-- Current production RVC worker: `bridge\rvc_directml_worker_service.py` at
+- Qualified production RVC worker: `bridge\rvc_directml_worker_service.py` at
   `http://127.0.0.1:5059`. The unused warm ROCm worker on `5055` was stopped after promotion
   to free GPU memory; its launcher remains the rollback path.
 - RVC runtime: `C:\stackchan_rocm_venv` with PyTorch `2.9.1+rocm7.2.1` and `rvc-python==0.1.5`
@@ -491,6 +491,14 @@ support compiled with motion disabled at boot.
 - After stopping the unused warm ROCm process, DirectML `5059` and bridge `8765` remained
   healthy. Robot `/debug` remained network/bridge ready with motion, rail, and torque off,
   display maximum `29139 us`, VBUS `5024 mV`, and chip temperature `60.5 C`.
+- Post-reset recovery drift observed on 2026-07-15: the live bridge on `8765` was launched with
+  `python bridge\rvc_tts_client.py` and pointed at the rollback ROCm worker on `5055`; no listener
+  was present on `5059`. The ROCm process remained resident for `4407.77 s` with model load
+  `1139.98 ms`. Two identical back-to-back client calls measured `59578.83 ms` then `3234.51 ms`
+  inference with no restart and zero queue wait. A direct device-truth probe reported
+  `AMD Radeon RX 7800 XT` available. This does not revoke the accepted DirectML evidence; it
+  records that the reset recovery command selected the rollback configuration rather than the
+  qualified production launcher. The live bridge was not restarted during this investigation.
 - Gemma's live runner now uses Ollama's warm loopback HTTP API with JSON output, thinking disabled, bounded context/output, and an indefinite model keep-alive; the CLI remains a fallback. The same 352-token prompt dropped from about `13.69 s` through `ollama run` to about `1.02 s` through the API, roughly 112 generated tokens/s. The bridge now passes the actual STT transcript into `local_runner.py`; prompt cases no longer replace what the user said.
 - The production Character Lock now has a deterministic final-output guard for hierarchy terms,
   sensitive-memory requests, contractions, assistant-speak, and stacked exclamation marks. The

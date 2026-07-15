@@ -181,6 +181,9 @@ class TtsAdapterTests(unittest.TestCase):
                         "assert os.environ['STACKCHAN_TTS_TEXT_BYTES'] == str(len(text.encode('utf-8')))",
                         "assert os.environ['STACKCHAN_TTS_VOICE'] == 'rvc-bright'",
                         "assert os.environ['STACKCHAN_TTS_OUTPUT'] == 'stackchan.tts-metadata.v1'",
+                        "assert os.environ['STACKCHAN_TTS_MODE'] == 'happy'",
+                        "assert os.environ['STACKCHAN_TTS_AROUSAL'] == '0.820'",
+                        "assert os.environ['STACKCHAN_TTS_VALENCE'] == '0.640'",
                         "print(json.dumps({'audio_format':'wav','sample_rate':22050,'audio_bytes':99,'audio_truncated':False,'rvc_infer_elapsed_ms':321.0,'beats':[{'env':0.4,'viseme':'ah','duration_ms':25}]}))",
                     ]
                 ),
@@ -188,7 +191,14 @@ class TtsAdapterTests(unittest.TestCase):
             )
             command = f'"{sys.executable}" "{script}"'
 
-            result = synthesize_speech("Hello. I am Stackchan.", command=command, voice="rvc-bright")
+            result = synthesize_speech(
+                "Hello. I am Stackchan.",
+                command=command,
+                voice="rvc-bright",
+                mode="happy",
+                arousal=0.82,
+                valence=0.64,
+            )
 
         self.assertEqual("cli", result.command_source)
         self.assertEqual("rvc-bright", result.voice)

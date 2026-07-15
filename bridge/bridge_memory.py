@@ -10,23 +10,36 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal
 
 from utterance_text import normalize_user_utterance
 
-MEMORY_SCHEMA = "stackchan.bridge-memory.v3"
-MEMORY_SCHEMA_VERSION = 3
+MEMORY_SCHEMA = "stackchan.bridge-memory.v4"
+MEMORY_SCHEMA_VERSION = 4
+LEGACY_V3_MEMORY_SCHEMA = "stackchan.bridge-memory.v3"
+LEGACY_V3_MEMORY_SCHEMA_VERSION = 3
 LEGACY_MEMORY_SCHEMA = "stackchan.bridge-memory.v2"
 LEGACY_MEMORY_SCHEMA_VERSION = 2
 MAX_MEMORY_ITEMS = 4
 MAX_DURABLE_FACTS = 24
 MAX_RECENT_CONTEXT = 8
 MAX_PROMPT_FACTS = 8
+MAX_EPISODES = 30
+MAX_OPEN_LOOPS = 6
+MEMORY_BLOCK_MAX_CHARS = 1800
 MAX_MEMORY_VALUE_CHARS = 96
 MAX_MEMORY_KEY_CHARS = 64
 MAX_TURNS_SEEN = 2_147_483_647
 RECENT_TOPIC_TTL = timedelta(days=7)
 PHYSICAL_CONTEXT_TTL = timedelta(hours=24)
+OPEN_LOOP_PENDING_GRACE = timedelta(days=7)
+OPEN_LOOP_ASKED_RETENTION = timedelta(days=14)
+OPEN_LOOP_EXPIRED_RETENTION = timedelta(days=14)
+
+MEMORY_STYLE_DIRECTIVE = (
+    "style: weave at most one remembered detail in naturally; never recite this list; "
+    "if ask_about is present, ask about it once, casually"
+)
 
 _ALLOWED_PREFIXES = ("user.", "project.", "robot.")
 _NAME_KEYS = {"user.name", "user.preferred_name", "user.greeting"}
@@ -141,6 +154,39 @@ _EXPLICIT_FORGET_ALL_RE = re.compile(
     r"^(?:please\s+)?forget (?:everything|all memories)\s*[.!?]*$",
     re.IGNORECASE,
 )
+_FUTURE_MARKER_RE = re.compile(
+    r"\b(?:i have\b|i(?:'m| am) going(?: to)?\b|i(?:'ll| will)\b|we(?:'re| are)\s+[a-z]+ing\b)",
+    re.IGNORECASE,
+)
+_NEAR_TERM_RE = re.compile(
+    r"\b(?:tonight|tomorrow|this weekend|next week|on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b",
+    re.IGNORECASE,
+)
+_NEGATED_FUTURE_RE = re.compile(
+    r"\b(?:do not|don't|will not|won't|cannot|can't|never|nothing|not\s+going)\b",
+    re.IGNORECASE,
+)
+_QUESTION_START_RE = re.compile(
+    r"^(?:who|what|when|where|why|how|do|does|did|am|are|is|can|could|will|would|should)\b",
+    re.IGNORECASE,
+)
+_WEEKDAY_INDEX = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+_TOPIC_MARKERS = (
+    ("battery", "battery"),
+    ("servo", "servos"),
+    ("voice", "voice"),
+    ("face", "face"),
+    ("bridge", "bridge"),
+    ("sleep", "sleep"),
+)
 
 
 def _utc_now() -> str:
@@ -221,6 +267,13 @@ def _turns_seen(value: object) -> int:
         return 0
 
 
+def _nonnegative_int(value: object, default: int = 0) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
 @dataclass(frozen=True)
 class MemoryRecord:
     key: str
@@ -283,6 +336,121 @@ class MemoryRecord:
         }
 
 
+@dataclass(frozen=True)
+class EpisodeRecord:
+    text: str
+    created_at: str
+    last_used_at: str
+    use_count: int = 0
+    importance: float = 0.5
+
+    @classmethod
+    def create(
+        cls,
+        text: object,
+        *,
+        importance: float = 0.5,
+        now: str | None = None,
+    ) -> "EpisodeRecord | None":
+        clean = _memory_scalar(text, 120)
+        if not clean or not _safe_value("project.episode", clean):
+            return None
+        timestamp = now or _utc_now()
+        return cls(clean, timestamp, timestamp, 0, _importance(importance, 0.5))
+
+    @classmethod
+    def from_dict(cls, data: object, *, now: str) -> "EpisodeRecord | None":
+        if not isinstance(data, dict):
+            return None
+        record = cls.create(
+            data.get("text", ""),
+            importance=_importance(data.get("importance"), 0.5),
+            now=_timestamp(data.get("created_at"), now),
+        )
+        if record is None:
+            return None
+        return replace(
+            record,
+            last_used_at=_timestamp(data.get("last_used_at"), record.created_at),
+            use_count=_nonnegative_int(data.get("use_count", 0)),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "text": self.text,
+            "created_at": self.created_at,
+            "last_used_at": self.last_used_at,
+            "use_count": self.use_count,
+            "importance": round(self.importance, 2),
+        }
+
+
+OpenLoopStatus = Literal["pending", "asked", "expired"]
+
+
+@dataclass(frozen=True)
+class OpenLoopRecord:
+    text: str
+    created_at: str
+    due_at: str
+    status: OpenLoopStatus = "pending"
+    asked_at: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        text: object,
+        *,
+        due_at: object,
+        now: str | None = None,
+    ) -> "OpenLoopRecord | None":
+        clean = _memory_scalar(text, 96)
+        timestamp = now or _utc_now()
+        due = _timestamp(due_at, "")
+        if not clean or not due or not _safe_value("user.open_loop", clean):
+            return None
+        return cls(clean, timestamp, due)
+
+    @classmethod
+    def from_dict(cls, data: object, *, now: str) -> "OpenLoopRecord | None":
+        if not isinstance(data, dict):
+            return None
+        record = cls.create(
+            data.get("text", ""),
+            due_at=data.get("due_at", ""),
+            now=_timestamp(data.get("created_at"), now),
+        )
+        if record is None:
+            return None
+        status = str(data.get("status", "pending"))
+        if status not in {"pending", "asked", "expired"}:
+            return None
+        asked_at = _timestamp(data.get("asked_at"), "") or None
+        if status == "asked" and asked_at is None:
+            return None
+        return replace(record, status=status, asked_at=asked_at)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "text": self.text,
+            "created_at": self.created_at,
+            "due_at": self.due_at,
+            "status": self.status,
+            "asked_at": self.asked_at,
+        }
+
+    @property
+    def identity(self) -> str:
+        return f"{self.created_at}|{self.text}"
+
+
+@dataclass(frozen=True)
+class RelationshipCard:
+    lines: tuple[str, ...]
+    open_loop_id: str = ""
+    open_loop_text: str = ""
+
+
 def _dedupe_tail(values: Iterable[object]) -> tuple[str, ...]:
     items: list[str] = []
     for value in values:
@@ -317,6 +485,109 @@ def _query_terms(value: object) -> set[str]:
         for token in re.findall(r"[a-z0-9]+", str(value).lower())
         if len(token) > 1 and token not in _QUERY_STOP_WORDS
     }
+
+
+def _token_jaccard(left: object, right: object) -> float:
+    left_terms = _query_terms(left)
+    right_terms = _query_terms(right)
+    union = left_terms | right_terms
+    return len(left_terms & right_terms) / len(union) if union else 0.0
+
+
+def _bounded_episodes(records: Iterable[EpisodeRecord]) -> tuple[EpisodeRecord, ...]:
+    safe = [record for record in records if _safe_value("project.episode", record.text)]
+    if len(safe) <= MAX_EPISODES:
+        return tuple(safe)
+    prune_count = len(safe) - MAX_EPISODES
+    prune_indexes = {
+        index
+        for index, _ in sorted(
+            enumerate(safe),
+            key=lambda item: (
+                item[1].importance,
+                item[1].last_used_at,
+                item[1].created_at,
+                item[1].text,
+                item[0],
+            ),
+        )[:prune_count]
+    }
+    return tuple(record for index, record in enumerate(safe) if index not in prune_indexes)
+
+
+def _canonical_open_loops(records: Iterable[OpenLoopRecord], *, now: str) -> tuple[OpenLoopRecord, ...]:
+    current = _as_datetime(now)
+    items: list[OpenLoopRecord] = []
+    for record in records:
+        if not _safe_value("user.open_loop", record.text):
+            continue
+        due = _as_datetime(record.due_at)
+        normalized = record
+        if record.status == "pending" and current > due + OPEN_LOOP_PENDING_GRACE:
+            normalized = replace(record, status="expired")
+        if normalized.status == "asked":
+            asked = _as_datetime(normalized.asked_at or normalized.created_at)
+            if current > asked + OPEN_LOOP_ASKED_RETENTION:
+                continue
+        if normalized.status == "expired" and current > due + OPEN_LOOP_EXPIRED_RETENTION:
+            continue
+        items.append(normalized)
+
+    while len(items) > MAX_OPEN_LOOPS:
+        pending = [item for item in items if item.status == "pending"]
+        candidates = pending or items
+        victim = min(candidates, key=lambda item: (item.created_at, item.due_at, item.text))
+        items.remove(victim)
+    return tuple(items)
+
+
+def due_at_for_phrase(phrase: str, *, now: str | None = None) -> str:
+    timestamp = now or _utc_now()
+    base = _as_datetime(timestamp)
+    lowered = str(phrase or "").lower()
+    days: int | None = None
+    if "tonight" in lowered or "tomorrow" in lowered or "next week" in lowered:
+        days = 7 if "next week" in lowered else 1
+    elif "this weekend" in lowered:
+        days = (5 - base.weekday()) % 7
+    else:
+        weekday = next((index for name, index in _WEEKDAY_INDEX.items() if f"on {name}" in lowered), None)
+        if weekday is not None:
+            days = (weekday - base.weekday()) % 7 or 7
+    return _future_timestamp(timedelta(days=days), timestamp) if days is not None else ""
+
+
+def captured_open_loop(user_text: str, *, now: str | None = None) -> OpenLoopRecord | None:
+    original = " ".join(str(user_text or "").strip().split())
+    text = normalize_user_utterance(original)
+    if (
+        not text
+        or "?" in original
+        or _QUESTION_START_RE.search(text)
+        or _NEGATED_FUTURE_RE.search(text)
+        or not _FUTURE_MARKER_RE.search(text)
+    ):
+        return None
+    near_term = _NEAR_TERM_RE.search(text)
+    if near_term is None:
+        return None
+    clause = next(
+        (
+            part.strip(" ,.;:!?")
+            for part in re.split(r"[.;!?]", text)
+            if _FUTURE_MARKER_RE.search(part) and _NEAR_TERM_RE.search(part)
+        ),
+        "",
+    )
+    if not clause:
+        return None
+    due_at = due_at_for_phrase(near_term.group(0), now=now)
+    return OpenLoopRecord.create(clause, due_at=due_at, now=now)
+
+
+def topics_for_user_text(user_text: str) -> tuple[str, ...]:
+    lowered = str(user_text or "").lower()
+    return tuple(topic for marker, topic in _TOPIC_MARKERS if marker in lowered)
 
 
 def memory_fact_key(namespace: str, subject: object) -> str:
@@ -374,6 +645,11 @@ def _upsert_durable(
     return _bounded_durable((*records, created))
 
 
+def _durable_insert_evicts(records: Iterable[MemoryRecord], key: str) -> bool:
+    items = tuple(records)
+    return len(items) >= MAX_DURABLE_FACTS and not any(record.key == key for record in items)
+
+
 def _upsert_recent(
     records: Iterable[MemoryRecord], key: str, value: str, importance: float, ttl: timedelta, *, now: str
 ) -> tuple[MemoryRecord, ...]:
@@ -396,6 +672,11 @@ class BridgeMemory:
     turns_seen: int = 0
     _durable_facts: tuple[MemoryRecord, ...] = field(default=(), repr=False, compare=False)
     _recent_context: tuple[MemoryRecord, ...] = field(default=(), repr=False, compare=False)
+    _episodes: tuple[EpisodeRecord, ...] = field(default=(), repr=False, compare=False)
+    _open_loops: tuple[OpenLoopRecord, ...] = field(default=(), repr=False, compare=False)
+    capture_rejections: int = 0
+    distill_dropped: int = 0
+    durable_evictions: int = 0
 
     def __post_init__(self) -> None:
         preferred_name = _preferred_name(self.preferred_name)
@@ -405,6 +686,9 @@ class BridgeMemory:
         object.__setattr__(self, "recent_topics", self._safe_items(self.recent_topics, "project.topic"))
         object.__setattr__(self, "physical_context", self._safe_items(self.physical_context, "robot.physical_context"))
         object.__setattr__(self, "turns_seen", _turns_seen(self.turns_seen))
+        object.__setattr__(self, "capture_rejections", _nonnegative_int(self.capture_rejections))
+        object.__setattr__(self, "distill_dropped", _nonnegative_int(self.distill_dropped))
+        object.__setattr__(self, "durable_evictions", _nonnegative_int(self.durable_evictions))
 
     @staticmethod
     def _clean_item(value: object, max_len: int = MAX_MEMORY_VALUE_CHARS) -> str:
@@ -487,7 +771,9 @@ class BridgeMemory:
         schema = data.get("schema")
         schema_version = data.get("schema_version")
         legacy_v2 = schema == LEGACY_MEMORY_SCHEMA and schema_version == LEGACY_MEMORY_SCHEMA_VERSION
-        if not legacy_v2 and (schema != MEMORY_SCHEMA or schema_version != MEMORY_SCHEMA_VERSION):
+        legacy_v3 = schema == LEGACY_V3_MEMORY_SCHEMA and schema_version == LEGACY_V3_MEMORY_SCHEMA_VERSION
+        current_v4 = schema == MEMORY_SCHEMA and schema_version == MEMORY_SCHEMA_VERSION
+        if not (legacy_v2 or legacy_v3 or current_v4):
             return cls()
 
         now = _utc_now()
@@ -502,6 +788,20 @@ class BridgeMemory:
             for item in data.get("recent_context", []) if isinstance(data.get("recent_context"), list)
             if (record := MemoryRecord.from_dict(item, now=now)) is not None
             if not legacy_v2 or not record.key.startswith("robot.")
+        )
+        episodes = _bounded_episodes(
+            record
+            for item in data.get("episodes", []) if current_v4 and isinstance(data.get("episodes"), list)
+            if (record := EpisodeRecord.from_dict(item, now=now)) is not None
+        )
+        open_loops = _canonical_open_loops(
+            (
+                record
+                for item in data.get("open_loops", [])
+                if current_v4 and isinstance(data.get("open_loops"), list)
+                if (record := OpenLoopRecord.from_dict(item, now=now)) is not None
+            ),
+            now=now,
         )
         preferred_name = next((record.value for record in reversed(durable) if record.key in _NAME_KEYS), "")
         topics = _dedupe_tail(
@@ -521,22 +821,34 @@ class BridgeMemory:
             turns_seen=_turns_seen(data.get("turns_seen", 0)),
             _durable_facts=durable,
             _recent_context=recent,
+            _episodes=episodes,
+            _open_loops=open_loops,
+            capture_rejections=_nonnegative_int(data.get("capture_rejections", 0)) if current_v4 else 0,
+            distill_dropped=_nonnegative_int(data.get("distill_dropped", 0)) if current_v4 else 0,
+            durable_evictions=_nonnegative_int(data.get("durable_evictions", 0)) if current_v4 else 0,
         )
 
     def to_dict(self) -> dict[str, object]:
         now = _utc_now()
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
+        episodes = _bounded_episodes(self._episodes)
+        open_loops = _canonical_open_loops(self._open_loops, now=now)
         return {
             "schema": MEMORY_SCHEMA,
             "schema_version": MEMORY_SCHEMA_VERSION,
             "updated_at": now,
             "durable_facts": [record.to_dict() for record in durable],
             "recent_context": [record.to_dict() for record in recent],
+            "episodes": [record.to_dict() for record in episodes],
+            "open_loops": [record.to_dict() for record in open_loops],
             "preferred_name": self.preferred_name,
             "recent_topics": list(self.recent_topics),
             "physical_context": list(self.physical_context),
             "turns_seen": self.turns_seen,
+            "capture_rejections": self.capture_rejections,
+            "distill_dropped": self.distill_dropped,
+            "durable_evictions": self.durable_evictions,
         }
 
     def with_overrides(
@@ -549,6 +861,7 @@ class BridgeMemory:
         now = _utc_now()
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
+        evictions = self.durable_evictions
         clean_name = _preferred_name(preferred_name)
         next_name = (
             clean_name
@@ -556,6 +869,7 @@ class BridgeMemory:
             else self.preferred_name
         )
         if next_name:
+            evictions += int(_durable_insert_evicts(durable, "user.preferred_name"))
             durable = _upsert_durable(durable, "user.preferred_name", next_name, 0.9, now=now)
 
         topics = list(self.recent_topics)
@@ -573,7 +887,102 @@ class BridgeMemory:
             physical_context=_dedupe_tail(physical),
             _durable_facts=durable,
             _recent_context=recent,
+            durable_evictions=evictions,
         )
+
+    @property
+    def episode_count(self) -> int:
+        return len(_bounded_episodes(self._episodes))
+
+    @property
+    def open_loop_count(self) -> int:
+        return len(_canonical_open_loops(self._open_loops, now=_utc_now()))
+
+    def diagnostics(self) -> dict[str, int]:
+        return {
+            "memory_episode_count": self.episode_count,
+            "memory_open_loop_count": self.open_loop_count,
+            "memory_capture_rejections": self.capture_rejections,
+            "memory_distill_dropped": self.distill_dropped,
+            "memory_durable_evictions": self.durable_evictions,
+        }
+
+    def add_episode(
+        self,
+        text: object,
+        *,
+        importance: float = 0.5,
+        now: str | None = None,
+    ) -> "BridgeMemory":
+        timestamp = now or _utc_now()
+        candidate = EpisodeRecord.create(text, importance=importance, now=timestamp)
+        if candidate is None:
+            return self
+        episodes = list(_bounded_episodes(self._episodes))
+        duplicate_index = next(
+            (
+                index
+                for index, record in enumerate(episodes)
+                if _token_jaccard(record.text, candidate.text) >= 0.6
+            ),
+            None,
+        )
+        if duplicate_index is not None:
+            existing = episodes[duplicate_index]
+            episodes[duplicate_index] = replace(
+                existing,
+                last_used_at=timestamp,
+                importance=max(existing.importance, candidate.importance),
+            )
+        else:
+            episodes.append(candidate)
+        return replace(self, _episodes=_bounded_episodes(episodes))
+
+    def add_episode_from_topics(
+        self,
+        topics: Iterable[object],
+        turn_count: int,
+        *,
+        now: str | None = None,
+    ) -> "BridgeMemory":
+        safe_topics = self._safe_items(topics, "project.topic")
+        turns = _nonnegative_int(turn_count)
+        if not safe_topics and turns < 2:
+            return self
+        if safe_topics:
+            summary = f"Talked about {', '.join(safe_topics)} ({turns} turns)"
+        else:
+            summary = f"Continued our conversation ({turns} turns)"
+        return self.add_episode(summary, now=now)
+
+    def add_open_loop(
+        self,
+        text: object,
+        *,
+        due_at: object,
+        now: str | None = None,
+    ) -> "BridgeMemory":
+        timestamp = now or _utc_now()
+        candidate = OpenLoopRecord.create(text, due_at=due_at, now=timestamp)
+        if candidate is None:
+            return self
+        loops = list(_canonical_open_loops(self._open_loops, now=timestamp))
+        if any(_token_jaccard(record.text, candidate.text) >= 0.8 for record in loops):
+            return self
+        return replace(self, _open_loops=_canonical_open_loops((*loops, candidate), now=timestamp))
+
+    def capture_open_loop(self, user_text: str, *, now: str | None = None) -> "BridgeMemory":
+        timestamp = now or _utc_now()
+        candidate = captured_open_loop(user_text, now=timestamp)
+        if candidate is None:
+            attempted = bool(_FUTURE_MARKER_RE.search(str(user_text or ""))) and bool(
+                _NEAR_TERM_RE.search(str(user_text or ""))
+            )
+            return replace(self, capture_rejections=self.capture_rejections + int(attempted))
+        return self.add_open_loop(candidate.text, due_at=candidate.due_at, now=timestamp)
+
+    def note_distill_drop(self) -> "BridgeMemory":
+        return replace(self, distill_dropped=self.distill_dropped + 1)
 
     @staticmethod
     def _forget_matches(forget_key: str, namespace: str) -> bool:
@@ -587,6 +996,9 @@ class BridgeMemory:
         physical = list(self.physical_context)
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
+        episodes = _bounded_episodes(self._episodes)
+        open_loops = _canonical_open_loops(self._open_loops, now=now)
+        evictions = self.durable_evictions
         forget_everything = False
 
         writes = normalized.get("memory_write", {})
@@ -600,13 +1012,16 @@ class BridgeMemory:
                     # Identity is transcript-owned. The model may reinforce an explicitly
                     # observed name, but it cannot invent or replace one.
                     if preferred_name and value.casefold() == preferred_name.casefold():
+                        evictions += int(_durable_insert_evicts(durable, key))
                         durable = _upsert_durable(
                             durable, key, preferred_name, 0.9, now=now
                         )
                 elif key.startswith("project.") or (key.startswith("user.") and "topic" in key):
                     topics.append(value)
+                    evictions += int(_durable_insert_evicts(durable, key))
                     durable = _upsert_durable(durable, key, value, 0.75, now=now)
                 elif key.startswith("user."):
+                    evictions += int(_durable_insert_evicts(durable, key))
                     durable = _upsert_durable(durable, key, value, 0.7, now=now)
                 # Robot state is trusted runtime telemetry, not character-authored memory.
                 # The runtime may add bounded robot context through with_overrides().
@@ -621,10 +1036,12 @@ class BridgeMemory:
                 if self._forget_matches(forget, "user"):
                     preferred_name = ""
                     durable = tuple(record for record in durable if not record.key.startswith("user."))
+                    open_loops = ()
                 if self._forget_matches(forget, "project"):
                     topics = []
                     durable = tuple(record for record in durable if not record.key.startswith("project."))
                     recent = tuple(record for record in recent if not record.key.startswith("project."))
+                    episodes = ()
                 if self._forget_matches(forget, "robot"):
                     physical = []
                     durable = tuple(record for record in durable if not record.key.startswith("robot."))
@@ -638,6 +1055,9 @@ class BridgeMemory:
             turns_seen=0 if forget_everything else self.turns_seen,
             _durable_facts=_bounded_durable(durable),
             _recent_context=_bounded_recent(recent),
+            _episodes=episodes,
+            _open_loops=open_loops,
+            durable_evictions=evictions,
         )
 
     def remember_user_text(self, user_text: str) -> "BridgeMemory":
@@ -649,12 +1069,15 @@ class BridgeMemory:
         preferred_name = self.preferred_name
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
+        evictions = self.durable_evictions
         if _EXPLICIT_FORGET_ALL_RE.fullmatch(command_text):
             return BridgeMemory()
         if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(command_text):
             preferred_name = ""
             durable = tuple(record for record in durable if not record.key.startswith("user."))
+            open_loops: tuple[OpenLoopRecord, ...] = ()
         else:
+            open_loops = _canonical_open_loops(self._open_loops, now=now)
             user_forget = _EXPLICIT_USER_FORGET_RE.fullmatch(command_text)
             project_forget = _EXPLICIT_PROJECT_FORGET_RE.fullmatch(command_text)
             if user_forget is not None:
@@ -677,6 +1100,7 @@ class BridgeMemory:
         observed_name = _preferred_name(match.group(1)) if match else ""
         if observed_name and _safe_value("user.preferred_name", observed_name):
             preferred_name = observed_name
+            evictions += int(_durable_insert_evicts(durable, "user.preferred_name"))
             durable = _upsert_durable(durable, "user.preferred_name", preferred_name, 0.9, now=now)
 
         fact_match = _EXPLICIT_USER_FACT_RE.search(command_text)
@@ -688,21 +1112,13 @@ class BridgeMemory:
             fact_key = memory_fact_key(fact_namespace, fact_match.group("subject"))
             fact_value = _memory_scalar(fact_match.group("value"))
             if fact_key not in _NAME_KEYS and fact_value and _safe_value(fact_key, fact_value):
+                evictions += int(_durable_insert_evicts(durable, fact_key))
                 durable = _upsert_durable(durable, fact_key, fact_value, 0.85, now=now)
 
         topics = list(self.recent_topics)
-        lowered = text.lower()
-        for marker, topic in (
-            ("battery", "battery"),
-            ("servo", "servos"),
-            ("voice", "voice"),
-            ("face", "face"),
-            ("bridge", "bridge"),
-            ("sleep", "sleep"),
-        ):
-            if marker in lowered:
-                topics.append(topic)
-                recent = _upsert_recent(recent, "project.topic", topic, 0.4, RECENT_TOPIC_TTL, now=now)
+        for topic in topics_for_user_text(text):
+            topics.append(topic)
+            recent = _upsert_recent(recent, "project.topic", topic, 0.4, RECENT_TOPIC_TTL, now=now)
 
         return replace(
             self,
@@ -711,6 +1127,8 @@ class BridgeMemory:
             turns_seen=min(MAX_TURNS_SEEN, self.turns_seen + 1),
             _durable_facts=durable,
             _recent_context=recent,
+            _open_loops=open_loops,
+            durable_evictions=evictions,
         )
 
     def fact_value(self, key: str) -> str:
@@ -731,10 +1149,8 @@ class BridgeMemory:
         )
         return matched.value
 
-    def context_lines(self, query: str = "") -> list[str]:
-        lines = [f"turns_seen: {self.turns_seen}"]
-        if self.preferred_name:
-            lines.append(f"preferred_name: {self.preferred_name}")
+    def _fact_context_lines(self, query: str = "") -> list[str]:
+        lines: list[str] = []
         now = _utc_now()
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
@@ -781,6 +1197,111 @@ class BridgeMemory:
         if selected_physical:
             lines.append("physical_context: " + ", ".join(selected_physical))
         return lines
+
+    def relationship_card(
+        self,
+        query: str = "",
+        *,
+        session_turns: int = 0,
+        excluded_open_loops: Iterable[str] = (),
+        now: str | None = None,
+    ) -> RelationshipCard:
+        timestamp = now or _utc_now()
+        identity = [f"turns_seen: {self.turns_seen}"]
+        if self.preferred_name:
+            identity.append(f"preferred_name: {self.preferred_name}")
+
+        episode_line = ""
+        ask_line = ""
+        selected_loop: OpenLoopRecord | None = None
+        if _nonnegative_int(session_turns) <= 2:
+            episodes = _bounded_episodes(self._episodes)
+            if episodes:
+                episode = max(episodes, key=lambda item: (item.created_at, item.last_used_at, item.text))
+                episode_line = f"episode: {episode.text}"
+            excluded = set(excluded_open_loops)
+            due = [
+                record
+                for record in _canonical_open_loops(self._open_loops, now=timestamp)
+                if record.status == "pending"
+                and _as_datetime(record.due_at) <= _as_datetime(timestamp)
+                and record.identity not in excluded
+            ]
+            if due:
+                selected_loop = min(due, key=lambda item: (item.due_at, item.created_at, item.text))
+                ask_line = f"ask_about: {selected_loop.text}"
+
+        fact_lines = self._fact_context_lines(query)
+        separator_cost = 1
+        required = sum(len(line) for line in (*identity, MEMORY_STYLE_DIRECTIVE)) + separator_cost * len(identity)
+        remaining = max(0, MEMORY_BLOCK_MAX_CHARS - required)
+
+        def take(line: str) -> str:
+            nonlocal remaining
+            if not line or len(line) + separator_cost > remaining:
+                return ""
+            remaining -= len(line) + separator_cost
+            return line
+
+        kept_ask = take(ask_line)
+        kept_facts = [kept for line in fact_lines if (kept := take(line))]
+        kept_episode = take(episode_line)
+        ordered = [*identity]
+        if kept_episode:
+            ordered.append(kept_episode)
+        if kept_ask:
+            ordered.append(kept_ask)
+        ordered.extend(kept_facts)
+        ordered.append(MEMORY_STYLE_DIRECTIVE)
+        while len("\n".join(ordered)) > MEMORY_BLOCK_MAX_CHARS and len(ordered[-1]) > len("style:"):
+            ordered[-1] = ordered[-1][:-1]
+
+        if kept_episode:
+            episode_text = kept_episode.partition(": ")[2]
+            object.__setattr__(
+                self,
+                "_episodes",
+                tuple(
+                    replace(item, last_used_at=timestamp, use_count=item.use_count + 1)
+                    if item.text == episode_text
+                    else item
+                    for item in _bounded_episodes(self._episodes)
+                ),
+            )
+        return RelationshipCard(
+            tuple(ordered),
+            selected_loop.identity if selected_loop is not None and kept_ask else "",
+            selected_loop.text if selected_loop is not None and kept_ask else "",
+        )
+
+    def consume_open_loop(
+        self,
+        open_loop_id: str,
+        spoken_text: str,
+        *,
+        now: str | None = None,
+    ) -> tuple["BridgeMemory", bool]:
+        if not open_loop_id:
+            return self, False
+        timestamp = now or _utc_now()
+        loops = _canonical_open_loops(self._open_loops, now=timestamp)
+        selected = next(
+            (record for record in loops if record.identity == open_loop_id and record.status == "pending"),
+            None,
+        )
+        if selected is None:
+            return self, False
+        shared = _query_terms(selected.text) & _query_terms(spoken_text)
+        if len(shared) < 2:
+            return self, False
+        updated = tuple(
+            replace(record, status="asked", asked_at=timestamp) if record.identity == open_loop_id else record
+            for record in loops
+        )
+        return replace(self, _open_loops=updated), True
+
+    def context_lines(self, query: str = "", *, session_turns: int = 0) -> list[str]:
+        return list(self.relationship_card(query, session_turns=session_turns).lines)
 
 
 def load_bridge_memory(path: Path) -> BridgeMemory:

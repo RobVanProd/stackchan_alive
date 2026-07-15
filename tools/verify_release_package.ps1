@@ -187,6 +187,7 @@ $requiredFiles = @(
   "docs/store-assets/play/icon-512.png",
   "docs/store-assets/play/icon-512.svg",
   "docs/store-assets/play/feature-graphic-1024x500.png",
+  "docs/store-assets/desktop/stackchan-alive.ico",
   "docs/store-assets/play/README.md",
   "provenance/pages.yml",
   "docs/BRAIN_MODEL.md",
@@ -210,6 +211,7 @@ $requiredFiles = @(
   "docs/VOICE_V2_DIRECTML.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
+  "docs/BRIDGE_DASHBOARD.md",
   "docs/FIRST_DEPLOY_STATUS.md",
   "docs/ARRIVAL_DAY_RUNBOOK.md",
   "docs/stackchan_procedural_runtime_design.pdf",
@@ -273,6 +275,11 @@ $requiredFiles = @(
   "bridge/test_tts_adapter.py",
   "bridge/lan_service.py",
   "bridge/test_lan_service.py",
+  "bridge/dashboard_service.py",
+  "bridge/test_dashboard_service.py",
+  "bridge/dashboard/index.html",
+  "bridge/dashboard/styles.css",
+  "bridge/dashboard/app.js",
   "bridge/ollama_stackchan_runner.py",
   "bridge/test_ollama_stackchan_runner.py",
   "bridge/pc_brain_probe.py",
@@ -620,6 +627,13 @@ $requiredFiles = @(
   "tools/setup_whisper_cpp.ps1",
   "tools/start_pc_brain.cmd",
   "tools/start_pc_brain.ps1",
+  "tools/start_pc_brain_directml.ps1",
+  "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/start_stackchan_dashboard.cmd",
+  "tools/start_stackchan_dashboard.ps1",
+  "tools/install_stackchan_dashboard_shortcut.ps1",
+  "tools/test_stackchan_dashboard_launcher_contract.cmd",
+  "tools/test_stackchan_dashboard_launcher_contract.ps1",
   "tools/start_rvc_worker.ps1",
   "tools/setup_voice_v2_directml.ps1",
   "tools/voice_v2_directml_constraints.txt",
@@ -769,6 +783,11 @@ $requiredFiles = @(
   "provenance/bridge/test_tts_adapter.py",
   "provenance/bridge/lan_service.py",
   "provenance/bridge/test_lan_service.py",
+  "provenance/bridge/dashboard_service.py",
+  "provenance/bridge/test_dashboard_service.py",
+  "provenance/bridge/dashboard/index.html",
+  "provenance/bridge/dashboard/styles.css",
+  "provenance/bridge/dashboard/app.js",
   "provenance/bridge/ollama_stackchan_runner.py",
   "provenance/bridge/test_ollama_stackchan_runner.py",
   "provenance/bridge/windows_speech_tts.py",
@@ -2185,10 +2204,37 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "DashboardRuntime", "--dashboard", "--dashboard-host", "--robot-host")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
+}
+
+$dashboardServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard_service.py") -Raw
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "ThreadingHTTPServer", "/api/status", "/api/refresh", "/api/motion", "/motion-stop", "/motion-resume", "robot_clear", "servo_rail_enabled", "servo_torque_enabled", "motion_thermal_suppressed", "motion_power_suppressed", "X-Stackchan-Dashboard", "Content-Security-Policy", "Dashboard must bind to a loopback host.")) {
+  if ($dashboardServiceText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/dashboard_service.py missing dashboard safety support: $pattern"
+  }
+}
+
+$dashboardTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_dashboard_service.py") -Raw
+foreach ($pattern in @("DashboardRuntimeTests", "DashboardHttpTests", "DashboardBridgeIntegrationTests", "test_stop_requires_motion_rail_and_torque_verification", "test_cross_origin_write_is_rejected", "test_bridge_dashboard_receives_live_robot_heartbeat")) {
+  if ($dashboardTestText -notmatch [regex]::Escape($pattern)) {
+    throw "bridge/test_dashboard_service.py missing dashboard coverage: $pattern"
+  }
+}
+
+$dashboardHtml = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard/index.html") -Raw
+$dashboardCss = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard/styles.css") -Raw
+$dashboardJs = Get-Content -LiteralPath (Join-PackagePath "bridge/dashboard/app.js") -Raw
+foreach ($pattern in @("Stop motion", "Robot is upright and clear", "Resume motion", "Stackchan face status")) {
+  if ($dashboardHtml -notmatch [regex]::Escape($pattern)) { throw "Dashboard HTML missing control: $pattern" }
+}
+foreach ($pattern in @("aspect-ratio: 1", "env(safe-area-inset-top)", "env(safe-area-inset-bottom)", ".mobile-nav")) {
+  if ($dashboardCss -notmatch [regex]::Escape($pattern)) { throw "Dashboard CSS missing responsive contract: $pattern" }
+}
+foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "setInterval")) {
+  if ($dashboardJs -notmatch [regex]::Escape($pattern)) { throw "Dashboard JavaScript missing behavior: $pattern" }
 }
 
 $ollamaRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/ollama_stackchan_runner.py") -Raw
@@ -2234,9 +2280,23 @@ foreach ($pattern in @("stackchan.pc-brain-probe.v1", "endpoint_hello", "claim_b
 }
 
 $startPcBrainText = Get-Content -LiteralPath (Join-PackagePath "tools/start_pc_brain.ps1") -Raw
-foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid")) {
+foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid", "EnableDashboard", "DashboardHost must be loopback-only.", "--robot-http-port")) {
   if ($startPcBrainText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_pc_brain.ps1 missing PC brain launch support: $pattern"
+  }
+}
+
+$dashboardLauncherText = Get-Content -LiteralPath (Join-PackagePath "tools/start_stackchan_dashboard.ps1") -Raw
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "dashboard_service.py", "start_pc_brain_directml.ps1", "EnableResearch", "Start-Process `$DashboardUrl")) {
+  if ($dashboardLauncherText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_stackchan_dashboard.ps1 missing reset-safe launch support: $pattern"
+  }
+}
+
+$shortcutInstallerText = Get-Content -LiteralPath (Join-PackagePath "tools/install_stackchan_dashboard_shortcut.ps1") -Raw
+foreach ($pattern in @("Stackchan Alive.lnk", "WScript.Shell", "LocalApplicationData", "StableLauncher", "Bootstrap")) {
+  if ($shortcutInstallerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/install_stackchan_dashboard_shortcut.ps1 missing stable shortcut support: $pattern"
   }
 }
 
@@ -2905,6 +2965,22 @@ if ($manifest.projectLicenseFile -ne "LICENSE") {
 
 if ($manifest.docsIndex -ne "docs/README.md") {
   throw "Manifest docsIndex mismatch: $($manifest.docsIndex)"
+}
+
+if ($manifest.bridgeDashboard -ne "docs/BRIDGE_DASHBOARD.md") {
+  throw "Manifest bridgeDashboard mismatch: $($manifest.bridgeDashboard)"
+}
+
+if ($manifest.bridgeDashboardService -ne "bridge/dashboard_service.py") {
+  throw "Manifest bridgeDashboardService mismatch: $($manifest.bridgeDashboardService)"
+}
+
+if ($manifest.bridgeDashboardLauncher -ne "tools/start_stackchan_dashboard.ps1") {
+  throw "Manifest bridgeDashboardLauncher mismatch: $($manifest.bridgeDashboardLauncher)"
+}
+
+if ($manifest.desktopShortcutIcon -ne "docs/store-assets/desktop/stackchan-alive.ico") {
+  throw "Manifest desktopShortcutIcon mismatch: $($manifest.desktopShortcutIcon)"
 }
 
 if ($manifest.androidCompanionSource -ne "provenance/companion") {
