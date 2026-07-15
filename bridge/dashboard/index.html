@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b0f">
+  <title>Stackchan Alive Bridge</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark" aria-hidden="true"><span></span><span></span></div>
+    <div class="brand-copy">
+      <strong>STACKCHAN <span>ALIVE</span></strong>
+      <small>PC BRIDGE CONSOLE</small>
+    </div>
+    <div class="connection-chip" id="connectionChip">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="connectionLabel">Checking link</span>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <section class="panel bridge-panel view-panel" data-view="overview" aria-labelledby="bridgeHeading">
+      <div class="panel-heading">
+        <h2 id="bridgeHeading">Bridge</h2>
+        <button class="text-button" id="refreshButton" type="button">Refresh status</button>
+      </div>
+      <dl class="status-list">
+        <div><dt>State</dt><dd id="bridgeState">Starting</dd></div>
+        <div><dt>Robot</dt><dd id="robotHost">Not connected</dd></div>
+        <div><dt>Brain</dt><dd id="runnerProfile">Gemma 4 E2B</dd></div>
+        <div><dt>Research</dt><dd id="researchState">Off</dd></div>
+        <div><dt>Voice</dt><dd id="voiceName">Local voice</dd></div>
+        <div><dt>Uptime</dt><dd id="uptime">00:00:00</dd></div>
+      </dl>
+    </section>
+
+    <section class="robot-stage view-panel" data-view="overview" aria-labelledby="stageHeading">
+      <div class="stage-header">
+        <div>
+          <span class="eyebrow">LIVE ROBOT</span>
+          <h1 id="stageHeading">Stackchan</h1>
+        </div>
+        <span class="mode-label" id="robotMode">AWAITING ROBOT</span>
+      </div>
+      <div class="face-shell" id="faceShell" aria-label="Stackchan face status">
+        <div class="brow brow-left"></div>
+        <div class="brow brow-right"></div>
+        <div class="eye eye-left"><span class="pupil"></span></div>
+        <div class="eye eye-right"><span class="pupil"></span></div>
+        <div class="mouth"></div>
+      </div>
+      <div class="stage-footer">
+        <span><b id="heartbeatValue">--</b> heartbeat</span>
+        <span><b id="motionSummary">Unknown</b> motion</span>
+      </div>
+    </section>
+
+    <section class="panel telemetry-panel view-panel" data-view="telemetry" aria-labelledby="telemetryHeading">
+      <div class="panel-heading">
+        <h2 id="telemetryHeading">Telemetry</h2>
+        <span class="freshness" id="debugFreshness">Not sampled</span>
+      </div>
+      <dl class="telemetry-list">
+        <div><dt>Power</dt><dd id="powerValue">--</dd><small id="powerDetail">Unknown</small></div>
+        <div><dt>Temperature</dt><dd id="temperatureValue">--</dd><small id="thermalDetail">Unknown</small></div>
+        <div><dt>Touch</dt><dd id="touchValue">--</dd><small>Body sensors</small></div>
+        <div><dt>Camera</dt><dd id="cameraValue">--</dd><small>Local vision</small></div>
+        <div><dt>Servo rail</dt><dd id="servoRailValue">--</dd><small id="servoTorqueValue">Torque unknown</small></div>
+      </dl>
+    </section>
+
+    <section class="panel motion-panel view-panel" data-view="motion" aria-labelledby="motionHeading">
+      <div class="panel-heading">
+        <h2 id="motionHeading">Motion</h2>
+        <span class="motion-badge unknown" id="motionBadge">UNVERIFIED</span>
+      </div>
+      <div class="motion-state">
+        <strong id="motionTitle">Motion state unknown</strong>
+        <span id="motionReason">Refresh robot status before changing motion.</span>
+      </div>
+      <div class="motion-actions">
+        <button class="danger-button" id="stopMotionButton" type="button">Stop motion</button>
+        <label class="clear-check">
+          <input id="robotClearCheck" type="checkbox">
+          <span>Robot is upright and clear</span>
+        </label>
+        <button class="resume-button" id="resumeMotionButton" type="button" disabled>Resume motion</button>
+      </div>
+      <p class="action-result" id="actionResult" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel activity-panel view-panel" data-view="activity" aria-labelledby="activityHeading">
+      <div class="panel-heading">
+        <h2 id="activityHeading">Activity</h2>
+        <span class="freshness">Latest 8</span>
+      </div>
+      <ol class="event-list" id="eventList">
+        <li><time>--:--:--</time><span>Waiting for bridge status</span></li>
+      </ol>
+    </section>
+  </main>
+
+  <nav class="mobile-nav" aria-label="Dashboard sections">
+    <button class="active" type="button" data-target="overview">Live</button>
+    <button type="button" data-target="motion">Motion</button>
+    <button type="button" data-target="telemetry">Telemetry</button>
+    <button type="button" data-target="activity">Activity</button>
+  </nav>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -61,6 +61,15 @@ from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 from conversation_latency import build_conversation_latency_record
 from conversation_session import ConversationConfig, ConversationPhase, ConversationSession
+from dashboard_service import (
+    DEFAULT_DASHBOARD_HOST,
+    DEFAULT_DASHBOARD_PORT,
+    DEFAULT_ROBOT_HTTP_PORT,
+    DashboardConfig,
+    DashboardRuntime,
+    start_dashboard_server,
+    stop_dashboard_server,
+)
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_TEXT_BYTES = 65535
@@ -586,6 +595,11 @@ class LanBridgeConfig:
     conversation_cooldown_ms: int = 300
     conversation_max_turns: int = 12
     episode_distillation_enabled: bool = False
+    dashboard_enabled: bool = False
+    dashboard_host: str = DEFAULT_DASHBOARD_HOST
+    dashboard_port: int = DEFAULT_DASHBOARD_PORT
+    robot_host: str = ""
+    robot_http_port: int = DEFAULT_ROBOT_HTTP_PORT
     once: bool = False
 
 
@@ -2140,6 +2154,7 @@ def handle_connection(
     config: LanBridgeConfig,
     memory: BridgeMemory,
     control_state: BridgeControlState | None = None,
+    dashboard_runtime: DashboardRuntime | None = None,
 ) -> BridgeMemory:
     session = LanBridgeSession(config, memory, control_state)
     request = read_http_request(conn)
@@ -2251,6 +2266,12 @@ def handle_connection(
                         text_message_type = str(parsed_text.get("type", "")).strip().lower()
                 except json.JSONDecodeError:
                     text_message_type = ""
+                if (
+                    dashboard_runtime is not None
+                    and text_message_type == "heartbeat"
+                    and isinstance(parsed_text, dict)
+                ):
+                    dashboard_runtime.note_heartbeat(parsed_text)
                 if '"type":"heartbeat"' in text or '"type": "heartbeat"' in text:
                     if '"mww_' in text or '"wake_' in text:
                         print(f"[bridge-lan] heartbeat {text}", flush=True)
@@ -2328,22 +2349,60 @@ def handle_connection(
 def serve(config: LanBridgeConfig) -> None:
     memory = load_bridge_memory(config.memory_file) if config.memory_file else BridgeMemory()
     control_state = BridgeControlState()
-    with socket.create_server((config.host, config.port), reuse_port=False) as server:
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        print(f"[bridge-lan] listening ws://{config.host}:{config.port} protocol={PROTOCOL}", flush=True)
-        while True:
-            conn, address = server.accept()
-            print(f"[bridge-lan] client={address[0]}:{address[1]}", flush=True)
-            with conn:
-                conn.settimeout(5.0)
+    dashboard_runtime: DashboardRuntime | None = None
+    dashboard_server = None
+    dashboard_thread = None
+    if config.dashboard_enabled:
+        dashboard_runtime = DashboardRuntime(
+            DashboardConfig(
+                host=config.dashboard_host,
+                port=config.dashboard_port,
+                robot_host=config.robot_host,
+                robot_http_port=config.robot_http_port,
+                bridge_host=config.host,
+                bridge_port=config.port,
+                runner_profile=config.runner_profile,
+                tts_voice=config.tts_voice,
+                research_enabled=config.research_enabled,
+            )
+        )
+        dashboard_server, dashboard_thread = start_dashboard_server(dashboard_runtime)
+    try:
+        with socket.create_server((config.host, config.port), reuse_port=False) as server:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if dashboard_runtime is not None:
+                dashboard_runtime.set_bridge_listening(True)
+            print(f"[bridge-lan] listening ws://{config.host}:{config.port} protocol={PROTOCOL}", flush=True)
+            while True:
+                conn, address = server.accept()
+                print(f"[bridge-lan] client={address[0]}:{address[1]}", flush=True)
+                if dashboard_runtime is not None:
+                    dashboard_runtime.note_client_connected(address[0], address[1])
                 try:
-                    memory = handle_connection(conn, config, memory, control_state)
-                except WebSocketProtocolError as exc:
-                    print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"{exc}\"", flush=True)
-                except OSError as exc:
-                    print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"socket:{exc}\"", flush=True)
-            if config.once:
-                break
+                    with conn:
+                        conn.settimeout(5.0)
+                        try:
+                            memory = handle_connection(
+                                conn,
+                                config,
+                                memory,
+                                control_state,
+                                dashboard_runtime,
+                            )
+                        except WebSocketProtocolError as exc:
+                            print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"{exc}\"", flush=True)
+                        except OSError as exc:
+                            print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"socket:{exc}\"", flush=True)
+                finally:
+                    if dashboard_runtime is not None:
+                        dashboard_runtime.note_client_disconnected(address[0])
+                if config.once:
+                    break
+    finally:
+        if dashboard_runtime is not None:
+            dashboard_runtime.set_bridge_listening(False)
+        if dashboard_server is not None and dashboard_thread is not None:
+            stop_dashboard_server(dashboard_server, dashboard_thread)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -2387,12 +2446,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Opt in to persisting strictly validated local-model session summaries.",
     )
+    parser.add_argument("--dashboard", action="store_true", help="Serve the loopback bridge dashboard.")
+    parser.add_argument("--dashboard-host", default=DEFAULT_DASHBOARD_HOST)
+    parser.add_argument("--dashboard-port", type=int, default=DEFAULT_DASHBOARD_PORT)
+    parser.add_argument("--robot-host", default="", help="Robot host for verified dashboard controls.")
+    parser.add_argument("--robot-http-port", type=int, default=DEFAULT_ROBOT_HTTP_PORT)
     parser.add_argument("--reset-memory", action="store_true")
     return parser
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    if args.dashboard and args.dashboard_host not in {"127.0.0.1", "::1", "localhost"}:
+        raise SystemExit("Dashboard must bind to a loopback host.")
     if args.reset_memory and args.memory_file and args.memory_file.exists():
         args.memory_file.unlink()
     config = LanBridgeConfig(
@@ -2435,6 +2501,11 @@ def main() -> int:
             or os.environ.get("STACKCHAN_ENABLE_EPISODE_DISTILLATION", "").strip().lower()
             in {"1", "true", "yes", "on"}
         ),
+        dashboard_enabled=args.dashboard,
+        dashboard_host=args.dashboard_host,
+        dashboard_port=max(1, min(65535, args.dashboard_port)),
+        robot_host=args.robot_host,
+        robot_http_port=max(1, min(65535, args.robot_http_port)),
     )
     serve(config)
     return 0

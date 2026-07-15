@@ -178,6 +178,17 @@ pio test -e native_logic
 pio test -e stackchan --without-uploading --without-testing
 ```
 
+Start the production PC brain and open its loopback browser dashboard:
+
+```powershell
+.\tools\start_stackchan_dashboard.ps1
+```
+
+Install the reset-safe `Stackchan Alive` desktop shortcut with
+`.\tools\install_stackchan_dashboard_shortcut.ps1`. Dashboard controls, loopback security, and
+verified motion behavior are documented in
+[docs/BRIDGE_DASHBOARD.md](docs/BRIDGE_DASHBOARD.md).
+
 ![I/O abstraction build environments](docs/media/diagrams/08-io-abstraction-builds.png)
 
 Run the no-hardware preflight before flashing or packaging:
