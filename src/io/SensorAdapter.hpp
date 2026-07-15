@@ -1,6 +1,7 @@
 #pragma once
 
 #include "io/BridgeClient.hpp"
+#include "io/BridgeWiFiProvisioningStore.hpp"
 #include "persona/EventBus.hpp"
 #include "persona/StateMatrix.hpp"
 
@@ -56,20 +57,34 @@ struct BenchPairingControl {
 
 struct BenchPairingTicketControl {
   char code[7] = {};
-  char bridgeHost[64] = {};
+  bool useTls = false;
+  char bridgeHost[kBridgeWiFiHostMax] = {};
   uint16_t bridgePort = 8765;
-  char bridgePath[64] = "/bridge";
+  char bridgePath[kBridgeWiFiPathMax] = "/bridge";
   char endpointId[64] = {};
   char fingerprint[80] = {};
 };
 
+enum class BenchWiFiProvisioningAction : uint8_t {
+  SetProfile,
+  UseProfile,
+  ClearProfile,
+  ClearAll,
+  Status,
+};
+
 struct BenchWiFiProvisioningControl {
+  BenchWiFiProvisioningAction action = BenchWiFiProvisioningAction::SetProfile;
+  BridgeWiFiProfileId profile = BridgeWiFiProfileId::Home;
   bool clear = false;
-  char ssid[33] = {};
-  char password[65] = {};
-  char bridgeHost[64] = {};
+  bool useTls = false;
+  char ssid[kBridgeWiFiSsidMax] = {};
+  char password[kBridgeWiFiPasswordMax] = {};
+  char bridgeHost[kBridgeWiFiHostMax] = {};
   uint16_t bridgePort = 8765;
-  char bridgePath[64] = "/bridge";
+  char bridgePath[kBridgeWiFiPathMax] = "/bridge";
+  char accessClientId[kBridgeAccessCredentialMax] = {};
+  char accessClientSecret[kBridgeAccessCredentialMax] = {};
 };
 
 struct BenchControl {

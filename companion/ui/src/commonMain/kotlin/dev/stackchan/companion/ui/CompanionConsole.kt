@@ -129,6 +129,9 @@ data class RobotSetupUiState(
     val wifiProvisioningSummary: String = "Start the bridge before provisioning Stack-chan Wi-Fi.",
     val wifiProvisioningCommand: String = "",
     val wifiClearCommand: String = "wifi clear",
+    val networkProfile: String = "",
+    val networkProfileStatus: String = "No active network profile reported.",
+    val networkProfileSwitchEnabled: Boolean = false,
     val primaryBridgeUrl: String = "ws://<phone-lan-ip>:8765/bridge",
     val otherBridgeUrls: List<String> = emptyList(),
     val pairingShortCode: String = "------",
@@ -301,6 +304,7 @@ fun CompanionConsole(
     onClaimBrain: () -> Unit = {},
     onReleaseBrain: () -> Unit = {},
     onOpenWifiSettings: () -> Unit = {},
+    onUseNetworkProfile: (String) -> Unit = {},
 ) {
     MaterialTheme {
         Surface(color = Page, modifier = Modifier.fillMaxSize()) {
@@ -334,6 +338,7 @@ fun CompanionConsole(
                         onClaimBrain = onClaimBrain,
                         onReleaseBrain = onReleaseBrain,
                         onOpenWifiSettings = onOpenWifiSettings,
+                        onUseNetworkProfile = onUseNetworkProfile,
                     )
                 } else {
                     Column(
@@ -369,6 +374,7 @@ fun CompanionConsole(
                                 onClaimBrain = onClaimBrain,
                                 onReleaseBrain = onReleaseBrain,
                                 onOpenWifiSettings = onOpenWifiSettings,
+                                onUseNetworkProfile = onUseNetworkProfile,
                             )
                         } else {
                             TabletConsole(
@@ -395,6 +401,7 @@ fun CompanionConsole(
                                 onClaimBrain = onClaimBrain,
                                 onReleaseBrain = onReleaseBrain,
                                 onOpenWifiSettings = onOpenWifiSettings,
+                                onUseNetworkProfile = onUseNetworkProfile,
                             )
                         }
                         Footer()
@@ -431,6 +438,7 @@ private fun MobileConsole(
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
     onOpenWifiSettings: () -> Unit,
+    onUseNetworkProfile: (String) -> Unit,
 ) {
     var selectedSection by remember { mutableStateOf(MobileSection.Live) }
     Column(
@@ -480,6 +488,7 @@ private fun MobileConsole(
                     showTabs = false,
                     onRestartBridge = onRestartBrain,
                     onOpenWifiSettings = onOpenWifiSettings,
+                    onUseNetworkProfile = onUseNetworkProfile,
                     onForgetEndpoint = onForgetEndpoint,
                     onForgetRobot = onForgetRobot,
                 )
@@ -516,6 +525,7 @@ private fun WideConsole(
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
     onOpenWifiSettings: () -> Unit,
+    onUseNetworkProfile: (String) -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -545,6 +555,7 @@ private fun WideConsole(
                 modifier = Modifier.fillMaxWidth(),
                 onRestartBridge = onRestartBrain,
                 onOpenWifiSettings = onOpenWifiSettings,
+                onUseNetworkProfile = onUseNetworkProfile,
                 onForgetEndpoint = onForgetEndpoint,
                 onForgetRobot = onForgetRobot,
             )
@@ -604,6 +615,7 @@ private fun TabletConsole(
     onClaimBrain: () -> Unit,
     onReleaseBrain: () -> Unit,
     onOpenWifiSettings: () -> Unit,
+    onUseNetworkProfile: (String) -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -625,6 +637,7 @@ private fun TabletConsole(
                 modifier = Modifier.fillMaxWidth(),
                 onRestartBridge = onRestartBrain,
                 onOpenWifiSettings = onOpenWifiSettings,
+                onUseNetworkProfile = onUseNetworkProfile,
                 onForgetEndpoint = onForgetEndpoint,
                 onForgetRobot = onForgetRobot,
             )
@@ -865,6 +878,7 @@ private fun EndpointRegistry(
     showTabs: Boolean = true,
     onRestartBridge: () -> Unit = {},
     onOpenWifiSettings: () -> Unit = {},
+    onUseNetworkProfile: (String) -> Unit = {},
     onForgetEndpoint: (String) -> Unit = {},
     onForgetRobot: (String) -> Unit = {},
 ) {
@@ -890,6 +904,7 @@ private fun EndpointRegistry(
             onToggleExpanded = { showSetup = !showSetup },
             onRestartBridge = onRestartBridge,
             onOpenWifiSettings = onOpenWifiSettings,
+            onUseNetworkProfile = onUseNetworkProfile,
         )
         Spacer(Modifier.height(14.dp))
         Text("Trusted companion nodes", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
@@ -1003,6 +1018,7 @@ private fun RobotSetupCard(
     onToggleExpanded: () -> Unit,
     onRestartBridge: () -> Unit,
     onOpenWifiSettings: () -> Unit,
+    onUseNetworkProfile: (String) -> Unit,
 ) {
     Surface(
         color = PanelAlt,
@@ -1033,6 +1049,33 @@ private fun RobotSetupCard(
                 Text(setup.wifiStatus, color = Ink, fontSize = 12.sp, lineHeight = 17.sp)
                 Text(setup.wifiInstruction, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                 SmallCommand(setup.wifiActionLabel, enabled = setup.wifiActionEnabled, onClick = onOpenWifiSettings)
+                HorizontalDivider(color = Line)
+                SectionTitle("Network mode", Cyan)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    SmallCommand(
+                        text = "Home",
+                        filled = setup.networkProfile.equals("home", ignoreCase = true),
+                        enabled = setup.networkProfileSwitchEnabled,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (!setup.networkProfile.equals("home", ignoreCase = true)) {
+                                onUseNetworkProfile("home")
+                            }
+                        },
+                    )
+                    SmallCommand(
+                        text = "Away",
+                        filled = setup.networkProfile.equals("away", ignoreCase = true),
+                        enabled = setup.networkProfileSwitchEnabled,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (!setup.networkProfile.equals("away", ignoreCase = true)) {
+                                onUseNetworkProfile("away")
+                            }
+                        },
+                    )
+                }
+                Text(setup.networkProfileStatus, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                 if (setup.wifiProvisioningCommand.isNotBlank()) {
                     Surface(
                         color = Console,
@@ -1565,7 +1608,13 @@ private fun Readout(label: String, value: String, accent: Color, modifier: Modif
 }
 
 @Composable
-private fun SmallCommand(text: String, filled: Boolean = false, enabled: Boolean = true, onClick: () -> Unit = {}) {
+private fun SmallCommand(
+    text: String,
+    filled: Boolean = false,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
     val colors = if (filled) {
         ButtonDefaults.buttonColors(
             containerColor = Cyan,
@@ -1582,11 +1631,11 @@ private fun SmallCommand(text: String, filled: Boolean = false, enabled: Boolean
         )
     }
     if (filled) {
-        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(8.dp), colors = colors) {
+        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(8.dp), colors = colors, modifier = modifier) {
             Text(text, fontSize = 12.sp)
         }
     } else {
-        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(8.dp), colors = colors) {
+        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(8.dp), colors = colors, modifier = modifier) {
             Text(text, fontSize = 12.sp)
         }
     }

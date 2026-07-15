@@ -19,6 +19,7 @@ import dev.stackchan.companion.core.SettingsSet
 import dev.stackchan.companion.core.SettingsSnapshot
 import dev.stackchan.companion.core.TextTurnSubmitResult
 import dev.stackchan.companion.core.TrustedEndpointFileStore
+import dev.stackchan.companion.core.WifiProfileUse
 import dev.stackchan.companion.core.defaultDesktopEndpointHello
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
@@ -199,6 +200,26 @@ class DesktopCompanionRuntime(
             )
         return bridge.submitProtectedControl(
             ReleaseBrain(endpointId = config.endpointId, reason = "operator released desktop brain"),
+        )
+    }
+
+    suspend fun useWifiProfile(profile: String): ProtectedControlSubmitResult {
+        val normalized = profile.trim().lowercase()
+        if (normalized != "home" && normalized != "away") {
+            return ProtectedControlSubmitResult(
+                accepted = false,
+                messageType = "wifi_profile_use",
+                detail = "Wi-Fi profile must be Home or Away.",
+            )
+        }
+        val bridge = server
+            ?: return ProtectedControlSubmitResult(
+                accepted = false,
+                messageType = "wifi_profile_use",
+                detail = "Desktop bridge runtime is not running.",
+            )
+        return bridge.submitProtectedControl(
+            WifiProfileUse(endpointId = config.endpointId, profile = normalized),
         )
     }
 

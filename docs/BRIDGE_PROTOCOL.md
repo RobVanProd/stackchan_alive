@@ -29,12 +29,16 @@ read handshake response, feed incoming WebSocket bytes, drain queued endpoint re
 schedule reconnects. `BridgeWiFiClientSocket` is the ESP32 `WiFiClient` binding for that
 socket interface. `BridgeWiFiProvisioner` supplies compile-time Wi-Fi/bridge provisioning,
 nonblocking connection retries, boot-time session initialization, and the intent-loop update
-hook that keeps `BridgeClient` access single-threaded. The serial bench path can temporarily
-replace the compile-time target with `wifi set ssid "<name>" pass "<password>" url "ws://host:port/bridge"`
-or equivalent `host`/`port`/`path` tokens, and `wifi clear` returns to the build-time config.
-That lab path does not persist credentials and does not echo the password in logs. It still
-needs real configured credentials/bridge host on the CoreS3 before collecting live PC/mobile
-handoff evidence.
+hook that keeps `BridgeClient` access single-threaded. The serial provisioning path persists
+separate Home and Away profiles. Legacy
+`wifi set ssid "<name>" pass "<password>" url "ws://host:port/bridge"` configures Home;
+`wifi set away ... url "wss://host/bridge" access_id "..." access_secret "..."` configures
+Away without replacing Home. `wifi use home|away` changes the active profile, while
+`wifi clear home|away` removes only one profile. Away requires a TLS hostname and complete
+Cloudflare Access service-token pair. Paired Android and desktop endpoints can send the same
+bounded `wifi_profile_use` operation over the bridge. The firmware persists the selection,
+returns `wifi_profile_use_result`, and delays reconnect long enough to drain that response.
+See `AWAY_CLOUDFLARE_BRIDGE.md` for deployment and secret-handling requirements.
 `BridgeAudioUplink` is the firmware turn controller for device-to-bridge speech upload: it
 is disabled by default, refuses to start unless the wake gate is open, queues a masked text
 `utterance_start`, queues bounded masked binary PCM chunks, and queues a masked text

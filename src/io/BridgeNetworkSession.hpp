@@ -30,6 +30,9 @@ struct BridgeNetworkSessionConfig {
   uint16_t port = 8765;
   const char* path = "/bridge";
   const char* secWebSocketKey = "c3RhY2tjaGFuLWZpcm13YXJlLWtleQ==";
+  bool useTls = false;
+  const char* accessClientId = nullptr;
+  const char* accessClientSecret = nullptr;
   uint32_t handshakeTimeoutMs = 3000;
   uint32_t reconnectDelayMs = 3000;
   uint16_t readBudgetBytes = 1024;
@@ -60,7 +63,7 @@ class BridgeNetworkSocket : public BridgeSocketWriterSink {
  public:
   virtual ~BridgeNetworkSocket() = default;
 
-  virtual bool connect(const char* host, uint16_t port) = 0;
+  virtual bool connect(const char* host, uint16_t port, bool useTls) = 0;
   virtual int available() = 0;
   virtual int read(uint8_t* out, size_t outSize) = 0;
   virtual void stop() = 0;

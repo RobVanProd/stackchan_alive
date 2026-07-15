@@ -1,6 +1,7 @@
 #include "io/BridgeWiFiProvisioner.hpp"
 
 #include <cstring>
+#include <ctime>
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
@@ -51,6 +52,20 @@ void BridgeWiFiProvisioner::update(uint32_t nowMs) {
   if (WiFi.status() == WL_CONNECTED) {
     telemetry_.connected = true;
     telemetry_.connecting = false;
+    if (config_.useTls) {
+      if (!telemetry_.clockSyncRequested) {
+        configTime(0, 0, "time.cloudflare.com", "pool.ntp.org");
+        telemetry_.clockSyncRequested = true;
+        telemetry_.clockSyncRequests++;
+      }
+      telemetry_.clockReady = std::time(nullptr) >= 1704067200;
+      if (!telemetry_.clockReady) {
+        copyError("tls_clock_sync_pending");
+        return;
+      }
+    } else {
+      telemetry_.clockReady = true;
+    }
     telemetry_.lastError[0] = '\0';
     return;
   }
@@ -71,14 +86,22 @@ void BridgeWiFiProvisioner::update(uint32_t nowMs) {
 }
 
 bool BridgeWiFiProvisioner::isConfigured() const {
+  const bool hasAccessId = config_.accessClientId != nullptr && config_.accessClientId[0] != '\0';
+  const bool hasAccessSecret =
+      config_.accessClientSecret != nullptr && config_.accessClientSecret[0] != '\0';
   return config_.enabled && config_.ssid != nullptr && config_.ssid[0] != '\0' &&
          config_.bridgeHost != nullptr && config_.bridgeHost[0] != '\0' &&
          config_.bridgePort != 0 && config_.secWebSocketKey != nullptr &&
-         config_.secWebSocketKey[0] != '\0';
+         config_.secWebSocketKey[0] != '\0' && hasAccessId == hasAccessSecret &&
+         (!hasAccessId || config_.useTls);
 }
 
 bool BridgeWiFiProvisioner::isConnected() const {
   return telemetry_.connected;
+}
+
+bool BridgeWiFiProvisioner::isBridgeReady() const {
+  return telemetry_.connected && (!config_.useTls || telemetry_.clockReady);
 }
 
 BridgeNetworkSessionConfig BridgeWiFiProvisioner::networkSessionConfig() const {
@@ -88,6 +111,9 @@ BridgeNetworkSessionConfig BridgeWiFiProvisioner::networkSessionConfig() const {
   session.port = config_.bridgePort;
   session.path = config_.bridgePath;
   session.secWebSocketKey = config_.secWebSocketKey;
+  session.useTls = config_.useTls;
+  session.accessClientId = config_.accessClientId;
+  session.accessClientSecret = config_.accessClientSecret;
   session.bridge = config_.bridge;
   return session;
 }

@@ -11,19 +11,46 @@
 
 namespace stackchan {
 
-constexpr size_t kBridgeWiFiProvisioningStoreJsonMax = 768;
+constexpr size_t kBridgeWiFiProvisioningStoreJsonMax = 1536;
 constexpr size_t kBridgeWiFiSsidMax = 33;
 constexpr size_t kBridgeWiFiPasswordMax = 65;
-constexpr size_t kBridgeWiFiHostMax = 64;
-constexpr size_t kBridgeWiFiPathMax = 64;
+constexpr size_t kBridgeWiFiHostMax = 96;
+constexpr size_t kBridgeWiFiPathMax = 96;
+constexpr size_t kBridgeAccessCredentialMax = 97;
 
-struct BridgeWiFiProvisioningRecord {
-  bool enabled = false;
+enum class BridgeWiFiProfileId : uint8_t {
+  Home = 0,
+  Away = 1,
+};
+
+const char* bridgeWiFiProfileName(BridgeWiFiProfileId profile);
+bool parseBridgeWiFiProfile(const char* value, BridgeWiFiProfileId* profileOut);
+
+struct BridgeWiFiProfileRecord {
+  bool configured = false;
+  bool useTls = false;
   char ssid[kBridgeWiFiSsidMax] = {};
   char password[kBridgeWiFiPasswordMax] = {};
   char bridgeHost[kBridgeWiFiHostMax] = {};
   uint16_t bridgePort = 0;
   char bridgePath[kBridgeWiFiPathMax] = "/bridge";
+  char accessClientId[kBridgeAccessCredentialMax] = {};
+  char accessClientSecret[kBridgeAccessCredentialMax] = {};
+};
+
+struct BridgeWiFiProvisioningRecord {
+  bool enabled = false;
+  BridgeWiFiProfileId activeProfile = BridgeWiFiProfileId::Home;
+  BridgeWiFiProfileRecord home;
+  BridgeWiFiProfileRecord away;
+
+  BridgeWiFiProfileRecord& profile(BridgeWiFiProfileId id) {
+    return id == BridgeWiFiProfileId::Away ? away : home;
+  }
+
+  const BridgeWiFiProfileRecord& profile(BridgeWiFiProfileId id) const {
+    return id == BridgeWiFiProfileId::Away ? away : home;
+  }
 };
 
 struct BridgeWiFiProvisioningStoreTelemetry {
@@ -35,6 +62,7 @@ struct BridgeWiFiProvisioningStoreTelemetry {
   uint32_t parseErrors = 0;
   uint32_t writeErrors = 0;
   uint32_t rejected = 0;
+  uint32_t legacyMigrations = 0;
   uint32_t lastChangeMs = 0;
 };
 
@@ -93,6 +121,9 @@ class BridgeWiFiProvisioningStore {
 
  private:
   static bool isValidRecord(const BridgeWiFiProvisioningRecord& record);
+  static bool isValidProfile(const BridgeWiFiProfileRecord& profile);
+  static void writeProfile(JsonObject object, const BridgeWiFiProfileRecord& profile);
+  static bool readProfile(const JsonObjectConst& object, BridgeWiFiProfileRecord& profile);
   static bool copyStringField(const JsonObjectConst& object,
                               const char* key,
                               char* out,

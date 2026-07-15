@@ -34,6 +34,8 @@ struct BridgeEndpointControlTelemetry {
   uint32_t ownerStatusRequests = 0;
   uint32_t trustedEndpointRequests = 0;
   uint32_t capabilityUpdates = 0;
+  uint32_t wifiProfileUseRequests = 0;
+  uint32_t wifiProfileUseAccepted = 0;
   uint32_t forgotten = 0;
   uint32_t pairingRejects = 0;
   uint32_t persistenceSaves = 0;
@@ -42,11 +44,24 @@ struct BridgeEndpointControlTelemetry {
   uint32_t lastHandledMs = 0;
 };
 
+enum class BridgeEndpointWiFiProfileUseResult : uint8_t {
+  Accepted,
+  ProfileNotConfigured,
+  PersistenceFailed,
+};
+
+using BridgeEndpointWiFiProfileUseHandler = BridgeEndpointWiFiProfileUseResult (*)(
+    const char* profile,
+    uint32_t nowMs,
+    void* context);
+
 class BridgeEndpointControl {
  public:
   bool begin(BridgeEndpointRegistry& registry,
              const BridgeEndpointControlConfig& config = BridgeEndpointControlConfig {});
   void attachStore(BridgeEndpointStore* store);
+  void attachWiFiProfileUseHandler(BridgeEndpointWiFiProfileUseHandler handler,
+                                   void* context = nullptr);
   void update(uint32_t nowMs);
   bool setRequiredPairingCode(const char* value);
   void clearRequiredPairingCode();
@@ -98,6 +113,10 @@ class BridgeEndpointControl {
                                                      char* responseOut,
                                                      size_t responseOutSize,
                                                      uint32_t nowMs);
+  BridgeEndpointControlResult handleWiFiProfileUse(const JsonObjectConst& root,
+                                                   char* responseOut,
+                                                   size_t responseOutSize,
+                                                   uint32_t nowMs);
 
   BridgeEndpointControlResult writeEndpointHelloResult(const BridgeEndpointRecord& endpoint,
                                                        char* responseOut,
@@ -116,6 +135,10 @@ class BridgeEndpointControl {
   BridgeEndpointControlResult writeCapabilityResult(const BridgeEndpointRecord& endpoint,
                                                     char* responseOut,
                                                     size_t responseOutSize);
+  BridgeEndpointControlResult writeWiFiProfileUseResult(const char* endpointId,
+                                                        const char* profile,
+                                                        char* responseOut,
+                                                        size_t responseOutSize);
   BridgeEndpointControlResult writeError(const char* code,
                                          const char* endpointId,
                                          char* responseOut,
@@ -136,6 +159,8 @@ class BridgeEndpointControl {
 
   BridgeEndpointRegistry* registry_ = nullptr;
   BridgeEndpointStore* store_ = nullptr;
+  BridgeEndpointWiFiProfileUseHandler wifiProfileUseHandler_ = nullptr;
+  void* wifiProfileUseContext_ = nullptr;
   BridgeEndpointControlTelemetry telemetry_;
   char requiredPairingCode_[7] = {};
 };

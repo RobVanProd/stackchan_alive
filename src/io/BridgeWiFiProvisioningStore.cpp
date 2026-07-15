@@ -1,11 +1,13 @@
 #include "io/BridgeWiFiProvisioningStore.hpp"
 
+#include <cctype>
 #include <cstring>
 
 namespace stackchan {
 
 namespace {
-constexpr const char* kBridgeWiFiProvisioningStoreSchema = "stackchan.bridge-wifi.v1";
+constexpr const char* kBridgeWiFiProvisioningStoreSchema = "stackchan.bridge-wifi.v2";
+constexpr const char* kBridgeWiFiProvisioningStoreLegacySchema = "stackchan.bridge-wifi.v1";
 
 bool isEmpty(const char* value) {
   return value == nullptr || value[0] == '\0';
@@ -15,6 +17,34 @@ bool equals(const char* left, const char* right) {
   return left != nullptr && right != nullptr && std::strcmp(left, right) == 0;
 }
 }  // namespace
+
+const char* bridgeWiFiProfileName(BridgeWiFiProfileId profile) {
+  return profile == BridgeWiFiProfileId::Away ? "away" : "home";
+}
+
+bool parseBridgeWiFiProfile(const char* value, BridgeWiFiProfileId* profileOut) {
+  if (value == nullptr || profileOut == nullptr) {
+    return false;
+  }
+  char normalized[6] = {};
+  size_t index = 0;
+  while (value[index] != '\0' && index + 1u < sizeof(normalized)) {
+    normalized[index] = static_cast<char>(std::tolower(static_cast<unsigned char>(value[index])));
+    ++index;
+  }
+  if (value[index] != '\0') {
+    return false;
+  }
+  if (equals(normalized, "home")) {
+    *profileOut = BridgeWiFiProfileId::Home;
+    return true;
+  }
+  if (equals(normalized, "away")) {
+    *profileOut = BridgeWiFiProfileId::Away;
+    return true;
+  }
+  return false;
+}
 
 bool BridgeWiFiProvisioningMemoryStore::begin() {
   ready_ = true;
@@ -133,11 +163,10 @@ bool BridgeWiFiProvisioningStore::save(const BridgeWiFiProvisioningRecord& recor
   JsonDocument document;
   document["schema"] = kBridgeWiFiProvisioningStoreSchema;
   document["enabled"] = record.enabled;
-  document["ssid"] = record.ssid;
-  document["password"] = record.password;
-  document["bridge_host"] = record.bridgeHost;
-  document["bridge_port"] = record.bridgePort;
-  document["bridge_path"] = record.bridgePath;
+  document["active_profile"] = bridgeWiFiProfileName(record.activeProfile);
+  JsonObject profiles = document["profiles"].to<JsonObject>();
+  writeProfile(profiles["home"].to<JsonObject>(), record.home);
+  writeProfile(profiles["away"].to<JsonObject>(), record.away);
 
   char json[kBridgeWiFiProvisioningStoreJsonMax] = {};
   if (measureJson(document) + 1u > sizeof(json)) {
@@ -187,22 +216,46 @@ bool BridgeWiFiProvisioningStore::load(BridgeWiFiProvisioningRecord& record, uin
     return false;
   }
   const char* schema = document["schema"] | "";
-  if (!equals(schema, kBridgeWiFiProvisioningStoreSchema)) {
-    telemetry_.parseErrors++;
-    telemetry_.lastChangeMs = nowMs;
-    return false;
-  }
-
-  record.enabled = document["enabled"] | false;
-  copyStringField(document.as<JsonObjectConst>(), "ssid", record.ssid, sizeof(record.ssid));
-  copyStringField(document.as<JsonObjectConst>(), "password", record.password, sizeof(record.password));
-  copyStringField(document.as<JsonObjectConst>(), "bridge_host", record.bridgeHost, sizeof(record.bridgeHost));
-  record.bridgePort = document["bridge_port"] | 0u;
-  copyStringField(document.as<JsonObjectConst>(), "bridge_path", record.bridgePath, sizeof(record.bridgePath));
-  if (record.bridgePath[0] == '\0') {
-    copyBounded(record.bridgePath, sizeof(record.bridgePath), "/bridge");
-  }
-  if (!isValidRecord(record)) {
+  if (equals(schema, kBridgeWiFiProvisioningStoreLegacySchema)) {
+    record.enabled = document["enabled"] | false;
+    record.activeProfile = BridgeWiFiProfileId::Home;
+    BridgeWiFiProfileRecord& home = record.home;
+    copyStringField(document.as<JsonObjectConst>(), "ssid", home.ssid, sizeof(home.ssid));
+    copyStringField(document.as<JsonObjectConst>(), "password", home.password, sizeof(home.password));
+    copyStringField(document.as<JsonObjectConst>(), "bridge_host", home.bridgeHost, sizeof(home.bridgeHost));
+    home.bridgePort = document["bridge_port"] | 0u;
+    copyStringField(document.as<JsonObjectConst>(), "bridge_path", home.bridgePath, sizeof(home.bridgePath));
+    if (home.bridgePath[0] == '\0') {
+      copyBounded(home.bridgePath, sizeof(home.bridgePath), "/bridge");
+    }
+    home.configured = !isEmpty(home.ssid) && !isEmpty(home.bridgeHost) && home.bridgePort != 0;
+    if (!isValidRecord(record)) {
+      telemetry_.parseErrors++;
+      telemetry_.lastChangeMs = nowMs;
+      return false;
+    }
+    telemetry_.legacyMigrations++;
+  } else if (equals(schema, kBridgeWiFiProvisioningStoreSchema)) {
+    record.enabled = document["enabled"] | false;
+    const char* activeProfile = document["active_profile"] | "home";
+    if (!parseBridgeWiFiProfile(activeProfile, &record.activeProfile)) {
+      telemetry_.parseErrors++;
+      telemetry_.lastChangeMs = nowMs;
+      return false;
+    }
+    const JsonObjectConst profiles = document["profiles"].as<JsonObjectConst>();
+    if (profiles.isNull() || !readProfile(profiles["home"].as<JsonObjectConst>(), record.home) ||
+        !readProfile(profiles["away"].as<JsonObjectConst>(), record.away)) {
+      telemetry_.parseErrors++;
+      telemetry_.lastChangeMs = nowMs;
+      return false;
+    }
+    if (!isValidRecord(record)) {
+      telemetry_.parseErrors++;
+      telemetry_.lastChangeMs = nowMs;
+      return false;
+    }
+  } else {
     telemetry_.parseErrors++;
     telemetry_.lastChangeMs = nowMs;
     return false;
@@ -231,11 +284,62 @@ bool BridgeWiFiProvisioningStore::clear(uint32_t nowMs) {
 }
 
 bool BridgeWiFiProvisioningStore::isValidRecord(const BridgeWiFiProvisioningRecord& record) {
-  if (!record.enabled) {
-    return true;
+  if (!isValidProfile(record.home) || !isValidProfile(record.away)) {
+    return false;
   }
-  return !isEmpty(record.ssid) && !isEmpty(record.bridgeHost) && record.bridgePort != 0 &&
-         !isEmpty(record.bridgePath);
+  if (record.away.configured &&
+      (!record.away.useTls || isEmpty(record.away.accessClientId) ||
+       isEmpty(record.away.accessClientSecret))) {
+    return false;
+  }
+  return !record.enabled || record.profile(record.activeProfile).configured;
+}
+
+bool BridgeWiFiProvisioningStore::isValidProfile(const BridgeWiFiProfileRecord& profile) {
+  if (!profile.configured) {
+    return isEmpty(profile.ssid) && isEmpty(profile.password) && isEmpty(profile.bridgeHost) &&
+           isEmpty(profile.accessClientId) && isEmpty(profile.accessClientSecret);
+  }
+  const bool accessPairComplete = isEmpty(profile.accessClientId) == isEmpty(profile.accessClientSecret);
+  const bool accessUsesTls = isEmpty(profile.accessClientId) || profile.useTls;
+  return !isEmpty(profile.ssid) && !isEmpty(profile.bridgeHost) && profile.bridgePort != 0 &&
+         !isEmpty(profile.bridgePath) && accessPairComplete && accessUsesTls;
+}
+
+void BridgeWiFiProvisioningStore::writeProfile(JsonObject object,
+                                               const BridgeWiFiProfileRecord& profile) {
+  object["configured"] = profile.configured;
+  object["tls"] = profile.useTls;
+  object["ssid"] = profile.ssid;
+  object["password"] = profile.password;
+  object["bridge_host"] = profile.bridgeHost;
+  object["bridge_port"] = profile.bridgePort;
+  object["bridge_path"] = profile.bridgePath;
+  object["access_client_id"] = profile.accessClientId;
+  object["access_client_secret"] = profile.accessClientSecret;
+}
+
+bool BridgeWiFiProvisioningStore::readProfile(const JsonObjectConst& object,
+                                              BridgeWiFiProfileRecord& profile) {
+  if (object.isNull()) {
+    return false;
+  }
+  profile.configured = object["configured"] | false;
+  profile.useTls = object["tls"] | false;
+  copyStringField(object, "ssid", profile.ssid, sizeof(profile.ssid));
+  copyStringField(object, "password", profile.password, sizeof(profile.password));
+  copyStringField(object, "bridge_host", profile.bridgeHost, sizeof(profile.bridgeHost));
+  profile.bridgePort = object["bridge_port"] | 0u;
+  copyStringField(object, "bridge_path", profile.bridgePath, sizeof(profile.bridgePath));
+  copyStringField(object, "access_client_id", profile.accessClientId, sizeof(profile.accessClientId));
+  copyStringField(object,
+                  "access_client_secret",
+                  profile.accessClientSecret,
+                  sizeof(profile.accessClientSecret));
+  if (profile.bridgePath[0] == '\0') {
+    copyBounded(profile.bridgePath, sizeof(profile.bridgePath), "/bridge");
+  }
+  return isValidProfile(profile);
 }
 
 bool BridgeWiFiProvisioningStore::copyStringField(const JsonObjectConst& object,

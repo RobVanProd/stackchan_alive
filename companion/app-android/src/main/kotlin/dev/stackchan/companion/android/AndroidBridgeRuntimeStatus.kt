@@ -18,6 +18,7 @@ data class AndroidBridgeRuntimeStatus(
     val activeBrainOwner: String = "",
     val textTurnsSubmitted: Int = 0,
     val lastTextTurn: String = "",
+    val networkProfile: String = "",
 ) {
     val primaryBridgeUrl: String
         get() = manualBridgeUrls.firstOrNull() ?: primaryBridgeManualUrl()
@@ -92,6 +93,7 @@ object AndroidBridgeRuntimeStatusStore {
                 activeBrainOwner = if (clearSession) "" else it.activeBrainOwner,
                 textTurnsSubmitted = if (clearSession) 0 else it.textTurnsSubmitted,
                 lastTextTurn = if (clearSession) "" else it.lastTextTurn,
+                networkProfile = if (clearSession) "" else it.networkProfile,
             )
         }
     }
@@ -113,6 +115,7 @@ object AndroidBridgeRuntimeStatusStore {
                     activeBrainOwner = "",
                     textTurnsSubmitted = 0,
                     lastTextTurn = "",
+                    networkProfile = "",
                 )
             }
         }
@@ -132,6 +135,7 @@ object AndroidBridgeRuntimeStatusStore {
                 activeBrainOwner = snapshot.activeBrainOwner.orEmpty(),
                 textTurnsSubmitted = snapshot.textTurnsSubmitted,
                 lastTextTurn = snapshot.lastTextTurn,
+                networkProfile = snapshot.networkProfile,
             )
         }
     }

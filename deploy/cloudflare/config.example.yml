@@ -1,0 +1,7 @@
+tunnel: <TUNNEL-UUID>
+credentials-file: C:\Users\<WINDOWS-USER>\.cloudflared\<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: <STACKCHAN-BRIDGE-HOSTNAME>
+    service: http://127.0.0.1:8765
+  - service: http_status:404

@@ -8,13 +8,14 @@
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #endif
 
 namespace stackchan {
 
 class BridgeWiFiClientSocket final : public BridgeNetworkSocket {
  public:
-  bool connect(const char* host, uint16_t port) override;
+  bool connect(const char* host, uint16_t port, bool useTls) override;
   bool isConnected() const override;
   int available() override;
   int read(uint8_t* out, size_t outSize) override;
@@ -26,13 +27,17 @@ class BridgeWiFiClientSocket final : public BridgeNetworkSocket {
   uint32_t maxConnectDurationMs() const { return maxConnectDurationMs_; }
   int lastConnectErrno() const { return lastConnectErrno_; }
   int lastConnectResult() const { return lastConnectResult_; }
+  bool tlsActive() const { return tlsActive_; }
 
  private:
   void noteConnectResult(int result, int errorCode, uint32_t startedAtMs);
 
 #if defined(ARDUINO_ARCH_ESP32)
-  mutable WiFiClient client_;
+  mutable WiFiClient plainClient_;
+  mutable WiFiClientSecure secureClient_;
+  mutable WiFiClient* activeClient_ = nullptr;
 #endif
+  bool tlsActive_ = false;
   uint32_t connectAttempts_ = 0;
   uint32_t lastConnectDurationMs_ = 0;
   uint32_t maxConnectDurationMs_ = 0;

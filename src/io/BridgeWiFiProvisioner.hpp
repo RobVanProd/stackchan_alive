@@ -46,6 +46,9 @@ struct BridgeWiFiProvisioningConfig {
   uint16_t bridgePort = STACKCHAN_BRIDGE_PORT;
   const char* bridgePath = STACKCHAN_BRIDGE_PATH;
   const char* secWebSocketKey = STACKCHAN_BRIDGE_WS_KEY;
+  bool useTls = false;
+  const char* accessClientId = nullptr;
+  const char* accessClientSecret = nullptr;
   uint32_t connectTimeoutMs = 15000;
   uint32_t retryDelayMs = 10000;
   BridgeClientConfig bridge;
@@ -56,9 +59,12 @@ struct BridgeWiFiProvisioningTelemetry {
   bool configured = false;
   bool connecting = false;
   bool connected = false;
+  bool clockReady = false;
+  bool clockSyncRequested = false;
   uint32_t beginAttempts = 0;
   uint32_t connectFailures = 0;
   uint32_t reconnectsScheduled = 0;
+  uint32_t clockSyncRequests = 0;
   uint32_t lastAttemptMs = 0;
   uint32_t nextAttemptMs = 0;
   int status = 0;
@@ -73,6 +79,7 @@ class BridgeWiFiProvisioner {
 
   bool isConfigured() const;
   bool isConnected() const;
+  bool isBridgeReady() const;
 
   BridgeNetworkSessionConfig networkSessionConfig() const;
 

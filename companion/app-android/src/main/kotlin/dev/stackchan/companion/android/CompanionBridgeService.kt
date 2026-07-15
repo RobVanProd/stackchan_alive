@@ -24,6 +24,7 @@ import dev.stackchan.companion.core.SettingsResult
 import dev.stackchan.companion.core.SettingsSet
 import dev.stackchan.companion.core.SettingsSnapshot
 import dev.stackchan.companion.core.TextTurnSubmitResult
+import dev.stackchan.companion.core.WifiProfileUse
 import dev.stackchan.companion.core.defaultAndroidEndpointHello
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -385,6 +386,32 @@ class CompanionBridgeService : Service() {
                 )
             return bridge.submitProtectedControl(
                 ReleaseBrain(endpointId = endpoint.endpointId, reason = "operator released Android brain"),
+            )
+        }
+
+        suspend fun useWifiProfile(profile: String): ProtectedControlSubmitResult {
+            val normalized = profile.trim().lowercase()
+            if (normalized != "home" && normalized != "away") {
+                return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "wifi_profile_use",
+                    detail = "Wi-Fi profile must be Home or Away.",
+                )
+            }
+            val bridge = activeServer
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "wifi_profile_use",
+                    detail = "Android bridge service is not running.",
+                )
+            val endpoint = activeEndpointHello
+                ?: return ProtectedControlSubmitResult(
+                    accepted = false,
+                    messageType = "wifi_profile_use",
+                    detail = "Android endpoint identity is not available.",
+                )
+            return bridge.submitProtectedControl(
+                WifiProfileUse(endpointId = endpoint.endpointId, profile = normalized),
             )
         }
 

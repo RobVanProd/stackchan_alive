@@ -128,6 +128,11 @@ fun main(args: Array<String>) {
                         runCatching { runtime.releaseBrain() }
                     }
                 },
+                onUseNetworkProfile = { profile ->
+                    scope.launch {
+                        runCatching { runtime.useWifiProfile(profile) }
+                    }
+                },
             )
         }
     }

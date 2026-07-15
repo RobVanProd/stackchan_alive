@@ -102,6 +102,17 @@ private fun EndpointSessionSnapshot.toCompanionUiState(
             robotConnected = robotReady,
             robotName = robotName,
             robotFingerprint = firmwareVersion.ifBlank { "No firmware hello yet" },
+            networkProfile = networkProfile,
+            networkProfileStatus = when (networkProfile.lowercase()) {
+                "home" -> "Home profile active."
+                "away" -> "Away profile active through the configured hotspot and remote bridge."
+                else -> if (robotReady) {
+                    "Waiting for Stack-chan to report its active profile."
+                } else {
+                    "Connect Stack-chan before changing network mode."
+                }
+            },
+            networkProfileSwitchEnabled = robotReady,
         ),
         conversation = toConversationUiState(),
         diagnosticsExport = runtime.toDiagnosticsExportUiState(),

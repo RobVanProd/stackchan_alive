@@ -269,6 +269,45 @@ class EndpointServerTest {
     }
 
     @Test
+    fun endpointServerSendsWifiProfileSwitchAndRecordsRobotAcknowledgement() = runBlocking {
+        val port = freePort()
+        CompanionEndpointServer(EndpointServerConfig(port = port)).use { server ->
+            server.start()
+            val client = TestWebSocketClient.connect("ws://127.0.0.1:$port/bridge")
+            client.sendRobotHello()
+            val endpoint = assertIs<EndpointHello>(decodeControlMessage(client.nextText()))
+
+            val submit = server.submitProtectedControl(
+                WifiProfileUse(endpointId = endpoint.endpointId, profile = "away"),
+            )
+            val request = assertIs<WifiProfileUse>(decodeControlMessage(client.nextText()))
+            client.send(
+                encodeControlMessage(
+                    WifiProfileUseResult(
+                        endpointId = request.endpointId,
+                        profile = request.profile,
+                        accepted = true,
+                    ),
+                ),
+            )
+
+            var snapshot = server.currentSnapshot()
+            repeat(20) {
+                if (snapshot.networkProfile == "away") return@repeat
+                kotlinx.coroutines.delay(10)
+                snapshot = server.currentSnapshot()
+            }
+
+            assertTrue(submit.accepted)
+            assertEquals("wifi_profile_use", submit.messageType)
+            assertEquals("away", request.profile)
+            assertEquals("away", snapshot.networkProfile)
+            assertEquals("wifi_profile_use_result", snapshot.lastMessageType)
+            client.close()
+        }
+    }
+
+    @Test
     fun endpointServerRoutesSubmittedTextTurnsThroughConfiguredBrainEngine() = runBlocking {
         val port = freePort()
         val engine = BrainTurnEngine { request ->

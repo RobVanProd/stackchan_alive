@@ -2690,6 +2690,10 @@ void test_sensor_adapter_parses_wifi_provisioning_commands() {
       &control));
   TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
   TEST_ASSERT_FALSE(control.wifi.clear);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchWiFiProvisioningAction::SetProfile),
+                    static_cast<int>(control.wifi.action));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWiFiProfileId::Home),
+                    static_cast<int>(control.wifi.profile));
   TEST_ASSERT_EQUAL_STRING("StackLab", control.wifi.ssid);
   TEST_ASSERT_EQUAL_STRING("CaseSensitive123", control.wifi.password);
   TEST_ASSERT_EQUAL_STRING("192.168.1.42", control.wifi.bridgeHost);
@@ -2729,13 +2733,49 @@ void test_sensor_adapter_parses_wifi_provisioning_commands() {
   TEST_ASSERT_EQUAL_STRING("quoted psk", control.wifi.password);
   TEST_ASSERT_EQUAL_STRING("10.0.0.5", control.wifi.bridgeHost);
 
+  TEST_ASSERT_TRUE(parseBenchControlLine(
+      "wifi set away ssid PixelHotspot pass private url wss://brain.example.com/bridge access_id robot.access access_secret token-secret",
+      4141,
+      &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWiFiProfileId::Away),
+                    static_cast<int>(control.wifi.profile));
+  TEST_ASSERT_TRUE(control.wifi.useTls);
+  TEST_ASSERT_EQUAL_UINT16(443, control.wifi.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("brain.example.com", control.wifi.bridgeHost);
+  TEST_ASSERT_EQUAL_STRING("robot.access", control.wifi.accessClientId);
+  TEST_ASSERT_EQUAL_STRING("token-secret", control.wifi.accessClientSecret);
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("wifi use away", 4142, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchWiFiProvisioningAction::UseProfile),
+                    static_cast<int>(control.wifi.action));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWiFiProfileId::Away),
+                    static_cast<int>(control.wifi.profile));
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("wifi clear away", 4143, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchWiFiProvisioningAction::ClearProfile),
+                    static_cast<int>(control.wifi.action));
+
+  TEST_ASSERT_TRUE(parseBenchControlLine("wifi status", 4144, &control));
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchWiFiProvisioningAction::Status),
+                    static_cast<int>(control.wifi.action));
+
   TEST_ASSERT_TRUE(parseBenchControlLine("wifi clear", 4132, &control));
   TEST_ASSERT_TRUE(control.hasWiFiProvisioning);
   TEST_ASSERT_TRUE(control.wifi.clear);
+  TEST_ASSERT_EQUAL(static_cast<int>(BenchWiFiProvisioningAction::ClearAll),
+                    static_cast<int>(control.wifi.action));
 
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid OnlyNetwork", 4133, &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url nope", 4134, &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url wss://10.0.0.5:8765/bridge", 4135, &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine(
+      "wifi set away ssid Pixel pass private url ws://brain.example.com/bridge",
+      4145,
+      &control));
+  TEST_ASSERT_FALSE(parseBenchControlLine(
+      "wifi set away ssid Pixel pass private url wss://brain.example.com/bridge",
+      4146,
+      &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab host 10.0.0.5 port 8765x", 4136, &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid Lab url ws://10.0.0.5:8765x/bridge", 4137, &control));
   TEST_ASSERT_FALSE(parseBenchControlLine("wifi set ssid \"Unclosed pass nope url ws://10.0.0.5:8765/bridge", 4140, &control));
@@ -5024,9 +5064,10 @@ class CapturingBridgeSocketSink final : public BridgeSocketWriterSink {
 
 class FakeBridgeNetworkSocket final : public BridgeNetworkSocket {
  public:
-  bool connect(const char* host, uint16_t port) override {
+  bool connect(const char* host, uint16_t port, bool useTls) override {
     lastHost = host != nullptr ? host : "";
     lastPort = port;
+    lastUseTls = useTls;
     connectAttempts++;
     connected = connectSucceeds;
     return connected;
@@ -5093,6 +5134,7 @@ class FakeBridgeNetworkSocket final : public BridgeNetworkSocket {
   uint32_t stops = 0;
   std::string lastHost;
   uint16_t lastPort = 0;
+  bool lastUseTls = false;
   std::vector<uint8_t> incoming;
   std::vector<uint8_t> outgoing;
   size_t readOffset = 0;
@@ -5176,6 +5218,32 @@ void test_bridge_websocket_builds_upgrade_request_and_accepts_response() {
   TEST_ASSERT_TRUE(containsText(request, "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="));
   TEST_ASSERT_TRUE(containsText(request, "X-Stackchan-Protocol: stackchan.bridge.v1"));
   TEST_ASSERT_TRUE(containsText(request, "X-Stackchan-Device: stackchan-test"));
+
+  const size_t accessRequestBytes = BridgeWebSocketTransport::buildHandshakeRequest(
+      request,
+      sizeof(request),
+      "brain.example.com",
+      443,
+      "/bridge",
+      "dGhlIHNhbXBsZSBub25jZQ==",
+      config,
+      "robot.access",
+      "access-secret");
+  TEST_ASSERT_GREATER_THAN_UINT32(0, accessRequestBytes);
+  TEST_ASSERT_TRUE(containsText(request, "CF-Access-Client-Id: robot.access\r\n"));
+  TEST_ASSERT_TRUE(containsText(request, "CF-Access-Client-Secret: access-secret\r\n"));
+  TEST_ASSERT_EQUAL_UINT32(
+      0,
+      BridgeWebSocketTransport::buildHandshakeRequest(
+          request,
+          sizeof(request),
+          "brain.example.com",
+          443,
+          "/bridge",
+          "dGhlIHNhbXBsZSBub25jZQ==",
+          config,
+          "robot.access\r\nInjected: yes",
+          "access-secret"));
 
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin(config));
@@ -5877,7 +5945,10 @@ void test_bridge_network_session_starts_and_accepts_handshake() {
   TEST_ASSERT_TRUE(bridge.begin());
   FakeBridgeNetworkSocket socket;
   BridgeNetworkSession session;
-  const BridgeNetworkSessionConfig config = makeBridgeNetworkSessionConfig();
+  BridgeNetworkSessionConfig config = makeBridgeNetworkSessionConfig();
+  config.useTls = true;
+  config.accessClientId = "robot.access";
+  config.accessClientSecret = "access-secret";
   TEST_ASSERT_TRUE(session.begin(bridge, socket, config, 700));
   TEST_ASSERT_TRUE(session.start(705));
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeNetworkSessionState::Handshaking),
@@ -5885,12 +5956,15 @@ void test_bridge_network_session_starts_and_accepts_handshake() {
   TEST_ASSERT_EQUAL_UINT32(1, socket.connectAttempts);
   TEST_ASSERT_EQUAL_STRING("127.0.0.1", socket.lastHost.c_str());
   TEST_ASSERT_EQUAL_UINT16(8788, socket.lastPort);
+  TEST_ASSERT_TRUE(socket.lastUseTls);
   TEST_ASSERT_FALSE(socket.outgoing.empty());
 
   std::string request(reinterpret_cast<const char*>(socket.outgoing.data()), socket.outgoing.size());
   TEST_ASSERT_NOT_NULL(std::strstr(request.c_str(), "GET /bridge HTTP/1.1"));
   TEST_ASSERT_NOT_NULL(std::strstr(request.c_str(), "Host: 127.0.0.1:8788"));
   TEST_ASSERT_NOT_NULL(std::strstr(request.c_str(), "X-Stackchan-Device: stackchan-test"));
+  TEST_ASSERT_NOT_NULL(std::strstr(request.c_str(), "CF-Access-Client-Id: robot.access"));
+  TEST_ASSERT_NOT_NULL(std::strstr(request.c_str(), "CF-Access-Client-Secret: access-secret"));
 
   socket.pushIncoming(
       "HTTP/1.1 101 Switching Protocols\r\n"
@@ -6572,6 +6646,9 @@ void test_bridge_wifi_provisioner_maps_config_to_network_session() {
   config.bridgePort = 8790;
   config.bridgePath = "/stackchan";
   config.secWebSocketKey = "abc123";
+  config.useTls = true;
+  config.accessClientId = "robot.access";
+  config.accessClientSecret = "access-secret";
   config.bridge.deviceId = "stackchan-bench";
 
   BridgeWiFiProvisioner wifi;
@@ -6587,6 +6664,9 @@ void test_bridge_wifi_provisioner_maps_config_to_network_session() {
   TEST_ASSERT_EQUAL_UINT16(8790, session.port);
   TEST_ASSERT_EQUAL_STRING("/stackchan", session.path);
   TEST_ASSERT_EQUAL_STRING("abc123", session.secWebSocketKey);
+  TEST_ASSERT_TRUE(session.useTls);
+  TEST_ASSERT_EQUAL_STRING("robot.access", session.accessClientId);
+  TEST_ASSERT_EQUAL_STRING("access-secret", session.accessClientSecret);
   TEST_ASSERT_EQUAL_STRING("stackchan-bench", session.bridge.deviceId);
 }
 
@@ -6621,17 +6701,27 @@ void test_bridge_wifi_provisioner_schedules_retry_after_timeout() {
 void test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_loggable_status() {
   BridgeWiFiProvisioningRecord record;
   record.enabled = true;
-  std::strncpy(record.ssid, "StackLab", sizeof(record.ssid) - 1);
-  std::strncpy(record.password, "CaseSensitive123", sizeof(record.password) - 1);
-  std::strncpy(record.bridgeHost, "192.168.1.42", sizeof(record.bridgeHost) - 1);
-  record.bridgePort = 8765;
-  std::strncpy(record.bridgePath, "/bridge", sizeof(record.bridgePath) - 1);
+  record.activeProfile = BridgeWiFiProfileId::Away;
+  record.home.configured = true;
+  std::strncpy(record.home.ssid, "StackLab", sizeof(record.home.ssid) - 1);
+  std::strncpy(record.home.password, "CaseSensitive123", sizeof(record.home.password) - 1);
+  std::strncpy(record.home.bridgeHost, "192.168.1.42", sizeof(record.home.bridgeHost) - 1);
+  record.home.bridgePort = 8765;
+  record.away.configured = true;
+  record.away.useTls = true;
+  std::strncpy(record.away.ssid, "PhoneHotspot", sizeof(record.away.ssid) - 1);
+  std::strncpy(record.away.password, "AwaySecret", sizeof(record.away.password) - 1);
+  std::strncpy(record.away.bridgeHost, "brain.example.com", sizeof(record.away.bridgeHost) - 1);
+  record.away.bridgePort = 443;
+  std::strncpy(record.away.accessClientId, "robot.access", sizeof(record.away.accessClientId) - 1);
+  std::strncpy(record.away.accessClientSecret, "access-secret", sizeof(record.away.accessClientSecret) - 1);
 
   BridgeWiFiProvisioningMemoryStore backend;
   BridgeWiFiProvisioningStore store;
   TEST_ASSERT_TRUE(store.begin(backend));
   TEST_ASSERT_TRUE(store.save(record, 2000));
-  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"schema\":\"stackchan.bridge-wifi.v1\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"schema\":\"stackchan.bridge-wifi.v2\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"active_profile\":\"away\""));
   TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"ssid\":\"StackLab\""));
   TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"password\":\"CaseSensitive123\""));
   TEST_ASSERT_NOT_NULL(std::strstr(backend.value(), "\"bridge_host\":\"192.168.1.42\""));
@@ -6641,22 +6731,29 @@ void test_bridge_wifi_provisioning_store_saves_and_loads_credentials_without_log
   BridgeWiFiProvisioningRecord restored;
   TEST_ASSERT_TRUE(store.load(restored, 2010));
   TEST_ASSERT_TRUE(restored.enabled);
-  TEST_ASSERT_EQUAL_STRING("StackLab", restored.ssid);
-  TEST_ASSERT_EQUAL_STRING("CaseSensitive123", restored.password);
-  TEST_ASSERT_EQUAL_STRING("192.168.1.42", restored.bridgeHost);
-  TEST_ASSERT_EQUAL_UINT16(8765, restored.bridgePort);
-  TEST_ASSERT_EQUAL_STRING("/bridge", restored.bridgePath);
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWiFiProfileId::Away),
+                    static_cast<int>(restored.activeProfile));
+  TEST_ASSERT_EQUAL_STRING("StackLab", restored.home.ssid);
+  TEST_ASSERT_EQUAL_STRING("CaseSensitive123", restored.home.password);
+  TEST_ASSERT_EQUAL_STRING("192.168.1.42", restored.home.bridgeHost);
+  TEST_ASSERT_EQUAL_UINT16(8765, restored.home.bridgePort);
+  TEST_ASSERT_EQUAL_STRING("/bridge", restored.home.bridgePath);
+  TEST_ASSERT_TRUE(restored.away.useTls);
+  TEST_ASSERT_EQUAL_STRING("PhoneHotspot", restored.away.ssid);
+  TEST_ASSERT_EQUAL_STRING("brain.example.com", restored.away.bridgeHost);
+  TEST_ASSERT_EQUAL_STRING("robot.access", restored.away.accessClientId);
+  TEST_ASSERT_EQUAL_STRING("access-secret", restored.away.accessClientSecret);
   TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().loads);
 }
 
 void test_bridge_wifi_provisioning_store_clear_removes_persisted_credentials() {
   BridgeWiFiProvisioningRecord record;
   record.enabled = true;
-  std::strncpy(record.ssid, "StackLab", sizeof(record.ssid) - 1);
-  std::strncpy(record.password, "CaseSensitive123", sizeof(record.password) - 1);
-  std::strncpy(record.bridgeHost, "192.168.1.42", sizeof(record.bridgeHost) - 1);
-  record.bridgePort = 8765;
-  std::strncpy(record.bridgePath, "/bridge", sizeof(record.bridgePath) - 1);
+  record.home.configured = true;
+  std::strncpy(record.home.ssid, "StackLab", sizeof(record.home.ssid) - 1);
+  std::strncpy(record.home.password, "CaseSensitive123", sizeof(record.home.password) - 1);
+  std::strncpy(record.home.bridgeHost, "192.168.1.42", sizeof(record.home.bridgeHost) - 1);
+  record.home.bridgePort = 8765;
 
   BridgeWiFiProvisioningMemoryStore backend;
   BridgeWiFiProvisioningStore store;
@@ -6688,11 +6785,56 @@ void test_bridge_wifi_provisioning_store_rejects_malformed_or_incomplete_payload
   TEST_ASSERT_FALSE(store.load(record, 2210));
   TEST_ASSERT_EQUAL_UINT32(2, store.telemetry().parseErrors);
 
+  TEST_ASSERT_TRUE(backend.write(
+      "{\"schema\":\"stackchan.bridge-wifi.v1\",\"enabled\":true,\"ssid\":\"StackLab\","
+      "\"password\":\"legacy-secret\",\"bridge_host\":\"192.168.1.42\","
+      "\"bridge_port\":8765,\"bridge_path\":\"/bridge\"}"));
+  TEST_ASSERT_TRUE(store.load(record, 2215));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeWiFiProfileId::Home),
+                    static_cast<int>(record.activeProfile));
+  TEST_ASSERT_TRUE(record.home.configured);
+  TEST_ASSERT_EQUAL_STRING("legacy-secret", record.home.password);
+  TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().legacyMigrations);
+
   BridgeWiFiProvisioningRecord incomplete;
   incomplete.enabled = true;
-  std::strncpy(incomplete.ssid, "StackLab", sizeof(incomplete.ssid) - 1);
+  incomplete.home.configured = true;
+  std::strncpy(incomplete.home.ssid, "StackLab", sizeof(incomplete.home.ssid) - 1);
   TEST_ASSERT_FALSE(store.save(incomplete, 2220));
   TEST_ASSERT_EQUAL_UINT32(1, store.telemetry().rejected);
+
+  BridgeWiFiProvisioningRecord plaintextAway;
+  plaintextAway.away.configured = true;
+  std::strncpy(plaintextAway.away.ssid, "PhoneHotspot", sizeof(plaintextAway.away.ssid) - 1);
+  std::strncpy(plaintextAway.away.bridgeHost,
+               "brain.example.com",
+               sizeof(plaintextAway.away.bridgeHost) - 1);
+  plaintextAway.away.bridgePort = 443;
+  std::strncpy(plaintextAway.away.accessClientId,
+               "robot.access",
+               sizeof(plaintextAway.away.accessClientId) - 1);
+  std::strncpy(plaintextAway.away.accessClientSecret,
+               "access-secret",
+               sizeof(plaintextAway.away.accessClientSecret) - 1);
+  TEST_ASSERT_FALSE(store.save(plaintextAway, 2230));
+
+  BridgeWiFiProvisioningRecord plaintextHomeWithAccess;
+  plaintextHomeWithAccess.home.configured = true;
+  std::strncpy(plaintextHomeWithAccess.home.ssid,
+               "StackLab",
+               sizeof(plaintextHomeWithAccess.home.ssid) - 1);
+  std::strncpy(plaintextHomeWithAccess.home.bridgeHost,
+               "brain.example.com",
+               sizeof(plaintextHomeWithAccess.home.bridgeHost) - 1);
+  plaintextHomeWithAccess.home.bridgePort = 8765;
+  std::strncpy(plaintextHomeWithAccess.home.accessClientId,
+               "robot.access",
+               sizeof(plaintextHomeWithAccess.home.accessClientId) - 1);
+  std::strncpy(plaintextHomeWithAccess.home.accessClientSecret,
+               "access-secret",
+               sizeof(plaintextHomeWithAccess.home.accessClientSecret) - 1);
+  TEST_ASSERT_FALSE(store.save(plaintextHomeWithAccess, 2240));
+  TEST_ASSERT_EQUAL_UINT32(3, store.telemetry().rejected);
 }
 
 BridgeEndpointRecord makeBridgeEndpoint(const char* id,
@@ -6862,6 +7004,26 @@ bool bridgeEndpointControlSubmit(BridgeEndpointControl& control,
   return result == expected;
 }
 
+struct TestWiFiProfileUseContext {
+  BridgeEndpointWiFiProfileUseResult result = BridgeEndpointWiFiProfileUseResult::Accepted;
+  uint32_t calls = 0;
+  uint32_t lastNowMs = 0;
+  char profile[8] = {};
+};
+
+BridgeEndpointWiFiProfileUseResult testWiFiProfileUseHandler(const char* profile,
+                                                             uint32_t nowMs,
+                                                             void* context) {
+  TestWiFiProfileUseContext* state = static_cast<TestWiFiProfileUseContext*>(context);
+  if (state == nullptr) {
+    return BridgeEndpointWiFiProfileUseResult::PersistenceFailed;
+  }
+  state->calls++;
+  state->lastNowMs = nowMs;
+  std::strncpy(state->profile, profile == nullptr ? "" : profile, sizeof(state->profile) - 1u);
+  return state->result;
+}
+
 void test_bridge_endpoint_control_registers_endpoint_and_returns_result() {
   BridgeEndpointRegistry registry;
   TEST_ASSERT_TRUE(registry.begin());
@@ -7020,6 +7182,61 @@ void test_bridge_endpoint_control_claim_and_release_handoff() {
   TEST_ASSERT_TRUE(registry.isActiveOwner("pc-studio-01"));
   TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().ownerClaims);
   TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().ownerReleases);
+}
+
+void test_bridge_endpoint_control_switches_configured_wifi_profile_for_trusted_endpoint() {
+  BridgeEndpointRegistry registry;
+  TEST_ASSERT_TRUE(registry.begin());
+  BridgeEndpointControl control;
+  TEST_ASSERT_TRUE(control.begin(registry));
+  TestWiFiProfileUseContext context;
+  control.attachWiFiProfileUseHandler(testWiFiProfileUseHandler, &context);
+  char response[kBridgeEndpointControlResponseMax] = {};
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"endpoint_hello\",\"endpoint_id\":\"phone-rob-01\","
+      "\"endpoint_kind\":\"android\",\"capabilities\":[\"settings\"]}",
+      response,
+      100,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"wifi_profile_use\",\"protocol\":\"stackchan.bridge.v1\","
+      "\"endpoint_id\":\"phone-rob-01\",\"profile\":\"away\"}",
+      response,
+      130,
+      BridgeEndpointControlResult::Handled));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"type\":\"wifi_profile_use_result\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"profile\":\"away\""));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"reconnect_expected\":true"));
+  TEST_ASSERT_EQUAL_UINT32(1, context.calls);
+  TEST_ASSERT_EQUAL_UINT32(130, context.lastNowMs);
+  TEST_ASSERT_EQUAL_STRING("away", context.profile);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().wifiProfileUseRequests);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().wifiProfileUseAccepted);
+
+  context.result = BridgeEndpointWiFiProfileUseResult::ProfileNotConfigured;
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"wifi_profile_use\",\"endpoint_id\":\"phone-rob-01\","
+      "\"profile\":\"home\"}",
+      response,
+      140,
+      BridgeEndpointControlResult::Rejected));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"code\":\"wifi_profile_not_configured\""));
+  TEST_ASSERT_EQUAL_UINT32(2, control.telemetry().wifiProfileUseRequests);
+  TEST_ASSERT_EQUAL_UINT32(1, control.telemetry().wifiProfileUseAccepted);
+
+  TEST_ASSERT_TRUE(bridgeEndpointControlSubmit(
+      control,
+      "{\"type\":\"wifi_profile_use\",\"endpoint_id\":\"unknown\","
+      "\"profile\":\"away\"}",
+      response,
+      150,
+      BridgeEndpointControlResult::Rejected));
+  TEST_ASSERT_NOT_NULL(std::strstr(response, "\"code\":\"endpoint_not_trusted\""));
+  TEST_ASSERT_EQUAL_UINT32(2, context.calls);
 }
 
 void test_bridge_endpoint_control_heartbeat_handles_endpoint_only() {
@@ -7572,6 +7789,7 @@ int main() {
   RUN_TEST(test_bridge_endpoint_control_rejects_malformed_pairing_config);
   RUN_TEST(test_bridge_endpoint_control_allows_runtime_pairing_code_changes);
   RUN_TEST(test_bridge_endpoint_control_claim_and_release_handoff);
+  RUN_TEST(test_bridge_endpoint_control_switches_configured_wifi_profile_for_trusted_endpoint);
   RUN_TEST(test_bridge_endpoint_control_heartbeat_handles_endpoint_only);
   RUN_TEST(test_bridge_endpoint_control_lists_and_forgets_endpoints);
   RUN_TEST(test_bridge_endpoint_control_updates_capabilities);

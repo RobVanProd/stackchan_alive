@@ -31,6 +31,7 @@ data class DeviceHello(
     val capabilities: List<String> = emptyList(),
     @SerialName("trusted_endpoint_count") val trustedEndpointCount: Int = 0,
     @SerialName("active_brain_owner") val activeBrainOwner: String? = null,
+    @SerialName("network_profile") val networkProfile: String = "",
 ) : BridgeMessage
 
 @Serializable
@@ -145,6 +146,7 @@ data class Heartbeat(
     val seq: Int? = null,
     val owner: String? = null,
     @SerialName("endpoint_id") val endpointId: String? = null,
+    @SerialName("network_profile") val networkProfile: String = "",
 ) : BridgeMessage
 
 @Serializable
@@ -183,6 +185,23 @@ data class ReleaseBrain(
     override val type: String = "release_brain",
     @SerialName("endpoint_id") val endpointId: String,
     val reason: String,
+) : BridgeMessage
+
+@Serializable
+data class WifiProfileUse(
+    override val type: String = "wifi_profile_use",
+    val protocol: String = CompanionIdentity.protocol,
+    @SerialName("endpoint_id") val endpointId: String,
+    val profile: String,
+) : BridgeMessage
+
+@Serializable
+data class WifiProfileUseResult(
+    override val type: String = "wifi_profile_use_result",
+    @SerialName("endpoint_id") val endpointId: String,
+    val profile: String,
+    val accepted: Boolean,
+    @SerialName("reconnect_expected") val reconnectExpected: Boolean = true,
 ) : BridgeMessage
 
 @Serializable
@@ -347,6 +366,8 @@ fun decodeControlMessage(text: String): BridgeMessage {
         "error" -> decodeAs<BridgeError>(element)
         "claim_brain" -> decodeAs<ClaimBrain>(element)
         "release_brain" -> decodeAs<ReleaseBrain>(element)
+        "wifi_profile_use" -> decodeAs<WifiProfileUse>(element)
+        "wifi_profile_use_result" -> decodeAs<WifiProfileUseResult>(element)
         "owner_status" -> decodeAs<OwnerStatus>(element)
         "settings_get" -> decodeAs<SettingsGet>(element)
         "settings_snapshot" -> decodeAs<SettingsSnapshot>(element)
@@ -388,6 +409,8 @@ fun encodeControlMessage(message: BridgeMessage): String {
         is BridgeError -> companionJson.encodeToJsonElement(message)
         is ClaimBrain -> companionJson.encodeToJsonElement(message)
         is ReleaseBrain -> companionJson.encodeToJsonElement(message)
+        is WifiProfileUse -> companionJson.encodeToJsonElement(message)
+        is WifiProfileUseResult -> companionJson.encodeToJsonElement(message)
         is OwnerStatus -> companionJson.encodeToJsonElement(message)
         is SettingsGet -> companionJson.encodeToJsonElement(message)
         is SettingsSnapshot -> companionJson.encodeToJsonElement(message)

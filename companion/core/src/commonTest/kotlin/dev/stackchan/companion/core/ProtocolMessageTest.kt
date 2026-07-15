@@ -104,4 +104,16 @@ class ProtocolMessageTest {
         assertEquals("future_probe", unknown.type)
         assertTrue("future_field" in unknown.raw)
     }
+
+    @Test
+    fun codecRoundTripsTrustedWifiProfileSwitch() {
+        val encoded = encodeControlMessage(
+            WifiProfileUse(endpointId = "phone-rob-01", profile = "away"),
+        )
+        val decoded = assertIs<WifiProfileUse>(decodeControlMessage(encoded))
+
+        assertEquals(CompanionIdentity.protocol, decoded.protocol)
+        assertEquals("phone-rob-01", decoded.endpointId)
+        assertEquals("away", decoded.profile)
+    }
 }

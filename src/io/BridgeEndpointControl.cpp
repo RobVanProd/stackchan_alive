@@ -34,6 +34,8 @@ bool BridgeEndpointControl::begin(BridgeEndpointRegistry& registry,
                                   const BridgeEndpointControlConfig& config) {
   registry_ = &registry;
   store_ = nullptr;
+  wifiProfileUseHandler_ = nullptr;
+  wifiProfileUseContext_ = nullptr;
   telemetry_ = BridgeEndpointControlTelemetry {};
   requiredPairingCode_[0] = '\0';
   if (!isEmpty(config.requiredPairingCode) && !setRequiredPairingCode(config.requiredPairingCode)) {
@@ -46,6 +48,13 @@ bool BridgeEndpointControl::begin(BridgeEndpointRegistry& registry,
 
 void BridgeEndpointControl::attachStore(BridgeEndpointStore* store) {
   store_ = store;
+}
+
+void BridgeEndpointControl::attachWiFiProfileUseHandler(
+    BridgeEndpointWiFiProfileUseHandler handler,
+    void* context) {
+  wifiProfileUseHandler_ = handler;
+  wifiProfileUseContext_ = context;
 }
 
 void BridgeEndpointControl::update(uint32_t nowMs) {
@@ -115,6 +124,8 @@ BridgeEndpointControlResult BridgeEndpointControl::submitControlLine(const char*
     result = handleForgetEndpoint(root, responseOut, responseOutSize, nowMs);
   } else if (equals(type, "capability_update")) {
     result = handleCapabilityUpdate(root, responseOut, responseOutSize, nowMs);
+  } else if (equals(type, "wifi_profile_use")) {
+    result = handleWiFiProfileUse(root, responseOut, responseOutSize, nowMs);
   }
 
   if (result == BridgeEndpointControlResult::Ignored) {
@@ -285,6 +296,42 @@ BridgeEndpointControlResult BridgeEndpointControl::handleCapabilityUpdate(const 
   return writeCapabilityResult(*endpoint, responseOut, responseOutSize);
 }
 
+BridgeEndpointControlResult BridgeEndpointControl::handleWiFiProfileUse(
+    const JsonObjectConst& root,
+    char* responseOut,
+    size_t responseOutSize,
+    uint32_t nowMs) {
+  if (hasProtocolMismatch(root)) {
+    return writeError("protocol_mismatch", nullptr, responseOut, responseOutSize);
+  }
+  const char* endpointId = root["endpoint_id"] | "";
+  if (isEmpty(endpointId)) {
+    return writeError("endpoint_id_required", nullptr, responseOut, responseOutSize);
+  }
+  if (registry_->findEndpoint(endpointId) == nullptr) {
+    return writeError("endpoint_not_trusted", endpointId, responseOut, responseOutSize);
+  }
+  const char* profile = root["profile"] | "";
+  if (!equals(profile, "home") && !equals(profile, "away")) {
+    return writeError("wifi_profile_invalid", endpointId, responseOut, responseOutSize);
+  }
+  if (wifiProfileUseHandler_ == nullptr) {
+    return writeError("wifi_profile_control_unavailable", endpointId, responseOut, responseOutSize);
+  }
+
+  telemetry_.wifiProfileUseRequests++;
+  const BridgeEndpointWiFiProfileUseResult result =
+      wifiProfileUseHandler_(profile, nowMs, wifiProfileUseContext_);
+  if (result == BridgeEndpointWiFiProfileUseResult::ProfileNotConfigured) {
+    return writeError("wifi_profile_not_configured", endpointId, responseOut, responseOutSize);
+  }
+  if (result == BridgeEndpointWiFiProfileUseResult::PersistenceFailed) {
+    return writeError("wifi_profile_persist_failed", endpointId, responseOut, responseOutSize);
+  }
+  telemetry_.wifiProfileUseAccepted++;
+  return writeWiFiProfileUseResult(endpointId, profile, responseOut, responseOutSize);
+}
+
 BridgeEndpointControlResult BridgeEndpointControl::writeEndpointHelloResult(
     const BridgeEndpointRecord& endpoint,
     char* responseOut,
@@ -395,6 +442,24 @@ BridgeEndpointControlResult BridgeEndpointControl::writeCapabilityResult(
   response["endpoint_id"] = endpoint.endpointId;
   JsonArray capabilities = response["capabilities"].to<JsonArray>();
   writeCapabilities(endpoint.capabilities, capabilities);
+  if (!writeJsonResponse(response, responseOut, responseOutSize)) {
+    telemetry_.responsesDropped++;
+    return BridgeEndpointControlResult::Rejected;
+  }
+  return BridgeEndpointControlResult::Handled;
+}
+
+BridgeEndpointControlResult BridgeEndpointControl::writeWiFiProfileUseResult(
+    const char* endpointId,
+    const char* profile,
+    char* responseOut,
+    size_t responseOutSize) {
+  JsonDocument response;
+  response["type"] = "wifi_profile_use_result";
+  response["endpoint_id"] = endpointId;
+  response["profile"] = profile;
+  response["accepted"] = true;
+  response["reconnect_expected"] = true;
   if (!writeJsonResponse(response, responseOut, responseOutSize)) {
     telemetry_.responsesDropped++;
     return BridgeEndpointControlResult::Rejected;

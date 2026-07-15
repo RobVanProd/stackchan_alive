@@ -9,7 +9,7 @@
 
 namespace stackchan {
 
-constexpr size_t kBridgeWebSocketHandshakeMax = 512;
+constexpr size_t kBridgeWebSocketHandshakeMax = 768;
 constexpr size_t kBridgeWebSocketFramePayloadMax = kBridgeAudioStreamChunkPayloadMax;
 
 enum class BridgeWebSocketOpcode : uint8_t {
@@ -76,7 +76,9 @@ class BridgeWebSocketTransport {
                                       uint16_t port,
                                       const char* path,
                                       const char* secWebSocketKey,
-                                      const BridgeClientConfig& config = BridgeClientConfig {});
+                                      const BridgeClientConfig& config = BridgeClientConfig {},
+                                      const char* accessClientId = nullptr,
+                                      const char* accessClientSecret = nullptr);
 
   static size_t encodeClientTextFrame(const char* payload,
                                       const uint8_t maskKey[4],

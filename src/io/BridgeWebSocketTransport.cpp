@@ -181,7 +181,9 @@ size_t BridgeWebSocketTransport::buildHandshakeRequest(char* out,
                                                        uint16_t port,
                                                        const char* path,
                                                        const char* secWebSocketKey,
-                                                       const BridgeClientConfig& config) {
+                                                       const BridgeClientConfig& config,
+                                                       const char* accessClientId,
+                                                       const char* accessClientSecret) {
   if (out == nullptr || outSize == 0 || host == nullptr || host[0] == '\0' ||
       secWebSocketKey == nullptr || secWebSocketKey[0] == '\0') {
     return 0;
@@ -190,6 +192,19 @@ size_t BridgeWebSocketTransport::buildHandshakeRequest(char* out,
   const char* requestPath = (path != nullptr && path[0] != '\0') ? path : kBridgeDefaultPath;
   const char* protocol = config.protocolVersion != nullptr ? config.protocolVersion : "";
   const char* deviceId = config.deviceId != nullptr ? config.deviceId : "";
+  const bool hasAccessId = accessClientId != nullptr && accessClientId[0] != '\0';
+  const bool hasAccessSecret = accessClientSecret != nullptr && accessClientSecret[0] != '\0';
+  if (hasAccessId != hasAccessSecret ||
+      (hasAccessId && (std::strpbrk(accessClientId, "\r\n") != nullptr ||
+                       std::strpbrk(accessClientSecret, "\r\n") != nullptr))) {
+    return 0;
+  }
+  const char* accessIdHeader = hasAccessId ? "CF-Access-Client-Id: " : "";
+  const char* accessIdValue = hasAccessId ? accessClientId : "";
+  const char* accessIdEnd = hasAccessId ? "\r\n" : "";
+  const char* accessSecretHeader = hasAccessSecret ? "CF-Access-Client-Secret: " : "";
+  const char* accessSecretValue = hasAccessSecret ? accessClientSecret : "";
+  const char* accessSecretEnd = hasAccessSecret ? "\r\n" : "";
   const int written = std::snprintf(
       out,
       outSize,
@@ -201,13 +216,21 @@ size_t BridgeWebSocketTransport::buildHandshakeRequest(char* out,
       "Sec-WebSocket-Version: 13\r\n"
       "X-Stackchan-Protocol: %s\r\n"
       "X-Stackchan-Device: %s\r\n"
+      "%s%s%s"
+      "%s%s%s"
       "\r\n",
       requestPath,
       host,
       static_cast<unsigned>(port),
       secWebSocketKey,
       protocol,
-      deviceId);
+      deviceId,
+      accessIdHeader,
+      accessIdValue,
+      accessIdEnd,
+      accessSecretHeader,
+      accessSecretValue,
+      accessSecretEnd);
 
   if (written <= 0 || static_cast<size_t>(written) >= outSize) {
     if (outSize > 0) {

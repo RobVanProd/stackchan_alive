@@ -285,6 +285,12 @@ bool parseBridgeUrl(const char* url, BenchWiFiProvisioningControl* wifi) {
   const char* cursor = nullptr;
   if (startsWithIgnoreCase(url, "ws://")) {
     cursor = url + 5;
+    wifi->useTls = false;
+    wifi->bridgePort = 8765;
+  } else if (startsWithIgnoreCase(url, "wss://")) {
+    cursor = url + 6;
+    wifi->useTls = true;
+    wifi->bridgePort = 443;
   } else {
     return false;
   }
@@ -301,6 +307,16 @@ bool parseBridgeUrl(const char* url, BenchWiFiProvisioningControl* wifi) {
   }
   host[hostLen] = '\0';
   if (host[0] == '\0') {
+    return false;
+  }
+  bool numericHost = true;
+  for (size_t i = 0; host[i] != '\0'; ++i) {
+    if (!isdigit(static_cast<unsigned char>(host[i])) && host[i] != '.') {
+      numericHost = false;
+      break;
+    }
+  }
+  if (wifi->useTls && numericHost) {
     return false;
   }
   copyBounded(wifi->bridgeHost, sizeof(wifi->bridgeHost), host);
@@ -338,6 +354,7 @@ bool parsePairingTicketBridgeUrl(const char* url, BenchPairingTicketControl* tic
     return false;
   }
   copyBounded(ticket->bridgeHost, sizeof(ticket->bridgeHost), wifi.bridgeHost);
+  ticket->useTls = wifi.useTls;
   ticket->bridgePort = wifi.bridgePort;
   copyBounded(ticket->bridgePath, sizeof(ticket->bridgePath), wifi.bridgePath);
   return true;
@@ -480,9 +497,34 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
     return false;
   }
 
+  if (equalsIgnoreCase(tokens[0], "status") || equalsIgnoreCase(tokens[0], "show")) {
+    parsed.wifi.action = BenchWiFiProvisioningAction::Status;
+    *controlOut = parsed;
+    return true;
+  }
+
+  if (equalsIgnoreCase(tokens[0], "use") || equalsIgnoreCase(tokens[0], "select") ||
+      equalsIgnoreCase(tokens[0], "mode")) {
+    if (tokenCount != 2 || !parseBridgeWiFiProfile(tokens[1], &parsed.wifi.profile)) {
+      return false;
+    }
+    parsed.wifi.action = BenchWiFiProvisioningAction::UseProfile;
+    *controlOut = parsed;
+    return true;
+  }
+
   if (equalsIgnoreCase(tokens[0], "clear") || equalsIgnoreCase(tokens[0], "off") ||
       equalsIgnoreCase(tokens[0], "disable") || equalsIgnoreCase(tokens[0], "reset")) {
     parsed.wifi.clear = true;
+    parsed.wifi.action = BenchWiFiProvisioningAction::ClearAll;
+    if (tokenCount == 2) {
+      if (!parseBridgeWiFiProfile(tokens[1], &parsed.wifi.profile)) {
+        return false;
+      }
+      parsed.wifi.action = BenchWiFiProvisioningAction::ClearProfile;
+    } else if (tokenCount != 1) {
+      return false;
+    }
     *controlOut = parsed;
     return true;
   }
@@ -491,6 +533,15 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
   if (equalsIgnoreCase(tokens[0], "set") || equalsIgnoreCase(tokens[0], "connect") ||
       equalsIgnoreCase(tokens[0], "bridge")) {
     index = 1;
+    if (index < tokenCount && parseBridgeWiFiProfile(tokens[index], &parsed.wifi.profile)) {
+      ++index;
+    }
+  } else if (parseBridgeWiFiProfile(tokens[0], &parsed.wifi.profile)) {
+    index = 1;
+    if (index < tokenCount && (equalsIgnoreCase(tokens[index], "set") ||
+                               equalsIgnoreCase(tokens[index], "connect"))) {
+      ++index;
+    }
   }
 
   bool hasSsid = false;
@@ -542,6 +593,24 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
       index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
       continue;
     }
+    if (equalsIgnoreCase(key, "access_id") || equalsIgnoreCase(key, "client_id") ||
+        equalsIgnoreCase(key, "cf_access_id")) {
+      if (value == nullptr || value[0] == '\0') {
+        return false;
+      }
+      copyBounded(parsed.wifi.accessClientId, sizeof(parsed.wifi.accessClientId), value);
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
+    if (equalsIgnoreCase(key, "access_secret") || equalsIgnoreCase(key, "client_secret") ||
+        equalsIgnoreCase(key, "cf_access_secret")) {
+      if (value == nullptr || value[0] == '\0') {
+        return false;
+      }
+      copyBounded(parsed.wifi.accessClientSecret, sizeof(parsed.wifi.accessClientSecret), value);
+      index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
+      continue;
+    }
     if (equalsIgnoreCase(key, "port")) {
       if (value == nullptr || !parsePortToken(value, &parsed.wifi.bridgePort)) {
         return false;
@@ -557,7 +626,7 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
       index = static_cast<uint8_t>(index + (consumedPair ? 1u : 2u));
       continue;
     }
-    if (startsWithIgnoreCase(key, "ws://")) {
+    if (startsWithIgnoreCase(key, "ws://") || startsWithIgnoreCase(key, "wss://")) {
       if (!parseBridgeUrl(key, &parsed.wifi)) {
         return false;
       }
@@ -569,6 +638,13 @@ bool fillWiFiProvisioningControlRaw(const char* line, BenchControl* controlOut) 
   }
 
   if (!hasSsid || !hasHost) {
+    return false;
+  }
+  const bool accessPairComplete =
+      (parsed.wifi.accessClientId[0] == '\0') == (parsed.wifi.accessClientSecret[0] == '\0');
+  if (!accessPairComplete ||
+      (parsed.wifi.profile == BridgeWiFiProfileId::Away &&
+       (!parsed.wifi.useTls || parsed.wifi.accessClientId[0] == '\0'))) {
     return false;
   }
   *controlOut = parsed;

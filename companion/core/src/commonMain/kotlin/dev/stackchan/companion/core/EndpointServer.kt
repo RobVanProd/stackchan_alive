@@ -43,6 +43,7 @@ data class EndpointSessionSnapshot(
     val audioBytesSent: Int = 0,
     val textTurnsSubmitted: Int = 0,
     val lastTextTurn: String = "",
+    val networkProfile: String = "",
 )
 
 data class TextTurnSubmitResult(
@@ -206,8 +207,8 @@ class CompanionEndpointServer(
     }
 
     suspend fun submitProtectedControl(message: BridgeMessage): ProtectedControlSubmitResult {
-        require(message is SettingsSet || message is ClaimBrain || message is ReleaseBrain) {
-            "protected control message must be settings_set, claim_brain, or release_brain"
+        require(message is SettingsSet || message is ClaimBrain || message is ReleaseBrain || message is WifiProfileUse) {
+            "protected control message must be settings_set, claim_brain, release_brain, or wifi_profile_use"
         }
         val prepared = lock.withLock {
             val channel = outboundItems
@@ -263,7 +264,7 @@ class CompanionEndpointServer(
                     textFrame(config.endpointHello)
                 }
                 is Heartbeat -> {
-                    recordMessageType(message.type)
+                    recordHeartbeat(message)
                     emptyList()
                 }
                 is UtteranceStart -> {
@@ -296,6 +297,10 @@ class CompanionEndpointServer(
                 is OwnerStatus -> {
                     recordOwnerStatus(message)
                     abortAudioTurnIfOwnerLost(message)
+                }
+                is WifiProfileUseResult -> {
+                    recordWifiProfileUseResult(message)
+                    emptyList()
                 }
                 else -> {
                     recordMessageType(message.type)
@@ -356,6 +361,7 @@ class CompanionEndpointServer(
                 sampleRate = message.sampleRate,
                 activeBrainOwner = message.activeBrainOwner,
                 capabilities = message.capabilities,
+                networkProfile = message.networkProfile.ifBlank { snapshot.networkProfile },
                 messagesReceived = snapshot.messagesReceived + 1,
                 lastMessageType = message.type,
                 lastError = "",
@@ -380,6 +386,28 @@ class CompanionEndpointServer(
                 messagesReceived = snapshot.messagesReceived + 1,
                 lastMessageType = type,
                 lastError = "",
+            )
+        }
+    }
+
+    private suspend fun recordHeartbeat(message: Heartbeat) {
+        lock.withLock {
+            snapshot = snapshot.copy(
+                messagesReceived = snapshot.messagesReceived + 1,
+                lastMessageType = message.type,
+                lastError = "",
+                networkProfile = message.networkProfile.ifBlank { snapshot.networkProfile },
+            )
+        }
+    }
+
+    private suspend fun recordWifiProfileUseResult(message: WifiProfileUseResult) {
+        lock.withLock {
+            snapshot = snapshot.copy(
+                messagesReceived = snapshot.messagesReceived + 1,
+                lastMessageType = message.type,
+                lastError = if (message.accepted) "" else "Wi-Fi profile switch was rejected.",
+                networkProfile = if (message.accepted) message.profile else snapshot.networkProfile,
             )
         }
     }

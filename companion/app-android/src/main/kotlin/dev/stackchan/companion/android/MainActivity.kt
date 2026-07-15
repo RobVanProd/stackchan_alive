@@ -384,6 +384,21 @@ class MainActivity : ComponentActivity() {
                     wifiConnected = isWifiConnected()
                     startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
                 },
+                onUseNetworkProfile = { profile ->
+                    coroutineScope.launch {
+                        val result = CompanionBridgeService.useWifiProfile(profile)
+                        val detail = if (result.accepted) {
+                            "${profile.replaceFirstChar { it.uppercase() }} mode requested. Stack-chan will reconnect."
+                        } else {
+                            result.detail
+                        }
+                        Toast.makeText(
+                            this@MainActivity,
+                            detail,
+                            if (result.accepted) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
                 onPushToTalk = {
                     if (!bridgeStatus.robotConnected) {
                         logSpeechEvidenceEvent("blocked_robot_not_connected", "transcript_sent=0")
@@ -932,6 +947,17 @@ private fun androidRobotSetup(
         wifiProvisioningSummary = androidWifiProvisioningSummary(serviceRunning),
         wifiProvisioningCommand = androidWifiProvisioningCommand(bridgeStatus.primaryBridgeUrl, serviceRunning),
         wifiClearCommand = "wifi clear",
+        networkProfile = bridgeStatus.networkProfile,
+        networkProfileStatus = when (bridgeStatus.networkProfile.lowercase()) {
+            "home" -> "Home profile active."
+            "away" -> "Away profile active through the configured hotspot and remote bridge."
+            else -> if (bridgeStatus.robotConnected) {
+                "Waiting for Stack-chan to report its active profile."
+            } else {
+                "Connect Stack-chan before changing network mode."
+            }
+        },
+        networkProfileSwitchEnabled = bridgeStatus.robotConnected,
         primaryBridgeUrl = bridgeStatus.primaryBridgeUrl,
         otherBridgeUrls = bridgeStatus.manualBridgeUrls.drop(1),
         pairingShortCode = pairingShortCode,

@@ -120,7 +120,7 @@ bool BridgeNetworkSession::openSocket(uint32_t nowMs) {
 
   telemetry_.connectAttempts++;
   setState(BridgeNetworkSessionState::Connecting, nowMs);
-  if (!socket_->connect(config_.host, config_.port)) {
+  if (!socket_->connect(config_.host, config_.port, config_.useTls)) {
     telemetry_.connectFailures++;
     scheduleReconnect("tcp_connect_failed", nowMs);
     return false;
@@ -137,7 +137,9 @@ bool BridgeNetworkSession::sendHandshake(uint32_t nowMs) {
       config_.port,
       config_.path,
       config_.secWebSocketKey,
-      config_.bridge);
+      config_.bridge,
+      config_.accessClientId,
+      config_.accessClientSecret);
   if (requestBytes == 0) {
     scheduleReconnect("handshake_request_failed", nowMs);
     return false;
