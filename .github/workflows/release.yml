@@ -86,7 +86,7 @@ jobs:
       - uses: android-actions/setup-android@v4
 
       - name: Download upload-signed Android release
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-android-release
           path: output/companion/release-input/android
@@ -411,7 +411,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Download unsigned Windows signing input
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-unsigned-windows
           path: .
@@ -592,31 +592,31 @@ jobs:
         run: sdkmanager "build-tools;36.0.0"
 
       - name: Download Android companion artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-android-release
           path: output/companion/release-input/android
 
       - name: Download Android emulator launch evidence
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-android-emulator-smoke
           path: output/companion/release-input/android-emulator
 
       - name: Download Linux companion artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-release-linux
           path: output/companion/release-input/linux
 
       - name: Download macOS companion artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-release-macos
           path: output/companion/release-input/macos
 
       - name: Download Windows companion artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: companion-desktop-release-windows
           path: output/companion/release-input/windows
