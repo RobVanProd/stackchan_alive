@@ -128,6 +128,21 @@ The production DirectML launcher exposes the same opt-in without changing its de
 Omitting `-EnableResearch` leaves the release voice bridge exactly as qualified. Enabling it does
 not install or start SearXNG; the operator must first deploy and bind that service to loopback.
 
+The checked-in container deployment is under `tools/searxng`. It publishes only host loopback,
+enables JSON output, and keeps only DuckDuckGo, Wikipedia, and Brave. No secret is committed.
+After Docker or Podman is installed by the owner, start it with a fresh session secret:
+
+```powershell
+$env:SEARXNG_SECRET = [guid]::NewGuid().ToString("N")
+docker compose -f tools\searxng\compose.yaml up -d
+.\tools\check_local_research.ps1
+```
+
+The gate fails unless port 8080 is bound exclusively to loopback, the JSON API returns results
+from the configured allowlist, and `ResearchBroker` completes both search and restricted HTTPS
+fetch. `bridge/fixtures/searxng_search_response.json` covers the search response contract offline.
+Installing Docker, Podman, or WSL remains owner scope; the bridge does not attempt elevation.
+
 `research_broker.py` requires SearXNG itself to resolve exclusively to loopback. Public page
 fetches require HTTPS and reject non-global DNS answers before each request and redirect. The
 broker has no shell, file, form, login, posting, purchase, or arbitrary MCP-code capability.

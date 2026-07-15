@@ -23,6 +23,8 @@ RUNTIME_ACCEPTANCE_TARGETS = {
     "confused": "State what is unclear and ask for exactly one missing detail.",
     "remember": "Acknowledge the actual safe durable fact and write only its matching allowed memory key and value.",
     "forget": "Confirm the actual request and forget only the matching allowed memory key or namespace.",
+    "callback_open_loop": "Ask once about the due callback in memory and do not copy it into memory_write.",
+    "episode_greeting": "Greet naturally and weave in the prior episode without reciting memory.",
 }
 GENERIC_COMMAND_ENV = "STACKCHAN_MODEL_COMMAND"
 
@@ -103,6 +105,22 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "emotion": {"arousal": 0.0, "valence": -0.1},
         "memory_write": {},
         "memory_forget": ["project."],
+    },
+    "callback_open_loop": {
+        "spoken_text": "How did the servo calibration go?",
+        "mode": "attend",
+        "earcon": "none",
+        "emotion": {"arousal": 0.1, "valence": 0.15},
+        "memory_write": {},
+        "memory_forget": [],
+    },
+    "episode_greeting": {
+        "spoken_text": "Hello again. Did the voice calibration behave?",
+        "mode": "happy",
+        "earcon": "none",
+        "emotion": {"arousal": 0.15, "valence": 0.2},
+        "memory_write": {},
+        "memory_forget": [],
     },
 }
 

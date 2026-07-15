@@ -50,14 +50,35 @@ If a future bridge feature needs remote analysis, it must be implemented as an e
 
 The bridge owns host-side STT, LLM, TTS, memory, and persona composition. The firmware owns modes, animation, motion, safety, timeout recovery, and serial-visible telemetry.
 
-The minimum bridge memory scaffold is intentionally small:
+The bridge memory store is one bounded, atomically replaced local JSON file. Schema v4 contains:
 
 - `preferred_name`
 - `recent_topics`
 - `physical_context`
 - `turns_seen`
+- approved durable facts and expiring recent context
+- up to 30 sanitized session episodes
+- up to 6 sanitized one-shot open loops
+- aggregate rejection, distillation-drop, and durable-eviction counters
 
-The current scaffold does not perform biometric identification and does not persist private audio. The reference bridge can persist only the minimal fields above to a local JSON file when `--memory-file --save-memory` is explicitly used, and `--reset-memory` deletes that store before rendering. The LAN service may keep raw PCM in an in-memory bounded buffer only during one active utterance; that buffer is cleared at `utterance_end` or `cancel`. If an STT command is configured, that one-turn PCM is passed to the command on stdin with sample-rate metadata in environment variables. If a TTS command is configured, response text is passed to the command on stdin and the command may return mouth-timing metadata plus audio bytes for LAN downlink. Operators should keep these commands local and avoid transcript/audio logging unless explicitly collecting evidence. Generated TTS audio bytes should remain within the configured LAN session and should not be persisted unless evidence collection explicitly requires it.
+Every episode and open loop passes the existing denylist at creation, load, and prompt assembly.
+Medical/health and relationship callbacks are impossible by design; there is no exception. Web
+evidence never creates episodes or loops. Conversation lease turns remain in memory only and are
+erased at close. The default session-close episode is derived from eligible topic labels and a
+turn count, not raw dialogue.
+
+Optional episode distillation is default-off because it changes that lease-erasure boundary. When
+the owner explicitly enables it, at most four local lease turns are sent to the configured local
+Ollama model after session close; the transport rejects non-loopback endpoints, and only a strict,
+fully sanitized summary may persist. Any invalid field drops the whole result. No distillation data
+is sent to a cloud service by this feature.
+
+The bridge does not perform biometric identification or persist private audio. The LAN service may
+keep raw PCM in a bounded buffer only during one active utterance; it clears that buffer at
+`utterance_end` or `cancel`. STT receives that turn on stdin. TTS receives response text and may
+return timing plus local audio bytes. Operators should avoid transcript/audio logging except for
+explicit evidence collection. Generated audio remains session-local unless evidence collection is
+enabled.
 
 ## Evidence Requirements
 

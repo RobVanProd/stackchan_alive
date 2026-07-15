@@ -3,6 +3,7 @@ import json
 import unittest
 import urllib.error
 from email.message import Message
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -54,6 +55,25 @@ class FakeOpener:
 
 
 class ResearchBrokerTests(unittest.TestCase):
+    def test_recorded_searxng_json_fixture_matches_broker_contract(self):
+        fixture = Path(__file__).resolve().parent / "fixtures" / "searxng_search_response.json"
+        opener = FakeOpener([FakeResponse(fixture.read_bytes())])
+        broker = ResearchBroker(
+            ResearchBrokerConfig(searxng_url="http://127.0.0.1:8080"),
+            resolver=resolver({"127.0.0.1": "127.0.0.1"}),
+            opener=opener,
+        )
+
+        result = broker.web_search("Stackchan open source robot", max_results=2)
+
+        self.assertEqual("stackchan.research.v1", result["schema"])
+        self.assertEqual(2, len(result["results"]))
+        self.assertEqual(
+            ("https://example.com/stackchan", "https://example.org/notes"),
+            source_urls(result),
+        )
+        self.assertTrue(all(row["source_type"] == "search_result" for row in result["results"]))
+
     def test_blocks_private_and_non_https_fetch_targets(self):
         with self.assertRaisesRegex(ResearchPolicyError, "https_required"):
             validate_public_https_url("http://example.com", resolver=resolver({}))

@@ -212,6 +212,14 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn("Decide for yourself whether fresh public-web evidence is required", research_prompt)
         self.assertIn("do not wait for the user to say search", research_prompt)
 
+        callback = next(case for case in PROMPT_SUITE if case["name"] == "callback_open_loop")
+        callback_prompt = build_prompt(
+            callback,
+            memory_lines=tuple(callback["benchmark_memory_lines"]),
+        )
+        self.assertIn("Trusted host continuity action", callback_prompt)
+        self.assertIn("copy it into memory_write", callback_prompt)
+
     def test_enums_match_character_lock_contract(self):
         for mode in ("idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"):
             self.assertIn(mode, ALLOWED_MODES)

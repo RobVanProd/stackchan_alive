@@ -8,6 +8,7 @@ import base64
 import copy
 import hashlib
 import json
+import os
 import queue
 import re
 import socket
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cancellation import CancellationToken, OperationCancelledError
+from bridge_memory import RelationshipCard, topics_for_user_text
+from episode_distillation import apply_distillation, request_distillation, validate_distillation
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from persona_pack import (
     DEFAULT_PERSONA_ID,
@@ -582,6 +585,7 @@ class LanBridgeConfig:
     conversation_acoustic_tail_ms: int = 250
     conversation_cooldown_ms: int = 300
     conversation_max_turns: int = 12
+    episode_distillation_enabled: bool = False
     once: bool = False
 
 
@@ -920,7 +924,14 @@ class LanBridgeSession:
         self.audio = AudioUpload()
         self.robot_embodiment = RobotEmbodimentState()
         self._active_turn_lock = threading.Lock()
+        self._memory_lock = threading.Lock()
         self._active_turn_token: CancellationToken | None = None
+        self._memory_revision = 0
+        self._injected_open_loops: set[str] = set()
+        self._session_topics: list[str] = []
+        self._session_non_research_turns = 0
+        self._lease_turns: list[tuple[str, str]] = []
+        self._finalized_session_number = 0
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
         if config.conversation_v2_enabled:
@@ -949,6 +960,7 @@ class LanBridgeSession:
             **self.conversation.snapshot(current_ms),
         }
         if transition is not None:
+            self._observe_conversation_transition(transition)
             payload["conversation_actions"] = list(transition.actions)
             payload["conversation_reason"] = transition.reason
         return payload
@@ -958,6 +970,104 @@ class LanBridgeSession:
 
     def _conversation_context_lines(self) -> tuple[str, ...]:
         return self.conversation.context_lines() if self.conversation is not None else ()
+
+    def _relationship_card(self, query: str, *, suppress_session_context: bool = False) -> RelationshipCard:
+        session_turns = self.conversation.turns if self.conversation is not None else 0
+        if suppress_session_context:
+            session_turns = 3
+        card = self.memory.relationship_card(
+            query,
+            session_turns=session_turns,
+            excluded_open_loops=self._injected_open_loops,
+        )
+        if card.open_loop_id:
+            self._injected_open_loops.add(card.open_loop_id)
+        return card
+
+    def _reset_session_memory_tracking(self) -> None:
+        self._injected_open_loops.clear()
+        self._session_topics.clear()
+        self._session_non_research_turns = 0
+        self._lease_turns.clear()
+
+    def _commit_memory(self, memory: BridgeMemory) -> None:
+        with self._memory_lock:
+            self.memory = memory
+            self._memory_revision += 1
+            if self.config.memory_file:
+                save_bridge_memory(self.config.memory_file, self.memory)
+
+    def _run_episode_distillation(self, turns: tuple[tuple[str, str], ...], session_number: int) -> None:
+        dropped = False
+        try:
+            result = validate_distillation(request_distillation(turns))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            result = None
+        with self._memory_lock:
+            with self._active_turn_lock:
+                active = self._active_turn_token is not None
+            if result is None or active:
+                self.memory = self.memory.note_distill_drop()
+                dropped = True
+            else:
+                self.memory = apply_distillation(self.memory, result)
+            self._memory_revision += 1
+            if self.config.memory_file:
+                save_bridge_memory(self.config.memory_file, self.memory)
+            diagnostics = self.memory.diagnostics()
+        self._append_turn_log(
+            {
+                "schema": "stackchan.memory-session.v1",
+                "generated_at": utc_timestamp(),
+                "session_number": session_number,
+                "event": "episode_distillation",
+                "distill_dropped": dropped,
+                **diagnostics,
+            }
+        )
+
+    def _finalize_memory_session(self) -> None:
+        if self.conversation is None:
+            return
+        session_number = self.conversation.session_number
+        if session_number <= 0 or session_number == self._finalized_session_number:
+            return
+        self._finalized_session_number = session_number
+        turns = tuple(self._lease_turns[-4:])
+        updated = self.memory.add_episode_from_topics(
+            self._session_topics,
+            self._session_non_research_turns,
+        )
+        self._commit_memory(updated)
+        self._append_turn_log(
+            {
+                "schema": "stackchan.memory-session.v1",
+                "generated_at": utc_timestamp(),
+                "session_number": session_number,
+                "event": "session_closed",
+                "session_topic_count": len(set(self._session_topics)),
+                "session_non_research_turns": self._session_non_research_turns,
+                **self.memory.diagnostics(),
+            }
+        )
+        if self.config.episode_distillation_enabled and turns:
+            threading.Thread(
+                target=self._run_episode_distillation,
+                args=(turns, session_number),
+                name=f"stackchan-memory-distill-{session_number}",
+                daemon=True,
+            ).start()
+        self._reset_session_memory_tracking()
+
+    def _observe_conversation_transition(self, transition) -> None:
+        if transition is not None and any(
+            action in {"session_closing", "session_closed"} for action in transition.actions
+        ):
+            self._finalize_memory_session()
+
+    def connection_closed(self) -> None:
+        if self.conversation is not None and self.conversation.phase != ConversationPhase.IDLE:
+            self._conversation_payload(self.conversation.bridge_lost())
 
     def cancel_active_turn(self, reason: str = "cancelled") -> bool:
         with self._active_turn_lock:
@@ -992,11 +1102,12 @@ class LanBridgeSession:
         return frame
 
     def _register_active_turn(self, token: CancellationToken) -> bool:
-        with self._active_turn_lock:
-            if self._active_turn_token is not None:
-                return False
-            self._active_turn_token = token
-            return True
+        with self._memory_lock:
+            with self._active_turn_lock:
+                if self._active_turn_token is not None:
+                    return False
+                self._active_turn_token = token
+                return True
 
     def _finish_active_turn(self, token: CancellationToken) -> None:
         with self._active_turn_lock:
@@ -1006,13 +1117,16 @@ class LanBridgeSession:
     def _stage_conversation_turn(self, user_text: str, response_text: str, tts_error: str) -> None:
         if self.conversation is not None and not tts_error:
             self.conversation.stage_turn(user_text, response_text)
+            self._lease_turns.append((user_text, response_text))
+            del self._lease_turns[:-4]
 
     def _begin_conversation_capture(self, owner_id: str) -> dict[str, object] | None:
         if self.conversation is None:
             return None
         current_ms = now_ms()
-        self.conversation.tick(current_ms)
+        self._observe_conversation_transition(self.conversation.tick(current_ms))
         if self.conversation.phase == ConversationPhase.IDLE:
+            self._reset_session_memory_tracking()
             self.conversation.wake(current_ms, owner_id)
         elif self.conversation.phase in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
             self.cancel_active_turn("barge_in")
@@ -1059,7 +1173,8 @@ class LanBridgeSession:
 
     def _save_memory(self) -> None:
         if self.config.memory_file:
-            save_bridge_memory(self.config.memory_file, self.memory)
+            with self._memory_lock:
+                save_bridge_memory(self.config.memory_file, self.memory)
 
     def _append_turn_log(self, record: dict[str, object]) -> None:
         if not self.config.turn_log_file:
@@ -1157,6 +1272,7 @@ class LanBridgeSession:
         record.update(runner_summary)
         record.update(tts_summary)
         record.update(audio_evidence_log)
+        record.update(self.memory.diagnostics())
         turn_elapsed_ms = (time.perf_counter() - turn_started) * 1000.0
         record["turn_elapsed_ms"] = round(turn_elapsed_ms, 2)
         record.update(
@@ -1694,10 +1810,9 @@ class LanBridgeSession:
             if "begin_generation" not in transition.actions:
                 return [self._conversation_heartbeat(transition)]
         if user_text:
-            self.memory = self.memory.remember_user_text(user_text)
+            self._commit_memory(self.memory.remember_user_text(user_text))
             # Persist transcript-owned facts before model/TTS work so an explicit
             # remember request survives a later runner or audio failure.
-            self._save_memory()
 
         try:
             active_persona = self._active_persona()
@@ -1706,6 +1821,7 @@ class LanBridgeSession:
         requested_case = str(message.get("runner_case", "")).strip()
         runner_summary: dict[str, object] = {"persona_id": active_persona.pack_id}
         research_result: dict[str, object] | None = None
+        relationship_card = RelationshipCard(())
         local_fact = resolve_local_fact(user_text, self.memory) if not requested_case else None
         if local_fact is not None:
             runner_case = "local_fact"
@@ -1723,6 +1839,11 @@ class LanBridgeSession:
             runner_summary["runner_elapsed_ms"] = 0.0
         else:
             runner_case = prompt_case_for_text(user_text, requested_case, self.config.runner_case)
+            anticipated_research, _ = natural_research_request(user_text)
+            relationship_card = self._relationship_card(
+                user_text,
+                suppress_session_context=self.config.research_enabled and anticipated_research is not None,
+            )
             try:
                 runner = run_runner_profile(
                     self.config.runner_profile,
@@ -1733,7 +1854,7 @@ class LanBridgeSession:
                     user_text=user_text,
                     research_tools_enabled=self.config.research_enabled,
                     embodiment_lines=self.robot_embodiment.prompt_lines(),
-                    memory_lines=tuple(self.memory.context_lines(user_text)),
+                    memory_lines=relationship_card.lines,
                     conversation_lines=self._conversation_context_lines(),
                     cancellation=cancellation,
                     persona_id=active_persona.pack_id,
@@ -1794,7 +1915,7 @@ class LanBridgeSession:
                             user_text=evidence_user_text,
                             research_tools_enabled=False,
                             embodiment_lines=self.robot_embodiment.prompt_lines(),
-                            memory_lines=tuple(self.memory.context_lines(user_text)),
+                            memory_lines=relationship_card.lines,
                             conversation_lines=self._conversation_context_lines(),
                             cancellation=cancellation,
                             persona_id=active_persona.pack_id,
@@ -1818,6 +1939,17 @@ class LanBridgeSession:
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))
+        else:
+            candidate_memory = candidate_memory.capture_open_loop(user_text)
+            for topic in topics_for_user_text(user_text):
+                if topic not in self._session_topics:
+                    self._session_topics.append(topic)
+            self._session_non_research_turns += 1
+        candidate_memory, callback_consumed = candidate_memory.consume_open_loop(
+            relationship_card.open_loop_id,
+            turn.text,
+        )
+        runner_summary["memory_callback_consumed"] = callback_consumed
         if self.conversation is not None:
             transition = self.conversation.response_started(now_ms())
             if "reject_response" in transition.actions:
@@ -1839,9 +1971,8 @@ class LanBridgeSession:
             if tts_error and self.conversation is not None:
                 self.conversation.turn_failed(now_ms(), "tts_error")
             cancellation.raise_if_cancelled()
-            self.memory = candidate_memory
+            self._commit_memory(candidate_memory)
             self._stage_conversation_turn(user_text, turn.text, tts_error)
-            self._save_memory()
             self._append_completed_turn_log(
                 seq=seq,
                 has_audio=has_audio,
@@ -1915,9 +2046,8 @@ class LanBridgeSession:
         if tts_error and self.conversation is not None:
             self.conversation.turn_failed(now_ms(), "tts_error")
         cancellation.raise_if_cancelled()
-        self.memory = candidate_memory
+        self._commit_memory(candidate_memory)
         self._stage_conversation_turn(user_text, turn.text, tts_error)
-        self._save_memory()
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
         if suppress_thinking:
             frames = [frame for frame in frames if frame.get("type") != "thinking"]
@@ -2188,6 +2318,7 @@ def handle_connection(
                 send_live(frame)
     finally:
         session.cancel_active_turn("connection_closed")
+        session.connection_closed()
         discard_pending_audio()
         if turn_thread is not None and turn_thread.is_alive():
             turn_thread.join(timeout=2.0)
@@ -2251,6 +2382,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--conversation-acoustic-tail-ms", type=int, default=250)
     parser.add_argument("--conversation-cooldown-ms", type=int, default=300)
     parser.add_argument("--conversation-max-turns", type=int, default=12)
+    parser.add_argument(
+        "--enable-episode-distillation",
+        action="store_true",
+        help="Opt in to persisting strictly validated local-model session summaries.",
+    )
     parser.add_argument("--reset-memory", action="store_true")
     return parser
 
@@ -2294,6 +2430,11 @@ def main() -> int:
         conversation_acoustic_tail_ms=max(0, min(2000, args.conversation_acoustic_tail_ms)),
         conversation_cooldown_ms=max(0, min(5000, args.conversation_cooldown_ms)),
         conversation_max_turns=max(1, min(50, args.conversation_max_turns)),
+        episode_distillation_enabled=(
+            args.enable_episode_distillation
+            or os.environ.get("STACKCHAN_ENABLE_EPISODE_DISTILLATION", "").strip().lower()
+            in {"1", "true", "yes", "on"}
+        ),
     )
     serve(config)
     return 0

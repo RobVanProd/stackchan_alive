@@ -16,7 +16,7 @@
       "license": "Apache-2.0",
       "name": "Stackchan Glow",
       "path": "personas/glow",
-      "sha256": "011faf26ce68179268d428148b31c570f59e122ede4cf1d8f47acb3105754fa2",
+      "sha256": "05dda1f419666d1e4f7e359663bfe65a2b96c4bb5205fbeeee149bfd219d3b6b",
       "valid": true,
       "version": "0.1.0"
     },
@@ -34,7 +34,7 @@
       "license": "Apache-2.0",
       "name": "Stackchan Spark",
       "path": "personas/spark",
-      "sha256": "3c76e98408a77820c17cb23e14669552a3e9400b922ca225f43a339ec26fe7b2",
+      "sha256": "8b22ab2cfe3055abac1be8adf63699e0e4315120e60cfd03cc6aacf36260c643",
       "valid": true,
       "version": "0.1.0"
     }
