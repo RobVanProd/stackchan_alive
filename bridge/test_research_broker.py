@@ -251,6 +251,33 @@ class ResearchBrokerTests(unittest.TestCase):
         response = next(frame for frame in frames if isinstance(frame, dict) and frame.get("type") == "response_start")
         self.assertEqual(["https://example.com/current"], response["citations"])
 
+        natural_broker = FakeBroker()
+        natural_session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True, disable_audio_downlink=True),
+            research_broker=natural_broker,
+        )
+        with patch("lan_service.run_runner_profile", side_effect=[ordinary_answer, grounded_answer]) as natural_runner:
+            natural_frames = natural_session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 11,
+                        "text": "Who is the current CEO of Framework?",
+                    }
+                )
+            )
+
+        self.assertEqual(2, natural_runner.call_count)
+        self.assertEqual("web_search", natural_broker.request["name"])
+        self.assertEqual(
+            "Who is the current CEO of Framework?",
+            natural_broker.request["arguments"]["query"],
+        )
+        natural_response = next(
+            frame for frame in natural_frames if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual(["https://example.com/current"], natural_response["citations"])
+
 
 if __name__ == "__main__":
     unittest.main()

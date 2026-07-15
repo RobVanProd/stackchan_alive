@@ -22,6 +22,7 @@ from rvc_tts import (
     rvc_index_path,
     rvc_model_path,
     synthesize_base_wav,
+    tts_delivery_style,
     trim_pcm,
 )
 
@@ -83,6 +84,7 @@ def main() -> int:
         except Exception as exc:
             sys.stderr.write(str(exc) + "\n")
             return 2
+    style = tts_delivery_style()
     print(
         json.dumps(
             {
@@ -101,6 +103,10 @@ def main() -> int:
                 "rvc_device": worker_result.get("device", os.environ.get("STACKCHAN_RVC_DEVICE", "cuda:0")),
                 "rvc_f0_method": worker_result.get("method", os.environ.get("STACKCHAN_RVC_F0_METHOD", "pm")),
                 "rvc_worker_url": worker_url(),
+                "tts_mode": style["mode"],
+                "tts_arousal": style["arousal"],
+                "tts_valence": style["valence"],
+                "base_tts_rate": style["base_tts_rate"],
                 "audio_format": "pcm16",
                 "sample_rate": sample_rate,
                 "audio_bytes": len(pcm),

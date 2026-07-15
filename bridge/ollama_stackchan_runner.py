@@ -25,6 +25,7 @@ _SENSITIVE_REQUEST_RE = re.compile(
     r"recording|transcript)\b",
     re.IGNORECASE,
 )
+_RESEARCH_TOOLS = {"web_search", "web_fetch"}
 
 
 def extract_user_context(prompt: str) -> str:
@@ -39,6 +40,25 @@ def extract_user_context(prompt: str) -> str:
 def is_sensitive_memory_request(prompt: str) -> bool:
     user_context = extract_user_context(prompt)
     return bool(_MEMORY_ACTION_RE.search(user_context) and _SENSITIVE_REQUEST_RE.search(user_context))
+
+
+def enabled_tool_request(raw_json: str, prompt: str) -> dict[str, object] | None:
+    if '"tool_request"' not in prompt or "web_search|web_fetch" not in prompt:
+        return None
+    try:
+        parsed = json.loads(raw_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(parsed, dict) or set(parsed) != {"tool_request"}:
+        return None
+    request = parsed.get("tool_request")
+    if not isinstance(request, dict) or set(request).difference({"name", "arguments"}):
+        return None
+    name = str(request.get("name", "")).strip()
+    arguments = request.get("arguments")
+    if name not in _RESEARCH_TOOLS or not isinstance(arguments, dict):
+        return None
+    return {"name": name, "arguments": arguments}
 
 
 def enforce_character_policy(validation: object, *, prompt: str = "") -> dict[str, object]:
@@ -188,6 +208,10 @@ def main() -> int:
         return 1
 
     raw_json = extract_json_object(raw_output)
+    tool_request = enabled_tool_request(raw_json, prompt)
+    if tool_request is not None:
+        print(json.dumps({"tool_request": tool_request}, separators=(",", ":"), ensure_ascii=True))
+        return 0
     validation = validate_response(raw_json)
     print(json.dumps(enforce_character_policy(validation, prompt=prompt), separators=(",", ":"), ensure_ascii=True))
     if validation.issues:

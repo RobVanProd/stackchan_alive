@@ -364,7 +364,10 @@ def build_prompt(
     tool_schema = ""
     if research_tools_enabled:
         tool_schema = (
-            " If fresh public-web evidence is required, you may instead return exactly "
+            " Decide for yourself whether fresh public-web evidence is required; do not wait for "
+            "the user to say search. Search when facts may have changed, when the user asks about "
+            "current events, or when you are materially unsure. Do not search for casual conversation, "
+            "timeless knowledge you already know, or live robot state. When research is needed, return exactly "
             '{"tool_request":{"name":"web_search|web_fetch","arguments":{...}}}. '
             "Use web_search with query/max_results or web_fetch with one HTTPS URL. "
             "Do not place tool syntax in spoken_text and do not request any other tool."

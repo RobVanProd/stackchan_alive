@@ -23,8 +23,13 @@ type. The bridge performs at most two tool rounds per turn, then asks Gemma for 
 answer. Web text is untrusted context and cannot directly write long-term memory, alter persona,
 or invoke robot controls.
 
-The current release candidate implements one tool round per turn. Source URLs are attached to
-`response_start` as bounded citation metadata for companion clients and are not spoken aloud.
+The current release candidate implements one tool round per turn. The prompt asks Gemma to choose
+research without waiting for explicit search wording, and the bridge independently routes ordinary
+time-sensitive public questions when the small model does not request a tool. This deterministic
+freshness policy covers current events, weather, prices, versions, schedules, public officeholders,
+and similar changeable facts while refusing credentials, personal-account data, and live robot-state
+questions. Source URLs are attached to `response_start` as bounded citation metadata for companion
+clients and are not spoken aloud.
 The bridge forcibly clears `memory_write` and `memory_forget` from a research-derived final
 response so fetched claims cannot silently become durable memory.
 
@@ -94,7 +99,9 @@ costs substantially more storage, memory, bandwidth, and maintenance than SearXN
 ## Bridge Integration
 
 Add a bounded tool-request variant to Character Lock rather than placing free-form tool syntax in
-spoken text. A turn may either return the existing final response or one request:
+spoken text. A turn may either return the existing final response or one request. The production
+Ollama wrapper passes this shape through only when the trusted bridge prompt explicitly enables
+research:
 
 ```json
 {"tool_request":{"name":"web_search","arguments":{"query":"...","max_results":5}}}

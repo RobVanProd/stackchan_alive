@@ -208,6 +208,10 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn('"emotion":{"arousal":0.0,"valence":0.0}', prompt)
         self.assertIn("Do not use any other mode or earcon value", prompt)
 
+        research_prompt = build_prompt(PROMPT_SUITE[0], research_tools_enabled=True)
+        self.assertIn("Decide for yourself whether fresh public-web evidence is required", research_prompt)
+        self.assertIn("do not wait for the user to say search", research_prompt)
+
     def test_enums_match_character_lock_contract(self):
         for mode in ("idle", "attend", "listen", "think", "speak", "react", "happy", "concern", "sleep", "error", "safety"):
             self.assertIn(mode, ALLOWED_MODES)

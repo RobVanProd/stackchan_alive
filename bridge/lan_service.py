@@ -87,6 +87,25 @@ EXPLICIT_RESEARCH_REQUEST = re.compile(
     r"current (?:news|weather|price|score))\b",
     flags=re.IGNORECASE,
 )
+FRESH_RESEARCH_SIGNAL = re.compile(
+    r"\b(?:today|tonight|tomorrow|yesterday|latest|current|currently|recent|recently|"
+    r"this (?:week|month|year)|right now|breaking|newest|up[- ]to[- ]date|"
+    r"news|weather|forecast|price|stock|market|score|schedule|standings|traffic|"
+    r"release|version|update|election|president|prime minister|governor|mayor|ceo|"
+    r"availability)\b",
+    flags=re.IGNORECASE,
+)
+INFORMATION_REQUEST = re.compile(
+    r"(?:\?|\b(?:what|who|when|where|why|how|which|is|are|was|were|did|does|do|can|"
+    r"tell me|give me|check|find)\b)",
+    flags=re.IGNORECASE,
+)
+PRIVATE_OR_EMBODIED_RESEARCH_TEXT = re.compile(
+    r"\b(?:how are you|what do you (?:see|hear|feel)|your (?:current )?(?:mood|feeling|battery|power|"
+    r"sensor|touch|servo|camera|microphone|body|connection|wifi|bridge)|"
+    r"my (?:calendar|email|inbox|messages|files|account|location))\b",
+    flags=re.IGNORECASE,
+)
 SENSITIVE_RESEARCH_TEXT = re.compile(
     r"\b(?:password|passcode|api key|private key|credit card|bank account|social security|"
     r"medical|diagnosis|phone number|email address|home address)\b",
@@ -849,6 +868,21 @@ def explicit_research_request(text: str) -> dict[str, object] | None:
     return {"name": "web_search", "arguments": {"query": query, "max_results": 4}}
 
 
+def natural_research_request(text: str) -> tuple[dict[str, object] | None, str]:
+    """Route explicit or time-sensitive public questions without relying on a small model's tool choice."""
+    query = " ".join(str(text or "").split())
+    if not query or len(query) > 240 or SENSITIVE_RESEARCH_TEXT.search(query):
+        return None, ""
+    explicit = explicit_research_request(query)
+    if explicit is not None:
+        return explicit, "explicit_user_request"
+    if PRIVATE_OR_EMBODIED_RESEARCH_TEXT.search(query):
+        return None, ""
+    if not INFORMATION_REQUEST.search(query) or not FRESH_RESEARCH_SIGNAL.search(query):
+        return None, ""
+    return {"name": "web_search", "arguments": {"query": query, "max_results": 4}}, "freshness_policy"
+
+
 def contains_stackchan_wake_phrase(text: str) -> bool:
     return bool(STACKCHAN_WAKE_PHRASE.search(" ".join(str(text or "").split())))
 
@@ -1387,6 +1421,9 @@ class LanBridgeSession:
                         voice=self.config.tts_voice,
                         timeout_ms=self.config.tts_timeout_ms,
                         cancellation=cancellation,
+                        mode=turn.intent,
+                        arousal=turn.arousal,
+                        valence=turn.valence,
                     )
                     if bool(result.diagnostics.get("audio_truncated", False)):
                         raise TtsExecutionError("streaming TTS refused a truncated phrase")
@@ -1522,6 +1559,9 @@ class LanBridgeSession:
             "tts_mouth_frames": mouth_frames,
             "tts_audio_truncated": stream_partial,
             "tts_stream_complete": stream_complete,
+            "tts_mode": turn.intent,
+            "tts_arousal": round(max(0.0, min(1.0, turn.arousal)), 3),
+            "tts_valence": round(max(-1.0, min(1.0, turn.valence)), 3),
         }
         return emitted, summary, tts_error
 
@@ -1713,10 +1753,16 @@ class LanBridgeSession:
                 except ResearchPolicyError as exc:
                     tool_request = {"name": "invalid", "arguments": {}}
                     runner_summary["research_error"] = str(exc)
-                if tool_request is None:
-                    tool_request = explicit_research_request(user_text)
+                if SENSITIVE_RESEARCH_TEXT.search(user_text):
+                    tool_request = None
+                    runner_summary["research_routing"] = "sensitive_query_blocked"
+                elif PRIVATE_OR_EMBODIED_RESEARCH_TEXT.search(user_text):
+                    tool_request = None
+                    runner_summary["research_routing"] = "private_or_embodied_query_blocked"
+                elif tool_request is None:
+                    tool_request, routing = natural_research_request(user_text)
                     if tool_request is not None:
-                        runner_summary["research_routing"] = "explicit_user_request"
+                        runner_summary["research_routing"] = routing
                 else:
                     runner_summary["research_routing"] = "model_request"
                 if tool_request is not None:
@@ -1824,6 +1870,9 @@ class LanBridgeSession:
                 voice=self.config.tts_voice,
                 timeout_ms=self.config.tts_timeout_ms,
                 cancellation=cancellation,
+                mode=turn.intent,
+                arousal=turn.arousal,
+                valence=turn.valence,
             )
             turn = replace(
                 turn,
@@ -1837,6 +1886,9 @@ class LanBridgeSession:
                 "tts_voice": tts.voice,
                 "tts_beats": len(tts.beats),
                 "tts_duration_ms": tts.duration_ms,
+                "tts_mode": turn.intent,
+                "tts_arousal": round(max(0.0, min(1.0, turn.arousal)), 3),
+                "tts_valence": round(max(-1.0, min(1.0, turn.valence)), 3),
             }
             if tts.audio_format:
                 tts_summary["tts_audio_format"] = tts.audio_format

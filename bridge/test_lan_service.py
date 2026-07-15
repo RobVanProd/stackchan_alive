@@ -29,6 +29,7 @@ from lan_service import (
     encode_ws_text,
     is_identity_question,
     explicit_research_request,
+    natural_research_request,
     mouth_frame_for_audio_window,
     prompt_case_for_text,
     read_ws_frame,
@@ -402,6 +403,28 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(4, request["arguments"]["max_results"])
         self.assertIsNone(explicit_research_request("Search the web for my API key"))
         self.assertIsNone(explicit_research_request("Tell me a joke"))
+
+    def test_natural_research_routes_fresh_public_questions_without_search_wording(self):
+        for question in (
+            "What is the weather tomorrow?",
+            "Who is the current CEO of Framework?",
+            "What happened in robotics news today?",
+        ):
+            with self.subTest(question=question):
+                request, routing = natural_research_request(question)
+                self.assertEqual("freshness_policy", routing)
+                self.assertEqual("web_search", request["name"])
+                self.assertEqual(question, request["arguments"]["query"])
+
+        for private_or_local in (
+            "How are you feeling right now?",
+            "What is your current battery level?",
+            "What is on my calendar today?",
+            "What is the current password policy?",
+            "Tell me a joke",
+        ):
+            with self.subTest(private_or_local=private_or_local):
+                self.assertEqual((None, ""), natural_research_request(private_or_local))
 
     def test_stackchan_wake_phrase_matches_common_stt_variants(self):
         self.assertTrue(contains_stackchan_wake_phrase("Hey Stackchan"))
@@ -1342,9 +1365,17 @@ class LanServiceTests(unittest.TestCase):
         second_started = threading.Event()
         release_second = threading.Event()
         calls = []
+        styles = []
 
-        def fake_synthesize(text, **_kwargs):
+        def fake_synthesize(text, **kwargs):
             calls.append(text)
+            styles.append(
+                {
+                    "mode": kwargs["mode"],
+                    "arousal": kwargs["arousal"],
+                    "valence": kwargs["valence"],
+                }
+            )
             if text.startswith("Second"):
                 second_started.set()
                 self.assertTrue(release_second.wait(timeout=1.0))
@@ -1390,6 +1421,10 @@ class LanServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(["First phrase.", "Second phrase."], calls)
+        self.assertEqual(
+            [{"mode": "speak", "arousal": 0.0, "valence": 0.0}] * 2,
+            styles,
+        )
         self.assertEqual("", error)
         self.assertTrue(summary["tts_stream_complete"])
         self.assertEqual(2, summary["tts_phrases_completed"])

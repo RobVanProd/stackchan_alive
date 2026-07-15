@@ -18,6 +18,19 @@ from pathlib import Path
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_AUDIO_BYTES = 2 * 1024 * 1024
 FRAME_MS = 80
+TTS_MODE_RATE_OFFSETS = {
+    "idle": -1,
+    "attend": 0,
+    "listen": 0,
+    "think": -1,
+    "speak": 0,
+    "react": 1,
+    "happy": 1,
+    "concern": -1,
+    "sleep": -2,
+    "error": -1,
+    "safety": -1,
+}
 
 
 POWERSHELL_TTS_SCRIPT = r"""
@@ -83,6 +96,23 @@ def float_env(name: str, default: float, low: float, high: float) -> float:
     return max(low, min(high, parsed))
 
 
+def tts_delivery_style() -> dict[str, object]:
+    mode = os.environ.get("STACKCHAN_TTS_MODE", "speak").strip().lower()
+    if mode not in TTS_MODE_RATE_OFFSETS:
+        mode = "speak"
+    arousal = float_env("STACKCHAN_TTS_AROUSAL", 0.5, 0.0, 1.0)
+    valence = float_env("STACKCHAN_TTS_VALENCE", 0.0, -1.0, 1.0)
+    energy_offset = 1 if arousal >= 0.75 else -1 if arousal <= 0.20 else 0
+    base_rate = int_env("STACKCHAN_RVC_BASE_TTS_RATE", 1, -10, 10)
+    rate = max(-10, min(10, base_rate + TTS_MODE_RATE_OFFSETS[mode] + energy_offset))
+    return {
+        "mode": mode,
+        "arousal": round(arousal, 3),
+        "valence": round(valence, 3),
+        "base_tts_rate": rate,
+    }
+
+
 def ffmpeg_exe() -> str:
     configured = os.environ.get("STACKCHAN_FFMPEG_EXE", "").strip()
     if configured:
@@ -121,7 +151,7 @@ def synthesize_base_wav(text: str, wav_path: Path) -> None:
     env["STACKCHAN_RVC_BASE_TTS_TEXT_FILE"] = str(text_path)
     env["STACKCHAN_RVC_BASE_TTS_WAV_FILE"] = str(wav_path)
     env["STACKCHAN_RVC_BASE_TTS_VOICE"] = os.environ.get("STACKCHAN_RVC_BASE_TTS_VOICE", "").strip()
-    env["STACKCHAN_RVC_BASE_TTS_RATE"] = str(int_env("STACKCHAN_RVC_BASE_TTS_RATE", 1, -10, 10))
+    env["STACKCHAN_RVC_BASE_TTS_RATE"] = str(tts_delivery_style()["base_tts_rate"])
     env["STACKCHAN_RVC_BASE_TTS_VOLUME"] = str(int_env("STACKCHAN_RVC_BASE_TTS_VOLUME", 100, 0, 100))
     env["STACKCHAN_RVC_BASE_TTS_SAMPLE_RATE"] = str(
         int_env("STACKCHAN_RVC_BASE_TTS_SAMPLE_RATE", 48000, 8000, 48000)
@@ -321,6 +351,7 @@ def main() -> int:
         except Exception as exc:
             sys.stderr.write(str(exc) + "\n")
             return 2
+    style = tts_delivery_style()
     print(
         json.dumps(
             {
@@ -333,6 +364,10 @@ def main() -> int:
                 "rvc_elapsed_ms": round(rvc_elapsed_ms, 2),
                 "rvc_device": os.environ.get("STACKCHAN_RVC_DEVICE", "cpu:0").strip() or "cpu:0",
                 "rvc_f0_method": os.environ.get("STACKCHAN_RVC_F0_METHOD", "harvest").strip() or "harvest",
+                "tts_mode": style["mode"],
+                "tts_arousal": style["arousal"],
+                "tts_valence": style["valence"],
+                "base_tts_rate": style["base_tts_rate"],
                 "audio_format": "pcm16",
                 "sample_rate": sample_rate,
                 "audio_bytes": len(pcm),
