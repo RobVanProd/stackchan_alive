@@ -64,11 +64,12 @@ void BridgeWakeGate::applyEvent(const RobotEvent& event, uint32_t nowMs) {
       }
       break;
     case EventType::SpeechEnded:
-    case EventType::ResponseStarted:
-    case EventType::ResponseEnded:
     case EventType::Error:
       completeTurn(nowMs, "bridge_wake_gate_event_end");
       expireGate(nowMs);
+      break;
+    case EventType::ResponseStarted:
+    case EventType::ResponseEnded:
       break;
     default:
       break;

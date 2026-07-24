@@ -5066,6 +5066,7 @@ void test_bridge_client_recovers_after_error_aborts_audio_stream() {
   TEST_ASSERT_TRUE(bridge.submitControlLine("{\"type\":\"response_end\",\"seq\":22}", 730));
   TEST_ASSERT_TRUE(bridge.poll(&output));
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientOutputType::ResponseEnd), static_cast<int>(output.type));
+  TEST_ASSERT_EQUAL_UINT32(22, output.response.seq);
   TEST_ASSERT_EQUAL(static_cast<int>(BridgeClientState::Ready), static_cast<int>(bridge.telemetry().state));
   TEST_ASSERT_FALSE(bridge.telemetry().audioStreamActive);
 }
@@ -6038,6 +6039,78 @@ void test_bridge_socket_writer_bounds_binary_queue() {
   TEST_ASSERT_EQUAL_UINT32(2, writer.telemetry().binaryFramesDropped);
 }
 
+void test_bridge_socket_writer_preserves_binary_before_later_text() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 770));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      775));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x8899aabb));
+  const uint8_t audio[] = {0x10, 0x20, 0x30, 0x40};
+  const char* end = "{\"type\":\"utterance_end\",\"seq\":7}";
+  TEST_ASSERT_TRUE(writer.queueBinaryFrame(audio, sizeof(audio)));
+  TEST_ASSERT_TRUE(writer.queueTextFrame(end));
+
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(780)));
+  std::vector<uint8_t> decodedAudio;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(sink.bytes, decodedAudio));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(audio), decodedAudio.size());
+  TEST_ASSERT_EQUAL_MEMORY(audio, decodedAudio.data(), sizeof(audio));
+
+  sink.bytes.clear();
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(785)));
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(sink.bytes, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_EQUAL_STRING(end, decodedEnd);
+}
+
+void test_bridge_socket_writer_preserves_text_before_later_binary() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 790));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      795));
+
+  CapturingBridgeSocketSink sink;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x99aabbcc));
+  const char* start = "{\"type\":\"utterance_start\",\"seq\":8}";
+  const uint8_t audio[] = {0x50, 0x60, 0x70, 0x80};
+  TEST_ASSERT_TRUE(writer.queueTextFrame(start));
+  TEST_ASSERT_TRUE(writer.queueBinaryFrame(audio, sizeof(audio)));
+
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(800)));
+  char decodedStart[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(sink.bytes, decodedStart, sizeof(decodedStart)));
+  TEST_ASSERT_EQUAL_STRING(start, decodedStart);
+
+  sink.bytes.clear();
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(805)));
+  std::vector<uint8_t> decodedAudio;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(sink.bytes, decodedAudio));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(audio), decodedAudio.size());
+  TEST_ASSERT_EQUAL_MEMORY(audio, decodedAudio.data(), sizeof(audio));
+}
+
 BridgeNetworkSessionConfig makeBridgeNetworkSessionConfig() {
   BridgeNetworkSessionConfig config;
   config.enabled = true;
@@ -6414,6 +6487,48 @@ void test_bridge_wake_gate_starts_and_completes_uplink_turn() {
   TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(socket.outgoing, decodedEnd, sizeof(decodedEnd)));
   TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"type\":\"utterance_end\""));
   TEST_ASSERT_NOT_NULL(std::strstr(decodedEnd, "\"seq\":41"));
+}
+
+void test_bridge_wake_gate_ignores_remote_response_events_during_capture() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 1210);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+
+  BridgeWakeGateConfig gateConfig;
+  gateConfig.firstSeq = 43;
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(gateConfig, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 1220);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  TEST_ASSERT_TRUE(uplink.telemetry().active);
+  session.update(1225);
+  socket.clearOutgoing();
+
+  RobotEvent responseStarted;
+  responseStarted.type = EventType::ResponseStarted;
+  gate.applyEvent(responseStarted, 1230);
+  RobotEvent responseEnded;
+  responseEnded.type = EventType::ResponseEnded;
+  gate.applyEvent(responseEnded, 1240);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  TEST_ASSERT_TRUE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(0, gate.telemetry().turnsCompleted);
+
+  RobotEvent speechEnded;
+  speechEnded.type = EventType::SpeechEnded;
+  gate.applyEvent(speechEnded, 1250);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_FALSE(uplink.telemetry().active);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
 }
 
 void test_wake_cue_sequence_requires_rgb_and_cue_completion_before_capture() {
@@ -7740,6 +7855,8 @@ int main() {
   RUN_TEST(test_bridge_socket_writer_writes_queued_binary_frame);
   RUN_TEST(test_bridge_socket_writer_retains_partial_binary_frame_until_complete);
   RUN_TEST(test_bridge_socket_writer_bounds_binary_queue);
+  RUN_TEST(test_bridge_socket_writer_preserves_binary_before_later_text);
+  RUN_TEST(test_bridge_socket_writer_preserves_text_before_later_binary);
   RUN_TEST(test_bridge_network_session_starts_and_accepts_handshake);
   RUN_TEST(test_bridge_network_session_feeds_server_frames_to_bridge_client);
   RUN_TEST(test_bridge_network_session_writes_endpoint_control_response);
@@ -7758,6 +7875,7 @@ int main() {
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
   RUN_TEST(test_bridge_wake_gate_suppresses_turn_when_uplink_disabled);
   RUN_TEST(test_bridge_wake_gate_starts_and_completes_uplink_turn);
+  RUN_TEST(test_bridge_wake_gate_ignores_remote_response_events_during_capture);
   RUN_TEST(test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled);
   RUN_TEST(test_bridge_wake_gate_renews_on_speech_and_expires);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
