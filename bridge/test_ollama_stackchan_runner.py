@@ -133,6 +133,72 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
 
         self.assertEqual("Signal received!", guarded["spoken_text"])
 
+    def test_policy_guard_removes_redundant_self_intro_from_ordinary_reply(self):
+        validation = runner.validate_response(
+            json.dumps(
+                {
+                    "spoken_text": "I am Stackchan Spark. The test passed cleanly.",
+                    "mode": "happy",
+                    "earcon": "happy",
+                    "emotion": {"arousal": 0.2, "valence": 0.3},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            )
+        )
+        prompt = (
+            "User/context: Did the test pass?\n"
+            "Acceptance target: Answer directly."
+        )
+
+        guarded = runner.enforce_character_policy(validation, prompt=prompt)
+
+        self.assertEqual("The test passed cleanly.", guarded["spoken_text"])
+
+    def test_policy_guard_preserves_self_intro_for_identity_question(self):
+        validation = runner.validate_response(
+            json.dumps(
+                {
+                    "spoken_text": "I am Stackchan Spark.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.1},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            )
+        )
+        prompt = (
+            "User/context: What is your name?\n"
+            "Acceptance target: Answer with your name."
+        )
+
+        guarded = runner.enforce_character_policy(validation, prompt=prompt)
+
+        self.assertEqual("I am Stackchan Spark.", guarded["spoken_text"])
+
+    def test_policy_guard_replaces_empty_nonidentity_self_intro(self):
+        validation = runner.validate_response(
+            json.dumps(
+                {
+                    "spoken_text": "I am Stackchan Spark.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.1},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            )
+        )
+        prompt = (
+            "User/context: How do you feel about this?\n"
+            "Acceptance target: Ask for the missing detail."
+        )
+
+        guarded = runner.enforce_character_policy(validation, prompt=prompt)
+
+        self.assertEqual(runner._EMPTY_SELF_INTRO_REPLACEMENT, guarded["spoken_text"])
+
     def test_api_uses_warm_json_generation_with_bounded_output(self):
         response = {
             "response": json.dumps(

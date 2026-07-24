@@ -26,20 +26,47 @@ _SENSITIVE_REQUEST_RE = re.compile(
     re.IGNORECASE,
 )
 _RESEARCH_TOOLS = {"web_search", "web_fetch"}
+_IDENTITY_REQUEST_RE = re.compile(
+    r"\b(?:what(?:'s| is) your name|who are you|tell me your name|identify yourself)\b",
+    re.IGNORECASE,
+)
+_SELF_INTRO_PREFIX_RE = re.compile(
+    r"^\s*(?:hello[,.]?\s*)?(?:i am|my name is)\s+stackchan(?:\s+spark)?(?:[.!?]\s*|,\s*)",
+    re.IGNORECASE,
+)
+_EMPTY_SELF_INTRO_REPLACEMENT = "Give me one more detail. My curiosity needs a target."
 
 
 def extract_user_context(prompt: str) -> str:
-    marker = "\nUser/context: "
-    start = prompt.find(marker)
-    if start < 0:
+    match = re.search(r"(?:^|\n)User/context: ", prompt)
+    if match is None:
         return ""
-    text = prompt[start + len(marker) :]
+    text = prompt[match.end() :]
     return text.rsplit("\nAcceptance target:", 1)[0].strip()
 
 
 def is_sensitive_memory_request(prompt: str) -> bool:
     user_context = extract_user_context(prompt)
     return bool(_MEMORY_ACTION_RE.search(user_context) and _SENSITIVE_REQUEST_RE.search(user_context))
+
+
+def is_identity_request(prompt: str) -> bool:
+    user_context = extract_user_context(prompt)
+    current_marker = " Current user context: "
+    if current_marker in user_context:
+        user_context = user_context.rsplit(current_marker, 1)[1]
+    return bool(_IDENTITY_REQUEST_RE.search(user_context))
+
+
+def remove_redundant_self_intro(spoken_text: str, prompt: str) -> str:
+    if is_identity_request(prompt):
+        return spoken_text
+    without_intro = _SELF_INTRO_PREFIX_RE.sub("", spoken_text, count=1).strip()
+    if without_intro == spoken_text.strip():
+        return spoken_text
+    if not without_intro:
+        return _EMPTY_SELF_INTRO_REPLACEMENT
+    return without_intro[:1].upper() + without_intro[1:]
 
 
 def enabled_tool_request(raw_json: str, prompt: str) -> dict[str, object] | None:
@@ -100,6 +127,11 @@ def enforce_character_policy(validation: object, *, prompt: str = "") -> dict[st
             mode="think",
             earcon="think",
             memory_write={},
+        )
+    elif not issues:
+        normalized["spoken_text"] = remove_redundant_self_intro(
+            str(normalized.get("spoken_text", "")),
+            prompt,
         )
     return normalized
 

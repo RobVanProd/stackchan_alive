@@ -129,7 +129,8 @@ class LocalRunnerTests(unittest.TestCase):
                 user_text="Why do USB cables fail at the worst moment?",
             )
 
-        self.assertIn("Answer directly with concrete useful detail and no bluffing", result.prompt)
+        self.assertIn("Answer the actual user directly without introducing yourself", result.prompt)
+        self.assertIn("Never invent sensor evidence or physical state", result.prompt)
         self.assertNotIn("Answer with one short identity sentence", result.prompt)
 
     def test_runtime_memory_request_does_not_inherit_teal_benchmark_fact(self):

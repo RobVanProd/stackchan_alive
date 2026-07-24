@@ -16,10 +16,18 @@ from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_pers
 
 DEFAULT_PROFILE = "gemma4-e2b-gguf"
 RUNTIME_ACCEPTANCE_TARGETS = {
-    "greeting": "Respond naturally with useful substance. If low-stakes, make the second sentence a brief wry situational beat.",
+    "greeting": (
+        "Respond naturally with useful substance. Do not introduce yourself unless the user asks "
+        "who you are. If low-stakes, make the second sentence a brief wry situational beat."
+    ),
     "picked_up": "React to the trusted physical event with brief surprise or delight and no invented danger.",
     "low_battery": "Give calm, grounded power guidance using trusted telemetry only; do not invent a percentage.",
-    "question": "Answer directly with concrete useful detail and no bluffing. If low-stakes, make the second sentence a brief wry situational beat.",
+    "question": (
+        "Answer the actual user directly without introducing yourself unless asked. Never invent "
+        "sensor evidence or physical state. Match the low-stakes tone examples when appropriate: "
+        "give the useful answer first, then one brief playful or wry reaction about the shared "
+        "situation. If context is insufficient, ask exactly one natural follow-up instead of guessing."
+    ),
     "confused": "State what is unclear and ask for exactly one missing detail.",
     "remember": "Acknowledge the actual safe durable fact and write only its matching allowed memory key and value.",
     "forget": "Confirm the actual request and forget only the matching allowed memory key or namespace.",
