@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "persona/BreathRhythm.hpp"
 #include "persona/StateMatrix.hpp"
 
 namespace stackchan {
@@ -133,6 +134,7 @@ class FaceAnimator {
   FaceTargets current_;
   BlinkState blink_;
   SaccadeState saccade_;
+  BreathRhythm breath_;
   FidgetState fidget_;
   GestureState gesture_;
   SpeechState speech_;

@@ -16,11 +16,66 @@ FACE_ARTIFACTS.mkdir(parents=True, exist_ok=True)
 WIDTH = 320
 HEIGHT = 240
 SCALE = 2
-BG = (7, 16, 19)
-EYE = (247, 251, 255)
 PUPIL = (17, 24, 39)
-ACCENT = (97, 228, 215)
-MOUTH = (255, 107, 138)
+
+
+def _rgb(value: str | int, default: tuple[int, int, int]) -> tuple[int, int, int]:
+    text = str(value).strip().lower()
+    for prefix in ("0x", "#"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    try:
+        numeric = int(text, 16)
+    except ValueError:
+        return default
+    if not 0 <= numeric <= 0xFFFFFF:
+        return default
+    return ((numeric >> 16) & 0xFF, (numeric >> 8) & 0xFF, numeric & 0xFF)
+
+
+def _load_face_spec() -> dict:
+    """Read the active persona's face block so previews match the firmware.
+
+    Falls back to the built-in Spark values when the pack cannot be read, so the
+    preview tool still runs in a bare checkout.
+    """
+    import os
+    import sys
+
+    persona = os.environ.get("STACKCHAN_PERSONA", "").strip() or "spark"
+    sys.path.insert(0, str(ROOT / "bridge"))
+    try:
+        from persona_pack import load_and_validate_persona_pack
+
+        pack = load_and_validate_persona_pack(persona, ROOT)
+        spec = pack.expressions.get("face") or {}
+    except Exception as exc:  # pragma: no cover - preview must not hard-fail
+        print(f"[preview] persona face unavailable ({exc}); using Spark defaults")
+        spec = {}
+    return spec if isinstance(spec, dict) else {}
+
+
+_FACE = _load_face_spec()
+_PALETTE = _FACE.get("palette") or {}
+_EYES = _FACE.get("eyes") or {}
+_MOUTH_SPEC = _FACE.get("mouth") or {}
+
+BG = _rgb(_PALETTE.get("background", ""), (7, 16, 19))
+EYE = _rgb(_PALETTE.get("eye", ""), (247, 251, 255))
+ACCENT = _rgb(_PALETTE.get("accent", ""), (97, 228, 215))
+MOUTH = _rgb(_PALETTE.get("mouth", ""), (255, 107, 138))
+
+EYE_CENTER_Y = float(_EYES.get("center_y", 104))
+EYE_SPACING = float(_EYES.get("spacing", 108))
+EYE_WIDTH = float(_EYES.get("width", 70))
+EYE_HEIGHT = float(_EYES.get("height", 56))
+EYE_CORNER_RADIUS = int(_EYES.get("corner_radius", 18))
+MOUTH_CENTER_Y = float(_MOUTH_SPEC.get("center_y", 172))
+MOUTH_WIDTH = float(_MOUTH_SPEC.get("width", 64))
+
+EYE_LEFT_X = WIDTH / 2 - EYE_SPACING / 2
+EYE_RIGHT_X = WIDTH / 2 + EYE_SPACING / 2
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -195,15 +250,15 @@ def rounded_rect(draw: ImageDraw.ImageDraw, xy: tuple[int, int, int, int], radiu
 
 def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, float], right: bool) -> None:
     target = target_with_defaults(target)
-    width = (70 - target["squint"] * 10) * target["eye_width_scale"]
-    height = 56
+    width = (EYE_WIDTH - target["squint"] * EYE_WIDTH * 0.143) * target["eye_width_scale"]
+    height = EYE_HEIGHT
     cx += target["face_x"]
     cy += target["face_y"]
     x0 = int(cx - width / 2)
     y0 = int(cy - height / 2)
     x1 = int(cx + width / 2)
     y1 = int(cy + height / 2)
-    rounded_rect(draw, (x0, y0, x1, y1), min(18, int(height / 2)), EYE)
+    rounded_rect(draw, (x0, y0, x1, y1), min(EYE_CORNER_RADIUS, int(height / 2)), EYE)
 
     prefix = "right" if right else "left"
     cuts = {
@@ -261,7 +316,7 @@ def draw_eye(draw: ImageDraw.ImageDraw, cx: float, cy: float, target: dict[str, 
 
 def draw_mouth(draw: ImageDraw.ImageDraw, target: dict[str, float]) -> None:
     target = target_with_defaults(target)
-    cx, cy, width = 160 + target["face_x"], target.get("mouth_y", 172) + target["face_y"], 64 + target["mouth_width_delta"]
+    cx, cy, width = WIDTH / 2 + target["face_x"], target.get("mouth_y", MOUTH_CENTER_Y) + target["face_y"], MOUTH_WIDTH + target["mouth_width_delta"]
     smile = target["mouth_smile"]
     curve = int((1 if smile >= 0 else -1) * (abs(smile) ** 0.6) * 22)
     open_px = int(target["mouth_open"] * 18)
@@ -294,9 +349,9 @@ def render_frame(t: float) -> Image.Image:
     draw = ImageDraw.Draw(img)
     target = face_targets(t)
     alive_y = math.sin(t * 2.0) * 2
-    draw_eye(draw, 106, 104 + alive_y, target, False)
-    draw_eye(draw, 214, 104 + alive_y, target, True)
-    target = {**target, "mouth_y": 172 + alive_y}
+    draw_eye(draw, EYE_LEFT_X, EYE_CENTER_Y + alive_y, target, False)
+    draw_eye(draw, EYE_RIGHT_X, EYE_CENTER_Y + alive_y, target, True)
+    target = {**target, "mouth_y": MOUTH_CENTER_Y + alive_y}
     draw_mouth(draw, target)
     draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
@@ -306,8 +361,8 @@ def render_idle_frame(t: float) -> Image.Image:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
     target = phase_c_idle_targets(t)
-    draw_eye(draw, 106, 104, target, False)
-    draw_eye(draw, 214, 104, target, True)
+    draw_eye(draw, EYE_LEFT_X, EYE_CENTER_Y, target, False)
+    draw_eye(draw, EYE_RIGHT_X, EYE_CENTER_Y, target, True)
     draw_mouth(draw, target)
     draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)
@@ -316,8 +371,8 @@ def render_idle_frame(t: float) -> Image.Image:
 def render_pose(label: str, target: dict[str, float], *, show_label: bool = True, show_brand: bool = True) -> Image.Image:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
-    draw_eye(draw, 106, 104, target, False)
-    draw_eye(draw, 214, 104, target, True)
+    draw_eye(draw, EYE_LEFT_X, EYE_CENTER_Y, target, False)
+    draw_eye(draw, EYE_RIGHT_X, EYE_CENTER_Y, target, True)
     draw_mouth(draw, target)
     if show_label:
         draw.text((12, 14), label, fill=ACCENT, anchor="lm")
@@ -568,8 +623,8 @@ def render_transition_frame(name: str, t: float) -> Image.Image:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
     target = phase_d_transition_targets(name, t)
-    draw_eye(draw, 106, 104, target, False)
-    draw_eye(draw, 214, 104, target, True)
+    draw_eye(draw, EYE_LEFT_X, EYE_CENTER_Y, target, False)
+    draw_eye(draw, EYE_RIGHT_X, EYE_CENTER_Y, target, True)
     draw_mouth(draw, target)
     return img
 
@@ -645,8 +700,8 @@ def render_speech_frame(t: float) -> Image.Image:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
     target = phase_e_speech_targets(t)
-    draw_eye(draw, 106, 104, target, False)
-    draw_eye(draw, 214, 104, target, True)
+    draw_eye(draw, EYE_LEFT_X, EYE_CENTER_Y, target, False)
+    draw_eye(draw, EYE_RIGHT_X, EYE_CENTER_Y, target, True)
     draw_mouth(draw, target)
     draw.text((160, 220), "Stackchan: Alive", fill=ACCENT, anchor="mm")
     return img.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.NEAREST)

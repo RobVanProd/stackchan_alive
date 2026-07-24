@@ -5,12 +5,19 @@ sprites, image sequences, or expression bitmaps. A custom face can therefore kee
 same blink, gaze, emotion, speech-mouth, and reduced-motion behavior while changing how
 the character looks.
 
+Stackchan ships with four faces. They are all the same engine; every difference below is
+YAML, not C++:
+
+![Faces that ship with Stackchan: Alive](media/face_gallery.png)
+
 There are two supported customization levels:
 
-1. **Persona tuning** changes expression values in YAML. This is the recommended path for
-   most creators and does not require C++ changes.
-2. **Engine skinning** changes the procedural eye, mouth, color, pose, or transition code.
-   Use this only when the character needs a visibly different face language.
+1. **Persona tuning** changes the palette, face geometry, and expression values in YAML.
+   This is the recommended path for most creators and does not require C++ changes. It is
+   enough to produce a face nobody would mistake for the reference one.
+2. **Engine skinning** changes the procedural eye, mouth, pose, or transition *code*. Use
+   this only when the character needs a different face *language* — a third eye, an
+   eyebrow that is its own shape, a mouth that is not a curve.
 
 Start with persona tuning. Move into engine skinning only after the persona passes its
 validator and looks coherent in every runtime mode.
@@ -59,9 +66,134 @@ The PlatformIO pre-build step validates the pack and generates:
 ```text
 .pio/build/<environment>/generated/PersonaExpressions.hpp
 .pio/build/<environment>/generated/PersonaBehavior.hpp
+.pio/build/<environment>/generated/PersonaFace.hpp
 ```
 
 These files are generated output. Edit the YAML source, not the generated headers.
+
+## See It Before You Flash
+
+You do not have to guess, and you do not have to flash to find out. The preview renderer
+drives the same drawing code the firmware uses, so what it renders is what the panel shows.
+
+Render every installed persona into one comparison sheet:
+
+```bash
+python tools/render_face_gallery.py
+```
+
+Render only the one you are working on:
+
+```bash
+python tools/render_face_gallery.py nova
+```
+
+That writes `docs/media/face_gallery.png` and a per-persona strip at
+`docs/media/face_<id>.png`, each showing the idle, listen, think, speak, and sleep poses.
+Edit YAML, re-run, look. The loop takes seconds and needs no hardware.
+
+Preview dependencies are small:
+
+```bash
+python -m pip install -r requirements-preview.txt
+```
+
+## The Face Block: Palette And Geometry
+
+`personas/<id>/expressions.yaml` has a `face:` block that controls what the character
+actually looks like. The display is 320x240 and the origin is top-left.
+
+```yaml
+face:
+  palette:
+    background: "0x071013"   # field the face is drawn on
+    eye: "0xF7FBFF"          # eye fill
+    mouth: "0xFF6B8A"        # mouth stroke
+    accent: "0x61E4D7"       # lid edge highlight and preview labels
+  eyes:
+    center_y: 104            # vertical centre of both eyes
+    spacing: 108             # distance between the two eye centres
+    width: 70
+    height: 56
+    corner_radius: 18        # 0 is a hard rectangle, height/2 is a full capsule
+  mouth:
+    center_y: 172
+    width: 64
+```
+
+| Field | Range | What it changes |
+| --- | --- | --- |
+| `palette.background` | `0x000000`-`0xFFFFFF` | Whole-screen field colour |
+| `palette.eye` | `0x000000`-`0xFFFFFF` | Eye fill; the single strongest identity cue |
+| `palette.mouth` | `0x000000`-`0xFFFFFF` | Mouth stroke colour |
+| `palette.accent` | `0x000000`-`0xFFFFFF` | Lid edge highlight |
+| `eyes.center_y` | on-screen | Eyes high reads younger; low reads heavier |
+| `eyes.spacing` | 40-260 px | Wide-set reads machine-like; close-set reads small and young |
+| `eyes.width` | 20-140 px | |
+| `eyes.height` | 12-130 px | Short and wide becomes a visor slit; tall becomes a wide-eyed stare |
+| `eyes.corner_radius` | 0 to `height/2` | The fastest way to change character: hard corners read mechanical, full capsules read soft |
+| `mouth.center_y` | below the eyes | Distance from the eyes changes apparent face length |
+| `mouth.width` | 16-200 px | |
+
+Colours accept `0xRRGGBB`, `#RRGGBB`, or bare `RRGGBB`. Every value is clamped by the
+generator, so a hand-edited pack cannot place an eye off the edge of the panel — but it can
+still look wrong, which is what the gallery is for.
+
+### Three levers that do most of the work
+
+If you change nothing else, change these:
+
+1. **`corner_radius`** — hard rectangle versus capsule is the difference between Bolt and Pip.
+2. **`eyes.height`** relative to `width` — a 92x34 slit and an 86x74 oval are not the same
+   creature.
+3. **`palette.eye` against `palette.background`** — cold white on near-black, warm amber on
+   black, and pale cyan on deep teal all read as different machines.
+
+## How A Persona Breathes
+
+`personas/<id>/behavior.yaml` carries a `breathing:` block. Breathing is a large part of
+whether a face reads as alive, and it is worth tuning alongside the geometry.
+
+```yaml
+breathing:
+  period_jitter: 0.18      # 0.0 is a metronome, which reads as machinery
+  depth_jitter: 0.14
+  exhale_fraction: 0.48    # exhale longer than inhale reads restful
+  hold_fraction: 0.12      # still pause at the bottom of the breath
+  sigh_min_cycles: 7       # a deeper breath every 7-21 breaths
+  sigh_cycle_span: 14
+  sigh_depth: 1.7
+```
+
+Sigh timing is counted in breaths, not seconds, so a persona with a slow `breathing_hz`
+also sighs less often without extra tuning.
+
+## The Four Shipped Faces
+
+These are worked examples. Copy the one closest to what you want and edit from there.
+
+| Persona | Look | Face values that make it | Breathing |
+| --- | --- | --- | --- |
+| `spark` | Crisp white rounded rectangles on near-black. The reference. | `70x56`, radius `18`, spacing `108` | 0.20 Hz, ordinary jitter, sighs every 7-21 breaths |
+| `glow` | Warm cream capsules on deep indigo. Softer and calmer. | `66x52`, radius `26`, spacing `116`, lower `center_y` | 0.16 Hz, low jitter, long hold, rare soft sighs |
+| `pip` | Big pale-cyan ovals set high, small amber mouth. Young and curious. | `86x74`, radius `37` (full capsule), spacing `110`, `center_y 96` | 0.28 Hz, high jitter, frequent catch-breaths |
+| `bolt` | Wide-set amber visor slits with hard corners on pure black. Machine-like. | `92x34`, radius `3`, spacing `140` | 0.11 Hz, almost no jitter, long hold, rare shallow sighs |
+
+Build and flash any of them by name:
+
+```bash
+STACKCHAN_PERSONA=bolt pio run -e stackchan_release_full
+```
+
+On Windows:
+
+```powershell
+$env:STACKCHAN_PERSONA = "bolt"
+pio run -e stackchan_release_full
+```
+
+The persona is selected at build time, so the face is fixed in the image. Swapping faces at
+runtime is a separate, unimplemented feature — see `docs/PERSONA_PACKS.md`.
 
 ## Expression Sections
 

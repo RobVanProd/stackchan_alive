@@ -634,10 +634,87 @@ def validate_pack(pack: PersonaPack) -> list[str]:
     if not 0.00 <= happy <= 0.80:
         issues.append("behavior_emotion_response_happy_out_of_range")
 
+    # Optional breathing block. Absent means the generator's defaults apply.
+    breathing = mapping(pack.behavior.get("breathing"))
+    if breathing:
+        breathing_ranges = {
+            "period_jitter": (0.0, 0.45),
+            "depth_jitter": (0.0, 0.45),
+            "exhale_fraction": (0.20, 0.70),
+            "hold_fraction": (0.00, 0.30),
+            "sigh_depth": (1.00, 2.50),
+        }
+        for key, (low, high) in breathing_ranges.items():
+            if key not in breathing:
+                continue
+            value = float_value(breathing.get(key), low - 1.0)
+            if not low <= value <= high:
+                issues.append(f"behavior_breathing_out_of_range:{key}")
+        for key in ("sigh_min_cycles", "sigh_cycle_span"):
+            if key not in breathing:
+                continue
+            if not 1 <= int_value(breathing.get(key), -1) <= 240:
+                issues.append(f"behavior_breathing_out_of_range:{key}")
+        exhale = float_value(breathing.get("exhale_fraction"), 0.48)
+        hold = float_value(breathing.get("hold_fraction"), 0.12)
+        # Something has to be left over for the inhale.
+        if exhale + hold > 0.85:
+            issues.append("behavior_breathing_leaves_no_inhale")
+
     expressions = mapping(pack.expressions)
     for section in ("neutral", "listen", "think", "drowsy", "yawn"):
         if not mapping(expressions.get(section)):
             issues.append(f"expressions_section_missing:{section}")
+
+    # Optional face block. Absent means the generator's Spark defaults apply.
+    face_spec = mapping(expressions.get("face"))
+    if face_spec:
+        face_palette = mapping(face_spec.get("palette"))
+        for key in ("background", "eye", "mouth", "accent"):
+            if key not in face_palette:
+                continue
+            text = str(face_palette.get(key)).strip().lower().lstrip("#")
+            if text.startswith("0x"):
+                text = text[2:]
+            try:
+                colour = int(text, 16)
+            except ValueError:
+                issues.append(f"expressions_face_palette_invalid:{key}")
+                continue
+            if not 0 <= colour <= 0xFFFFFF:
+                issues.append(f"expressions_face_palette_out_of_range:{key}")
+
+        face_eyes = mapping(face_spec.get("eyes"))
+        face_mouth = mapping(face_spec.get("mouth"))
+        eye_ranges = {
+            "center_y": (10.0, 230.0),
+            "spacing": (40.0, 260.0),
+            "width": (20.0, 140.0),
+            "height": (12.0, 130.0),
+        }
+        for key, (low, high) in eye_ranges.items():
+            if key not in face_eyes:
+                continue
+            value = float_value(face_eyes.get(key), low - 1.0)
+            if not low <= value <= high:
+                issues.append(f"expressions_face_eyes_out_of_range:{key}")
+        if "corner_radius" in face_eyes:
+            radius = int_value(face_eyes.get("corner_radius"), -1)
+            half_height = float_value(face_eyes.get("height"), 56.0) / 2.0
+            if not 0 <= radius <= max(0, int(half_height)):
+                issues.append("expressions_face_eyes_out_of_range:corner_radius")
+        for key, (low, high) in {"center_y": (10.0, 236.0), "width": (16.0, 200.0)}.items():
+            if key not in face_mouth:
+                continue
+            value = float_value(face_mouth.get(key), low - 1.0)
+            if not low <= value <= high:
+                issues.append(f"expressions_face_mouth_out_of_range:{key}")
+
+        # Both eyes must fit on a 320 px panel.
+        eye_width = float_value(face_eyes.get("width"), 70.0)
+        eye_spacing = float_value(face_eyes.get("spacing"), 108.0)
+        if eye_spacing / 2.0 + eye_width / 2.0 > 158.0:
+            issues.append("expressions_face_eyes_off_screen")
 
     def check_expression_float(section: str, key: str, minimum: float, maximum: float) -> None:
         spec = mapping(expressions.get(section))

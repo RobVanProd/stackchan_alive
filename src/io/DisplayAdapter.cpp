@@ -4,13 +4,16 @@
 #include <M5Unified.h>
 #include <math.h>
 
+#include "PersonaFace.hpp"
+
 namespace {
 
-constexpr uint32_t kBg = 0x071013;
-constexpr uint32_t kEye = 0xF7FBFF;
+// Palette comes from the active persona pack's expressions.yaml.
+constexpr uint32_t kBg = stackchan::generated_persona::kFaceBackgroundColor;
+constexpr uint32_t kEye = stackchan::generated_persona::kFaceEyeColor;
 constexpr uint32_t kPupil = 0x111827;
-constexpr uint32_t kAccent = 0x61E4D7;
-constexpr uint32_t kMouth = 0xFF6B8A;
+constexpr uint32_t kAccent = stackchan::generated_persona::kFaceAccentColor;
+constexpr uint32_t kMouth = stackchan::generated_persona::kFaceMouthColor;
 constexpr uint32_t kFrameBudgetUs = 33333;
 constexpr uint32_t kDisplayKeepAliveMs = 5000;
 constexpr uint8_t kDisplayBrightness = 180;
@@ -290,7 +293,9 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
   const int32_t y = roundToInt(eye.cy - eye.height * 0.5f);
   const int32_t w = max<int32_t>(8, roundToInt(eye.width));
   const int32_t h = max<int32_t>(4, roundToInt(eye.height));
-  const int32_t radius = min<int32_t>(18, h / 2);
+  // Persona-authored roundness: 0 reads as a hard rectangle, h/2 as a capsule.
+  const int32_t radius =
+      min<int32_t>(stackchan::generated_persona::kEyeCornerRadius, h / 2);
 
   canvas_->fillRoundRect(x, y, w, h, radius, kEye);
 
