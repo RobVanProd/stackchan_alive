@@ -5,6 +5,17 @@ idle_life:
   fidget_min_ms: 16000
   fidget_max_ms: 42000
   reduced_motion_scale: 0.30
+breathing:
+  # Glow breathes more evenly than Spark: still not a metronome, but settled.
+  period_jitter: 0.12
+  depth_jitter: 0.10
+  # A long exhale and a long pause read as calm.
+  exhale_fraction: 0.52
+  hold_fraction: 0.16
+  # Sighs are rarer and softer here.
+  sigh_min_cycles: 11
+  sigh_cycle_span: 18
+  sigh_depth: 1.45
 circadian:
   evening_start_hour: 18
   night_start_hour: 21

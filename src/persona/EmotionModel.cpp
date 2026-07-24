@@ -11,14 +11,94 @@ namespace {
 constexpr float kNightFatigueGain = 0.12f;
 // Bright daytime light makes the character feel a little more alert, not startled.
 constexpr float kDayAlertnessGain = 0.08f;
+
+// How fast a repeated stimulus stops being interesting. Each repeat closes this
+// fraction of the remaining gap to the event's depth ceiling, so the drop-off is
+// steep for the first few repeats and then flattens.
+constexpr float kFamiliarityGain = 0.34f;
+// How fast novelty comes back while a stimulus is absent, per second. Roughly a
+// 90 s recovery from fully habituated back to nearly fresh.
+constexpr float kFamiliarityRecoveryPerSecond = 0.011f;
+
+// How strongly lived experience pulls the resting mood around, per second.
+// Deliberately far slower than emotion decay: minutes move mood, hours move
+// temperament.
+constexpr float kBaselineDriftPerSecond = 0.0016f;
+// Temperament may wander this far from the persona default but no further, so a
+// rough afternoon colours him without turning him into a different character.
+constexpr float kBaselineValenceBand = 0.30f;
+constexpr float kBaselineArousalBand = 0.15f;
+constexpr float kBaselineFocusBand = 0.15f;
 }
 
 void EmotionModel::reset() {
   emotion_ = EmotionalProfile {};
+  baseline_ = EmotionalProfile {};
+  // The rest state the character was tuned around. Temperament drifts from here.
+  baseline_.arousal = 0.20f;
+  baseline_.valence = 0.35f;
+  baseline_.focus = 0.55f;
+  baseline_.fatigue = 0.0f;
+  for (uint8_t i = 0; i < kHabituatedEventTypes; ++i) {
+    familiarity_[i] = 0.0f;
+  }
+  habituation_ = HabituationTelemetry {};
+}
+
+uint8_t EmotionModel::habituationIndex(EventType type) {
+  const uint8_t raw = static_cast<uint8_t>(type);
+  return raw < kHabituatedEventTypes ? raw : static_cast<uint8_t>(kHabituatedEventTypes - 1);
+}
+
+float EmotionModel::habituationDepth(EventType type) {
+  switch (type) {
+    // He should always answer to his name.
+    case EventType::WakeWord:
+      return 0.15f;
+    // Never tune out a fault.
+    case EventType::Error:
+      return 0.0f;
+    // Being shaken stays alarming even when it keeps happening.
+    case EventType::Shaken:
+      return 0.35f;
+    case EventType::PickedUp:
+      return 0.45f;
+    case EventType::LoudNoise:
+      return 0.50f;
+    case EventType::FaceDetected:
+      return 0.55f;
+    case EventType::UserNear:
+    case EventType::Tilted:
+      return 0.60f;
+    case EventType::SoundDirection:
+      return 0.70f;
+    // The headline case: constant petting should stop reading as constant news.
+    case EventType::UserTouched:
+      return 0.75f;
+    default:
+      return 0.40f;
+  }
+}
+
+float EmotionModel::habituationOf(EventType type) const {
+  return familiarity_[habituationIndex(type)] * habituationDepth(type);
 }
 
 void EmotionModel::applyEvent(const RobotEvent& event) {
-  const float s = constrain(event.strength, 0.0f, 1.0f);
+  const uint8_t index = habituationIndex(event.type);
+  const float depth = habituationDepth(event.type);
+  const float suppression = clamp01(familiarity_[index] * depth);
+
+  habituation_.lastEvent = event.type;
+  habituation_.lastSuppression = suppression;
+  habituation_.lastNovelty = 1.0f - suppression;
+
+  // A familiar stimulus still registers, it just stops being news.
+  const float s = constrain(event.strength, 0.0f, 1.0f) * (1.0f - suppression);
+
+  // Grow familiarity toward this event's ceiling. Untouched for a while, it
+  // decays again in update().
+  familiarity_[index] = clamp01(familiarity_[index] + kFamiliarityGain * (1.0f - familiarity_[index]));
 
   switch (event.type) {
     case EventType::FaceDetected:
@@ -181,10 +261,36 @@ void EmotionModel::applyAmbient(float lux, uint8_t hourOfDay) {
 
 void EmotionModel::update(float dt) {
   const float safeDt = constrain(dt, 0.001f, 0.100f);
-  emotion_.arousal = approach(emotion_.arousal, 0.20f, safeDt * 0.08f);
-  emotion_.valence = approach(emotion_.valence, 0.35f, safeDt * 0.04f);
-  emotion_.focus = approach(emotion_.focus, 0.55f, safeDt * 0.06f);
-  emotion_.fatigue = approach(emotion_.fatigue, 0.0f, safeDt * 0.02f);
+
+  // Novelty returns while a stimulus stays away, so the same touch is worth
+  // reacting to again once it has stopped being constant.
+  const float recovery = safeDt * kFamiliarityRecoveryPerSecond;
+  for (uint8_t i = 0; i < kHabituatedEventTypes; ++i) {
+    if (familiarity_[i] > 0.0f) {
+      familiarity_[i] = approach(familiarity_[i], 0.0f, recovery);
+    }
+  }
+
+  // Mood settles toward temperament rather than toward a constant, so where he
+  // comes to rest depends on how the day has gone.
+  emotion_.arousal = approach(emotion_.arousal, baseline_.arousal, safeDt * 0.08f);
+  emotion_.valence = approach(emotion_.valence, baseline_.valence, safeDt * 0.04f);
+  emotion_.focus = approach(emotion_.focus, baseline_.focus, safeDt * 0.06f);
+  emotion_.fatigue = approach(emotion_.fatigue, baseline_.fatigue, safeDt * 0.02f);
+
+  // Temperament follows lived mood far more slowly, and only within a band
+  // around the persona default.
+  const float drift = safeDt * kBaselineDriftPerSecond;
+  baseline_.arousal = approach(baseline_.arousal, emotion_.arousal, drift);
+  baseline_.valence = approach(baseline_.valence, emotion_.valence, drift);
+  baseline_.focus = approach(baseline_.focus, emotion_.focus, drift);
+
+  baseline_.arousal = constrain(baseline_.arousal, 0.20f - kBaselineArousalBand,
+                                0.20f + kBaselineArousalBand);
+  baseline_.valence = constrain(baseline_.valence, 0.35f - kBaselineValenceBand,
+                                0.35f + kBaselineValenceBand);
+  baseline_.focus = constrain(baseline_.focus, 0.55f - kBaselineFocusBand,
+                              0.55f + kBaselineFocusBand);
 }
 
 float EmotionModel::approach(float value, float target, float amount) {

@@ -1,0 +1,28 @@
+schema: stackchan.persona-behavior.v1
+idle_life:
+  # Pip is small and quick: faster, shallower breathing than Spark, and it
+  # fidgets often.
+  breathing_hz: 0.28
+  breathing_px: 1.2
+  fidget_min_ms: 6000
+  fidget_max_ms: 18000
+  reduced_motion_scale: 0.35
+breathing:
+  # Lots of variation and frequent little catch-breaths. Reads as busy and alert.
+  period_jitter: 0.26
+  depth_jitter: 0.22
+  exhale_fraction: 0.42
+  hold_fraction: 0.06
+  sigh_min_cycles: 5
+  sigh_cycle_span: 9
+  sigh_depth: 1.55
+circadian:
+  evening_start_hour: 18
+  night_start_hour: 21
+  morning_start_hour: 6
+  morning_end_hour: 10
+emotion_response:
+  # Easily delighted, easily startled.
+  curiosity_arousal_delta: 0.16
+  safety_valence_delta: -0.34
+  happy_valence_delta: 0.28

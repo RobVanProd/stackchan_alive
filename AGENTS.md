@@ -13,6 +13,11 @@ keep observed facts separate from hypotheses.
 5. `docs/BRIDGE_PROTOCOL.md`, `docs/BRAIN_MODEL.md`, and `docs/CHARACTER_LOCK.md`: firmware/host
    contract, Gemma runtime, memory, tools, and persona policy.
 
+If you are the agent working on the host bridge and brain, start with
+[docs/BRIDGE_AI_HANDOFF.md](docs/BRIDGE_AI_HANDOFF.md). It is the current work list for
+back-and-forth conversation, unprompted speech, curiosity, and room vision, and it says which
+parts are already built.
+
 Feature-specific entry points:
 
 - Face engine: `docs/CUSTOMIZING_THE_FACE.md`

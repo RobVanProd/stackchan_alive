@@ -19,6 +19,7 @@ void IdleLife::reset(uint32_t nowMs) {
   nextMicroExpressionMs_ = nowMs + 1800;
   nextYawnMs_ = nowMs + 4200;
   microKind_ = 0;
+  breath_.reset(nowMs);
 }
 
 void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
@@ -37,7 +38,7 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
                                                      (0.60f + fatigue * 0.45f - arousal * 0.20f),
                                                  0.45f, 1.80f)) *
                           motionScale;
-  const float breath = sinf(static_cast<float>(nowMs) * 0.001f * kTwoPi * breathHz);
+  const float breath = breath_.update(nowMs, breathHz, sleeping);
   const float breathY = breath * breathAmp;
   const float pitchBob = -breath * (sleeping ? 0.22f : 0.38f) * motionScale;
 
@@ -78,6 +79,9 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
   }
 
   telemetry_.breathY = breathY;
+  telemetry_.breathPeriodMs = breath_.periodMs();
+  telemetry_.breathDepth = breath_.depth();
+  telemetry_.sighing = breath_.sighing();
   telemetry_.pitchBobDeg = pitchBob;
   telemetry_.microExpression = pulse;
   telemetry_.yawn = yawn;

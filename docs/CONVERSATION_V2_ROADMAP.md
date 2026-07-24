@@ -1,5 +1,8 @@
 # Conversation V2 Roadmap
 
+> Working on this now? [BRIDGE_AI_HANDOFF.md](BRIDGE_AI_HANDOFF.md) is the actionable task list
+> built on this architecture, and it covers unprompted speech, curiosity, and room vision too.
+
 Continuous two-way conversation is a post-release feature. The v1 release remains wake-gated:
 the user says the wake phrase, Stackchan captures one bounded utterance, replies, and returns to
 idle. This document records the next architecture without expanding the current release gate.

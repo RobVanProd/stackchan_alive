@@ -75,6 +75,7 @@ void FaceAnimator::reset(const FaceTargets& face, uint32_t nowMs) {
   hasPreviousMode_ = false;
   blink_ = BlinkState {};
   saccade_ = SaccadeState {};
+  breath_.reset(nowMs);
   fidget_ = FidgetState {};
   gesture_ = GestureState {};
   speech_ = SpeechState {};
@@ -280,7 +281,9 @@ void FaceAnimator::applyAutonomic(FaceTargets& face, const RobotFrame& frame, ui
   const float breathAmp = (sleeping ? generated_persona::kIdleBreathingPx * 2.0f
                                     : generated_persona::kIdleBreathingPx) *
                           motionScale;
-  const float breathY = sinf(static_cast<float>(nowMs) * 0.001f * 6.2831853f * breathHz) * breathAmp;
+  // Same rhythm generator the persona idle layer uses, so face and body share
+  // one breath instead of two sines drifting against each other.
+  const float breathY = breath_.update(nowMs, breathHz, sleeping) * breathAmp;
   const float stageX = saccade_.offsetX * 4.0f * motionScale;
   const float stageY = saccade_.offsetY * 3.0f * motionScale;
   face.faceX += stageX;

@@ -5,6 +5,20 @@ idle_life:
   fidget_min_ms: 10000
   fidget_max_ms: 30000
   reduced_motion_scale: 0.30
+breathing:
+  # How much each breath may differ in length and depth from the last. At 0.0 the
+  # rhythm is a metronome, which reads as machinery rather than as a resting body.
+  period_jitter: 0.18
+  depth_jitter: 0.14
+  # Fraction of a breath spent letting air out, and the still pause at the end of
+  # it. A longer exhale than inhale plus a held tail is what looks restful.
+  exhale_fraction: 0.48
+  hold_fraction: 0.12
+  # A deeper breath every so often. Cycles are counted, not seconds, so a calm
+  # persona that breathes slowly also sighs less often.
+  sigh_min_cycles: 7
+  sigh_cycle_span: 14
+  sigh_depth: 1.7
 circadian:
   evening_start_hour: 18
   night_start_hour: 21

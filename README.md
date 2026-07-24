@@ -71,7 +71,7 @@ Stackchan: Alive is primarily a real-time character OS:
 - `motion/`: spring dynamics, actuator ownership, and safety limits.
 - `io/`: display, audio, bridge, camera, sensor, speech, and servo adapters.
 - `bridge/`: host-side reference bridge, character harness, and memory scaffold.
-- `personas/`: swappable Character OS persona packs. `personas/spark` is the active reference pack; `personas/glow` is the quieter second pack used to prove the seam.
+- `personas/`: swappable Character OS persona packs. Four ship: `spark` (reference), `glow` (quieter), `pip` (small and curious), and `bolt` (angular and machine-like). Palette, face geometry, and breathing are all YAML.
 - `tools/`: preview, hardware simulation, packaging, release, hardware-evidence, and verification helpers.
 
 Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`
@@ -297,6 +297,18 @@ python tools/render_preview.py
 ```
 
 Outputs are written to `docs/media/`.
+
+Render every installed persona's face into one comparison sheet:
+
+```powershell
+python tools/render_face_gallery.py
+```
+
+![Faces that ship with Stackchan: Alive](docs/media/face_gallery.png)
+
+The preview drives the same drawing code as the firmware, so this is what the panel shows.
+Designing a face is a YAML edit plus a re-render; see
+[docs/CUSTOMIZING_THE_FACE.md](docs/CUSTOMIZING_THE_FACE.md).
 
 ## Release And Evidence Flow
 
