@@ -1,6 +1,26 @@
 # Tunable expression/profile notes for the procedural runtime.
 # Firmware still renders procedurally; these values document the authored target language
 # that preview scripts, tests, and future SD/YAML loading can share.
+
+# The face itself: palette and geometry. These drive both the firmware renderer
+# and tools/render_preview.py, so a preview is what the robot actually shows.
+# Screen is 320x240. See docs/CUSTOMIZING_THE_FACE.md.
+face:
+  palette:
+    background: "0x071013"
+    eye: "0xF7FBFF"
+    mouth: "0xFF6B8A"
+    accent: "0x61E4D7"
+  eyes:
+    center_y: 104
+    spacing: 108        # distance between the two eye centres
+    width: 70
+    height: 56
+    corner_radius: 18   # 0 is a hard rectangle; height/2 is a capsule
+  mouth:
+    center_y: 172
+    width: 64
+
 neutral:
   eye_open: 0.85
   eye_smile: 0.15

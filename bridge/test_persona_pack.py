@@ -78,10 +78,10 @@ class PersonaPackTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual("stackchan.persona-index.v1", first["schema"])
-        self.assertEqual(2, first["pack_count"])
-        self.assertEqual(2, first["valid_count"])
+        self.assertEqual(4, first["pack_count"])
+        self.assertEqual(4, first["valid_count"])
         self.assertEqual(0, first["invalid_count"])
-        self.assertEqual(["glow", "spark"], [entry["id"] for entry in first["packs"]])
+        self.assertEqual(["bolt", "glow", "pip", "spark"], [entry["id"] for entry in first["packs"]])
         for entry in first["packs"]:
             self.assertEqual(64, len(entry["sha256"]))
             self.assertFalse(Path(entry["path"]).is_absolute())

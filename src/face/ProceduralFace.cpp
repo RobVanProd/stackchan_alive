@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <math.h>
 
+#include "PersonaFace.hpp"
+
 namespace stackchan {
 
 void ProceduralFace::begin(IDisplay* display) {
@@ -50,11 +52,18 @@ void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {
 }
 
 EyeGeometry ProceduralFace::makeEye(const RobotFrame& frame, bool rightEye) const {
+  // Eye placement, size, and the squint narrowing all come from the persona
+  // pack, so a new face is a YAML edit rather than a firmware change.
+  const float halfSpacing = generated_persona::kEyeSpacing * 0.5f;
+  const float squintNarrow = generated_persona::kEyeWidth * 0.143f;
+
   EyeGeometry eye;
-  eye.cx = (rightEye ? 214.0f : 106.0f) + frame.face.faceX;
-  eye.cy = 104.0f + frame.face.faceY;
-  eye.width = (70.0f - frame.face.squint * 10.0f) * frame.face.eyeWidthScale;
-  eye.height = 56.0f;
+  eye.cx = generated_persona::kFaceScreenCenterX +
+           (rightEye ? halfSpacing : -halfSpacing) + frame.face.faceX;
+  eye.cy = generated_persona::kEyeCenterY + frame.face.faceY;
+  eye.width = (generated_persona::kEyeWidth - frame.face.squint * squintNarrow) *
+              frame.face.eyeWidthScale;
+  eye.height = generated_persona::kEyeHeight;
   const float visibleOpen = constrain(frame.face.eyeOpen, 0.0f, 1.08f);
   eye.upperLid = (1.0f - visibleOpen) * eye.height;
   eye.lowerLid = frame.face.eyeSmile * 10.0f;
@@ -76,9 +85,9 @@ EyeGeometry ProceduralFace::makeEye(const RobotFrame& frame, bool rightEye) cons
 
 MouthGeometry ProceduralFace::makeMouth(const RobotFrame& frame) const {
   MouthGeometry mouth;
-  mouth.cx += frame.face.faceX;
-  mouth.cy += frame.face.faceY;
-  mouth.width += frame.face.mouthWidthDelta;
+  mouth.cx = generated_persona::kFaceScreenCenterX + frame.face.faceX;
+  mouth.cy = generated_persona::kMouthCenterY + frame.face.faceY;
+  mouth.width = generated_persona::kMouthWidth + frame.face.mouthWidthDelta;
   mouth.smile = frame.face.mouthSmile;
   mouth.open = frame.face.mouthOpen;
   mouth.cornerL = frame.face.mouthCornerL;

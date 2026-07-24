@@ -5,6 +5,11 @@ import sys
 Import("env")
 
 
+# CoreS3 panel size. Face geometry is clamped against this so a hand-edited pack
+# cannot place an eye off the edge of the display.
+SCREEN_WIDTH = 320.0
+SCREEN_HEIGHT = 240.0
+
 INTENT_ENUMS = {
     "boot": "Boot",
     "idle": "Idle",
@@ -76,6 +81,22 @@ def _entry(intent_key, line):
         f"    {{SpeechIntent::{intent}, {_cpp_string(text)}, "
         f"{priority}, SpeechEarcon::{earcon}, {delay_ms}}},"
     )
+
+
+def _clamp_color(value, default):
+    """Accept 0xRRGGBB, #RRGGBB, or RRGGBB and return a 24-bit int."""
+    text = str(value if value is not None else "").strip().lower()
+    for prefix in ("0x", "#"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    try:
+        numeric = int(text, 16)
+    except ValueError:
+        return default
+    if not 0 <= numeric <= 0xFFFFFF:
+        return default
+    return numeric
 
 
 def _clamp_int(value, minimum, maximum, default):
@@ -180,6 +201,7 @@ generated_dir.mkdir(parents=True, exist_ok=True)
 speech_header_path = generated_dir / "PersonaSpeechLines.hpp"
 earcon_header_path = generated_dir / "PersonaEarcons.hpp"
 behavior_header_path = generated_dir / "PersonaBehavior.hpp"
+face_header_path = generated_dir / "PersonaFace.hpp"
 expressions_header_path = generated_dir / "PersonaExpressions.hpp"
 prompt_assets_header_path = generated_dir / "PersonaPromptAssets.hpp"
 
@@ -334,8 +356,17 @@ else:
 
 behavior = _mapping(pack.behavior)
 idle_life = _mapping(behavior.get("idle_life"))
+breathing = _mapping(behavior.get("breathing"))
 circadian = _mapping(behavior.get("circadian"))
 emotion_response = _mapping(behavior.get("emotion_response"))
+
+sigh_min_cycles = _clamp_int(breathing.get("sigh_min_cycles"), 1, 240, 7)
+sigh_cycle_span = _clamp_int(breathing.get("sigh_cycle_span"), 1, 240, 14)
+# Exhale plus hold must leave room for an inhale, or the breath never rises.
+exhale_fraction = _clamp_float(breathing.get("exhale_fraction"), 0.20, 0.70, 0.48)
+hold_fraction = _clamp_float(breathing.get("hold_fraction"), 0.00, 0.30, 0.12)
+if exhale_fraction + hold_fraction > 0.85:
+    hold_fraction = max(0.0, 0.85 - exhale_fraction)
 
 fidget_min_ms = _clamp_int(idle_life.get("fidget_min_ms"), 1000, 120000, 10000)
 fidget_max_ms = _clamp_int(idle_life.get("fidget_max_ms"), fidget_min_ms, 180000, 30000)
@@ -363,6 +394,21 @@ behavior_parts = [
     "static constexpr float kReducedMotionScale = "
     f"{_cpp_float(_clamp_float(idle_life.get('reduced_motion_scale'), 0.05, 1.00, 0.30))};",
     "",
+    "// Breath-to-breath variation. At 0.0 the rhythm is a metronome, which reads",
+    "// as machinery rather than as a resting body.",
+    "static constexpr float kBreathPeriodJitter = "
+    f"{_cpp_float(_clamp_float(breathing.get('period_jitter'), 0.00, 0.45, 0.18))};",
+    "static constexpr float kBreathDepthJitter = "
+    f"{_cpp_float(_clamp_float(breathing.get('depth_jitter'), 0.00, 0.45, 0.14))};",
+    "// Shape of one breath: time spent exhaling, then held still at the bottom.",
+    f"static constexpr float kBreathExhaleFraction = {_cpp_float(exhale_fraction)};",
+    f"static constexpr float kBreathHoldFraction = {_cpp_float(hold_fraction)};",
+    "// A deeper breath every so often, counted in cycles rather than seconds.",
+    f"static constexpr uint32_t kSighMinCycles = {sigh_min_cycles}UL;",
+    f"static constexpr uint32_t kSighCycleSpan = {sigh_cycle_span}UL;",
+    "static constexpr float kSighDepth = "
+    f"{_cpp_float(_clamp_float(breathing.get('sigh_depth'), 1.00, 2.50, 1.70))};",
+    "",
     "// Circadian hour windows; these bias energy without forcing a mode.",
     f"static constexpr uint8_t kEveningStartHour = {_clamp_int(circadian.get('evening_start_hour'), 0, 23, 18)};",
     f"static constexpr uint8_t kNightStartHour = {_clamp_int(circadian.get('night_start_hour'), 0, 23, 21)};",
@@ -389,6 +435,63 @@ else:
     behavior_header_path.write_text(behavior_text, encoding="utf-8")
 
 expressions = _mapping(pack.expressions)
+
+# --- Face palette and geometry -------------------------------------------------
+# The display is 320x240. Everything here is clamped so a malformed pack can
+# still produce a face that fits on screen rather than one drawn off the edge.
+face_spec = _mapping(expressions.get("face"))
+face_palette = _mapping(face_spec.get("palette"))
+face_eyes = _mapping(face_spec.get("eyes"))
+face_mouth = _mapping(face_spec.get("mouth"))
+
+eye_width = _clamp_float(face_eyes.get("width"), 20.0, 140.0, 70.0)
+eye_height = _clamp_float(face_eyes.get("height"), 12.0, 130.0, 56.0)
+eye_spacing = _clamp_float(face_eyes.get("spacing"), 40.0, 260.0, 108.0)
+# Keep both eyes fully on screen: half the spacing plus half an eye must fit.
+max_spacing = max(40.0, 2.0 * (SCREEN_WIDTH * 0.5 - eye_width * 0.5 - 2.0))
+eye_spacing = min(eye_spacing, max_spacing)
+eye_center_y = _clamp_float(face_eyes.get("center_y"), eye_height * 0.5 + 2.0,
+                            SCREEN_HEIGHT - eye_height * 0.5 - 2.0, 104.0)
+eye_corner_radius = _clamp_int(face_eyes.get("corner_radius"), 0, int(eye_height // 2), 18)
+
+mouth_width = _clamp_float(face_mouth.get("width"), 16.0, 200.0, 64.0)
+mouth_center_y = _clamp_float(face_mouth.get("center_y"), eye_center_y + eye_height * 0.5 + 4.0,
+                              SCREEN_HEIGHT - 8.0, 172.0)
+
+face_parts = [
+    "#pragma once",
+    "",
+    "#include <stdint.h>",
+    "",
+    "namespace stackchan {",
+    "namespace generated_persona {",
+    "",
+    f"static constexpr const char* kFacePersonaId = {_cpp_string(pack.pack_id)};",
+    "",
+    "// Face palette as 0xRRGGBB. The display adapter converts to the panel format.",
+    f"static constexpr uint32_t kFaceBackgroundColor = 0x{_clamp_color(face_palette.get('background'), 0x071013):06X}UL;",
+    f"static constexpr uint32_t kFaceEyeColor = 0x{_clamp_color(face_palette.get('eye'), 0xF7FBFF):06X}UL;",
+    f"static constexpr uint32_t kFaceMouthColor = 0x{_clamp_color(face_palette.get('mouth'), 0xFF6B8A):06X}UL;",
+    f"static constexpr uint32_t kFaceAccentColor = 0x{_clamp_color(face_palette.get('accent'), 0x61E4D7):06X}UL;",
+    "",
+    "// Geometry in display pixels, clamped to keep the face on a 320x240 panel.",
+    f"static constexpr float kFaceScreenCenterX = {_cpp_float(SCREEN_WIDTH * 0.5)};",
+    f"static constexpr float kEyeCenterY = {_cpp_float(eye_center_y)};",
+    f"static constexpr float kEyeSpacing = {_cpp_float(eye_spacing)};",
+    f"static constexpr float kEyeWidth = {_cpp_float(eye_width)};",
+    f"static constexpr float kEyeHeight = {_cpp_float(eye_height)};",
+    f"static constexpr int32_t kEyeCornerRadius = {eye_corner_radius};",
+    f"static constexpr float kMouthCenterY = {_cpp_float(mouth_center_y)};",
+    f"static constexpr float kMouthWidth = {_cpp_float(mouth_width)};",
+    "",
+    "}  // namespace generated_persona",
+    "}  // namespace stackchan",
+    "",
+]
+
+face_text = "\n".join(face_parts)
+if not (face_header_path.exists() and face_header_path.read_text(encoding="utf-8") == face_text):
+    face_header_path.write_text(face_text, encoding="utf-8")
 
 
 def _expr_pose(spec, defaults=None):

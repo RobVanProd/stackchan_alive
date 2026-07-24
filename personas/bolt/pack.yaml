@@ -1,0 +1,19 @@
+schema: stackchan.persona-pack.v1
+id: bolt
+name: "Stackchan Bolt"
+version: 0.1.0
+author: "RobVanProd"
+license: Apache-2.0
+description: "Community Stackchan: Alive character OS persona. Edit the copied YAML, validate, then build."
+provenance:
+  character_lock: ../../docs/CHARACTER_LOCK.md
+  voice_policy: ../../data/voice_source_provenance.yaml
+  voice_persona_source: ../../data/voice_persona.yaml
+  expression_source: ../../data/expressions.yaml
+files:
+  character: character.yaml
+  prompt: prompt.md
+  behavior: behavior.yaml
+  expressions: expressions.yaml
+  earcons: earcons.yaml
+  voice: voice.yaml

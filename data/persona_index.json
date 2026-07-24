@@ -1,7 +1,25 @@
 {
   "invalid_count": 0,
-  "pack_count": 2,
+  "pack_count": 4,
   "packs": [
+    {
+      "author": "RobVanProd",
+      "capabilities": {
+        "bridge_load_time": true,
+        "bridge_runtime_hot_swap": true,
+        "firmware_build_time": true,
+        "runtime_hot_swap": false
+      },
+      "description": "Community Stackchan: Alive character OS persona. Edit the copied YAML, validate, then build.",
+      "id": "bolt",
+      "issues": [],
+      "license": "Apache-2.0",
+      "name": "Stackchan Bolt",
+      "path": "personas/bolt",
+      "sha256": "208dc449beecaa056353ab6188359f0b555f8f5ecd4cbbe3f37867371956c2c5",
+      "valid": true,
+      "version": "0.1.0"
+    },
     {
       "author": "RobVanProd",
       "capabilities": {
@@ -16,7 +34,25 @@
       "license": "Apache-2.0",
       "name": "Stackchan Glow",
       "path": "personas/glow",
-      "sha256": "05dda1f419666d1e4f7e359663bfe65a2b96c4bb5205fbeeee149bfd219d3b6b",
+      "sha256": "5de6704656bf0e31a45d67c32c06b41a97682c390f8664a91660641b7e7ff883",
+      "valid": true,
+      "version": "0.1.0"
+    },
+    {
+      "author": "RobVanProd",
+      "capabilities": {
+        "bridge_load_time": true,
+        "bridge_runtime_hot_swap": true,
+        "firmware_build_time": true,
+        "runtime_hot_swap": false
+      },
+      "description": "Community Stackchan: Alive character OS persona. Edit the copied YAML, validate, then build.",
+      "id": "pip",
+      "issues": [],
+      "license": "Apache-2.0",
+      "name": "Stackchan Pip",
+      "path": "personas/pip",
+      "sha256": "7da5081652bd0d0e3923accff10c7d7ff4952c2ddcf3affde84a16945596e800",
       "valid": true,
       "version": "0.1.0"
     },
@@ -34,11 +70,11 @@
       "license": "Apache-2.0",
       "name": "Stackchan Spark",
       "path": "personas/spark",
-      "sha256": "0d1ebe755c03eabf8c62e32bf6cc79cc3d95bffb7d90413c881a6f2c9c1a2d5c",
+      "sha256": "a554f3969e2782f20ba9efbe9c515a5f285ad9eda9be3773b6efc69b04cfbde8",
       "valid": true,
       "version": "0.1.0"
     }
   ],
   "schema": "stackchan.persona-index.v1",
-  "valid_count": 2
+  "valid_count": 4
 }

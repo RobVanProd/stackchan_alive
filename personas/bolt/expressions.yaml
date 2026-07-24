@@ -2,41 +2,42 @@
 # Firmware still renders procedurally; these values document the authored target language
 # that preview scripts, tests, and future SD/YAML loading can share.
 
-# Glow's face: warmer and softer than Spark. Eyes sit slightly lower and wider
-# apart, fully rounded into capsules, on a deep indigo field.
+# Bolt's face: angular and intense. Wide-set, narrow, hard-cornered eyes like a
+# visor slit, over a wide flat mouth. Almost no roundness anywhere, which is what
+# separates it from Pip and Spark at a glance.
 face:
   palette:
-    background: "0x0B0A18"
-    eye: "0xFFE9C4"
-    mouth: "0xE8A0C0"
-    accent: "0xB08CE8"
+    background: "0x000000"
+    eye: "0xFFB020"
+    mouth: "0xFF3B30"
+    accent: "0xFF6A00"
   eyes:
-    center_y: 108
-    spacing: 116
-    width: 66
-    height: 52
-    corner_radius: 26
+    center_y: 100
+    spacing: 140
+    width: 92
+    height: 34
+    corner_radius: 3    # hard rectangle
   mouth:
-    center_y: 176
-    width: 58
+    center_y: 170
+    width: 86
 
 neutral:
-  eye_open: 0.78
-  eye_smile: 0.22
-  mouth_smile: 0.10
+  eye_open: 0.85
+  eye_smile: 0.15
+  mouth_smile: 0.15
 listen:
-  focus: 0.82
-  pitch_bias_deg: -2.5
+  focus: 0.90
+  pitch_bias_deg: -4.0
 think:
-  pupil_y: -0.14
-  yaw_bias_deg: 12.0
+  pupil_y: -0.20
+  yaw_bias_deg: 18.0
 drowsy:
   perceptual_purpose: evening circadian fatigue; eyelids heavy without forcing Sleep mode
-  eye_open: 0.52
-  squint: 0.14
-  brow_tilt: -0.05
-  mouth_smile: 0.04
-  face_y: 1.2
+  eye_open: 0.58
+  squint: 0.18
+  brow_tilt: -0.08
+  mouth_smile: 0.02
+  face_y: 1.5
 yawn:
   perceptual_purpose: fatigue peak; mouth opens while eyes squeeze slowly
   duration_ms: 1200

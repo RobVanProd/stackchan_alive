@@ -1,5 +1,6 @@
 #pragma once
 
+#include "persona/BreathRhythm.hpp"
 #include "persona/StateMatrix.hpp"
 
 namespace stackchan {
@@ -10,6 +11,11 @@ struct IdleLifeTelemetry {
   float microExpression = 0.0f;
   float yawn = 0.0f;
   float pupilScale = 1.0f;
+  // Length of the breath currently being taken, in ms. Varies cycle to cycle.
+  uint32_t breathPeriodMs = 0;
+  // 1.0 for an ordinary breath, higher while a sigh is being drawn.
+  float breathDepth = 1.0f;
+  bool sighing = false;
 };
 
 class IdleLife {
@@ -26,6 +32,7 @@ class IdleLife {
   uint32_t nextYawnMs_ = 0;
   uint8_t microKind_ = 0;
   IdleLifeTelemetry telemetry_;
+  BreathRhythm breath_;
 
   void scheduleNextMicroExpression(uint32_t nowMs);
   void scheduleNextYawn(uint32_t nowMs);

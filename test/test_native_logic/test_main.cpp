@@ -1007,6 +1007,207 @@ void test_idle_life_yawn_uses_fatigue_and_reduced_motion() {
   TEST_ASSERT_GREATER_THAN_FLOAT(reducedMotion.telemetry().yawn * 2.0f, fullMotion.telemetry().yawn);
 }
 
+namespace {
+
+RobotEvent makeHabituationEvent(EventType type, float strength = 1.0f) {
+  RobotEvent event;
+  event.type = type;
+  event.strength = strength;
+  return event;
+}
+
+void settleEmotion(EmotionModel& model, int seconds) {
+  for (int i = 0; i < seconds * 20; ++i) {
+    model.update(0.050f);
+  }
+}
+
+}  // namespace
+
+void test_habituation_damps_repeated_touch() {
+  EmotionModel model;
+  model.reset();
+
+  const float firstBefore = model.profile().arousal;
+  model.applyEvent(makeHabituationEvent(EventType::UserTouched));
+  const float firstDelta = model.profile().arousal - firstBefore;
+
+  // Same poke, over and over, with a short settle between each.
+  float lastDelta = firstDelta;
+  for (int i = 0; i < 9; ++i) {
+    settleEmotion(model, 3);
+    const float before = model.profile().arousal;
+    model.applyEvent(makeHabituationEvent(EventType::UserTouched));
+    lastDelta = model.profile().arousal - before;
+  }
+
+  // The first contact must still land at full strength, and a well-worn one
+  // must land measurably softer.
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.15f, firstDelta);
+  TEST_ASSERT_LESS_THAN_FLOAT(firstDelta * 0.60f, lastDelta);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, lastDelta);
+}
+
+void test_habituation_recovers_after_the_stimulus_stops() {
+  EmotionModel model;
+  model.reset();
+
+  for (int i = 0; i < 8; ++i) {
+    model.applyEvent(makeHabituationEvent(EventType::UserTouched));
+    settleEmotion(model, 1);
+  }
+  const float worn = model.habituationOf(EventType::UserTouched);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.20f, worn);
+
+  // Leave him alone for a few minutes.
+  settleEmotion(model, 240);
+  TEST_ASSERT_LESS_THAN_FLOAT(worn * 0.50f, model.habituationOf(EventType::UserTouched));
+}
+
+void test_habituation_spares_name_and_faults() {
+  EmotionModel model;
+  model.reset();
+
+  for (int i = 0; i < 20; ++i) {
+    model.applyEvent(makeHabituationEvent(EventType::WakeWord));
+    model.applyEvent(makeHabituationEvent(EventType::Error));
+    settleEmotion(model, 1);
+  }
+
+  // He should always answer to his name, and never tune out a fault.
+  TEST_ASSERT_LESS_THAN_FLOAT(0.20f, model.habituationOf(EventType::WakeWord));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, model.habituationOf(EventType::Error));
+  // Being shaken must stay alarming even when it keeps happening.
+  for (int i = 0; i < 20; ++i) {
+    model.applyEvent(makeHabituationEvent(EventType::Shaken));
+    settleEmotion(model, 1);
+  }
+  TEST_ASSERT_LESS_THAN_FLOAT(0.40f, model.habituationOf(EventType::Shaken));
+}
+
+void test_temperament_diverges_with_experience() {
+  EmotionModel kind;
+  EmotionModel rough;
+  kind.reset();
+  rough.reset();
+
+  // Two robots, two very different afternoons.
+  for (int i = 0; i < 40; ++i) {
+    kind.applyEvent(makeHabituationEvent(EventType::FaceDetected));
+    kind.applyEvent(makeHabituationEvent(EventType::UserTouched, 0.35f));
+    settleEmotion(kind, 5);
+
+    rough.applyEvent(makeHabituationEvent(EventType::Shaken));
+    rough.applyEvent(makeHabituationEvent(EventType::LoudNoise));
+    settleEmotion(rough, 5);
+  }
+
+  settleEmotion(kind, 300);
+  settleEmotion(rough, 300);
+
+  // Where each one comes to rest should now reflect how it was treated.
+  TEST_ASSERT_GREATER_THAN_FLOAT(rough.profile().valence + 0.10f, kind.profile().valence);
+  TEST_ASSERT_GREATER_THAN_FLOAT(rough.baseline().valence, kind.baseline().valence);
+}
+
+void test_temperament_stays_inside_its_band() {
+  EmotionModel model;
+  model.reset();
+
+  // Relentlessly bad treatment must colour him, not replace him.
+  for (int i = 0; i < 400; ++i) {
+    model.applyEvent(makeHabituationEvent(EventType::Shaken));
+    model.applyEvent(makeHabituationEvent(EventType::LoudNoise));
+    settleEmotion(model, 5);
+  }
+
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.35f - 0.31f, model.baseline().valence);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.35f + 0.31f, model.baseline().valence);
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.20f - 0.16f, model.baseline().arousal);
+  TEST_ASSERT_LESS_THAN_FLOAT(0.20f + 0.16f, model.baseline().arousal);
+}
+
+void test_breathing_is_not_metronomic() {
+  IdleLife idle;
+  idle.reset(0);
+
+  uint32_t observed[8] = {};
+  uint8_t seen = 0;
+  uint32_t lastPeriod = 0;
+
+  for (uint32_t t = 0; t < 120000u && seen < 8; t += 20u) {
+    RobotFrame frame = makeNeutralFrame();
+    frame.mode = CharacterMode::Idle;
+    idle.apply(frame, t, false);
+    const uint32_t period = idle.telemetry().breathPeriodMs;
+    if (period != 0 && period != lastPeriod) {
+      observed[seen++] = period;
+      lastPeriod = period;
+    }
+  }
+
+  TEST_ASSERT_EQUAL_UINT8(8, seen);
+
+  // Consecutive breaths must not all be the same length.
+  uint8_t distinct = 0;
+  for (uint8_t i = 1; i < seen; ++i) {
+    if (observed[i] != observed[0]) {
+      ++distinct;
+    }
+  }
+  TEST_ASSERT_GREATER_THAN_UINT8(3, distinct);
+
+  // ...but every breath must stay in a plausible resting range.
+  for (uint8_t i = 0; i < seen; ++i) {
+    TEST_ASSERT_GREATER_THAN_UINT32(2000u, observed[i]);
+    TEST_ASSERT_LESS_THAN_UINT32(12000u, observed[i]);
+  }
+}
+
+void test_breathing_produces_occasional_deeper_sigh() {
+  IdleLife idle;
+  idle.reset(0);
+
+  bool sighSeen = false;
+  float deepest = 0.0f;
+  for (uint32_t t = 0; t < 600000u; t += 20u) {
+    RobotFrame frame = makeNeutralFrame();
+    frame.mode = CharacterMode::Idle;
+    idle.apply(frame, t, false);
+    if (idle.telemetry().sighing) {
+      sighSeen = true;
+    }
+    const float amp = fabsf(idle.telemetry().breathY);
+    if (amp > deepest) {
+      deepest = amp;
+    }
+  }
+
+  TEST_ASSERT_TRUE(sighSeen);
+  // A sigh is visibly deeper than an ordinary breath, but still bounded.
+  TEST_ASSERT_GREATER_THAN_FLOAT(1.10f, deepest);
+  TEST_ASSERT_LESS_THAN_FLOAT(3.00f, deepest);
+}
+
+void test_breathing_survives_a_stalled_frame() {
+  IdleLife steady;
+  IdleLife stalled;
+  steady.reset(0);
+  stalled.reset(0);
+
+  // A long gap between frames must not teleport the breath forward.
+  RobotFrame a = makeNeutralFrame();
+  steady.apply(a, 0, false);
+  RobotFrame b = makeNeutralFrame();
+  stalled.apply(b, 0, false);
+
+  RobotFrame c = makeNeutralFrame();
+  stalled.apply(c, 9000, false);
+
+  TEST_ASSERT_TRUE(fabsf(c.face.faceY) < 4.0f);
+  TEST_ASSERT_GREATER_THAN_UINT32(0u, stalled.telemetry().breathPeriodMs);
+}
+
 void test_intent_engine_reduced_motion_dampens_idle_life() {
   IntentEngine fullMotion;
   IntentEngine reducedMotion;
@@ -7372,6 +7573,14 @@ int main() {
   RUN_TEST(test_idle_life_reduced_motion_dampens_offsets);
   RUN_TEST(test_idle_life_micro_expression_is_deterministic);
   RUN_TEST(test_idle_life_yawn_uses_fatigue_and_reduced_motion);
+  RUN_TEST(test_habituation_damps_repeated_touch);
+  RUN_TEST(test_habituation_recovers_after_the_stimulus_stops);
+  RUN_TEST(test_habituation_spares_name_and_faults);
+  RUN_TEST(test_temperament_diverges_with_experience);
+  RUN_TEST(test_temperament_stays_inside_its_band);
+  RUN_TEST(test_breathing_is_not_metronomic);
+  RUN_TEST(test_breathing_produces_occasional_deeper_sigh);
+  RUN_TEST(test_breathing_survives_a_stalled_frame);
   RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
   RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_intent_engine_applies_circadian_context);
