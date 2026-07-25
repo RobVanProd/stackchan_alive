@@ -154,6 +154,36 @@ class ConversationSessionTests(unittest.TestCase):
             self.assertEqual(expected, session.snapshot(turn * 100 + 20)["conversation_reply_window_ms"])
             session.tick(turn * 100 + 20)
 
+    def test_started_capture_gets_bounded_time_to_finish_after_short_window(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(
+                reply_window_ms=2_000,
+                reply_window_min_ms=1_000,
+                reply_window_step_ms=1_000,
+                acoustic_tail_ms=0,
+            )
+        )
+        session.wake(0)
+        session.utterance_committed(10, "first")
+        session.response_started(20)
+        session.playback_completed(30)
+        session.tick(30)
+        session.utterance_committed(40, "second")
+        session.response_started(50)
+        session.playback_completed(60)
+        session.tick(60)
+
+        started = session.utterance_started(900)
+        self.assertEqual("listening", started.reason)
+        self.assertEqual("capture_in_progress", session.tick(1_060).reason)
+        snapshot = session.snapshot(1_100)
+        self.assertEqual(0, snapshot["conversation_reply_window_remaining_ms"])
+        self.assertEqual(1_800, snapshot["conversation_capture_commit_remaining_ms"])
+
+        committed = session.utterance_committed(2_000, "third")
+        self.assertEqual(("close_capture", "begin_generation"), committed.actions)
+        self.assertEqual(ConversationPhase.THINKING, session.phase)
+
     def test_invalid_config_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             ConversationConfig(reply_window_ms=0)

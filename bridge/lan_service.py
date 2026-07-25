@@ -1044,6 +1044,7 @@ class LanBridgeSession:
         self.room_context = room_context
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
+        self.playback_response_seq = 0
         self.conversation_playback_complete_seq = 0
         self.audio_protocol_errors = 0
         if config.initiative_enabled and (
@@ -1615,28 +1616,31 @@ class LanBridgeSession:
                 return [error_frame("playback_complete_seq_invalid")]
             frame: dict[str, object] = {"type": "heartbeat", "playback_complete_seq": seq}
             if self.conversation is not None:
-                if seq == 0 or seq != self.conversation_response_seq:
+                if seq == 0 or seq != self.playback_response_seq:
                     return [error_frame("playback_complete_seq_mismatch", str(seq))]
                 if seq == self.conversation_playback_complete_seq:
                     frame["playback_complete_duplicate"] = True
                     frame.update(self._conversation_payload())
                     return [frame]
-                transition = self.conversation.playback_completed(now_ms())
-                if "playback_complete" not in transition.actions:
-                    return [
-                        error_frame(
-                            "playback_complete_not_expected",
-                            transition.reason,
-                        )
-                    ]
                 self.conversation_playback_complete_seq = seq
-                frame = {
-                    "type": "conversation_reply_window",
-                    "seq": seq,
-                    "open_after_ms": self.config.conversation_acoustic_tail_ms,
-                    "window_ms": self.conversation.current_reply_window_ms(),
-                }
-                frame.update(self._conversation_payload(transition))
+                if (
+                    seq == self.conversation_response_seq
+                    and self.conversation.phase == ConversationPhase.SPEAKING
+                ):
+                    transition = self.conversation.playback_completed(now_ms())
+                    if "playback_complete" in transition.actions:
+                        frame = {
+                            "type": "conversation_reply_window",
+                            "seq": seq,
+                            "open_after_ms": self.config.conversation_acoustic_tail_ms,
+                            "window_ms": self.conversation.current_reply_window_ms(),
+                        }
+                    else:
+                        frame["playback_complete_terminal"] = True
+                    frame.update(self._conversation_payload(transition))
+                else:
+                    frame["playback_complete_terminal"] = True
+                    frame.update(self._conversation_payload())
             return [frame]
         return [error_frame("unsupported_message", message_type)]
 
@@ -2412,12 +2416,14 @@ class LanBridgeSession:
             turn.text,
         )
         runner_summary["memory_callback_consumed"] = callback_consumed
-        if self.conversation is not None and not no_speech_detail:
-            transition = self.conversation.response_started(now_ms())
-            if "reject_response" in transition.actions:
-                return [self._conversation_failure("conversation_response_rejected", transition.reason)]
-            self._observe_conversation_transition(transition)
-            self.conversation_response_seq = seq
+        if self.conversation is not None:
+            self.playback_response_seq = seq
+            if not no_speech_detail:
+                transition = self.conversation.response_started(now_ms())
+                if "reject_response" in transition.actions:
+                    return [self._conversation_failure("conversation_response_rejected", transition.reason)]
+                self._observe_conversation_transition(transition)
+                self.conversation_response_seq = seq
         response_text_ready_ms = (time.perf_counter() - turn_started) * 1000.0
         if (
             self.config.stream_tts_phrases
@@ -2724,6 +2730,8 @@ def handle_connection(
             if aborting_response:
                 pending_short_chunk = None
             frame_type = str(frame.get("type", "")) if isinstance(frame, dict) else ""
+            if config.conversation_v2_enabled and frame_type == "response_start":
+                session.playback_response_seq = max(0, int(frame.get("seq", 0)))
             if response_wire.aborting and (
                 isinstance(frame, bytes)
                 or frame_type in ("audio", "audio_stream_start", "audio_stream_end")
