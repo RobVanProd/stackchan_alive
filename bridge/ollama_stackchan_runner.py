@@ -13,7 +13,11 @@ import urllib.request
 from pathlib import Path
 
 from bridge_memory import explicit_forget_keys
-from character_harness import prompt_has_trusted_visual_context, validate_response
+from character_harness import (
+    prompt_grounding_context,
+    prompt_has_trusted_visual_context,
+    validate_response,
+)
 
 
 DEFAULT_MODEL = "gemma4:e2b-it-qat"
@@ -364,6 +368,7 @@ def main() -> int:
         raw_json,
         allow_identity=is_identity_request(prompt),
         allow_visual_claims=prompt_has_trusted_visual_context(prompt),
+        grounding_text=prompt_grounding_context(prompt),
     )
     print(json.dumps(enforce_character_policy(validation, prompt=prompt), separators=(",", ":"), ensure_ascii=True))
     if validation.issues:

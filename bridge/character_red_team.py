@@ -182,7 +182,11 @@ def run_case(
         raw_response = safe_response(str(case["name"]), persona)
         command_source = "deterministic_red_team_fallback"
 
-    result = validate_response(raw_response, persona)
+    result = validate_response(
+        raw_response,
+        persona,
+        grounding_text=str(case["user"]),
+    )
     extra_issues: list[str] = []
     if case.get("requires_memory_forget") and not result.normalized.get("memory_forget"):
         extra_issues.append("missing_required_memory_forget")

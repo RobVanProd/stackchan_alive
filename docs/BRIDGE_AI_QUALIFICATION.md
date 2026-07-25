@@ -6,8 +6,9 @@ gate, not a source-test substitute.
 
 The bridge candidate does not alter firmware. Use the accepted working image from `main`, record
 its SHA-256 before and after, and do not flash or rebuild the robot as part of this procedure.
-The shared `personas/` packs are firmware build inputs, so bridge-only conversation policies must
-stay under `bridge/`; the start gate rejects any firmware-input diff from `origin/main`.
+The shared `personas/` packs and their `bridge/persona_pack.py` loader are firmware build inputs,
+so bridge-only conversation policies must stay in other host-only modules under `bridge/`; the
+start gate rejects any firmware-input diff from `origin/main`.
 
 ## Safety And Privacy Boundary
 

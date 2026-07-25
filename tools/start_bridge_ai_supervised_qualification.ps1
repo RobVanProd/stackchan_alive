@@ -84,6 +84,7 @@ $FirmwareInputPaths = @(
   "test/test_native_logic",
   "personas",
   "media/voice",
+  "bridge/persona_pack.py",
   "tools/platformio_*.py",
   "tools/flash_srmodels.py",
   "tools/flash_release_firmware.ps1"

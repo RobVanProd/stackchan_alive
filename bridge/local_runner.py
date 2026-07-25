@@ -318,11 +318,13 @@ def repair_runner_response(
     allow_identity: bool = False,
     allow_visual_claims: bool = False,
 ) -> tuple[str, str]:
+    grounding_text = "\n".join((user_text, *memory_lines))
     validation = validate_response(
         raw_response,
         persona,
         allow_identity=allow_identity,
         allow_visual_claims=allow_visual_claims,
+        grounding_text=grounding_text,
     )
     spoken_text = str(validation.normalized.get("spoken_text", ""))
     if (
@@ -347,6 +349,7 @@ def repair_runner_response(
                 repaired_raw,
                 persona,
                 allow_visual_claims=allow_visual_claims,
+                grounding_text=grounding_text,
             )
             if repaired_validation.ok:
                 return repaired_raw, "forget_exact_key"
@@ -379,6 +382,7 @@ def repair_runner_response(
             repaired_raw,
             persona,
             allow_visual_claims=allow_visual_claims,
+            grounding_text=grounding_text,
         )
         if repaired_validation.ok:
             return repaired_raw, f"{continuity_kind}_continuity"
@@ -496,6 +500,9 @@ def run_runner_profile(
         persona,
         allow_identity=identity_allowed,
         allow_visual_claims=visual_claims_allowed,
+        grounding_text="\n".join(
+            (str(case["user"]), *memory_lines, *conversation_lines)
+        ),
     )
     validation.elapsed_ms = elapsed_ms
     validation.approx_tokens_per_sec = approx_tokens_per_sec

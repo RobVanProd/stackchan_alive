@@ -30,6 +30,7 @@ foreach ($Required in @(
   "test/test_native_logic",
   "personas",
   "media/voice",
+  "bridge/persona_pack.py",
   "tools/platformio_*.py",
   "Firmware build inputs must be clean",
   "requires firmware build inputs identical to origin/main",

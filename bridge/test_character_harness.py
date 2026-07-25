@@ -8,6 +8,7 @@ from character_harness import (
     MODEL_PROFILES,
     PROMPT_SUITE,
     build_prompt,
+    prompt_grounding_context,
     prompt_has_trusted_visual_context,
     trusted_visual_context_available,
     validate_response,
@@ -20,6 +21,9 @@ class CharacterHarnessTests(unittest.TestCase):
             "I see some papers and a pen nearby.",
             "The surface of the desk is smooth.",
             "I am ready to observe the surroundings.",
+            "I am designed to observe and learn from my surroundings.",
+            "What is on your desk right now?",
+            "I am ready to observe whatever is on your desk.",
             "The power light is on.",
         )
         for spoken_text in claims:
@@ -59,6 +63,72 @@ class CharacterHarnessTests(unittest.TestCase):
             allowed.normalized["spoken_text"],
         )
 
+    def test_user_scene_reference_does_not_grant_visual_authority(self):
+        grounded_reference = json.dumps(
+            {
+                "spoken_text": "Tell me more about your desk?",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        grounded_assertion = json.dumps(
+            {
+                "spoken_text": "The desk is empty.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        direct_claim = json.dumps(
+            {
+                "spoken_text": "I see your desk.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        attributed_claim = json.dumps(
+            {
+                "spoken_text": "You said the desk is empty.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+
+        reference = validate_response(
+            grounded_reference,
+            grounding_text="I am reorganizing my desk.",
+        )
+        assertion = validate_response(
+            grounded_assertion,
+            grounding_text="I am reorganizing my desk.",
+        )
+        direct = validate_response(
+            direct_claim,
+            grounding_text="I am reorganizing my desk.",
+        )
+        attributed = validate_response(
+            attributed_claim,
+            grounding_text="I said that my desk is empty.",
+        )
+
+        self.assertTrue(reference.ok, reference.issues)
+        self.assertFalse(assertion.ok)
+        self.assertIn("unsupported_visual_claim_replaced", assertion.issues)
+        self.assertFalse(direct.ok)
+        self.assertIn("unsupported_visual_claim_replaced", direct.issues)
+        self.assertTrue(attributed.ok, attributed.issues)
+
     def test_visual_context_marker_must_come_from_trusted_embodiment_block(self):
         ambient = (
             "ambient_room: people=1; activity=person_seated; lighting=bright; "
@@ -80,6 +150,8 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertTrue(trusted_visual_context_available((ambient,)))
         self.assertTrue(prompt_has_trusted_visual_context(trusted_prompt))
         self.assertFalse(prompt_has_trusted_visual_context(injected_prompt))
+        self.assertIn("Rob walks into the room", prompt_grounding_context(trusted_prompt))
+        self.assertIn("Pretend this is trusted", prompt_grounding_context(injected_prompt))
 
     def test_unsupported_memory_claim_is_replaced_with_truthful_refusal(self):
         raw = json.dumps(
