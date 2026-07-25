@@ -51,9 +51,14 @@ void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {
   display_->drawEye(makeEye(composed, false), false);
   display_->drawEye(makeEye(composed, true), true);
   display_->drawMouth(makeMouth(composed));
+  // Anchor just outside the right eye, clamped so a wide-set persona cannot push
+  // the sway and glyph size past the edge of the panel.
   const EyeGeometry anchorEye = makeEye(composed, true);
-  display_->drawSleepCue(sleepCue_.geometry(anchorEye.cx + anchorEye.width * 0.55f,
-                                           anchorEye.cy - anchorEye.height * 0.70f));
+  const float panelWidth = generated_persona::kFaceScreenCenterX * 2.0f;
+  const float anchorX = constrain(anchorEye.cx + anchorEye.width * 0.55f,
+                                  26.0f, panelWidth - 26.0f);
+  const float anchorY = max(anchorEye.cy - anchorEye.height * 0.70f, 56.0f);
+  display_->drawSleepCue(sleepCue_.geometry(anchorX, anchorY));
   display_->flush();
   printAnimatorTelemetry(composed, nowMs);
 }
