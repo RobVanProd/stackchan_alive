@@ -117,11 +117,20 @@ class DesktopBrainSupervisorTest {
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("cancellation.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("conversation_latency.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("conversation_session.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("dashboard").resolve("app.js")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("dashboard").resolve("index.html")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("dashboard").resolve("styles.css")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("dashboard_service.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("episode_distillation.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("initiative_policy.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("local_facts.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("reference_bridge.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("research_broker.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("robot_embodiment.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("room_context.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("stt_normalization.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("utterance_text.py")))
+        assertTrue(Files.isRegularFile(cacheRoot.resolve("bridge").resolve("whisper_server_stt.py")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("personas").resolve("spark").resolve("pack.yaml")))
         assertTrue(Files.isRegularFile(cacheRoot.resolve("data").resolve("voice_source_provenance.yaml")))
 
@@ -129,8 +138,22 @@ class DesktopBrainSupervisorTest {
             .directory(script.parent.toFile())
             .redirectErrorStream(true)
             .start()
-        assertTrue(help.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
-        assertEquals(0, help.exitValue(), help.inputStream.bufferedReader().readText())
+        val helpOutput = StringBuilder()
+        val outputReader = Thread {
+            help.inputStream.bufferedReader().use { reader ->
+                helpOutput.append(reader.readText())
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+        val finished = help.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+            help.destroyForcibly()
+        }
+        outputReader.join(2_000)
+        assertTrue(finished, helpOutput.toString())
+        assertEquals(0, help.exitValue(), helpOutput.toString())
     }
 
     @Test

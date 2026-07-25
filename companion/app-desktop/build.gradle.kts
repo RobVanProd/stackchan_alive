@@ -137,6 +137,9 @@ tasks.processResources {
             "character_harness.py",
             "conversation_latency.py",
             "conversation_session.py",
+            "dashboard_service.py",
+            "episode_distillation.py",
+            "initiative_policy.py",
             "lan_service.py",
             "local_facts.py",
             "local_runner.py",
@@ -144,9 +147,13 @@ tasks.processResources {
             "reference_bridge.py",
             "research_broker.py",
             "robot_embodiment.py",
+            "room_context.py",
             "stt_adapter.py",
+            "stt_normalization.py",
             "tts_adapter.py",
             "utterance_text.py",
+            "whisper_server_stt.py",
+            "dashboard/**",
         )
         into("brain/bridge")
     }
