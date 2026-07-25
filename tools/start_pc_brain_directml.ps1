@@ -2,6 +2,7 @@ param(
   [string]$DeviceHost = "192.168.1.238",
   [int]$BridgePort = 8765,
   [int]$WorkerPort = 5059,
+  [int]$SttServerPort = 5061,
   [int]$ReconnectTimeoutSeconds = 90,
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [switch]$EnableResearch,
@@ -96,6 +97,21 @@ if ($null -eq $WorkerHealth -or -not [bool]$WorkerHealth.ready) {
 }
 $WorkerHealth | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidencePath "worker-health.json") -Encoding UTF8
 
+$sttStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_whisper_server.ps1")).Path.Replace("'", "''")
+$sttScript = "`$ProgressPreference = 'SilentlyContinue'; & '$sttStarter' -Port $SttServerPort -Threads 8 -Json"
+$sttChild = Invoke-EncodedChildPowerShell -ScriptBody $sttScript `
+  -StdoutPath (Join-Path $EvidencePath "stt-server-start.json") `
+  -StderrPath (Join-Path $EvidencePath "stt-server-start.err.log")
+if ($sttChild.exitCode -ne 0) {
+  throw "Whisper server start failed with exit $($sttChild.exitCode): $($sttChild.stderr -join ' ')"
+}
+$SttServerUrl = "http://127.0.0.1`:$SttServerPort"
+$SttHealth = try { Invoke-RestMethod -Uri "$SttServerUrl/health" -TimeoutSec 5 } catch { $null }
+if (-not $SttHealth -or [string]$SttHealth.status -ne "ok") {
+  throw "Whisper server did not become ready at $SttServerUrl."
+}
+$SttHealth | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidencePath "stt-server-health.json") -Encoding UTF8
+
 Stop-ExistingBridge
 
 $MemoryReport = $null
@@ -114,6 +130,7 @@ $escapedDeviceHost = $DeviceHost.Replace("'", "''")
 $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; `$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
   "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
+  "-SttServerUrl '$SttServerUrl' " +
   "-EnableDashboard -DashboardHost '127.0.0.1' -DashboardPort $DashboardPort -RobotHost '$escapedDeviceHost' " +
   "-TtsCommand 'python bridge\rvc_production_tts_client.py' " +
   "-TtsVoice 'stackchan-rvc-directml-v2' " +
@@ -210,6 +227,8 @@ $Result = [ordered]@{
   workerSchema = $WorkerHealth.schema
   workerDevice = $WorkerHealth.device
   workerMethod = $WorkerHealth.method
+  sttServerUrl = $SttServerUrl
+  sttServerReady = [string]$SttHealth.status -eq "ok"
   streamTtsPhrases = $true
   researchEnabled = [bool]$EnableResearch
   conversationV2Enabled = [bool]$EnableConversationV2

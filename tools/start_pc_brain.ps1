@@ -4,6 +4,7 @@ param(
   [string]$Model = "gemma4:e2b-it-qat",
   [string]$RunnerCommand = "python bridge\ollama_stackchan_runner.py",
   [string]$SttCommand = "python bridge\whisper_cpp_stt.py",
+  [string]$SttServerUrl = "",
   [string]$TtsCommand = "python bridge\selected_voice_tts.py",
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
   [switch]$StreamTtsPhrases,
@@ -18,7 +19,8 @@ param(
   [string]$LogDir = "output\pc-brain\latest",
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [string]$TurnLogFile = "output\pc-brain\latest\turns.jsonl",
-  [string]$AudioEvidenceDir = "output\pc-brain\latest\audio-evidence",
+  [string]$AudioEvidenceDir = "",
+  [switch]$EnablePrivateTurnEvidence,
   [string]$AutoTurnText = "",
   [switch]$RequireAudioWakePhrase,
   [switch]$AllowAudioWithoutWakePhrase,
@@ -75,7 +77,15 @@ if (-not $FfmpegExe) {
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $MemoryFile) | Out-Null
-New-Item -ItemType Directory -Force -Path $AudioEvidenceDir | Out-Null
+if (-not $EnablePrivateTurnEvidence -and -not [string]::IsNullOrWhiteSpace($AudioEvidenceDir)) {
+  throw "AudioEvidenceDir requires explicit -EnablePrivateTurnEvidence."
+}
+if ($EnablePrivateTurnEvidence -and [string]::IsNullOrWhiteSpace($AudioEvidenceDir)) {
+  $AudioEvidenceDir = "output\pc-brain\latest\audio-evidence"
+}
+if (-not [string]::IsNullOrWhiteSpace($AudioEvidenceDir)) {
+  New-Item -ItemType Directory -Force -Path $AudioEvidenceDir | Out-Null
+}
 
 if ($StopExisting) {
   $Connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
@@ -124,9 +134,18 @@ $ArgsList = @(
   "--downlink-text-frame-delay-ms", "$DownlinkTextFrameDelayMs",
   "--client-idle-timeout-s", "$ClientIdleTimeoutSeconds",
   "--memory-file", $MemoryFile,
-  "--turn-log-file", $TurnLogFile,
-  "--audio-evidence-dir", $AudioEvidenceDir
+  "--turn-log-file", $TurnLogFile
 )
+
+if ($EnablePrivateTurnEvidence) {
+  $ArgsList += @("--audio-evidence-dir", $AudioEvidenceDir)
+} else {
+  $ArgsList += "--redact-turn-text"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SttServerUrl)) {
+  $ArgsList += @("--stt-server-url", $SttServerUrl)
+}
 
 if ($StreamTtsPhrases) {
   $ArgsList += "--stream-tts-phrases"
@@ -227,7 +246,8 @@ if ($Background) {
   Write-Host "Logs: $OutLog ; $ErrLog"
   Write-Host "Memory: $MemoryFile"
   Write-Host "Turn log: $TurnLogFile"
-  Write-Host "Audio evidence: $AudioEvidenceDir"
+  Write-Host "Turn text: $(if ($EnablePrivateTurnEvidence) { 'private evidence enabled' } else { 'redacted' })"
+  Write-Host "Audio evidence: $(if ($EnablePrivateTurnEvidence) { $AudioEvidenceDir } else { 'disabled' })"
   if ($EnableDashboard) { Write-Host "Dashboard: http://$DashboardHost`:$DashboardPort/" }
   exit 0
 }

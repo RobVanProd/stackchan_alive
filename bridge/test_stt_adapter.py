@@ -12,6 +12,7 @@ if str(BRIDGE_DIR) not in sys.path:
 
 from stt_adapter import (
     STT_COMMAND_ENV,
+    STT_SERVER_URL_ENV,
     SttConfigurationError,
     SttExecutionError,
     normalize_transcript_output,
@@ -19,6 +20,7 @@ from stt_adapter import (
     transcribe_pcm,
 )
 from stt_normalization import normalize_stackchan_terms
+from whisper_server_stt import WhisperServerResult
 from whisper_cpp_stt import (
     clean_whisper_text,
     read_whisper_transcript,
@@ -34,9 +36,34 @@ from windows_speech_stt import (
 
 class SttAdapterTests(unittest.TestCase):
     def test_unconfigured_stt_raises_clear_error(self):
-        with patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {STT_COMMAND_ENV: "", STT_SERVER_URL_ENV: ""},
+            clear=False,
+        ):
             with self.assertRaises(SttConfigurationError):
                 transcribe_pcm(b"\x00\x00", 16000)
+
+    def test_loopback_server_path_avoids_per_turn_stt_subprocess(self):
+        with patch(
+            "stt_adapter.transcribe_pcm_via_server",
+            return_value=WhisperServerResult(
+                transcript="Hello Stackchan",
+                raw_transcript="Hello stack shed",
+            ),
+        ) as server:
+            result = transcribe_pcm(
+                b"\x01\x00\x02\x00",
+                16000,
+                command="must not run",
+                server_url="http://127.0.0.1:5061",
+            )
+
+        server.assert_called_once()
+        self.assertEqual("Hello Stackchan", result.transcript)
+        self.assertEqual("Hello stack shed", result.raw_transcript)
+        self.assertEqual("whisper.cpp-server", result.command_source)
+        self.assertTrue(result.transcript_normalized)
 
     def test_transcript_output_accepts_plain_text_and_json(self):
         self.assertEqual("hello stackchan", normalize_transcript_output(b" hello   stackchan \n"))

@@ -25,6 +25,7 @@ from lan_service import (
     build_handshake_response,
     contains_stackchan_wake_phrase,
     configure_client_socket,
+    ends_audio_stream,
     encode_ws_frame,
     encode_ws_text,
     is_identity_question,
@@ -323,6 +324,34 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("I am Stackchan.", response_start["text"])
         self.assertEqual("identity", records[0]["runner_case"])
         self.assertEqual("I am Stackchan.", records[0]["response_text"])
+
+    def test_production_log_redaction_keeps_metrics_without_turn_text(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    runner_case="greeting",
+                    turn_log_file=turn_log,
+                    redact_turn_text=True,
+                )
+            )
+            session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 12,
+                        "text": "What is your name?",
+                    }
+                )
+            )
+            record = json.loads(turn_log.read_text(encoding="utf-8").splitlines()[0])
+
+        self.assertNotIn("transcript", record)
+        self.assertNotIn("response_text", record)
+        self.assertTrue(record["transcript_present"])
+        self.assertTrue(record["response_text_present"])
+        self.assertEqual("identity", record["runner_case"])
+        self.assertIn("latency_turn_total_ms", record)
 
     def test_local_time_and_memory_recall_bypass_the_model(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1445,6 +1474,106 @@ class LanServiceTests(unittest.TestCase):
             sleep.reset_mock()
             send_connection_frame(conn, config, b"abc", final_binary_chunk=True)
             sleep.assert_called_once_with(0.25)
+        self.assertFalse(ends_audio_stream({"type": "audio", "seq": 1}))
+        self.assertFalse(ends_audio_stream(b"next phrase"))
+        self.assertTrue(ends_audio_stream({"type": "audio_stream_end", "seq": 1}))
+
+    def test_audio_is_finalized_before_worker_and_late_binary_is_logged(self):
+        runner = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "Signal received.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(LanBridgeConfig(turn_log_file=turn_log))
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 31, "sample_rate": 16000})
+            )
+            session.handle_binary(b"\x01\x00\x02\x00")
+
+            finalized = session.finalize_audio_upload()
+            late = session.handle_binary(b"\x03\x00\x04\x00")
+
+            with patch("lan_service.run_runner_profile", return_value=runner):
+                frames = session.handle_text(
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 31,
+                            "audio_bytes": 4,
+                            "chunks": 1,
+                            "text": "Test input.",
+                        }
+                    ),
+                    finalized_audio=finalized,
+                )
+            records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(b"\x01\x00\x02\x00", finalized.pcm)
+        self.assertEqual("audio_without_utterance", late[0]["code"])
+        self.assertEqual(1, late[0]["audio_protocol_errors"])
+        self.assertEqual("stackchan.audio-protocol-event.v1", records[0]["schema"])
+        self.assertEqual(4, records[0]["payload_bytes"])
+        completed = next(
+            record
+            for record in records
+            if record["schema"] == "stackchan.lan-turn-summary.v1"
+        )
+        self.assertEqual(4, completed["audio_bytes"])
+        self.assertEqual(1, completed["audio_chunks"])
+        self.assertTrue(completed["audio_end_counts_match"])
+        self.assertTrue(
+            any(
+                isinstance(frame, dict) and frame.get("type") == "response_start"
+                for frame in frames
+            )
+        )
+
+    def test_audio_end_count_mismatch_rejects_incomplete_capture(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(LanBridgeConfig(turn_log_file=turn_log))
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 32, "sample_rate": 16000})
+            )
+            session.handle_binary(b"\x01\x00\x02\x00")
+            finalized = session.finalize_audio_upload()
+
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 32,
+                        "audio_bytes": 8,
+                        "chunks": 1,
+                        "text": "This must not reach the model.",
+                    }
+                ),
+                finalized_audio=finalized,
+            )
+            record = json.loads(turn_log.read_text(encoding="utf-8").splitlines()[0])
+
+        self.assertEqual("error", frames[0]["type"])
+        self.assertEqual("audio_count_mismatch", frames[0]["code"])
+        self.assertIn("declared 8, received 4", frames[0]["detail"])
+        self.assertFalse(frames[0]["audio_end_counts_match"])
+        self.assertEqual("audio_count_mismatch", record["reject_code"])
+        self.assertEqual(8, record["audio_declared_bytes"])
+        self.assertFalse(record["audio_end_counts_match"])
 
     def test_configured_tts_can_disable_binary_downlink_but_keep_mouth_beats(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1551,6 +1680,7 @@ class LanServiceTests(unittest.TestCase):
     def test_conversation_v2_opens_followup_only_after_matching_playback_complete(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "fake_tts.py"
+            turn_log = Path(temp_dir) / "turns.jsonl"
             script.write_text(
                 "import base64,json,sys\n"
                 "sys.stdin.buffer.read()\n"
@@ -1565,6 +1695,7 @@ class LanServiceTests(unittest.TestCase):
                     conversation_v2_enabled=True,
                     conversation_acoustic_tail_ms=0,
                     tts_command=f'"{sys.executable}" "{script}"',
+                    turn_log_file=turn_log,
                 )
             )
 
@@ -1580,6 +1711,9 @@ class LanServiceTests(unittest.TestCase):
             completed = session.handle_text(
                 json.dumps({"type": "playback_complete", "seq": 70, "at_ms": 120})
             )
+            duplicate = session.handle_text(
+                json.dumps({"type": "playback_complete", "seq": 70, "at_ms": 121})
+            )
             context_after_playback = session.conversation.context_lines()
             followup = session.handle_text(
                 json.dumps({"type": "utterance_start", "seq": 71, "sample_rate": 16000})
@@ -1589,6 +1723,11 @@ class LanServiceTests(unittest.TestCase):
                     {"type": "utterance_end", "seq": 71, "text": "Goodbye Stackchan"}
                 )
             )
+            event_records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+                if '"stackchan.conversation-event.v1"' in line
+            ]
 
         self.assertEqual("engaged", listening[0]["conversation_state"])
         self.assertEqual("response_end", response[-1]["type"])
@@ -1599,6 +1738,10 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(8000, completed[0]["window_ms"])
         self.assertEqual("reply_window", completed[0]["conversation_state"])
         self.assertFalse(completed[0]["conversation_capture_open"])
+        self.assertEqual("heartbeat", duplicate[0]["type"])
+        self.assertTrue(duplicate[0]["playback_complete_duplicate"])
+        self.assertEqual("reply_window", duplicate[0]["conversation_state"])
+        self.assertNotIn("open_after_ms", duplicate[0])
         self.assertEqual(
             (
                 "turn 1 user: What is your name?",
@@ -1613,6 +1756,25 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("cooldown", exit_frames[0]["conversation_state"])
         self.assertEqual("exit_phrase", exit_frames[0]["conversation_reason"])
         self.assertEqual((), session.conversation.context_lines())
+        self.assertEqual(
+            [
+                "wake",
+                "listening",
+                "utterance_committed",
+                "response_started",
+                "reply_pending",
+                "reply_window_open",
+                "listening",
+                "exit_phrase",
+            ],
+            [record["event"] for record in event_records],
+        )
+        self.assertTrue(
+            all(
+                "transcript" not in record and "response_text" not in record
+                for record in event_records
+            )
+        )
 
     def test_conversation_v2_supplies_only_completed_session_turns_to_followup(self):
         with tempfile.TemporaryDirectory() as temp_dir:

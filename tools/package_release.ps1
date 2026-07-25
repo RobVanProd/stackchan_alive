@@ -138,6 +138,13 @@ if (-not $SkipBuild) {
     Remove-Item -LiteralPath $builtFirmwareCache -Recurse -Force
   }
   foreach ($environment in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")) {
+    $environmentLibdeps = Join-Path $repoRoot ".pio/libdeps/$environment"
+    if (Test-Path -LiteralPath $environmentLibdeps) {
+      Remove-Item -LiteralPath $environmentLibdeps -Recurse -Force
+    }
+    Invoke-StackchanReleasePlatformio `
+      -Environment $environment `
+      -Arguments @("run", "-e", $environment, "-t", "clean")
     Invoke-StackchanReleasePlatformio `
       -Environment $environment `
       -Arguments @("run", "-e", $environment)
@@ -284,6 +291,7 @@ if ($builtFirmwareCache -and (Test-Path -LiteralPath $builtFirmwareCache)) {
 $mediaFiles = @(
   "docs/media/stackchan_alive_preview.png",
   "docs/media/stackchan_alive_expression_sheet.png",
+  "docs/media/face_gallery.png",
   "docs/media/stackchan_alive_preview.mp4",
   "docs/media/stackchan_alive_preview.gif",
   "docs/media/stackchan_alive_speech_preview.gif"
@@ -359,12 +367,14 @@ $personaPromptAssets = Get-Content -LiteralPath $personaPromptAssetsPath -Raw | 
 
 foreach ($asset in @($personaPromptAssets.assets)) {
   $sourcePath = Join-Path $repoRoot ([string]$asset.source_path)
+  $packagedSourcePath = Join-ReleasePackagePath ([string]$asset.source_path)
   $promptWavPath = Join-ReleasePackagePath ([string]$asset.wav_path)
   $promptSidecarPath = Join-ReleasePackagePath ([string]$asset.sidecar_path)
   if (-not (Test-Path -LiteralPath $sourcePath)) {
     throw "Missing persona packaged prompt source: $sourcePath"
   }
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $promptWavPath), (Split-Path -Parent $promptSidecarPath) | Out-Null
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packagedSourcePath), (Split-Path -Parent $promptWavPath), (Split-Path -Parent $promptSidecarPath) | Out-Null
+  Copy-Item -LiteralPath $sourcePath -Destination $packagedSourcePath -Force
   Copy-Item -LiteralPath $sourcePath -Destination $promptWavPath -Force
   & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "generate_speech_envelope_sidecar.ps1") `
     -InputWav $promptWavPath `
@@ -458,6 +468,8 @@ Copy-Item -LiteralPath "docs/SPEAKER_AUDIO_RESEARCH.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/VOICE_V2_DIRECTML.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/DEVICE_BRINGUP.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_PROTOCOL.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRIDGE_AI_HANDOFF.md" -Destination $docsDir
+Copy-Item -LiteralPath "docs/BRIDGE_AI_QUALIFICATION.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/BRIDGE_DASHBOARD.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/FIRST_DEPLOY_STATUS.md" -Destination $docsDir
 Copy-Item -LiteralPath "docs/ARRIVAL_DAY_RUNBOOK.md" -Destination $docsDir
@@ -484,8 +496,14 @@ $bridgePackageFiles = @(
   "README.md",
   "bridge_memory.py",
   "test_bridge_memory.py",
+  "test_bridge_memory_v4.py",
   "memory_maintenance.py",
   "test_memory_maintenance.py",
+  "episode_distillation.py",
+  "test_episode_distillation.py",
+  "memory_probe.py",
+  "test_memory_probe.py",
+  "memory_prefill_probe.py",
   "character_harness.py",
   "test_character_harness.py",
   "character_red_team.py",
@@ -496,6 +514,7 @@ $bridgePackageFiles = @(
   "test_reference_bridge.py",
   "research_broker.py",
   "test_research_broker.py",
+  "research_acceptance.py",
   "robot_embodiment.py",
   "test_robot_embodiment.py",
   "local_facts.py",
@@ -519,15 +538,32 @@ $bridgePackageFiles = @(
   "test_engine_probe.py",
   "model_benchmark.py",
   "test_model_benchmark.py",
+  "utterance_text.py",
   "stt_normalization.py",
   "stt_adapter.py",
   "windows_speech_stt.py",
   "whisper_cpp_stt.py",
+  "whisper_server_stt.py",
   "test_stt_adapter.py",
+  "test_whisper_server_stt.py",
   "tts_adapter.py",
   "test_tts_adapter.py",
+  "conversation_session.py",
+  "test_conversation_session.py",
+  "conversation_latency.py",
+  "test_conversation_latency.py",
+  "conversation_latency_report.py",
+  "test_conversation_latency_report.py",
+  "initiative_policy.py",
+  "test_initiative_policy.py",
+  "room_context.py",
+  "test_room_context.py",
+  "ollama_room_vision.py",
+  "test_ollama_room_vision.py",
   "lan_service.py",
   "test_lan_service.py",
+  "bridge_ai_qualification.py",
+  "test_bridge_ai_qualification.py",
   "dashboard_service.py",
   "test_dashboard_service.py",
   "ollama_stackchan_runner.py",
@@ -545,6 +581,8 @@ $bridgePackageFiles = @(
   "voice_v2_directml_runtime.py",
   "voice_v2_directml_benchmark.py",
   "voice_v2_wire_benchmark.py",
+  "voice_device_truth.py",
+  "test_voice_device_truth.py",
   "vision_service.py",
   "test_vision_service.py",
   "requirements-vision.txt",
@@ -566,6 +604,7 @@ foreach ($bridgeFile in $bridgePackageFiles) {
   Copy-Item -LiteralPath (Join-Path "bridge" $bridgeFile) -Destination $bridgeDir
 }
 Copy-Item -LiteralPath "bridge/dashboard" -Destination $bridgeDir -Recurse
+Copy-Item -LiteralPath "bridge/fixtures" -Destination $bridgeDir -Recurse
 Copy-Item -LiteralPath "bridge/models/README.md" -Destination $bridgeModelsDir
 Copy-Item -LiteralPath "bridge/models/LICENSE" -Destination $bridgeModelsDir
 Copy-Item -LiteralPath "bridge/models/face_detection_yunet_2023mar.onnx" -Destination $bridgeModelsDir
@@ -842,6 +881,11 @@ $releaseTools = @(
   "tools/start_pc_brain.ps1",
   "tools/start_pc_brain_directml.ps1",
   "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/start_whisper_server.ps1",
+  "tools/test_start_whisper_server_contract.ps1",
+  "tools/start_bridge_ai_supervised_qualification.ps1",
+  "tools/complete_bridge_ai_supervised_qualification.ps1",
+  "tools/test_bridge_ai_supervised_qualification_contract.ps1",
   "tools/start_stackchan_dashboard.cmd",
   "tools/start_stackchan_dashboard.ps1",
   "tools/install_stackchan_dashboard_shortcut.ps1",
@@ -969,7 +1013,7 @@ Copy-Item -LiteralPath ".github/workflows/release.yml" -Destination $provenanceD
 Copy-Item -LiteralPath ".github/workflows/pages.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath ".github/workflows/companion-signing-readiness.yml" -Destination $provenanceDir
 Copy-Item -LiteralPath "src" -Destination (Join-Path $provenanceDir "src") -Recurse
-Copy-Item -LiteralPath "bridge" -Destination (Join-Path $provenanceDir "bridge") -Recurse
+Copy-SourceTree -SourceRoot "bridge" -DestinationRoot (Join-Path $provenanceDir "bridge") -ExcludedDirectoryNames @("__pycache__")
 Copy-Item -LiteralPath "protocol-fixtures" -Destination (Join-Path $provenanceDir "protocol-fixtures") -Recurse
 Copy-Item -LiteralPath "personas" -Destination (Join-Path $provenanceDir "personas") -Recurse
 Copy-Item -LiteralPath "test" -Destination (Join-Path $provenanceDir "test") -Recurse
@@ -1504,6 +1548,7 @@ $manifest = [ordered]@{
   mediaArtifacts = @(
     "media/stackchan_alive_preview.png",
     "media/stackchan_alive_expression_sheet.png",
+    "media/face_gallery.png",
     "media/stackchan_alive_preview.mp4",
     "media/stackchan_alive_preview.gif",
     "media/stackchan_alive_speech_preview.gif",
@@ -1688,6 +1733,11 @@ $manifest = [ordered]@{
     "tools/start_pc_brain.ps1",
     "tools/start_pc_brain_directml.ps1",
     "tools/test_start_pc_brain_directml_contract.ps1",
+    "tools/start_whisper_server.ps1",
+    "tools/test_start_whisper_server_contract.ps1",
+    "tools/start_bridge_ai_supervised_qualification.ps1",
+    "tools/complete_bridge_ai_supervised_qualification.ps1",
+    "tools/test_bridge_ai_supervised_qualification_contract.ps1",
     "tools/start_stackchan_dashboard.cmd",
     "tools/start_stackchan_dashboard.ps1",
     "tools/install_stackchan_dashboard_shortcut.ps1",
@@ -1834,6 +1884,16 @@ $manifest = [ordered]@{
     "provenance/bridge/test_character_red_team.py",
     "provenance/bridge/reference_bridge.py",
     "provenance/bridge/test_reference_bridge.py",
+    "provenance/bridge/bridge_memory.py",
+    "provenance/bridge/test_bridge_memory.py",
+    "provenance/bridge/test_bridge_memory_v4.py",
+    "provenance/bridge/memory_maintenance.py",
+    "provenance/bridge/test_memory_maintenance.py",
+    "provenance/bridge/episode_distillation.py",
+    "provenance/bridge/test_episode_distillation.py",
+    "provenance/bridge/memory_probe.py",
+    "provenance/bridge/test_memory_probe.py",
+    "provenance/bridge/memory_prefill_probe.py",
     "provenance/bridge/local_runner.py",
     "provenance/bridge/test_local_runner.py",
     "provenance/bridge/litert_lm_stackchan_wrapper.py",
@@ -1844,15 +1904,32 @@ $manifest = [ordered]@{
     "provenance/bridge/test_engine_probe.py",
     "provenance/bridge/model_benchmark.py",
     "provenance/bridge/test_model_benchmark.py",
+    "provenance/bridge/utterance_text.py",
     "provenance/bridge/stt_normalization.py",
     "provenance/bridge/stt_adapter.py",
     "provenance/bridge/windows_speech_stt.py",
     "provenance/bridge/whisper_cpp_stt.py",
+    "provenance/bridge/whisper_server_stt.py",
     "provenance/bridge/test_stt_adapter.py",
+    "provenance/bridge/test_whisper_server_stt.py",
     "provenance/bridge/tts_adapter.py",
     "provenance/bridge/test_tts_adapter.py",
+    "provenance/bridge/conversation_session.py",
+    "provenance/bridge/test_conversation_session.py",
+    "provenance/bridge/conversation_latency.py",
+    "provenance/bridge/test_conversation_latency.py",
+    "provenance/bridge/conversation_latency_report.py",
+    "provenance/bridge/test_conversation_latency_report.py",
+    "provenance/bridge/initiative_policy.py",
+    "provenance/bridge/test_initiative_policy.py",
+    "provenance/bridge/room_context.py",
+    "provenance/bridge/test_room_context.py",
+    "provenance/bridge/ollama_room_vision.py",
+    "provenance/bridge/test_ollama_room_vision.py",
     "provenance/bridge/lan_service.py",
     "provenance/bridge/test_lan_service.py",
+    "provenance/bridge/bridge_ai_qualification.py",
+    "provenance/bridge/test_bridge_ai_qualification.py",
     "provenance/bridge/dashboard_service.py",
     "provenance/bridge/test_dashboard_service.py",
     "provenance/bridge/dashboard/index.html",
@@ -1869,6 +1946,13 @@ $manifest = [ordered]@{
     "provenance/bridge/voice_v2_directml_runtime.py",
     "provenance/bridge/voice_v2_directml_benchmark.py",
     "provenance/bridge/voice_v2_wire_benchmark.py",
+    "provenance/bridge/voice_device_truth.py",
+    "provenance/bridge/test_voice_device_truth.py",
+    "provenance/bridge/research_broker.py",
+    "provenance/bridge/test_research_broker.py",
+    "provenance/bridge/research_acceptance.py",
+    "provenance/bridge/fixtures/memory_probe.json",
+    "provenance/bridge/fixtures/searxng_search_response.json",
     "provenance/bridge/lan_smoke.py",
     "provenance/bridge/test_lan_smoke.py",
     "provenance/bridge/hardware_simulator.py",

@@ -27,6 +27,17 @@ function Find-WhisperCli {
   return ""
 }
 
+function Find-WhisperServer {
+  param([string]$Root)
+  $found = Get-ChildItem -LiteralPath $Root -Filter "whisper-server.exe" -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object FullName |
+    Select-Object -First 1
+  if ($found) {
+    return $found.FullName
+  }
+  return ""
+}
+
 function Invoke-Download {
   param(
     [string]$Uri,
@@ -39,7 +50,8 @@ function Invoke-Download {
 }
 
 $WhisperExe = Find-WhisperCli -Root $InstallPath.FullName
-if (-not $WhisperExe -or $Force) {
+$WhisperServerExe = Find-WhisperServer -Root $InstallPath.FullName
+if (-not $WhisperExe -or -not $WhisperServerExe -or $Force) {
   $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest"
   $assetPattern = if ($PreferBlas) { "whisper-blas-bin-x64.zip" } else { "whisper-bin-x64.zip" }
   $asset = @($release.assets | Where-Object { $_.name -eq $assetPattern } | Select-Object -First 1)
@@ -53,6 +65,10 @@ if (-not $WhisperExe -or $Force) {
   if (-not $WhisperExe) {
     throw "Downloaded whisper.cpp, but whisper-cli.exe was not found under $($InstallPath.FullName)."
   }
+  $WhisperServerExe = Find-WhisperServer -Root $InstallPath.FullName
+  if (-not $WhisperServerExe) {
+    throw "Downloaded whisper.cpp, but whisper-server.exe was not found under $($InstallPath.FullName)."
+  }
 }
 
 $ModelFileName = "ggml-$Model.bin"
@@ -65,6 +81,7 @@ if ((-not (Test-Path -LiteralPath $ModelPath -PathType Leaf)) -or $Force) {
 $EnvScript = Join-Path $InstallPath.FullName "stackchan-whisper-env.ps1"
 @(
   "`$env:STACKCHAN_WHISPER_CPP_EXE = '$($WhisperExe.Replace("'", "''"))'",
+  "`$env:STACKCHAN_WHISPER_SERVER_EXE = '$($WhisperServerExe.Replace("'", "''"))'",
   "`$env:STACKCHAN_WHISPER_MODEL = '$($ModelPath.Replace("'", "''"))'",
   "`$env:STACKCHAN_STT_COMMAND = 'python bridge\whisper_cpp_stt.py'"
 ) | Set-Content -LiteralPath $EnvScript -Encoding UTF8
@@ -74,6 +91,7 @@ $result = [ordered]@{
   status = "whisper-cpp-ready"
   installDir = (Resolve-Path $InstallPath.FullName).Path
   whisperExe = $WhisperExe
+  whisperServerExe = $WhisperServerExe
   model = $Model
   modelPath = (Resolve-Path $ModelPath).Path
   envScript = $EnvScript

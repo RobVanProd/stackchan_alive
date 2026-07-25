@@ -6383,6 +6383,57 @@ void test_bridge_socket_writer_preserves_binary_before_later_text() {
   TEST_ASSERT_EQUAL_STRING(end, decodedEnd);
 }
 
+void test_bridge_socket_writer_finishes_partial_binary_before_later_text() {
+  BridgeClient bridge;
+  TEST_ASSERT_TRUE(bridge.begin());
+  BridgeWebSocketTransport transport;
+  TEST_ASSERT_TRUE(transport.begin(bridge, 785));
+  TEST_ASSERT_TRUE(transport.acceptHandshakeResponse(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: ok\r\n"
+      "\r\n",
+      790));
+
+  uint8_t audio[160] = {};
+  for (size_t i = 0; i < sizeof(audio); ++i) {
+    audio[i] = static_cast<uint8_t>(i & 0xff);
+  }
+  const char* end = "{\"type\":\"utterance_end\",\"seq\":9,\"audio_bytes\":160,\"chunks\":1}";
+
+  CapturingBridgeSocketSink sink;
+  sink.maxWriteBytes = 13;
+  BridgeSocketWriter writer;
+  TEST_ASSERT_TRUE(writer.begin(transport, sink, 0x899aabbc));
+  TEST_ASSERT_TRUE(writer.queueBinaryFrame(audio, sizeof(audio)));
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::Partial),
+                    static_cast<int>(writer.drainPendingFrame(795)));
+  TEST_ASSERT_TRUE(writer.telemetry().frameBuffered);
+  TEST_ASSERT_TRUE(writer.queueTextFrame(end));
+
+  BridgeSocketWriterDrainResult result = BridgeSocketWriterDrainResult::Partial;
+  for (size_t i = 0; i < 80 && result == BridgeSocketWriterDrainResult::Partial; ++i) {
+    result = writer.drainPendingFrame(800 + static_cast<uint32_t>(i));
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(result));
+  std::vector<uint8_t> decodedAudio;
+  TEST_ASSERT_TRUE(decodeMaskedClientBinaryFrame(sink.bytes, decodedAudio));
+  TEST_ASSERT_EQUAL_UINT32(sizeof(audio), decodedAudio.size());
+  TEST_ASSERT_EQUAL_MEMORY(audio, decodedAudio.data(), sizeof(audio));
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().binaryFramesDropped);
+  TEST_ASSERT_EQUAL_UINT32(0, writer.telemetry().textFramesDropped);
+
+  sink.bytes.clear();
+  sink.maxWriteBytes = 0;
+  TEST_ASSERT_EQUAL(static_cast<int>(BridgeSocketWriterDrainResult::WroteFrame),
+                    static_cast<int>(writer.drainPendingFrame(900)));
+  char decodedEnd[kBridgeEndpointControlResponseMax] = {};
+  TEST_ASSERT_TRUE(decodeMaskedClientTextFrame(sink.bytes, decodedEnd, sizeof(decodedEnd)));
+  TEST_ASSERT_EQUAL_STRING(end, decodedEnd);
+}
+
 void test_bridge_socket_writer_preserves_text_before_later_binary() {
   BridgeClient bridge;
   TEST_ASSERT_TRUE(bridge.begin());
@@ -8176,6 +8227,7 @@ int main() {
   RUN_TEST(test_bridge_socket_writer_retains_partial_binary_frame_until_complete);
   RUN_TEST(test_bridge_socket_writer_bounds_binary_queue);
   RUN_TEST(test_bridge_socket_writer_preserves_binary_before_later_text);
+  RUN_TEST(test_bridge_socket_writer_finishes_partial_binary_before_later_text);
   RUN_TEST(test_bridge_socket_writer_preserves_text_before_later_binary);
   RUN_TEST(test_bridge_network_session_starts_and_accepts_handshake);
   RUN_TEST(test_bridge_network_session_feeds_server_frames_to_bridge_client);

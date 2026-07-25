@@ -84,10 +84,15 @@ is sent to a cloud service by this feature.
 
 The bridge does not perform biometric identification or persist private audio. The LAN service may
 keep raw PCM in a bounded buffer only during one active utterance; it clears that buffer at
-`utterance_end` or `cancel`. STT receives that turn on stdin. TTS receives response text and may
-return timing plus local audio bytes. Operators should avoid transcript/audio logging except for
-explicit evidence collection. Generated audio remains session-local unless evidence collection is
-enabled.
+`utterance_end` or `cancel`. At the end marker, the socket thread freezes one immutable PCM
+snapshot before model work starts, verifies the sender's declared byte/chunk totals, and rejects
+late binary frames instead of adding them to the next turn. Production STT uses an in-memory WAV
+request to a loopback-only resident whisper.cpp server; it rejects redirects and writes no
+temporary microphone file. TTS receives response text and may return timing plus local audio
+bytes. Normal production launch redacts transcript and response fields from the turn log and
+does not configure an audio-evidence directory. Raw WAV and unredacted turn evidence require an
+explicit private validation switch. Generated audio remains session-local unless that private
+evidence collection is enabled.
 
 ## Evidence Requirements
 
@@ -101,6 +106,8 @@ Release and hardware evidence should prove the privacy boundary, not just descri
 - Voice-source status showing the exact public production RVC hashes while raw microphone recordings and generated conversation audio remain local.
 - Camera evidence showing paired requests, zero authentication failures, no frame persistence,
   bounded face-box output, and camera/host-vision endpoints absent from the production image.
+- Conversation evidence showing declared upload totals equal received totals, no
+  `stackchan.audio-protocol-event.v1` late-frame records, and no writer text/binary drops.
 
 ## User Controls
 

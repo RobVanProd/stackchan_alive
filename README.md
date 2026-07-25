@@ -71,7 +71,9 @@ Stackchan: Alive is primarily a real-time character OS:
 - `motion/`: spring dynamics, actuator ownership, and safety limits.
 - `io/`: display, audio, bridge, camera, sensor, speech, and servo adapters.
 - `bridge/`: host-side reference bridge, character harness, and memory scaffold.
-- `personas/`: swappable Character OS persona packs. Four ship: `spark` (reference), `glow` (quieter), `pip` (small and curious), and `bolt` (angular and machine-like). Palette, face geometry, and breathing are all YAML.
+- `personas/`: swappable Character OS persona packs. Four ship: `personas/spark` (reference),
+  `personas/glow` (quieter), `personas/pip` (small and curious), and `personas/bolt`
+  (angular and machine-like). Palette, face geometry, and breathing are all YAML.
 - `tools/`: preview, hardware simulation, packaging, release, hardware-evidence, and verification helpers.
 
 Only the motion task writes servos. Higher-level code publishes events and `RobotFrame`

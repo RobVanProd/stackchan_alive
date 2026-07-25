@@ -28,6 +28,10 @@ foreach ($required in @(
   "[int]`$process.ExitCode",
   "memory_maintenance.py --memory-file `$MemoryFile --apply",
   "start_voice_v2_directml_worker.ps1",
+  "start_whisper_server.ps1",
+  "SttServerPort",
+  "-SttServerUrl '`$SttServerUrl'",
+  "sttServerReady =",
   "stackchan.rvc-directml-worker.health.v1",
   "rvc_production_tts_client.py",
   "[switch]`$EnableResearch",
@@ -72,7 +76,9 @@ foreach ($required in @(
   "[switch]`$EnableResearch",
   "[string]`$SearxngUrl",
   '"--enable-research"',
-  '"--searxng-url", $SearxngUrl'
+  '"--searxng-url", $SearxngUrl',
+  "[string]`$SttServerUrl",
+  '"--stt-server-url", $SttServerUrl'
 )) {
   if (-not $baseText.Contains($required)) {
     throw "Base PC brain launcher missing research contract token: $required"

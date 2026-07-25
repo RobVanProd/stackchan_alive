@@ -2,6 +2,7 @@ import base64
 import unittest
 
 from bridge.ollama_room_vision import (
+    _RejectRedirects,
     build_request_payload,
     pgm_to_png,
     validate_loopback_url,
@@ -32,6 +33,13 @@ class OllamaRoomVisionTests(unittest.TestCase):
             pgm_to_png(b"not-an-image")
         with self.assertRaises(ValueError):
             pgm_to_png(b"P5\n2 2\n255\n\x00")
+
+    def test_loopback_transport_does_not_follow_redirects(self) -> None:
+        handler = _RejectRedirects()
+
+        self.assertIsNone(
+            handler.redirect_request(None, None, 307, "redirect", {}, "https://example.com")
+        )
 
 
 if __name__ == "__main__":

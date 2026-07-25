@@ -1,13 +1,15 @@
 # Voice V2 DirectML Runtime
 
-Status: host, wire, firmware, physical speaker, and speech-mouth validation passed. DirectML is
+Status: the established host, wire, physical speaker, and speech-mouth gates passed. DirectML is
 the preferred Windows production runtime; the older warm ROCm worker is retained only as a
-rollback until the final combined soak passes.
+rollback. The Conversation v2 candidate adds resident STT, exact upload ordering, and stricter
+under-three-second qualification, so it requires its own exact-image physical evidence.
 
 The Voice V2 path keeps voice conversion on the Windows host, uses the official RVC runtime
 with `torch-directml`, and streams completed phrases to the robot instead of waiting for the
-entire response to be rendered. Production uses the DirectML worker on port `5059`, the bridge
-on `8765`, and a bounded clear local speech fallback if the worker is unavailable. The fallback
+entire response to be rendered. Production uses the DirectML worker on port `5059`, a resident
+loopback whisper.cpp server on `5061`, the bridge on `8765`, and a bounded clear local speech
+fallback if the worker is unavailable. The fallback
 is intentionally intelligible rather than voice-matched and is exposed in TTS telemetry; strict
 validation can set `STACKCHAN_VOICE_REQUIRE_DIRECTML=1` to reject fallback.
 
@@ -27,8 +29,9 @@ http://127.0.0.1:8080`. The launcher otherwise keeps research disabled, which is
 qualified release configuration.
 
 The wrapper stops only a verified Stackchan bridge listener, backs up and sanitizes persistent
-memory, starts and health-checks DirectML, enables phrase streaming and speaker downlink, waits
-for the robot socket and `/debug`, and preserves a runtime evidence packet. It does not flash,
+memory, starts and health-checks DirectML and the loopback STT server, enables phrase streaming
+and speaker downlink, waits for the robot socket and `/debug`, and preserves a runtime evidence
+packet. Normal startup redacts turn text and writes no microphone WAVs. It does not flash,
 reboot, enable motion, or format storage.
 
 ## Performance Gate
@@ -36,7 +39,7 @@ reboot, enable motion, or format storage.
 The Windows candidate gate is:
 
 - first converted audio after response text in less than `3.0 s`
-- complete wake-to-first-audio conversation latency in less than `5.0 s`
+- complete warm wake-to-first-audio conversation latency in less than `3.0 s`
 - median conversion realtime factor below `1.0`
 - exact output accounting with zero truncated phrases
 - preserve the full retrieval index (`index_rate=0.62`) and accepted `pm` pitch method
@@ -54,6 +57,7 @@ Measured on the Ryzen 7 5700 / Radeon RX 7800 XT host:
 | Complete TTS + RVC client, 15 words | `1.18 s` |
 | Two-phrase streaming rehearsal, first PCM | `1.02 s` |
 | Two-phrase streaming rehearsal, complete | `2.14 s` |
+| Resident STT, real robot WAV | `0.51-0.59 s` |
 | Paced WebSocket transport, first binary audio | `1.22 s` |
 | Paced WebSocket transport, complete | `4.80 s` for `5.40 s` audio (`RTF 0.889`) |
 | Physical warm-API turns, worst first audio | `3.49 s` conversation / `1.05 s` post-text |
@@ -64,6 +68,10 @@ The passing fixed-corpus report is
 comparison is preserved at
 `output\voice-lab\directml-rvc-full-index-20260710\benchmark.json`; it missed the median RTF
 gate because the official DirectML RMVPE path reloaded its pitch model for each conversion.
+
+Phrase streaming applies the longer 250 ms drain only to the short PCM chunk immediately before
+`audio_stream_end`. Intermediate phrase tails use normal chunk pacing; treating each phrase tail
+as the whole-stream boundary creates an audible gap and is covered by the bridge tests.
 
 ## Setup And Benchmark
 

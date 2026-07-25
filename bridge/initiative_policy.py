@@ -101,12 +101,18 @@ class InitiativePolicy:
     def set_enabled(self, enabled: bool) -> None:
         with self._lock:
             requested = bool(enabled)
-            if requested and not self._enabled:
+            changed = requested != self._enabled
+            if changed:
                 now = int(time.time() * 1000)
                 self._last_spoken_ms = now
                 self._last_update_ms = now
                 self._curiosity_score = 0.0
                 self._last_event = ""
+                self._attempt_reserved = False
+                self._pending_reply_until_ms = 0
+                self._ignored_openers = 0
+                self._backoff_until_ms = 0
+                self._next_retry_ms = now
             self._enabled = requested
             if not self._enabled:
                 self._attempt_reserved = False

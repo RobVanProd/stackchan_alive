@@ -43,6 +43,18 @@ if (-not (Test-Path -LiteralPath $PackageRoot)) {
 
 $packageRootPath = (Resolve-Path $PackageRoot).Path
 $packageRootPrefix = $packageRootPath.TrimEnd('\') + '\'
+$generatedPythonArtifacts = @(
+  Get-ChildItem -LiteralPath $packageRootPath -Recurse -Force | Where-Object {
+    ($_.PSIsContainer -and $_.Name -eq "__pycache__") -or
+    (-not $_.PSIsContainer -and $_.Extension.ToLowerInvariant() -in @(".pyc", ".pyo"))
+  } | ForEach-Object {
+    $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
+  }
+)
+if ($generatedPythonArtifacts.Count -gt 0) {
+  throw "Release package contains generated Python cache artifacts: $($generatedPythonArtifacts -join ', ')"
+}
+
 $restrictedVoicePayloads = @(
   Get-ChildItem -LiteralPath $packageRootPath -File -Recurse | Where-Object {
     $relative = $_.FullName.Substring($packageRootPrefix.Length).Replace('\', '/')
@@ -211,6 +223,8 @@ $requiredFiles = @(
   "docs/VOICE_V2_DIRECTML.md",
   "docs/DEVICE_BRINGUP.md",
   "docs/BRIDGE_PROTOCOL.md",
+  "docs/BRIDGE_AI_HANDOFF.md",
+  "docs/BRIDGE_AI_QUALIFICATION.md",
   "docs/BRIDGE_DASHBOARD.md",
   "docs/FIRST_DEPLOY_STATUS.md",
   "docs/ARRIVAL_DAY_RUNBOOK.md",
@@ -222,6 +236,9 @@ $requiredFiles = @(
   "docs/ROLLOUT_CHECKLIST.md",
   "docs/VOICE_PERSONALITY.md",
   "docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md",
+  "docs/media/voice/stackchan_spark_greeting.wav",
+  "docs/media/voice/stackchan_spark_thinking.wav",
+  "docs/media/voice/stackchan_spark_safety.wav",
   "bridge/models/LICENSE",
   "data/calibration.yaml",
   "data/expressions.yaml",
@@ -233,8 +250,14 @@ $requiredFiles = @(
   "bridge/README.md",
   "bridge/bridge_memory.py",
   "bridge/test_bridge_memory.py",
+  "bridge/test_bridge_memory_v4.py",
   "bridge/memory_maintenance.py",
   "bridge/test_memory_maintenance.py",
+  "bridge/episode_distillation.py",
+  "bridge/test_episode_distillation.py",
+  "bridge/memory_probe.py",
+  "bridge/test_memory_probe.py",
+  "bridge/memory_prefill_probe.py",
   "bridge/character_harness.py",
   "bridge/test_character_harness.py",
   "bridge/character_red_team.py",
@@ -245,6 +268,7 @@ $requiredFiles = @(
   "bridge/test_reference_bridge.py",
   "bridge/research_broker.py",
   "bridge/test_research_broker.py",
+  "bridge/research_acceptance.py",
   "bridge/robot_embodiment.py",
   "bridge/test_robot_embodiment.py",
   "bridge/local_facts.py",
@@ -266,15 +290,32 @@ $requiredFiles = @(
   "bridge/test_litert_lm_contract_smoke.py",
   "bridge/model_benchmark.py",
   "bridge/test_model_benchmark.py",
+  "bridge/utterance_text.py",
   "bridge/stt_normalization.py",
   "bridge/stt_adapter.py",
   "bridge/windows_speech_stt.py",
   "bridge/whisper_cpp_stt.py",
+  "bridge/whisper_server_stt.py",
   "bridge/test_stt_adapter.py",
+  "bridge/test_whisper_server_stt.py",
   "bridge/tts_adapter.py",
   "bridge/test_tts_adapter.py",
+  "bridge/conversation_session.py",
+  "bridge/test_conversation_session.py",
+  "bridge/conversation_latency.py",
+  "bridge/test_conversation_latency.py",
+  "bridge/conversation_latency_report.py",
+  "bridge/test_conversation_latency_report.py",
+  "bridge/initiative_policy.py",
+  "bridge/test_initiative_policy.py",
+  "bridge/room_context.py",
+  "bridge/test_room_context.py",
+  "bridge/ollama_room_vision.py",
+  "bridge/test_ollama_room_vision.py",
   "bridge/lan_service.py",
   "bridge/test_lan_service.py",
+  "bridge/bridge_ai_qualification.py",
+  "bridge/test_bridge_ai_qualification.py",
   "bridge/dashboard_service.py",
   "bridge/test_dashboard_service.py",
   "bridge/dashboard/index.html",
@@ -295,6 +336,8 @@ $requiredFiles = @(
   "bridge/voice_v2_directml_runtime.py",
   "bridge/voice_v2_directml_benchmark.py",
   "bridge/voice_v2_wire_benchmark.py",
+  "bridge/voice_device_truth.py",
+  "bridge/test_voice_device_truth.py",
   "bridge/vision_service.py",
   "bridge/test_vision_service.py",
   "bridge/requirements-vision.txt",
@@ -313,6 +356,8 @@ $requiredFiles = @(
   "bridge/test_hardware_simulator.py",
   "bridge/prearrival_sim_check.py",
   "bridge/test_prearrival_sim_check.py",
+  "bridge/fixtures/memory_probe.json",
+  "bridge/fixtures/searxng_search_response.json",
   "provenance/companion/settings.gradle.kts",
   "provenance/companion/build.gradle.kts",
   "provenance/companion/gradle.properties",
@@ -368,6 +413,7 @@ $requiredFiles = @(
   "firmware/full_online/firmware.elf",
   "firmware/full_online/partitions.bin",
   "media/stackchan_alive_expression_sheet.png",
+  "media/face_gallery.png",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.png",
@@ -629,6 +675,11 @@ $requiredFiles = @(
   "tools/start_pc_brain.ps1",
   "tools/start_pc_brain_directml.ps1",
   "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/start_whisper_server.ps1",
+  "tools/test_start_whisper_server_contract.ps1",
+  "tools/start_bridge_ai_supervised_qualification.ps1",
+  "tools/complete_bridge_ai_supervised_qualification.ps1",
+  "tools/test_bridge_ai_supervised_qualification_contract.ps1",
   "tools/start_stackchan_dashboard.cmd",
   "tools/start_stackchan_dashboard.ps1",
   "tools/install_stackchan_dashboard_shortcut.ps1",
@@ -756,6 +807,16 @@ $requiredFiles = @(
   "provenance/bridge/test_persona_pack.py",
   "provenance/bridge/reference_bridge.py",
   "provenance/bridge/test_reference_bridge.py",
+  "provenance/bridge/bridge_memory.py",
+  "provenance/bridge/test_bridge_memory.py",
+  "provenance/bridge/test_bridge_memory_v4.py",
+  "provenance/bridge/memory_maintenance.py",
+  "provenance/bridge/test_memory_maintenance.py",
+  "provenance/bridge/episode_distillation.py",
+  "provenance/bridge/test_episode_distillation.py",
+  "provenance/bridge/memory_probe.py",
+  "provenance/bridge/test_memory_probe.py",
+  "provenance/bridge/memory_prefill_probe.py",
   "provenance/bridge/local_facts.py",
   "provenance/bridge/test_local_facts.py",
   "provenance/bridge/trusted_facts_smoke.py",
@@ -774,15 +835,32 @@ $requiredFiles = @(
   "provenance/protocol-fixtures/invalid/wrong_protocol.json",
   "provenance/bridge/model_benchmark.py",
   "provenance/bridge/test_model_benchmark.py",
+  "provenance/bridge/utterance_text.py",
   "provenance/bridge/stt_normalization.py",
   "provenance/bridge/stt_adapter.py",
   "provenance/bridge/windows_speech_stt.py",
   "provenance/bridge/whisper_cpp_stt.py",
+  "provenance/bridge/whisper_server_stt.py",
   "provenance/bridge/test_stt_adapter.py",
+  "provenance/bridge/test_whisper_server_stt.py",
   "provenance/bridge/tts_adapter.py",
   "provenance/bridge/test_tts_adapter.py",
+  "provenance/bridge/conversation_session.py",
+  "provenance/bridge/test_conversation_session.py",
+  "provenance/bridge/conversation_latency.py",
+  "provenance/bridge/test_conversation_latency.py",
+  "provenance/bridge/conversation_latency_report.py",
+  "provenance/bridge/test_conversation_latency_report.py",
+  "provenance/bridge/initiative_policy.py",
+  "provenance/bridge/test_initiative_policy.py",
+  "provenance/bridge/room_context.py",
+  "provenance/bridge/test_room_context.py",
+  "provenance/bridge/ollama_room_vision.py",
+  "provenance/bridge/test_ollama_room_vision.py",
   "provenance/bridge/lan_service.py",
   "provenance/bridge/test_lan_service.py",
+  "provenance/bridge/bridge_ai_qualification.py",
+  "provenance/bridge/test_bridge_ai_qualification.py",
   "provenance/bridge/dashboard_service.py",
   "provenance/bridge/test_dashboard_service.py",
   "provenance/bridge/dashboard/index.html",
@@ -799,6 +877,13 @@ $requiredFiles = @(
   "provenance/bridge/voice_v2_directml_runtime.py",
   "provenance/bridge/voice_v2_directml_benchmark.py",
   "provenance/bridge/voice_v2_wire_benchmark.py",
+  "provenance/bridge/voice_device_truth.py",
+  "provenance/bridge/test_voice_device_truth.py",
+  "provenance/bridge/research_broker.py",
+  "provenance/bridge/test_research_broker.py",
+  "provenance/bridge/research_acceptance.py",
+  "provenance/bridge/fixtures/memory_probe.json",
+  "provenance/bridge/fixtures/searxng_search_response.json",
   "provenance/bridge/lan_smoke.py",
   "provenance/bridge/test_lan_smoke.py",
   "provenance/bridge/android_companion_probe.py",
@@ -830,6 +915,18 @@ $requiredFiles = @(
 
 foreach ($file in $requiredFiles) {
   Assert-File $file
+}
+
+. (Join-PackagePath "tools/preview_python_resolver.ps1")
+$bridgeRuntimePython = Get-StackchanPreviewPython
+$bridgeRuntimeHelp = @(
+  & $bridgeRuntimePython -B (Join-PackagePath "bridge/lan_service.py") --help 2>&1
+)
+if ($LASTEXITCODE -ne 0) {
+  throw "Packaged bridge runtime import smoke failed: $($bridgeRuntimeHelp -join ' ')"
+}
+if (($bridgeRuntimeHelp | Out-String) -notmatch "Run the local Stackchan P7 LAN WebSocket bridge") {
+  throw "Packaged bridge runtime help output is incomplete."
 }
 
 $projectLicenseText = Get-Content -LiteralPath (Join-PackagePath "LICENSE") -Raw
@@ -1451,7 +1548,7 @@ foreach ($pattern in @("BridgeWebSocketTransport::buildHandshakeRequest", "Bridg
 }
 
 $bridgeSocketWriterText = Get-Content -LiteralPath (Join-PackagePath "provenance/src/io/BridgeSocketWriter.cpp") -Raw
-foreach ($pattern in @("BridgeSocketWriter::begin", "BridgeSocketWriter::queueTextFrame", "BridgeSocketWriter::queueBinaryFrame", "BridgeSocketWriter::drainPendingFrame", "BridgeSocketWriter::drainPendingTextResponse", "BridgeSocketWriter::nextMaskWord", "BridgeSocketWriter::makeMask", "BridgeSocketWriterDrainResult::Partial", "BridgeSocketWriterDrainResult::NotConnected", "frameBuffered", "textFrameQueued", "binaryFrameQueued", "framesEncoded", "framesWritten", "textFramesQueued", "textFramesDropped", "textFramesEncoded", "textFramesWritten", "binaryFramesQueued", "binaryFramesDropped", "binaryFramesEncoded", "binaryFramesWritten", "partialWrites", "writeFailures", "textBytesQueued", "textBytesWritten", "binaryBytesQueued", "binaryBytesWritten", "encodePendingTextResponseFrame", "encodeClientTextFrame", "encodeClientBinaryFrame", "socket_text_queue_full", "socket_binary_queue_full", "socket_write_failed")) {
+foreach ($pattern in @("BridgeSocketWriter::begin", "BridgeSocketWriter::queueTextFrame", "BridgeSocketWriter::queueBinaryFrame", "BridgeSocketWriter::drainPendingFrame", "BridgeSocketWriter::drainPendingTextResponse", "BridgeSocketWriter::nextMaskWord", "BridgeSocketWriter::makeMask", "BridgeSocketWriterDrainResult::Partial", "BridgeSocketWriterDrainResult::NotConnected", "frameBuffered", "textFrameQueued", "binaryFrameQueued", "nextQueueOrder_", "textQueueOrder_", "binaryQueueOrder_", "framesEncoded", "framesWritten", "textFramesQueued", "textFramesDropped", "textFramesEncoded", "textFramesWritten", "binaryFramesQueued", "binaryFramesDropped", "binaryFramesEncoded", "binaryFramesWritten", "partialWrites", "writeFailures", "textBytesQueued", "textBytesWritten", "binaryBytesQueued", "binaryBytesWritten", "encodePendingTextResponseFrame", "encodeClientTextFrame", "encodeClientBinaryFrame", "socket_text_queue_full", "socket_binary_queue_full", "socket_write_failed")) {
   if ($bridgeSocketWriterText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/src/io/BridgeSocketWriter.cpp missing firmware socket-writer support: $pattern"
   }
@@ -1880,7 +1977,7 @@ foreach ($pattern in @("test_persona_expression_codegen_exposes_pose_targets", "
     throw "provenance/test/test_native_logic/test_main.cpp missing generated expression tests: $pattern"
   }
 }
-foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected", "test_bridge_websocket_routes_endpoint_control_to_pending_response", "test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame", "test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client", "test_bridge_socket_writer_no_pending_is_noop", "test_bridge_socket_writer_writes_pending_endpoint_response_frame", "test_bridge_socket_writer_retains_partial_frame_until_complete", "test_bridge_socket_writer_disconnected_keeps_pending_response", "test_bridge_socket_writer_writes_queued_text_frame", "test_bridge_socket_writer_bounds_queued_text_frame", "test_bridge_socket_writer_writes_queued_binary_frame", "test_bridge_socket_writer_retains_partial_binary_frame_until_complete", "test_bridge_socket_writer_bounds_binary_queue", "test_bridge_network_session_starts_and_accepts_handshake", "test_bridge_network_session_feeds_server_frames_to_bridge_client", "test_bridge_network_session_writes_endpoint_control_response", "test_bridge_network_session_writes_queued_binary_frame", "test_bridge_network_session_writes_queued_text_frame", "test_bridge_network_session_reconnects_after_socket_disconnect", "test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured", "test_bridge_wifi_provisioner_maps_config_to_network_session", "test_bridge_wifi_provisioner_schedules_retry_after_timeout")) {
+foreach ($pattern in @("test_bridge_websocket_builds_upgrade_request_and_accepts_response", "test_bridge_websocket_encodes_masked_client_text_frames", "test_bridge_websocket_decodes_server_text_to_bridge_client", "test_bridge_websocket_decodes_binary_downlink_chunks", "test_bridge_websocket_rejects_masked_server_frames", "test_bridge_websocket_close_marks_bridge_disconnected", "test_bridge_websocket_routes_endpoint_control_to_pending_response", "test_bridge_websocket_encodes_pending_endpoint_response_as_masked_client_frame", "test_bridge_websocket_ignored_endpoint_control_falls_through_to_bridge_client", "test_bridge_socket_writer_no_pending_is_noop", "test_bridge_socket_writer_writes_pending_endpoint_response_frame", "test_bridge_socket_writer_retains_partial_frame_until_complete", "test_bridge_socket_writer_disconnected_keeps_pending_response", "test_bridge_socket_writer_writes_queued_text_frame", "test_bridge_socket_writer_bounds_queued_text_frame", "test_bridge_socket_writer_writes_queued_binary_frame", "test_bridge_socket_writer_retains_partial_binary_frame_until_complete", "test_bridge_socket_writer_bounds_binary_queue", "test_bridge_socket_writer_preserves_binary_before_later_text", "test_bridge_socket_writer_finishes_partial_binary_before_later_text", "test_bridge_socket_writer_preserves_text_before_later_binary", "test_bridge_network_session_starts_and_accepts_handshake", "test_bridge_network_session_feeds_server_frames_to_bridge_client", "test_bridge_network_session_writes_endpoint_control_response", "test_bridge_network_session_writes_queued_binary_frame", "test_bridge_network_session_writes_queued_text_frame", "test_bridge_network_session_reconnects_after_socket_disconnect", "test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured", "test_bridge_wifi_provisioner_maps_config_to_network_session", "test_bridge_wifi_provisioner_schedules_retry_after_timeout")) {
   if ($nativeLogicTestText -notmatch [regex]::Escape($pattern)) {
     throw "provenance/test/test_native_logic/test_main.cpp missing firmware WebSocket transport tests: $pattern"
   }
@@ -2531,7 +2628,7 @@ foreach ($pattern in @("STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_MODEL", "
 }
 
 $setupWhisperText = Get-Content -LiteralPath (Join-PackagePath "tools/setup_whisper_cpp.ps1") -Raw
-foreach ($pattern in @("stackchan.whisper-cpp-setup.v1", "whisper-bin-x64.zip", 'ggml-$Model.bin', "STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_MODEL")) {
+foreach ($pattern in @("stackchan.whisper-cpp-setup.v1", "whisper-bin-x64.zip", 'ggml-$Model.bin', "STACKCHAN_WHISPER_CPP_EXE", "STACKCHAN_WHISPER_SERVER_EXE", "whisper-server.exe", "whisperServerExe", "STACKCHAN_WHISPER_MODEL")) {
   if ($setupWhisperText -notmatch [regex]::Escape($pattern)) {
     throw "tools/setup_whisper_cpp.ps1 missing whisper.cpp setup support: $pattern"
   }
@@ -2675,6 +2772,7 @@ Assert-File "firmware/servo_calibration/firmware.bin" 100000
 Assert-File "firmware/full_online/firmware.bin" 1000000
 Assert-File "media/stackchan_alive_preview.png" 1000
 Assert-File "media/stackchan_alive_expression_sheet.png" 2000
+Assert-File "media/face_gallery.png" 2000
 Assert-File "media/stackchan_alive_preview.gif" 1000
 Assert-File "media/stackchan_alive_preview.mp4" 1000
 Assert-File "media/stackchan_alive_speech_preview.gif" 1000
@@ -2710,6 +2808,7 @@ Assert-File "media/voice/rvc/README.md" 400
 
 Assert-Bytes "media/stackchan_alive_preview.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_expression_sheet.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+Assert-Bytes "media/face_gallery.png" ([byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
 Assert-Bytes "media/stackchan_alive_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
 Assert-Bytes "media/stackchan_alive_preview.mp4" ([byte[]](0x66, 0x74, 0x79, 0x70)) 4
 Assert-Bytes "media/stackchan_alive_speech_preview.gif" ([byte[]](0x47, 0x49, 0x46, 0x38))
@@ -3206,6 +3305,7 @@ if ($companionEvidenceManifest.result.diagnostics_exports_attached -ne $true) {
 $expectedMediaArtifacts = @(
   "media/stackchan_alive_preview.png",
   "media/stackchan_alive_expression_sheet.png",
+  "media/face_gallery.png",
   "media/stackchan_alive_preview.mp4",
   "media/stackchan_alive_preview.gif",
   "media/stackchan_alive_speech_preview.gif",
@@ -3428,15 +3528,15 @@ foreach ($duplicate in $duplicateResolvedPackages) {
   $knownLegacyScServo = $duplicate.name -eq "SCServo" -and $duplicate.environment -in @("stackchan", "stackchan_servo_calibration")
   $duplicateEntries = ConvertTo-Array $duplicate.entries
   $duplicateVersions = @($duplicateEntries | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
-  $knownFullOnlineM5Gfx = (
+  $knownPinnedM5GfxWithTransitiveCopy = (
     $duplicate.name -eq "M5GFX" -and
-    $duplicate.environment -eq "stackchan_release_full" -and
+    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration", "stackchan_release_full") -and
     $duplicate.count -eq 2 -and
     $duplicateVersions.Count -eq 2 -and
     $duplicateVersions[0] -eq "0.2.24" -and
-    $duplicateVersions[1] -eq "0.2.25"
+    $duplicateVersions[1] -eq "0.2.26"
   )
-  if (-not $knownLegacyScServo -and -not $knownFullOnlineM5Gfx) {
+  if (-not $knownLegacyScServo -and -not $knownPinnedM5GfxWithTransitiveCopy) {
     throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
   }
 }

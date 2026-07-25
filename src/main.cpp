@@ -7466,6 +7466,7 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   const BridgeNetworkSessionTelemetry& network = gBridgeNetworkSession.telemetry();
   const BridgeClientTelemetry& bridge = gBridge.telemetry();
   const BridgeAudioUplinkTelemetry& uplink = gBridgeAudioUplink.telemetry();
+  const BridgeSocketWriterTelemetry& writer = gBridgeNetworkSession.writer().telemetry();
   const DisplayTelemetry& display = gDisplay.telemetry();
 #if defined(ARDUINO_ARCH_ESP32)
   const LanOtaTelemetry& ota = gLanOtaServer.telemetry();
@@ -8305,6 +8306,17 @@ void serveBridgeLeanStatusJson(WiFiClient& client,
   append(",\"network_tcp_connect_max_duration_ms\":%lu",
          static_cast<unsigned long>(gBridgeSocket.maxConnectDurationMs()));
   append(",\"bridge_state\":\"%s\"", bridgeStateName(bridge.state));
+  append(",\"bridge_network_writer_frame_buffered\":%s",
+         writer.frameBuffered ? "true" : "false");
+  append(",\"bridge_network_writer_text_queued\":%s",
+         writer.textFrameQueued ? "true" : "false");
+  append(",\"bridge_network_writer_binary_queued\":%s",
+         writer.binaryFrameQueued ? "true" : "false");
+  append(",\"bridge_network_writer_text_dropped\":%lu",
+         static_cast<unsigned long>(writer.textFramesDropped));
+  append(",\"bridge_network_writer_binary_dropped\":%lu",
+         static_cast<unsigned long>(writer.binaryFramesDropped));
+  append(",\"bridge_network_writer_last_error\":\"%s\"", writer.lastError);
   append(",\"bridge_uplink_ready\":%s", uplink.ready ? "true" : "false");
   append(",\"bridge_uplink_enabled\":%s", uplink.enabled ? "true" : "false");
   append(",\"bridge_uplink_active\":%s", uplink.active ? "true" : "false");

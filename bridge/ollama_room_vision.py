@@ -27,6 +27,15 @@ demographics, valuables, addresses, or other private traits. Prefer unknown over
 """
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_without_redirects(request: urllib.request.Request, *, timeout: float):
+    return urllib.request.build_opener(_RejectRedirects()).open(request, timeout=timeout)
+
+
 def validate_loopback_url(value: str) -> str:
     parsed = urllib.parse.urlparse(str(value).strip())
     if (
@@ -103,7 +112,10 @@ def query_ollama(frame: bytes, *, url: str, model: str, timeout_seconds: float =
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=max(1.0, timeout_seconds)) as response:
+        with _open_without_redirects(
+            request,
+            timeout=max(1.0, timeout_seconds),
+        ) as response:
             payload = json.loads(response.read(256 * 1024).decode("utf-8"))
     except (OSError, urllib.error.URLError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"local Ollama vision request failed: {getattr(exc, 'reason', exc)}") from exc

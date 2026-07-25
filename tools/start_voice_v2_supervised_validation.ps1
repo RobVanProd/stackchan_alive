@@ -97,7 +97,8 @@ try {
     -DownlinkBinaryFrameDelayMs 70 -DownlinkTextFrameDelayMs 40 `
     -LogDir $EvidencePath -MemoryFile "output\pc-brain\latest\memory.json" `
     -TurnLogFile (Join-Path $EvidencePath "turns.jsonl") `
-    -AudioEvidenceDir (Join-Path $EvidencePath "audio-evidence")
+    -AudioEvidenceDir (Join-Path $EvidencePath "audio-evidence") `
+    -EnablePrivateTurnEvidence
   if ($LASTEXITCODE -ne 0) { throw "Could not start the candidate bridge." }
 
   $CandidatePid = [int](Get-Content -LiteralPath (Join-Path $EvidencePath "lan_service.pid") -Raw)

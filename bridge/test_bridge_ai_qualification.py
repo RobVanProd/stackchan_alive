@@ -1,0 +1,277 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from bridge.bridge_ai_qualification import check_evidence
+
+
+class BridgeAiQualificationTests(unittest.TestCase):
+    def _write_ready_fixture(self, root: Path) -> None:
+        session = {
+            "schema": "stackchan.bridge-ai-supervised-session.v1",
+            "mode": "bridge-ai-supervised",
+            "sourceCommit": "a" * 40,
+            "sourceWorktreeClean": True,
+            "operatorPresent": True,
+            "motionOffConfirmed": True,
+            "minReplyWindows": 100,
+        }
+        before_debug = {
+            "ota_expected_sha256": "b" * 64,
+            "network_state": "connected",
+            "bridge_state": "ready",
+            "motion_enabled": False,
+            "servo_rail_enabled": False,
+            "servo_torque_enabled": False,
+            "display_window_max_frame_us": 20_000,
+            "conversation_reply_window_started": 10,
+            "bridge_uplink_errors": 4,
+            "bridge_uplink_queue_failures": 2,
+            "bridge_network_writer_frame_buffered": False,
+            "bridge_network_writer_text_queued": 11,
+            "bridge_network_writer_binary_queued": 10,
+            "bridge_network_writer_text_dropped": 0,
+            "bridge_network_writer_binary_dropped": 0,
+            "bridge_network_writer_last_error": "",
+            "bridge_reply_windows_rejected": 1,
+            "conversation_reply_window_rejected": 1,
+            "bridge_downlink_playback_errors": 3,
+            "speaker_stream_play_raw_failed": 2,
+            "speaker_stream_forced_stops": 1,
+            "bridge_audio_remote_stop_requests": 2,
+        }
+        after_debug = {
+            **before_debug,
+            "display_window_max_frame_us": 30_000,
+            "conversation_reply_window_started": 110,
+            "bridge_audio_remote_stop_requests": 3,
+            "audio_stream_active": False,
+            "bridge_downlink_playback_awaiting_drain": False,
+            "speaker_channel_state": 0,
+        }
+        before_dashboard = {
+            "bridge": {"conversationV2Enabled": True},
+            "behavior": {
+                "initiative": {"available": True, "enabled": True},
+                "roomObservation": {
+                    "available": True,
+                    "configured": True,
+                    "enabled": True,
+                },
+            },
+        }
+        after_dashboard = {
+            "behavior": {
+                "initiative": {
+                    "ignoredOpeners": 2,
+                    "backoffRemainingSeconds": 20_000,
+                },
+                "roomObservation": {
+                    "observations": 2,
+                    "failures": 0,
+                    "enabled": False,
+                    "personCount": None,
+                    "ageSeconds": None,
+                },
+            }
+        }
+        observations = {
+            "oneWakeMultiTurn": True,
+            "echoFree": True,
+            "exitPhraseClosed": True,
+            "silenceClosed": True,
+            "bargeInStoppedAudio": True,
+            "bridgeLossLocalRecovery": True,
+            "cleanCompleteAudio": True,
+            "initiativeNatural": True,
+            "initiativeRateFloor": True,
+            "initiativeIgnoredBackoff": True,
+            "initiativeNightSuppressed": True,
+            "roomContextGrounded": True,
+            "roomOffCleared": True,
+            "noFramePersisted": True,
+            "echoWindowsObserved": 100,
+        }
+        for name, payload in (
+            ("session.json", session),
+            ("before-debug.json", before_debug),
+            ("after-debug.json", after_debug),
+            ("before-dashboard.json", before_dashboard),
+            ("after-dashboard.json", after_dashboard),
+            ("operator-observations.json", observations),
+        ):
+            (root / name).write_text(json.dumps(payload), encoding="utf-8")
+
+        records = [
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "wake",
+                "actions": ["session_started", "open_capture"],
+                "conversation_turns": 0,
+            },
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "reply_pending",
+                "actions": ["playback_complete", "acoustic_tail"],
+                "conversation_turns": 1,
+            },
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "reply_window_open",
+                "actions": ["open_capture"],
+                "conversation_turns": 1,
+            },
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "barge_in",
+                "actions": ["cancel_generation", "cancel_playback", "open_capture"],
+                "conversation_turns": 2,
+            },
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "exit_phrase",
+                "actions": ["session_closing"],
+                "conversation_turns": 2,
+            },
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "reply_timeout",
+                "actions": ["session_closing"],
+                "conversation_turns": 1,
+            },
+            {
+                "schema": "stackchan.conversation-event.v1",
+                "event": "bridge_lost",
+                "actions": ["session_closed"],
+                "conversation_turns": 0,
+            },
+        ]
+        for index in range(3):
+            records.append(
+                {
+                    "schema": "stackchan.lan-turn-summary.v1",
+                    "latency_schema": "stackchan.conversation-latency.v1",
+                    "latency_first_audio_ms": 2_500 + index * 100,
+                    "latency_host_reaction_ms": 1,
+                    "latency_text_ready_ms": 1_800,
+                    "latency_turn_total_ms": 5_000,
+                    "latency_tts_render_rtf": 0.5,
+                    "latency_gate_host_reaction_under_300": True,
+                    "latency_gate_first_audio_under_3000": True,
+                    "latency_gate_render_faster_than_realtime": True,
+                    "latency_gate_zero_truncation": True,
+                }
+            )
+        records.extend(
+            [
+                {
+                    "schema": "stackchan.initiative-turn.v1",
+                    "event": "initiative_spoken",
+                    "generated_at": "2026-07-24T12:00:00Z",
+                },
+                {
+                    "schema": "stackchan.initiative-turn.v1",
+                    "event": "initiative_spoken",
+                    "generated_at": "2026-07-24T12:10:00Z",
+                },
+            ]
+        )
+        (root / "turns.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n",
+            encoding="utf-8",
+        )
+
+    def test_complete_evidence_is_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+
+            report = check_evidence(root)
+
+        self.assertEqual("bridge-ai-supervised-ready", report["status"])
+        self.assertEqual(0, report["failed"])
+        self.assertEqual(0, report["pending"])
+
+    def test_missing_operator_confirmation_stays_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            observations = json.loads(
+                (root / "operator-observations.json").read_text(encoding="utf-8")
+            )
+            del observations["cleanCompleteAudio"]
+            (root / "operator-observations.json").write_text(
+                json.dumps(observations),
+                encoding="utf-8",
+            )
+
+            report = check_evidence(root)
+
+        self.assertEqual("bridge-ai-supervised-pending", report["status"])
+        self.assertEqual(0, report["failed"])
+        self.assertEqual(1, report["pending"])
+
+    def test_persisted_room_frame_fails_privacy_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            (root / "room-frame.pgm").write_bytes(b"P5\n1 1\n255\n\x00")
+
+            report = check_evidence(root)
+
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        privacy = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "evidence-has-no-room-frames"
+        )
+        self.assertEqual("fail", privacy["status"])
+
+    def test_late_audio_protocol_event_fails_order_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            with (root / "turns.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "schema": "stackchan.audio-protocol-event.v1",
+                            "code": "audio_without_utterance",
+                            "payload_bytes": 1600,
+                        }
+                    )
+                    + "\n"
+                )
+
+            report = check_evidence(root)
+
+        audio_order = next(
+            check for check in report["checks"] if check["id"] == "host-audio-order-clean"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", audio_order["status"])
+
+    def test_missing_writer_telemetry_fails_candidate_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            for name in ("before-debug.json", "after-debug.json"):
+                path = root / name
+                debug = json.loads(path.read_text(encoding="utf-8"))
+                del debug["bridge_network_writer_binary_dropped"]
+                path.write_text(json.dumps(debug), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        telemetry = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "robot-writer-telemetry"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", telemetry["status"])
+
+
+if __name__ == "__main__":
+    unittest.main()

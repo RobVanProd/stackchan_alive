@@ -153,16 +153,23 @@ python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python 
 ```
 
 For the PC brain, prefer the repo-local whisper.cpp adapter. Install the local binary/model
-once, then use the adapter behind the same bridge contract:
+once. Production should keep `whisper-server` resident on loopback so each turn avoids Python
+and model startup; the one-shot adapter remains useful for diagnosis:
 
 ```powershell
 .\tools\setup_whisper_cpp.cmd
+.\tools\start_whisper_server.ps1 -Json
 python bridge/whisper_cpp_stt.py --sample-rate 16000 --json < utterance.s16le
-python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-command "python bridge\whisper_cpp_stt.py"
+python bridge/lan_service.py --host 127.0.0.1 --port 8765 --stt-server-url http://127.0.0.1:5061
 ```
 
 Windows System.Speech remains available as a fallback adapter at `bridge/windows_speech_stt.py`,
 but it should not be treated as the production listener.
+
+The persistent adapter builds the WAV request in memory, rejects non-loopback endpoints and
+redirects, and does not persist microphone audio. A real robot capture measured about
+`0.51-0.59 s` through the in-process client versus about `1.2-1.7 s` through the prior per-turn
+CLI path.
 
 The command receives raw signed 16-bit mono PCM on stdin and these environment variables:
 `STACKCHAN_AUDIO_SAMPLE_RATE`, `STACKCHAN_AUDIO_FORMAT=s16le_mono`, and
@@ -238,7 +245,9 @@ The service accepts `hello`, `endpoint_hello`, `claim_brain`, `release_brain`,
 `diagnostics_request`, `capability_update`, `utterance_start`, `utterance_end`, `heartbeat`,
 and `cancel` JSON text frames, plus binary WebSocket PCM frames after `utterance_start`. It
 tracks trusted PC/Android endpoints, one active brain owner, safe settings writes, bounded
-upload telemetry, and clears raw audio at `utterance_end` or `cancel`. On a transcript-backed
+upload telemetry, and clears raw audio at `utterance_end` or `cancel`. The socket thread freezes
+the PCM snapshot before generation starts, verifies declared byte/chunk totals, and logs any
+binary frame received after the end marker as an audio-protocol event. On a transcript-backed
 or STT-backed turn, it validates Character
 Lock JSON, applies host memory, and streams `thinking`, `response_start`, optional audio
 stream chunks, `audio` mouth frames, and `response_end` frames back to the client.
@@ -257,6 +266,10 @@ measured turn has first audio under three seconds, TTS rendering faster than rea
 truncation. These are host/bridge timings; robot playback-completion evidence remains a separate
 wire/device gate.
 
+Normal production launch passes `--redact-turn-text` and does not configure
+`--audio-evidence-dir`. Transcript text, response text, and microphone WAV files are available
+only through an explicit private evidence run.
+
 Conversation v2 host-state rehearsal is opt-in and requires confirmable audio downlink:
 
 ```powershell
@@ -274,6 +287,8 @@ hysteresis; no-speech or ambiguous input retains the 4.8-second maximum fallback
 capture remains fixed-length. Exit phrases, turn limits, bridge loss, cancellation, TTS failure,
 and model failure close through a typed cooldown. Host/companion cancellation is implemented;
 physical over-speaker barge-in and exact-image hardware qualification remain promotion gates.
+Use [`docs/BRIDGE_AI_QUALIFICATION.md`](../docs/BRIDGE_AI_QUALIFICATION.md) for the passive,
+exact-image evidence workflow.
 
 Host initiative and room context are also explicit, default-off features:
 

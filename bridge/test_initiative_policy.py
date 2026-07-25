@@ -137,6 +137,20 @@ class InitiativePolicyTests(unittest.TestCase):
         self.assertEqual(0.0, status["curiosityScore"])
         self.assertIsNone(self.decide(policy, 1_000_000))
 
+    def test_explicit_disable_and_reenable_clear_ignored_backoff(self) -> None:
+        policy = self.policy()
+        policy._ignored_openers = 2
+        policy._backoff_until_ms = 9_000_000
+        policy.set_enabled(False)
+        with patch("bridge.initiative_policy.time.time", return_value=2_000.0):
+            policy.set_enabled(True)
+
+        status = policy.status(now_ms=2_000_000)
+
+        self.assertEqual(0, status["ignoredOpeners"])
+        self.assertEqual(0, status["backoffRemainingSeconds"])
+        self.assertEqual(0.0, status["curiosityScore"])
+
     def test_stale_presence_never_authorizes_speech(self) -> None:
         policy = self.policy()
         policy.observe_presence(True, face_count=1, now_ms=TEN_MINUTES - 31_000)

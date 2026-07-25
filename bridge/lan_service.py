@@ -583,6 +583,7 @@ class LanBridgeConfig:
     runner_timeout_ms: int = 60000
     persona_id: str = DEFAULT_PERSONA_ID
     stt_command: str = ""
+    stt_server_url: str = ""
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
     require_audio_wake_phrase: bool = False
     tts_command: str = ""
@@ -599,6 +600,7 @@ class LanBridgeConfig:
     audio_evidence_dir: Path | None = None
     memory_file: Path | None = None
     turn_log_file: Path | None = None
+    redact_turn_text: bool = False
     auto_turn_text: str = ""
     research_enabled: bool = False
     searxng_url: str = "http://127.0.0.1:8080"
@@ -643,6 +645,12 @@ class LanBridgeConfig:
             command=self.room_vision_command,
             timeout_ms=self.room_vision_timeout_ms,
         )
+
+
+@dataclass(frozen=True)
+class FinalizedAudioUpload:
+    pcm: bytes
+    summary: dict[str, object]
 
 
 @dataclass
@@ -714,6 +722,10 @@ class AudioUpload:
         summary = self.summary()
         self.clear()
         return summary
+
+    def finalize(self) -> FinalizedAudioUpload:
+        pcm = bytes(self.buffer)
+        return FinalizedAudioUpload(pcm=pcm, summary=self.finish_and_clear())
 
 
 def websocket_accept_value(client_key: str) -> str:
@@ -995,6 +1007,8 @@ class LanBridgeSession:
         self.room_context = room_context
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
+        self.conversation_playback_complete_seq = 0
+        self.audio_protocol_errors = 0
         if config.initiative_enabled and (
             not config.tts_command or config.disable_audio_downlink
         ):
@@ -1133,7 +1147,22 @@ class LanBridgeSession:
         self._reset_session_memory_tracking()
 
     def _observe_conversation_transition(self, transition) -> None:
-        if transition is not None and any(
+        if transition is None:
+            return
+        actions = tuple(str(action) for action in transition.actions)
+        reason = str(transition.reason or "")
+        if actions or reason not in {"", "no_change"}:
+            snapshot = self.conversation.snapshot(now_ms()) if self.conversation is not None else {}
+            self._append_turn_log(
+                {
+                    "schema": "stackchan.conversation-event.v1",
+                    "generated_at": utc_timestamp(),
+                    "event": reason or "transition",
+                    "actions": list(actions),
+                    **snapshot,
+                }
+            )
+        if any(
             action in {"session_closing", "session_closed"} for action in transition.actions
         ):
             self._finalize_memory_session()
@@ -1202,11 +1231,12 @@ class LanBridgeSession:
         self._observe_conversation_transition(self.conversation.tick(current_ms))
         if self.conversation.phase == ConversationPhase.IDLE:
             self._reset_session_memory_tracking()
-            self.conversation.wake(current_ms, owner_id)
+            self._observe_conversation_transition(self.conversation.wake(current_ms, owner_id))
         elif self.conversation.phase in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
             self.cancel_active_turn("barge_in")
-            self.conversation.barge_in(current_ms)
+            self._observe_conversation_transition(self.conversation.barge_in(current_ms))
         transition = self.conversation.utterance_started(current_ms)
+        self._observe_conversation_transition(transition)
         if "reject_utterance" in transition.actions:
             return error_frame("conversation_capture_closed", transition.reason)
         return None
@@ -1254,9 +1284,19 @@ class LanBridgeSession:
     def _append_turn_log(self, record: dict[str, object]) -> None:
         if not self.config.turn_log_file:
             return
+        serialized = dict(record)
+        if self.config.redact_turn_text:
+            for key in (
+                "transcript",
+                "response_text",
+                "stt_transcript",
+                "stt_raw_transcript",
+            ):
+                if key in serialized:
+                    serialized[f"{key}_present"] = bool(str(serialized.pop(key, "")).strip())
         self.config.turn_log_file.parent.mkdir(parents=True, exist_ok=True)
         with self.config.turn_log_file.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, separators=(",", ":"), ensure_ascii=True) + "\n")
+            handle.write(json.dumps(serialized, separators=(",", ":"), ensure_ascii=True) + "\n")
 
     def _write_audio_evidence(
         self,
@@ -1302,7 +1342,58 @@ class LanBridgeSession:
         for key in ("audio_evidence_file", "audio_evidence_error"):
             if key in audio_summary:
                 record[key] = str(audio_summary[key])
+        for key in (
+            "audio_declared_bytes",
+            "audio_declared_chunks",
+            "audio_end_counts_match",
+        ):
+            if key in audio_summary:
+                record[key] = audio_summary[key]
         self._append_turn_log(record)
+
+    def _append_audio_protocol_event(self, *, code: str, payload_bytes: int) -> None:
+        self.audio_protocol_errors += 1
+        self._append_turn_log(
+            {
+                "schema": "stackchan.audio-protocol-event.v1",
+                "generated_at": utc_timestamp(),
+                "session": self.session,
+                "code": code,
+                "payload_bytes": max(0, int(payload_bytes)),
+                "audio_protocol_errors": self.audio_protocol_errors,
+            }
+        )
+
+    @staticmethod
+    def _validate_audio_end_declaration(
+        message: dict[str, Any],
+        audio_summary: dict[str, object],
+    ) -> str:
+        declarations = (
+            ("audio_bytes", "audio_bytes", "audio_declared_bytes"),
+            ("chunks", "audio_chunks", "audio_declared_chunks"),
+        )
+        mismatches: list[str] = []
+        saw_declaration = False
+        for message_key, summary_key, declared_key in declarations:
+            if message_key not in message:
+                continue
+            saw_declaration = True
+            try:
+                declared = int(message[message_key])
+            except (TypeError, ValueError):
+                audio_summary["audio_end_counts_match"] = False
+                return f"{message_key} is not an integer"
+            if declared < 0:
+                audio_summary["audio_end_counts_match"] = False
+                return f"{message_key} is negative"
+            actual = int(audio_summary.get(summary_key, 0))
+            audio_summary[declared_key] = declared
+            if declared != actual:
+                mismatches.append(f"{message_key} declared {declared}, received {actual}")
+        if saw_declaration:
+            audio_summary["audio_end_counts_match"] = not mismatches
+        return "; ".join(mismatches)
 
     def _append_completed_turn_log(
         self,
@@ -1347,6 +1438,13 @@ class LanBridgeSession:
         record.update(runner_summary)
         record.update(tts_summary)
         record.update(audio_evidence_log)
+        for key in (
+            "audio_declared_bytes",
+            "audio_declared_chunks",
+            "audio_end_counts_match",
+        ):
+            if key in audio_summary:
+                record[key] = audio_summary[key]
         record.update(self.memory.diagnostics())
         turn_elapsed_ms = (time.perf_counter() - turn_started) * 1000.0
         record["turn_elapsed_ms"] = round(turn_elapsed_ms, 2)
@@ -1369,6 +1467,7 @@ class LanBridgeSession:
         *,
         suppress_thinking: bool = False,
         frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+        finalized_audio: FinalizedAudioUpload | None = None,
     ) -> list[dict[str, object] | bytes]:
         try:
             message = json.loads(text)
@@ -1470,6 +1569,7 @@ class LanBridgeSession:
                 message,
                 suppress_thinking=suppress_thinking,
                 frame_sink=frame_sink,
+                finalized_audio=finalized_audio,
             )
         if message_type == "playback_complete":
             try:
@@ -1480,7 +1580,19 @@ class LanBridgeSession:
             if self.conversation is not None:
                 if seq == 0 or seq != self.conversation_response_seq:
                     return [error_frame("playback_complete_seq_mismatch", str(seq))]
+                if seq == self.conversation_playback_complete_seq:
+                    frame["playback_complete_duplicate"] = True
+                    frame.update(self._conversation_payload())
+                    return [frame]
                 transition = self.conversation.playback_completed(now_ms())
+                if "playback_complete" not in transition.actions:
+                    return [
+                        error_frame(
+                            "playback_complete_not_expected",
+                            transition.reason,
+                        )
+                    ]
+                self.conversation_playback_complete_seq = seq
                 frame = {
                     "type": "conversation_reply_window",
                     "seq": seq,
@@ -1682,6 +1794,9 @@ class LanBridgeSession:
             frame.update(self.audio.summary())
         return frame
 
+    def finalize_audio_upload(self) -> FinalizedAudioUpload:
+        return self.audio.finalize()
+
     def handle_binary(self, payload: bytes) -> list[dict[str, object]]:
         self.control_state.touch_endpoint(self.endpoint_id)
         self.control_state.reconcile_owner()
@@ -1690,7 +1805,13 @@ class LanBridgeSession:
         try:
             self.audio.append(payload, self.config.max_audio_bytes)
         except WebSocketProtocolError as exc:
-            return [error_frame("audio_without_utterance", str(exc))]
+            self._append_audio_protocol_event(
+                code="audio_without_utterance",
+                payload_bytes=len(payload),
+            )
+            frame = error_frame("audio_without_utterance", str(exc))
+            frame["audio_protocol_errors"] = self.audio_protocol_errors
+            return [frame]
         return [{"type": "heartbeat", **self.audio.summary()}]
 
     def _handle_text_audio(self, message: dict[str, Any]) -> list[dict[str, object]]:
@@ -1914,6 +2035,7 @@ class LanBridgeSession:
         *,
         suppress_thinking: bool = False,
         frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+        finalized_audio: FinalizedAudioUpload | None = None,
     ) -> list[dict[str, object] | bytes]:
         cancellation = CancellationToken()
         if not self._register_active_turn(cancellation):
@@ -1924,6 +2046,7 @@ class LanBridgeSession:
                 suppress_thinking=suppress_thinking,
                 frame_sink=frame_sink,
                 cancellation=cancellation,
+                finalized_audio=finalized_audio,
             )
         except OperationCancelledError as exc:
             frame = error_frame("turn_cancelled", str(exc))
@@ -1939,6 +2062,7 @@ class LanBridgeSession:
         suppress_thinking: bool,
         frame_sink: Callable[[dict[str, object] | bytes], None] | None,
         cancellation: CancellationToken,
+        finalized_audio: FinalizedAudioUpload | None,
     ) -> list[dict[str, object] | bytes]:
         turn_started = time.perf_counter()
         cancellation.raise_if_cancelled()
@@ -1949,9 +2073,23 @@ class LanBridgeSession:
             host_reaction_ms = None
         self.next_seq = max(self.next_seq, seq + 1)
         user_text = " ".join(str(message.get("text") or message.get("transcript") or "").split())
-        pcm = bytes(self.audio.buffer)
-        audio_summary = self.audio.finish_and_clear()
+        finalized = finalized_audio if finalized_audio is not None else self.finalize_audio_upload()
+        pcm = finalized.pcm
+        audio_summary = dict(finalized.summary)
         has_audio = int(audio_summary["audio_bytes"]) > 0
+        declaration_error = self._validate_audio_end_declaration(message, audio_summary)
+        if declaration_error:
+            self._append_audio_error_log(
+                seq=seq,
+                audio_summary=audio_summary,
+                code="audio_count_mismatch",
+                detail=declaration_error,
+                transcript=user_text,
+            )
+            return [
+                self._conversation_failure("audio_count_mismatch", declaration_error)
+                | audio_summary
+            ]
         audio_evidence_log = self._write_audio_evidence(seq=seq, pcm=pcm, audio_summary=audio_summary) if has_audio else {}
         audio_summary.update(audio_evidence_log)
         stt_log: dict[str, object] = {}
@@ -1968,6 +2106,7 @@ class LanBridgeSession:
                     pcm,
                     int(audio_summary["audio_sample_rate"]),
                     command=self.config.stt_command,
+                    server_url=self.config.stt_server_url,
                     timeout_ms=self.config.stt_timeout_ms,
                 )
             except SttConfigurationError:
@@ -2036,6 +2175,7 @@ class LanBridgeSession:
             transition = self.conversation.utterance_committed(now_ms(), user_text)
             if "begin_generation" not in transition.actions:
                 return [self._conversation_heartbeat(transition)]
+            self._observe_conversation_transition(transition)
         if user_text:
             self._commit_memory(self.memory.remember_user_text(user_text))
             # Persist transcript-owned facts before model/TTS work so an explicit
@@ -2181,6 +2321,7 @@ class LanBridgeSession:
             transition = self.conversation.response_started(now_ms())
             if "reject_response" in transition.actions:
                 return [self._conversation_failure("conversation_response_rejected", transition.reason)]
+            self._observe_conversation_transition(transition)
             self.conversation_response_seq = seq
         response_text_ready_ms = (time.perf_counter() - turn_started) * 1000.0
         if (
@@ -2196,7 +2337,9 @@ class LanBridgeSession:
                 cancellation=cancellation,
             )
             if tts_error and self.conversation is not None:
-                self.conversation.turn_failed(now_ms(), "tts_error")
+                self._observe_conversation_transition(
+                    self.conversation.turn_failed(now_ms(), "tts_error")
+                )
             cancellation.raise_if_cancelled()
             self._commit_memory(candidate_memory)
             self._stage_conversation_turn(user_text, turn.text, tts_error)
@@ -2271,7 +2414,9 @@ class LanBridgeSession:
         except (TtsExecutionError, ValueError) as exc:
             tts_error = str(exc)
         if tts_error and self.conversation is not None:
-            self.conversation.turn_failed(now_ms(), "tts_error")
+            self._observe_conversation_transition(
+                self.conversation.turn_failed(now_ms(), "tts_error")
+            )
         cancellation.raise_if_cancelled()
         self._commit_memory(candidate_memory)
         self._stage_conversation_turn(user_text, turn.text, tts_error)
@@ -2362,6 +2507,10 @@ def send_connection_frame(
     return sent_at
 
 
+def ends_audio_stream(frame: dict[str, object] | bytes) -> bool:
+    return isinstance(frame, dict) and frame.get("type") == "audio_stream_end"
+
+
 def handle_connection(
     conn: socket.socket,
     config: LanBridgeConfig,
@@ -2403,7 +2552,7 @@ def handle_connection(
                     conn,
                     config,
                     pending_short_chunk,
-                    final_binary_chunk=not isinstance(frame, bytes),
+                    final_binary_chunk=ends_audio_stream(frame),
                 )
                 pending_short_chunk = None
             if (
@@ -2420,12 +2569,17 @@ def handle_connection(
         with send_lock:
             pending_short_chunk = None
 
-    def run_turn(text: str, suppress_thinking: bool) -> None:
+    def run_turn(
+        text: str,
+        suppress_thinking: bool,
+        finalized_audio: FinalizedAudioUpload,
+    ) -> None:
         try:
             frames = session.handle_text(
                 text,
                 suppress_thinking=suppress_thinking,
                 frame_sink=send_live if config.stream_tts_phrases else None,
+                finalized_audio=finalized_audio,
             )
             for frame in frames:
                 send_live(frame)
@@ -2530,6 +2684,7 @@ def handle_connection(
                         send_live(error_frame("turn_busy", "the cancelled response is still stopping"))
                         continue
                     early_frame = session.early_thinking_frame(text)
+                    finalized_audio = session.finalize_audio_upload()
                     if early_frame is not None:
                         sent_at = send_live(early_frame)
                         if sent_at is not None and isinstance(parsed_text, dict):
@@ -2539,7 +2694,7 @@ def handle_connection(
                             text = json.dumps(parsed_text, separators=(",", ":"), ensure_ascii=True)
                     turn_thread = threading.Thread(
                         target=run_turn,
-                        args=(text, early_frame is not None),
+                        args=(text, early_frame is not None, finalized_audio),
                         name="stackchan-turn-worker",
                         daemon=True,
                     )
@@ -2557,12 +2712,20 @@ def handle_connection(
             elif opcode == 0x2:
                 before_chunks = session.audio.chunks
                 frames = session.handle_binary(payload)
-                if session.audio.chunks != before_chunks and (
-                    session.audio.chunks == 1 or session.audio.chunks % 20 == 0
-                ):
+                if session.audio.chunks != before_chunks:
+                    if session.audio.chunks == 1 or session.audio.chunks % 20 == 0:
+                        print(
+                            f"[bridge-lan] utterance_audio chunks={session.audio.chunks} "
+                            f"bytes={session.audio.bytes_received}",
+                            flush=True,
+                        )
+                else:
+                    code = ""
+                    if frames and isinstance(frames[0], dict):
+                        code = str(frames[0].get("code", ""))
                     print(
-                        f"[bridge-lan] utterance_audio chunks={session.audio.chunks} "
-                        f"bytes={session.audio.bytes_received}",
+                        f"[bridge-lan] rejected_binary code={code or 'unknown'} "
+                        f"bytes={len(payload)}",
                         flush=True,
                     )
                 frames = []
@@ -2718,6 +2881,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
     parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Validated persona pack id.")
     parser.add_argument("--stt-command", default="")
+    parser.add_argument("--stt-server-url", default="")
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--require-audio-wake-phrase", action="store_true")
     parser.add_argument("--tts-command", default="")
@@ -2734,6 +2898,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--audio-evidence-dir", type=Path)
     parser.add_argument("--memory-file", type=Path)
     parser.add_argument("--turn-log-file", type=Path)
+    parser.add_argument("--redact-turn-text", action="store_true")
     parser.add_argument("--auto-turn-text", default="")
     parser.add_argument("--enable-research", action="store_true")
     parser.add_argument("--searxng-url", default="http://127.0.0.1:8080")
@@ -2801,6 +2966,7 @@ def main() -> int:
         runner_timeout_ms=args.runner_timeout_ms,
         persona_id=args.persona,
         stt_command=args.stt_command,
+        stt_server_url=args.stt_server_url,
         stt_timeout_ms=args.stt_timeout_ms,
         require_audio_wake_phrase=args.require_audio_wake_phrase,
         tts_command=args.tts_command,
@@ -2817,6 +2983,7 @@ def main() -> int:
         audio_evidence_dir=args.audio_evidence_dir,
         memory_file=args.memory_file,
         turn_log_file=args.turn_log_file,
+        redact_turn_text=args.redact_turn_text,
         auto_turn_text=args.auto_turn_text,
         research_enabled=args.enable_research,
         searxng_url=args.searxng_url,

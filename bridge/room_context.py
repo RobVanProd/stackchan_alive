@@ -21,6 +21,12 @@ except ImportError:
 MAX_FRAME_BYTES = 32_768
 MIN_INTERVAL_SECONDS = 120
 MAX_INTERVAL_SECONDS = 1_800
+PRIVATE_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),
+)
 ACTIVITIES = {
     "empty",
     "person_seated",
@@ -91,6 +97,19 @@ class RoomObservationConfig:
             )
         if self.timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
+
+
+class RoomObservationCancelled(RuntimeError):
+    """Raised when an operator disables observation during an in-flight capture."""
+
+
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_without_redirects(request: urllib.request.Request, *, timeout: float):
+    return urllib.request.build_opener(_RejectRedirects()).open(request, timeout=timeout)
 
 
 def sanitize_scene(payload: object, *, observed_ms: int) -> RoomSceneSummary:
@@ -169,7 +188,7 @@ def _private_robot_url(url: str) -> str:
         address = ipaddress.ip_address(parsed.hostname)
     except ValueError as exc:
         raise ValueError("robot camera URL must use a literal private or loopback IP") from exc
-    if not (address.is_private or address.is_loopback):
+    if not (address.is_loopback or any(address in network for network in PRIVATE_NETWORKS)):
         raise ValueError("robot camera URL must stay on a private or loopback address")
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         raise ValueError("robot camera URL must contain only scheme, host, and optional port")
@@ -198,7 +217,7 @@ class PrivateCameraFrameSource:
             headers={"Cache-Control": "no-store", "User-Agent": "stackchan-room-context/1"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with _open_without_redirects(request, timeout=self.timeout_seconds) as response:
                 if response.status != 200:
                     raise RuntimeError(f"robot camera returned HTTP {response.status}")
                 frame = response.read(MAX_FRAME_BYTES + 1)
@@ -265,6 +284,7 @@ class RoomContextRuntime:
         self._observations = 0
         self._failures = 0
         self._last_observed_monotonic = 0.0
+        self._control_epoch = 0
 
     def set_controls(self, *, enabled: bool, interval_seconds: int) -> dict[str, object]:
         interval = int(interval_seconds)
@@ -273,15 +293,24 @@ class RoomContextRuntime:
                 f"intervalSeconds must be between {MIN_INTERVAL_SECONDS} and {MAX_INTERVAL_SECONDS}"
             )
         with self._lock:
-            self._enabled = bool(enabled)
+            requested = bool(enabled)
+            if requested != self._enabled:
+                self._control_epoch += 1
+            self._enabled = requested
             self._interval_seconds = interval
             if not self._enabled:
                 self._summary = None
+                self._last_observed_monotonic = 0.0
+                self._last_error = ""
         self._wake.set()
         return self.status()
 
     def observe_once(self, *, now_ms: int | None = None) -> RoomSceneSummary:
         try:
+            with self._lock:
+                if not self._enabled:
+                    raise RoomObservationCancelled("room observation is disabled")
+                control_epoch = self._control_epoch
             if self._frame_source is None:
                 raise RuntimeError("camera pairing is not configured")
             if self._model_observer is None:
@@ -291,6 +320,10 @@ class RoomContextRuntime:
             payload = self._model_observer(frame)
             current = sanitize_scene(payload, observed_ms=observed)
             with self._lock:
+                if not self._enabled or control_epoch != self._control_epoch:
+                    raise RoomObservationCancelled(
+                        "room observation was disabled during capture"
+                    )
                 changes = diff_scenes(self._summary, current)
                 current = replace(current, changes=changes)
                 self._summary = current
@@ -300,11 +333,30 @@ class RoomContextRuntime:
             if self._on_summary is not None:
                 self._on_summary(current)
             return current
+        except RoomObservationCancelled:
+            raise
         except Exception as exc:
             with self._lock:
                 self._failures += 1
-                self._last_error = str(exc)[:180]
+                self._last_error = self._public_error_code(exc)
             raise
+
+    @staticmethod
+    def _public_error_code(exc: Exception) -> str:
+        message = str(exc).lower()
+        if "pairing" in message:
+            return "camera_not_configured"
+        if "camera" in message and ("invalid" in message or "oversized" in message):
+            return "camera_frame_invalid"
+        if "camera" in message:
+            return "camera_unavailable"
+        if "vision-capable" in message or "vision model is not configured" in message:
+            return "vision_not_configured"
+        if "timed out" in message:
+            return "vision_timeout"
+        if "vision" in message or "model" in message:
+            return "vision_model_error"
+        return "observation_failed"
 
     def prompt_lines(self) -> tuple[str, ...]:
         with self._lock:
@@ -378,8 +430,10 @@ class RoomContextRuntime:
                 self._wake.set()
 
     def stop(self) -> None:
-        self._stop.set()
-        self._wake.set()
-        thread = self._thread
+        with self._lock:
+            self._control_epoch += 1
+            self._stop.set()
+            self._wake.set()
+            thread = self._thread
         if thread is not None:
             thread.join(timeout=3.0)

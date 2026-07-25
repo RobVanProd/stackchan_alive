@@ -32,6 +32,14 @@ required it is called out explicitly.
   converts PGM to PNG in memory and permits only a loopback Ollama vision endpoint.
 - The loopback dashboard exposes initiative and room-observation switches plus a bounded
   2-30 minute interval. Raw frames and free-form model descriptions never enter dashboard state.
+- Production startup now uses a resident loopback whisper.cpp server. A real robot utterance
+  measured about 0.51-0.59 seconds in-process, and normal startup uses redacted turn logs with no
+  microphone WAV persistence.
+- The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
+  totals, and records late binary frames as protocol failures. Phrase streaming no longer applies
+  the final 250 ms drain pause between intermediate phrases.
+- `bridge/bridge_ai_qualification.py` and the passive start/complete wrappers enforce the exact
+  physical gates in [BRIDGE_AI_QUALIFICATION.md](BRIDGE_AI_QUALIFICATION.md).
 - All new behavior is default-off at the command line. Use the explicit launch switches during
   supervised qualification; do not infer hardware readiness from source tests.
 

@@ -8,8 +8,11 @@ if str(BRIDGE_DIR) not in sys.path:
     sys.path.insert(0, str(BRIDGE_DIR))
 
 from room_context import (  # noqa: E402
+    PrivateCameraFrameSource,
     RoomContextRuntime,
     RoomObservationConfig,
+    RoomObservationCancelled,
+    _private_robot_url,
     diff_scenes,
     sanitize_scene,
 )
@@ -91,6 +94,7 @@ class RoomContextTests(unittest.TestCase):
 
         self.assertEqual((), runtime.prompt_lines())
         self.assertEqual(1, runtime.status()["failures"])
+        self.assertEqual("camera_not_configured", runtime.status()["lastError"])
 
     def test_user_controls_enforce_low_rate_capture(self) -> None:
         runtime = RoomContextRuntime(RoomObservationConfig(interval_seconds=300))
@@ -101,6 +105,59 @@ class RoomContextTests(unittest.TestCase):
 
         self.assertTrue(status["enabled"])
         self.assertEqual(600, status["intervalSeconds"])
+
+    def test_camera_source_accepts_only_loopback_or_private_lan_literals(self) -> None:
+        self.assertEqual(
+            "http://192.168.1.238:8789",
+            _private_robot_url("http://192.168.1.238:8789"),
+        )
+        self.assertEqual("http://127.0.0.1:8789", _private_robot_url("http://127.0.0.1:8789/"))
+        for url in (
+            "http://169.254.169.254",
+            "http://0.0.0.0",
+            "http://224.0.0.1",
+            "http://example.com",
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                _private_robot_url(url)
+
+    def test_camera_transport_rejects_redirects(self) -> None:
+        source = PrivateCameraFrameSource("http://127.0.0.1:8789", "123456")
+        handler = __import__("room_context")._RejectRedirects()
+
+        self.assertIsNone(
+            handler.redirect_request(None, None, 307, "redirect", {}, "https://example.com")
+        )
+        self.assertEqual("123456", source.pairing_code)
+
+    def test_disabling_during_capture_discards_in_flight_summary(self) -> None:
+        raw_frame = b"P5\n2 2\n255\n\x00\x01\x02\x03"
+        runtime = None
+
+        def frame_source() -> bytes:
+            runtime.set_controls(enabled=False, interval_seconds=300)
+            return raw_frame
+
+        runtime = RoomContextRuntime(
+            RoomObservationConfig(enabled=True, interval_seconds=300, command="fixture"),
+            frame_source=frame_source,
+            model_observer=lambda frame: {
+                "person_count": 1,
+                "activity": "person_seated",
+                "objects": ["desk"],
+                "lighting": "bright",
+            },
+        )
+
+        with self.assertRaises(RoomObservationCancelled):
+            runtime.observe_once(now_ms=100)
+
+        status = runtime.status()
+        self.assertFalse(status["enabled"])
+        self.assertIsNone(runtime.latest_summary())
+        self.assertEqual(0, status["observations"])
+        self.assertEqual(0, status["failures"])
+        self.assertIsNone(status["ageSeconds"])
 
 
 if __name__ == "__main__":
