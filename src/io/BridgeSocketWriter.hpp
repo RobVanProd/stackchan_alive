@@ -100,9 +100,6 @@ class BridgeSocketWriter {
   size_t framePayloadBytes_ = 0;
   size_t textPayloadBytes_ = 0;
   size_t binaryPayloadBytes_ = 0;
-  uint64_t nextQueueOrder_ = 1;
-  uint64_t textQueueOrder_ = 0;
-  uint64_t binaryQueueOrder_ = 0;
   PendingFrameKind frameKind_ = PendingFrameKind::None;
 };
 

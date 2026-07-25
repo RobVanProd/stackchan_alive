@@ -78,11 +78,6 @@ bool BridgeAudioUplink::beginTurn(uint32_t seq, uint32_t nowMs, bool wakeGateOpe
   return true;
 }
 
-bool BridgeAudioUplink::acceptsPcm(uint32_t seq) const {
-  return configured() && config_.enabled && telemetry_.active &&
-         (seq == 0 || telemetry_.lastSeq == 0 || seq == telemetry_.lastSeq);
-}
-
 bool BridgeAudioUplink::submitPcmChunk(uint32_t seq,
                                        const int16_t* samples,
                                        uint16_t sampleCount,

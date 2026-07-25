@@ -30,6 +30,23 @@ class SttExecutionError(RuntimeError):
     """Raised when the configured STT command fails."""
 
 
+class SttNoTranscriptError(SttExecutionError):
+    """Raised when STT ran successfully enough to determine that no speech was transcribed."""
+
+
+_NO_TRANSCRIPT_MARKERS = (
+    "produced no transcript",
+    "produced an empty transcript",
+    "returned no transcript",
+    "no transcript was produced",
+)
+
+
+def is_no_transcript_error(detail: object) -> bool:
+    normalized = " ".join(str(detail or "").strip().lower().split())
+    return any(marker in normalized for marker in _NO_TRANSCRIPT_MARKERS)
+
+
 @dataclass(frozen=True)
 class SttResult:
     transcript: str
@@ -112,7 +129,10 @@ def run_stt_command(command: str, pcm: bytes, sample_rate: int, timeout_ms: int)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise SttExecutionError(f"stt command failed with exit {completed.returncode}: {stderr}")
+        detail = f"stt command failed with exit {completed.returncode}: {stderr}"
+        if is_no_transcript_error(stderr):
+            raise SttNoTranscriptError(detail)
+        raise SttExecutionError(detail)
     transcript, metadata = parse_transcript_output(completed.stdout)
     return transcript, elapsed_ms, metadata
 
@@ -136,8 +156,14 @@ def transcribe_pcm(
                 server_url=resolved_server_url,
                 timeout_ms=timeout_ms,
             )
-        except (ValueError, WhisperServerError) as exc:
+        except WhisperServerError as exc:
+            if is_no_transcript_error(exc):
+                raise SttNoTranscriptError(str(exc)) from exc
             raise SttExecutionError(str(exc)) from exc
+        except ValueError as exc:
+            raise SttExecutionError(str(exc)) from exc
+        if not server_result.transcript.strip():
+            raise SttNoTranscriptError("whisper.cpp server produced no transcript")
         return SttResult(
             transcript=server_result.transcript,
             elapsed_ms=(time.perf_counter() - start) * 1000.0,
@@ -155,7 +181,7 @@ def transcribe_pcm(
         )
     transcript, elapsed_ms, metadata = run_stt_command(resolved_command, pcm, safe_rate, timeout_ms)
     if not transcript:
-        raise SttExecutionError("stt command produced an empty transcript")
+        raise SttNoTranscriptError("stt command produced an empty transcript")
     return SttResult(
         transcript=transcript,
         elapsed_ms=elapsed_ms,

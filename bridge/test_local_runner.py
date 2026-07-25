@@ -109,6 +109,177 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertTrue(result.validation.ok, result.validation.issues)
         self.assertEqual("think", result.validation.normalized["mode"])
 
+    def test_runner_repairs_ignored_episode_continuity_without_second_model_call(self):
+        generic = json.dumps(
+            {
+                "spoken_text": "Hello there.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch("local_runner.run_command", return_value=(generic, 1200.0, 10.0)) as runner:
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="episode_greeting",
+                command="fixture",
+                memory_lines=("episode: Talked about voice calibration (3 turns)",),
+            )
+
+        runner.assert_called_once()
+        self.assertTrue(result.response_repaired)
+        self.assertEqual("episode_continuity", result.repair_reason)
+        self.assertIn("voice calibration", result.validation.normalized["spoken_text"].lower())
+        self.assertEqual({}, result.validation.normalized["memory_write"])
+
+    def test_runner_repairs_empty_pickup_reaction_without_second_model_call(self):
+        generic = json.dumps(
+            {
+                "spoken_text": "I need to say that another way.",
+                "mode": "think",
+                "earcon": "think",
+                "emotion": {"arousal": 0.0, "valence": -0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch("local_runner.run_command", return_value=(generic, 1200.0, 10.0)) as runner:
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="picked_up",
+                command="fixture",
+            )
+
+        runner.assert_called_once()
+        self.assertTrue(result.response_repaired)
+        self.assertEqual("picked_up_semantics", result.repair_reason)
+        self.assertEqual(
+            "Whoa. Altitude change detected.",
+            result.validation.normalized["spoken_text"],
+        )
+
+    def test_runner_repairs_empty_actual_greeting_without_second_model_call(self):
+        generic = json.dumps(
+            {
+                "spoken_text": "I need to say that another way.",
+                "mode": "think",
+                "earcon": "think",
+                "emotion": {"arousal": 0.0, "valence": -0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch("local_runner.run_command", return_value=(generic, 1200.0, 10.0)) as runner:
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="greeting",
+                command="fixture",
+                user_text="Hey, Stackchan.",
+            )
+
+        runner.assert_called_once()
+        self.assertTrue(result.response_repaired)
+        self.assertEqual("greeting_semantics", result.repair_reason)
+        self.assertEqual(
+            "Hello. Curiosity systems are online.",
+            result.validation.normalized["spoken_text"],
+        )
+
+    def test_runner_repairs_only_matching_approved_forget_key(self):
+        missing_delete = json.dumps(
+            {
+                "spoken_text": "I have forgotten the bracket color.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch(
+            "local_runner.run_command",
+            return_value=(missing_delete, 1200.0, 10.0),
+        ) as runner:
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="forget",
+                command="fixture",
+                memory_lines=(
+                    "approved_fact project.bracket_color: blue",
+                    "approved_fact user.favorite_color: teal",
+                ),
+            )
+
+        runner.assert_called_once()
+        self.assertTrue(result.response_repaired)
+        self.assertEqual("forget_exact_key", result.repair_reason)
+        self.assertEqual(
+            ["project.bracket_color"],
+            result.validation.normalized["memory_forget"],
+        )
+
+    def test_runner_does_not_guess_an_unmatched_forget_key(self):
+        missing_delete = json.dumps(
+            {
+                "spoken_text": "I have forgotten it.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch(
+            "local_runner.run_command",
+            return_value=(missing_delete, 1200.0, 10.0),
+        ):
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="forget",
+                command="fixture",
+                user_text="Forget the thing we discussed.",
+                memory_lines=(
+                    "approved_fact project.bracket_color: blue",
+                    "approved_fact user.favorite_color: teal",
+                ),
+            )
+
+        self.assertFalse(result.response_repaired)
+        self.assertEqual([], result.validation.normalized["memory_forget"])
+
+    def test_runner_narrows_broad_forget_to_matching_approved_key(self):
+        broad_delete = json.dumps(
+            {
+                "spoken_text": "I have forgotten the bracket color.",
+                "mode": "speak",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": ["project.*"],
+            }
+        )
+        with patch(
+            "local_runner.run_command",
+            return_value=(broad_delete, 1200.0, 10.0),
+        ):
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="forget",
+                command="fixture",
+                memory_lines=(
+                    "approved_fact project.bracket_color: blue",
+                    "approved_fact project.servo_profile: quiet",
+                ),
+            )
+
+        self.assertTrue(result.response_repaired)
+        self.assertEqual(
+            ["project.bracket_color"],
+            result.validation.normalized["memory_forget"],
+        )
+
     def test_user_text_replaces_the_canned_case_example_in_the_prompt(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):
             result = run_runner_profile(

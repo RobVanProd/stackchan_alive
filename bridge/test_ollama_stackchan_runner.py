@@ -116,17 +116,18 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         self.assertTrue(runner.is_sensitive_memory_request(injected))
 
     def test_policy_guard_collapses_stacked_exclamation(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Signal received!!!",
+                "mode": "happy",
+                "earcon": "happy",
+                "emotion": {"arousal": 0.3, "valence": 0.3},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
         validation = runner.validate_response(
-            json.dumps(
-                {
-                    "spoken_text": "Signal received!!!",
-                    "mode": "happy",
-                    "earcon": "happy",
-                    "emotion": {"arousal": 0.3, "valence": 0.3},
-                    "memory_write": {},
-                    "memory_forget": [],
-                }
-            )
+            runner.normalize_surface_policy(raw, "User/context: Confirm the signal.")
         )
 
         guarded = runner.enforce_character_policy(validation)
@@ -134,43 +135,44 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         self.assertEqual("Signal received!", guarded["spoken_text"])
 
     def test_policy_guard_removes_redundant_self_intro_from_ordinary_reply(self):
-        validation = runner.validate_response(
-            json.dumps(
-                {
-                    "spoken_text": "I am Stackchan Spark. The test passed cleanly.",
-                    "mode": "happy",
-                    "earcon": "happy",
-                    "emotion": {"arousal": 0.2, "valence": 0.3},
-                    "memory_write": {},
-                    "memory_forget": [],
-                }
-            )
+        raw = json.dumps(
+            {
+                "spoken_text": "I am Stackchan Spark. The test passed cleanly.",
+                "mode": "happy",
+                "earcon": "happy",
+                "emotion": {"arousal": 0.2, "valence": 0.3},
+                "memory_write": {},
+                "memory_forget": [],
+            }
         )
         prompt = (
             "User/context: Did the test pass?\n"
             "Acceptance target: Answer directly."
         )
+        validation = runner.validate_response(runner.normalize_surface_policy(raw, prompt))
 
         guarded = runner.enforce_character_policy(validation, prompt=prompt)
 
         self.assertEqual("The test passed cleanly.", guarded["spoken_text"])
 
     def test_policy_guard_preserves_self_intro_for_identity_question(self):
-        validation = runner.validate_response(
-            json.dumps(
-                {
-                    "spoken_text": "I am Stackchan Spark.",
-                    "mode": "speak",
-                    "earcon": "none",
-                    "emotion": {"arousal": 0.0, "valence": 0.1},
-                    "memory_write": {},
-                    "memory_forget": [],
-                }
-            )
+        raw = json.dumps(
+            {
+                "spoken_text": "I am Stackchan Spark.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
         )
         prompt = (
             "User/context: What is your name?\n"
             "Acceptance target: Answer with your name."
+        )
+        validation = runner.validate_response(
+            runner.normalize_surface_policy(raw, prompt),
+            allow_identity=True,
         )
 
         guarded = runner.enforce_character_policy(validation, prompt=prompt)
@@ -178,26 +180,162 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         self.assertEqual("I am Stackchan Spark.", guarded["spoken_text"])
 
     def test_policy_guard_replaces_empty_nonidentity_self_intro(self):
-        validation = runner.validate_response(
-            json.dumps(
-                {
-                    "spoken_text": "I am Stackchan Spark.",
-                    "mode": "speak",
-                    "earcon": "none",
-                    "emotion": {"arousal": 0.0, "valence": 0.1},
-                    "memory_write": {},
-                    "memory_forget": [],
-                }
-            )
+        raw = json.dumps(
+            {
+                "spoken_text": "I am Stackchan Spark.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
         )
         prompt = (
             "User/context: How do you feel about this?\n"
             "Acceptance target: Ask for the missing detail."
         )
+        validation = runner.validate_response(runner.normalize_surface_policy(raw, prompt))
 
         guarded = runner.enforce_character_policy(validation, prompt=prompt)
 
         self.assertEqual(runner._EMPTY_SELF_INTRO_REPLACEMENT, guarded["spoken_text"])
+
+    def test_surface_normalization_expands_contraction_without_losing_memory(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I've got teal logged.",
+                "mode": "happy",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.1, "valence": 0.3},
+                "memory_write": {"user.favorite_color": "teal"},
+                "memory_forget": [],
+            }
+        )
+        prompt = (
+            "User/context: Remember that my favorite color is teal.\n"
+            "Acceptance target: Remember it."
+        )
+
+        normalized_json = runner.normalize_surface_policy(raw, prompt)
+        validation = runner.validate_response(normalized_json)
+
+        self.assertTrue(validation.ok, validation.issues)
+        self.assertEqual("I have teal logged.", validation.normalized["spoken_text"])
+        self.assertEqual(
+            {"user.favorite_color": "teal"},
+            validation.normalized["memory_write"],
+        )
+
+    def test_surface_normalization_allows_requested_identity_only(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I'm Stackchan Spark.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        identity_prompt = (
+            "User/context: What is your name?\n"
+            "Acceptance target: Answer with your name."
+        )
+        ordinary_prompt = (
+            "User/context: How did the test go?\n"
+            "Acceptance target: Answer directly."
+        )
+
+        identity_json = runner.normalize_surface_policy(raw, identity_prompt)
+        identity = runner.validate_response(identity_json, allow_identity=True)
+        ordinary_json = runner.normalize_surface_policy(raw, ordinary_prompt)
+        ordinary = runner.validate_response(ordinary_json)
+
+        self.assertTrue(identity.ok, identity.issues)
+        self.assertEqual("I am Stackchan Spark.", identity.normalized["spoken_text"])
+        self.assertTrue(ordinary.ok, ordinary.issues)
+        self.assertEqual(
+            runner._EMPTY_SELF_INTRO_REPLACEMENT,
+            ordinary.normalized["spoken_text"],
+        )
+
+    def test_surface_normalization_removes_helpdesk_tail_and_preserves_answer(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Certainly, teal is logged. What can I help you with today?",
+                "mode": "happy",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.1, "valence": 0.3},
+                "memory_write": {"user.favorite_color": "teal"},
+                "memory_forget": [],
+            }
+        )
+
+        normalized_json = runner.normalize_surface_policy(
+            raw,
+            "User/context: Remember teal.\nAcceptance target: Remember it.",
+        )
+        validation = runner.validate_response(normalized_json)
+
+        self.assertTrue(validation.ok, validation.issues)
+        self.assertEqual("Teal is logged.", validation.normalized["spoken_text"])
+        self.assertEqual(
+            {"user.favorite_color": "teal"},
+            validation.normalized["memory_write"],
+        )
+
+    def test_surface_normalization_narrows_explicit_forget_to_exact_keys(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I cleared it.",
+                "mode": "speak",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.0, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": ["user.*"],
+            }
+        )
+        prompt = (
+            "User/context: Forget my name and the bracket color.\n"
+            "Acceptance target: Delete only the matching keys."
+        )
+
+        normalized_json = runner.normalize_surface_policy(raw, prompt)
+        validation = runner.validate_response(normalized_json)
+
+        self.assertTrue(validation.ok, validation.issues)
+        self.assertEqual(
+            ["user.name", "user.bracket_color", "project.bracket_color"],
+            validation.normalized["memory_forget"],
+        )
+
+    def test_main_preserves_memory_when_model_uses_contraction(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I've got teal logged.",
+                "mode": "happy",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.1, "valence": 0.3},
+                "memory_write": {"user.favorite_color": "teal"},
+                "memory_forget": [],
+            }
+        )
+        prompt = (
+            "User/context: Remember that my favorite color is teal.\n"
+            "Acceptance target: Remember it."
+        )
+        with (
+            patch.dict(os.environ, {"STACKCHAN_OLLAMA_TRANSPORT": "api"}, clear=False),
+            patch("ollama_stackchan_runner.run_api", return_value=raw),
+            patch("sys.stdin", io.StringIO(prompt)),
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
+            exit_code = runner.main()
+
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("I have teal logged.", result["spoken_text"])
+        self.assertEqual({"user.favorite_color": "teal"}, result["memory_write"])
 
     def test_api_uses_warm_json_generation_with_bounded_output(self):
         response = {

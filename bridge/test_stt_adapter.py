@@ -15,12 +15,13 @@ from stt_adapter import (
     STT_SERVER_URL_ENV,
     SttConfigurationError,
     SttExecutionError,
+    SttNoTranscriptError,
     normalize_transcript_output,
     parse_transcript_output,
     transcribe_pcm,
 )
 from stt_normalization import normalize_stackchan_terms
-from whisper_server_stt import WhisperServerResult
+from whisper_server_stt import WhisperServerError, WhisperServerResult
 from whisper_cpp_stt import (
     clean_whisper_text,
     read_whisper_transcript,
@@ -112,14 +113,56 @@ class SttAdapterTests(unittest.TestCase):
         self.assertEqual(4, result.audio_bytes)
         self.assertGreater(result.elapsed_ms, 0.0)
 
-    def test_empty_stt_output_is_an_execution_error(self):
+    def test_empty_stt_output_is_a_no_transcript_outcome(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "empty_stt.py"
             script.write_text("import sys\nsys.stdin.buffer.read()\n", encoding="utf-8")
             command = f'"{sys.executable}" "{script}"'
 
-            with self.assertRaises(SttExecutionError):
+            with self.assertRaises(SttNoTranscriptError):
                 transcribe_pcm(b"\x01\x00", 16000, command=command)
+
+    def test_command_no_transcript_exit_is_typed_separately(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "no_transcript_stt.py"
+            script.write_text(
+                "import sys\nsys.stdin.buffer.read()\n"
+                "print('whisper.cpp produced no transcript.', file=sys.stderr)\n"
+                "raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            with self.assertRaises(SttNoTranscriptError):
+                transcribe_pcm(b"\x01\x00", 16000, command=command)
+
+    def test_command_infrastructure_failure_remains_an_execution_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "failed_stt.py"
+            script.write_text(
+                "import sys\nsys.stdin.buffer.read()\n"
+                "print('model file missing', file=sys.stderr)\n"
+                "raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+
+            with self.assertRaises(SttExecutionError) as raised:
+                transcribe_pcm(b"\x01\x00", 16000, command=command)
+
+        self.assertNotIsInstance(raised.exception, SttNoTranscriptError)
+
+    def test_loopback_server_no_transcript_is_typed_separately(self):
+        with patch(
+            "stt_adapter.transcribe_pcm_via_server",
+            side_effect=WhisperServerError("local whisper.cpp server produced no transcript"),
+        ):
+            with self.assertRaises(SttNoTranscriptError):
+                transcribe_pcm(
+                    b"\x01\x00",
+                    16000,
+                    server_url="http://127.0.0.1:5061",
+                )
 
     def test_windows_speech_adapter_writes_pcm_wav_contract(self):
         with tempfile.TemporaryDirectory() as temp_dir:

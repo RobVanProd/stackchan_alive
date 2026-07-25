@@ -247,7 +247,6 @@ try {
     if (-not $resolvedCleanup.StartsWith($resolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
       throw "Refusing to clean unexpected flash extraction directory: $resolvedCleanup"
     }
-    Set-Location $root
     Remove-Item -LiteralPath $resolvedCleanup -Recurse -Force
   }
 }

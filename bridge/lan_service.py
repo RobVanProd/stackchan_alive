@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cancellation import CancellationToken, OperationCancelledError
-from bridge_memory import RelationshipCard, topics_for_user_text
+from bridge_memory import RelationshipCard, explicit_forget_keys, topics_for_user_text
 from episode_distillation import apply_distillation, request_distillation, validate_distillation
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from persona_pack import (
@@ -40,7 +40,13 @@ from reference_bridge import (
     save_bridge_memory,
     turn_from_character_response,
 )
-from stt_adapter import DEFAULT_STT_TIMEOUT_MS, SttConfigurationError, SttExecutionError, transcribe_pcm
+from stt_adapter import (
+    DEFAULT_STT_TIMEOUT_MS,
+    SttConfigurationError,
+    SttExecutionError,
+    SttNoTranscriptError,
+    transcribe_pcm,
+)
 from tts_adapter import (
     DEFAULT_TTS_TIMEOUT_MS,
     DEFAULT_TTS_VOICE,
@@ -926,6 +932,36 @@ def identity_character_response(display_name: str = "Stackchan") -> str:
             "emotion": {"arousal": 0.15, "valence": 0.35},
             "memory_write": {},
             "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def no_speech_character_response() -> str:
+    return json.dumps(
+        {
+            "spoken_text": "I did not catch that. Try again?",
+            "mode": "concern",
+            "earcon": "concern",
+            "emotion": {"arousal": -0.1, "valence": -0.05},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def forget_character_response(keys: tuple[str, ...]) -> str:
+    return json.dumps(
+        {
+            "spoken_text": "Deleted. It is gone.",
+            "mode": "concern",
+            "earcon": "confirm",
+            "emotion": {"arousal": 0.0, "valence": -0.1},
+            "memory_write": {},
+            "memory_forget": list(keys),
         },
         separators=(",", ":"),
         ensure_ascii=True,
@@ -1844,8 +1880,6 @@ class LanBridgeSession:
                 return None
             return frame_sink(frame)
 
-        if validation_issues:
-            emit(error_frame("character_validation", ",".join(validation_issues)))
         emit(
             {
                 "type": "response_start",
@@ -2119,13 +2153,9 @@ class LanBridgeSession:
         audio_evidence_log = self._write_audio_evidence(seq=seq, pcm=pcm, audio_summary=audio_summary) if has_audio else {}
         audio_summary.update(audio_evidence_log)
         stt_log: dict[str, object] = {}
+        no_speech_detail = ""
         if not has_audio and not user_text:
-            return [
-                self._conversation_failure(
-                    "empty_utterance", "utterance_end had no audio or transcript"
-                )
-                | audio_summary
-            ]
+            no_speech_detail = "utterance_end had no audio or transcript"
         if has_audio and not user_text:
             try:
                 stt = transcribe_pcm(
@@ -2150,6 +2180,16 @@ class LanBridgeSession:
                     )
                     | audio_summary
                 ]
+            except SttNoTranscriptError as exc:
+                no_speech_detail = str(exc)
+                stt_log = {
+                    "stt_no_transcript": True,
+                    "stt_command_source": (
+                        "whisper.cpp-server"
+                        if self.config.stt_server_url
+                        else "configured-command"
+                    ),
+                }
             except (SttExecutionError, ValueError) as exc:
                 self._append_audio_error_log(
                     seq=seq,
@@ -2158,23 +2198,29 @@ class LanBridgeSession:
                     detail=str(exc),
                 )
                 return [self._conversation_failure("stt_error", str(exc)) | audio_summary]
-            user_text = stt.transcript
-            audio_summary["stt_elapsed_ms"] = round(stt.elapsed_ms, 2)
-            audio_summary["stt_command_source"] = stt.command_source
-            stt_log = {
-                "stt_transcript": stt.transcript,
-                "stt_elapsed_ms": round(stt.elapsed_ms, 2),
-                "stt_command_source": stt.command_source,
-            }
-            if stt.raw_transcript and stt.raw_transcript != stt.transcript:
-                stt_log["stt_raw_transcript"] = stt.raw_transcript
-            if stt.transcript_normalized:
-                stt_log["stt_transcript_normalized"] = True
+            else:
+                user_text = stt.transcript
+                audio_summary["stt_elapsed_ms"] = round(stt.elapsed_ms, 2)
+                audio_summary["stt_command_source"] = stt.command_source
+                stt_log = {
+                    "stt_transcript": stt.transcript,
+                    "stt_elapsed_ms": round(stt.elapsed_ms, 2),
+                    "stt_command_source": stt.command_source,
+                }
+                if stt.raw_transcript and stt.raw_transcript != stt.transcript:
+                    stt_log["stt_raw_transcript"] = stt.raw_transcript
+                if stt.transcript_normalized:
+                    stt_log["stt_transcript_normalized"] = True
         cancellation.raise_if_cancelled()
         require_wake_phrase = self.config.require_audio_wake_phrase and (
             self.conversation is None or self.conversation.turns == 0
         )
-        if has_audio and require_wake_phrase and not contains_stackchan_wake_phrase(user_text):
+        if (
+            has_audio
+            and not no_speech_detail
+            and require_wake_phrase
+            and not contains_stackchan_wake_phrase(user_text)
+        ):
             rejected_log: dict[str, object] = {
                 "schema": "stackchan.lan-turn-summary.v1",
                 "generated_at": utc_timestamp(),
@@ -2197,9 +2243,10 @@ class LanBridgeSession:
                 )
                 | audio_summary
             ]
+        requested_forget_keys = explicit_forget_keys(user_text)
         if self.conversation is not None:
             transition = self.conversation.utterance_committed(now_ms(), user_text)
-            if "begin_generation" not in transition.actions:
+            if "begin_generation" not in transition.actions and not no_speech_detail:
                 return [self._conversation_heartbeat(transition)]
             self._observe_conversation_transition(transition)
         if user_text:
@@ -2216,7 +2263,18 @@ class LanBridgeSession:
         research_result: dict[str, object] | None = None
         relationship_card = RelationshipCard(())
         local_fact = resolve_local_fact(user_text, self.memory) if not requested_case else None
-        if local_fact is not None:
+        if no_speech_detail:
+            runner_case = "no_speech"
+            raw_response = no_speech_character_response()
+            runner_summary["runner_command_source"] = "local_no_speech"
+            runner_summary["runner_elapsed_ms"] = 0.0
+            runner_summary["stt_no_transcript"] = True
+        elif requested_forget_keys:
+            runner_case = "forget"
+            raw_response = forget_character_response(requested_forget_keys)
+            runner_summary["runner_command_source"] = "local_forget"
+            runner_summary["runner_elapsed_ms"] = 0.0
+        elif local_fact is not None:
             runner_case = "local_fact"
             raw_response = local_fact.character_response()
             runner_summary["runner_command_source"] = f"trusted_{local_fact.tool}"
@@ -2256,6 +2314,11 @@ class LanBridgeSession:
                 return [self._conversation_failure("runner_error", str(exc))]
             raw_response = runner.raw_response
             runner_summary["runner_command_source"] = runner.command_source
+            if getattr(runner, "response_repaired", False):
+                runner_summary["runner_response_repaired"] = True
+                runner_summary["runner_repair_reason"] = str(
+                    getattr(runner, "repair_reason", "")
+                )
             if runner.elapsed_ms is not None:
                 runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
             if runner.approx_tokens_per_sec is not None:
@@ -2321,6 +2384,11 @@ class LanBridgeSession:
                     runner_summary["research_error"] = str(research_result.get("error", ""))
                     if researched.elapsed_ms is not None:
                         runner_summary["research_runner_elapsed_ms"] = round(researched.elapsed_ms, 2)
+                    if getattr(researched, "response_repaired", False):
+                        runner_summary["research_response_repaired"] = True
+                        runner_summary["research_repair_reason"] = str(
+                            getattr(researched, "repair_reason", "")
+                        )
 
         cancellation.raise_if_cancelled()
         turn, candidate_memory, validation = turn_from_character_response(
@@ -2329,10 +2397,11 @@ class LanBridgeSession:
             session=self.session,
             seq=seq,
             persona=active_persona,
+            allow_identity=runner_case == "identity",
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))
-        else:
+        elif not no_speech_detail:
             candidate_memory = candidate_memory.capture_open_loop(user_text)
             for topic in topics_for_user_text(user_text):
                 if topic not in self._session_topics:
@@ -2343,7 +2412,7 @@ class LanBridgeSession:
             turn.text,
         )
         runner_summary["memory_callback_consumed"] = callback_consumed
-        if self.conversation is not None:
+        if self.conversation is not None and not no_speech_detail:
             transition = self.conversation.response_started(now_ms())
             if "reject_response" in transition.actions:
                 return [self._conversation_failure("conversation_response_rejected", transition.reason)]
@@ -2362,13 +2431,14 @@ class LanBridgeSession:
                 frame_sink=frame_sink,
                 cancellation=cancellation,
             )
-            if tts_error and self.conversation is not None:
+            if tts_error and self.conversation is not None and not no_speech_detail:
                 self._observe_conversation_transition(
                     self.conversation.turn_failed(now_ms(), "tts_error")
                 )
             cancellation.raise_if_cancelled()
             self._commit_memory(candidate_memory)
-            self._stage_conversation_turn(user_text, turn.text, tts_error)
+            if not no_speech_detail:
+                self._stage_conversation_turn(user_text, turn.text, tts_error)
             self._append_completed_turn_log(
                 seq=seq,
                 has_audio=has_audio,
@@ -2439,13 +2509,14 @@ class LanBridgeSession:
             pass
         except (TtsExecutionError, ValueError) as exc:
             tts_error = str(exc)
-        if tts_error and self.conversation is not None:
+        if tts_error and self.conversation is not None and not no_speech_detail:
             self._observe_conversation_transition(
                 self.conversation.turn_failed(now_ms(), "tts_error")
             )
         cancellation.raise_if_cancelled()
         self._commit_memory(candidate_memory)
-        self._stage_conversation_turn(user_text, turn.text, tts_error)
+        if not no_speech_detail:
+            self._stage_conversation_turn(user_text, turn.text, tts_error)
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
         if suppress_thinking:
             frames = [frame for frame in frames if frame.get("type") != "thinking"]
@@ -2474,8 +2545,6 @@ class LanBridgeSession:
                         frames[index + 1:index + 1] = downlink_frames
                     break
         prefix_errors: list[dict[str, object]] = []
-        if validation.issues:
-            prefix_errors.append(error_frame("character_validation", ",".join(validation.issues)))
         if tts_error:
             prefix_errors.append(error_frame("tts_error", tts_error))
         self._append_completed_turn_log(

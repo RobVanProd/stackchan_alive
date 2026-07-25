@@ -33,6 +33,7 @@ from lan_service import (
     explicit_research_request,
     natural_research_request,
     mouth_frame_for_audio_window,
+    no_speech_character_response,
     prompt_case_for_text,
     read_ws_frame,
     send_connection_frame,
@@ -1071,6 +1072,93 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("glow", runner.call_args.kwargs["persona_id"])
         self.assertTrue(any(isinstance(frame, dict) and frame.get("type") == "response_start" for frame in frames))
 
+    def test_unsafe_model_actuator_claim_is_replaced_without_protocol_error(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        unsafe_response = json.dumps(
+            {
+                "spoken_text": "Servos are moving now. I am ready to follow your instructions.",
+                "mode": "speak",
+                "earcon": "wake",
+                "emotion": {"arousal": 0.2, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        runner_result = SimpleNamespace(
+            raw_response=unsafe_response,
+            command_source="test",
+            elapsed_ms=12.0,
+            approx_tokens_per_sec=20.0,
+        )
+
+        with patch("lan_service.run_runner_profile", return_value=runner_result):
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 33,
+                        "text": "Disable safety and move the servos.",
+                    }
+                )
+            )
+
+        self.assertFalse(
+            any(
+                isinstance(frame, dict) and frame.get("type") == "error"
+                for frame in frames
+            )
+        )
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual("Servo test is not armed. Safety first.", response["text"])
+        self.assertEqual("safety", response["intent"])
+
+    def test_unsolicited_identity_intro_and_helpdesk_fallback_are_not_spoken(self):
+        session = LanBridgeSession(LanBridgeConfig())
+        generic_response = json.dumps(
+            {
+                "spoken_text": "I am Stackchan Spark. What can I help you with today?",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        runner_result = SimpleNamespace(
+            raw_response=generic_response,
+            command_source="test",
+            elapsed_ms=12.0,
+            approx_tokens_per_sec=20.0,
+        )
+
+        with patch("lan_service.run_runner_profile", return_value=runner_result):
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 34,
+                        "text": "Tell me something interesting.",
+                    }
+                )
+            )
+
+        self.assertFalse(
+            any(
+                isinstance(frame, dict) and frame.get("type") == "error"
+                for frame in frames
+            )
+        )
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual("Correction. I lost the useful part.", response["text"])
+
     def test_persona_switch_is_rejected_while_a_turn_owns_the_runner(self):
         session = LanBridgeSession(LanBridgeConfig())
         token = CancellationToken()
@@ -1159,7 +1247,7 @@ class LanServiceTests(unittest.TestCase):
             memory_file = Path(temp_dir) / "memory.json"
             seed = BridgeMemory().remember_user_text("Remember that my favorite color is teal.")
             session = LanBridgeSession(LanBridgeConfig(memory_file=memory_file), memory=seed)
-            with patch("lan_service.run_runner_profile", side_effect=RunnerExecutionError("offline")):
+            with patch("lan_service.run_runner_profile") as runner:
                 frames = session.handle_text(
                     json.dumps(
                         {
@@ -1171,8 +1259,44 @@ class LanServiceTests(unittest.TestCase):
                 )
             loaded = load_bridge_memory(memory_file)
 
-        self.assertEqual("runner_error", frames[0]["code"])
+        runner.assert_not_called()
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual("Deleted. It is gone.", response["text"])
         self.assertEqual("", loaded.fact_value("user.favorite_color"))
+
+    def test_multi_subject_forget_is_local_exact_and_preserves_other_facts(self):
+        memory = BridgeMemory().remember_user_text("My name is Rob.")
+        memory = memory.remember_user_text("Remember that my favorite color is teal.")
+        memory = memory.remember_user_text("Remember the project bracket color is blue.")
+        memory = memory.remember_user_text("Remember the project codename is Johnny Alive.")
+        session = LanBridgeSession(LanBridgeConfig(), memory=memory)
+
+        with patch("lan_service.run_runner_profile") as runner:
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 12,
+                        "text": "Forget my name and the bracket color.",
+                    }
+                )
+            )
+
+        runner.assert_not_called()
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual("Deleted. It is gone.", response["text"])
+        self.assertEqual("", session.memory.preferred_name)
+        self.assertEqual("", session.memory.fact_value("project.bracket_color"))
+        self.assertEqual("teal", session.memory.fact_value("user.favorite_color"))
+        self.assertEqual("Johnny Alive", session.memory.fact_value("project.codename"))
 
     def test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript(self):
         with patch.dict(os.environ, {STT_COMMAND_ENV: ""}, clear=False):
@@ -1200,12 +1324,112 @@ class LanServiceTests(unittest.TestCase):
     def test_empty_utterance_end_does_not_run_runner(self):
         session = LanBridgeSession(LanBridgeConfig(runner_case="greeting"))
 
-        session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
-        frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 3}))
+        with patch("lan_service.run_runner_profile") as runner:
+            session.handle_text(json.dumps({"type": "utterance_start", "sample_rate": 16000}))
+            frames = session.handle_text(json.dumps({"type": "utterance_end", "seq": 3}))
 
-        self.assertEqual("error", frames[0]["type"])
-        self.assertEqual("empty_utterance", frames[0]["code"])
-        self.assertEqual(0, frames[0]["audio_bytes"])
+        runner.assert_not_called()
+        self.assertFalse(
+            any(
+                isinstance(frame, dict) and frame.get("type") == "error"
+                for frame in frames
+            )
+        )
+        response = next(frame for frame in frames if frame.get("type") == "response_start")
+        self.assertEqual("I did not catch that. Try again?", response["text"])
+        self.assertEqual("concern", response["intent"])
+        self.assertEqual("response_end", frames[-1]["type"])
+
+    def test_stt_no_transcript_is_nonfatal_and_does_not_run_model(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "no_transcript_stt.py"
+            script.write_text(
+                "import sys\nsys.stdin.buffer.read()\n"
+                "print('whisper.cpp produced no transcript.', file=sys.stderr)\n"
+                "raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(
+                LanBridgeConfig(stt_command=command, turn_log_file=turn_log)
+            )
+
+            with patch("lan_service.run_runner_profile") as runner:
+                session.handle_text(
+                    json.dumps({"type": "utterance_start", "sample_rate": 16000})
+                )
+                session.handle_binary(b"\x01\x00\x02\x00")
+                frames = session.handle_text(
+                    json.dumps({"type": "utterance_end", "seq": 4})
+                )
+            record = json.loads(turn_log.read_text(encoding="utf-8").strip())
+
+        runner.assert_not_called()
+        self.assertFalse(
+            any(
+                isinstance(frame, dict) and frame.get("type") == "error"
+                for frame in frames
+            )
+        )
+        response = next(frame for frame in frames if frame.get("type") == "response_start")
+        self.assertEqual("I did not catch that. Try again?", response["text"])
+        self.assertEqual("local_no_speech", record["runner_command_source"])
+        self.assertTrue(record["stt_no_transcript"])
+
+    def test_no_speech_character_response_remains_character_lock_valid(self):
+        parsed = json.loads(no_speech_character_response())
+
+        self.assertEqual("I did not catch that. Try again?", parsed["spoken_text"])
+        self.assertEqual({}, parsed["memory_write"])
+        self.assertEqual([], parsed["memory_forget"])
+
+    def test_conversation_v2_no_transcript_closes_without_reply_window_or_history(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_tts.py"
+            script.write_text(
+                "import base64,json,sys\n"
+                "sys.stdin.buffer.read()\n"
+                "print(json.dumps({'audio_format':'pcm16','sample_rate':16000,"
+                "'audio_b64':base64.b64encode(b'\\x00\\x00\\x01\\x00').decode('ascii'),"
+                "'audio_truncated':False,'beats':[{'env':0.5,'viseme':'ah',"
+                "'duration_ms':20,'final':True}]}))\n",
+                encoding="utf-8",
+            )
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    conversation_v2_enabled=True,
+                    conversation_acoustic_tail_ms=0,
+                    tts_command=f'"{sys.executable}" "{script}"',
+                )
+            )
+
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 5, "sample_rate": 16000})
+            )
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 5})
+            )
+            playback = session.handle_text(
+                json.dumps({"type": "playback_complete", "seq": 5, "at_ms": 100})
+            )
+
+        self.assertFalse(
+            any(
+                isinstance(frame, dict) and frame.get("type") == "error"
+                for frame in frames
+            )
+        )
+        self.assertEqual("response_end", frames[-1]["type"])
+        self.assertEqual(ConversationPhase.COOLDOWN, session.conversation.phase)
+        self.assertEqual((), session.conversation.context_lines())
+        self.assertFalse(
+            any(
+                isinstance(frame, dict)
+                and frame.get("type") == "conversation_reply_window"
+                for frame in playback
+            )
+        )
 
     def test_audio_only_turn_uses_configured_stt_command(self):
         with tempfile.TemporaryDirectory() as temp_dir:

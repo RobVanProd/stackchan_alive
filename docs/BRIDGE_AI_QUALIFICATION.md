@@ -4,10 +4,14 @@ This run qualifies Conversation v2, persistent local STT, initiative, and room o
 against one exact firmware image and one exact clean source commit. It is a physical evidence
 gate, not a source-test substitute.
 
+The bridge candidate does not alter firmware. Use the accepted working image from `main`, record
+its SHA-256 before and after, and do not flash or rebuild the robot as part of this procedure.
+
 ## Safety And Privacy Boundary
 
 - Keep an operator present and the robot body clear.
 - Run the first qualification with motion, servo rail, and torque off.
+- Treat the installed main firmware as immutable; this qualification starts no flash operation.
 - Do not flash, reboot, restart, or discard evidence automatically after a failure.
 - Production qualification must use redacted turn logs and no microphone evidence directory.
 - Room frames remain in memory only. No PGM, PNG, JPEG, WebP, or BMP file may appear in the

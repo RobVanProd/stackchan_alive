@@ -607,6 +607,76 @@ def memory_fact_key(namespace: str, subject: object) -> str:
     return f"{clean_namespace}.{slug}"
 
 
+def explicit_forget_keys(user_text: str) -> tuple[str, ...]:
+    command_text = normalize_user_utterance(" ".join(str(user_text or "").strip().split()))
+    if not command_text:
+        return ()
+    if _EXPLICIT_FORGET_ALL_RE.fullmatch(command_text):
+        return ("*",)
+    if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(command_text):
+        return ("user.",)
+
+    user_match = _EXPLICIT_USER_FORGET_RE.fullmatch(command_text)
+    if user_match is not None and " and " not in user_match.group("subject").lower():
+        key = memory_fact_key("user", user_match.group("subject"))
+        return (key,) if key else ()
+    project_match = _EXPLICIT_PROJECT_FORGET_RE.fullmatch(command_text)
+    if project_match is not None and " and " not in project_match.group("subject").lower():
+        key = memory_fact_key("project", project_match.group("subject"))
+        return (key,) if key else ()
+
+    body_match = re.fullmatch(
+        r"(?:please\s+)?forget(?:\s+about)?\s+(?P<body>[A-Za-z][A-Za-z0-9 ,_&'-]{1,120}?)\s*[.!?]*",
+        command_text,
+        re.IGNORECASE,
+    )
+    if body_match is None:
+        return ()
+    clauses = [
+        clause.strip()
+        for clause in re.split(
+            r"\s+(?:and|also)\s+|,\s*",
+            body_match.group("body"),
+            flags=re.IGNORECASE,
+        )
+        if clause.strip()
+    ]
+    if len(clauses) < 2:
+        return ()
+
+    targets: list[str] = []
+    inherited_namespace = ""
+    for clause in clauses:
+        lowered = clause.lower()
+        subject = clause
+        if lowered.startswith("my "):
+            namespaces = ("user",)
+            inherited_namespace = "user"
+            subject = clause[3:]
+        elif re.match(r"^(?:the\s+)?project(?:'s)?\s+", clause, re.IGNORECASE):
+            namespaces = ("project",)
+            inherited_namespace = "project"
+            subject = re.sub(
+                r"^(?:the\s+)?project(?:'s)?\s+",
+                "",
+                clause,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        elif lowered.startswith("the "):
+            namespaces = ("user", "project")
+            subject = clause[4:]
+        elif inherited_namespace:
+            namespaces = (inherited_namespace,)
+        else:
+            namespaces = ("user", "project")
+        for namespace in namespaces:
+            key = memory_fact_key(namespace, subject)
+            if key and key not in targets:
+                targets.append(key)
+    return tuple(targets)
+
+
 def _rank_for_prompt(record: MemoryRecord, query_terms: set[str]) -> tuple[int, int, float, str]:
     key_terms = _query_terms(record.key.replace(".", " "))
     value_terms = _query_terms(record.value)
@@ -985,9 +1055,9 @@ class BridgeMemory:
         return replace(self, distill_dropped=self.distill_dropped + 1)
 
     @staticmethod
-    def _forget_matches(forget_key: str, namespace: str) -> bool:
-        key = forget_key.strip().lower().rstrip("*").rstrip(".")
-        return key in ("", "all", namespace) or key.startswith(f"{namespace}.")
+    def _forget_namespace(forget_key: str, namespace: str) -> bool:
+        key = forget_key.strip().lower()
+        return key in (namespace, f"{namespace}.", f"{namespace}.*")
 
     def apply_character_memory(self, normalized: dict[str, object]) -> "BridgeMemory":
         now = _utc_now()
@@ -1033,19 +1103,42 @@ class BridgeMemory:
                 normalized_forget = forget.strip().lower()
                 if normalized_forget in ("", "*", "all"):
                     forget_everything = True
-                if self._forget_matches(forget, "user"):
+                    preferred_name = ""
+                    topics = []
+                    physical = []
+                    durable = ()
+                    recent = ()
+                    episodes = ()
+                    open_loops = ()
+                    continue
+                if self._forget_namespace(forget, "user"):
                     preferred_name = ""
                     durable = tuple(record for record in durable if not record.key.startswith("user."))
                     open_loops = ()
-                if self._forget_matches(forget, "project"):
+                elif normalized_forget in _NAME_KEYS:
+                    preferred_name = ""
+                    durable = tuple(record for record in durable if record.key not in _NAME_KEYS)
+                elif normalized_forget.startswith("user."):
+                    durable = tuple(record for record in durable if record.key != normalized_forget)
+                if self._forget_namespace(forget, "project"):
                     topics = []
                     durable = tuple(record for record in durable if not record.key.startswith("project."))
                     recent = tuple(record for record in recent if not record.key.startswith("project."))
                     episodes = ()
-                if self._forget_matches(forget, "robot"):
+                elif normalized_forget.startswith("project."):
+                    forgotten_values = {
+                        record.value for record in durable if record.key == normalized_forget
+                    }
+                    topics = [topic for topic in topics if topic not in forgotten_values]
+                    durable = tuple(record for record in durable if record.key != normalized_forget)
+                    recent = tuple(record for record in recent if record.key != normalized_forget)
+                if self._forget_namespace(forget, "robot"):
                     physical = []
                     durable = tuple(record for record in durable if not record.key.startswith("robot."))
                     recent = tuple(record for record in recent if not record.key.startswith("robot."))
+                elif normalized_forget.startswith("robot."):
+                    durable = tuple(record for record in durable if record.key != normalized_forget)
+                    recent = tuple(record for record in recent if record.key != normalized_forget)
 
         return replace(
             self,
@@ -1070,26 +1163,20 @@ class BridgeMemory:
         durable = self._canonical_durable(now=now)
         recent = self._canonical_recent(durable, now=now)
         evictions = self.durable_evictions
-        if _EXPLICIT_FORGET_ALL_RE.fullmatch(command_text):
+        forget_keys = explicit_forget_keys(command_text)
+        if forget_keys == ("*",):
             return BridgeMemory()
-        if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(command_text):
+        if forget_keys == ("user.",):
             preferred_name = ""
             durable = tuple(record for record in durable if not record.key.startswith("user."))
             open_loops: tuple[OpenLoopRecord, ...] = ()
         else:
             open_loops = _canonical_open_loops(self._open_loops, now=now)
-            user_forget = _EXPLICIT_USER_FORGET_RE.fullmatch(command_text)
-            project_forget = _EXPLICIT_PROJECT_FORGET_RE.fullmatch(command_text)
-            if user_forget is not None:
-                forget_key = memory_fact_key("user", user_forget.group("subject"))
+            for forget_key in forget_keys:
                 if forget_key in _NAME_KEYS:
                     preferred_name = ""
                     durable = tuple(record for record in durable if record.key not in _NAME_KEYS)
-                elif forget_key:
-                    durable = tuple(record for record in durable if record.key != forget_key)
-            elif project_forget is not None:
-                forget_key = memory_fact_key("project", project_forget.group("subject"))
-                if forget_key:
+                elif forget_key.startswith(("user.", "project.")):
                     durable = tuple(record for record in durable if record.key != forget_key)
         match = re.search(
             r"\b(?:my name is|call me|you can call me|i am called|i'm called)\s+"

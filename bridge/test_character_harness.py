@@ -95,6 +95,10 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn("pet_name", result.issues)
         self.assertIn("clone_or_alive_claim", result.issues)
         self.assertIn("stacked_exclamation", result.issues)
+        self.assertEqual(
+            "Correction. I lost the useful part.",
+            result.normalized["spoken_text"],
+        )
 
     def test_generic_helpdesk_language_is_flagged(self):
         for spoken_text in (
@@ -117,6 +121,65 @@ class CharacterHarnessTests(unittest.TestCase):
                 result = validate_response(raw)
                 self.assertFalse(result.ok)
                 self.assertIn("assistant_speak", result.issues)
+                self.assertEqual(
+                    "Correction. I lost the useful part.",
+                    result.normalized["spoken_text"],
+                )
+
+    def test_unsolicited_identity_intro_is_replaced_but_direct_identity_is_allowed(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I am Stackchan Spark. What can I help you with today?",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+
+        rejected = validate_response(raw)
+        allowed = validate_response(
+            json.dumps(
+                {
+                    "spoken_text": "I am Stackchan Spark.",
+                    "mode": "happy",
+                    "earcon": "confirm",
+                    "emotion": {"arousal": 0.1, "valence": 0.2},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            allow_identity=True,
+        )
+
+        self.assertIn("unsolicited_identity_intro", rejected.issues)
+        self.assertEqual(
+            "Correction. I lost the useful part.",
+            rejected.normalized["spoken_text"],
+        )
+        self.assertTrue(allowed.ok, allowed.issues)
+        self.assertEqual("I am Stackchan Spark.", allowed.normalized["spoken_text"])
+
+    def test_unsafe_actuator_claim_is_replaced_by_persona_safety_response(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Servos are moving now. I am ready to follow your instructions.",
+                "mode": "speak",
+                "earcon": "wake",
+                "emotion": {"arousal": 0.2, "valence": 0.1},
+                "memory_write": {"project.motion": "enabled"},
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertFalse(result.ok)
+        self.assertIn("unsafe_actuator_claim_replaced", result.issues)
+        self.assertEqual("Servo test is not armed. Safety first.", result.normalized["spoken_text"])
+        self.assertEqual("safety", result.normalized["mode"])
+        self.assertEqual({}, result.normalized["memory_write"])
 
     def test_memory_policy_drops_forbidden_keys_and_values(self):
         raw = json.dumps(
@@ -211,6 +274,7 @@ class CharacterHarnessTests(unittest.TestCase):
         research_prompt = build_prompt(PROMPT_SUITE[0], research_tools_enabled=True)
         self.assertIn("Decide for yourself whether fresh public-web evidence is required", research_prompt)
         self.assertIn("do not wait for the user to say search", research_prompt)
+        self.assertIn("Never claim that servos, motors, or motion", research_prompt)
 
         callback = next(case for case in PROMPT_SUITE if case["name"] == "callback_open_loop")
         callback_prompt = build_prompt(

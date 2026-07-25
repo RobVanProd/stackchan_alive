@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from bridge_memory import explicit_forget_keys
 from character_harness import validate_response
 
 
@@ -35,6 +36,83 @@ _SELF_INTRO_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 _EMPTY_SELF_INTRO_REPLACEMENT = "Give me one more detail. My curiosity needs a target."
+_CONTRACTION_EXPANSIONS = {
+    "ain't": "is not",
+    "aren't": "are not",
+    "can't": "cannot",
+    "couldn't": "could not",
+    "didn't": "did not",
+    "doesn't": "does not",
+    "don't": "do not",
+    "hadn't": "had not",
+    "hasn't": "has not",
+    "haven't": "have not",
+    "he'd": "he would",
+    "he'll": "he will",
+    "he's": "he is",
+    "here's": "here is",
+    "how's": "how is",
+    "i'd": "I would",
+    "i'll": "I will",
+    "i'm": "I am",
+    "i've got": "I have",
+    "i've": "I have",
+    "isn't": "is not",
+    "it's": "it is",
+    "let's": "let us",
+    "mustn't": "must not",
+    "needn't": "need not",
+    "shan't": "shall not",
+    "she'd": "she would",
+    "she'll": "she will",
+    "she's": "she is",
+    "shouldn't": "should not",
+    "that's": "that is",
+    "there's": "there is",
+    "they'd": "they would",
+    "they'll": "they will",
+    "they're": "they are",
+    "they've": "they have",
+    "wasn't": "was not",
+    "we'd": "we would",
+    "we'll": "we will",
+    "we're": "we are",
+    "we've": "we have",
+    "weren't": "were not",
+    "what's": "what is",
+    "when's": "when is",
+    "where's": "where is",
+    "who's": "who is",
+    "why's": "why is",
+    "won't": "will not",
+    "wouldn't": "would not",
+    "you'd": "you would",
+    "you'll": "you will",
+    "you're": "you are",
+    "you've": "you have",
+}
+_CONTRACTION_RE = re.compile(
+    r"\b(?:"
+    + "|".join(
+        re.escape(key).replace("'", "['\u2019]")
+        for key in sorted(_CONTRACTION_EXPANSIONS, key=len, reverse=True)
+    )
+    + r")\b",
+    re.IGNORECASE,
+)
+_LEADING_ASSISTANT_PREFIX_RE = re.compile(
+    r"^\s*(?:(?:certainly|great question)[,.!]?\s+)+",
+    re.IGNORECASE,
+)
+_HAPPY_TO_RE = re.compile(r"\bi would be happy to\b", re.IGNORECASE)
+_TRAILING_HELPDESK_RE = re.compile(
+    r"(?:^|(?<=[.!?])\s+)(?:"
+    r"what can i help(?: you)? with(?: today)?|"
+    r"what would you like me to do|"
+    r"how (?:can|may) i (?:help|assist)(?: you)?"
+    r")\??\s*$",
+    re.IGNORECASE,
+)
 
 
 def extract_user_context(prompt: str) -> str:
@@ -67,6 +145,43 @@ def remove_redundant_self_intro(spoken_text: str, prompt: str) -> str:
     if not without_intro:
         return _EMPTY_SELF_INTRO_REPLACEMENT
     return without_intro[:1].upper() + without_intro[1:]
+
+
+def expand_contractions(spoken_text: str) -> str:
+    def replacement(match: re.Match[str]) -> str:
+        key = match.group(0).lower().replace("\u2019", "'")
+        expanded = _CONTRACTION_EXPANSIONS[key]
+        if match.group(0)[:1].isupper() and not expanded.startswith("I "):
+            return expanded[:1].upper() + expanded[1:]
+        return expanded
+
+    return _CONTRACTION_RE.sub(replacement, spoken_text)
+
+
+def normalize_spoken_surface(spoken_text: str, prompt: str) -> str:
+    normalized = expand_contractions(" ".join(spoken_text.strip().split()))
+    normalized = remove_redundant_self_intro(normalized, prompt)
+    normalized = _LEADING_ASSISTANT_PREFIX_RE.sub("", normalized).strip()
+    normalized = _HAPPY_TO_RE.sub("I can", normalized)
+    normalized = _TRAILING_HELPDESK_RE.sub("", normalized).strip()
+    normalized = re.sub(r"!{2,}", "!", normalized)
+    if not normalized:
+        return _EMPTY_SELF_INTRO_REPLACEMENT
+    return normalized[:1].upper() + normalized[1:]
+
+
+def normalize_surface_policy(raw_json: str, prompt: str) -> str:
+    try:
+        parsed = json.loads(raw_json)
+    except (json.JSONDecodeError, TypeError):
+        return raw_json
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("spoken_text"), str):
+        return raw_json
+    parsed["spoken_text"] = normalize_spoken_surface(str(parsed["spoken_text"]), prompt)
+    forget_keys = explicit_forget_keys(extract_user_context(prompt))
+    if forget_keys:
+        parsed["memory_forget"] = list(forget_keys)
+    return json.dumps(parsed, separators=(",", ":"), ensure_ascii=True)
 
 
 def enabled_tool_request(raw_json: str, prompt: str) -> dict[str, object] | None:
@@ -244,7 +359,8 @@ def main() -> int:
     if tool_request is not None:
         print(json.dumps({"tool_request": tool_request}, separators=(",", ":"), ensure_ascii=True))
         return 0
-    validation = validate_response(raw_json)
+    raw_json = normalize_surface_policy(raw_json, prompt)
+    validation = validate_response(raw_json, allow_identity=is_identity_request(prompt))
     print(json.dumps(enforce_character_policy(validation, prompt=prompt), separators=(",", ":"), ensure_ascii=True))
     if validation.issues:
         sys.stderr.write("normalized Character Lock issues: " + ",".join(validation.issues) + "\n")

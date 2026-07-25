@@ -252,7 +252,6 @@ bool BridgeClient::submitControlLine(const char* jsonLine, uint32_t nowMs) {
     telemetry_.state = BridgeClientState::Ready;
     output.type = BridgeClientOutputType::ResponseEnd;
     output.event.type = EventType::ResponseEnded;
-    output.response.seq = seq;
     queueOutput(output);
     return true;
   }

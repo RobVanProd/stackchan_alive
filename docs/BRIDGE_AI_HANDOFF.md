@@ -19,6 +19,10 @@ actuator, power, pairing, or OTA authority**, and nothing below changes that.
 Most of what follows needs **no firmware change**. Where firmware work is genuinely required it is
 called out.
 
+This bridge candidate does not modify firmware. The working image from `main` is an immutable
+qualification dependency; firmware findings are reported to its owner instead of being patched in
+this branch.
+
 ## How To Read The Robot's State
 
 Everything in this document was diagnosed from the robot itself. Use the same sources.
@@ -40,9 +44,9 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 ## Source Implementation Update (2026-07-24)
 
 - Conversation v2 now emits the exact active reply-window duration, starts at 8 seconds, and
-  shortens by 1 second per later turn to a 4-second floor. Firmware bounds are rejected rather
-  than silently clamped. The feature remains explicit and still needs exact-image hardware
-  qualification before promotion.
+  shortens by 1 second per later turn to a 4-second floor. The unchanged main firmware rejects
+  out-of-range values rather than silently clamping them. The feature remains explicit and still
+  needs exact-image hardware qualification before promotion.
 - `bridge/initiative_policy.py` implements the ten-minute hard floor, fresh-person requirement,
   circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
   Initiative generation uses the normal Character Lock and TTS path but never opens a microphone
@@ -69,9 +73,10 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   paths discard buffered audio, send a nonfatal `response_aborted`, and send the matching
   `response_end`. Overlap, sequence mismatch, and unrecovered closure events are privacy-safe
   qualification failures.
-- F2 is localized to dedicated capture crossing the wake-gate deadline while its socket retry
-  loop is still active. The capture owner now checks whether the uplink still accepts its
-  sequence and stops cleanly after `utterance_end`; invalid direct uplink calls remain errors.
+- F2 is a firmware-owned capture finding, not a bridge source change. The bridge freezes each
+  utterance on the socket thread, rejects late binary frames, verifies declared totals, and keeps
+  privacy-safe counters. Qualification still requires zero robot uplink-error delta; any nonzero
+  result is handed to the firmware owner with the exact main image hash and telemetry.
 - F3 is localized to production startup never launching `bridge/vision_service.py`. The DirectML
   launcher now starts the pairing-file-only YuNet worker whenever face vision is requested or
   room observation is enabled, then requires authenticated frame and target counters to advance.
@@ -83,8 +88,13 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   that pacing budget, leaving 58 ms of nominal headroom, and qualification now rejects fewer than
   25 ms.
 
+Silence or an explicit no-transcript STT result is also a normal turn outcome now: the bridge
+speaks one short retry through the Character Lock and TTS path, sends no protocol `error`, writes no
+conversation history, and opens no reply window.
+
 These are source-tested candidates, not physical closure. F1-F4 remain open until one exact clean
-source commit and firmware binary pass the supervised qualification and soak described below.
+bridge source commit passes the supervised qualification and soak against the unchanged accepted
+main firmware binary described below.
 
 ---
 
@@ -130,9 +140,9 @@ microphone chunks still being pushed after `utterance_end`, each one rejected an
 window before the tail chunks arrive. Low severity, but it makes the counter useless as a health
 signal, which matters once you are relying on telemetry to tune conversation pacing.
 
-**Candidate fix:** implemented and native-tested on 2026-07-25. The supervised run must show zero
-`bridge_uplink_errors` delta across completed turns; do not reset the counter to manufacture that
-result.
+**Bridge-side status:** late audio is rejected and counted after the immutable utterance snapshot.
+The supervised run must show zero `bridge_uplink_errors` delta across completed turns; do not reset
+the counter to manufacture that result. A nonzero robot counter remains a firmware-owner finding.
 
 ## F3. Vision delivers nothing at all
 

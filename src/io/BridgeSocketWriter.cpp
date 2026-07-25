@@ -15,9 +15,6 @@ bool BridgeSocketWriter::begin(BridgeWebSocketTransport& transport,
   textPayloadBytes_ = 0;
   textPayload_[0] = '\0';
   binaryPayloadBytes_ = 0;
-  nextQueueOrder_ = 1;
-  textQueueOrder_ = 0;
-  binaryQueueOrder_ = 0;
   telemetry_.ready = true;
   return true;
 }
@@ -28,9 +25,6 @@ void BridgeSocketWriter::reset() {
   textPayloadBytes_ = 0;
   textPayload_[0] = '\0';
   binaryPayloadBytes_ = 0;
-  nextQueueOrder_ = 1;
-  textQueueOrder_ = 0;
-  binaryQueueOrder_ = 0;
   telemetry_.ready = transport_ != nullptr && sink_ != nullptr;
 }
 
@@ -59,7 +53,6 @@ bool BridgeSocketWriter::queueTextFrame(const char* payload) {
 
   std::memcpy(textPayload_, payload, length + 1u);
   textPayloadBytes_ = length;
-  textQueueOrder_ = nextQueueOrder_++;
   telemetry_.textFrameQueued = true;
   telemetry_.textFramesQueued++;
   telemetry_.textBytesQueued += static_cast<uint32_t>(length);
@@ -86,7 +79,6 @@ bool BridgeSocketWriter::queueBinaryFrame(const uint8_t* payload, size_t length)
 
   std::memcpy(binaryPayload_, payload, length);
   binaryPayloadBytes_ = length;
-  binaryQueueOrder_ = nextQueueOrder_++;
   telemetry_.binaryFrameQueued = true;
   telemetry_.binaryFramesQueued++;
   telemetry_.binaryBytesQueued += static_cast<uint32_t>(length);
@@ -126,16 +118,13 @@ BridgeSocketWriterDrainResult BridgeSocketWriter::drainPending(uint32_t nowMs,
         return fail(BridgeSocketWriterDrainResult::EncodeFailed, "socket_encode_failed");
       }
       telemetry_.framesEncoded++;
-    } else if (textPayloadBytes_ != 0 &&
-               (!includeBinary || binaryPayloadBytes_ == 0 ||
-                textQueueOrder_ < binaryQueueOrder_)) {
+    } else if (textPayloadBytes_ != 0) {
       uint8_t maskKey[4] = {};
       makeMask(maskKey);
       frameBytes_ = BridgeWebSocketTransport::encodeClientTextFrame(
           textPayload_, maskKey, frame_, sizeof(frame_));
       framePayloadBytes_ = textPayloadBytes_;
       textPayloadBytes_ = 0;
-      textQueueOrder_ = 0;
       textPayload_[0] = '\0';
       telemetry_.textFrameQueued = false;
       frameOffset_ = 0;
@@ -154,7 +143,6 @@ BridgeSocketWriterDrainResult BridgeSocketWriter::drainPending(uint32_t nowMs,
           binaryPayload_, binaryPayloadBytes_, maskKey, frame_, sizeof(frame_));
       framePayloadBytes_ = binaryPayloadBytes_;
       binaryPayloadBytes_ = 0;
-      binaryQueueOrder_ = 0;
       telemetry_.binaryFrameQueued = false;
       frameOffset_ = 0;
       frameKind_ = PendingFrameKind::BinaryUpload;
