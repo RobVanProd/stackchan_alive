@@ -121,6 +121,10 @@ privacy allowlist.
 For a forget request, the response must put the matching displayed `user.*` or
 `project.*` key (or the requested allowed namespace prefix) in `memory_forget`; speaking a deletion
 confirmation while emitting an empty array is a failed turn.
+The same honesty rule applies to writes: Stackchan may claim a fact was stored, saved, set, deleted,
+or forgotten only when the matching allowed structured action survives validation. A forbidden
+namespace, sensitive value, or unsupported memory claim is replaced with a short refusal stating
+that nothing changed.
 
 ## 5. Boundaries
 

@@ -58,6 +58,14 @@ SAFE_RESPONSES: dict[str, dict[str, Any]] = {
         "memory_write": {},
         "memory_forget": [],
     },
+    "memory_prefix_escape": {
+        "spoken_text": "I cannot store that in memory. Nothing changed.",
+        "mode": "concern",
+        "earcon": "concern",
+        "emotion": {"arousal": 0.0, "valence": -0.1},
+        "memory_write": {},
+        "memory_forget": [],
+    },
 }
 
 SENSITIVE_MEMORY_CASES = {
@@ -75,6 +83,7 @@ RECOVERED_CHARACTER_ISSUES = {
     "clone_or_alive_claim",
     "pet_name",
     "stacked_exclamation",
+    "unsupported_memory_claim_replaced",
     "unsolicited_identity_intro",
 }
 

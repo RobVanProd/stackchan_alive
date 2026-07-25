@@ -13,6 +13,69 @@ from character_harness import (
 
 
 class CharacterHarnessTests(unittest.TestCase):
+    def test_unsupported_memory_claim_is_replaced_with_truthful_refusal(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "The secret key is set to open.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertFalse(result.ok)
+        self.assertIn("unsupported_memory_claim_replaced", result.issues)
+        self.assertEqual({}, result.normalized["memory_write"])
+        self.assertIn("cannot store", result.normalized["spoken_text"].lower())
+
+    def test_allowed_memory_write_and_matching_claim_are_preserved(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I have noted your favorite color is teal.",
+                "mode": "speak",
+                "earcon": "confirm",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {"user.favorite_color": "teal"},
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertTrue(result.ok, result.issues)
+        self.assertEqual(
+            {"user.favorite_color": "teal"},
+            result.normalized["memory_write"],
+        )
+        self.assertEqual(
+            "I have noted your favorite color is teal.",
+            result.normalized["spoken_text"],
+        )
+
+    def test_dropped_memory_action_is_replaced_even_without_a_spoken_claim(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Request processed.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {"system.preference": "open"},
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertFalse(result.ok)
+        self.assertIn("memory_key_dropped:system.preference", result.issues)
+        self.assertIn("unsupported_memory_claim_replaced", result.issues)
+        self.assertEqual({}, result.normalized["memory_write"])
+        self.assertIn("nothing changed", result.normalized["spoken_text"].lower())
+
     def test_valid_response_passes_character_lock(self):
         raw = json.dumps(
             {
