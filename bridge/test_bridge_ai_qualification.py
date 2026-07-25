@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -8,8 +9,13 @@ from bridge.bridge_ai_qualification import check_evidence
 
 class BridgeAiQualificationTests(unittest.TestCase):
     def _write_ready_fixture(self, root: Path) -> None:
+        firmware_acceptance = (
+            f"Accepted source commit `{'d' * 40}`, "
+            f"firmware SHA-256 `{'b' * 64}`."
+        )
+        firmware_acceptance_bytes = firmware_acceptance.encode("utf-8")
         session = {
-            "schema": "stackchan.bridge-ai-supervised-session.v2",
+            "schema": "stackchan.bridge-ai-supervised-session.v3",
             "mode": "bridge-ai-supervised",
             "sourceCommit": "a" * 40,
             "sourceWorktreeClean": True,
@@ -18,6 +24,12 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "packageSha256": "c" * 64,
             "packageVerified": True,
             "expectedFirmwareSha256": "b" * 64,
+            "expectedFirmwareSourceCommit": "d" * 40,
+            "firmwareAcceptanceEvidence": "accepted-main-firmware-status.md",
+            "firmwareAcceptanceBase": "origin/main",
+            "firmwareAcceptanceEvidenceSha256": hashlib.sha256(
+                firmware_acceptance_bytes
+            ).hexdigest(),
             "runtimeSourceCommit": "a" * 40,
             "runtimeSourceRoot": "C:/stackchan_alive",
             "runtimeBridgePid": 1234,
@@ -145,6 +157,9 @@ class BridgeAiQualificationTests(unittest.TestCase):
             ("operator-observations.json", observations),
         ):
             (root / name).write_text(json.dumps(payload), encoding="utf-8")
+        (root / "accepted-main-firmware-status.md").write_bytes(
+            firmware_acceptance_bytes
+        )
 
         records = [
             {
@@ -258,7 +273,7 @@ class BridgeAiQualificationTests(unittest.TestCase):
         self.assertEqual(0, report["failed"])
         self.assertEqual(1, report["pending"])
 
-    def test_package_firmware_mismatch_fails_exact_candidate_gate(self) -> None:
+    def test_accepted_main_firmware_mismatch_fails_exact_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self._write_ready_fixture(root)
@@ -269,10 +284,30 @@ class BridgeAiQualificationTests(unittest.TestCase):
             report = check_evidence(root)
 
         firmware = next(
-            check for check in report["checks"] if check["id"] == "firmware-candidate-exact"
+            check
+            for check in report["checks"]
+            if check["id"] == "accepted-main-firmware-exact"
         )
         self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
         self.assertEqual("fail", firmware["status"])
+
+    def test_unrecorded_firmware_source_commit_fails_provenance_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            session = json.loads((root / "session.json").read_text(encoding="utf-8"))
+            session["expectedFirmwareSourceCommit"] = "e" * 40
+            (root / "session.json").write_text(json.dumps(session), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        provenance = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "accepted-main-firmware-provenance"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", provenance["status"])
 
     def test_restarted_bridge_fails_runtime_binding(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

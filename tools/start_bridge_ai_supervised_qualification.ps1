@@ -1,6 +1,12 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$PackageZip,
+  [Parameter(Mandatory = $true)]
+  [ValidatePattern("^[0-9a-fA-F]{64}$")]
+  [string]$ExpectedFirmwareSha256,
+  [Parameter(Mandatory = $true)]
+  [ValidatePattern("^[0-9a-fA-F]{40}$")]
+  [string]$ExpectedFirmwareSourceCommit,
   [string]$DeviceHost = "192.168.1.238",
   [int]$BridgePort = 8765,
   [int]$DashboardPort = 8766,
@@ -34,6 +40,8 @@ if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-f]{40}$") {
   throw "Could not resolve source commit."
 }
 $SourceDirty = @(& git status --porcelain).Count -gt 0
+$ExpectedFirmwareSha256 = $ExpectedFirmwareSha256.ToLowerInvariant()
+$ExpectedFirmwareSourceCommit = $ExpectedFirmwareSourceCommit.ToLowerInvariant()
 $PackageZipPath = (Resolve-Path $PackageZip).Path
 $PackageSha256 = (Get-FileHash -LiteralPath $PackageZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
@@ -41,24 +49,13 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Archive = [IO.Compression.ZipFile]::OpenRead($PackageZipPath)
 try {
   $ManifestEntry = $Archive.Entries | Where-Object { $_.FullName -eq "release_manifest.json" } | Select-Object -First 1
-  $FirmwareEntry = $Archive.Entries | Where-Object { $_.FullName -eq "firmware/full_online/firmware.bin" } | Select-Object -First 1
   if (-not $ManifestEntry) { throw "Release ZIP is missing release_manifest.json." }
-  if (-not $FirmwareEntry) { throw "Release ZIP is missing firmware/full_online/firmware.bin." }
 
   $ManifestReader = [IO.StreamReader]::new($ManifestEntry.Open(), [Text.Encoding]::UTF8, $true)
   try {
     $PackageManifest = $ManifestReader.ReadToEnd() | ConvertFrom-Json
   } finally {
     $ManifestReader.Dispose()
-  }
-
-  $FirmwareStream = $FirmwareEntry.Open()
-  $Hasher = [Security.Cryptography.SHA256]::Create()
-  try {
-    $ExpectedFirmwareSha256 = ([BitConverter]::ToString($Hasher.ComputeHash($FirmwareStream))).Replace("-", "").ToLowerInvariant()
-  } finally {
-    $Hasher.Dispose()
-    $FirmwareStream.Dispose()
   }
 } finally {
   $Archive.Dispose()
@@ -79,6 +76,37 @@ $PackageVerifyOutput | Set-Content -LiteralPath $PackageVerifyLog -Encoding UTF8
 if ($PackageVerifyExit -ne 0) {
   throw "Release ZIP verification failed. See $PackageVerifyLog"
 }
+
+$FirmwareAcceptanceRelativePath = "docs/FIRST_DEPLOY_STATUS.md"
+$FirmwareAcceptancePath = Join-Path $RepoRoot $FirmwareAcceptanceRelativePath
+if (-not (Test-Path -LiteralPath $FirmwareAcceptancePath -PathType Leaf)) {
+  throw "Missing authoritative firmware acceptance record: $FirmwareAcceptanceRelativePath"
+}
+$FirmwareAcceptanceStatus = @(& git status --porcelain -- $FirmwareAcceptanceRelativePath)
+if ($FirmwareAcceptanceStatus.Count -ne 0) {
+  throw "$FirmwareAcceptanceRelativePath must match the clean source commit."
+}
+& git diff --quiet origin/main -- $FirmwareAcceptanceRelativePath
+if ($LASTEXITCODE -ne 0) {
+  throw "$FirmwareAcceptanceRelativePath must be identical to origin/main."
+}
+& git merge-base --is-ancestor $ExpectedFirmwareSourceCommit origin/main
+if ($LASTEXITCODE -ne 0) {
+  throw "Accepted firmware source commit $ExpectedFirmwareSourceCommit is not an ancestor of origin/main."
+}
+$FirmwareAcceptanceText = Get-Content -LiteralPath $FirmwareAcceptancePath -Raw
+$FirmwareAcceptanceLower = $FirmwareAcceptanceText.ToLowerInvariant()
+$FirmwareCommitPosition = $FirmwareAcceptanceLower.IndexOf($ExpectedFirmwareSourceCommit)
+$FirmwareShaPosition = $FirmwareAcceptanceLower.IndexOf($ExpectedFirmwareSha256)
+if ($FirmwareCommitPosition -lt 0 -or $FirmwareShaPosition -lt 0 -or
+    [Math]::Abs($FirmwareCommitPosition - $FirmwareShaPosition) -gt 512) {
+  throw "Accepted firmware identity is not recorded in $FirmwareAcceptanceRelativePath."
+}
+$FirmwareAcceptanceEvidencePath = Join-Path $EvidencePath "accepted-main-firmware-status.md"
+Copy-Item -LiteralPath $FirmwareAcceptancePath -Destination $FirmwareAcceptanceEvidencePath
+$FirmwareAcceptanceEvidenceSha256 = (
+  Get-FileHash -LiteralPath $FirmwareAcceptanceEvidencePath -Algorithm SHA256
+).Hash.ToLowerInvariant()
 
 $Debug = Invoke-RestMethod -Uri $DebugUrl -TimeoutSec 6
 $Dashboard = Invoke-RestMethod -Uri $DashboardUrl -TimeoutSec 6
@@ -142,7 +170,7 @@ if (-not $RuntimeManifest) {
 }
 if ($SourceDirty) { $Issues += "source_worktree_dirty" }
 if (([string]$Debug.ota_expected_sha256).ToLowerInvariant() -ne $ExpectedFirmwareSha256) {
-  $Issues += "robot_firmware_package_mismatch"
+  $Issues += "robot_firmware_accepted_main_mismatch"
 }
 if ([bool]$Debug.ota_current_app_confirmed -ne $true) { $Issues += "robot_firmware_not_confirmed" }
 if (-not $Features.conversationV2) { $Issues += "conversation_v2_not_enabled" }
@@ -181,7 +209,7 @@ $TurnLogStartLine = if (Test-Path -LiteralPath $TurnLogPath -PathType Leaf) {
 }
 
 $Session = [ordered]@{
-  schema = "stackchan.bridge-ai-supervised-session.v2"
+  schema = "stackchan.bridge-ai-supervised-session.v3"
   mode = "bridge-ai-supervised"
   status = $(if ($Issues.Count -eq 0) { "active" } else { "preflight-failed" })
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -197,6 +225,10 @@ $Session = [ordered]@{
   packageSha256 = $PackageSha256
   packageVerified = $true
   expectedFirmwareSha256 = $ExpectedFirmwareSha256
+  expectedFirmwareSourceCommit = $ExpectedFirmwareSourceCommit
+  firmwareAcceptanceEvidence = "accepted-main-firmware-status.md"
+  firmwareAcceptanceBase = "origin/main"
+  firmwareAcceptanceEvidenceSha256 = $FirmwareAcceptanceEvidenceSha256
   runtimeManifestPath = $RuntimeManifestPath
   runtimeSourceCommit = if ($RuntimeManifest) { ([string]$RuntimeManifest.sourceCommit).ToLowerInvariant() } else { "" }
   runtimeSourceRoot = if ($RuntimeManifest) { [string]$RuntimeManifest.sourceRoot } else { "" }

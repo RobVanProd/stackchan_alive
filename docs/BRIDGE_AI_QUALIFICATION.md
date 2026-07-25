@@ -52,6 +52,8 @@ no private audio evidence, a configured dashboard, and a connected motion-off ro
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File tools\start_bridge_ai_supervised_qualification.ps1 `
   -PackageZip "output\release\stackchan_alive_<exact-version>.zip" `
+  -ExpectedFirmwareSha256 "69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8" `
+  -ExpectedFirmwareSourceCommit "ce66f8a0fadfadbc07eb59124522267ba66ee70a" `
   -OperatorPresent `
   -ConfirmMotionOff `
   -MinReplyWindows 100 `
@@ -102,8 +104,12 @@ The checker requires:
 - a verified clean release ZIP whose commit equals the clean source checkout and stamped live
   bridge runtime;
 - a stable bridge PID and runtime manifest for the full session;
-- a robot-reported firmware SHA-256 that equals the ZIP's
-  `firmware/full_online/firmware.bin` before and after, with the running app confirmed;
+- the accepted main firmware SHA-256 and its distinct source commit, explicitly supplied to the
+  start command, recorded together in unchanged `docs/FIRST_DEPLOY_STATUS.md`, and preserved in
+  the evidence session;
+- a robot-reported firmware SHA-256 that equals that accepted main image before and after, with
+  the running app confirmed. The bridge package's bundled firmware is not the qualification
+  target and is never flashed by this procedure;
 - connected bridge/network state, the 50 ms display gate, and motion/rail/torque off;
 - zero uplink, writer-drop, reply-window, playback, raw-speaker, or forced-stop deltas;
 - zero host late-audio events or declared/received audio-count mismatches;
@@ -115,6 +121,7 @@ The checker requires:
 - authoritative playback drain before every reply window;
 - the required conversation, initiative, room, privacy, and operator-observation evidence.
 
-Only `bridge-ai-supervised-ready` is promotable. A different firmware SHA, package/source/runtime
-commit mismatch, restarted bridge, dirty source tree, failed check, or missing operator
-confirmation requires a new session; evidence does not transfer.
+Only `bridge-ai-supervised-ready` is promotable. A different accepted-main firmware SHA,
+unrecorded firmware source commit, package/source/runtime commit mismatch, restarted bridge,
+dirty source tree, failed check, or missing operator confirmation requires a new session;
+evidence does not transfer.

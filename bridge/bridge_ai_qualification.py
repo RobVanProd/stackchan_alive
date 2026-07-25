@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -61,6 +62,23 @@ def _load_jsonl(path: Path) -> list[dict[str, object]]:
     return records
 
 
+def _load_text(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return None
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _integer(value: object, default: int = 0) -> int:
     try:
         return int(value)
@@ -97,6 +115,8 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
     after_dashboard = _load_json(evidence_root / "after-dashboard.json")
     runtime_manifest = _load_json(evidence_root / "runtime-manifest.json")
     after_runtime = _load_json(evidence_root / "after-runtime.json")
+    firmware_acceptance_path = evidence_root / "accepted-main-firmware-status.md"
+    firmware_acceptance = _load_text(firmware_acceptance_path)
     records = _load_jsonl(evidence_root / "turns.jsonl")
     events = [
         record
@@ -124,6 +144,11 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
     require_present("after-dashboard", after_dashboard, "after-dashboard.json")
     require_present("runtime-manifest", runtime_manifest, "runtime-manifest.json")
     require_present("after-runtime", after_runtime, "after-runtime.json")
+    require_present(
+        "accepted-main-firmware-status",
+        firmware_acceptance,
+        "accepted-main-firmware-status.md",
+    )
     require_present("operator-observations", observations, "operator-observations.json")
 
     if session is not None:
@@ -131,6 +156,9 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
         package_commit = str(session.get("packageCommit", "")).lower()
         runtime_source_commit = str(session.get("runtimeSourceCommit", "")).lower()
         expected_firmware = str(session.get("expectedFirmwareSha256", "")).lower()
+        expected_firmware_source = str(
+            session.get("expectedFirmwareSourceCommit", "")
+        ).lower()
         add(
             "session-mode",
             "pass" if session.get("mode") == "bridge-ai-supervised" else "fail",
@@ -139,7 +167,7 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
         add(
             "session-schema",
             "pass"
-            if session.get("schema") == "stackchan.bridge-ai-supervised-session.v2"
+            if session.get("schema") == "stackchan.bridge-ai-supervised-session.v3"
             else "fail",
             f"schema={session.get('schema')}",
         )
@@ -161,12 +189,39 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             if session.get("packageVerified") is True
             and SHA256_RE.fullmatch(str(session.get("packageSha256", "")).lower())
             is not None
-            and SHA256_RE.fullmatch(expected_firmware) is not None
             else "fail",
             (
                 f"verified={session.get('packageVerified')} "
-                f"packageSha={session.get('packageSha256', '')} "
-                f"firmwareSha={expected_firmware}"
+                f"packageSha={session.get('packageSha256', '')}"
+            ),
+        )
+        acceptance_sha = str(
+            session.get("firmwareAcceptanceEvidenceSha256", "")
+        ).lower()
+        acceptance_file_sha = (
+            _sha256_file(firmware_acceptance_path)
+            if firmware_acceptance is not None
+            else ""
+        )
+        acceptance_text = (firmware_acceptance or "").lower()
+        firmware_position = acceptance_text.find(expected_firmware)
+        firmware_source_position = acceptance_text.find(expected_firmware_source)
+        firmware_provenance_valid = (
+            SHA256_RE.fullmatch(expected_firmware) is not None
+            and COMMIT_RE.fullmatch(expected_firmware_source) is not None
+            and session.get("firmwareAcceptanceBase") == "origin/main"
+            and SHA256_RE.fullmatch(acceptance_sha) is not None
+            and acceptance_file_sha == acceptance_sha
+            and firmware_position >= 0
+            and firmware_source_position >= 0
+            and abs(firmware_position - firmware_source_position) <= 512
+        )
+        add(
+            "accepted-main-firmware-provenance",
+            "pass" if firmware_provenance_valid else "fail",
+            (
+                f"source={expected_firmware_source} firmwareSha={expected_firmware} "
+                f"evidenceSha={acceptance_sha}"
             ),
         )
         add(
@@ -250,7 +305,7 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
         firmware_after = str(after_debug.get("ota_expected_sha256", ""))
         expected_firmware = str((session or {}).get("expectedFirmwareSha256", ""))
         add(
-            "firmware-candidate-exact",
+            "accepted-main-firmware-exact",
             "pass"
             if SHA256_RE.fullmatch(expected_firmware.lower()) is not None
             and firmware_before.lower() == expected_firmware.lower()

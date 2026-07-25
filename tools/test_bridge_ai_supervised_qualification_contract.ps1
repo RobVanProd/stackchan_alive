@@ -20,9 +20,14 @@ foreach ($Required in @(
   "-OperatorPresent",
   "-ConfirmMotionOff",
   "[string]`$PackageZip",
+  "[string]`$ExpectedFirmwareSha256",
+  "[string]`$ExpectedFirmwareSourceCommit",
   "verify_release_package.ps1",
-  "firmware/full_online/firmware.bin",
-  "robot_firmware_package_mismatch",
+  "docs/FIRST_DEPLOY_STATUS.md",
+  "git diff --quiet origin/main",
+  "git merge-base --is-ancestor",
+  "accepted-main-firmware-status.md",
+  "robot_firmware_accepted_main_mismatch",
   "runtime_manifest.json",
   "--conversation-v2",
   "--enable-initiative",
@@ -34,11 +39,15 @@ foreach ($Required in @(
   "robot_host_vision_never_advanced",
   "vision_service.pid",
   "minReplyWindows",
-  "bridge-ai-supervised-session.v2"
+  "bridge-ai-supervised-session.v3"
 )) {
   if (-not $StartText.Contains($Required)) {
     throw "Bridge AI qualification start script missing contract token: $Required"
   }
+}
+if ($StartText.Contains("firmware/full_online/firmware.bin") -or
+    $StartText.Contains("robot_firmware_package_mismatch")) {
+  throw "Bridge AI qualification must not bind the accepted main firmware to the bridge package binary."
 }
 if ($StartText.Contains("Stop-Process") -or $StartText.Contains("/motion-resume") -or
     $StartText.Contains("/motion-stop")) {
