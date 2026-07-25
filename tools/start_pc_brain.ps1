@@ -25,6 +25,19 @@ param(
   [switch]$DeterministicRunner,
   [switch]$EnableResearch,
   [string]$SearxngUrl = "http://127.0.0.1:8080",
+  [switch]$EnableConversationV2,
+  [int]$ConversationReplyWindowMs = 8000,
+  [int]$ConversationReplyWindowMinMs = 4000,
+  [int]$ConversationReplyWindowStepMs = 1000,
+  [int]$ConversationAcousticTailMs = 250,
+  [int]$ConversationMaxTurns = 12,
+  [switch]$EnableInitiative,
+  [int]$InitiativeMinIntervalSeconds = 600,
+  [switch]$EnableRoomObservation,
+  [int]$RoomObservationIntervalSeconds = 300,
+  [string]$RoomVisionCommand = "python bridge\ollama_room_vision.py",
+  [string]$RoomVisionModel = "",
+  [string]$CameraPairingCodeFile = "",
   [switch]$EnableDashboard,
   [string]$DashboardHost = "127.0.0.1",
   [int]$DashboardPort = 8766,
@@ -75,6 +88,9 @@ $env:PYTHONUTF8 = "1"
 $env:STACKCHAN_OLLAMA_EXE = $OllamaExe
 $env:STACKCHAN_OLLAMA_MODEL = $Model
 $env:STACKCHAN_FFMPEG_EXE = $FfmpegExe
+if (-not [string]::IsNullOrWhiteSpace($RoomVisionModel)) {
+  $env:STACKCHAN_OLLAMA_VISION_MODEL = $RoomVisionModel
+}
 if ($SelectedVoiceMaxAudioBytes -gt 0) {
   $env:STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES = [string]$SelectedVoiceMaxAudioBytes
 } else {
@@ -140,6 +156,35 @@ if ($EnableResearch) {
     "--enable-research",
     "--searxng-url", $SearxngUrl
   )
+}
+
+if ($EnableConversationV2) {
+  $ArgsList += @(
+    "--conversation-v2",
+    "--conversation-reply-window-ms", "$ConversationReplyWindowMs",
+    "--conversation-reply-window-min-ms", "$ConversationReplyWindowMinMs",
+    "--conversation-reply-window-step-ms", "$ConversationReplyWindowStepMs",
+    "--conversation-acoustic-tail-ms", "$ConversationAcousticTailMs",
+    "--conversation-max-turns", "$ConversationMaxTurns"
+  )
+}
+
+if ($EnableInitiative) {
+  $ArgsList += @(
+    "--enable-initiative",
+    "--initiative-min-interval-seconds", "$InitiativeMinIntervalSeconds"
+  )
+}
+
+if ($EnableRoomObservation) {
+  $ArgsList += @(
+    "--room-observation",
+    "--room-observation-interval-seconds", "$RoomObservationIntervalSeconds",
+    "--room-vision-command", $RoomVisionCommand
+  )
+  if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
+    $ArgsList += @("--camera-pairing-code-file", $CameraPairingCodeFile)
+  }
 }
 
 if ($EnableDashboard) {

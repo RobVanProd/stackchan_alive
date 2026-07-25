@@ -39,8 +39,11 @@ from lan_service import (
 )
 from cancellation import CancellationToken, OperationCancelledError
 from bridge_memory import BridgeMemory
+from conversation_session import ConversationPhase
+from initiative_policy import InitiativeConfig, InitiativePolicy
 from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
+from room_context import RoomContextRuntime, RoomObservationConfig
 from stt_adapter import STT_COMMAND_ENV
 from tts_adapter import TTS_COMMAND_ENV
 
@@ -1751,6 +1754,75 @@ class LanServiceTests(unittest.TestCase):
         self.assertTrue(any(line.startswith("ask_about:") for line in runner.call_args_list[0].kwargs["memory_lines"]))
         self.assertFalse(any(line.startswith("ask_about:") for line in runner.call_args_list[1].kwargs["memory_lines"]))
         self.assertEqual("asked", session.memory.to_dict()["open_loops"][0]["status"])
+
+    def test_room_context_enters_prompt_only_as_typed_ambient_line(self):
+        raw_frame = b"P5\n1 1\n255\n\x00"
+        room = RoomContextRuntime(
+            RoomObservationConfig(enabled=True, interval_seconds=300, command="fixture"),
+            frame_source=lambda: raw_frame,
+            model_observer=lambda _frame: {
+                "person_count": 1,
+                "activity": "person_seated",
+                "objects": ["desk", "monitor"],
+                "lighting": "bright",
+                "private_description": "must not enter the prompt",
+            },
+        )
+        room.observe_once(now_ms=1)
+        session = LanBridgeSession(LanBridgeConfig(), room_context=room)
+
+        lines = session._embodiment_context_lines()
+
+        self.assertTrue(any(line.startswith("ambient_room:") for line in lines))
+        self.assertNotIn("private_description", "\n".join(lines))
+        self.assertNotIn("must not enter", "\n".join(lines))
+
+    def test_initiative_uses_character_path_without_opening_conversation_capture(self):
+        policy = InitiativePolicy(InitiativeConfig(enabled=True), now_ms=0)
+        policy.observe_presence(True, face_count=1, now_ms=599_999)
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                initiative_enabled=True,
+                tts_command="fixture-tts",
+            ),
+            initiative_policy=policy,
+        )
+        session._last_robot_heartbeat = {"robot_mode": 1}
+        decision = session.initiative_decision(observed_ms=600_000, local_hour=12)
+        self.assertIsNotNone(decision)
+
+        initiative_runner = SimpleNamespace(
+            configured_runner=True,
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "Did that lamp move?",
+                    "mode": "attend",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.1, "valence": 0.2},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+        )
+        with patch("lan_service.now_ms", return_value=600_000), patch(
+            "lan_service.run_runner_profile",
+            return_value=initiative_runner,
+        ), patch.object(
+                session,
+                "_stream_tts_turn",
+                return_value=(
+                    [{"type": "response_start", "seq": 1}, {"type": "response_end", "seq": 1}],
+                    {"tts_stream_complete": True, "tts_first_audio_ms": 12.0},
+                    "",
+                ),
+            ):
+            frames = session.run_initiative(decision)
+
+        self.assertEqual("response_start", frames[0]["type"])
+        self.assertEqual(ConversationPhase.IDLE, session.conversation.phase)
+        self.assertFalse(session.conversation.capture_open)
+        self.assertTrue(policy.status(now_ms=600_001)["pendingReply"])
 
 
 if __name__ == "__main__":

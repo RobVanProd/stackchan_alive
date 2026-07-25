@@ -18,7 +18,9 @@ from dashboard_service import (  # noqa: E402
     DashboardRuntime,
     _safe_host,
 )
+from initiative_policy import InitiativeConfig, InitiativePolicy  # noqa: E402
 from lan_service import LanBridgeConfig, encode_ws_frame, encode_ws_text, read_ws_frame, serve  # noqa: E402
+from room_context import RoomContextRuntime, RoomObservationConfig  # noqa: E402
 
 
 class DashboardRuntimeTests(unittest.TestCase):
@@ -134,6 +136,29 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertFalse(result["verified"])
 
+    def test_awareness_controls_are_host_only_and_aggregate(self) -> None:
+        policy = InitiativePolicy(
+            InitiativeConfig(enabled=False),
+            now_ms=0,
+        )
+        room = RoomContextRuntime(RoomObservationConfig(interval_seconds=300))
+        runtime = DashboardRuntime(
+            DashboardConfig(robot_host="192.168.1.238"),
+            initiative_policy=policy,
+            room_context=room,
+        )
+
+        initiative = runtime.set_initiative(True)
+        observation = runtime.set_room_observation(enabled=True, interval_seconds=600)
+
+        self.assertTrue(initiative["ok"])
+        self.assertTrue(observation["ok"])
+        behavior = observation["status"]["behavior"]
+        self.assertTrue(behavior["initiative"]["enabled"])
+        self.assertTrue(behavior["roomObservation"]["enabled"])
+        self.assertEqual(600, behavior["roomObservation"]["intervalSeconds"])
+        self.assertNotIn("frame", json.dumps(behavior).lower())
+
 
 class DashboardHttpTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -205,6 +230,36 @@ class DashboardHttpTests(unittest.TestCase):
             self.request("/../README.md")
 
         self.assertEqual(404, caught.exception.code)
+
+    def test_awareness_write_requires_valid_bounded_controls(self) -> None:
+        policy = InitiativePolicy(InitiativeConfig(), now_ms=0)
+        room = RoomContextRuntime(RoomObservationConfig(interval_seconds=300))
+        self.runtime.initiative_policy = policy
+        self.runtime.room_context = room
+        headers = {
+            "Content-Type": "application/json",
+            "X-Stackchan-Dashboard": "1",
+        }
+
+        with self.request("/api/initiative", data=b'{"enabled":true}', headers=headers) as response:
+            initiative = json.load(response)
+        with self.request(
+            "/api/room-observation",
+            data=b'{"enabled":true,"intervalSeconds":600}',
+            headers=headers,
+        ) as response:
+            observation = json.load(response)
+
+        self.assertTrue(initiative["ok"])
+        self.assertTrue(observation["ok"])
+        self.assertTrue(observation["status"]["behavior"]["roomObservation"]["enabled"])
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.request(
+                "/api/room-observation",
+                data=b'{"enabled":true,"intervalSeconds":30}',
+                headers=headers,
+            )
+        self.assertEqual(409, caught.exception.code)
 
 
 class DashboardBridgeIntegrationTests(unittest.TestCase):

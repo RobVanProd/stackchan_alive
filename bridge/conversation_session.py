@@ -18,6 +18,8 @@ class ConversationPhase(str, Enum):
 @dataclass(frozen=True)
 class ConversationConfig:
     reply_window_ms: int = 8_000
+    reply_window_min_ms: int = 1_000
+    reply_window_step_ms: int = 1_000
     acoustic_tail_ms: int = 250
     cooldown_ms: int = 300
     max_turns: int = 12
@@ -32,10 +34,14 @@ class ConversationConfig:
     )
 
     def __post_init__(self) -> None:
-        if self.reply_window_ms <= 0:
-            raise ValueError("reply_window_ms must be positive")
-        if self.acoustic_tail_ms < 0:
-            raise ValueError("acoustic_tail_ms cannot be negative")
+        if not 1_000 <= self.reply_window_ms <= 30_000:
+            raise ValueError("reply_window_ms must be between 1000 and 30000")
+        if not 1_000 <= self.reply_window_min_ms <= self.reply_window_ms:
+            raise ValueError("reply_window_min_ms must be between 1000 and reply_window_ms")
+        if self.reply_window_step_ms < 0:
+            raise ValueError("reply_window_step_ms cannot be negative")
+        if not 0 <= self.acoustic_tail_ms <= 2_000:
+            raise ValueError("acoustic_tail_ms must be between 0 and 2000")
         if self.cooldown_ms < 0:
             raise ValueError("cooldown_ms cannot be negative")
         if self.max_turns <= 0:
@@ -71,6 +77,13 @@ class ConversationSession:
         self.last_close_reason = ""
         self._recent_turns: list[tuple[str, str]] = []
         self._pending_turn: tuple[str, str] | None = None
+
+    def current_reply_window_ms(self) -> int:
+        completed_followups = max(0, self.turns - 1)
+        shortened = self.config.reply_window_ms - (
+            completed_followups * self.config.reply_window_step_ms
+        )
+        return max(self.config.reply_window_min_ms, shortened)
 
     @staticmethod
     def _now(now_ms: int) -> int:
@@ -125,7 +138,7 @@ class ConversationSession:
         self.capture_open = True
         self.echo_guard = False
         self.acoustic_tail_until_ms = 0
-        self.reply_window_until_ms = now + self.config.reply_window_ms
+        self.reply_window_until_ms = now + self.current_reply_window_ms()
         self.cooldown_until_ms = 0
         self.close_after_response = False
         self.last_close_reason = ""
@@ -203,7 +216,7 @@ class ConversationSession:
         self.capture_open = False
         self.echo_guard = True
         self.acoustic_tail_until_ms = now + self.config.acoustic_tail_ms
-        self.reply_window_until_ms = self.acoustic_tail_until_ms + self.config.reply_window_ms
+        self.reply_window_until_ms = self.acoustic_tail_until_ms + self.current_reply_window_ms()
         return self._transition("playback_complete", "acoustic_tail", reason="reply_pending")
 
     def barge_in(self, now_ms: int) -> ConversationTransition:
@@ -219,7 +232,7 @@ class ConversationSession:
         self.capture_open = True
         self.echo_guard = False
         self.acoustic_tail_until_ms = 0
-        self.reply_window_until_ms = now + self.config.reply_window_ms
+        self.reply_window_until_ms = now + self.current_reply_window_ms()
         self.close_after_response = False
         self._pending_turn = None
         actions.append("open_capture")
@@ -273,6 +286,7 @@ class ConversationSession:
             "conversation_context_turns": len(self._recent_turns),
             "conversation_capture_open": self.capture_open,
             "conversation_echo_guard": self.echo_guard,
+            "conversation_reply_window_ms": self.current_reply_window_ms(),
             "conversation_reply_window_remaining_ms": max(0, self.reply_window_until_ms - now),
             "conversation_acoustic_tail_remaining_ms": max(0, self.acoustic_tail_until_ms - now),
             "conversation_close_reason": self.last_close_reason,

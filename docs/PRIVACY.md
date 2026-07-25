@@ -46,6 +46,15 @@ firmware. See `LOCAL_VISION.md`.
 
 If a future bridge feature needs remote analysis, it must be implemented as an explicit host-side bridge feature with user configuration, release documentation, and evidence showing when data leaves the device.
 
+Post-release source now includes an explicit local room-observation path. It is default-off,
+accepts only an authenticated private-LAN grayscale frame, converts that frame in memory, and
+sends it only to an operator-configured loopback Ollama vision model. The bridge retains only
+allowlisted typed fields: bounded person count, coarse activity, coarse object categories,
+lighting, and locally computed changes. It rejects identity and free-form person descriptions,
+never writes frames to disk, and clears the current summary when observation is disabled. The
+loopback dashboard exposes both the off switch and a bounded 2-30 minute interval. Missing camera
+authentication or a missing vision model degrades this feature without changing conversation.
+
 ## Bridge Ownership
 
 The bridge owns host-side STT, LLM, TTS, memory, and persona composition. The firmware owns modes, animation, motion, safety, timeout recovery, and serial-visible telemetry.

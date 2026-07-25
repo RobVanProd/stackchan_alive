@@ -4,6 +4,11 @@ The PC bridge can serve a local browser dashboard at `http://127.0.0.1:8766/`. I
 bridge and robot link state, a square Stackchan face, bounded robot telemetry, recent dashboard
 events, and verified motion stop/resume controls.
 
+The integrated dashboard also has an **Awareness** view. It exposes independent initiative and
+room-observation switches, the bounded room-observation interval, aggregate freshness, and
+degraded-state reporting. A standalone dashboard attached to an older bridge can display robot
+status but cannot add these host runtimes to that already-running process.
+
 ## Start And Open
 
 Run the reset-safe launcher:
@@ -51,6 +56,10 @@ dashboard never converts transport success into a motion-success claim.
   secrets, Wi-Fi credentials, microphone audio, or camera frames.
 - Browser status updates read in-memory state. The firmware `/debug` endpoint is contacted only
   for a manual refresh or motion verification, not every few seconds.
+- Room observation accepts only 2-30 minute intervals. Frames remain in memory for one local
+  model request and are never included in dashboard status, logs, prompts, or durable memory.
+- Initiative requires fresh presence, preserves the wake gate for microphone entry, and never
+  grants motion authority.
 
 ## Direct Bridge Launch
 
@@ -60,6 +69,16 @@ The base launcher also supports explicit dashboard options:
 .\tools\start_pc_brain.ps1 -Background -EnableDashboard `
   -DashboardHost 127.0.0.1 -DashboardPort 8766 `
   -RobotHost 192.168.1.238 -EnableAudioDownlink
+```
+
+Enable the post-release conversation and awareness source only for supervised qualification:
+
+```powershell
+$env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
+.\tools\start_pc_brain.ps1 -Background -EnableDashboard -EnableAudioDownlink `
+  -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
+  -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
+  -RobotHost 192.168.1.238
 ```
 
 The dashboard runs inside that bridge process and receives robot heartbeat summaries directly.

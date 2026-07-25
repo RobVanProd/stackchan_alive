@@ -266,12 +266,33 @@ python bridge\lan_service.py --conversation-v2 --tts-command "python bridge\rvc_
 The opt-in session accepts one wake-gated first turn, validates matching firmware
 `playback_complete`, then sends a bounded `conversation_reply_window` command so firmware reuses
 the proven cue, RGB, microphone-pause, and wake-gated uplink path without another wake phrase.
+The first follow-up window is eight seconds and later windows shorten by one second to a
+four-second floor. The bridge rejects values outside the firmware's exact acoustic-tail and
+reply-window bounds instead of silently correcting them.
 Reply-window capture uses a deterministic local endpoint with sustained-speech and trailing-silence
 hysteresis; no-speech or ambiguous input retains the 4.8-second maximum fallback. Initial v1
 capture remains fixed-length. Exit phrases, turn limits, bridge loss, cancellation, TTS failure,
-and model failure close through a typed cooldown. Concurrent in-flight generation/playback
-cancellation is still pending; leave Conversation v2 off for normal v1 operation until exact-image
-hardware qualification and that natural barge-in gate pass.
+and model failure close through a typed cooldown. Host/companion cancellation is implemented;
+physical over-speaker barge-in and exact-image hardware qualification remain promotion gates.
+
+Host initiative and room context are also explicit, default-off features:
+
+```powershell
+$env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"
+.\tools\start_pc_brain.ps1 -Background -EnableAudioDownlink -StreamTtsPhrases `
+  -EnableConversationV2 -EnableInitiative -EnableRoomObservation `
+  -RoomObservationIntervalSeconds 300 `
+  -CameraPairingCodeFile "$env:USERPROFILE\.stackchan\camera-pairing-code.txt" `
+  -RobotHost 192.168.1.238 -EnableDashboard
+```
+
+The initiative policy requires a fresh person-presence observation, waits at least ten minutes
+between unprompted lines, suppresses at night and during busy/safety states, and backs off for six
+hours after two ignored openers. It uses the normal Character Lock and TTS path without opening a
+conversation microphone lease. Room observation sends one authenticated grayscale frame at a
+bounded 2-30 minute interval to the loopback-only Ollama adapter, retains only allowlisted typed
+scene facts, and never writes a frame to disk. A missing camera, pairing file, or vision model
+leaves ordinary conversation available.
 
 Run the optional local camera detector only with the isolated camera diagnostic firmware:
 

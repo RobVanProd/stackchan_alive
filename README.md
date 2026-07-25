@@ -185,8 +185,8 @@ Start the production PC brain and open its loopback browser dashboard:
 ```
 
 Install the reset-safe `Stackchan Alive` desktop shortcut with
-`.\tools\install_stackchan_dashboard_shortcut.ps1`. Dashboard controls, loopback security, and
-verified motion behavior are documented in
+`.\tools\install_stackchan_dashboard_shortcut.ps1`. Dashboard motion and awareness controls,
+loopback security, and verified behavior are documented in
 [docs/BRIDGE_DASHBOARD.md](docs/BRIDGE_DASHBOARD.md).
 
 ![I/O abstraction build environments](docs/media/diagrams/08-io-abstraction-builds.png)

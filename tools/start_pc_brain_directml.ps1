@@ -6,6 +6,12 @@ param(
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [switch]$EnableResearch,
   [string]$SearxngUrl = "http://127.0.0.1:8080",
+  [switch]$EnableConversationV2,
+  [switch]$EnableInitiative,
+  [switch]$EnableRoomObservation,
+  [int]$RoomObservationIntervalSeconds = 300,
+  [string]$RoomVisionModel = "",
+  [string]$CameraPairingCodeFile = "",
   [int]$DashboardPort = 8766,
   [string]$EvidenceRoot = "",
   [switch]$RepairMemory,
@@ -116,6 +122,23 @@ $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'Silen
 if ($EnableResearch) {
   $bridgeScript += " -EnableResearch -SearxngUrl '$escapedSearxngUrl'"
 }
+if ($EnableConversationV2) {
+  $bridgeScript += " -EnableConversationV2"
+}
+if ($EnableInitiative) {
+  $bridgeScript += " -EnableInitiative"
+}
+if ($EnableRoomObservation) {
+  $escapedRoomVisionModel = $RoomVisionModel.Replace("'", "''")
+  $escapedPairingCodeFile = $CameraPairingCodeFile.Replace("'", "''")
+  $bridgeScript += " -EnableRoomObservation -RoomObservationIntervalSeconds $RoomObservationIntervalSeconds"
+  if (-not [string]::IsNullOrWhiteSpace($RoomVisionModel)) {
+    $bridgeScript += " -RoomVisionModel '$escapedRoomVisionModel'"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
+    $bridgeScript += " -CameraPairingCodeFile '$escapedPairingCodeFile'"
+  }
+}
 $bridgeChild = Invoke-EncodedChildPowerShell -ScriptBody $bridgeScript `
   -StdoutPath (Join-Path $EvidencePath "bridge-start.txt") `
   -StderrPath (Join-Path $EvidencePath "bridge-start.err.log")
@@ -189,6 +212,9 @@ $Result = [ordered]@{
   workerMethod = $WorkerHealth.method
   streamTtsPhrases = $true
   researchEnabled = [bool]$EnableResearch
+  conversationV2Enabled = [bool]$EnableConversationV2
+  initiativeEnabled = [bool]$EnableInitiative
+  roomObservationEnabled = [bool]$EnableRoomObservation
   searxngUrl = if ($EnableResearch) { $SearxngUrl } else { $null }
   ttsCommand = "python bridge\rvc_production_tts_client.py"
   memoryMaintenance = $MemoryReport

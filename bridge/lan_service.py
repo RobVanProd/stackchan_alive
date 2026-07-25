@@ -61,6 +61,19 @@ from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 from conversation_latency import build_conversation_latency_record
 from conversation_session import ConversationConfig, ConversationPhase, ConversationSession
+from initiative_policy import (
+    MIN_UNPROMPTED_INTERVAL_MS,
+    InitiativeConfig,
+    InitiativeDecision,
+    InitiativePolicy,
+)
+from room_context import (
+    ExternalRoomVisionModel,
+    PrivateCameraFrameSource,
+    RoomContextRuntime,
+    RoomObservationConfig,
+    RoomSceneSummary,
+)
 from dashboard_service import (
     DEFAULT_DASHBOARD_HOST,
     DEFAULT_DASHBOARD_PORT,
@@ -591,9 +604,18 @@ class LanBridgeConfig:
     searxng_url: str = "http://127.0.0.1:8080"
     conversation_v2_enabled: bool = False
     conversation_reply_window_ms: int = 8_000
+    conversation_reply_window_min_ms: int = 4_000
+    conversation_reply_window_step_ms: int = 1_000
     conversation_acoustic_tail_ms: int = 250
     conversation_cooldown_ms: int = 300
     conversation_max_turns: int = 12
+    initiative_enabled: bool = False
+    initiative_min_interval_ms: int = MIN_UNPROMPTED_INTERVAL_MS
+    room_observation_enabled: bool = False
+    room_observation_interval_seconds: int = 300
+    room_vision_command: str = ""
+    room_vision_timeout_ms: int = 30_000
+    camera_pairing_code_file: Path | None = None
     episode_distillation_enabled: bool = False
     dashboard_enabled: bool = False
     dashboard_host: str = DEFAULT_DASHBOARD_HOST
@@ -601,6 +623,26 @@ class LanBridgeConfig:
     robot_host: str = ""
     robot_http_port: int = DEFAULT_ROBOT_HTTP_PORT
     once: bool = False
+
+    def __post_init__(self) -> None:
+        ConversationConfig(
+            reply_window_ms=self.conversation_reply_window_ms,
+            reply_window_min_ms=self.conversation_reply_window_min_ms,
+            reply_window_step_ms=self.conversation_reply_window_step_ms,
+            acoustic_tail_ms=self.conversation_acoustic_tail_ms,
+            cooldown_ms=self.conversation_cooldown_ms,
+            max_turns=self.conversation_max_turns,
+        )
+        InitiativeConfig(
+            enabled=self.initiative_enabled,
+            min_interval_ms=self.initiative_min_interval_ms,
+        )
+        RoomObservationConfig(
+            enabled=self.room_observation_enabled,
+            interval_seconds=self.room_observation_interval_seconds,
+            command=self.room_vision_command,
+            timeout_ms=self.room_vision_timeout_ms,
+        )
 
 
 @dataclass
@@ -924,6 +966,8 @@ class LanBridgeSession:
         memory: BridgeMemory | None = None,
         control_state: BridgeControlState | None = None,
         research_broker: ResearchBroker | None = None,
+        initiative_policy: InitiativePolicy | None = None,
+        room_context: RoomContextRuntime | None = None,
     ):
         self.config = config
         self.memory = memory if memory is not None else BridgeMemory()
@@ -946,8 +990,17 @@ class LanBridgeSession:
         self._session_non_research_turns = 0
         self._lease_turns: list[tuple[str, str]] = []
         self._finalized_session_number = 0
+        self._last_robot_heartbeat: dict[str, object] = {}
+        self.initiative_policy = initiative_policy
+        self.room_context = room_context
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
+        if config.initiative_enabled and (
+            not config.tts_command or config.disable_audio_downlink
+        ):
+            raise ValueError(
+                "initiative requires configured TTS and audio downlink"
+            )
         if config.conversation_v2_enabled:
             if not config.tts_command or config.disable_audio_downlink:
                 raise ValueError(
@@ -956,6 +1009,8 @@ class LanBridgeSession:
             self.conversation = ConversationSession(
                 ConversationConfig(
                     reply_window_ms=config.conversation_reply_window_ms,
+                    reply_window_min_ms=config.conversation_reply_window_min_ms,
+                    reply_window_step_ms=config.conversation_reply_window_step_ms,
                     acoustic_tail_ms=config.conversation_acoustic_tail_ms,
                     cooldown_ms=config.conversation_cooldown_ms,
                     max_turns=config.conversation_max_turns,
@@ -984,6 +1039,10 @@ class LanBridgeSession:
 
     def _conversation_context_lines(self) -> tuple[str, ...]:
         return self.conversation.context_lines() if self.conversation is not None else ()
+
+    def _embodiment_context_lines(self) -> tuple[str, ...]:
+        room_lines = self.room_context.prompt_lines() if self.room_context is not None else ()
+        return self.robot_embodiment.prompt_lines() + room_lines
 
     def _relationship_card(self, query: str, *, suppress_session_context: bool = False) -> RelationshipCard:
         session_turns = self.conversation.turns if self.conversation is not None else 0
@@ -1135,6 +1194,8 @@ class LanBridgeSession:
             del self._lease_turns[:-4]
 
     def _begin_conversation_capture(self, owner_id: str) -> dict[str, object] | None:
+        if self.initiative_policy is not None:
+            self.initiative_policy.note_user_activity(now_ms=now_ms())
         if self.conversation is None:
             return None
         current_ms = now_ms()
@@ -1333,6 +1394,16 @@ class LanBridgeSession:
             return [frame]
         if message_type == "heartbeat":
             self.robot_embodiment.update(message)
+            self._last_robot_heartbeat = dict(message)
+            if (
+                self.initiative_policy is not None
+                and self._truthy(message.get("camera_active"))
+                and "camera_target_fresh" in message
+            ):
+                self.initiative_policy.observe_presence(
+                    self._truthy(message.get("camera_target_fresh")),
+                    now_ms=now_ms(),
+                )
             conversation_transition = None
             if self.conversation is not None:
                 conversation_transition = self.conversation.tick(now_ms())
@@ -1414,7 +1485,7 @@ class LanBridgeSession:
                     "type": "conversation_reply_window",
                     "seq": seq,
                     "open_after_ms": self.config.conversation_acoustic_tail_ms,
-                    "window_ms": self.config.conversation_reply_window_ms,
+                    "window_ms": self.conversation.current_reply_window_ms(),
                 }
                 frame.update(self._conversation_payload(transition))
             return [frame]
@@ -1430,6 +1501,148 @@ class LanBridgeSession:
         if owner and endpoint_id != owner:
             return error_frame("brain_owner_mismatch", endpoint_id)
         return None
+
+    @staticmethod
+    def _truthy(value: object) -> bool:
+        return value is True or value == 1 or str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def initiative_decision(
+        self,
+        *,
+        observed_ms: int | None = None,
+        local_hour: int | None = None,
+    ) -> InitiativeDecision | None:
+        if self.initiative_policy is None:
+            return None
+        try:
+            persona = self._active_persona()
+        except (OSError, PersonaPackError, ValueError):
+            return None
+        circadian = persona.behavior.get("circadian")
+        if not isinstance(circadian, dict):
+            return None
+        heartbeat = self._last_robot_heartbeat
+        try:
+            robot_mode_id = int(heartbeat.get("robot_mode", -1))
+        except (TypeError, ValueError):
+            robot_mode_id = -1
+        robot_modes = {
+            0: "booting",
+            1: "idle",
+            2: "attending",
+            3: "listening",
+            4: "thinking",
+            5: "speaking",
+            6: "reacting",
+            7: "sleeping",
+            8: "error",
+        }
+        safety_clear = not any(
+            self._truthy(heartbeat.get(key))
+            for key in (
+                "motion_thermal_suppressed",
+                "motion_power_suppressed",
+                "speaker_active",
+                "imu_picked_up",
+            )
+        )
+        session_active = (
+            self.conversation is not None and self.conversation.phase != ConversationPhase.IDLE
+        )
+        return self.initiative_policy.decide(
+            now_ms=now_ms() if observed_ms is None else int(observed_ms),
+            local_hour=datetime.now().hour if local_hour is None else int(local_hour),
+            night_start_hour=int(circadian.get("night_start_hour", 21)),
+            morning_start_hour=int(circadian.get("morning_start_hour", 6)),
+            robot_mode=robot_modes.get(robot_mode_id, "unknown"),
+            session_active=session_active,
+            turn_busy=self.active_turn_in_progress(),
+            safety_clear=safety_clear,
+        )
+
+    def run_initiative(
+        self,
+        decision: InitiativeDecision,
+        *,
+        frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+    ) -> list[dict[str, object] | bytes]:
+        if self.initiative_policy is None:
+            return [error_frame("initiative_disabled")]
+        cancellation = CancellationToken()
+        if not self._register_active_turn(cancellation):
+            self.initiative_policy.note_attempt_failed(now_ms=now_ms())
+            return [error_frame("turn_busy", "a response is already being generated")]
+        started = time.perf_counter()
+        try:
+            active_persona = self._active_persona()
+            seq = self.next_seq
+            self.next_seq += 1
+            runner = run_runner_profile(
+                self.config.runner_profile,
+                case_name="question",
+                command=self.config.runner_command,
+                require_runner=self.config.require_runner,
+                timeout_ms=self.config.runner_timeout_ms,
+                user_text=decision.prompt,
+                research_tools_enabled=False,
+                embodiment_lines=self._embodiment_context_lines(),
+                memory_lines=(),
+                conversation_lines=(),
+                cancellation=cancellation,
+                persona_id=active_persona.pack_id,
+            )
+            if not getattr(runner, "configured_runner", False):
+                raise RunnerConfigurationError(
+                    "initiative requires a configured local model runner"
+                )
+            raw_response = self._clear_research_memory_writes(runner.raw_response)
+            turn, _, validation = turn_from_character_response(
+                raw_response,
+                self.memory,
+                session=self.session,
+                seq=seq,
+                persona=active_persona,
+            )
+            frames, tts_summary, tts_error = self._stream_tts_turn(
+                turn,
+                turn_started=started,
+                validation_issues=list(validation.issues),
+                frame_sink=frame_sink,
+                cancellation=cancellation,
+            )
+            if tts_error or not bool(tts_summary.get("tts_stream_complete")):
+                self.initiative_policy.note_attempt_failed(now_ms=now_ms())
+            else:
+                self.initiative_policy.note_spoken(now_ms=now_ms())
+                self._append_turn_log(
+                    {
+                        "schema": "stackchan.initiative-turn.v1",
+                        "generated_at": utc_timestamp(),
+                        "seq": seq,
+                        "event": "initiative_spoken",
+                        "reason": decision.reason,
+                        "persona_id": active_persona.pack_id,
+                        "validation_issues": list(validation.issues),
+                        "tts_first_audio_ms": tts_summary.get("tts_first_audio_ms", 0),
+                    }
+                )
+            return frames
+        except OperationCancelledError as exc:
+            self.initiative_policy.note_attempt_failed(now_ms=now_ms())
+            return [error_frame("turn_cancelled", str(exc))]
+        except (
+            OSError,
+            PersonaPackError,
+            RunnerConfigurationError,
+            RunnerExecutionError,
+            TtsConfigurationError,
+            TtsExecutionError,
+            ValueError,
+        ) as exc:
+            self.initiative_policy.note_attempt_failed(now_ms=now_ms())
+            return [error_frame("initiative_error", str(exc))]
+        finally:
+            self._finish_active_turn(cancellation)
 
     def _handle_capability_update(self, message: dict[str, Any]) -> dict[str, object]:
         endpoint_id = self.control_state.touch_endpoint(message.get("endpoint_id") or self.endpoint_id)
@@ -1867,7 +2080,7 @@ class LanBridgeSession:
                     timeout_ms=self.config.runner_timeout_ms,
                     user_text=user_text,
                     research_tools_enabled=self.config.research_enabled,
-                    embodiment_lines=self.robot_embodiment.prompt_lines(),
+                    embodiment_lines=self._embodiment_context_lines(),
                     memory_lines=relationship_card.lines,
                     conversation_lines=self._conversation_context_lines(),
                     cancellation=cancellation,
@@ -1928,7 +2141,7 @@ class LanBridgeSession:
                             timeout_ms=self.config.runner_timeout_ms,
                             user_text=evidence_user_text,
                             research_tools_enabled=False,
-                            embodiment_lines=self.robot_embodiment.prompt_lines(),
+                            embodiment_lines=self._embodiment_context_lines(),
                             memory_lines=relationship_card.lines,
                             conversation_lines=self._conversation_context_lines(),
                             cancellation=cancellation,
@@ -2155,8 +2368,16 @@ def handle_connection(
     memory: BridgeMemory,
     control_state: BridgeControlState | None = None,
     dashboard_runtime: DashboardRuntime | None = None,
+    initiative_policy: InitiativePolicy | None = None,
+    room_context: RoomContextRuntime | None = None,
 ) -> BridgeMemory:
-    session = LanBridgeSession(config, memory, control_state)
+    session = LanBridgeSession(
+        config,
+        memory,
+        control_state,
+        initiative_policy=initiative_policy,
+        room_context=room_context,
+    )
     request = read_http_request(conn)
     print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)
     conn.sendall(build_handshake_response(request))
@@ -2211,6 +2432,17 @@ def handle_connection(
         except Exception as exc:  # surfaced on the connection thread
             turn_errors.put(exc)
 
+    def run_initiative_turn(decision: InitiativeDecision) -> None:
+        try:
+            frames = session.run_initiative(
+                decision,
+                frame_sink=send_live if config.stream_tts_phrases else None,
+            )
+            for frame in frames:
+                send_live(frame)
+        except Exception as exc:  # surfaced on the connection thread
+            turn_errors.put(exc)
+
     if config.auto_turn_text:
         seq = now_ms() % 1000000
         auto_turn = {"type": "utterance_end", "seq": seq, "text": config.auto_turn_text}
@@ -2247,6 +2479,7 @@ def handle_connection(
                 raise turn_errors.get_nowait()
             opcode, payload = read_ws_frame(conn)
             frame_received_at = time.perf_counter()
+            text_message_type = ""
             if opcode == 0x8:
                 session.cancel_active_turn("connection_closed")
                 discard_pending_audio()
@@ -2337,6 +2570,18 @@ def handle_connection(
                 frames = [error_frame("unsupported_websocket_opcode", str(opcode))]
             for frame in frames:
                 send_live(frame)
+            if text_message_type == "heartbeat" and (
+                turn_thread is None or not turn_thread.is_alive()
+            ):
+                decision = session.initiative_decision()
+                if decision is not None:
+                    turn_thread = threading.Thread(
+                        target=run_initiative_turn,
+                        args=(decision,),
+                        name="stackchan-initiative-worker",
+                        daemon=True,
+                    )
+                    turn_thread.start()
     finally:
         session.cancel_active_turn("connection_closed")
         session.connection_closed()
@@ -2349,6 +2594,56 @@ def handle_connection(
 def serve(config: LanBridgeConfig) -> None:
     memory = load_bridge_memory(config.memory_file) if config.memory_file else BridgeMemory()
     control_state = BridgeControlState()
+    initiative_policy = InitiativePolicy(
+        InitiativeConfig(
+            enabled=config.initiative_enabled,
+            min_interval_ms=config.initiative_min_interval_ms,
+        )
+    )
+    frame_source = None
+    model_observer = None
+    room_configuration_error = ""
+    if config.robot_host and config.camera_pairing_code_file:
+        try:
+            pairing_code = config.camera_pairing_code_file.read_text(encoding="ascii").strip()
+            frame_source = PrivateCameraFrameSource(
+                f"http://{config.robot_host}:{config.robot_http_port}",
+                pairing_code,
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            room_configuration_error = str(exc)
+    if config.room_vision_command:
+        try:
+            model_observer = ExternalRoomVisionModel(
+                config.room_vision_command,
+                timeout_ms=config.room_vision_timeout_ms,
+            )
+        except ValueError as exc:
+            room_configuration_error = str(exc)
+
+    def note_room_summary(summary: RoomSceneSummary) -> None:
+        if summary.person_present is not None:
+            initiative_policy.observe_presence(
+                summary.person_present,
+                face_count=summary.person_count,
+                now_ms=summary.observed_ms,
+            )
+        initiative_policy.observe_scene_changes(summary.changes, now_ms=summary.observed_ms)
+
+    room_context = RoomContextRuntime(
+        RoomObservationConfig(
+            enabled=config.room_observation_enabled,
+            interval_seconds=config.room_observation_interval_seconds,
+            command=config.room_vision_command,
+            timeout_ms=config.room_vision_timeout_ms,
+        ),
+        frame_source=frame_source,
+        model_observer=model_observer,
+        on_summary=note_room_summary,
+    )
+    if room_configuration_error:
+        print(f"[bridge-room] configuration_degraded={room_configuration_error}", flush=True)
+    room_context.start()
     dashboard_runtime: DashboardRuntime | None = None
     dashboard_server = None
     dashboard_thread = None
@@ -2364,7 +2659,10 @@ def serve(config: LanBridgeConfig) -> None:
                 runner_profile=config.runner_profile,
                 tts_voice=config.tts_voice,
                 research_enabled=config.research_enabled,
-            )
+                conversation_v2_enabled=config.conversation_v2_enabled,
+            ),
+            initiative_policy=initiative_policy,
+            room_context=room_context,
         )
         dashboard_server, dashboard_thread = start_dashboard_server(dashboard_runtime)
     try:
@@ -2388,6 +2686,8 @@ def serve(config: LanBridgeConfig) -> None:
                                 memory,
                                 control_state,
                                 dashboard_runtime,
+                                initiative_policy,
+                                room_context,
                             )
                         except WebSocketProtocolError as exc:
                             print(f"[bridge-lan] client_disconnect={address[0]}:{address[1]} reason=\"{exc}\"", flush=True)
@@ -2399,6 +2699,7 @@ def serve(config: LanBridgeConfig) -> None:
                 if config.once:
                     break
     finally:
+        room_context.stop()
         if dashboard_runtime is not None:
             dashboard_runtime.set_bridge_listening(False)
         if dashboard_server is not None and dashboard_thread is not None:
@@ -2438,9 +2739,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--searxng-url", default="http://127.0.0.1:8080")
     parser.add_argument("--conversation-v2", action="store_true")
     parser.add_argument("--conversation-reply-window-ms", type=int, default=8000)
+    parser.add_argument("--conversation-reply-window-min-ms", type=int, default=4000)
+    parser.add_argument("--conversation-reply-window-step-ms", type=int, default=1000)
     parser.add_argument("--conversation-acoustic-tail-ms", type=int, default=250)
     parser.add_argument("--conversation-cooldown-ms", type=int, default=300)
     parser.add_argument("--conversation-max-turns", type=int, default=12)
+    parser.add_argument("--enable-initiative", action="store_true")
+    parser.add_argument(
+        "--initiative-min-interval-seconds",
+        type=int,
+        default=MIN_UNPROMPTED_INTERVAL_MS // 1000,
+    )
+    parser.add_argument("--room-observation", action="store_true")
+    parser.add_argument("--room-observation-interval-seconds", type=int, default=300)
+    parser.add_argument("--room-vision-command", default="")
+    parser.add_argument("--room-vision-timeout-ms", type=int, default=30000)
+    parser.add_argument("--camera-pairing-code-file", type=Path)
     parser.add_argument(
         "--enable-episode-distillation",
         action="store_true",
@@ -2456,9 +2770,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = build_arg_parser().parse_args()
+    parser = build_arg_parser()
+    args = parser.parse_args()
     if args.dashboard and args.dashboard_host not in {"127.0.0.1", "::1", "localhost"}:
-        raise SystemExit("Dashboard must bind to a loopback host.")
+        parser.error("Dashboard must bind to a loopback host.")
+    if not 1_000 <= args.conversation_reply_window_ms <= 30_000:
+        parser.error("--conversation-reply-window-ms must be between 1000 and 30000")
+    if not 1_000 <= args.conversation_reply_window_min_ms <= args.conversation_reply_window_ms:
+        parser.error(
+            "--conversation-reply-window-min-ms must be between 1000 and the initial window"
+        )
+    if args.conversation_reply_window_step_ms < 0:
+        parser.error("--conversation-reply-window-step-ms cannot be negative")
+    if not 0 <= args.conversation_acoustic_tail_ms <= 2_000:
+        parser.error("--conversation-acoustic-tail-ms must be between 0 and 2000")
+    if args.initiative_min_interval_seconds < MIN_UNPROMPTED_INTERVAL_MS // 1000:
+        parser.error("--initiative-min-interval-seconds must be at least 600")
+    if not 120 <= args.room_observation_interval_seconds <= 1_800:
+        parser.error("--room-observation-interval-seconds must be between 120 and 1800")
     if args.reset_memory and args.memory_file and args.memory_file.exists():
         args.memory_file.unlink()
     config = LanBridgeConfig(
@@ -2492,10 +2821,19 @@ def main() -> int:
         research_enabled=args.enable_research,
         searxng_url=args.searxng_url,
         conversation_v2_enabled=args.conversation_v2,
-        conversation_reply_window_ms=max(1000, min(30000, args.conversation_reply_window_ms)),
-        conversation_acoustic_tail_ms=max(0, min(2000, args.conversation_acoustic_tail_ms)),
+        conversation_reply_window_ms=args.conversation_reply_window_ms,
+        conversation_reply_window_min_ms=args.conversation_reply_window_min_ms,
+        conversation_reply_window_step_ms=args.conversation_reply_window_step_ms,
+        conversation_acoustic_tail_ms=args.conversation_acoustic_tail_ms,
         conversation_cooldown_ms=max(0, min(5000, args.conversation_cooldown_ms)),
         conversation_max_turns=max(1, min(50, args.conversation_max_turns)),
+        initiative_enabled=args.enable_initiative,
+        initiative_min_interval_ms=args.initiative_min_interval_seconds * 1000,
+        room_observation_enabled=args.room_observation,
+        room_observation_interval_seconds=args.room_observation_interval_seconds,
+        room_vision_command=args.room_vision_command,
+        room_vision_timeout_ms=args.room_vision_timeout_ms,
+        camera_pairing_code_file=args.camera_pairing_code_file,
         episode_distillation_enabled=(
             args.enable_episode_distillation
             or os.environ.get("STACKCHAN_ENABLE_EPISODE_DISTILLATION", "").strip().lower()

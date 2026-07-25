@@ -133,9 +133,38 @@ class ConversationSessionTests(unittest.TestCase):
         self.assertEqual(850, snapshot["conversation_reply_window_remaining_ms"])
         self.assertFalse(any("motion" in key for key in snapshot))
 
+    def test_followup_window_shortens_after_later_turns(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(
+                reply_window_ms=8_000,
+                reply_window_min_ms=4_000,
+                reply_window_step_ms=1_000,
+                acoustic_tail_ms=0,
+            )
+        )
+        session.wake(0)
+        self.assertEqual(8_000, session.current_reply_window_ms())
+
+        for turn in range(1, 7):
+            session.utterance_committed(turn * 100, f"turn {turn}")
+            session.response_started(turn * 100 + 10)
+            session.playback_completed(turn * 100 + 20)
+            expected = max(4_000, 8_000 - (turn - 1) * 1_000)
+            self.assertEqual(expected, session.current_reply_window_ms())
+            self.assertEqual(expected, session.snapshot(turn * 100 + 20)["conversation_reply_window_ms"])
+            session.tick(turn * 100 + 20)
+
     def test_invalid_config_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             ConversationConfig(reply_window_ms=0)
+        with self.assertRaises(ValueError):
+            ConversationConfig(reply_window_ms=30_001)
+        with self.assertRaises(ValueError):
+            ConversationConfig(reply_window_ms=4_000, reply_window_min_ms=5_000)
+        with self.assertRaises(ValueError):
+            ConversationConfig(reply_window_step_ms=-1)
+        with self.assertRaises(ValueError):
+            ConversationConfig(acoustic_tail_ms=2_001)
         with self.assertRaises(ValueError):
             ConversationConfig(max_turns=0)
         with self.assertRaises(ValueError):

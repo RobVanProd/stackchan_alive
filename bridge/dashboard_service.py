@@ -15,6 +15,11 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from initiative_policy import InitiativePolicy
+    from room_context import RoomContextRuntime
 
 
 DEFAULT_DASHBOARD_HOST = "127.0.0.1"
@@ -113,13 +118,22 @@ class DashboardConfig:
     runner_profile: str = "gemma4-e2b-gguf"
     tts_voice: str = ""
     research_enabled: bool = False
+    conversation_v2_enabled: bool = False
 
 
 class DashboardRuntime:
     """Thread-safe, aggregate-only dashboard state and robot control adapter."""
 
-    def __init__(self, config: DashboardConfig):
+    def __init__(
+        self,
+        config: DashboardConfig,
+        *,
+        initiative_policy: "InitiativePolicy | None" = None,
+        room_context: "RoomContextRuntime | None" = None,
+    ):
         self.config = config
+        self.initiative_policy = initiative_policy
+        self.room_context = room_context
         self._lock = threading.RLock()
         self._started_at = time.monotonic()
         self._bridge_listening = False
@@ -297,6 +311,48 @@ class DashboardRuntime:
         result["status"] = self.status()
         return result
 
+    def set_initiative(self, enabled: bool) -> dict[str, object]:
+        if self.initiative_policy is None:
+            return {
+                "ok": False,
+                "error": "initiative policy is unavailable",
+                "status": self.status(),
+            }
+        self.initiative_policy.set_enabled(enabled)
+        with self._lock:
+            self._add_event(
+                "Initiative enabled" if enabled else "Initiative disabled",
+                "awareness",
+            )
+        return {"ok": True, "status": self.status()}
+
+    def set_room_observation(
+        self,
+        *,
+        enabled: bool,
+        interval_seconds: int,
+    ) -> dict[str, object]:
+        if self.room_context is None:
+            return {
+                "ok": False,
+                "error": "room observation is unavailable",
+                "status": self.status(),
+            }
+        try:
+            self.room_context.set_controls(
+                enabled=enabled,
+                interval_seconds=interval_seconds,
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "status": self.status()}
+        with self._lock:
+            state = "enabled" if enabled else "disabled"
+            self._add_event(
+                f"Room observation {state} at {interval_seconds}s",
+                "awareness",
+            )
+        return {"ok": True, "status": self.status()}
+
     def status(self) -> dict[str, object]:
         with self._lock:
             heartbeat = dict(self._heartbeat)
@@ -315,6 +371,22 @@ class DashboardRuntime:
             robot_connected = self._robot_connected or (
                 debug.get("network_state") == "connected" and debug.get("bridge_state") == "ready"
             )
+            initiative = (
+                {**self.initiative_policy.status(), "available": True}
+                if self.initiative_policy is not None
+                else {"enabled": False, "available": False}
+            )
+            room_observation = (
+                {**self.room_context.status(), "available": True}
+                if self.room_context is not None
+                else {
+                    "enabled": False,
+                    "available": False,
+                    "configured": False,
+                    "intervalSeconds": 300,
+                    "lastError": "",
+                }
+            )
             return {
                 "schema": "stackchan.bridge-dashboard.v1",
                 "generatedAt": _utc_now(),
@@ -327,6 +399,7 @@ class DashboardRuntime:
                     "runnerProfile": self.config.runner_profile,
                     "ttsVoice": self.config.tts_voice,
                     "researchEnabled": self.config.research_enabled,
+                    "conversationV2Enabled": self.config.conversation_v2_enabled,
                     "networkState": debug.get("network_state", "unknown"),
                     "bridgeState": debug.get("bridge_state", "unknown"),
                 },
@@ -353,6 +426,10 @@ class DashboardRuntime:
                     "powerSuppressed": debug.get("motion_power_suppressed"),
                     "lastMotionReason": debug.get("motion_last_reason", ""),
                     "debugAt": self._debug_at_utc,
+                },
+                "behavior": {
+                    "initiative": initiative,
+                    "roomObservation": room_observation,
                 },
                 "lastAction": dict(self._last_action),
                 "events": list(reversed(self._events[-8:])),
@@ -480,6 +557,40 @@ def dashboard_handler(runtime: DashboardRuntime) -> type[BaseHTTPRequestHandler]
                     self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "enabled must be boolean"})
                     return
                 result = runtime.set_motion(enabled, str(payload.get("confirmation", "")))
+                self._send_json(HTTPStatus.OK if result["ok"] else HTTPStatus.CONFLICT, result)
+                return
+            if self.path == "/api/initiative":
+                enabled = payload.get("enabled")
+                if not isinstance(enabled, bool):
+                    self._send_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"ok": False, "error": "enabled must be boolean"},
+                    )
+                    return
+                result = runtime.set_initiative(enabled)
+                self._send_json(HTTPStatus.OK if result["ok"] else HTTPStatus.CONFLICT, result)
+                return
+            if self.path == "/api/room-observation":
+                enabled = payload.get("enabled")
+                interval_seconds = payload.get("intervalSeconds")
+                if not isinstance(enabled, bool) or isinstance(interval_seconds, bool):
+                    self._send_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"ok": False, "error": "enabled and intervalSeconds are required"},
+                    )
+                    return
+                try:
+                    interval = int(interval_seconds)
+                except (TypeError, ValueError):
+                    self._send_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"ok": False, "error": "intervalSeconds must be an integer"},
+                    )
+                    return
+                result = runtime.set_room_observation(
+                    enabled=enabled,
+                    interval_seconds=interval,
+                )
                 self._send_json(HTTPStatus.OK if result["ok"] else HTTPStatus.CONFLICT, result)
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})

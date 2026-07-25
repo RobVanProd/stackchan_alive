@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { busy: false, status: null, activeView: "overview" };
+const state = { busy: false, awarenessBusy: false, status: null, activeView: "overview" };
 
 function boolLabel(value, yes = "Ready", no = "Unavailable") {
   return value === true ? yes : value === false ? no : "--";
@@ -84,6 +84,9 @@ function render(payload) {
   state.status = payload;
   const bridge = payload.bridge || {};
   const robot = payload.robot || {};
+  const behavior = payload.behavior || {};
+  const initiative = behavior.initiative || {};
+  const room = behavior.roomObservation || {};
   const connected = robot.connected === true;
   const chip = $("connectionChip");
   chip.className = `connection-chip ${connected ? "online" : "offline"}`;
@@ -116,6 +119,34 @@ function render(payload) {
   $("servoRailValue").textContent = boolLabel(robot.servoRailEnabled, "On", "Off");
   $("servoTorqueValue").textContent = `Torque ${String(boolLabel(robot.servoTorqueEnabled, "on", "off")).toLowerCase()}`;
   $("debugFreshness").textContent = robot.debugAt ? `Sampled ${formatTime(robot.debugAt)}` : "Not sampled";
+  $("initiativeToggle").checked = initiative.enabled === true;
+  $("initiativeToggle").disabled = initiative.available === false || state.awarenessBusy;
+  $("initiativeState").textContent = initiative.enabled
+    ? initiative.pendingReply
+      ? "Waiting for reply"
+      : `Ready / curiosity ${Number(initiative.curiosityScore || 0).toFixed(1)}`
+    : "Off";
+  $("roomObservationToggle").checked = room.enabled === true;
+  $("roomObservationToggle").disabled = room.available === false || state.awarenessBusy;
+  $("roomInterval").disabled = room.available === false || state.awarenessBusy;
+  const interval = String(room.intervalSeconds || 300);
+  if ([...$("roomInterval").options].some((option) => option.value === interval)) {
+    $("roomInterval").value = interval;
+  }
+  $("roomObservationState").textContent = room.enabled
+    ? room.configured
+      ? room.lastError
+        ? "Degraded"
+        : room.personPresent === true
+          ? "Person present"
+          : room.personPresent === false
+            ? "Room empty"
+            : "Waiting"
+      : "Needs camera and vision model"
+    : "Off";
+  $("roomFreshness").textContent = room.ageSeconds === null || room.ageSeconds === undefined
+    ? "Not sampled"
+    : `${formatAge(room.ageSeconds)} old`;
   renderEvents(payload.events);
 }
 
@@ -170,6 +201,50 @@ async function changeMotion(enabled) {
   }
 }
 
+async function changeInitiative(enabled) {
+  if (state.awarenessBusy) return;
+  state.awarenessBusy = true;
+  $("initiativeToggle").disabled = true;
+  try {
+    await api("/api/initiative", { enabled });
+    $("awarenessResult").textContent = enabled ? "Initiative enabled." : "Initiative disabled.";
+    $("awarenessResult").className = "action-result success";
+  } catch (error) {
+    $("awarenessResult").textContent = error.message;
+    $("awarenessResult").className = "action-result error";
+    $("initiativeToggle").checked = !enabled;
+  } finally {
+    state.awarenessBusy = false;
+    $("initiativeToggle").disabled = false;
+  }
+}
+
+async function changeRoomObservation() {
+  if (state.awarenessBusy) return;
+  state.awarenessBusy = true;
+  const enabled = $("roomObservationToggle").checked;
+  $("roomObservationToggle").disabled = true;
+  $("roomInterval").disabled = true;
+  try {
+    await api("/api/room-observation", {
+      enabled,
+      intervalSeconds: Number($("roomInterval").value),
+    });
+    $("awarenessResult").textContent = enabled
+      ? "Room observation enabled."
+      : "Room observation disabled.";
+    $("awarenessResult").className = "action-result success";
+  } catch (error) {
+    $("awarenessResult").textContent = error.message;
+    $("awarenessResult").className = "action-result error";
+    $("roomObservationToggle").checked = !enabled;
+  } finally {
+    state.awarenessBusy = false;
+    $("roomObservationToggle").disabled = false;
+    $("roomInterval").disabled = false;
+  }
+}
+
 function activateView(target) {
   state.activeView = target;
   document.querySelectorAll(".mobile-nav button").forEach((button) => {
@@ -186,6 +261,9 @@ $("resumeMotionButton").addEventListener("click", () => changeMotion(true));
 $("robotClearCheck").addEventListener("change", (event) => {
   $("resumeMotionButton").disabled = !event.target.checked || state.busy;
 });
+$("initiativeToggle").addEventListener("change", (event) => changeInitiative(event.target.checked));
+$("roomObservationToggle").addEventListener("change", () => changeRoomObservation());
+$("roomInterval").addEventListener("change", () => changeRoomObservation());
 document.querySelectorAll(".mobile-nav button").forEach((button) => {
   button.addEventListener("click", () => activateView(button.dataset.target));
 });

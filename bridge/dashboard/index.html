@@ -91,6 +91,34 @@
       <p class="action-result" id="actionResult" role="status" aria-live="polite"></p>
     </section>
 
+    <section class="panel awareness-panel view-panel" data-view="awareness" aria-labelledby="awarenessHeading">
+      <div class="panel-heading">
+        <h2 id="awarenessHeading">Awareness</h2>
+        <span class="freshness" id="roomFreshness">Not sampled</span>
+      </div>
+      <div class="awareness-controls">
+        <label class="setting-row">
+          <span><strong>Initiative</strong><small id="initiativeState">Off</small></span>
+          <input id="initiativeToggle" type="checkbox" role="switch">
+        </label>
+        <label class="setting-row">
+          <span><strong>Room observation</strong><small id="roomObservationState">Off</small></span>
+          <input id="roomObservationToggle" type="checkbox" role="switch">
+        </label>
+        <label class="setting-row">
+          <span><strong>Observation interval</strong><small>Low-rate local context</small></span>
+          <select id="roomInterval">
+            <option value="120">2 minutes</option>
+            <option value="300">5 minutes</option>
+            <option value="600">10 minutes</option>
+            <option value="900">15 minutes</option>
+            <option value="1800">30 minutes</option>
+          </select>
+        </label>
+      </div>
+      <p class="action-result" id="awarenessResult" role="status" aria-live="polite"></p>
+    </section>
+
     <section class="panel activity-panel view-panel" data-view="activity" aria-labelledby="activityHeading">
       <div class="panel-heading">
         <h2 id="activityHeading">Activity</h2>
@@ -105,6 +133,7 @@
   <nav class="mobile-nav" aria-label="Dashboard sections">
     <button class="active" type="button" data-target="overview">Live</button>
     <button type="button" data-target="motion">Motion</button>
+    <button type="button" data-target="awareness">Aware</button>
     <button type="button" data-target="telemetry">Telemetry</button>
     <button type="button" data-target="activity">Activity</button>
   </nav>

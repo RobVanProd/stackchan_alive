@@ -17,6 +17,24 @@ actuator, power, pairing, or OTA authority**, and nothing below changes that.
 Four of the five items here need **no firmware change at all**. Where firmware work is genuinely
 required it is called out explicitly.
 
+## Source Implementation Update (2026-07-24)
+
+- Conversation v2 now emits the exact active reply-window duration, starts at 8 seconds, and
+  shortens by 1 second per later turn to a 4-second floor. Firmware bounds are rejected rather
+  than silently clamped. The feature remains explicit and still needs exact-image hardware
+  qualification before promotion.
+- `bridge/initiative_policy.py` implements the ten-minute hard floor, fresh-person requirement,
+  circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
+  Initiative generation uses the normal Character Lock and TTS path but never opens a microphone
+  or motion lease.
+- `bridge/room_context.py` implements low-rate in-memory capture, typed privacy filtering, scene
+  diffs, prompt-safe ambient context, and clean degradation. `bridge/ollama_room_vision.py`
+  converts PGM to PNG in memory and permits only a loopback Ollama vision endpoint.
+- The loopback dashboard exposes initiative and room-observation switches plus a bounded
+  2-30 minute interval. Raw frames and free-form model descriptions never enter dashboard state.
+- All new behavior is default-off at the command line. Use the explicit launch switches during
+  supervised qualification; do not infer hardware readiness from source tests.
+
 ---
 
 ## A. Conversation without a wake word every turn
