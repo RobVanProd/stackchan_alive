@@ -3544,7 +3544,28 @@ foreach ($duplicate in $duplicateResolvedPackages) {
     $duplicateVersions[0] -eq "0.2.24" -and
     $duplicateVersions[1] -eq "0.2.26"
   )
-  if (-not $knownLegacyScServo -and -not $knownPinnedM5GfxWithTransitiveCopy) {
+  $knownPinnedM5UnifiedWithTransitiveCopy = (
+    $duplicate.name -eq "M5Unified" -and
+    $duplicate.environment -in @("stackchan", "stackchan_servo_calibration") -and
+    $duplicate.count -eq 2 -and
+    $duplicateEntries.Count -eq 2 -and
+    $duplicateVersions.Count -eq 2 -and
+    $duplicateVersions[0] -eq "0.2.17" -and
+    $duplicateVersions[1] -eq "0.2.19" -and
+    @($duplicateEntries | Where-Object {
+      $_.version -eq "0.2.17" -and
+      $_.required -eq "M5Stack/M5Unified @ 0.2.17"
+    }).Count -eq 1 -and
+    @($duplicateEntries | Where-Object {
+      $_.version -eq "0.2.19" -and
+      $_.required -eq "M5Stack/M5Unified @ ^0.2.5"
+    }).Count -eq 1
+  )
+  if (
+    -not $knownLegacyScServo -and
+    -not $knownPinnedM5GfxWithTransitiveCopy -and
+    -not $knownPinnedM5UnifiedWithTransitiveCopy
+  ) {
     throw "dependency_lock.json has unexpected duplicate resolved package: $($duplicate.environment)/$($duplicate.name)"
   }
 }
