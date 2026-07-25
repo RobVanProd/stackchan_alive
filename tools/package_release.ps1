@@ -2191,6 +2191,9 @@ assembled hardware.
 - [ ] Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``
 - [x] Production RVC model and index match their pinned SHA-256 values
 
+Owner approval has not been recorded for this candidate. Promotion remains blocked until the
+source-matched physical qualification and release checks are complete.
+
 Machine-readable checklist: ``release_acceptance.json``
 "@ | Set-Content -Path (Join-Path $outDir "RELEASE_ACCEPTANCE.md") -Encoding UTF8
 
