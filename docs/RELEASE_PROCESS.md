@@ -27,6 +27,18 @@ Package generation records a test-ready prerelease state and keeps consumer roll
 pending source-matched hardware validation. It never records owner approval automatically.
 Promotion is a separate evidence-bound decision made only after the required supervised hardware,
 bridge AI, soak, CI, and release checks pass for the candidate being promoted.
+After the exact branch commit's `Firmware` workflow passes, rebuild the hardware-test candidate
+with observed prerelease CI provenance:
+
+```powershell
+.\tools\package_release.cmd -Version <version> -ObserveCandidateActions
+```
+
+This mode fails unless every observed `Firmware` run for the exact commit completed successfully
+and the only missing required workflow is the tag-only `Release` workflow. The embedded status
+remains `missing-required-workflow`, sets `firmwareCandidateReady: true`, and keeps
+`promotionReady: false`. It is evidence for supervised prerelease hardware qualification, not a
+substitute for the tagged Release workflow or consumer-promotion gates.
 The three firmware profiles intentionally use two framework families. Packaging builds the two
 legacy Arduino 2.0.17 profiles and the pioarduino/Arduino 3.3.6 full-online profile sequentially,
 with separate PlatformIO cores, and snapshots each successful build before the next framework can

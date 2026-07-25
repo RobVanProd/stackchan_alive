@@ -8,6 +8,46 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$physicalRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (
+  $env:OS -eq "Windows_NT" -and
+  -not $env:STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE -and
+  $physicalRepoRoot.Length -gt 60
+) {
+  $shortDrive = @("R:", "Q:", "P:", "O:") |
+    Where-Object { -not (Test-Path $_) } |
+    Select-Object -First 1
+  if (-not $shortDrive) {
+    throw "Device preflight needs a free temporary drive letter (R:, Q:, P:, or O:) for this deeply nested checkout."
+  }
+
+  $driveName = $shortDrive.TrimEnd("\")
+  & subst.exe $driveName $physicalRepoRoot
+  if ($LASTEXITCODE -ne 0) { throw "Could not create temporary preflight path $driveName" }
+
+  $childExit = 1
+  try {
+    $env:STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE = "1"
+    $childArgs = @(
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", "$driveName\tools\run_device_preflight.ps1"
+    )
+    if ($PackageZip) { $childArgs += @("-PackageZip", $PackageZip) }
+    if ($Version) { $childArgs += @("-Version", $Version) }
+    if ($ExpectedCommit) { $childArgs += @("-ExpectedCommit", $ExpectedCommit) }
+    if ($ReportDir) { $childArgs += @("-ReportDir", $ReportDir) }
+    if ($AllowDirty) { $childArgs += "-AllowDirty" }
+    & powershell.exe @childArgs
+    $childExit = $LASTEXITCODE
+  } finally {
+    Remove-Item Env:\STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE -ErrorAction SilentlyContinue
+    Set-Location $env:TEMP
+    & subst.exe $driveName /D | Out-Null
+  }
+  exit $childExit
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 . (Join-Path $PSScriptRoot "platformio_resolver.ps1")
@@ -255,9 +295,12 @@ function Assert-GitHubActionsStatusExporterGate {
   $completeFixtureRoot = Join-Path $fixtureBase "complete-required-workflows"
   $preRunnerFixtureRoot = Join-Path $fixtureBase "pre-runner-allocation"
   $missingFixtureRoot = Join-Path $fixtureBase "missing-required-workflow"
+  $failedCandidateFixtureRoot = Join-Path $fixtureBase "failed-firmware-candidate"
   $completeOutputRoot = Join-Path $fixtureBase "out-complete"
   $preRunnerOutputRoot = Join-Path $fixtureBase "out-pre-runner"
   $missingOutputRoot = Join-Path $fixtureBase "out-missing"
+  $candidateOutputRoot = Join-Path $fixtureBase "out-firmware-candidate"
+  $failedCandidateOutputRoot = Join-Path $fixtureBase "out-failed-firmware-candidate"
   $fixtureCommit = "0123456789abcdef0123456789abcdef01234567"
   $fixtureVersion = "v0.0.0-actions-status-selftest"
 
@@ -472,6 +515,68 @@ function Assert-GitHubActionsStatusExporterGate {
     $missingMarkdown = Get-Content -LiteralPath (Join-Path $missingOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
     Assert-TextContains $missingMarkdown "Missing Required Workflows"
     Assert-TextContains $missingMarkdown "Release"
+
+    $candidateResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $candidateOutputRoot,
+      "-FixtureRoot", $missingFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release",
+      "-AcceptFirmwareCandidate"
+    )
+    if ($candidateResult.ExitCode -ne 0) {
+      throw "Actions status exporter rejected an exact-commit successful Firmware candidate:$([Environment]::NewLine)$($candidateResult.Text)"
+    }
+    $candidateStatus = Get-Content -LiteralPath (Join-Path $candidateOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($candidateStatus.status -ne "missing-required-workflow") {
+      throw "Firmware candidate should retain missing-required-workflow status until the tag-only Release workflow runs."
+    }
+    if ($candidateStatus.firmwareCandidateReady -ne $true) {
+      throw "Successful Firmware fixture should mark firmwareCandidateReady true."
+    }
+    if ($candidateStatus.promotionReady -ne $false) {
+      throw "Firmware candidate must not be promotion ready."
+    }
+    $candidateMarkdown = Get-Content -LiteralPath (Join-Path $candidateOutputRoot "GITHUB_ACTIONS_STATUS.md") -Raw
+    Assert-TextContains $candidateMarkdown "Firmware candidate ready: True"
+    Assert-TextContains $candidateMarkdown "supervised prerelease hardware qualification"
+
+    Write-FixtureJson $failedCandidateFixtureRoot "run_list.json" @(
+      [ordered]@{
+        databaseId = 302
+        name = "Firmware"
+        headSha = $fixtureCommit
+        headBranch = "main"
+        status = "completed"
+        conclusion = "failure"
+        createdAt = "2026-07-02T00:05:00Z"
+        url = "https://example.invalid/runs/302"
+        event = "push"
+        displayTitle = "Firmware"
+      }
+    )
+    Write-FixtureJson $failedCandidateFixtureRoot "jobs_302.json" ([ordered]@{ jobs = @((New-FixtureJob 402 "build" "failure" 7 @([ordered]@{ name = "Build"; conclusion = "failure" }))) })
+    Write-FixtureJson $failedCandidateFixtureRoot "annotations_402.json" @()
+
+    $failedCandidateResult = Invoke-ToolText @(
+      (Join-Path $PSScriptRoot "export_github_actions_status.ps1"),
+      "-Repo", "RobVanProd/stackchan_alive",
+      "-Version", $fixtureVersion,
+      "-Commit", $fixtureCommit,
+      "-OutputDir", $failedCandidateOutputRoot,
+      "-FixtureRoot", $failedCandidateFixtureRoot,
+      "-RequiredWorkflows", "Firmware,Release",
+      "-AcceptFirmwareCandidate"
+    )
+    if ($failedCandidateResult.ExitCode -eq 0) {
+      throw "Actions status exporter accepted a failed Firmware run as a prerelease candidate."
+    }
+    $failedCandidateStatus = Get-Content -LiteralPath (Join-Path $failedCandidateOutputRoot "github_actions_status.json") -Raw | ConvertFrom-Json
+    if ($failedCandidateStatus.firmwareCandidateReady -ne $false) {
+      throw "Failed Firmware fixture should mark firmwareCandidateReady false."
+    }
     $global:LASTEXITCODE = 0
   } finally {
     if (Test-Path -LiteralPath $fixtureBase) {
@@ -1238,7 +1343,7 @@ function Assert-HardwareEvidenceMediaGate {
     "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
-    $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+    $releaseTag = "v0.0.0-media-selftest"
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
     $voiceGateStatus = Write-SyntheticVoiceGateStatus -EvidenceRoot $evidenceRoot
@@ -1431,7 +1536,7 @@ function Assert-HardwareEvidenceSerialMarkerGate {
     "- [x] synthetic gate" | Set-Content -Path (Join-Path $evidenceRoot "CHECKLIST.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "DEVICE_BRINGUP.md") -Encoding UTF8
     "ready" | Set-Content -Path (Join-Path $evidenceRoot "PRODUCTION_READINESS.md") -Encoding UTF8
-    $releaseTag = if ([string]::IsNullOrWhiteSpace($Version)) { "v0.0.0-selftest" } else { $Version }
+    $releaseTag = "v0.0.0-serial-selftest"
     Write-SyntheticAcceptanceArtifacts -EvidenceRoot $evidenceRoot -ReleaseTag $releaseTag -Commit $ExpectedCommit
     $voiceLeadAudition = Write-SyntheticVoiceLeadArtifacts -EvidenceRoot $evidenceRoot
     $voiceGateStatus = Write-SyntheticVoiceGateStatus -EvidenceRoot $evidenceRoot

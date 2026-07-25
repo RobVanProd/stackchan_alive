@@ -1459,7 +1459,7 @@ foreach ($pattern in @("verify_share_release.cmd -Version <version> -Offline", "
 }
 
 $actionsStatusExporterText = Get-Content -LiteralPath (Join-PackagePath "tools/export_github_actions_status.ps1") -Raw
-foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "promotionReady", "externalBlock", "nextAction", "nextCommand", "payments have failed", "spending limit", "runnerId", "stepCount")) {
+foreach ($pattern in @("stackchan.github-actions-status.v1", "RequiredWorkflows", "FixtureRoot", "AcceptFirmwareCandidate", "requiredWorkflows", "missingRequiredWorkflows", "missing-required-workflow", "firmwareCandidateReady", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "promotionReady", "externalBlock", "nextAction", "nextCommand", "payments have failed", "spending limit", "runnerId", "stepCount")) {
   if ($actionsStatusExporterText -notmatch [regex]::Escape($pattern)) {
     throw "tools/export_github_actions_status.ps1 missing required Actions status export logic: $pattern"
   }
@@ -1469,6 +1469,11 @@ $preflightText = Get-Content -LiteralPath (Join-PackagePath "tools/run_device_pr
 foreach ($pattern in @("Assert-GitHubActionsStatusExporterGate", "Check GitHub Actions status exporter gates", "FixtureRoot", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "no runner was assigned", "promotionReady", "externalBlock", "nextAction", "nextCommand", "Assert-CiAccountBlockExceptionDraftGate", "Check CI account-block exception draft helper", "CI_ACCOUNT_BLOCK_EXCEPTION_DRAFT.json", "riskAccepted should remain false", "not an external account block", "Assert-LocalShareEvidenceGate", "Check local share evidence capture", "Write-LocalShareVerificationFixture", "share/VERIFIED_URL.txt", "Generated local-only evidence should not require share/PUBLIC_URL.txt", "Assert-RolloutStatusActionsOverrideGate", "Check rollout status Actions override", "ActionsStatusPath", "Packaged missing-workflow status leaked", "Check LiteRT-LM contract smoke", "run_litert_lm_smoke.ps1", "Check LAN bridge smoke report", "run_lan_smoke.ps1", "Check pre-arrival simulation report", "run_prearrival_sim_check.ps1", "Assert-HardwareSimComparisonGate", "Check hardware simulation comparator", "SIM_HARDWARE_COMPARE.json", "stackchan.hardware-sim-compare.v1", "Assert-SpeechEnvelopeSidecarGate", "Check speech envelope sidecar tooling", "generate_speech_envelope_sidecar.ps1", "verify_speech_envelope_sidecar.ps1", "-MinMaxEnvelope", "send_speech_mouth_demo.ps1", "send_speak_all_intents_demo.ps1", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Speech mouth demo complete", "Speak-all-intents demo complete", "speech-mouth-demo-evidence", "target-speaker-audio-evidence", "Write-SyntheticVoiceGateStatus", "voiceGateStatus = `$voiceGateStatus", "VOICE_SOURCE_STATUS.md", "rvc_voice_base_status.json", "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json", "completed only in a real evidence packet", "reduced_motion_on", "[face] reduced_motion=1", "Assert-ReleasePublishBranchGuard", "Check release publish branch guard", "-PushCurrentBranch", "before creating/uploading release assets")) {
   if ($preflightText -notmatch [regex]::Escape($pattern)) {
     throw "tools/run_device_preflight.ps1 missing required preflight self-test: $pattern"
+  }
+}
+foreach ($pattern in @("AcceptFirmwareCandidate", "firmwareCandidateReady", "supervised prerelease hardware qualification", "v0.0.0-media-selftest", "v0.0.0-serial-selftest", "STACKCHAN_PREFLIGHT_SHORT_PATH_ACTIVE", "subst.exe")) {
+  if ($preflightText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/run_device_preflight.ps1 missing Firmware candidate Actions self-test: $pattern"
   }
 }
 
@@ -3938,6 +3943,9 @@ if ($actionsStatus.version -ne $Version) {
 if ($actionsStatus.commit -ne $ExpectedCommit) {
   throw "github_actions_status.json commit mismatch: expected $ExpectedCommit, got $($actionsStatus.commit)"
 }
+if ($null -eq $actionsStatus.firmwareCandidateReady) {
+  throw "github_actions_status.json missing firmwareCandidateReady"
+}
 if (@("post-push-check-required", "missing-required-workflow", "external-account-billing-or-spending-limit", "external-account-ci-pre-runner-allocation", "success") -notcontains $actionsStatus.status) {
   throw "github_actions_status.json status is not release-acceptable: $($actionsStatus.status)"
 }
@@ -3945,6 +3953,20 @@ $requiredActionWorkflowNames = @($actionsStatus.requiredWorkflows | ForEach-Obje
 foreach ($workflowName in @("Firmware", "Release")) {
   if ($requiredActionWorkflowNames -notcontains $workflowName) {
     throw "github_actions_status.json missing required workflow contract: $workflowName"
+  }
+}
+if ($actionsStatus.firmwareCandidateReady -eq $true) {
+  $candidateMissingWorkflows = @($actionsStatus.missingRequiredWorkflows | ForEach-Object { [string]$_ })
+  $candidateFirmwareRuns = @($actionsStatus.workflows | Where-Object { $_.workflow -eq "Firmware" })
+  if (
+    $actionsStatus.status -ne "missing-required-workflow" -or
+    $actionsStatus.promotionReady -ne $false -or
+    $candidateMissingWorkflows.Count -ne 1 -or
+    $candidateMissingWorkflows[0] -ne "Release" -or
+    $candidateFirmwareRuns.Count -lt 1 -or
+    @($candidateFirmwareRuns | Where-Object { $_.status -ne "completed" -or $_.conclusion -ne "success" }).Count -gt 0
+  ) {
+    throw "github_actions_status.json has invalid Firmware candidate evidence"
   }
 }
 

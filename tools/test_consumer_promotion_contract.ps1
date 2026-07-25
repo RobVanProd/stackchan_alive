@@ -45,6 +45,7 @@ foreach ($binding in $identityBindings) {
 
 $packageSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\package_release.ps1") -Raw
 $packageVerifierSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\verify_release_package.ps1") -Raw
+$actionsExporterSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\export_github_actions_status.ps1") -Raw
 
 foreach ($fragment in @(
     'status = "test-ready prerelease; hardware validation pending"',
@@ -57,6 +58,37 @@ foreach ($fragment in @(
   )) {
   if (-not $packageSource.Contains($fragment)) {
     throw "Release package candidate-state contract missing fragment: $fragment"
+  }
+}
+
+foreach ($fragment in @(
+    "[switch]`$ObserveCandidateActions",
+    "-AcceptFirmwareCandidate",
+    "firmwareCandidateReady",
+    "only the tag-only Release workflow pending"
+  )) {
+  if (-not $packageSource.Contains($fragment)) {
+    throw "Release package observed candidate Actions contract missing fragment: $fragment"
+  }
+}
+
+foreach ($fragment in @(
+    "[switch]`$AcceptFirmwareCandidate",
+    "`$firmwareCandidateReady",
+    "supervised prerelease hardware qualification",
+    "-not (`$AcceptFirmwareCandidate -and `$firmwareCandidateReady)"
+  )) {
+  if (-not $actionsExporterSource.Contains($fragment)) {
+    throw "Actions exporter Firmware candidate contract missing fragment: $fragment"
+  }
+}
+
+foreach ($fragment in @(
+    "github_actions_status.json missing firmwareCandidateReady",
+    "github_actions_status.json has invalid Firmware candidate evidence"
+  )) {
+  if (-not $packageVerifierSource.Contains($fragment)) {
+    throw "Release package verifier Firmware candidate contract missing fragment: $fragment"
   }
 }
 

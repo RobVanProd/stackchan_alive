@@ -1,7 +1,8 @@
 param(
   [string]$Version,
   [switch]$SkipBuild,
-  [switch]$AllowDirty
+  [switch]$AllowDirty,
+  [switch]$ObserveCandidateActions
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +35,7 @@ if (
     if ($Version) { $childArgs += @("-Version", $Version) }
     if ($SkipBuild) { $childArgs += "-SkipBuild" }
     if ($AllowDirty) { $childArgs += "-AllowDirty" }
+    if ($ObserveCandidateActions) { $childArgs += "-ObserveCandidateActions" }
     & powershell.exe @childArgs
     $childExit = $LASTEXITCODE
   } finally {
@@ -2040,6 +2042,9 @@ $ciStatus = [ordered]@{
   repo = "RobVanProd/stackchan_alive"
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   status = "post-push-check-required"
+  promotionReady = $false
+  firmwareCandidateReady = $false
+  externalBlock = $false
   interpretation = "This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run tools/export_github_actions_status.cmd to replace this placeholder with the observed GitHub Actions result."
   requiredWorkflows = @("Firmware", "Release")
   missingRequiredWorkflows = @("Firmware", "Release")
@@ -2055,6 +2060,7 @@ Commit: $commit
 Repository: RobVanProd/stackchan_alive
 Status: post-push-check-required
 Required workflows: Firmware, Release
+Firmware candidate ready: False
 
 This package was generated before the matching GitHub Actions runs could be observed. After pushing main and the release tag, run:
 
@@ -2064,6 +2070,36 @@ If GitHub reports that jobs did not start because of account billing or spending
 
 Machine-readable status: ``github_actions_status.json``
 "@ | Set-Content -Path (Join-Path $outDir "GITHUB_ACTIONS_STATUS.md") -Encoding UTF8
+
+if ($ObserveCandidateActions) {
+  $actionsExporter = Join-Path $PSScriptRoot "export_github_actions_status.ps1"
+  $actionsOutput = @(
+    & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File $actionsExporter `
+      -Repo "RobVanProd/stackchan_alive" `
+      -Version $Version `
+      -Commit $commit `
+      -OutputDir $outDir `
+      -RequiredWorkflows "Firmware,Release" `
+      -AcceptFirmwareCandidate 2>&1
+  )
+  $actionsExit = $LASTEXITCODE
+  $actionsOutput | ForEach-Object { Write-Host ([string]$_) }
+  if ($actionsExit -ne 0) {
+    throw "Exact-commit Firmware Actions evidence is not ready for candidate packaging."
+  }
+
+  $observedActions = Get-Content -LiteralPath (Join-Path $outDir "github_actions_status.json") -Raw | ConvertFrom-Json
+  if ($observedActions.firmwareCandidateReady -ne $true -or $observedActions.promotionReady -ne $false) {
+    throw "Observed Actions report is not the required prerelease candidate state."
+  }
+  if (
+    $observedActions.status -ne "missing-required-workflow" -or
+    @($observedActions.missingRequiredWorkflows).Count -ne 1 -or
+    @($observedActions.missingRequiredWorkflows)[0] -ne "Release"
+  ) {
+    throw "Candidate packaging requires successful Firmware evidence with only the tag-only Release workflow pending."
+  }
+}
 
 $readinessReport = [ordered]@{
   schema = "stackchan.readiness-report.v1"
