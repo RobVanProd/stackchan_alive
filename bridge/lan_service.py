@@ -2681,6 +2681,8 @@ def handle_connection(
     print("[bridge-lan] session_hello=1", flush=True)
 
     pending_short_chunk: bytes | None = None
+    deferred_response_end: dict[str, object] | None = None
+    audio_stream_ended_seq: int | None = None
     send_lock = threading.RLock()
     response_wire = ResponseWireState()
     turn_thread: threading.Thread | None = None
@@ -2707,7 +2709,7 @@ def handle_connection(
         session._append_turn_log(record)
 
     def send_live(frame: dict[str, object] | bytes) -> float | None:
-        nonlocal pending_short_chunk
+        nonlocal pending_short_chunk, deferred_response_end, audio_stream_ended_seq
         with send_lock:
             response_error = response_wire.validate(frame)
             if response_error is not None:
@@ -2728,6 +2730,20 @@ def handle_connection(
             ):
                 pending_short_chunk = None
                 return None
+            if (
+                config.conversation_v2_enabled
+                and frame_type == "response_end"
+                and not response_wire.aborting
+                and audio_stream_ended_seq == int(frame.get("seq", -1))
+            ):
+                deferred_response_end = dict(frame)
+                record_response_wire_event(
+                    "response_end_deferred",
+                    seq=audio_stream_ended_seq,
+                    recovered=True,
+                    reason="awaiting_playback_complete",
+                )
+                return None
             if pending_short_chunk is not None:
                 send_connection_frame(
                     conn,
@@ -2744,21 +2760,49 @@ def handle_connection(
                 pending_short_chunk = frame
                 return None
             sent_at = send_connection_frame(conn, config, frame)
+            if frame_type == "audio_stream_end":
+                audio_stream_ended_seq = int(frame["seq"])
             response_wire.note_sent(frame)
             if aborting_response:
                 response_wire.aborting = True
             return sent_at
+
+    def flush_deferred_response_end(seq: int) -> bool:
+        nonlocal deferred_response_end, audio_stream_ended_seq
+        with send_lock:
+            if deferred_response_end is None:
+                return False
+            deferred_seq = int(deferred_response_end.get("seq", -1))
+            if deferred_seq != seq:
+                raise WebSocketProtocolError("playback_complete_deferred_response_mismatch")
+            frame = deferred_response_end
+            send_connection_frame(conn, config, frame)
+            response_wire.note_sent(frame)
+            deferred_response_end = None
+            audio_stream_ended_seq = None
+            record_response_wire_event(
+                "response_end_after_playback_complete",
+                seq=seq,
+                recovered=True,
+            )
+            return True
 
     def discard_pending_audio() -> None:
         nonlocal pending_short_chunk
         with send_lock:
             pending_short_chunk = None
 
-    def close_interrupted_response(reason: str) -> None:
-        nonlocal pending_short_chunk
+    def close_interrupted_response(
+        reason: str,
+        *,
+        preserve_deferred: bool = False,
+    ) -> None:
+        nonlocal pending_short_chunk, deferred_response_end, audio_stream_ended_seq
         with send_lock:
             seq = response_wire.active_seq
             if seq is None:
+                return
+            if preserve_deferred and deferred_response_end is not None:
                 return
             pending_short_chunk = None
             try:
@@ -2767,6 +2811,8 @@ def handle_connection(
                 end_frame: dict[str, object] = {"type": "response_end", "seq": seq}
                 send_connection_frame(conn, config, end_frame)
                 response_wire.note_sent(end_frame)
+                deferred_response_end = None
+                audio_stream_ended_seq = None
             except Exception:
                 record_response_wire_event(
                     "response_unclosed",
@@ -2801,7 +2847,10 @@ def handle_connection(
             worker_error = exc
         finally:
             try:
-                close_interrupted_response("turn_interrupted")
+                close_interrupted_response(
+                    "turn_interrupted",
+                    preserve_deferred=worker_error is None,
+                )
             except Exception as exc:
                 if worker_error is None:
                     worker_error = exc
@@ -2821,7 +2870,10 @@ def handle_connection(
             worker_error = exc
         finally:
             try:
-                close_interrupted_response("initiative_interrupted")
+                close_interrupted_response(
+                    "initiative_interrupted",
+                    preserve_deferred=worker_error is None,
+                )
             except Exception as exc:
                 if worker_error is None:
                     worker_error = exc
@@ -2864,7 +2916,10 @@ def handle_connection(
             auto_turn_error = exc
         finally:
             try:
-                close_interrupted_response("auto_turn_interrupted")
+                close_interrupted_response(
+                    "auto_turn_interrupted",
+                    preserve_deferred=auto_turn_error is None,
+                )
             except Exception as exc:
                 if auto_turn_error is None:
                     auto_turn_error = exc
@@ -2919,6 +2974,8 @@ def handle_connection(
                         else "barge_in"
                     )
                     discard_pending_audio()
+                    if deferred_response_end is not None:
+                        close_interrupted_response("barge_in")
 
                 if text_message_type == "utterance_end":
                     if turn_thread is not None and turn_thread.is_alive():
@@ -2945,6 +3002,24 @@ def handle_connection(
                     continue
 
                 frames = session.handle_text(text)
+                if text_message_type == "playback_complete":
+                    completion_seq = next(
+                        (
+                            int(frame.get("seq", frame.get("playback_complete_seq", 0)))
+                            for frame in frames
+                            if isinstance(frame, dict)
+                            and (
+                                frame.get("type") == "conversation_reply_window"
+                                or (
+                                    frame.get("type") == "heartbeat"
+                                    and frame.get("playback_complete_seq") is not None
+                                )
+                            )
+                        ),
+                        0,
+                    )
+                    if completion_seq > 0:
+                        flush_deferred_response_end(completion_seq)
                 endpoint_heartbeat = (
                     text_message_type == "heartbeat"
                     and isinstance(parsed_text, dict)

@@ -455,6 +455,166 @@ class LanServiceTests(unittest.TestCase):
         self.assertFalse(server.is_alive())
         self.assertEqual([], errors)
 
+    def test_conversation_v2_defers_response_end_until_playback_complete(self):
+        with socket.create_server(("127.0.0.1", 0)) as probe:
+            port = int(probe.getsockname()[1])
+        errors: list[BaseException] = []
+        runner = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "I am doing well.",
+                    "mode": "listen",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.1},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+        tts = SimpleNamespace(
+            diagnostics={"audio_truncated": False},
+            audio_data=b"\x00\x00\x01\x00",
+            audio_format="pcm16",
+            sample_rate=16000,
+            command_source="test",
+            voice="directml-test",
+            elapsed_ms=1.0,
+            duration_ms=20,
+            beats=(),
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+
+            def run_server():
+                try:
+                    serve(
+                        LanBridgeConfig(
+                            host="127.0.0.1",
+                            port=port,
+                            once=True,
+                            runner_command="fake-runner",
+                            require_runner=True,
+                            tts_command="fake-tts",
+                            stream_tts_phrases=True,
+                            conversation_v2_enabled=True,
+                            conversation_acoustic_tail_ms=0,
+                            downlink_audio_chunk_bytes=4,
+                            downlink_binary_frame_delay_ms=0,
+                            downlink_text_frame_delay_ms=0,
+                            turn_log_file=turn_log,
+                        )
+                    )
+                except BaseException as exc:  # pragma: no cover - surfaced by assertion
+                    errors.append(exc)
+
+            with (
+                patch("lan_service.run_runner_profile", return_value=runner),
+                patch("lan_service.synthesize_speech", return_value=tts),
+            ):
+                server = threading.Thread(target=run_server, daemon=True)
+                server.start()
+                request = (
+                    "GET /bridge HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "\r\n"
+                ).encode("ascii")
+                with connect_loopback(port) as client:
+                    client.sendall(request)
+                    response = bytearray()
+                    while b"\r\n\r\n" not in response:
+                        response.extend(client.recv(1))
+                    read_ws_frame(client)  # session hello
+                    client.sendall(
+                        encode_ws_text(
+                            json.dumps(
+                                {
+                                    "type": "utterance_start",
+                                    "seq": 94,
+                                    "sample_rate": 16000,
+                                }
+                            )
+                        )
+                    )
+                    opcode, payload = read_ws_frame(client)
+                    self.assertEqual("listening", json.loads(payload.decode("utf-8"))["type"])
+                    client.sendall(
+                        encode_ws_text(
+                            json.dumps(
+                                {
+                                    "type": "utterance_end",
+                                    "seq": 94,
+                                    "text": "How are you?",
+                                }
+                            )
+                        )
+                    )
+                    seen: list[dict[str, object]] = []
+                    saw_final_audio = False
+                    while not saw_final_audio:
+                        opcode, payload = read_ws_frame(client)
+                        if opcode == 0x1:
+                            frame = json.loads(payload.decode("utf-8"))
+                            seen.append(frame)
+                            saw_final_audio = (
+                                frame.get("type") == "audio"
+                                and frame.get("final") is True
+                            )
+                    self.assertFalse(
+                        any(frame.get("type") == "response_end" for frame in seen)
+                    )
+                    client.settimeout(0.15)
+                    with self.assertRaises(socket.timeout):
+                        read_ws_frame(client)
+                    client.settimeout(5.0)
+
+                    client.sendall(
+                        encode_ws_text(
+                            json.dumps(
+                                {
+                                    "type": "playback_complete",
+                                    "seq": 94,
+                                    "at_ms": 1234,
+                                }
+                            )
+                        )
+                    )
+                    released = []
+                    while len(released) < 2:
+                        opcode, payload = read_ws_frame(client)
+                        self.assertEqual(0x1, opcode)
+                        released.append(json.loads(payload.decode("utf-8")))
+                    client.sendall(encode_ws_frame(b"", opcode=0x8))
+
+                server.join(timeout=3.0)
+
+            records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(
+            ["response_end", "conversation_reply_window"],
+            [frame.get("type") for frame in released],
+        )
+        self.assertEqual([94, 94], [frame.get("seq") for frame in released])
+        wire_codes = [
+            record.get("code")
+            for record in records
+            if record.get("schema") == "stackchan.response-wire-event.v1"
+        ]
+        self.assertIn("response_end_deferred", wire_codes)
+        self.assertIn("response_end_after_playback_complete", wire_codes)
+        self.assertFalse(server.is_alive())
+        self.assertEqual([], errors)
+
     def test_websocket_auto_turn_failure_closes_started_response(self):
         with socket.create_server(("127.0.0.1", 0)) as probe:
             port = int(probe.getsockname()[1])
