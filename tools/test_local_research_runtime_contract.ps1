@@ -127,4 +127,7 @@ if ($nativeJobIndex -lt 0 -or $windowsBuildIndex -lt 0 -or
   throw "Windows bridge launch contracts must run in the windows-latest build job."
 }
 
+# The negative child probes above are expected to exit nonzero. Do not leak that
+# stale native exit code into a successful caller such as the GitHub pwsh step.
+$global:LASTEXITCODE = 0
 Write-Host "Local research runtime contract tests passed."
