@@ -57,6 +57,21 @@ RUNNER_ENV = {
 }
 
 
+def connect_loopback(port: int, timeout: float = 5.0) -> socket.socket:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            remaining = max(0.1, deadline - time.monotonic())
+            return socket.create_connection(
+                ("127.0.0.1", port),
+                timeout=min(1.0, remaining),
+            )
+        except ConnectionRefusedError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+
+
 class LanServiceTests(unittest.TestCase):
     def test_client_socket_policy_bounds_stale_reboot_sessions(self):
         conn = Mock()
@@ -119,7 +134,7 @@ class LanServiceTests(unittest.TestCase):
             "Sec-WebSocket-Version: 13\r\n"
             "\r\n"
         ).encode("ascii")
-        with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+        with connect_loopback(port) as client:
             client.sendall(request)
             self.assertIn(b"101 Switching Protocols", client.recv(4096))
 
@@ -152,7 +167,7 @@ class LanServiceTests(unittest.TestCase):
             "Sec-WebSocket-Version: 13\r\n"
             "\r\n"
         ).encode("ascii")
-        with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+        with connect_loopback(port) as client:
             client.sendall(request)
             response = bytearray()
             while b"\r\n\r\n" not in response:
@@ -262,7 +277,7 @@ class LanServiceTests(unittest.TestCase):
                 "Sec-WebSocket-Version: 13\r\n"
                 "\r\n"
             ).encode("ascii")
-            with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+            with connect_loopback(port) as client:
                 client.sendall(request)
                 response = bytearray()
                 while b"\r\n\r\n" not in response:
@@ -366,7 +381,7 @@ class LanServiceTests(unittest.TestCase):
                     "Sec-WebSocket-Version: 13\r\n"
                     "\r\n"
                 ).encode("ascii")
-                with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+                with connect_loopback(port) as client:
                     client.sendall(request)
                     response = bytearray()
                     while b"\r\n\r\n" not in response:
@@ -503,7 +518,7 @@ class LanServiceTests(unittest.TestCase):
                     "Sec-WebSocket-Version: 13\r\n"
                     "\r\n"
                 ).encode("ascii")
-                with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+                with connect_loopback(port) as client:
                     client.sendall(request)
                     response = bytearray()
                     while b"\r\n\r\n" not in response:
