@@ -186,6 +186,12 @@ void IntentEngine::injectDemoEvents(uint32_t nowMs) {
   }
 
   emotion_.applyEvent(event);
+  // Demo events set mode_ directly rather than going through applyEvent, so
+  // record them as events too. Without this the mode-decay timers see a stale
+  // timestamp and unwind the state demo just set.
+  lastEventType_ = event.type;
+  lastEventAtMs_ = nowMs;
+  lastEventStrength_ = constrain(event.strength, 0.0f, 1.0f);
   nextDemoEventMs_ = nowMs + random(2500, 6000);
 }
 
@@ -235,10 +241,24 @@ constexpr uint32_t kSleepMinDurationMs = 4000;
 // demo mode's random IdleTimeout was the only thing that ever rescued him.
 // Attention now decays on its own, which is also what lets sleep be reached.
 //
-// Listen, Think, and Speak are deliberately excluded: those are driven by the
-// bridge conversation flow, which has its own timeout and close conditions, and
-// timing out of them here could cut a long reply short.
 constexpr uint32_t kAttentionDecayMs = 25000;
+
+// Backstop for the bridge-driven conversation modes.
+//
+// Listen, Think, and Speak are entered by the host and normally closed by it.
+// If the closing frame never arrives they latch forever: the reference robot was
+// observed sitting in Speak for 152 consecutive samples with speech_active=0 and
+// no audio ever played, because a ResponseStarted was never followed by a
+// ResponseEnded. The socket was fine; only the conversation state was stranded.
+//
+// This window is deliberately far longer than any real reply so it cannot cut
+// one short. It exists to recover from a lost end frame, not to pace speech.
+constexpr uint32_t kConversationStallMs = 90000;
+
+bool isBridgeDrivenMode(CharacterMode mode) {
+  return mode == CharacterMode::Listen || mode == CharacterMode::Think ||
+         mode == CharacterMode::Speak;
+}
 
 // Which events are loud enough to wake him.
 bool rousesFromSleep(EventType type) {
@@ -279,6 +299,11 @@ void IntentEngine::updateSleepState(uint32_t nowMs) {
   // Let lingering attention fade back to idle so he can settle at all.
   if ((mode_ == CharacterMode::Attend || mode_ == CharacterMode::React) &&
       nowMs - lastEventAtMs_ >= kAttentionDecayMs) {
+    mode_ = CharacterMode::Idle;
+  }
+
+  // Recover from a conversation whose closing frame never arrived.
+  if (isBridgeDrivenMode(mode_) && nowMs - lastEventAtMs_ >= kConversationStallMs) {
     mode_ = CharacterMode::Idle;
   }
 

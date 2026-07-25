@@ -1338,6 +1338,35 @@ void test_lingering_attention_decays_back_to_idle() {
   TEST_ASSERT_TRUE(sawSleep);
 }
 
+void test_stalled_conversation_mode_recovers_to_idle() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+
+  // The reference robot was observed latched in Speak for 152 consecutive
+  // samples with speech_active=0 and no audio: a ResponseStarted arrived and the
+  // closing ResponseEnded never did. Any bridge-driven mode must be able to
+  // recover from a lost end frame rather than hanging there forever.
+  RobotEvent started;
+  started.type = EventType::ResponseStarted;
+  started.timestampMs = 1000;
+  started.strength = 1.0f;
+  engine.applyEvent(started, CharacterMode::Speak);
+
+  bool recovered = false;
+  uint32_t recoveredAtMs = 0;
+  for (uint32_t nowMs = 1000; nowMs < 300000u; nowMs += 50) {
+    if (engine.update(nowMs).mode == CharacterMode::Idle) {
+      recovered = true;
+      recoveredAtMs = nowMs;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(recovered);
+  // Long enough that it can never cut a real reply short.
+  TEST_ASSERT_GREATER_THAN_UINT32(60000u, recoveredAtMs);
+}
+
 void test_engine_falls_asleep_when_left_alone() {
   IntentEngine engine;
   engine.begin();
@@ -7921,6 +7950,7 @@ int main() {
   RUN_TEST(test_breathing_survives_a_stalled_frame);
   RUN_TEST(test_sleep_pressure_builds_only_when_left_alone);
   RUN_TEST(test_lingering_attention_decays_back_to_idle);
+  RUN_TEST(test_stalled_conversation_mode_recovers_to_idle);
   RUN_TEST(test_engine_falls_asleep_when_left_alone);
   RUN_TEST(test_demo_mode_keeps_him_awake);
   RUN_TEST(test_sleeping_head_returns_home_and_eyes_close);
