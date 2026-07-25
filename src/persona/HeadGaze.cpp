@@ -30,6 +30,21 @@ constexpr float kWideLookGain = 1.55f;
 constexpr uint32_t kMaxStepMs = 200;
 }  // namespace
 
+void HeadGaze::holdHome() {
+  home_ = true;
+  targetYawDeg_ = 0.0f;
+  targetPitchDeg_ = 0.0f;
+}
+
+void HeadGaze::release(uint32_t nowMs) {
+  if (!home_) {
+    return;
+  }
+  home_ = false;
+  // Look somewhere on the next tick rather than snapping.
+  retargetAtMs_ = nowMs;
+}
+
 void HeadGaze::reset(uint32_t nowMs) {
   yawDeg_ = 0.0f;
   pitchDeg_ = 0.0f;
@@ -41,6 +56,7 @@ void HeadGaze::reset(uint32_t nowMs) {
   lastMs_ = nowMs;
   hasLast_ = false;
   shifting_ = false;
+  home_ = false;
 }
 
 uint32_t HeadGaze::hash32(uint32_t value) {
@@ -95,8 +111,14 @@ void HeadGaze::update(uint32_t nowMs,
   lastMs_ = nowMs;
   hasLast_ = true;
 
+  // While held home the target stays at centre and no retargeting happens.
+  if (home_) {
+    targetYawDeg_ = 0.0f;
+    targetPitchDeg_ = 0.0f;
+  }
+
   // Time to look somewhere else?
-  if (static_cast<int32_t>(nowMs - retargetAtMs_) >= 0) {
+  if (!home_ && static_cast<int32_t>(nowMs - retargetAtMs_) >= 0) {
     chooseTarget(yawSpanDeg, pitchSpanDeg, safeFocus);
     const bool wandering = safeFocus < 0.55f;
     const uint32_t minMs = wandering ? kHoldWanderingMinMs : kHoldFocusedMinMs;

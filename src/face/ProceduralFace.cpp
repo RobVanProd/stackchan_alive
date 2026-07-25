@@ -14,6 +14,7 @@ void ProceduralFace::begin(IDisplay* display) {
 void ProceduralFace::begin(IDisplay* display, const FaceConfig& config) {
   display_ = display;
   animator_.setReducedMotion(config.reducedMotion);
+  sleepCue_.reset(millis());
   if (display_ != nullptr) {
     display_->begin();
   }
@@ -43,10 +44,16 @@ void ProceduralFace::render(const RobotFrame& frame, uint32_t nowMs) {
   RobotFrame composed = frame;
   composed.face = animator_.composeFrame(frame, nowMs);
 
+  // Sleep cue rises above the left eye while he is out.
+  sleepCue_.update(nowMs, composed.mode == CharacterMode::Sleep);
+
   display_->clear();
   display_->drawEye(makeEye(composed, false), false);
   display_->drawEye(makeEye(composed, true), true);
   display_->drawMouth(makeMouth(composed));
+  const EyeGeometry anchorEye = makeEye(composed, true);
+  display_->drawSleepCue(sleepCue_.geometry(anchorEye.cx + anchorEye.width * 0.55f,
+                                           anchorEye.cy - anchorEye.height * 0.70f));
   display_->flush();
   printAnimatorTelemetry(composed, nowMs);
 }
