@@ -2102,21 +2102,21 @@ foreach ($pattern in @("ALLOWED_MODES", "ALLOWED_EARCONS", "MODEL_PROFILES", "ge
 }
 
 $characterHarnessTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_harness.py") -Raw
-foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_character_lock", "test_malformed_json_returns_in_character_fallback", "test_memory_policy_drops_forbidden_keys_and_values", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("CharacterHarnessTests", "test_valid_response_passes_character_lock", "test_malformed_json_returns_in_character_fallback", "test_unsolicited_identity_intro_is_replaced_but_direct_identity_is_allowed", "test_unsafe_actuator_claim_is_replaced_by_persona_safety_response", "test_memory_policy_drops_forbidden_keys_and_values", "gemma4-e2b-litert-lm")) {
   if ($characterHarnessTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_character_harness.py missing character harness test coverage: $pattern"
   }
 }
 
 $characterRedTeamText = Get-Content -LiteralPath (Join-PackagePath "bridge/character_red_team.py") -Raw
-foreach ($pattern in @("stackchan.character-red-team.v1", "RED_TEAM_SUITE", "run_red_team", "requires_memory_forget", "dry-run-no-runner-configured", "deterministic_red_team_fallback", "CHARACTER_RED_TEAM.md", "character_red_team.json")) {
+foreach ($pattern in @("stackchan.character-red-team.v1", "RED_TEAM_SUITE", "run_red_team", "requires_memory_forget", "required_memory_forget", "incorrect_required_memory_forget", "dry-run-no-runner-configured", "deterministic_red_team_fallback", "CHARACTER_RED_TEAM.md", "character_red_team.json")) {
   if ($characterRedTeamText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/character_red_team.py missing red-team gate support: $pattern"
   }
 }
 
 $characterRedTeamTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_character_red_team.py") -Raw
-foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_glow_red_team_fallback_uses_persona_safety_line", "test_bad_adversarial_response_fails_existing_validator", "test_report_outputs_json_and_markdown")) {
+foreach ($pattern in @("CharacterRedTeamTests", "test_red_team_suite_has_required_size_and_topics", "test_dry_run_reports_no_candidate_without_real_runner", "test_forget_case_fallback_emits_memory_forget", "test_glow_red_team_fallback_uses_persona_safety_line", "test_bad_adversarial_response_fails_existing_validator", "test_unsafe_actuator_claim_cannot_pass_or_reach_spoken_output", "test_report_outputs_json_and_markdown")) {
   if ($characterRedTeamTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_character_red_team.py missing red-team test coverage: $pattern"
   }
@@ -2274,7 +2274,7 @@ foreach ($pattern in @("LiteRtLmContractSmokeTests", "test_build_report_exercise
 }
 
 $localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
-foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_runner_repairs_ignored_episode_continuity_without_second_model_call", "test_runner_repairs_empty_pickup_reaction_without_second_model_call", "test_runner_repairs_empty_actual_greeting_without_second_model_call", "test_runner_repairs_only_matching_approved_forget_key", "test_runner_does_not_guess_an_unmatched_forget_key", "test_runner_narrows_broad_forget_to_matching_approved_key", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
   if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_local_runner.py missing local runner test coverage: $pattern"
   }
@@ -2309,7 +2309,7 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "DashboardRuntime", "--dashboard", "--dashboard-host", "--robot-host")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "SttNoTranscriptError", "no_speech_character_response", "explicit_forget_keys", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "DashboardRuntime", "--dashboard", "--dashboard-host", "--robot-host")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
@@ -2343,14 +2343,14 @@ foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "setI
 }
 
 $ollamaRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "--format", "json", "validate_response")) {
+foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "normalize_surface_policy", "explicit_forget_keys", "--format", "json", "validate_response")) {
   if ($ollamaRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/ollama_stackchan_runner.py missing PC brain runner support: $pattern"
   }
 }
 
 $ollamaRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("OllamaStackchanRunnerTests", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
+foreach ($pattern in @("OllamaStackchanRunnerTests", "test_surface_normalization_expands_contraction_without_losing_memory", "test_surface_normalization_allows_requested_identity_only", "test_surface_normalization_removes_helpdesk_tail_and_preserves_answer", "test_surface_normalization_narrows_explicit_forget_to_exact_keys", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
   if ($ollamaRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_ollama_stackchan_runner.py missing warm Ollama API coverage: $pattern"
   }
@@ -2594,7 +2594,7 @@ foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "c
 }
 
 $lanServiceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_service.py") -Raw
-foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats")) {
+foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats", "test_unsafe_model_actuator_claim_is_replaced_without_protocol_error", "test_unsolicited_identity_intro_and_helpdesk_fallback_are_not_spoken", "test_multi_subject_forget_is_local_exact_and_preserves_other_facts", "test_stt_no_transcript_is_nonfatal_and_does_not_run_model", "test_conversation_v2_no_transcript_closes_without_reply_window_or_history")) {
   if ($lanServiceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_lan_service.py missing LAN bridge service test coverage: $pattern"
   }
@@ -2615,14 +2615,14 @@ foreach ($pattern in @("LanSmokeTests", "test_client_frames_are_masked_for_serve
 }
 
 $sttAdapterText = Get-Content -LiteralPath (Join-PackagePath "bridge/stt_adapter.py") -Raw
-foreach ($pattern in @("STACKCHAN_AUDIO_SAMPLE_RATE", "STACKCHAN_AUDIO_FORMAT", "STACKCHAN_AUDIO_BYTES", "run_stt_command", "normalize_transcript")) {
+foreach ($pattern in @("STACKCHAN_AUDIO_SAMPLE_RATE", "STACKCHAN_AUDIO_FORMAT", "STACKCHAN_AUDIO_BYTES", "SttNoTranscriptError", "run_stt_command", "normalize_transcript")) {
   if ($sttAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/stt_adapter.py missing STT adapter support: $pattern"
   }
 }
 
 $sttAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_stt_adapter.py") -Raw
-foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_an_execution_error", "test_whisper_adapter_runs_fake_whisper_cli_and_normalizes")) {
+foreach ($pattern in @("SttAdapterTests", "test_transcript_output_accepts_plain_text_and_json", "test_stt_command_receives_pcm_and_audio_environment", "test_empty_stt_output_is_a_no_transcript_outcome", "test_command_no_transcript_exit_is_typed_separately", "test_command_infrastructure_failure_remains_an_execution_error", "test_loopback_server_no_transcript_is_typed_separately", "test_whisper_adapter_runs_fake_whisper_cli_and_normalizes")) {
   if ($sttAdapterTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_stt_adapter.py missing STT adapter test coverage: $pattern"
   }
