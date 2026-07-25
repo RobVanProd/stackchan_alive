@@ -30,6 +30,13 @@ class HeadGaze {
     return pitchDeg_;
   }
 
+  // Ease back to centre and stay there. Used while asleep so the head comes
+  // home instead of freezing wherever it happened to be looking.
+  void holdHome();
+
+  // Resume normal look-and-hold after holdHome().
+  void release(uint32_t nowMs);
+
   // True while travelling toward a new target rather than holding one.
   bool shifting() const {
     return shifting_;
@@ -50,6 +57,7 @@ class HeadGaze {
   uint32_t lastMs_ = 0;
   bool hasLast_ = false;
   bool shifting_ = false;
+  bool home_ = false;
 
   void chooseTarget(float yawSpanDeg, float pitchSpanDeg, float focus);
   static uint32_t hash32(uint32_t value);

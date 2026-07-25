@@ -12,6 +12,9 @@ namespace {
 constexpr uint32_t kSpeechCueHoldMs = 650;
 constexpr uint32_t kIdleSpeechCooldownMs = 12000;
 constexpr float kPi = 3.1415927f;
+
+// Defined with the rest of the sleep policy further down.
+bool rousesFromSleep(EventType type);
 }
 
 void IntentEngine::begin() {
@@ -41,9 +44,23 @@ void IntentEngine::begin() {
   gaze_.reset(lastUpdateMs_);
   energy_.reset(lastUpdateMs_);
   nextDemoEventMs_ = lastUpdateMs_ + 3000;
+  headGaze_.reset(lastUpdateMs_);
+  sleepEnteredAtMs_ = 0;
 }
 
 void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
+  // Being asleep is a state you have to be roused out of. Touch, a wake phrase,
+  // being picked up, or a loud noise wakes him; his own bookkeeping does not.
+  if (mode_ == CharacterMode::Sleep && !rousesFromSleep(event.type)) {
+    lastEventType_ = event.type;
+    lastEventAtMs_ = event.timestampMs;
+    emotion_.applyEvent(event);
+    return;
+  }
+  if (mode_ == CharacterMode::Sleep) {
+    headGaze_.release(event.timestampMs);
+    sleepEnteredAtMs_ = 0;
+  }
   mode_ = mode;
   lastEventType_ = event.type;
   lastEventAtMs_ = event.timestampMs;
@@ -117,6 +134,7 @@ RobotFrame IntentEngine::update(uint32_t nowMs) {
   const float dt = (nowMs - lastUpdateMs_) * 0.001f;
   lastUpdateMs_ = nowMs;
   emotion_.update(dt);
+  updateSleepState(nowMs);
   updateSpeechCue(nowMs);
 
   RobotFrame frame;
@@ -196,6 +214,70 @@ void IntentEngine::activateSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
   speechSeq_++;
 }
 
+namespace {
+// Fatigue at which he gives up and drops off. Deliberately above the drowsy
+// blend (0.45) and the yawn threshold (0.62) so the run-up is visible: heavy
+// lids first, then yawns, then sleep.
+constexpr float kSleepEnterFatigue = 0.80f;
+// He must have been left alone at least this long, independent of fatigue, so a
+// tired-but-busy character does not nod off mid-conversation.
+constexpr uint32_t kSleepQuietMs = 45000;
+// Minimum time asleep before an idle timeout could bounce him awake, so the
+// transition cannot flicker.
+constexpr uint32_t kSleepMinDurationMs = 4000;
+
+// Which events are loud enough to wake him.
+bool rousesFromSleep(EventType type) {
+  switch (type) {
+    case EventType::WakeWord:
+    case EventType::UserTouched:
+    case EventType::PickedUp:
+    case EventType::Shaken:
+    case EventType::Tilted:
+    case EventType::LoudNoise:
+    case EventType::UserNear:
+    case EventType::FaceDetected:
+    case EventType::UserSpeaking:
+    case EventType::Error:
+      return true;
+    default:
+      return false;
+  }
+}
+}  // namespace
+
+void IntentEngine::updateSleepState(uint32_t nowMs) {
+  const float fatigue = emotion_.profile().fatigue;
+
+  if (mode_ == CharacterMode::Sleep) {
+    // Stay down until something rouses him; applyEvent handles waking. Keep the
+    // head parked at centre while he is out.
+    headGaze_.holdHome();
+    // If he has genuinely rested, let fatigue fall enough to wake naturally.
+    if (nowMs - sleepEnteredAtMs_ > kSleepMinDurationMs && fatigue < 0.35f) {
+      mode_ = CharacterMode::Idle;
+      headGaze_.release(nowMs);
+      sleepEnteredAtMs_ = 0;
+    }
+    return;
+  }
+
+  // Only drift off from a genuinely quiet idle. Any working mode keeps him up.
+  if (mode_ != CharacterMode::Idle) {
+    return;
+  }
+  if (fatigue < kSleepEnterFatigue) {
+    return;
+  }
+  if (nowMs - lastEventAtMs_ < kSleepQuietMs) {
+    return;
+  }
+
+  mode_ = CharacterMode::Sleep;
+  sleepEnteredAtMs_ = nowMs;
+  headGaze_.holdHome();
+}
+
 MotionTargets IntentEngine::motionForMode(uint32_t nowMs, const EmotionalProfile& emotion) {
   MotionTargets motion;
   const float t = nowMs * 0.001f;
@@ -237,8 +319,12 @@ MotionTargets IntentEngine::motionForMode(uint32_t nowMs, const EmotionalProfile
     motion.yawDeg *= 0.20f;
     motion.pitchDeg = 1.5f * motionScale;
   } else if (mode_ == CharacterMode::Sleep) {
+    // Head down, and come back to centre rather than freezing wherever he
+    // happened to be looking. Disabled yaw only stops the servo, so hold Angle
+    // until he has actually arrived home, then release to save holding torque.
     motion.pitchDeg += 10.0f;
-    motion.yawMode = YawMode::Disabled;
+    motion.yawDeg = headGaze_.yawDeg() * motionScale;
+    motion.yawMode = fabsf(motion.yawDeg) > 0.5f ? YawMode::Angle : YawMode::Disabled;
   }
 
   return motion;

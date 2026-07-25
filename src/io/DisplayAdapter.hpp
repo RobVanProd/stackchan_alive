@@ -41,6 +41,7 @@ class DisplayAdapter final : public IDisplay {
   void clear() override;
   void drawEye(const EyeGeometry& eye, bool rightEye) override;
   void drawMouth(const MouthGeometry& mouth) override;
+  void drawSleepCue(const SleepCueGeometry& cue) override;
   void flush() override;
 
   const DisplayTelemetry& telemetry() const {
@@ -63,6 +64,7 @@ class DisplayAdapter final : public IDisplay {
   DisplayRect previousLeftEye_;
   DisplayRect previousRightEye_;
   DisplayRect previousMouth_;
+  DisplayRect previousSleepCue_;
   uint32_t frameCount_ = 0;
   uint32_t windowFrameCount_ = 0;
   uint32_t slowFrameCount_ = 0;

@@ -29,6 +29,42 @@ constexpr float kBaselineDriftPerSecond = 0.0016f;
 constexpr float kBaselineValenceBand = 0.30f;
 constexpr float kBaselineArousalBand = 0.15f;
 constexpr float kBaselineFocusBand = 0.15f;
+
+// Sleep pressure. Nothing engaging for this long and the character starts to
+// wind down; full pressure is reached over the ramp that follows. Fatigue then
+// climbs toward it, so the visible order is droopy eyes, then yawns, then sleep.
+constexpr float kSleepPressureOnsetSeconds = 180.0f;
+constexpr float kSleepPressureRampSeconds = 420.0f;
+}
+
+bool EmotionModel::isRousing(EventType type) {
+  switch (type) {
+    case EventType::WakeWord:
+    case EventType::UserTouched:
+    case EventType::UserNear:
+    case EventType::UserSpeaking:
+    case EventType::FaceDetected:
+    case EventType::SoundDirection:
+    case EventType::LoudNoise:
+    case EventType::Shaken:
+    case EventType::PickedUp:
+    case EventType::PutDown:
+    case EventType::Tilted:
+    case EventType::ResponseStarted:
+    case EventType::Error:
+      return true;
+    // Boot, idle timeouts, and the robot's own speech/thinking bookkeeping are
+    // not company.
+    default:
+      return false;
+  }
+}
+
+float EmotionModel::sleepPressure() const {
+  if (quietSeconds_ <= kSleepPressureOnsetSeconds) {
+    return 0.0f;
+  }
+  return clamp01((quietSeconds_ - kSleepPressureOnsetSeconds) / kSleepPressureRampSeconds);
 }
 
 void EmotionModel::reset() {
@@ -43,6 +79,7 @@ void EmotionModel::reset() {
     familiarity_[i] = 0.0f;
   }
   habituation_ = HabituationTelemetry {};
+  quietSeconds_ = 0.0f;
 }
 
 uint8_t EmotionModel::habituationIndex(EventType type) {
@@ -92,6 +129,11 @@ void EmotionModel::applyEvent(const RobotEvent& event) {
   habituation_.lastEvent = event.type;
   habituation_.lastSuppression = suppression;
   habituation_.lastNovelty = 1.0f - suppression;
+
+  // Company pushes sleep back even when the stimulus itself is old news.
+  if (isRousing(event.type)) {
+    quietSeconds_ = 0.0f;
+  }
 
   // A familiar stimulus still registers, it just stops being news.
   const float s = constrain(event.strength, 0.0f, 1.0f) * (1.0f - suppression);
@@ -276,7 +318,11 @@ void EmotionModel::update(float dt) {
   emotion_.arousal = approach(emotion_.arousal, baseline_.arousal, safeDt * 0.08f);
   emotion_.valence = approach(emotion_.valence, baseline_.valence, safeDt * 0.04f);
   emotion_.focus = approach(emotion_.focus, baseline_.focus, safeDt * 0.06f);
-  emotion_.fatigue = approach(emotion_.fatigue, baseline_.fatigue, safeDt * 0.02f);
+  // Fatigue used to decay to a hard zero, so no amount of being left alone ever
+  // made the character sleepy. It now climbs toward accumulated sleep pressure.
+  quietSeconds_ += safeDt;
+  const float fatigueTarget = max(baseline_.fatigue, sleepPressure());
+  emotion_.fatigue = approach(emotion_.fatigue, fatigueTarget, safeDt * 0.02f);
 
   // Temperament follows lived mood far more slowly, and only within a band
   // around the persona default.

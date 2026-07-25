@@ -41,6 +41,15 @@ class IntentEngine {
   }
   RobotFrame update(uint32_t nowMs);
 
+  bool isAsleep() const {
+    return mode_ == CharacterMode::Sleep;
+  }
+
+  // 0 wide awake .. 1 ready to drop off.
+  float sleepPressure() const {
+    return emotion_.sleepPressure();
+  }
+
  private:
   EmotionModel emotion_;
   EmbodiedEnergy energy_;
@@ -71,6 +80,7 @@ class IntentEngine {
   float responseGestureAmplitudeDeg_ = 0.0f;
   float responseGestureCycles_ = 0.0f;
   HeadGaze headGaze_;
+  uint32_t sleepEnteredAtMs_ = 0;
 
   void injectDemoEvents(uint32_t nowMs);
   void updateSpeechCue(uint32_t nowMs);
@@ -78,6 +88,7 @@ class IntentEngine {
   MotionTargets motionForMode(uint32_t nowMs, const EmotionalProfile& emotion);
   void applySoundOrientation(RobotFrame& frame, uint32_t nowMs) const;
   void applyResponseGesture(RobotFrame& frame, uint32_t nowMs);
+  void updateSleepState(uint32_t nowMs);
 };
 
 }  // namespace stackchan

@@ -10,6 +10,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
+#include "face/SleepCue.hpp"
 #include "io/AudioCaptureAdapter.hpp"
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
@@ -1259,6 +1260,148 @@ void test_head_gaze_focus_reduces_excursion() {
   // Attention should show in the body: a focused character keeps its head near
   // centre instead of ranging around the room.
   TEST_ASSERT_GREATER_THAN_FLOAT(lockedPeak, wanderPeak);
+}
+
+namespace {
+
+// Run the engine forward with nothing happening at all.
+CharacterMode runUntilAsleep(IntentEngine& engine, uint32_t limitMs, uint32_t* asleepAtMs) {
+  CharacterMode mode = CharacterMode::Idle;
+  for (uint32_t nowMs = 0; nowMs < limitMs; nowMs += 50) {
+    mode = engine.update(nowMs).mode;
+    if (mode == CharacterMode::Sleep) {
+      if (asleepAtMs != nullptr) {
+        *asleepAtMs = nowMs;
+      }
+      return mode;
+    }
+  }
+  return mode;
+}
+
+}  // namespace
+
+void test_sleep_pressure_builds_only_when_left_alone() {
+  EmotionModel busy;
+  EmotionModel alone;
+  busy.reset();
+  alone.reset();
+
+  RobotEvent touch;
+  touch.type = EventType::UserTouched;
+  touch.strength = 0.5f;
+
+  for (int second = 0; second < 600; ++second) {
+    for (int tick = 0; tick < 20; ++tick) {
+      busy.update(0.050f);
+      alone.update(0.050f);
+    }
+    // The busy one gets company every half minute.
+    if (second % 30 == 0) {
+      busy.applyEvent(touch);
+    }
+  }
+
+  // Being left alone must eventually make him sleepy; being visited must not.
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.60f, alone.sleepPressure());
+  TEST_ASSERT_LESS_THAN_FLOAT(0.10f, busy.sleepPressure());
+  TEST_ASSERT_GREATER_THAN_FLOAT(busy.profile().fatigue, alone.profile().fatigue);
+}
+
+void test_engine_falls_asleep_when_left_alone() {
+  IntentEngine engine;
+  engine.begin();
+  // Demo mode injects fake events, which would keep him awake forever.
+  engine.setDemoEnabled(false, 0);
+
+  uint32_t asleepAtMs = 0;
+  const CharacterMode mode = runUntilAsleep(engine, 900000u, &asleepAtMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep), static_cast<int>(mode));
+  // Soon enough to actually observe, late enough not to nod off mid-visit.
+  TEST_ASSERT_GREATER_THAN_UINT32(180000u, asleepAtMs);
+  TEST_ASSERT_LESS_THAN_UINT32(900000u, asleepAtMs);
+}
+
+void test_demo_mode_keeps_him_awake() {
+  IntentEngine engine;
+  engine.begin();
+  // Demo injects an event every few seconds, so he should never drop off.
+  engine.setDemoEnabled(true, 0);
+  const CharacterMode mode = runUntilAsleep(engine, 900000u, nullptr);
+  TEST_ASSERT_NOT_EQUAL(static_cast<int>(CharacterMode::Sleep), static_cast<int>(mode));
+}
+
+void test_sleeping_head_returns_home_and_eyes_close() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+  uint32_t asleepAtMs = 0;
+  runUntilAsleep(engine, 900000u, &asleepAtMs);
+
+  RobotFrame frame = makeNeutralFrame();
+  for (uint32_t k = 0; k <= 8000u; k += 50) {
+    frame = engine.update(asleepAtMs + k);
+  }
+  // Home, not frozen wherever he happened to be looking.
+  TEST_ASSERT_FLOAT_WITHIN(0.30f, 0.0f, frame.motion.yawDeg);
+  // Eyes shut.
+  TEST_ASSERT_LESS_THAN_FLOAT(0.30f, frame.face.eyeOpen);
+}
+
+void test_touch_wakes_him_but_internal_events_do_not() {
+  IntentEngine roused;
+  roused.begin();
+  roused.setDemoEnabled(false, 0);
+  uint32_t asleepAtMs = 0;
+  runUntilAsleep(roused, 900000u, &asleepAtMs);
+
+  RobotEvent touch;
+  touch.type = EventType::UserTouched;
+  touch.timestampMs = asleepAtMs + 6000;
+  touch.strength = 0.8f;
+  roused.applyEvent(touch, CharacterMode::Attend);
+  const RobotFrame awake = roused.update(asleepAtMs + 6050);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(awake.mode));
+
+  IntentEngine undisturbed;
+  undisturbed.begin();
+  undisturbed.setDemoEnabled(false, 0);
+  uint32_t secondAsleepMs = 0;
+  runUntilAsleep(undisturbed, 900000u, &secondAsleepMs);
+
+  // His own bookkeeping must not count as being woken.
+  RobotEvent internal;
+  internal.type = EventType::ResponseEnded;
+  internal.timestampMs = secondAsleepMs + 6000;
+  undisturbed.applyEvent(internal, CharacterMode::Idle);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep),
+                    static_cast<int>(undisturbed.update(secondAsleepMs + 6050).mode));
+}
+
+void test_sleep_cue_emits_while_asleep_and_stops_after_waking() {
+  SleepCue cue;
+  cue.reset(0);
+
+  uint8_t peak = 0;
+  for (uint32_t nowMs = 0; nowMs < 12000u; nowMs += 50) {
+    cue.update(nowMs, true);
+    const SleepCueGeometry geometry = cue.geometry(200.0f, 60.0f);
+    if (geometry.count > peak) {
+      peak = geometry.count;
+    }
+    for (uint8_t i = 0; i < geometry.count; ++i) {
+      // Glyphs rise and stay bounded.
+      TEST_ASSERT_TRUE(geometry.glyphs[i].y <= 60.0f);
+      TEST_ASSERT_TRUE(geometry.glyphs[i].alpha >= 0.0f && geometry.glyphs[i].alpha <= 1.0f);
+    }
+  }
+  TEST_ASSERT_GREATER_THAN_UINT8(0, peak);
+
+  // After waking, in-flight glyphs finish and nothing new is emitted.
+  for (uint32_t nowMs = 12000u; nowMs < 24000u; nowMs += 50) {
+    cue.update(nowMs, false);
+  }
+  TEST_ASSERT_TRUE(cue.idle());
 }
 
 void test_intent_engine_reduced_motion_dampens_idle_life() {
@@ -7746,6 +7889,12 @@ int main() {
   RUN_TEST(test_breathing_is_not_metronomic);
   RUN_TEST(test_breathing_produces_occasional_deeper_sigh);
   RUN_TEST(test_breathing_survives_a_stalled_frame);
+  RUN_TEST(test_sleep_pressure_builds_only_when_left_alone);
+  RUN_TEST(test_engine_falls_asleep_when_left_alone);
+  RUN_TEST(test_demo_mode_keeps_him_awake);
+  RUN_TEST(test_sleeping_head_returns_home_and_eyes_close);
+  RUN_TEST(test_touch_wakes_him_but_internal_events_do_not);
+  RUN_TEST(test_sleep_cue_emits_while_asleep_and_stops_after_waking);
   RUN_TEST(test_head_gaze_holds_poses_instead_of_swaying);
   RUN_TEST(test_head_gaze_stays_inside_its_envelope);
   RUN_TEST(test_head_gaze_focus_reduces_excursion);
