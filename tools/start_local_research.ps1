@@ -120,8 +120,14 @@ if ($generatedSecret) {
 }
 
 try {
-  $composeOutput = & $selectedRuntime compose -f $ComposeFile up -d 2>&1
-  $composeExit = $LASTEXITCODE
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $composeOutput = @(& $selectedRuntime compose -f $ComposeFile up -d 2>&1)
+    $composeExit = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
 } finally {
   if ($generatedSecret) {
     Remove-Item Env:\SEARXNG_SECRET -ErrorAction SilentlyContinue
