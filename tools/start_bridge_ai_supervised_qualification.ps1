@@ -48,7 +48,10 @@ $PackageSha256 = (Get-FileHash -LiteralPath $PackageZipPath -Algorithm SHA256).H
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Archive = [IO.Compression.ZipFile]::OpenRead($PackageZipPath)
 try {
-  $ManifestEntry = $Archive.Entries | Where-Object { $_.FullName -eq "release_manifest.json" } | Select-Object -First 1
+  $ManifestEntry = $Archive.GetEntry("release_manifest.json")
+  if (-not $ManifestEntry) {
+    $ManifestEntry = $Archive.GetEntry("./release_manifest.json")
+  }
   if (-not $ManifestEntry) { throw "Release ZIP is missing release_manifest.json." }
 
   $ManifestReader = [IO.StreamReader]::new($ManifestEntry.Open(), [Text.Encoding]::UTF8, $true)

@@ -23,6 +23,8 @@ foreach ($Required in @(
   "[string]`$ExpectedFirmwareSha256",
   "[string]`$ExpectedFirmwareSourceCommit",
   "verify_release_package.ps1",
+  '$Archive.GetEntry("release_manifest.json")',
+  '$Archive.GetEntry("./release_manifest.json")',
   "docs/FIRST_DEPLOY_STATUS.md",
   "git diff --quiet origin/main",
   "`$FirmwareInputPaths",
