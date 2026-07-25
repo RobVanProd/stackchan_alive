@@ -1437,6 +1437,40 @@ void test_touch_wakes_him_but_internal_events_do_not() {
                     static_cast<int>(undisturbed.update(secondAsleepMs + 6050).mode));
 }
 
+void test_sleep_cue_sways_both_ways_and_stays_near_its_anchor() {
+  SleepCue cue;
+  cue.reset(0);
+
+  const float anchorX = 250.0f;
+  const float anchorY = 70.0f;
+  float leftMost = anchorX;
+  float rightMost = anchorX;
+  float highest = anchorY;
+  float widest = 0.0f;
+
+  for (uint32_t nowMs = 0; nowMs < 40000u; nowMs += 20) {
+    cue.update(nowMs, true);
+    const SleepCueGeometry geometry = cue.geometry(anchorX, anchorY);
+    for (uint8_t i = 0; i < geometry.count; ++i) {
+      const SleepGlyph& glyph = geometry.glyphs[i];
+      leftMost = fminf(leftMost, glyph.x);
+      rightMost = fmaxf(rightMost, glyph.x);
+      highest = fminf(highest, glyph.y - glyph.size);
+      widest = fmaxf(widest, fabsf(glyph.x - anchorX) + glyph.size);
+    }
+  }
+
+  // Sway must go both ways. A partial sine cycle only ever pushed them right,
+  // which reads as leaning rather than drifting.
+  TEST_ASSERT_LESS_THAN_FLOAT(anchorX - 1.0f, leftMost);
+  TEST_ASSERT_GREATER_THAN_FLOAT(anchorX + 1.0f, rightMost);
+
+  // They rise, and stay within a bounded envelope of the anchor so a caller can
+  // clamp the anchor and know the glyphs cannot leave the panel.
+  TEST_ASSERT_LESS_THAN_FLOAT(anchorY, highest);
+  TEST_ASSERT_LESS_THAN_FLOAT(26.0f, widest);
+}
+
 void test_sleep_cue_emits_while_asleep_and_stops_after_waking() {
   SleepCue cue;
   cue.reset(0);
@@ -7955,6 +7989,7 @@ int main() {
   RUN_TEST(test_demo_mode_keeps_him_awake);
   RUN_TEST(test_sleeping_head_returns_home_and_eyes_close);
   RUN_TEST(test_touch_wakes_him_but_internal_events_do_not);
+  RUN_TEST(test_sleep_cue_sways_both_ways_and_stays_near_its_anchor);
   RUN_TEST(test_sleep_cue_emits_while_asleep_and_stops_after_waking);
   RUN_TEST(test_head_gaze_holds_poses_instead_of_swaying);
   RUN_TEST(test_head_gaze_stays_inside_its_envelope);
