@@ -2894,8 +2894,8 @@ if (-not ($envs -contains "stackchan") -or
   throw "Manifest missing expected environments"
 }
 
-if ($manifest.status -notmatch "public release" -or $manifest.status -notmatch "accepted by owner") {
-  throw "Manifest status must identify the owner-accepted public release"
+if ($manifest.status -notmatch "test-ready prerelease" -or $manifest.status -notmatch "hardware validation pending") {
+  throw "Manifest status must identify a test-ready prerelease with hardware validation pending"
 }
 
 if ($manifest.dirty -and -not $AllowDirtyPackage) {
@@ -3895,10 +3895,13 @@ $acceptance = Get-Content -LiteralPath (Join-PackagePath "release_acceptance.jso
 if ($acceptance.schema -ne "stackchan.release-acceptance.v1") {
   throw "release_acceptance.json schema mismatch: $($acceptance.schema)"
 }
-if ($acceptance.currentDecision -ne "owner-approved-release") {
+if ($acceptance.releaseClass -ne "test-ready-prerelease") {
+  throw "release_acceptance.json releaseClass mismatch: $($acceptance.releaseClass)"
+}
+if ($acceptance.currentDecision -ne "test-ready-for-device-arrival") {
   throw "release_acceptance.json currentDecision mismatch: $($acceptance.currentDecision)"
 }
-if ($acceptance.consumerRolloutDecision -ne "released") {
+if ($acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation") {
   throw "release_acceptance.json consumerRolloutDecision mismatch: $($acceptance.consumerRolloutDecision)"
 }
 foreach ($requirement in @("clean-release-package", "dependency-provenance-present", "voice-review-samples-present", "voice-source-provenance-template-present", "voice-source-status-report-present", "character-red-team-dry-run-present", "companion-c6-brain-supervision-evidence", "hardware-media-importer-present", "servo-risk-gated", "share-page-verifiable")) {
@@ -3919,7 +3922,7 @@ if ($productionVoiceRequirement.Count -ne 1) {
 }
 
 $acceptanceText = Get-Content -LiteralPath (Join-PackagePath "RELEASE_ACCEPTANCE.md") -Raw
-foreach ($pattern in @("owner-approved public release", "Consumer rollout: released", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
+foreach ($pattern in @("test-ready for device arrival", "Consumer rollout: blocked pending hardware validation", "Required Physical Qualification", "source commit and firmware SHA-256", "Owner approval has not been recorded for this candidate", "Dependency provenance", "Voice review samples", "Voice source provenance template", "Voice source status report", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run report", "CHARACTER_RED_TEAM.md", "Companion C6 brain-supervision evidence", "Hardware media importer", "add_hardware_evidence_media.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Target-speaker audio evidence", "AUDIO_REVIEW.md", "real-device speaker recording", "Production RVC model and index")) {
   if ($acceptanceText -notmatch [regex]::Escape($pattern)) {
     throw "RELEASE_ACCEPTANCE.md missing expected acceptance guidance: $pattern"
   }
@@ -3953,7 +3956,7 @@ foreach ($pattern in @("GitHub Actions Status", $Version, $ExpectedCommit, "Requ
 }
 
 $readinessMarkdown = Get-Content -LiteralPath (Join-PackagePath "READINESS_REPORT.md") -Raw
-foreach ($pattern in @($Version, $ExpectedCommit, "Status: public release", "Consumer rollout: owner-approved", "Proven Without Hardware", "Recipient Hardware Evidence", "private paired reference robot", "exact-image physical evidence", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "owner approved the reference release evidence")) {
+foreach ($pattern in @($Version, $ExpectedCommit, "Status: test-ready prerelease", "Consumer rollout: blocked pending hardware validation", "Proven Without Hardware", "Required Physical Qualification", "Historical private paired-reference evidence", "source commit and firmware SHA-256", "recipient's assembled hardware", "GITHUB_ACTIONS_STATUS.md", "VOICE_SOURCE_STATUS.md", "Character red-team dry-run evidence", "Companion C6 brain-supervision evidence", "companion/evidence/", "configured local model", "add_hardware_evidence_media.cmd", "verify_hardware_evidence.cmd", "Speech-mouth demo evidence", "speech_mouth_demo_serial.log", "speak_all_intents_serial.log", "Power-cycle recovery", "USB power-cycle observation marked pass", "Production voice metadata", "Owner approval has not been recorded for this candidate")) {
   if ($readinessMarkdown -notmatch [regex]::Escape($pattern)) {
     throw "READINESS_REPORT.md missing expected text: $pattern"
   }
@@ -3969,8 +3972,11 @@ if ($readinessJson.version -ne $Version) {
 if ($readinessJson.commit -ne $ExpectedCommit) {
   throw "readiness_report.json commit mismatch: expected $ExpectedCommit, got $($readinessJson.commit)"
 }
-if ($readinessJson.consumerRollout -ne "owner-approved") {
-  throw "readiness_report.json must record the owner's release decision"
+if ($readinessJson.status -ne "test-ready-prerelease") {
+  throw "readiness_report.json status mismatch: $($readinessJson.status)"
+}
+if ($readinessJson.consumerRollout -ne "blocked-pending-hardware-validation") {
+  throw "readiness_report.json must block rollout pending hardware validation"
 }
 foreach ($gate in @($readinessJson.noHardwareProof)) {
   if ($gate.status -ne "pass") {

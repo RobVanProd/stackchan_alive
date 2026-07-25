@@ -42,4 +42,47 @@ foreach ($binding in $identityBindings) {
     throw "Consumer promotion identity binding missing: $binding"
   }
 }
+
+$packageSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\package_release.ps1") -Raw
+$packageVerifierSource = Get-Content -LiteralPath (Join-Path $RepoRoot "tools\verify_release_package.ps1") -Raw
+
+foreach ($fragment in @(
+    'status = "test-ready prerelease; hardware validation pending"',
+    'status = "test-ready-prerelease"',
+    'consumerRollout = "blocked-pending-hardware-validation"',
+    'releaseClass = "test-ready-prerelease"',
+    'currentDecision = "test-ready-for-device-arrival"',
+    'consumerRolloutDecision = "blocked-pending-hardware-validation"',
+    "Owner approval has not been recorded for this candidate"
+  )) {
+  if (-not $packageSource.Contains($fragment)) {
+    throw "Release package candidate-state contract missing fragment: $fragment"
+  }
+}
+
+foreach ($fragment in @(
+    '$manifest.status -notmatch "test-ready prerelease"',
+    '$manifest.status -notmatch "hardware validation pending"',
+    '$acceptance.releaseClass -ne "test-ready-prerelease"',
+    '$acceptance.currentDecision -ne "test-ready-for-device-arrival"',
+    '$acceptance.consumerRolloutDecision -ne "blocked-pending-hardware-validation"',
+    '$readinessJson.status -ne "test-ready-prerelease"',
+    '$readinessJson.consumerRollout -ne "blocked-pending-hardware-validation"'
+  )) {
+  if (-not $packageVerifierSource.Contains($fragment)) {
+    throw "Release package verifier candidate-state contract missing fragment: $fragment"
+  }
+}
+
+foreach ($forbidden in @(
+    'status = "public release; reference hardware accepted by owner"',
+    'consumerRollout = "owner-approved"',
+    'currentDecision = "owner-approved-release"',
+    'consumerRolloutDecision = "released"'
+  )) {
+  if ($packageSource.Contains($forbidden) -or $packageVerifierSource.Contains($forbidden)) {
+    throw "Release candidate source still contains an automatic promotion marker: $forbidden"
+  }
+}
+
 Write-Output "Consumer promotion contract verified."

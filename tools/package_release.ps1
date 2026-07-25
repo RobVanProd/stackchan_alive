@@ -1443,7 +1443,7 @@ $manifest = [ordered]@{
   defaultEnvironment = "stackchan"
   includedEnvironments = @("stackchan", "stackchan_servo_calibration", "stackchan_release_full")
   servoDefault = "display-only and calibration flows remain safety-gated; the production full firmware starts guarded autonomous motion after boot"
-  status = "public release; reference hardware accepted by owner"
+  status = "test-ready prerelease; hardware validation pending"
   dirty = ($sourceDirtyFiles.Count -gt 0)
   dirtyFiles = @($sourceDirtyFiles)
   generatedMediaDirtyFiles = @($generatedMediaDirtyFiles)
@@ -2070,8 +2070,8 @@ $readinessReport = [ordered]@{
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  status = "public-release"
-  consumerRollout = "owner-approved"
+  status = "test-ready-prerelease"
+  consumerRollout = "blocked-pending-hardware-validation"
   noHardwareProof = @(
     [ordered]@{ gate = "release-package-created"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ gate = "firmware-binaries-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -2100,7 +2100,7 @@ $readinessReport = [ordered]@{
     [ordered]@{ gate = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
     [ordered]@{ gate = "production-voice-assets"; status = "pass"; requiredEvidence = "media/voice/rvc/model.pth and model.index match the pinned production SHA-256 values" }
   )
-  promotionRule = "The owner approved this public release from exact-image reference evidence; each recipient still validates local power, calibration, and assembly."
+  promotionRule = "Promotion requires source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
   nextOperatorCommand = ".\tools\prepare_device_arrival.cmd -Port COM3 -Operator `"Your Name`" -DeviceId STACKCHAN-001"
 }
 
@@ -2111,9 +2111,9 @@ $acceptanceChecklist = [ordered]@{
   version = $Version
   commit = $commit
   generatedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-  releaseClass = "public-release"
-  currentDecision = "owner-approved-release"
-  consumerRolloutDecision = "released"
+  releaseClass = "test-ready-prerelease"
+  currentDecision = "test-ready-for-device-arrival"
+  consumerRolloutDecision = "blocked-pending-hardware-validation"
   noHardwareAcceptance = @(
     [ordered]@{ requirement = "clean-release-package"; status = "pass"; evidence = "release_manifest.json" },
     [ordered]@{ requirement = "firmware-artifacts-present"; status = "pass"; evidence = "firmware/display_only and firmware/servo_calibration" },
@@ -2142,7 +2142,7 @@ $acceptanceChecklist = [ordered]@{
     [ordered]@{ requirement = "hardware-evidence-verification"; status = "pending-device"; requiredEvidence = "tools/verify_hardware_evidence.cmd passes on the completed packet" },
     [ordered]@{ requirement = "production-voice-assets"; status = "pass"; requiredEvidence = "bundled model and index match the pinned production SHA-256 values" }
   )
-  promotionRule = "The public release is owner-approved; recipient hardware acceptance remains local to each assembled unit."
+  promotionRule = "This candidate remains blocked until source-matched supervised hardware qualification, bridge AI qualification, the required soak, successful release checks, and explicit owner approval."
 }
 
 $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $outDir "release_acceptance.json") -Encoding UTF8
@@ -2152,8 +2152,8 @@ $acceptanceChecklist | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $o
 
 Release: $Version
 Commit: $commit
-Decision: owner-approved public release
-Consumer rollout: released
+Decision: test-ready for device arrival
+Consumer rollout: blocked pending hardware validation
 
 ## Accepted Without Hardware
 
@@ -2174,13 +2174,13 @@ Consumer rollout: released
 - [x] Servo risk gated by explicit ``-ConfirmServoRisk``
 - [x] Share page can be verified by ``tools/verify_share_release.cmd``
 
-## Recipient Hardware Validation
+## Required Physical Qualification
 
-These gates apply to this public package and each recipient hardware configuration.
-The private paired reference robot is validated separately with exact-image evidence recorded in
-``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``. That reference evidence does
-not substitute for validating a recipient's power source, calibration, voice model, credentials,
-or assembled hardware.
+These gates apply to this release candidate. Historical private paired-reference evidence is
+recorded in ``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``, but it applies
+only to the source commit and firmware SHA-256 named by that evidence. It does not qualify this
+candidate or another recipient's power source, calibration, voice model, credentials, or
+assembled hardware.
 
 - [ ] Display-only flash with serial log, real photo/video, and 10-minute idle observation
 - [ ] Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff
@@ -2199,8 +2199,8 @@ Machine-readable checklist: ``release_acceptance.json``
 
 Release: $Version
 Commit: $commit
-Status: public release
-Consumer rollout: owner-approved
+Status: test-ready prerelease
+Consumer rollout: blocked pending hardware validation
 
 ## Proven Without Hardware
 
@@ -2217,13 +2217,13 @@ Consumer rollout: owner-approved
 - Hardware media import helper is included as ``tools/add_hardware_evidence_media.cmd`` for copying phone photos/videos and speaker recordings into evidence packets with SHA256 hashes.
 - Servo calibration flashing requires explicit ``-ConfirmServoRisk`` acknowledgement.
 
-## Recipient Hardware Evidence
+## Required Physical Qualification
 
-This public package includes the production voice. The private paired reference robot has
-separate exact-image physical evidence in ``docs/FIRST_DEPLOY_STATUS.md`` and
-``docs/ARRIVAL_DAY_RUNBOOK.md``. Those results demonstrate the reference integration, but they do
-not validate a recipient's assembled hardware, power path, calibration, credentials, or local
-voice model. The following package-level gates therefore remain explicit:
+This candidate includes the production voice. Historical private paired-reference evidence is
+recorded in ``docs/FIRST_DEPLOY_STATUS.md`` and ``docs/ARRIVAL_DAY_RUNBOOK.md``, but it applies
+only to the source commit and firmware SHA-256 named by that evidence. It does not qualify this
+candidate or another recipient's assembled hardware, power path, calibration, credentials, or
+local voice model. The following package-level gates therefore remain explicit:
 
 - Display-only flash, visible procedural face, and 10-minute idle run.
 - Speech-mouth demo evidence: ``logs/speech_mouth_demo_serial.log`` with streamed speech envelope commands, ``speech clear``, and completion, plus ``logs/speak_all_intents_serial.log`` proving every packaged speech intent, earcon, and audio-output handoff.
@@ -2234,7 +2234,9 @@ voice model. The following package-level gates therefore remain explicit:
 - Completed hardware evidence packet that passes ``tools/verify_hardware_evidence.cmd``.
 - Production RVC model and index hash verification.
 
-The owner approved the reference release evidence. Each recipient should still complete these checks for its own power path, calibration, and assembly.
+Owner approval has not been recorded for this candidate. Promotion requires source-matched
+supervised hardware qualification, bridge AI qualification, the required soak, successful
+release checks, and explicit owner approval.
 
 Recommended arrival command from the extracted package:
 
@@ -2246,7 +2248,7 @@ Recommended arrival command from the extracted package:
 
 Commit: $commit
 
-This is the public $Version package for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and ships guarded autonomous motion in the production full firmware.
+This is the publicly shareable $Version prerelease candidate for Stackchan: Alive, a character OS for Stackchan hardware. It is built, native-tested, compile-checked, includes preview media plus an expression QA sheet, and ships guarded autonomous motion in the production full firmware. Consumer rollout remains blocked pending source-matched physical qualification and explicit owner approval.
 
 Dependency provenance is recorded in ``DEPENDENCIES.md`` and ``dependency_lock.json``, with copied build inputs under ``provenance/``. Production voice hashes are recorded in ``docs/VOICE_SOURCE_PROVENANCE_TEMPLATE.md``, ``data/voice_source_provenance.yaml``, ``VOICE_SOURCE_STATUS.md``, and ``voice_source_status.json``. Readiness status is recorded in ``READINESS_REPORT.md`` and ``readiness_report.json``. GitHub Actions status is recorded in ``GITHUB_ACTIONS_STATUS.md`` and ``github_actions_status.json``. Preflight, hardware simulation, flashing, publishing, evidence capture, and package verification helpers are included under ``tools/``.
 
