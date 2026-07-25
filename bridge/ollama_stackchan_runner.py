@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from bridge_memory import explicit_forget_keys
-from character_harness import validate_response
+from character_harness import prompt_has_trusted_visual_context, validate_response
 
 
 DEFAULT_MODEL = "gemma4:e2b-it-qat"
@@ -360,7 +360,11 @@ def main() -> int:
         print(json.dumps({"tool_request": tool_request}, separators=(",", ":"), ensure_ascii=True))
         return 0
     raw_json = normalize_surface_policy(raw_json, prompt)
-    validation = validate_response(raw_json, allow_identity=is_identity_request(prompt))
+    validation = validate_response(
+        raw_json,
+        allow_identity=is_identity_request(prompt),
+        allow_visual_claims=prompt_has_trusted_visual_context(prompt),
+    )
     print(json.dumps(enforce_character_policy(validation, prompt=prompt), separators=(",", ":"), ensure_ascii=True))
     if validation.issues:
         sys.stderr.write("normalized Character Lock issues: " + ",".join(validation.issues) + "\n")

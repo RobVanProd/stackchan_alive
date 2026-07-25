@@ -12,7 +12,14 @@ from typing import Any
 
 from cancellable_process import ProcessTimeoutError, run_cancellable_process
 from cancellation import CancellationToken
-from character_harness import MODEL_PROFILES, PROMPT_SUITE, HarnessResult, build_prompt, validate_response
+from character_harness import (
+    MODEL_PROFILES,
+    PROMPT_SUITE,
+    HarnessResult,
+    build_prompt,
+    trusted_visual_context_available,
+    validate_response,
+)
 from persona_pack import DEFAULT_PERSONA_ID, PersonaPack, load_and_validate_persona_pack
 
 DEFAULT_PROFILE = "gemma4-e2b-gguf"
@@ -309,8 +316,14 @@ def repair_runner_response(
     memory_lines: tuple[str, ...] = (),
     user_text: str = "",
     allow_identity: bool = False,
+    allow_visual_claims: bool = False,
 ) -> tuple[str, str]:
-    validation = validate_response(raw_response, persona, allow_identity=allow_identity)
+    validation = validate_response(
+        raw_response,
+        persona,
+        allow_identity=allow_identity,
+        allow_visual_claims=allow_visual_claims,
+    )
     spoken_text = str(validation.normalized.get("spoken_text", ""))
     if (
         case_name == "greeting"
@@ -330,7 +343,11 @@ def repair_runner_response(
                 "memory_forget": list(forget_targets),
             }
             repaired_raw = json.dumps(repaired, separators=(",", ":"), ensure_ascii=True)
-            repaired_validation = validate_response(repaired_raw, persona)
+            repaired_validation = validate_response(
+                repaired_raw,
+                persona,
+                allow_visual_claims=allow_visual_claims,
+            )
             if repaired_validation.ok:
                 return repaired_raw, "forget_exact_key"
     if case_name == "picked_up" and not any(
@@ -358,7 +375,11 @@ def repair_runner_response(
             "memory_forget": [],
         }
         repaired_raw = json.dumps(repaired, separators=(",", ":"), ensure_ascii=True)
-        repaired_validation = validate_response(repaired_raw, persona)
+        repaired_validation = validate_response(
+            repaired_raw,
+            persona,
+            allow_visual_claims=allow_visual_claims,
+        )
         if repaired_validation.ok:
             return repaired_raw, f"{continuity_kind}_continuity"
     return raw_response, ""
@@ -460,6 +481,7 @@ def run_runner_profile(
         raw_response = deterministic_response(case_name, persona)
 
     identity_allowed = allow_identity or (case_name == "question" and not user_text.strip())
+    visual_claims_allowed = trusted_visual_context_available(embodiment_lines)
     raw_response, repair_reason = repair_runner_response(
         case_name,
         raw_response,
@@ -467,8 +489,14 @@ def run_runner_profile(
         memory_lines=memory_lines,
         user_text=str(case["user"]),
         allow_identity=identity_allowed,
+        allow_visual_claims=visual_claims_allowed,
     )
-    validation = validate_response(raw_response, persona, allow_identity=identity_allowed)
+    validation = validate_response(
+        raw_response,
+        persona,
+        allow_identity=identity_allowed,
+        allow_visual_claims=visual_claims_allowed,
+    )
     validation.elapsed_ms = elapsed_ms
     validation.approx_tokens_per_sec = approx_tokens_per_sec
     profile = RUNNER_PROFILES[profile_id]

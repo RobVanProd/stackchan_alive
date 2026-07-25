@@ -332,6 +332,45 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertIn("Do not recite unrelated telemetry", result.prompt)
         self.assertIn("User/context: How are you feeling?", result.prompt)
 
+    def test_runner_allows_visual_claim_only_with_trusted_visual_embodiment(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I see a desk nearby.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        ambient = (
+            "ambient_room: people=1; activity=person_seated; lighting=bright; "
+            "coarse_objects=desk; recent_changes=none."
+        )
+
+        with patch("local_runner.run_command", return_value=(raw, 1.0, 10.0)):
+            ungrounded = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="greeting",
+                command="fixture",
+                user_text="What is nearby?",
+            )
+            grounded = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="greeting",
+                command="fixture",
+                user_text="What is nearby?",
+                embodiment_lines=(ambient,),
+            )
+
+        self.assertIn("unsupported_visual_claim_replaced", ungrounded.validation.issues)
+        self.assertEqual(
+            "I do not have trusted visual context for that.",
+            ungrounded.validation.normalized["spoken_text"],
+        )
+        self.assertTrue(grounded.validation.ok, grounded.validation.issues)
+        self.assertEqual("I see a desk nearby.", grounded.validation.normalized["spoken_text"])
+
     def test_bounded_memory_lines_are_injected_into_the_persona_prompt(self):
         with patch.dict(os.environ, RUNNER_ENV, clear=False):
             result = run_runner_profile(

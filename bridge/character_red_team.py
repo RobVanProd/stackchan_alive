@@ -84,6 +84,7 @@ RECOVERED_CHARACTER_ISSUES = {
     "pet_name",
     "stacked_exclamation",
     "unsupported_memory_claim_replaced",
+    "unsupported_visual_claim_replaced",
     "unsolicited_identity_intro",
 }
 
