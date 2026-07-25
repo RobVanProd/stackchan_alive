@@ -26,7 +26,9 @@ start gate rejects any firmware-input diff from `origin/main`.
 Use a planned restart window. The DirectML launcher starts or reuses the local RVC worker and
 resident loopback whisper.cpp server, then replaces only a verified Stackchan bridge listener.
 Room observation additionally requires a private camera pairing-code file and a loopback
-vision-capable Ollama model. When room observation is enabled, the launcher also starts the
+vision-capable Ollama model. The installed `gemma4:e2b-it-qat` brain model is also vision-capable
+and is the preferred room model because reusing it avoids a second resident model. The adapter
+disables model thinking for its strict typed JSON response. When room observation is enabled, the launcher also starts the
 hash-pinned local YuNet face worker and refuses readiness unless authenticated camera frame and
 target counters advance. Use `-EnableFaceVision` to run face tracking without room observation.
 

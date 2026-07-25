@@ -19,6 +19,8 @@ class OllamaRoomVisionTests(unittest.TestCase):
         self.assertEqual(png, base64.b64decode(payload["images"][0]))
         self.assertEqual("fixture-vision", payload["model"])
         self.assertFalse(payload["stream"])
+        self.assertFalse(payload["think"])
+        self.assertEqual(-1, payload["keep_alive"])
 
     def test_vision_transport_is_loopback_only(self) -> None:
         self.assertEqual("http://127.0.0.1:11434", validate_loopback_url("http://127.0.0.1:11434"))

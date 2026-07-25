@@ -98,6 +98,8 @@ def build_request_payload(frame: bytes, model: str) -> dict[str, object]:
         "images": [base64.b64encode(pgm_to_png(frame)).decode("ascii")],
         "format": "json",
         "stream": False,
+        "think": False,
+        "keep_alive": -1,
         "options": {"temperature": 0.1, "num_predict": 160},
     }
 
