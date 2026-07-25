@@ -259,6 +259,43 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             "pass" if not bad_deltas else "fail",
             f"deltas={json.dumps(bad_deltas, sort_keys=True)}",
         )
+        vision_deltas = {
+            key: _delta(before_debug, after_debug, key)
+            for key in (
+                "camera_host_frame_requests",
+                "camera_host_target_updates",
+                "camera_face_batches",
+                "camera_faces_observed",
+                "camera_events",
+            )
+        }
+        vision_error_deltas = {
+            key: _delta(before_debug, after_debug, key)
+            for key in (
+                "camera_host_frame_failures",
+                "camera_host_auth_failures",
+            )
+        }
+        vision_ready = (
+            all(
+                _integer(snapshot.get("compiled_enable_camera")) == 1
+                and _integer(snapshot.get("compiled_enable_camera_host_vision")) == 1
+                and snapshot.get("camera_ready") is True
+                and snapshot.get("camera_active") is True
+                and snapshot.get("camera_capture_ready") is True
+                for snapshot in (before_debug, after_debug)
+            )
+            and all(delta > 0 for delta in vision_deltas.values())
+            and all(delta == 0 for delta in vision_error_deltas.values())
+        )
+        add(
+            "robot-host-vision-advancing",
+            "pass" if vision_ready else "fail",
+            (
+                f"deltas={json.dumps(vision_deltas, sort_keys=True)} "
+                f"errors={json.dumps(vision_error_deltas, sort_keys=True)}"
+            ),
+        )
         remote_stops = _delta(
             before_debug,
             after_debug,
@@ -296,6 +333,31 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
         (
             f"protocolEvents={len(audio_protocol_events)} "
             f"countMismatches={len(audio_count_mismatches)}"
+        ),
+    )
+
+    response_wire_events = [
+        record
+        for record in records
+        if record.get("schema") == "stackchan.response-wire-event.v1"
+    ]
+    response_wire_failures = [
+        record
+        for record in response_wire_events
+        if record.get("recovered") is not True
+    ]
+    forced_response_closures = [
+        record
+        for record in response_wire_events
+        if record.get("code") == "response_forced_closed"
+        and record.get("recovered") is True
+    ]
+    add(
+        "host-response-wire-clean",
+        "pass" if not response_wire_failures else "fail",
+        (
+            f"failures={len(response_wire_failures)} "
+            f"forcedClosures={len(forced_response_closures)}"
         ),
     )
 

@@ -39,6 +39,15 @@ $BridgeProcess = if ($Listener) {
   $null
 }
 $CommandLine = if ($BridgeProcess) { [string]$BridgeProcess.CommandLine } else { "" }
+$VisionPidFile = "output\pc-brain\latest\vision_service.pid"
+$VisionProcess = $null
+if (Test-Path -LiteralPath $VisionPidFile -PathType Leaf) {
+  $VisionPid = 0
+  [void][int]::TryParse((Get-Content -LiteralPath $VisionPidFile -Raw).Trim(), [ref]$VisionPid)
+  if ($VisionPid -gt 0) {
+    $VisionProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$VisionPid" -ErrorAction SilentlyContinue
+  }
+}
 $Features = [ordered]@{
   conversationV2 = $CommandLine.Contains("--conversation-v2")
   initiative = $CommandLine.Contains("--enable-initiative")
@@ -46,6 +55,8 @@ $Features = [ordered]@{
   persistentStt = $CommandLine.Contains("--stt-server-url")
   privateAudioEvidence = $CommandLine.Contains("--audio-evidence-dir")
   turnTextRedacted = $CommandLine.Contains("--redact-turn-text")
+  faceVision = $null -ne $VisionProcess -and
+    [string]$VisionProcess.CommandLine -match "bridge[\\/]vision_service\.py"
 }
 
 $Issues = @()
@@ -53,6 +64,7 @@ if (-not $BridgeProcess -or $CommandLine -notmatch "bridge[\\/]lan_service\.py")
 if (-not $Features.conversationV2) { $Issues += "conversation_v2_not_enabled" }
 if (-not $Features.initiative) { $Issues += "initiative_not_enabled" }
 if (-not $Features.roomObservation) { $Issues += "room_observation_not_enabled" }
+if (-not $Features.faceVision) { $Issues += "face_vision_worker_not_running" }
 if (-not $Features.persistentStt) { $Issues += "persistent_stt_not_enabled" }
 if ($Features.privateAudioEvidence) { $Issues += "private_audio_evidence_enabled" }
 if (-not $Features.turnTextRedacted) { $Issues += "turn_text_not_redacted" }
@@ -66,6 +78,11 @@ if ([bool]$Debug.motion_enabled -or [bool]$Debug.servo_rail_enabled -or [bool]$D
 }
 if ([bool]$Debug.audio_stream_active -or [int]$Debug.speaker_channel_state -ne 0) {
   $Issues += "robot_audio_not_drained"
+}
+if ([int64]$Debug.camera_host_frame_requests -le 0 -or
+    [int64]$Debug.camera_host_target_updates -le 0 -or
+    [int64]$Debug.camera_face_batches -le 0) {
+  $Issues += "robot_host_vision_never_advanced"
 }
 
 $SourceCommit = (& git rev-parse HEAD).Trim()

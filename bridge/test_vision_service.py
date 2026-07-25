@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -13,6 +15,7 @@ from vision_service import (
     YUNET_MODEL_PATH,
     YUNET_SCORE_THRESHOLD,
     encode_face_targets,
+    main,
     normalize_face_targets,
     parse_pgm,
     read_pairing_code_file,
@@ -79,6 +82,27 @@ class VisionServiceTests(unittest.TestCase):
             bad_model.write_bytes(b"not an onnx model")
             with self.assertRaises(RuntimeError):
                 verify_yunet_model(bad_model)
+
+    def test_preflight_validates_local_runtime_without_fetching_or_leaking_pairing_code(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            pairing = Path(directory) / "pairing.txt"
+            pairing.write_text("123456\n", encoding="ascii")
+            argv = [
+                "vision_service.py",
+                "--robot-url",
+                "http://127.0.0.1:8789",
+                "--pairing-code-file",
+                str(pairing),
+                "--preflight",
+            ]
+            with patch.object(sys, "argv", argv), patch("builtins.print") as emit:
+                result = main()
+
+        payload = json.loads(emit.call_args.args[0])
+        self.assertEqual(0, result)
+        self.assertTrue(payload["ready"])
+        self.assertFalse(payload["raw_frame_persistence"])
+        self.assertNotIn("123456", json.dumps(payload))
 
     def test_camera_service_retries_one_transport_miss_and_records_recovery(self) -> None:
         class Detector:

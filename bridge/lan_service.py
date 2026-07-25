@@ -2511,6 +2511,42 @@ def ends_audio_stream(frame: dict[str, object] | bytes) -> bool:
     return isinstance(frame, dict) and frame.get("type") == "audio_stream_end"
 
 
+@dataclass
+class ResponseWireState:
+    active_seq: int | None = None
+    aborting: bool = False
+
+    def validate(self, frame: dict[str, object] | bytes) -> tuple[str, int] | None:
+        if not isinstance(frame, dict):
+            return None
+        frame_type = str(frame.get("type", ""))
+        if frame_type not in ("response_start", "response_end"):
+            return None
+        try:
+            seq = int(frame.get("seq"))
+        except (TypeError, ValueError):
+            return ("response_seq_invalid", -1)
+        if frame_type == "response_start" and self.active_seq is not None:
+            return ("response_overlap", seq)
+        if frame_type == "response_end":
+            if self.active_seq is None:
+                return ("response_end_without_start", seq)
+            if seq != self.active_seq:
+                return ("response_seq_mismatch", seq)
+        return None
+
+    def note_sent(self, frame: dict[str, object] | bytes) -> None:
+        if not isinstance(frame, dict):
+            return
+        frame_type = str(frame.get("type", ""))
+        if frame_type == "response_start":
+            self.active_seq = int(frame["seq"])
+            self.aborting = False
+        elif frame_type == "response_end":
+            self.active_seq = None
+            self.aborting = False
+
+
 def handle_connection(
     conn: socket.socket,
     config: LanBridgeConfig,
@@ -2541,12 +2577,52 @@ def handle_connection(
 
     pending_short_chunk: bytes | None = None
     send_lock = threading.RLock()
+    response_wire = ResponseWireState()
     turn_thread: threading.Thread | None = None
     turn_errors: queue.Queue[BaseException] = queue.Queue()
+
+    def record_response_wire_event(
+        code: str,
+        *,
+        seq: int,
+        recovered: bool,
+        reason: str = "",
+    ) -> None:
+        record: dict[str, object] = {
+            "schema": "stackchan.response-wire-event.v1",
+            "generated_at": utc_timestamp(),
+            "session": session.session,
+            "code": code,
+            "seq": seq,
+            "active_seq": response_wire.active_seq,
+            "recovered": recovered,
+        }
+        if reason:
+            record["reason"] = reason
+        session._append_turn_log(record)
 
     def send_live(frame: dict[str, object] | bytes) -> float | None:
         nonlocal pending_short_chunk
         with send_lock:
+            response_error = response_wire.validate(frame)
+            if response_error is not None:
+                code, seq = response_error
+                record_response_wire_event(code, seq=seq, recovered=False)
+                raise WebSocketProtocolError(code)
+            aborting_response = (
+                response_wire.active_seq is not None
+                and isinstance(frame, dict)
+                and frame.get("type") == "error"
+            )
+            if aborting_response:
+                pending_short_chunk = None
+            frame_type = str(frame.get("type", "")) if isinstance(frame, dict) else ""
+            if response_wire.aborting and (
+                isinstance(frame, bytes)
+                or frame_type in ("audio", "audio_stream_start", "audio_stream_end")
+            ):
+                pending_short_chunk = None
+                return None
             if pending_short_chunk is not None:
                 send_connection_frame(
                     conn,
@@ -2562,18 +2638,51 @@ def handle_connection(
             ):
                 pending_short_chunk = frame
                 return None
-            return send_connection_frame(conn, config, frame)
+            sent_at = send_connection_frame(conn, config, frame)
+            response_wire.note_sent(frame)
+            if aborting_response:
+                response_wire.aborting = True
+            return sent_at
 
     def discard_pending_audio() -> None:
         nonlocal pending_short_chunk
         with send_lock:
             pending_short_chunk = None
 
+    def close_interrupted_response(reason: str) -> None:
+        nonlocal pending_short_chunk
+        with send_lock:
+            seq = response_wire.active_seq
+            if seq is None:
+                return
+            pending_short_chunk = None
+            try:
+                send_connection_frame(conn, config, error_frame("response_aborted"))
+                response_wire.aborting = True
+                end_frame: dict[str, object] = {"type": "response_end", "seq": seq}
+                send_connection_frame(conn, config, end_frame)
+                response_wire.note_sent(end_frame)
+            except Exception:
+                record_response_wire_event(
+                    "response_unclosed",
+                    seq=seq,
+                    recovered=False,
+                    reason=reason,
+                )
+                raise
+            record_response_wire_event(
+                "response_forced_closed",
+                seq=seq,
+                recovered=True,
+                reason=reason,
+            )
+
     def run_turn(
         text: str,
         suppress_thinking: bool,
         finalized_audio: FinalizedAudioUpload,
     ) -> None:
+        worker_error: BaseException | None = None
         try:
             frames = session.handle_text(
                 text,
@@ -2584,9 +2693,18 @@ def handle_connection(
             for frame in frames:
                 send_live(frame)
         except Exception as exc:  # surfaced on the connection thread
-            turn_errors.put(exc)
+            worker_error = exc
+        finally:
+            try:
+                close_interrupted_response("turn_interrupted")
+            except Exception as exc:
+                if worker_error is None:
+                    worker_error = exc
+            if worker_error is not None:
+                turn_errors.put(worker_error)
 
     def run_initiative_turn(decision: InitiativeDecision) -> None:
+        worker_error: BaseException | None = None
         try:
             frames = session.run_initiative(
                 decision,
@@ -2595,38 +2713,58 @@ def handle_connection(
             for frame in frames:
                 send_live(frame)
         except Exception as exc:  # surfaced on the connection thread
-            turn_errors.put(exc)
+            worker_error = exc
+        finally:
+            try:
+                close_interrupted_response("initiative_interrupted")
+            except Exception as exc:
+                if worker_error is None:
+                    worker_error = exc
+            if worker_error is not None:
+                turn_errors.put(worker_error)
 
     if config.auto_turn_text:
         seq = now_ms() % 1000000
         auto_turn = {"type": "utterance_end", "seq": seq, "text": config.auto_turn_text}
         print(f"[bridge-lan] auto_turn_start seq={seq}", flush=True)
         conn.sendall(encode_ws_text(frame_to_text({"type": "thinking", "seq": seq})))
-        frames = session.handle_text(
-            json.dumps(auto_turn),
-            suppress_thinking=True,
-            frame_sink=send_live if config.stream_tts_phrases else None,
-        )
-        text_frames = 0
-        binary_frames = 0
-        binary_bytes = 0
-        text_types: list[str] = []
-        for frame in frames:
-            if isinstance(frame, bytes):
-                binary_frames += 1
-                binary_bytes += len(frame)
-            else:
-                text_frames += 1
-                frame_type = str(frame.get("type", ""))
-                if frame_type and len(text_types) < 12:
-                    text_types.append(frame_type)
-            send_live(frame)
-        print(
-            f"[bridge-lan] auto_turn_sent seq={seq} frames={len(frames)} "
-            f"text_frames={text_frames} binary_frames={binary_frames} "
-            f"binary_bytes={binary_bytes} text_types={','.join(text_types)}",
-            flush=True,
-        )
+        auto_turn_error: BaseException | None = None
+        try:
+            frames = session.handle_text(
+                json.dumps(auto_turn),
+                suppress_thinking=True,
+                frame_sink=send_live if config.stream_tts_phrases else None,
+            )
+            text_frames = 0
+            binary_frames = 0
+            binary_bytes = 0
+            text_types: list[str] = []
+            for frame in frames:
+                if isinstance(frame, bytes):
+                    binary_frames += 1
+                    binary_bytes += len(frame)
+                else:
+                    text_frames += 1
+                    frame_type = str(frame.get("type", ""))
+                    if frame_type and len(text_types) < 12:
+                        text_types.append(frame_type)
+                send_live(frame)
+            print(
+                f"[bridge-lan] auto_turn_sent seq={seq} frames={len(frames)} "
+                f"text_frames={text_frames} binary_frames={binary_frames} "
+                f"binary_bytes={binary_bytes} text_types={','.join(text_types)}",
+                flush=True,
+            )
+        except Exception as exc:
+            auto_turn_error = exc
+        finally:
+            try:
+                close_interrupted_response("auto_turn_interrupted")
+            except Exception as exc:
+                if auto_turn_error is None:
+                    auto_turn_error = exc
+        if auto_turn_error is not None:
+            raise auto_turn_error
     try:
         while True:
             if not turn_errors.empty():

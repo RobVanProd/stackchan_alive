@@ -63,6 +63,24 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 - All new behavior is default-off at the command line. Use the explicit launch switches during
   supervised qualification; do not infer hardware readiness from source tests.
 
+## Fault-Fix Candidate Update (2026-07-25)
+
+- F1 has a source-level wire guard. Once `response_start` is sent, cancellation and worker-error
+  paths discard buffered audio, send a nonfatal `response_aborted`, and send the matching
+  `response_end`. Overlap, sequence mismatch, and unrecovered closure events are privacy-safe
+  qualification failures.
+- F2 is localized to dedicated capture crossing the wake-gate deadline while its socket retry
+  loop is still active. The capture owner now checks whether the uplink still accepts its
+  sequence and stops cleanly after `utterance_end`; invalid direct uplink calls remain errors.
+- F3 is localized to production startup never launching `bridge/vision_service.py`. The DirectML
+  launcher now starts the pairing-file-only YuNet worker whenever face vision is requested or
+  room observation is enabled, then requires authenticated frame and target counters to advance.
+  The dashboard reports Waiting for host, Scanning, or Tracking instead of treating camera power
+  as proof of host vision.
+
+These are source-tested candidates, not physical closure. F1-F3 remain open until one exact clean
+source commit and firmware binary pass the supervised qualification and soak described below.
+
 ---
 
 # Part 1: Open faults on the host side
@@ -89,6 +107,10 @@ sequence is documented in [BRIDGE_PROTOCOL.md](BRIDGE_PROTOCOL.md); the ordered 
 `playback_starts: 0` on a response that supposedly began suggests the failure happens before or
 during TTS, so the error path is the likely culprit.
 
+**Candidate fix:** implemented and socket-tested on 2026-07-25. Re-run cancellation, model/TTS
+failure, owner-loss, and long-running physical conversation cases; the qualification must report
+`host-response-wire-clean` with no unrecovered events.
+
 ## F2. Roughly 16 uplink errors per turn
 
 **Observed:** `bridge_uplink_errors: 80` across `bridge_uplink_turns: 5`, while
@@ -102,6 +124,10 @@ microphone chunks still being pushed after `utterance_end`, each one rejected an
 **What to check:** stop pushing PCM once `utterance_end` has been sent, or close the capture
 window before the tail chunks arrive. Low severity, but it makes the counter useless as a health
 signal, which matters once you are relying on telemetry to tune conversation pacing.
+
+**Candidate fix:** implemented and native-tested on 2026-07-25. The supervised run must show zero
+`bridge_uplink_errors` delta across completed turns; do not reset the counter to manufacture that
+result.
 
 ## F3. Vision delivers nothing at all
 
@@ -123,6 +149,11 @@ the robot is serving frames; the host has never returned a single detection.
 parses the returned PGM, runs YuNet, and posts face targets back. Confirm it is running, that
 pairing succeeds, and that it can reach the camera endpoint. Note the frames are **grayscale PGM**,
 which is fine for detection but means no colour reasoning.
+
+**Candidate fix:** implemented and launcher-tested on 2026-07-25. Production startup now owns the
+vision worker and refuses a vision-enabled ready result until both authenticated frame requests and
+target updates advance with no new frame/auth failures. Physical qualification additionally
+requires advancing face batches, observed faces, and camera events.
 
 ---
 

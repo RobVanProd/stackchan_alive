@@ -62,6 +62,30 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertFalse(result["commandSent"] if "commandSent" in result else False)
         fetch.assert_not_called()
 
+    def test_debug_status_distinguishes_running_host_vision(self) -> None:
+        self.runtime._record_debug(
+            {
+                "network_state": "connected",
+                "bridge_state": "ready",
+                "camera_enabled": True,
+                "camera_active": True,
+                "camera_host_frame_requests": 12,
+                "camera_host_frame_failures": 0,
+                "camera_host_target_updates": 12,
+                "camera_host_auth_failures": 0,
+                "camera_face_batches": 12,
+                "camera_faces_observed": 3,
+                "camera_target_valid": True,
+            }
+        )
+
+        robot = self.runtime.status()["robot"]
+
+        self.assertEqual(12, robot["visionFrameRequests"])
+        self.assertEqual(12, robot["visionTargetUpdates"])
+        self.assertEqual(3, robot["visionFacesObserved"])
+        self.assertTrue(robot["visionTargetValid"])
+
     def test_failed_standalone_refresh_clears_cached_connected_state(self) -> None:
         self.runtime._record_debug({"network_state": "connected", "bridge_state": "ready"})
         self.assertTrue(self.runtime.status()["robot"]["connected"])

@@ -13,6 +13,9 @@ param(
   [int]$RoomObservationIntervalSeconds = 300,
   [string]$RoomVisionModel = "",
   [string]$CameraPairingCodeFile = "",
+  [switch]$EnableFaceVision,
+  [string]$VisionPython = "",
+  [double]$FaceVisionIntervalSeconds = 1.0,
   [int]$DashboardPort = 8766,
   [string]$EvidenceRoot = "",
   [switch]$RepairMemory,
@@ -29,6 +32,13 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 }
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $EvidencePath = (Resolve-Path $EvidenceRoot).Path
+$StartFaceVision = [bool]($EnableFaceVision -or $EnableRoomObservation)
+if ($StartFaceVision -and [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
+  throw "Face or room vision requires CameraPairingCodeFile."
+}
+if ($StartFaceVision -and -not (Test-Path -LiteralPath $CameraPairingCodeFile -PathType Leaf)) {
+  throw "CameraPairingCodeFile is missing."
+}
 
 function Stop-ExistingBridge {
   $listeners = @(Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction SilentlyContinue)
@@ -112,6 +122,33 @@ if (-not $SttHealth -or [string]$SttHealth.status -ne "ok") {
 }
 $SttHealth | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidencePath "stt-server-health.json") -Encoding UTF8
 
+$escapedDeviceHost = $DeviceHost.Replace("'", "''")
+$VisionStart = $null
+$VisionPid = 0
+if ($StartFaceVision) {
+  $visionStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_local_vision.ps1")).Path.Replace("'", "''")
+  $escapedPairingCodeFile = $CameraPairingCodeFile.Replace("'", "''")
+  $escapedVisionPython = $VisionPython.Replace("'", "''")
+  $visionScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; " +
+    "& '$visionStarter' -DeviceHost '$escapedDeviceHost' -RobotHttpPort 8789 " +
+    "-PairingCodeFile '$escapedPairingCodeFile' -IntervalSeconds $FaceVisionIntervalSeconds " +
+    "-StopExisting -Background -Json"
+  if (-not [string]::IsNullOrWhiteSpace($VisionPython)) {
+    $visionScript += " -PythonExe '$escapedVisionPython'"
+  }
+  $visionChild = Invoke-EncodedChildPowerShell -ScriptBody $visionScript `
+    -StdoutPath (Join-Path $EvidencePath "vision-start.json") `
+    -StderrPath (Join-Path $EvidencePath "vision-start.err.log")
+  if ($visionChild.exitCode -ne 0) {
+    throw "Local vision start failed with exit $($visionChild.exitCode): $($visionChild.stderr -join ' ')"
+  }
+  $VisionStart = ($visionChild.stdout -join "`n") | ConvertFrom-Json
+  if ([string]$VisionStart.status -ne "running" -or [int]$VisionStart.pid -le 0) {
+    throw "Local vision launcher did not report a running worker."
+  }
+  $VisionPid = [int]$VisionStart.pid
+}
+
 Stop-ExistingBridge
 
 $MemoryReport = $null
@@ -126,7 +163,6 @@ $env:STACKCHAN_RVC_DIRECTML_WORKER_URL = $WorkerUrl
 $bridgeStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_pc_brain.ps1")).Path.Replace("'", "''")
 $escapedMemoryFile = $MemoryFile.Replace("'", "''")
 $escapedSearxngUrl = $SearxngUrl.Replace("'", "''")
-$escapedDeviceHost = $DeviceHost.Replace("'", "''")
 $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; `$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
   "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
@@ -184,6 +220,42 @@ if (-not $SocketReady -or -not $Debug -or $Debug.bridge_state -ne "ready") {
   throw "DirectML bridge did not reconnect to Stackchan within $ReconnectTimeoutSeconds seconds."
 }
 
+$VisionReady = -not $StartFaceVision
+$VisionBefore = $null
+$VisionAfter = $null
+if ($StartFaceVision) {
+  $VisionBefore = $Debug
+  $visionDeadline = (Get-Date).AddSeconds([Math]::Min(30, $ReconnectTimeoutSeconds))
+  while ((Get-Date) -lt $visionDeadline) {
+    Start-Sleep -Seconds 1
+    try { $VisionAfter = Invoke-RestMethod -Uri $DebugUrl -TimeoutSec 5 } catch { $VisionAfter = $null }
+    $visionProcess = Get-Process -Id $VisionPid -ErrorAction SilentlyContinue
+    if ($visionProcess -and $VisionAfter -and
+        [int64]$VisionAfter.camera_host_frame_requests -gt
+          [int64]$VisionBefore.camera_host_frame_requests -and
+        [int64]$VisionAfter.camera_host_target_updates -gt
+          [int64]$VisionBefore.camera_host_target_updates -and
+        [int64]$VisionAfter.camera_host_frame_failures -eq
+          [int64]$VisionBefore.camera_host_frame_failures -and
+        [int64]$VisionAfter.camera_host_auth_failures -eq
+          [int64]$VisionBefore.camera_host_auth_failures) {
+      $VisionReady = $true
+      break
+    }
+  }
+  [ordered]@{
+    schema = "stackchan.local-vision-runtime-check.v1"
+    ready = $VisionReady
+    pid = $VisionPid
+    before = $VisionBefore
+    after = $VisionAfter
+  } | ConvertTo-Json -Depth 12 | Set-Content `
+    -LiteralPath (Join-Path $EvidencePath "vision-runtime-check.json") -Encoding UTF8
+  if (-not $VisionReady) {
+    throw "Local vision did not advance authenticated frame and target counters."
+  }
+}
+
 $runtimeChecker = (Resolve-Path (Join-Path $PSScriptRoot "check_pc_brain_runtime.ps1")).Path
 $escapedRepoRoot = $RepoRoot.Path.Replace("'", "''")
 $escapedRuntimeChecker = $runtimeChecker.Replace("'", "''")
@@ -229,6 +301,19 @@ $Result = [ordered]@{
   workerMethod = $WorkerHealth.method
   sttServerUrl = $SttServerUrl
   sttServerReady = [string]$SttHealth.status -eq "ok"
+  faceVisionEnabled = $StartFaceVision
+  faceVisionReady = $VisionReady
+  faceVisionPid = if ($StartFaceVision) { $VisionPid } else { $null }
+  faceVisionFrameRequests = if ($VisionAfter) {
+    [int64]$VisionAfter.camera_host_frame_requests - [int64]$VisionBefore.camera_host_frame_requests
+  } else {
+    0
+  }
+  faceVisionTargetUpdates = if ($VisionAfter) {
+    [int64]$VisionAfter.camera_host_target_updates - [int64]$VisionBefore.camera_host_target_updates
+  } else {
+    0
+  }
   streamTtsPhrases = $true
   researchEnabled = [bool]$EnableResearch
   conversationV2Enabled = [bool]$EnableConversationV2

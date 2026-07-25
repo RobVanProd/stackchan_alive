@@ -115,7 +115,15 @@ function render(payload) {
   $("temperatureValue").textContent = Number.isFinite(temp) ? `${temp.toFixed(1)} C` : "--";
   $("thermalDetail").textContent = robot.thermalSuppressed ? "Motion thermally suppressed" : "Thermal gate clear";
   $("touchValue").textContent = boolLabel(robot.touchReady);
-  $("cameraValue").textContent = robot.cameraActive ? "Active" : boolLabel(robot.cameraEnabled, "Ready", "Unavailable");
+  const visionUpdates = Number(robot.visionTargetUpdates || 0);
+  const visionFailures = Number(robot.visionFrameFailures || 0) + Number(robot.visionAuthFailures || 0);
+  $("cameraValue").textContent = robot.visionTargetValid
+    ? "Tracking"
+    : visionUpdates > 0 && visionFailures === 0
+      ? "Scanning"
+      : robot.cameraActive
+        ? "Waiting for host"
+        : boolLabel(robot.cameraEnabled, "Ready", "Unavailable");
   $("servoRailValue").textContent = boolLabel(robot.servoRailEnabled, "On", "Off");
   $("servoTorqueValue").textContent = `Torque ${String(boolLabel(robot.servoTorqueEnabled, "on", "off")).toLowerCase()}`;
   $("debugFreshness").textContent = robot.debugAt ? `Sampled ${formatTime(robot.debugAt)}` : "Not sampled";

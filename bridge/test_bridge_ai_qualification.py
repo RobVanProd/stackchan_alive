@@ -40,6 +40,18 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "speaker_stream_play_raw_failed": 2,
             "speaker_stream_forced_stops": 1,
             "bridge_audio_remote_stop_requests": 2,
+            "compiled_enable_camera": 1,
+            "compiled_enable_camera_host_vision": 1,
+            "camera_ready": True,
+            "camera_active": True,
+            "camera_capture_ready": True,
+            "camera_host_frame_requests": 20,
+            "camera_host_frame_failures": 1,
+            "camera_host_target_updates": 20,
+            "camera_host_auth_failures": 0,
+            "camera_face_batches": 20,
+            "camera_faces_observed": 5,
+            "camera_events": 4,
         }
         after_debug = {
             **before_debug,
@@ -49,6 +61,11 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "audio_stream_active": False,
             "bridge_downlink_playback_awaiting_drain": False,
             "speaker_channel_state": 0,
+            "camera_host_frame_requests": 40,
+            "camera_host_target_updates": 40,
+            "camera_face_batches": 40,
+            "camera_faces_observed": 10,
+            "camera_events": 9,
         }
         before_dashboard = {
             "bridge": {"conversationV2Enabled": True},
@@ -228,6 +245,29 @@ class BridgeAiQualificationTests(unittest.TestCase):
         )
         self.assertEqual("fail", privacy["status"])
 
+    def test_camera_frames_without_host_targets_fail_vision_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            after = json.loads((root / "after-debug.json").read_text(encoding="utf-8"))
+            before = json.loads((root / "before-debug.json").read_text(encoding="utf-8"))
+            for key in (
+                "camera_host_target_updates",
+                "camera_face_batches",
+                "camera_faces_observed",
+                "camera_events",
+            ):
+                after[key] = before[key]
+            (root / "after-debug.json").write_text(json.dumps(after), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        vision = next(
+            check for check in report["checks"] if check["id"] == "robot-host-vision-advancing"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", vision["status"])
+
     def test_late_audio_protocol_event_fails_order_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -251,6 +291,57 @@ class BridgeAiQualificationTests(unittest.TestCase):
         )
         self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
         self.assertEqual("fail", audio_order["status"])
+
+    def test_unrecovered_response_wire_event_fails_candidate_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            with (root / "turns.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "schema": "stackchan.response-wire-event.v1",
+                            "code": "response_unclosed",
+                            "seq": 42,
+                            "active_seq": 42,
+                            "recovered": False,
+                        }
+                    )
+                    + "\n"
+                )
+
+            report = check_evidence(root)
+
+        response_wire = next(
+            check for check in report["checks"] if check["id"] == "host-response-wire-clean"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", response_wire["status"])
+
+    def test_recovered_cancelled_response_keeps_wire_gate_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            with (root / "turns.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "schema": "stackchan.response-wire-event.v1",
+                            "code": "response_forced_closed",
+                            "seq": 42,
+                            "active_seq": None,
+                            "recovered": True,
+                        }
+                    )
+                    + "\n"
+                )
+
+            report = check_evidence(root)
+
+        response_wire = next(
+            check for check in report["checks"] if check["id"] == "host-response-wire-clean"
+        )
+        self.assertEqual("pass", response_wire["status"])
 
     def test_missing_writer_telemetry_fails_candidate_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

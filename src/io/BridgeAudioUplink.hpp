@@ -50,6 +50,7 @@ class BridgeAudioUplink {
   void reset();
 
   bool beginTurn(uint32_t seq, uint32_t nowMs, bool wakeGateOpen);
+  bool acceptsPcm(uint32_t seq) const;
   bool submitPcmChunk(uint32_t seq, const int16_t* samples, uint16_t sampleCount, uint32_t nowMs);
   bool submitPcmBytes(uint32_t seq, const uint8_t* payload, size_t length, uint32_t nowMs);
   bool endTurn(uint32_t seq, uint32_t nowMs);

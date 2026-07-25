@@ -6847,6 +6847,34 @@ void test_bridge_audio_uplink_queues_start_chunk_and_end_frames() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(samples), uplink.telemetry().bytesQueued);
 }
 
+void test_bridge_audio_uplink_tail_can_be_suppressed_after_end_without_error() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 925);
+
+  BridgeAudioUplinkConfig config;
+  config.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(config, &session));
+  TEST_ASSERT_TRUE(uplink.beginTurn(10, 930, true));
+  TEST_ASSERT_TRUE(uplink.acceptsPcm(10));
+  TEST_ASSERT_FALSE(uplink.acceptsPcm(11));
+
+  session.update(935);
+  socket.clearOutgoing();
+  TEST_ASSERT_TRUE(uplink.endTurn(10, 940));
+  TEST_ASSERT_FALSE(uplink.acceptsPcm(10));
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().errors);
+
+  const int16_t trailingSamples[] = {100, -100};
+  if (uplink.acceptsPcm(10)) {
+    uplink.submitPcmChunk(10, trailingSamples, 2, 945);
+  }
+  TEST_ASSERT_EQUAL_UINT32(0, uplink.telemetry().errors);
+  TEST_ASSERT_TRUE(socket.outgoing.empty());
+}
+
 void test_bridge_audio_uplink_rejects_bad_sequence_and_limits() {
   BridgeClient bridge;
   FakeBridgeNetworkSocket socket;
@@ -8340,6 +8368,7 @@ int main() {
   RUN_TEST(test_ota_health_requires_continuous_window_and_rolls_back_on_timeout);
   RUN_TEST(test_bridge_audio_uplink_requires_wake_gate_before_start);
   RUN_TEST(test_bridge_audio_uplink_queues_start_chunk_and_end_frames);
+  RUN_TEST(test_bridge_audio_uplink_tail_can_be_suppressed_after_end_without_error);
   RUN_TEST(test_bridge_audio_uplink_rejects_bad_sequence_and_limits);
   RUN_TEST(test_bridge_wake_gate_suppresses_turn_when_uplink_disabled);
   RUN_TEST(test_bridge_wake_gate_starts_and_completes_uplink_turn);

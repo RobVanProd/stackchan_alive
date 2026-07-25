@@ -19,7 +19,9 @@ gate, not a source-test substitute.
 Use a planned restart window. The DirectML launcher starts or reuses the local RVC worker and
 resident loopback whisper.cpp server, then replaces only a verified Stackchan bridge listener.
 Room observation additionally requires a private camera pairing-code file and a loopback
-vision-capable Ollama model.
+vision-capable Ollama model. When room observation is enabled, the launcher also starts the
+hash-pinned local YuNet face worker and refuses readiness unless authenticated camera frame and
+target counters advance. Use `-EnableFaceVision` to run face tracking without room observation.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\start_pc_brain_directml.ps1 `
@@ -96,6 +98,9 @@ The checker requires:
 - connected bridge/network state, the 50 ms display gate, and motion/rail/torque off;
 - zero uplink, writer-drop, reply-window, playback, raw-speaker, or forced-stop deltas;
 - zero host late-audio events or declared/received audio-count mismatches;
+- no unrecovered response-wire overlap, sequence mismatch, or missing end;
+- advancing authenticated host-vision frame, target, face, and camera-event counters with zero new
+  frame or pairing failures;
 - three or more warm local audio turns meeting the under-3-second first-audio gate;
 - authoritative playback drain before every reply window;
 - the required conversation, initiative, room, privacy, and operator-observation evidence.

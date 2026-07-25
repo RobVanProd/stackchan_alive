@@ -298,6 +298,259 @@ class LanServiceTests(unittest.TestCase):
         self.assertFalse(server.is_alive())
         self.assertEqual([], errors)
 
+    def test_websocket_streaming_cancel_closes_started_response_without_audio_tail(self):
+        with socket.create_server(("127.0.0.1", 0)) as probe:
+            port = int(probe.getsockname()[1])
+        tts_started = threading.Event()
+        errors: list[BaseException] = []
+        runner = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "First phrase. Second phrase.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+
+        def blocking_tts(*_args, cancellation=None, **_kwargs):
+            tts_started.set()
+            deadline = time.monotonic() + 4.0
+            while time.monotonic() < deadline:
+                if cancellation is not None and cancellation.cancelled:
+                    raise OperationCancelledError(cancellation.reason)
+                time.sleep(0.01)
+            raise AssertionError("TTS turn was not cancelled")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+
+            def run_server():
+                try:
+                    serve(
+                        LanBridgeConfig(
+                            host="127.0.0.1",
+                            port=port,
+                            once=True,
+                            runner_command="fake-runner",
+                            require_runner=True,
+                            tts_command="fake-tts",
+                            stream_tts_phrases=True,
+                            downlink_audio_chunk_bytes=4,
+                            downlink_binary_frame_delay_ms=0,
+                            downlink_text_frame_delay_ms=0,
+                            turn_log_file=turn_log,
+                        )
+                    )
+                except BaseException as exc:  # pragma: no cover - surfaced by assertion
+                    errors.append(exc)
+
+            with (
+                patch("lan_service.run_runner_profile", return_value=runner),
+                patch("lan_service.synthesize_speech", side_effect=blocking_tts),
+            ):
+                server = threading.Thread(target=run_server, daemon=True)
+                server.start()
+                request = (
+                    "GET /bridge HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "\r\n"
+                ).encode("ascii")
+                with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+                    client.sendall(request)
+                    response = bytearray()
+                    while b"\r\n\r\n" not in response:
+                        response.extend(client.recv(1))
+                    read_ws_frame(client)  # session hello
+                    client.sendall(
+                        encode_ws_text(
+                            json.dumps(
+                                {
+                                    "type": "utterance_end",
+                                    "seq": 93,
+                                    "text": "Tell me something.",
+                                }
+                            )
+                        )
+                    )
+                    seen: list[dict[str, object]] = []
+                    while not any(frame.get("type") == "response_start" for frame in seen):
+                        opcode, payload = read_ws_frame(client)
+                        self.assertEqual(0x1, opcode)
+                        seen.append(json.loads(payload.decode("utf-8")))
+                    self.assertTrue(tts_started.wait(timeout=1.0))
+
+                    client.sendall(
+                        encode_ws_text(json.dumps({"type": "cancel", "reason": "barge_in"}))
+                    )
+                    binary_after_cancel = 0
+                    while not any(frame.get("type") == "response_end" for frame in seen):
+                        opcode, payload = read_ws_frame(client)
+                        if opcode == 0x2:
+                            binary_after_cancel += 1
+                        elif opcode == 0x1:
+                            seen.append(json.loads(payload.decode("utf-8")))
+                    client.sendall(encode_ws_frame(b"", opcode=0x8))
+
+                server.join(timeout=3.0)
+
+            records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        response_starts = [frame for frame in seen if frame.get("type") == "response_start"]
+        response_ends = [frame for frame in seen if frame.get("type") == "response_end"]
+        error_codes = {
+            str(frame.get("code"))
+            for frame in seen
+            if frame.get("type") == "error"
+        }
+        wire_events = [
+            record
+            for record in records
+            if record.get("schema") == "stackchan.response-wire-event.v1"
+        ]
+        self.assertEqual(0, binary_after_cancel)
+        self.assertEqual([93], [frame["seq"] for frame in response_starts])
+        self.assertEqual([93], [frame["seq"] for frame in response_ends])
+        self.assertIn("response_aborted", error_codes)
+        self.assertTrue(
+            any(
+                event.get("code") == "response_forced_closed"
+                and event.get("recovered") is True
+                for event in wire_events
+            )
+        )
+        self.assertFalse(
+            any(event.get("code") == "response_unclosed" for event in wire_events)
+        )
+        self.assertFalse(server.is_alive())
+        self.assertEqual([], errors)
+
+    def test_websocket_auto_turn_failure_closes_started_response(self):
+        with socket.create_server(("127.0.0.1", 0)) as probe:
+            port = int(probe.getsockname()[1])
+        errors: list[BaseException] = []
+
+        def fail_after_response_start(
+            _session,
+            text,
+            *,
+            frame_sink=None,
+            **_kwargs,
+        ):
+            seq = int(json.loads(text)["seq"])
+            self.assertIsNotNone(frame_sink)
+            frame_sink(
+                {
+                    "type": "response_start",
+                    "seq": seq,
+                    "intent": "speak",
+                    "arousal": 0.0,
+                    "valence": 0.0,
+                    "text": "A short automatic line.",
+                }
+            )
+            raise RuntimeError("synthetic auto-turn failure")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+
+            def run_server():
+                try:
+                    serve(
+                        LanBridgeConfig(
+                            host="127.0.0.1",
+                            port=port,
+                            once=True,
+                            auto_turn_text="Say something.",
+                            runner_command="fake-runner",
+                            require_runner=True,
+                            tts_command="fake-tts",
+                            stream_tts_phrases=True,
+                            downlink_binary_frame_delay_ms=0,
+                            downlink_text_frame_delay_ms=0,
+                            turn_log_file=turn_log,
+                        )
+                    )
+                except BaseException as exc:  # expected TTS failure
+                    errors.append(exc)
+
+            with patch.object(
+                LanBridgeSession,
+                "handle_text",
+                new=fail_after_response_start,
+            ):
+                server = threading.Thread(target=run_server, daemon=True)
+                server.start()
+                request = (
+                    "GET /bridge HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "\r\n"
+                ).encode("ascii")
+                with socket.create_connection(("127.0.0.1", port), timeout=5.0) as client:
+                    client.sendall(request)
+                    response = bytearray()
+                    while b"\r\n\r\n" not in response:
+                        response.extend(client.recv(1))
+                    seen: list[dict[str, object]] = []
+                    while not any(frame.get("type") == "response_end" for frame in seen):
+                        opcode, payload = read_ws_frame(client)
+                        self.assertEqual(0x1, opcode)
+                        seen.append(json.loads(payload.decode("utf-8")))
+
+                server.join(timeout=3.0)
+
+            records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        response_starts = [frame for frame in seen if frame.get("type") == "response_start"]
+        response_ends = [frame for frame in seen if frame.get("type") == "response_end"]
+        wire_events = [
+            record
+            for record in records
+            if record.get("schema") == "stackchan.response-wire-event.v1"
+        ]
+        self.assertEqual(1, len(response_starts))
+        self.assertEqual(
+            [frame["seq"] for frame in response_starts],
+            [frame["seq"] for frame in response_ends],
+        )
+        self.assertTrue(
+            any(
+                frame.get("type") == "error"
+                and frame.get("code") == "response_aborted"
+                for frame in seen
+            )
+        )
+        self.assertTrue(
+            any(
+                event.get("code") == "response_forced_closed"
+                and event.get("reason") == "auto_turn_interrupted"
+                for event in wire_events
+            )
+        )
+        self.assertFalse(server.is_alive())
+        self.assertEqual(1, len(errors))
+        self.assertIn("synthetic auto-turn failure", str(errors[0]))
+
     def test_prompt_case_can_follow_utterance_text(self):
         self.assertEqual("picked_up", prompt_case_for_text("I picked you up", "", "greeting"))
         self.assertEqual("low_battery", prompt_case_for_text("Power is low", "", "greeting"))

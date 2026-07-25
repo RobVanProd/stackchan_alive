@@ -44,6 +44,21 @@ The production bridge does not import OpenCV and does not gain a new dependency.
 verifies the model SHA-256 before use; model source and MIT license provenance are recorded in
 `bridge/models/README.md`.
 
+For normal Windows operation, use the supervised launcher instead of keeping a separate terminal
+open:
+
+```powershell
+.\tools\start_local_vision.ps1 -DeviceHost 192.168.1.238 `
+  -PairingCodeFile output\private\camera-pairing-code.txt `
+  -StopExisting -Background -Json
+```
+
+The launcher validates OpenCV, the pinned model hash, the private robot URL, and the pairing file
+without fetching a frame, then starts only the local worker. It stores a PID and aggregate logs
+under `output\pc-brain\latest`; it never places the six-digit pairing code on the process command
+line. `tools\start_pc_brain_directml.ps1` invokes this automatically when room observation is
+enabled and verifies live frame/target advancement before reporting ready.
+
 ## Supervised Physical Run
 
 ### Eye-Safe Lighting

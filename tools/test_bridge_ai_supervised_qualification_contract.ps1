@@ -25,6 +25,9 @@ foreach ($Required in @(
   "--stt-server-url",
   "--redact-turn-text",
   "private_audio_evidence_enabled",
+  "face_vision_worker_not_running",
+  "robot_host_vision_never_advanced",
+  "vision_service.pid",
   "minReplyWindows",
   "bridge-ai-supervised-session.v1"
 )) {
