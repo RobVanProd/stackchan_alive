@@ -10,6 +10,7 @@
 
 #include "face/ExpressionMapper.hpp"
 #include "face/FaceAnimator.hpp"
+#include "face/SleepCue.hpp"
 #include "io/AudioCaptureAdapter.hpp"
 #include "io/AudioOut.hpp"
 #include "io/BridgeAudioDownlink.hpp"
@@ -46,6 +47,7 @@
 #include "persona/EmbodiedEnergy.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/GazeTracker.hpp"
+#include "persona/HeadGaze.hpp"
 #include "persona/IdleLife.hpp"
 #include "persona/IntentEngine.hpp"
 #include "persona/SpeechPlanner.hpp"
@@ -1206,6 +1208,200 @@ void test_breathing_survives_a_stalled_frame() {
 
   TEST_ASSERT_TRUE(fabsf(c.face.faceY) < 4.0f);
   TEST_ASSERT_GREATER_THAN_UINT32(0u, stalled.telemetry().breathPeriodMs);
+}
+
+void test_head_gaze_holds_poses_instead_of_swaying() {
+  HeadGaze gaze;
+  gaze.reset(0);
+  const float yawSpan = 6.0f;
+  const float pitchSpan = 1.2f;
+  uint32_t holdFrames = 0;
+  uint32_t totalFrames = 0;
+  float previous = 0.0f;
+  for (uint32_t nowMs = 0; nowMs < 20000; nowMs += 50) {
+    gaze.update(nowMs, yawSpan, pitchSpan, 0.40f, 0.35f);
+    if (nowMs > 0 && fabsf(gaze.yawDeg() - previous) < 0.02f) {
+      ++holdFrames;
+    }
+    previous = gaze.yawDeg();
+    ++totalFrames;
+  }
+  // A head that never settles reads as nervous. Two sine waves held still about
+  // 11% of the time; look-and-hold should spend much more of it parked.
+  TEST_ASSERT_GREATER_THAN_UINT32(totalFrames / 3, holdFrames);
+}
+
+void test_head_gaze_stays_inside_its_envelope() {
+  HeadGaze gaze;
+  gaze.reset(0);
+  const float yawSpan = 6.0f;
+  const float pitchSpan = 1.2f;
+  for (uint32_t nowMs = 0; nowMs < 60000; nowMs += 50) {
+    gaze.update(nowMs, yawSpan, pitchSpan, 0.20f, 0.90f);
+    // Servo travel must not grow beyond what the sine version could reach.
+    TEST_ASSERT_TRUE(fabsf(gaze.yawDeg()) <= yawSpan + 0.001f);
+    TEST_ASSERT_TRUE(fabsf(gaze.pitchDeg()) <= pitchSpan + 0.001f);
+  }
+}
+
+void test_head_gaze_focus_reduces_excursion() {
+  HeadGaze wandering;
+  HeadGaze locked;
+  wandering.reset(0);
+  locked.reset(0);
+  float wanderPeak = 0.0f;
+  float lockedPeak = 0.0f;
+  for (uint32_t nowMs = 0; nowMs < 60000; nowMs += 50) {
+    wandering.update(nowMs, 6.0f, 1.2f, 0.10f, 0.40f);
+    locked.update(nowMs, 6.0f, 1.2f, 0.95f, 0.40f);
+    wanderPeak = fmaxf(wanderPeak, fabsf(wandering.yawDeg()));
+    lockedPeak = fmaxf(lockedPeak, fabsf(locked.yawDeg()));
+  }
+  // Attention should show in the body: a focused character keeps its head near
+  // centre instead of ranging around the room.
+  TEST_ASSERT_GREATER_THAN_FLOAT(lockedPeak, wanderPeak);
+}
+
+namespace {
+
+// Run the engine forward with nothing happening at all.
+CharacterMode runUntilAsleep(IntentEngine& engine, uint32_t limitMs, uint32_t* asleepAtMs) {
+  CharacterMode mode = CharacterMode::Idle;
+  for (uint32_t nowMs = 0; nowMs < limitMs; nowMs += 50) {
+    mode = engine.update(nowMs).mode;
+    if (mode == CharacterMode::Sleep) {
+      if (asleepAtMs != nullptr) {
+        *asleepAtMs = nowMs;
+      }
+      return mode;
+    }
+  }
+  return mode;
+}
+
+}  // namespace
+
+void test_sleep_pressure_builds_only_when_left_alone() {
+  EmotionModel busy;
+  EmotionModel alone;
+  busy.reset();
+  alone.reset();
+
+  RobotEvent touch;
+  touch.type = EventType::UserTouched;
+  touch.strength = 0.5f;
+
+  for (int second = 0; second < 600; ++second) {
+    for (int tick = 0; tick < 20; ++tick) {
+      busy.update(0.050f);
+      alone.update(0.050f);
+    }
+    // The busy one gets company every half minute.
+    if (second % 30 == 0) {
+      busy.applyEvent(touch);
+    }
+  }
+
+  // Being left alone must eventually make him sleepy; being visited must not.
+  TEST_ASSERT_GREATER_THAN_FLOAT(0.60f, alone.sleepPressure());
+  TEST_ASSERT_LESS_THAN_FLOAT(0.10f, busy.sleepPressure());
+  TEST_ASSERT_GREATER_THAN_FLOAT(busy.profile().fatigue, alone.profile().fatigue);
+}
+
+void test_engine_falls_asleep_when_left_alone() {
+  IntentEngine engine;
+  engine.begin();
+  // Demo mode injects fake events, which would keep him awake forever.
+  engine.setDemoEnabled(false, 0);
+
+  uint32_t asleepAtMs = 0;
+  const CharacterMode mode = runUntilAsleep(engine, 900000u, &asleepAtMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep), static_cast<int>(mode));
+  // Soon enough to actually observe, late enough not to nod off mid-visit.
+  TEST_ASSERT_GREATER_THAN_UINT32(180000u, asleepAtMs);
+  TEST_ASSERT_LESS_THAN_UINT32(900000u, asleepAtMs);
+}
+
+void test_demo_mode_keeps_him_awake() {
+  IntentEngine engine;
+  engine.begin();
+  // Demo injects an event every few seconds, so he should never drop off.
+  engine.setDemoEnabled(true, 0);
+  const CharacterMode mode = runUntilAsleep(engine, 900000u, nullptr);
+  TEST_ASSERT_NOT_EQUAL(static_cast<int>(CharacterMode::Sleep), static_cast<int>(mode));
+}
+
+void test_sleeping_head_returns_home_and_eyes_close() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+  uint32_t asleepAtMs = 0;
+  runUntilAsleep(engine, 900000u, &asleepAtMs);
+
+  RobotFrame frame = makeNeutralFrame();
+  for (uint32_t k = 0; k <= 8000u; k += 50) {
+    frame = engine.update(asleepAtMs + k);
+  }
+  // Home, not frozen wherever he happened to be looking.
+  TEST_ASSERT_FLOAT_WITHIN(0.30f, 0.0f, frame.motion.yawDeg);
+  // Eyes shut.
+  TEST_ASSERT_LESS_THAN_FLOAT(0.30f, frame.face.eyeOpen);
+}
+
+void test_touch_wakes_him_but_internal_events_do_not() {
+  IntentEngine roused;
+  roused.begin();
+  roused.setDemoEnabled(false, 0);
+  uint32_t asleepAtMs = 0;
+  runUntilAsleep(roused, 900000u, &asleepAtMs);
+
+  RobotEvent touch;
+  touch.type = EventType::UserTouched;
+  touch.timestampMs = asleepAtMs + 6000;
+  touch.strength = 0.8f;
+  roused.applyEvent(touch, CharacterMode::Attend);
+  const RobotFrame awake = roused.update(asleepAtMs + 6050);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Attend), static_cast<int>(awake.mode));
+
+  IntentEngine undisturbed;
+  undisturbed.begin();
+  undisturbed.setDemoEnabled(false, 0);
+  uint32_t secondAsleepMs = 0;
+  runUntilAsleep(undisturbed, 900000u, &secondAsleepMs);
+
+  // His own bookkeeping must not count as being woken.
+  RobotEvent internal;
+  internal.type = EventType::ResponseEnded;
+  internal.timestampMs = secondAsleepMs + 6000;
+  undisturbed.applyEvent(internal, CharacterMode::Idle);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep),
+                    static_cast<int>(undisturbed.update(secondAsleepMs + 6050).mode));
+}
+
+void test_sleep_cue_emits_while_asleep_and_stops_after_waking() {
+  SleepCue cue;
+  cue.reset(0);
+
+  uint8_t peak = 0;
+  for (uint32_t nowMs = 0; nowMs < 12000u; nowMs += 50) {
+    cue.update(nowMs, true);
+    const SleepCueGeometry geometry = cue.geometry(200.0f, 60.0f);
+    if (geometry.count > peak) {
+      peak = geometry.count;
+    }
+    for (uint8_t i = 0; i < geometry.count; ++i) {
+      // Glyphs rise and stay bounded.
+      TEST_ASSERT_TRUE(geometry.glyphs[i].y <= 60.0f);
+      TEST_ASSERT_TRUE(geometry.glyphs[i].alpha >= 0.0f && geometry.glyphs[i].alpha <= 1.0f);
+    }
+  }
+  TEST_ASSERT_GREATER_THAN_UINT8(0, peak);
+
+  // After waking, in-flight glyphs finish and nothing new is emitted.
+  for (uint32_t nowMs = 12000u; nowMs < 24000u; nowMs += 50) {
+    cue.update(nowMs, false);
+  }
+  TEST_ASSERT_TRUE(cue.idle());
 }
 
 void test_intent_engine_reduced_motion_dampens_idle_life() {
@@ -2461,6 +2657,118 @@ void test_body_feedback_crossfades_mode_and_mood_changes() {
   }
   TEST_ASSERT_FALSE(feedback.telemetry().transitionActive);
   TEST_ASSERT_EQUAL_UINT32(1, feedback.telemetry().modeTransitions);
+}
+
+namespace {
+
+// Settle the light so we compare resting colour rather than mid-crossfade.
+BodyRgbFrame settledBodyRgb(BodyFeedback& feedback, RobotFrame& frame, uint32_t startMs) {
+  BodyRgbFrame out;
+  for (uint32_t nowMs = startMs; nowMs <= startMs + 2000; nowMs += 50) {
+    out = feedback.render(frame, 0.0f, nowMs, 1.0f, false);
+  }
+  return out;
+}
+
+// Distance between two lights in summed channel terms.
+uint32_t bodyRgbColorDistance(const BodyRgbFrame& a, const BodyRgbFrame& b) {
+  uint32_t total = 0;
+  for (uint8_t i = 0; i < kBodyRgbLedCount; ++i) {
+    total += static_cast<uint32_t>(abs(static_cast<int>(a.leds[i].r) - static_cast<int>(b.leds[i].r)));
+    total += static_cast<uint32_t>(abs(static_cast<int>(a.leds[i].g) - static_cast<int>(b.leds[i].g)));
+    total += static_cast<uint32_t>(abs(static_cast<int>(a.leds[i].b) - static_cast<int>(b.leds[i].b)));
+  }
+  return total;
+}
+
+}  // namespace
+
+void test_body_feedback_mood_moves_colour_more_than_mode_does() {
+  // Same mood, two different working modes.
+  BodyFeedback modeA;
+  BodyFeedback modeB;
+  modeA.begin(0);
+  modeB.begin(0);
+  RobotFrame listenFrame = makeNeutralFrame();
+  listenFrame.mode = CharacterMode::Listen;
+  listenFrame.emotion.valence = 0.30f;
+  listenFrame.emotion.arousal = 0.40f;
+  RobotFrame thinkFrame = listenFrame;
+  thinkFrame.mode = CharacterMode::Think;
+  const uint32_t modeShift = bodyRgbColorDistance(settledBodyRgb(modeA, listenFrame, 100),
+                                                  settledBodyRgb(modeB, thinkFrame, 100));
+
+  // Same mode, two clearly different moods.
+  BodyFeedback moodA;
+  BodyFeedback moodB;
+  moodA.begin(0);
+  moodB.begin(0);
+  RobotFrame gladFrame = makeNeutralFrame();
+  gladFrame.mode = CharacterMode::Idle;
+  gladFrame.emotion.valence = 0.85f;
+  gladFrame.emotion.arousal = 0.40f;
+  RobotFrame sourFrame = gladFrame;
+  sourFrame.emotion.valence = -0.85f;
+  const uint32_t moodShift = bodyRgbColorDistance(settledBodyRgb(moodA, gladFrame, 100),
+                                                  settledBodyRgb(moodB, sourFrame, 100));
+
+  // The body light is a feeling, not a state-machine indicator: swinging the
+  // mood must move the colour further than switching working mode does.
+  TEST_ASSERT_GREATER_THAN_UINT32(modeShift, moodShift);
+}
+
+void test_body_feedback_keeps_fault_and_sleep_signals_distinct() {
+  // A fault must stay unmistakably red regardless of how good the mood is.
+  BodyFeedback fault;
+  fault.begin(0);
+  RobotFrame errorFrame = makeNeutralFrame();
+  errorFrame.mode = CharacterMode::Error;
+  errorFrame.emotion.valence = 0.90f;
+  errorFrame.emotion.arousal = 0.90f;
+  const BodyRgbFrame lit = settledBodyRgb(fault, errorFrame, 100);
+  uint16_t maxRed = 0;
+  uint16_t maxBlue = 0;
+  for (uint8_t i = 0; i < kBodyRgbLedCount; ++i) {
+    maxRed = max(maxRed, static_cast<uint16_t>(lit.leds[i].r));
+    maxBlue = max(maxBlue, static_cast<uint16_t>(lit.leds[i].b));
+  }
+  TEST_ASSERT_GREATER_THAN_UINT16(maxBlue * 2, maxRed);
+
+  // Sleep must stay dim even for a cheerful character.
+  BodyFeedback rest;
+  rest.begin(0);
+  RobotFrame sleepFrame = makeNeutralFrame();
+  sleepFrame.mode = CharacterMode::Sleep;
+  sleepFrame.emotion.valence = 0.90f;
+  BodyFeedback awake;
+  awake.begin(0);
+  RobotFrame idleFrame = sleepFrame;
+  idleFrame.mode = CharacterMode::Idle;
+  TEST_ASSERT_GREATER_THAN_UINT32(bodyRgbEnergy(settledBodyRgb(rest, sleepFrame, 100)),
+                                  bodyRgbEnergy(settledBodyRgb(awake, idleFrame, 100)));
+}
+
+void test_body_feedback_mood_colour_is_continuous() {
+  // Walking valence across the old hard threshold must not produce a jump.
+  uint32_t previousEnergy = 0;
+  uint32_t worstStep = 0;
+  for (int step = 0; step <= 20; ++step) {
+    BodyFeedback feedback;
+    feedback.begin(0);
+    RobotFrame frame = makeNeutralFrame();
+    frame.mode = CharacterMode::Idle;
+    frame.emotion.valence = -1.0f + static_cast<float>(step) * 0.10f;
+    const uint32_t energy = bodyRgbEnergy(settledBodyRgb(feedback, frame, 100));
+    if (step > 0) {
+      const uint32_t delta = energy > previousEnergy ? energy - previousEnergy
+                                                     : previousEnergy - energy;
+      worstStep = max(worstStep, delta);
+    }
+    previousEnergy = energy;
+  }
+  // A 0.1 valence step is a small feeling change and must stay a small colour
+  // change. The old bucketed tint jumped hard at +/-0.25 and +/-0.20.
+  TEST_ASSERT_LESS_THAN_UINT32(200, worstStep);
 }
 
 void test_body_feedback_bounds_every_normal_mode_transition() {
@@ -7696,6 +8004,15 @@ int main() {
   RUN_TEST(test_breathing_is_not_metronomic);
   RUN_TEST(test_breathing_produces_occasional_deeper_sigh);
   RUN_TEST(test_breathing_survives_a_stalled_frame);
+  RUN_TEST(test_sleep_pressure_builds_only_when_left_alone);
+  RUN_TEST(test_engine_falls_asleep_when_left_alone);
+  RUN_TEST(test_demo_mode_keeps_him_awake);
+  RUN_TEST(test_sleeping_head_returns_home_and_eyes_close);
+  RUN_TEST(test_touch_wakes_him_but_internal_events_do_not);
+  RUN_TEST(test_sleep_cue_emits_while_asleep_and_stops_after_waking);
+  RUN_TEST(test_head_gaze_holds_poses_instead_of_swaying);
+  RUN_TEST(test_head_gaze_stays_inside_its_envelope);
+  RUN_TEST(test_head_gaze_focus_reduces_excursion);
   RUN_TEST(test_intent_engine_reduced_motion_dampens_idle_life);
   RUN_TEST(test_intent_engine_applies_ambient_context);
   RUN_TEST(test_intent_engine_applies_circadian_context);
@@ -7719,6 +8036,9 @@ int main() {
   RUN_TEST(test_body_feedback_mic_and_touch_events_create_visible_pulses);
   RUN_TEST(test_body_feedback_speech_envelope_animates_speaking_light);
   RUN_TEST(test_body_feedback_crossfades_mode_and_mood_changes);
+  RUN_TEST(test_body_feedback_mood_moves_colour_more_than_mode_does);
+  RUN_TEST(test_body_feedback_keeps_fault_and_sleep_signals_distinct);
+  RUN_TEST(test_body_feedback_mood_colour_is_continuous);
   RUN_TEST(test_body_feedback_bounds_every_normal_mode_transition);
   RUN_TEST(test_gaze_tracker_uses_face_payload_for_eye_and_head_tracking);
   RUN_TEST(test_gaze_tracker_reduced_motion_dampens_face_tracking);

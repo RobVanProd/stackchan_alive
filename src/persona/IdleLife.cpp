@@ -46,7 +46,12 @@ void IdleLife::apply(RobotFrame& frame, uint32_t nowMs, bool reducedMotion) {
   frame.face.eyeWidthScale = clampValue(frame.face.eyeWidthScale + breath * 0.010f * motionScale, 0.88f, 1.18f);
   frame.motion.pitchDeg += pitchBob;
 
-  const float gazeLife = sinf(static_cast<float>(nowMs) * 0.001f * kTwoPi * 0.07f) * (1.0f - focus) * 0.07f * motionScale;
+  // A sleeping head does not scan the room, so the slow inter-fixation drift
+  // stops while he is out.
+  const float gazeLife = sleeping
+                             ? 0.0f
+                             : sinf(static_cast<float>(nowMs) * 0.001f * kTwoPi * 0.07f) *
+                                   (1.0f - focus) * 0.07f * motionScale;
   frame.face.pupilX = clampValue(frame.face.pupilX + gazeLife, -1.0f, 1.0f);
   frame.motion.yawDeg += gazeLife * 4.0f;
 

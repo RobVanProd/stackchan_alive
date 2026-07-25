@@ -246,6 +246,7 @@ bool DisplayAdapter::begin() {
   previousLeftEye_ = {};
   previousRightEye_ = {};
   previousMouth_ = {};
+  previousSleepCue_ = {};
   fullRefreshPending_ = false;
   telemetry_ = DisplayTelemetry {};
   telemetry_.ready = true;
@@ -363,6 +364,60 @@ void DisplayAdapter::drawEye(const EyeGeometry& eye, bool rightEye) {
   }
 
   previousBounds = currentBounds;
+}
+
+void DisplayAdapter::drawSleepCue(const SleepCueGeometry& cue) {
+  if (!begun_) {
+    return;
+  }
+
+  // Bound every glyph so the erase covers last frame's Zs as well as this one's.
+  DisplayRect currentBounds = {};
+  bool haveBounds = false;
+  for (uint8_t i = 0; i < cue.count; ++i) {
+    const SleepGlyph& glyph = cue.glyphs[i];
+    const int32_t pad = roundToInt(glyph.size) + 2;
+    const DisplayRect box = {roundToInt(glyph.x) - pad, roundToInt(glyph.y) - pad,
+                             pad * 2, pad * 2};
+    currentBounds = haveBounds ? unionRect(currentBounds, box) : box;
+    haveBounds = true;
+  }
+
+  const DisplayRect eraseBounds = unionRect(previousSleepCue_, currentBounds);
+  if (eraseBounds.w > 0 && eraseBounds.h > 0) {
+    clearCanvasRect(eraseBounds);
+    markDirty(eraseBounds);
+  }
+  previousSleepCue_ = currentBounds;
+
+  if (!cue.active) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < cue.count; ++i) {
+    const SleepGlyph& glyph = cue.glyphs[i];
+    if (glyph.alpha <= 0.02f) {
+      continue;
+    }
+    // Fade by scaling the accent colour toward the background.
+    const uint8_t r = static_cast<uint8_t>(((kAccent >> 16) & 0xFF) * glyph.alpha);
+    const uint8_t g = static_cast<uint8_t>(((kAccent >> 8) & 0xFF) * glyph.alpha);
+    const uint8_t b = static_cast<uint8_t>((kAccent & 0xFF) * glyph.alpha);
+    const uint32_t colour = (static_cast<uint32_t>(r) << 16) |
+                            (static_cast<uint32_t>(g) << 8) | b;
+
+    // A Z is three strokes: top bar, diagonal, bottom bar.
+    const int32_t half = max<int32_t>(2, roundToInt(glyph.size));
+    const int32_t cx = roundToInt(glyph.x);
+    const int32_t cy = roundToInt(glyph.y);
+    const int32_t left = cx - half;
+    const int32_t right = cx + half;
+    const int32_t top = cy - half;
+    const int32_t bottom = cy + half;
+    canvas_->drawLine(left, top, right, top, colour);
+    canvas_->drawLine(right, top, left, bottom, colour);
+    canvas_->drawLine(left, bottom, right, bottom, colour);
+  }
 }
 
 void DisplayAdapter::drawMouth(const MouthGeometry& mouth) {

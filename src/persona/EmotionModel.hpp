@@ -43,6 +43,16 @@ class EmotionModel {
     return habituation_;
   }
 
+  // 0 wide awake .. 1 ready to drop off. Rises while nothing engaging happens
+  // and resets when something does, so a character that has been left alone all
+  // afternoon actually gets sleepy instead of staying permanently fresh.
+  float sleepPressure() const;
+
+  // Seconds since the last rousing event.
+  float quietSeconds() const {
+    return quietSeconds_;
+  }
+
   // 0 fresh .. 1 fully habituated, for one event type.
   float habituationOf(EventType type) const;
 
@@ -51,7 +61,10 @@ class EmotionModel {
   EmotionalProfile baseline_;
   float familiarity_[kHabituatedEventTypes] = {};
   HabituationTelemetry habituation_;
+  float quietSeconds_ = 0.0f;
 
+  // Whether an event should count as company and push sleep back.
+  static bool isRousing(EventType type);
   static uint8_t habituationIndex(EventType type);
   // Ceiling on how far a given stimulus may be tuned out. Safety-relevant
   // events keep a floor of responsiveness and never reach zero.
