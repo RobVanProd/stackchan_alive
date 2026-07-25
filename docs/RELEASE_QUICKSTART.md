@@ -559,7 +559,7 @@ Import photos, videos, and speaker recordings through the packet helper so the f
 
 Use `-Type Audio` for phone videos of the speaker so `.mp4` or `.mov` recordings land under `audio\` instead of `photos\`.
 
-The evidence packet also includes `RVC_LEAD_AUDITION.md`, `reference_audio\`, and `RUN_PLAY_LEAD_VOICE.cmd`. Use that playback helper for the target speaker check so the recording is tied to the selected `RVC Bright Robot` lead audition and its exact pitch/index/RMS/protect settings.
+The evidence packet also includes `RVC_LEAD_AUDITION.md`, `reference_audio\`, and `RUN_PLAY_LEAD_VOICE.cmd`. Use that helper to check speaker routing with the verified `Stackchan Spark Bright Robot Playback Aid`. The promotion recording must use live robot speech through the production DirectML RVC path; the packaged WAV is not an RVC render.
 
 For speech-reactive mouth bench tests from an actual WAV, generate a 50 Hz sidecar and stream it over serial:
 

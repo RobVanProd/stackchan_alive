@@ -56,69 +56,38 @@ function Copy-VoiceLeadArtifactsFromRoot {
     [string]$DestinationRoot
   )
 
-  $auditionJsonPath = Join-Path $SourceRoot "media/voice/rvc/RVC_AUDITIONS.json"
-  $auditionMarkdownPath = Join-Path $SourceRoot "media/voice/rvc/RVC_AUDITIONS.md"
-  if (-not (Test-Path -LiteralPath $auditionJsonPath)) {
-    throw "Release package missing RVC audition manifest: media/voice/rvc/RVC_AUDITIONS.json"
-  }
-  if (-not (Test-Path -LiteralPath $auditionMarkdownPath)) {
-    throw "Release package missing RVC audition notes: media/voice/rvc/RVC_AUDITIONS.md"
-  }
-
-  $auditions = Get-Content -LiteralPath $auditionJsonPath -Raw | ConvertFrom-Json
-  if ($null -eq $auditions.leadAudition) {
-    throw "RVC_AUDITIONS.json missing leadAudition metadata."
-  }
-
-  $lead = $auditions.leadAudition
-  $leadFile = [string]$lead.file
-  if ([string]::IsNullOrWhiteSpace($leadFile)) {
-    throw "RVC lead audition file is blank."
-  }
-
-  $leadSourcePath = Join-Path $SourceRoot "media/voice/rvc/$leadFile"
+  $leadSourceRelativePath = "media/voice/stackchan_spark_audition_bright_robot_greeting.wav"
+  $leadNotesRelativePath = "media/voice/VOICE_SAMPLES.md"
+  $leadSourcePath = Join-Path $SourceRoot $leadSourceRelativePath
+  $leadNotesPath = Join-Path $SourceRoot $leadNotesRelativePath
   if (-not (Test-Path -LiteralPath $leadSourcePath)) {
-    throw "Release package missing RVC lead audition WAV: media/voice/rvc/$leadFile"
+    throw "Release package missing Stackchan voice playback reference: $leadSourceRelativePath"
+  }
+  if (-not (Test-Path -LiteralPath $leadNotesPath)) {
+    throw "Release package missing Stackchan voice playback notes: $leadNotesRelativePath"
   }
 
   $referenceDir = Join-Path $DestinationRoot "reference_audio"
   New-Item -ItemType Directory -Force -Path $referenceDir | Out-Null
 
+  $leadFile = "stackchan_voice_reference.wav"
   $leadDestinationPath = Join-Path $referenceDir $leadFile
   Copy-Item -LiteralPath $leadSourcePath -Destination $leadDestinationPath
-  Copy-Item -LiteralPath $auditionJsonPath -Destination (Join-Path $referenceDir "RVC_AUDITIONS.json")
-  Copy-Item -LiteralPath $auditionMarkdownPath -Destination (Join-Path $referenceDir "RVC_AUDITIONS.md")
 
   $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $leadDestinationPath).Hash.ToLowerInvariant()
-  $leadTitle = [string]$lead.title
-  $leadTranscript = [string]$lead.transcript
-  $leadRating = [string]$lead.userRating
-  $leadPurpose = [string]$lead.perceptualPurpose
-  $leadPitch = [string]$lead.pitch
-  $leadIndex = [string]$lead.index_rate
-  $leadRms = [string]$lead.rms_mix_rate
-  $leadProtect = [string]$lead.protect
+  $leadTitle = "Stackchan Spark Bright Robot Playback Aid"
+  $leadTranscript = "Hello. I am Stackchan, and I am awake."
+  $leadRating = "Packaged playback reference only; judge the production voice from live robot speech."
+  $leadPurpose = "Small-speaker routing and intelligibility aid before recording the live DirectML RVC output."
+  $leadPitch = "not-applicable"
+  $leadIndex = "not-applicable"
+  $leadRms = "not-applicable"
+  $leadProtect = "not-applicable"
   $leadRelativePath = "reference_audio/$leadFile"
-
-  @(
-    "# RVC Lead Audition Reference",
-    "",
-    "This file pins the exact review-only RVC voice sample to play during the target speaker check. It is not production voice-source approval.",
-    "",
-    "- Lead audition: $leadTitle",
-    "- Reference WAV: $leadRelativePath",
-    "- SHA256: $leadHash",
-    "- Transcript: $leadTranscript",
-    "- Tuning: pitch $leadPitch, index $leadIndex, RMS mix $leadRms, protect $leadProtect",
-    "- Listening note: $leadRating",
-    "- Perceptual purpose: $leadPurpose",
-    "",
-    "Use ``RUN_PLAY_LEAD_VOICE.cmd`` only as a playback aid. Consumer promotion still requires a real-device speaker recording imported under ``audio/``, completed ``AUDIO_REVIEW.md``, and completed production voice-source provenance."
-  ) | Set-Content -Path (Join-Path $DestinationRoot "RVC_LEAD_AUDITION.md") -Encoding UTF8
-
-  return [ordered]@{
+  $lead = [ordered]@{
     title = $leadTitle
     file = $leadFile
+    sourcePath = $leadSourceRelativePath
     referenceFile = $leadRelativePath
     sha256 = $leadHash
     transcript = $leadTranscript
@@ -128,7 +97,49 @@ function Copy-VoiceLeadArtifactsFromRoot {
     protect = $leadProtect
     userRating = $leadRating
     perceptualPurpose = $leadPurpose
+    evidenceRole = "playback-aid-only"
+    productionVoiceGate = "Live robot speech must exercise the verified DirectML RVC model and be recorded under audio/."
   }
+  $compatibilityManifest = [ordered]@{
+    schema = "stackchan.voice-playback-reference.v1"
+    compatibilityFilename = "RVC_AUDITIONS.json"
+    sourceNotes = $leadNotesRelativePath
+    note = "The legacy filename is retained for existing evidence tooling. This packaged sample is not an RVC render."
+    leadAudition = $lead
+  }
+  $compatibilityManifest | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $referenceDir "RVC_AUDITIONS.json") -Encoding UTF8
+  @(
+    "# Stackchan Voice Playback Reference",
+    "",
+    "This compatibility file replaces the retired packaged RVC audition bundle. The release package intentionally contains the verified production RVC model and index, but generated RVC WAV/MP3 auditions remain local and are not distributed.",
+    "",
+    "- Playback aid: $leadTitle",
+    "- Source package file: $leadSourceRelativePath",
+    "- Reference WAV: $leadRelativePath",
+    "- SHA256: $leadHash",
+    "- Transcript: $leadTranscript",
+    "- Evidence role: playback aid only",
+    "",
+    "Do not treat this sample as proof of the production DirectML RVC path. Qualification must exercise live robot speech, record the device speaker under ``audio/``, and verify the production model/index hashes from the package voice status reports."
+  ) | Set-Content -Path (Join-Path $referenceDir "RVC_AUDITIONS.md") -Encoding UTF8
+
+  @(
+    "# Stackchan Voice Playback Reference",
+    "",
+    "This file pins the packaged playback aid used to check speaker routing and baseline intelligibility. It is not an RVC-rendered production output and is not production voice-source approval.",
+    "",
+    "- Playback aid: $leadTitle",
+    "- Source package file: $leadSourceRelativePath",
+    "- Reference WAV: $leadRelativePath",
+    "- SHA256: $leadHash",
+    "- Transcript: $leadTranscript",
+    "- Listening note: $leadRating",
+    "- Perceptual purpose: $leadPurpose",
+    "",
+    "Use ``RUN_PLAY_LEAD_VOICE.cmd`` only as a playback aid. Consumer promotion still requires live speech through the verified DirectML RVC path, a real-device speaker recording imported under ``audio/``, and completed ``AUDIO_REVIEW.md``."
+  ) | Set-Content -Path (Join-Path $DestinationRoot "RVC_LEAD_AUDITION.md") -Encoding UTF8
+
+  return $lead
 }
 
 function Copy-VoiceLeadArtifactsFromZip {

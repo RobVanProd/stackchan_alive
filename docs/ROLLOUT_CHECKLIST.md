@@ -74,7 +74,8 @@ Pass criteria:
 - [ ] Face telemetry remains active during soak, with blink and saccade counters present in the serial log.
 - [ ] System telemetry remains present during soak, with no obvious heap leak or exhausted task stack margin.
 - [ ] Photo or video evidence saved under `photos/`.
-- [ ] `RVC_LEAD_AUDITION.md` reviewed and `RUN_PLAY_LEAD_VOICE.cmd` used for the selected lead voice speaker check.
+- [ ] `RVC_LEAD_AUDITION.md` reviewed and `RUN_PLAY_LEAD_VOICE.cmd` used for the packaged playback-aid routing check.
+- [ ] Live robot speech through the verified DirectML RVC path is recorded and reviewed on the target speaker.
 - [ ] Speaker recording saved under `audio/` and `AUDIO_REVIEW.md` marks intelligible audio, no clipping/distortion, adequate volume, and no playback dropout.
 - [ ] Firmware version and release tag recorded.
 

@@ -399,9 +399,9 @@ if (Test-Path -LiteralPath (Join-EvidencePath "metadata.json")) {
     if (Test-Path -LiteralPath (Join-EvidencePath ([string]$metadata.voiceLeadAudition.referenceFile))) {
       $leadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-EvidencePath ([string]$metadata.voiceLeadAudition.referenceFile))).Hash.ToLowerInvariant()
       if ($leadHash -eq [string]$metadata.voiceLeadAudition.sha256) {
-        Add-Pass "RVC lead audition reference hash matches metadata"
+        Add-Pass "Voice playback reference hash matches metadata"
       } else {
-        Add-Finding "RVC lead audition reference hash does not match metadata"
+        Add-Finding "Voice playback reference hash does not match metadata"
       }
     }
   } else {

@@ -1362,15 +1362,16 @@ Expected evidence:
 - no repeated resets
 - no task stalls
 - face remains responsive
-- `RVC_LEAD_AUDITION.md` reviewed so the exact lead sample and voice settings are known
+- `RVC_LEAD_AUDITION.md` reviewed so the exact packaged playback aid and its SHA are known
 - `RUN_PLAY_LEAD_VOICE.cmd` used as the playback aid when routing audio to the target speaker path
 - `AUDIO_REVIEW.md` completed
 - real-device speaker recording saved under `audio/`
 - audio sample is intelligible through the device speaker
 - no clipping, distortion, playback dropout, or excessive delay
 
-The evidence packet copies the current lead RVC audition into `reference_audio/`. The production
-direction is `RVC Bright Robot` with pitch 2, index 0.62, RMS mix 0.72, and protect 0.28.
+The evidence packet copies the verified `Stackchan Spark Bright Robot Playback Aid` into
+`reference_audio/`. It checks speaker routing and baseline intelligibility only. Production voice
+evidence must come from live robot speech through the verified DirectML RVC model and index.
 
 The packet also copies `VOICE_SOURCE_STATUS.md/json` and `RVC_VOICE_BASE_STATUS.md/json`; use them
 to confirm the production model and index hashes.
