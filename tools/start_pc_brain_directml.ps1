@@ -36,7 +36,8 @@ $StartFaceVision = [bool]($EnableFaceVision -or $EnableRoomObservation)
 if ($StartFaceVision -and [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
   throw "Face or room vision requires CameraPairingCodeFile."
 }
-if ($StartFaceVision -and -not (Test-Path -LiteralPath $CameraPairingCodeFile -PathType Leaf)) {
+if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile) -and
+    -not (Test-Path -LiteralPath $CameraPairingCodeFile -PathType Leaf)) {
   throw "CameraPairingCodeFile is missing."
 }
 
@@ -79,6 +80,24 @@ function Invoke-EncodedChildPowerShell {
     exitCode = $exitCode
     stdout = if (Test-Path -LiteralPath $StdoutPath) { Get-Content -LiteralPath $StdoutPath } else { @() }
     stderr = if (Test-Path -LiteralPath $StderrPath) { Get-Content -LiteralPath $StderrPath } else { @() }
+  }
+}
+
+$ResearchGate = $null
+if ($EnableResearch) {
+  $researchChecker = (Resolve-Path (Join-Path $PSScriptRoot "check_local_research.ps1")).Path
+  $researchOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File $researchChecker -SearxngUrl $SearxngUrl -Json 2>&1
+  $researchExit = $LASTEXITCODE
+  $researchEvidence = Join-Path $EvidencePath "research-preflight.json"
+  $researchOutput | Set-Content -LiteralPath $researchEvidence -Encoding UTF8
+  try {
+    $ResearchGate = ($researchOutput -join "`n") | ConvertFrom-Json
+  } catch {
+    throw "Local research preflight returned invalid structured evidence."
+  }
+  if ($researchExit -ne 0 -or -not [bool]$ResearchGate.pass) {
+    throw "Local research preflight failed: $([string]$ResearchGate.error). $([string]$ResearchGate.remediation)"
   }
 }
 
@@ -182,15 +201,15 @@ if ($EnableInitiative) {
   $bridgeScript += " -EnableInitiative"
 }
 if ($EnableRoomObservation) {
-  $escapedRoomVisionModel = $RoomVisionModel.Replace("'", "''")
-  $escapedPairingCodeFile = $CameraPairingCodeFile.Replace("'", "''")
   $bridgeScript += " -EnableRoomObservation -RoomObservationIntervalSeconds $RoomObservationIntervalSeconds"
-  if (-not [string]::IsNullOrWhiteSpace($RoomVisionModel)) {
-    $bridgeScript += " -RoomVisionModel '$escapedRoomVisionModel'"
-  }
-  if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
-    $bridgeScript += " -CameraPairingCodeFile '$escapedPairingCodeFile'"
-  }
+}
+if (-not [string]::IsNullOrWhiteSpace($RoomVisionModel)) {
+  $escapedRoomVisionModel = $RoomVisionModel.Replace("'", "''")
+  $bridgeScript += " -RoomVisionModel '$escapedRoomVisionModel'"
+}
+if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
+  $escapedPairingCodeFile = $CameraPairingCodeFile.Replace("'", "''")
+  $bridgeScript += " -CameraPairingCodeFile '$escapedPairingCodeFile'"
 }
 $bridgeChild = Invoke-EncodedChildPowerShell -ScriptBody $bridgeScript `
   -StdoutPath (Join-Path $EvidencePath "bridge-start.txt") `
@@ -316,6 +335,7 @@ $Result = [ordered]@{
   }
   streamTtsPhrases = $true
   researchEnabled = [bool]$EnableResearch
+  researchGateStatus = if ($ResearchGate) { [string]$ResearchGate.status } else { $null }
   conversationV2Enabled = [bool]$EnableConversationV2
   initiativeEnabled = [bool]$EnableInitiative
   roomObservationEnabled = [bool]$EnableRoomObservation

@@ -29,6 +29,10 @@ foreach ($required in @(
   "memory_maintenance.py --memory-file `$MemoryFile --apply",
   "start_voice_v2_directml_worker.ps1",
   "start_whisper_server.ps1",
+  "check_local_research.ps1",
+  "research-preflight.json",
+  "Local research preflight failed:",
+  "researchGateStatus =",
   "SttServerPort",
   "-SttServerUrl '`$SttServerUrl'",
   "sttServerReady =",
@@ -74,6 +78,13 @@ if ($workerReadyIndex -lt 0 -or $stopIndex -lt $workerReadyIndex) {
   throw "DirectML must pass health before the existing bridge is stopped."
 }
 
+$researchPreflightIndex = $text.IndexOf('research-preflight.json')
+$workerStartIndex = $text.IndexOf('start_voice_v2_directml_worker.ps1')
+if ($researchPreflightIndex -lt 0 -or $workerStartIndex -lt 0 -or
+    $researchPreflightIndex -gt $workerStartIndex -or $researchPreflightIndex -gt $stopIndex) {
+  throw "Research must pass before workers start or the existing bridge is stopped."
+}
+
 if ($text -match "Get-CimInstance Win32_Process\s*\|\s*Stop-Process") {
   throw "Launcher must not broadly stop every discovered process."
 }
@@ -85,6 +96,8 @@ foreach ($required in @(
   '"--searxng-url", $SearxngUrl',
   "[string]`$SttServerUrl",
   '"--stt-server-url", $SttServerUrl'
+  '"--room-vision-command", $RoomVisionCommand'
+  '"--camera-pairing-code-file", $CameraPairingCodeFile'
   "stackchan.pc-brain-runtime.v1",
   "runtime_manifest.json",
   "sourceWorktreeClean",
@@ -93,6 +106,14 @@ foreach ($required in @(
   if (-not $baseText.Contains($required)) {
     throw "Base PC brain launcher missing research contract token: $required"
   }
+}
+
+$roomEnabledIndex = $baseText.IndexOf('if ($EnableRoomObservation)')
+$pairingArgIndex = $baseText.IndexOf('"--camera-pairing-code-file", $CameraPairingCodeFile')
+if ($roomEnabledIndex -lt 0 -or $pairingArgIndex -lt 0 -or
+    $baseText.Substring($roomEnabledIndex, $pairingArgIndex - $roomEnabledIndex) -match
+      'camera-pairing-code-file') {
+  throw "Camera pairing must configure the disabled room runtime independently of its initial on/off state."
 }
 
 Write-Host "DirectML PC brain launcher contract tests passed."

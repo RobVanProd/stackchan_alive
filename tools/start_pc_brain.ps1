@@ -203,12 +203,16 @@ if ($EnableInitiative) {
 if ($EnableRoomObservation) {
   $ArgsList += @(
     "--room-observation",
-    "--room-observation-interval-seconds", "$RoomObservationIntervalSeconds",
-    "--room-vision-command", $RoomVisionCommand
+    "--room-observation-interval-seconds", "$RoomObservationIntervalSeconds"
   )
-  if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
-    $ArgsList += @("--camera-pairing-code-file", $CameraPairingCodeFile)
-  }
+}
+
+if ($EnableRoomObservation -or -not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
+  $ArgsList += @("--room-vision-command", $RoomVisionCommand)
+}
+
+if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
+  $ArgsList += @("--camera-pairing-code-file", $CameraPairingCodeFile)
 }
 
 if ($EnableDashboard) {

@@ -25,12 +25,22 @@ start gate rejects any firmware-input diff from `origin/main`.
 
 Use a planned restart window. The DirectML launcher starts or reuses the local RVC worker and
 resident loopback whisper.cpp server, then replaces only a verified Stackchan bridge listener.
+Research is fail-closed: the launcher records a full local search/fetch preflight before starting
+either worker or stopping an existing bridge. Start or verify the pinned loopback service first:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\start_local_research.ps1 -Json
+```
+
 Room observation additionally requires a private camera pairing-code file and a loopback
 vision-capable Ollama model. The installed `gemma4:e2b-it-qat` brain model is also vision-capable
 and is the preferred room model because reusing it avoids a second resident model. The adapter
-disables model thinking for its strict typed JSON response. When room observation is enabled, the launcher also starts the
+disables model thinking for its strict typed JSON response. Supplying the pairing file and room
+model configures observation even when its initial state is off, so the dashboard can later enable
+it without another restart. When face or room vision is enabled, the launcher starts the
 hash-pinned local YuNet face worker and refuses readiness unless authenticated camera frame and
-target counters advance. Use `-EnableFaceVision` to run face tracking without room observation.
+target counters advance. Use `-EnableFaceVision` to run face tracking while semantic observation
+remains default-off.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\start_pc_brain_directml.ps1 `

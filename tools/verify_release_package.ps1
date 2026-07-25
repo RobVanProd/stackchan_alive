@@ -675,6 +675,11 @@ $requiredFiles = @(
   "tools/start_pc_brain.ps1",
   "tools/start_pc_brain_directml.ps1",
   "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/check_local_research.ps1",
+  "tools/start_local_research.ps1",
+  "tools/test_local_research_runtime_contract.ps1",
+  "tools/searxng/compose.yaml",
+  "tools/searxng/settings.yml",
   "tools/start_local_vision.cmd",
   "tools/start_local_vision.ps1",
   "tools/test_start_local_vision_contract.ps1",
@@ -2392,10 +2397,32 @@ foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKC
 }
 
 $dashboardLauncherText = Get-Content -LiteralPath (Join-PackagePath "tools/start_stackchan_dashboard.ps1") -Raw
-foreach ($pattern in @("stackchan.bridge-dashboard.v1", "dashboard_service.py", "start_pc_brain_directml.ps1", "EnableResearch", "Start-Process `$DashboardUrl")) {
+foreach ($pattern in @("stackchan.bridge-dashboard.v1", "dashboard_service.py", "start_pc_brain_directml.ps1", "start_local_research.ps1", "EnableConversationV2", "EnableInitiative", "DisableResearch", "Start-Process `$DashboardUrl")) {
   if ($dashboardLauncherText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_stackchan_dashboard.ps1 missing reset-safe launch support: $pattern"
   }
+}
+if ($dashboardLauncherText -match 'EnableRoomObservation\s*=\s*\$true') {
+  throw "tools/start_stackchan_dashboard.ps1 must leave room observation default-off."
+}
+
+$researchCheckerText = Get-Content -LiteralPath (Join-PackagePath "tools/check_local_research.ps1") -Raw
+$researchStarterText = Get-Content -LiteralPath (Join-PackagePath "tools/start_local_research.ps1") -Raw
+$researchComposeText = Get-Content -LiteralPath (Join-PackagePath "tools/searxng/compose.yaml") -Raw
+foreach ($pattern in @("stackchan.local-research-gate.v1", "searxng_listener_not_loopback_only", "research_acceptance.py")) {
+  if ($researchCheckerText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/check_local_research.ps1 missing fail-closed research gate: $pattern"
+  }
+}
+foreach ($pattern in @("stackchan.local-research-start.v1", "container_runtime_missing", "RandomNumberGenerator", "2026.7.24-4f64d9501")) {
+  if ($researchStarterText -notmatch [regex]::Escape($pattern)) {
+    throw "tools/start_local_research.ps1 missing guarded local startup: $pattern"
+  }
+}
+if ($researchComposeText -notmatch 'docker\.io/searxng/searxng:2026\.7\.24-4f64d9501' -or
+    $researchComposeText -match 'searxng:latest' -or
+    $researchComposeText -notmatch '"127\.0\.0\.1:8080:8080"') {
+  throw "tools/searxng/compose.yaml does not pin the reviewed loopback-only deployment."
 }
 
 $shortcutInstallerText = Get-Content -LiteralPath (Join-PackagePath "tools/install_stackchan_dashboard_shortcut.ps1") -Raw
@@ -3084,6 +3111,18 @@ if ($manifest.bridgeDashboardService -ne "bridge/dashboard_service.py") {
 
 if ($manifest.bridgeDashboardLauncher -ne "tools/start_stackchan_dashboard.ps1") {
   throw "Manifest bridgeDashboardLauncher mismatch: $($manifest.bridgeDashboardLauncher)"
+}
+
+if ($manifest.localResearchChecker -ne "tools/check_local_research.ps1") {
+  throw "Manifest localResearchChecker mismatch: $($manifest.localResearchChecker)"
+}
+
+if ($manifest.localResearchStarter -ne "tools/start_local_research.ps1") {
+  throw "Manifest localResearchStarter mismatch: $($manifest.localResearchStarter)"
+}
+
+if ($manifest.localResearchCompose -ne "tools/searxng/compose.yaml") {
+  throw "Manifest localResearchCompose mismatch: $($manifest.localResearchCompose)"
 }
 
 if ($manifest.desktopShortcutIcon -ne "docs/store-assets/desktop/stackchan-alive.ico") {

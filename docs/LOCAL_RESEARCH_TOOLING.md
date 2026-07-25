@@ -1,9 +1,10 @@
 # Local Research Tooling
 
-Status: bounded bridge broker, one-round Gemma integration, and production-launch switches are
-implemented. A live local SearXNG deployment and voice/research soak remain pending. As of the
-2026-07-12 release audit, no service was listening on the expected loopback port `8080`; do not
-describe web research as production-ready until the acceptance gates below pass.
+Status: bounded bridge broker, one-round Gemma integration, guarded local startup, and
+production-launch gates are implemented. A live local SearXNG deployment and voice/research soak
+remain pending. As of the 2026-07-25 release audit, no service was listening on the expected
+loopback port `8080`; do not describe web research as production-ready until the acceptance gates
+below pass.
 
 ## Decision
 
@@ -118,30 +119,36 @@ Start the PC bridge with research enabled only after a loopback SearXNG instance
 python bridge\lan_service.py --enable-research --searxng-url http://127.0.0.1:8080
 ```
 
-The production DirectML launcher exposes the same opt-in without changing its default:
+The production DirectML launcher exposes the same opt-in:
 
 ```powershell
 .\tools\start_pc_brain_directml.ps1 -EnableResearch `
   -SearxngUrl http://127.0.0.1:8080 -Json
 ```
 
-Omitting `-EnableResearch` leaves the release voice bridge exactly as qualified. Enabling it does
-not install or start SearXNG; the operator must first deploy and bind that service to loopback.
+Omitting `-EnableResearch` starts an intentional offline session. When research is requested, the
+launcher checks the complete search/fetch gate before starting workers or replacing an existing
+bridge, and fails without disturbing that bridge if the gate is not ready.
 
 The checked-in container deployment is under `tools/searxng`. It publishes only host loopback,
-enables JSON output, and keeps only DuckDuckGo, Wikipedia, and Brave. No secret is committed.
-After Docker or Podman is installed by the owner, start it with a fresh session secret:
+enables JSON output, keeps only DuckDuckGo, Wikipedia, and Brave, and pins the reviewed
+`docker.io/searxng/searxng:2026.7.24-4f64d9501` image tag. No secret is committed. After Docker
+or Podman is installed and running, use the guarded starter:
 
 ```powershell
-$env:SEARXNG_SECRET = [guid]::NewGuid().ToString("N")
-docker compose -f tools\searxng\compose.yaml up -d
-.\tools\check_local_research.ps1
+.\tools\start_local_research.ps1 -Json
 ```
 
-The gate fails unless port 8080 is bound exclusively to loopback, the JSON API returns results
-from the configured allowlist, and `ResearchBroker` completes both search and restricted HTTPS
-fetch. `bridge/fixtures/searxng_search_response.json` covers the search response contract offline.
-Installing Docker, Podman, or WSL remains owner scope; the bridge does not attempt elevation.
+The starter reuses an already-ready service or detects Docker/Podman Compose, generates an
+in-memory cryptographic service secret when one was not supplied, starts the pinned container,
+and waits for the structured gate. It never installs software or elevates. Installing Docker,
+Podman, or WSL and starting its system service remain owner scope.
+
+`check_local_research.ps1 -Json` returns structured evidence for success and every expected
+failure. The gate fails unless port 8080 is bound exclusively to loopback, the JSON API returns
+results from the configured allowlist, and `ResearchBroker` completes both search and restricted
+HTTPS fetch. `bridge/fixtures/searxng_search_response.json` covers the search response contract
+offline.
 
 `research_broker.py` requires SearXNG itself to resolve exclusively to loopback. Public page
 fetches require HTTPS and reject non-global DNS answers before each request and redirect. The

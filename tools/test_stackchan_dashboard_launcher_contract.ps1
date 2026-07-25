@@ -24,7 +24,16 @@ foreach ($required in @(
   "bridge\dashboard_service.py",
   "-WindowStyle Hidden",
   "start_pc_brain_directml.ps1",
-  "-EnableResearch",
+  "start_local_research.ps1",
+  "local-research-ready",
+  "[switch]`$DisableResearch",
+  "[switch]`$DisableFaceVision",
+  "EnableConversationV2 = `$true",
+  "EnableInitiative = `$true",
+  "EnableFaceVision = `$true",
+  "camera-pairing-code.txt",
+  "--conversation-v2-enabled",
+  '--enable-research(\s|$)',
   "Start-Process `$DashboardUrl"
 )) {
   if (-not $launcherText.Contains($required)) { throw "Dashboard launcher missing contract token: $required" }
@@ -43,6 +52,14 @@ foreach ($required in @(
 $directmlText = Get-Content -LiteralPath $directmlLauncher -Raw
 foreach ($required in @("-EnableDashboard", "-DashboardPort `$DashboardPort", "dashboardUrl =")) {
   if (-not $directmlText.Contains($required)) { throw "DirectML launcher missing dashboard token: $required" }
+}
+
+if ($launcherText.Contains('"--runner-profile", "gemma4-e2b-gguf",' + "`r`n" + '    "--research-enabled"') -or
+    $launcherText.Contains('"--runner-profile", "gemma4-e2b-gguf",' + "`n" + '    "--research-enabled"')) {
+  throw "Standalone dashboard attach must not claim research without inspecting the bridge command line."
+}
+if ($launcherText -match 'EnableRoomObservation\s*=\s*\$true') {
+  throw "Reset-safe dashboard startup must leave room observation default-off."
 }
 
 $installerText = Get-Content -LiteralPath $installer -Raw
@@ -67,7 +84,10 @@ foreach ($required in @(
   "test_dashboard_service.py",
   "bridge/dashboard",
   "tools/start_stackchan_dashboard.ps1",
-  "tools/install_stackchan_dashboard_shortcut.ps1"
+  "tools/install_stackchan_dashboard_shortcut.ps1",
+  "tools/start_local_research.ps1",
+  "tools/check_local_research.ps1",
+  "tools/searxng/compose.yaml"
 )) {
   if (-not $packagerText.Contains($required)) { throw "Release packager omits dashboard asset: $required" }
   if (-not $verifierText.Contains($required)) { throw "Release verifier omits dashboard asset: $required" }

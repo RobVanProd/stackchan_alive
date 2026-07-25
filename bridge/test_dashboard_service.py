@@ -17,6 +17,7 @@ from dashboard_service import (  # noqa: E402
     DashboardHttpServer,
     DashboardRuntime,
     _safe_host,
+    build_arg_parser,
 )
 from initiative_policy import InitiativeConfig, InitiativePolicy  # noqa: E402
 from lan_service import LanBridgeConfig, encode_ws_frame, encode_ws_text, read_ws_frame, serve  # noqa: E402
@@ -34,6 +35,28 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertEqual("stackchan.local", _safe_host("Stackchan.local"))
         with self.assertRaises(ValueError):
             _safe_host("127.0.0.1/path")
+
+    def test_standalone_flags_report_only_enabled_bridge_features(self) -> None:
+        args = build_arg_parser().parse_args(
+            [
+                "--robot-host",
+                "192.168.1.238",
+                "--research-enabled",
+                "--conversation-v2-enabled",
+            ]
+        )
+        runtime = DashboardRuntime(
+            DashboardConfig(
+                robot_host=args.robot_host,
+                research_enabled=args.research_enabled,
+                conversation_v2_enabled=args.conversation_v2_enabled,
+            )
+        )
+
+        bridge = runtime.status()["bridge"]
+
+        self.assertTrue(bridge["researchEnabled"])
+        self.assertTrue(bridge["conversationV2Enabled"])
 
     def test_heartbeat_status_is_allowlisted(self) -> None:
         self.runtime.note_client_connected("192.168.1.238", 50123)

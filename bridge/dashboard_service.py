@@ -640,6 +640,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-profile", default="gemma4-e2b-gguf")
     parser.add_argument("--tts-voice", default="")
     parser.add_argument("--research-enabled", action="store_true")
+    parser.add_argument("--conversation-v2-enabled", action="store_true")
     return parser
 
 
@@ -658,6 +659,7 @@ def main() -> int:
             runner_profile=args.runner_profile,
             tts_voice=args.tts_voice,
             research_enabled=args.research_enabled,
+            conversation_v2_enabled=args.conversation_v2_enabled,
         )
     )
     runtime.refresh_robot()

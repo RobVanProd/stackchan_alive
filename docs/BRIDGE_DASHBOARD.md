@@ -21,9 +21,24 @@ The launcher behaves in two modes:
 
 - If the dashboard is already running, it opens the existing page.
 - If an older Stackchan bridge is running without the dashboard, it starts only the loopback
-  dashboard and leaves the robot WebSocket and voice process untouched.
+  dashboard, derives displayed research/Conversation-v2 state from that process's real command
+  line, and leaves the robot WebSocket and voice process untouched.
 - If the PC bridge is not running after a reset, it starts the production DirectML bridge with
-  research enabled, waits for readiness, and opens the dashboard.
+  Conversation v2 and bounded initiative enabled. It starts and fully checks local research
+  before replacing a bridge. When the private pairing-code file exists, it also starts face
+  presence detection and preconfigures the room model, while leaving semantic room observation
+  off until it is enabled in the dashboard.
+
+Normal startup is fail-closed when local research is unavailable. Docker or Podman installation
+remains an owner action; the launcher never elevates or installs it. For an intentional offline
+session only, use:
+
+```powershell
+.\tools\start_stackchan_dashboard.ps1 -DisableResearch
+```
+
+`-DisableFaceVision` is the explicit fallback when authenticated camera presence should not run.
+Neither fallback changes firmware or grants motion.
 
 Install the desktop shortcut once:
 
@@ -71,7 +86,7 @@ The base launcher also supports explicit dashboard options:
   -RobotHost 192.168.1.238 -EnableAudioDownlink
 ```
 
-Enable the post-release conversation and awareness source only for supervised qualification:
+For a supervised qualification that starts semantic room observation immediately:
 
 ```powershell
 $env:STACKCHAN_OLLAMA_VISION_MODEL = "your-local-vision-model"

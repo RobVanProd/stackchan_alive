@@ -883,6 +883,9 @@ $releaseTools = @(
   "tools/start_pc_brain.ps1",
   "tools/start_pc_brain_directml.ps1",
   "tools/test_start_pc_brain_directml_contract.ps1",
+  "tools/check_local_research.ps1",
+  "tools/start_local_research.ps1",
+  "tools/test_local_research_runtime_contract.ps1",
   "tools/start_local_vision.cmd",
   "tools/start_local_vision.ps1",
   "tools/test_start_local_vision_contract.ps1",
@@ -1008,6 +1011,15 @@ foreach ($file in $releaseTools) {
     throw "Missing release tool: $file"
   }
   Copy-Item -LiteralPath $file -Destination $toolsDir
+}
+
+$searxngToolsDir = Join-Path $toolsDir "searxng"
+New-Item -ItemType Directory -Force -Path $searxngToolsDir | Out-Null
+foreach ($file in @("tools/searxng/compose.yaml", "tools/searxng/settings.yml")) {
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+    throw "Missing local research configuration: $file"
+  }
+  Copy-Item -LiteralPath $file -Destination $searxngToolsDir
 }
 
 Copy-Item -LiteralPath "platformio.ini" -Destination $provenanceDir
@@ -1493,6 +1505,9 @@ $manifest = [ordered]@{
   hardwareFeatureRoadmap = "docs/HARDWARE_FEATURE_ROADMAP.md"
   ltr553CalibrationGuide = "docs/LTR553_CALIBRATION.md"
   localResearchTooling = "docs/LOCAL_RESEARCH_TOOLING.md"
+  localResearchChecker = "tools/check_local_research.ps1"
+  localResearchStarter = "tools/start_local_research.ps1"
+  localResearchCompose = "tools/searxng/compose.yaml"
   localVisionGuide = "docs/LOCAL_VISION.md"
   bodySensorValidator = "tools/body_sensor_validation.ps1"
   bodySensorValidatorContract = "tools/test_body_sensor_validation_contract.ps1"
@@ -1738,6 +1753,11 @@ $manifest = [ordered]@{
     "tools/start_pc_brain.ps1",
     "tools/start_pc_brain_directml.ps1",
     "tools/test_start_pc_brain_directml_contract.ps1",
+    "tools/check_local_research.ps1",
+    "tools/start_local_research.ps1",
+    "tools/test_local_research_runtime_contract.ps1",
+    "tools/searxng/compose.yaml",
+    "tools/searxng/settings.yml",
     "tools/start_local_vision.cmd",
     "tools/start_local_vision.ps1",
     "tools/test_start_local_vision_contract.ps1",
