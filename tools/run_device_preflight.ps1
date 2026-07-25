@@ -1747,33 +1747,28 @@ function Assert-ArrivalPacketScaffoldGate {
     }
   }
 
-  $startArgs = @(
-    (Join-Path $PSScriptRoot "start_hardware_evidence.ps1"),
-    "-ReleaseTag", $Version,
-    "-PackageZip", $ZipPath,
-    "-Port", "COM_TEST",
-    "-Operator", "preflight",
-    "-DeviceId", "SELFTEST"
-  )
-  if ($AllowDirtyPackage) {
-    $startArgs += "-AllowDirtyPackage"
-  }
-
-  $created = Invoke-ToolText $startArgs
-  if ($created.ExitCode -ne 0) {
+  $startScript = Join-Path $PSScriptRoot "start_hardware_evidence.ps1"
+  try {
+    if ($AllowDirtyPackage) {
+      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" -AllowDirtyPackage 2>&1
+    } else {
+      $createdOutput = & $startScript -ReleaseTag $Version -PackageZip $ZipPath -Port "COM_TEST" -Operator "preflight" -DeviceId "SELFTEST" 2>&1
+    }
+    $createdText = ($createdOutput | Out-String)
+  } catch {
     Restore-TemporaryPreflightReport
-    throw "Arrival packet scaffold creation failed:$([Environment]::NewLine)$($created.Text)"
+    throw "Arrival packet scaffold creation failed:$([Environment]::NewLine)$($_ | Out-String)"
   }
 
   $evidenceRoot = @(
-    ($created.Text -split "\r?\n") |
+    ($createdText -split "\r?\n") |
       ForEach-Object { $_.Trim() } |
       Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) }
   ) | Select-Object -Last 1
 
   if ([string]::IsNullOrWhiteSpace($evidenceRoot)) {
     Restore-TemporaryPreflightReport
-    throw "Could not locate generated arrival packet in output:$([Environment]::NewLine)$($created.Text)"
+    throw "Could not locate generated arrival packet in output:$([Environment]::NewLine)$createdText"
   }
 
   $evidenceRoot = (Resolve-Path $evidenceRoot).Path
@@ -1893,6 +1888,7 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $nextSteps "Generated source WAVs alone do not count"
     Assert-TextContains $nextSteps "Do not run servo calibration unless the body is clear"
     Assert-TextContains $nextSteps "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json"
+    Assert-TextContains $nextSteps "Production voice-source provenance remains pending"
 
     $ciExceptionTemplate = Get-Content -LiteralPath (Join-Path $evidenceRoot "CI_ACCOUNT_BLOCK_EXCEPTION_TEMPLATE.json") -Raw | ConvertFrom-Json
     if ($ciExceptionTemplate.schema -ne "stackchan.ci-account-block-exception.v1") {
@@ -1918,7 +1914,8 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $checklist '- [x] `tools/run_device_preflight.ps1` passes.'
     Assert-TextContains $checklist '- [x] `tools/verify_release_package.ps1` passes for the release ZIP.'
     Assert-TextContains $checklist '- [ ] GitHub Actions `Firmware` workflow is green on `main`.'
-    Assert-TextContains $checklist '- [ ] Production voice-source provenance is completed and no longer marked pending.'
+    Assert-TextContains $checklist '- [x] Production RVC model and index hashes match the released files.'
+    Assert-TextContains $checklist '- [ ] Live robot speech through the verified DirectML RVC path is recorded and reviewed on the target speaker.'
 
     $audioReview = Get-Content -LiteralPath (Join-Path $evidenceRoot "AUDIO_REVIEW.md") -Raw
     Assert-TextContains $audioReview "reference_audio/stackchan_voice_reference.wav"
@@ -1988,7 +1985,7 @@ function Assert-ArrivalPacketScaffoldGate {
     Assert-TextContains $rolloutStatus "blocked-or-pending"
     Assert-TextContains $rolloutStatus "Next action:"
     Assert-TextContains $rolloutStatus "Next command:"
-    Assert-TextContains $rolloutStatus "RUN_DISPLAY_ONLY.cmd"
+    Assert-TextContains $rolloutStatus "RUN_SPEECH_MOUTH_DEMO.cmd; RUN_SPEAK_ALL_INTENTS.cmd"
     Assert-TextContains $rolloutStatus "production-voice-source"
     Assert-TextContains $rolloutStatus "strict-hardware-evidence"
     Assert-TextContains $rolloutStatus "voice-gate-status-consistency"
@@ -1997,8 +1994,8 @@ function Assert-ArrivalPacketScaffoldGate {
     if ([string]$rolloutStatusJson.nextOwner -ne "hardware") {
       throw "Arrival packet ROLLOUT_STATUS.json next owner should be hardware, got $($rolloutStatusJson.nextOwner)"
     }
-    if ([string]$rolloutStatusJson.nextCommand -notmatch "RUN_DISPLAY_ONLY\.cmd") {
-      throw "Arrival packet ROLLOUT_STATUS.json next command did not point at display evidence: $($rolloutStatusJson.nextCommand)"
+    if ([string]$rolloutStatusJson.nextCommand -notmatch "RUN_SPEECH_MOUTH_DEMO\.cmd;\s*RUN_SPEAK_ALL_INTENTS\.cmd") {
+      throw "Arrival packet ROLLOUT_STATUS.json next command did not point at the required speech demos: $($rolloutStatusJson.nextCommand)"
     }
     $global:LASTEXITCODE = 0
   } finally {
