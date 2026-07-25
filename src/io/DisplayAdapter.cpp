@@ -372,15 +372,17 @@ void DisplayAdapter::drawSleepCue(const SleepCueGeometry& cue) {
   }
 
   // Bound every glyph so the erase covers last frame's Zs as well as this one's.
+  // Build these with makeRect: it sets the valid flag and clamps to the panel.
+  // Aggregate-initialising a DisplayRect leaves valid false, which makes both
+  // markDirty and clearCanvasRect skip the region, so the cue only appears where
+  // it happens to overlap another element's dirty rect.
   DisplayRect currentBounds = {};
-  bool haveBounds = false;
   for (uint8_t i = 0; i < cue.count; ++i) {
     const SleepGlyph& glyph = cue.glyphs[i];
-    const int32_t pad = roundToInt(glyph.size) + 2;
-    const DisplayRect box = {roundToInt(glyph.x) - pad, roundToInt(glyph.y) - pad,
-                             pad * 2, pad * 2};
-    currentBounds = haveBounds ? unionRect(currentBounds, box) : box;
-    haveBounds = true;
+    const int32_t pad = roundToInt(glyph.size) + 3;
+    const DisplayRect box = makeRect(roundToInt(glyph.x) - pad, roundToInt(glyph.y) - pad,
+                                     pad * 2, pad * 2);
+    currentBounds = unionRect(currentBounds, box);
   }
 
   const DisplayRect eraseBounds = unionRect(previousSleepCue_, currentBounds);

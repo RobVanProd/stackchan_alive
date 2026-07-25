@@ -9,11 +9,12 @@ namespace {
 constexpr uint32_t kEmitIntervalMs = 2100;
 // How long a single Z takes to rise and fade.
 constexpr float kRiseSeconds = 3.2f;
-// How far it travels while rising.
-constexpr float kRisePixels = 26.0f;
-constexpr float kDriftPixels = 12.0f;
-constexpr float kSizeStart = 4.0f;
-constexpr float kSizeEnd = 8.0f;
+// How far it travels while rising. There is plenty of headroom above the eyes,
+// so the stack drifts a good way up before fading out.
+constexpr float kRisePixels = 42.0f;
+constexpr float kDriftPixels = 13.0f;
+constexpr float kSizeStart = 5.0f;
+constexpr float kSizeEnd = 10.0f;
 // A stalled task must not jump the animation forward.
 constexpr uint32_t kMaxStepMs = 200;
 }  // namespace
@@ -83,8 +84,9 @@ SleepCueGeometry SleepCue::geometry(float anchorX, float anchorY) const {
       continue;
     }
     SleepGlyph& glyph = out.glyphs[out.count++];
-    // Rise, drift sideways, grow, and fade out over the last third.
-    glyph.x = anchorX + sinf(p * 2.2f) * kDriftPixels;
+    // Rise, sway, grow, and fade out over the last third. A full cycle so the
+    // sway is symmetric; a partial one only ever pushed the glyphs to one side.
+    glyph.x = anchorX + sinf(p * 6.2831853f) * kDriftPixels;
     glyph.y = anchorY - p * kRisePixels;
     glyph.size = kSizeStart + (kSizeEnd - kSizeStart) * p;
     glyph.alpha = p < 0.15f ? (p / 0.15f) : (p > 0.65f ? (1.0f - (p - 0.65f) / 0.35f) : 1.0f);
