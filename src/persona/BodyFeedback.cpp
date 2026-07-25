@@ -17,6 +17,35 @@ constexpr float kAccentAttackSeconds = 0.10f;
 constexpr float kSafetyAttackSeconds = 0.08f;
 constexpr float kBaseSettledDistance = 6.0f;
 
+// How much the current mode is allowed to colour the body light.
+//
+// This used to be inverted: mode owned the hue and mood was blended in at
+// 8-27%, so the LEDs were effectively a state-machine indicator. Because mode
+// flips between Idle/Attend/Listen/Think/Speak within seconds, the colour
+// jumped around and read as random rather than as a feeling.
+//
+// Mood now owns the hue and mode owns the pulse pattern, which is already
+// strongly mode-specific (Think chases, Listen sweeps, Speak follows the speech
+// envelope). Mood scalars move slowly, so the hue now drifts at the speed of the
+// character's actual state.
+constexpr float kModeTintAmount = 0.22f;
+// Modes where the light itself carries the meaning keep their colour outright:
+// a fault must be unmistakably red, and sleep must look asleep.
+constexpr float kSignalModeTintAmount = 1.0f;
+constexpr float kRestModeTintAmount = 0.80f;
+
+float modeTintAmount(CharacterMode mode) {
+  switch (mode) {
+    case CharacterMode::Error:
+      return kSignalModeTintAmount;
+    case CharacterMode::Sleep:
+    case CharacterMode::Boot:
+      return kRestModeTintAmount;
+    default:
+      return kModeTintAmount;
+  }
+}
+
 float clamp01(float value) {
   return constrain(value, 0.0f, 1.0f);
 }
@@ -69,17 +98,28 @@ BodyRgbColor modeColor(const RobotFrame& frame) {
   return {0, 0, 0};
 }
 
-BodyRgbColor emotionTint(const EmotionalProfile& emotion) {
-  if (emotion.fatigue > 0.72f) {
-    return {16, 22, 62};
+// Mood colour, continuous rather than bucketed. The old version snapped between
+// four fixed tints at hard valence thresholds, so a mood drifting across a
+// boundary produced a visible jump with nothing behind it. Interpolating means
+// the body light moves only as fast as the mood actually moves.
+BodyRgbColor moodColor(const EmotionalProfile& emotion) {
+  // Persona colour language: amber is unhappy, blue-teal is level, violet is
+  // pleased, deep navy is tired.
+  constexpr BodyRgbColor kNegative = {108, 52, 14};
+  constexpr BodyRgbColor kNeutral = {20, 82, 106};
+  constexpr BodyRgbColor kPositive = {86, 42, 104};
+  constexpr BodyRgbColor kTired = {16, 22, 62};
+
+  const float valence = constrain(emotion.valence, -1.0f, 1.0f);
+  BodyRgbColor color = valence >= 0.0f ? blend(kNeutral, kPositive, valence)
+                                       : blend(kNeutral, kNegative, -valence);
+
+  // Fatigue pulls the whole thing toward navy rather than switching to it.
+  const float fatigue = clamp01(emotion.fatigue);
+  if (fatigue > 0.0f) {
+    color = blend(color, kTired, fatigue * 0.85f);
   }
-  if (emotion.valence > 0.25f) {
-    return {86, 42, 104};
-  }
-  if (emotion.valence < -0.20f) {
-    return {108, 52, 14};
-  }
-  return {20, 82, 106};
+  return color;
 }
 
 bool ledMatchesTouchZone(uint8_t led, BodyTouchZone zone) {
@@ -136,10 +176,9 @@ BodyRgbFrame BodyFeedback::render(const RobotFrame& frame,
   const float breathing = 0.55f + 0.20f * sinf(t * kTwoPi * 0.20f * fatigueSlowdown);
   const float energy = 0.70f + clamp01(frame.emotion.arousal) * 0.30f;
   const float speech = clamp01(speechEnvelope);
-  const float moodAmount = 0.08f + fabsf(frame.emotion.valence) * 0.14f +
-                           clamp01(frame.emotion.arousal) * 0.05f;
+  // Mood is the base colour; the mode tints it. Reversed from the original.
   const BodyRgbColor desiredBase = blend(
-      modeColor(frame), emotionTint(frame.emotion), moodAmount);
+      moodColor(frame.emotion), modeColor(frame), modeTintAmount(frame.mode));
 
   if (modeReady_ && frame.mode != telemetry_.currentMode) {
     ++telemetry_.modeTransitions;

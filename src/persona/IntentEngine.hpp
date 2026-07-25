@@ -4,6 +4,7 @@
 #include "persona/EmbodiedEnergy.hpp"
 #include "persona/EmotionModel.hpp"
 #include "persona/GazeTracker.hpp"
+#include "persona/HeadGaze.hpp"
 #include "persona/IdleLife.hpp"
 #include "persona/SpeechPlanner.hpp"
 #include "persona/StateMatrix.hpp"
@@ -69,11 +70,12 @@ class IntentEngine {
   uint16_t responseGestureDurationMs_ = 0;
   float responseGestureAmplitudeDeg_ = 0.0f;
   float responseGestureCycles_ = 0.0f;
+  HeadGaze headGaze_;
 
   void injectDemoEvents(uint32_t nowMs);
   void updateSpeechCue(uint32_t nowMs);
   void activateSpeechCue(const SpeechCue& cue, uint32_t nowMs);
-  MotionTargets motionForMode(uint32_t nowMs, const EmotionalProfile& emotion) const;
+  MotionTargets motionForMode(uint32_t nowMs, const EmotionalProfile& emotion);
   void applySoundOrientation(RobotFrame& frame, uint32_t nowMs) const;
   void applyResponseGesture(RobotFrame& frame, uint32_t nowMs);
 };

@@ -196,7 +196,7 @@ void IntentEngine::activateSpeechCue(const SpeechCue& cue, uint32_t nowMs) {
   speechSeq_++;
 }
 
-MotionTargets IntentEngine::motionForMode(uint32_t nowMs, const EmotionalProfile& emotion) const {
+MotionTargets IntentEngine::motionForMode(uint32_t nowMs, const EmotionalProfile& emotion) {
   MotionTargets motion;
   const float t = nowMs * 0.001f;
   const float motionScale = reducedMotion_ ? generated_persona::kReducedMotionScale : 1.0f;
@@ -204,8 +204,15 @@ MotionTargets IntentEngine::motionForMode(uint32_t nowMs, const EmotionalProfile
   const float focus = constrain(emotion.focus, 0.0f, 1.0f);
 
   motion.yawMode = YawMode::Angle;
-  motion.yawDeg = sinf(t * 0.44f) * (3.0f + (1.0f - focus) * 5.0f) * motionScale;
-  motion.pitchDeg = sinf(t * 0.31f) * (0.8f + energy * 1.2f) * motionScale;
+  // Idle head pose comes from a look-and-hold gaze rather than two sine waves.
+  // The amplitude envelope is unchanged, so servo travel and load are the same;
+  // only the path through it differs. Sines swayed continuously without ever
+  // looking at anything, which is what read as aimless.
+  const float yawSpanDeg = 3.0f + (1.0f - focus) * 5.0f;
+  const float pitchSpanDeg = 0.8f + energy * 1.2f;
+  headGaze_.update(nowMs, yawSpanDeg, pitchSpanDeg, focus, energy);
+  motion.yawDeg = headGaze_.yawDeg() * motionScale;
+  motion.pitchDeg = headGaze_.pitchDeg() * motionScale;
 
   if (mode_ == CharacterMode::Attend || mode_ == CharacterMode::Listen) {
     motion.yawDeg *= 0.45f;
