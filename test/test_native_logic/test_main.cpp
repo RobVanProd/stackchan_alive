@@ -1308,6 +1308,36 @@ void test_sleep_pressure_builds_only_when_left_alone() {
   TEST_ASSERT_GREATER_THAN_FLOAT(busy.profile().fatigue, alone.profile().fatigue);
 }
 
+void test_lingering_attention_decays_back_to_idle() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+
+  // Exactly the state the reference robot sat in: a reply finished, which
+  // bridgeModeForEvent maps to Attend. Nothing used to bring him out of it, so
+  // he parked there indefinitely and could never reach Idle, let alone sleep.
+  RobotEvent finished;
+  finished.type = EventType::ResponseEnded;
+  finished.timestampMs = 1000;
+  finished.strength = 1.0f;
+  engine.applyEvent(finished, CharacterMode::Attend);
+
+  bool sawIdle = false;
+  bool sawSleep = false;
+  for (uint32_t nowMs = 1000; nowMs < 900000u; nowMs += 50) {
+    const CharacterMode mode = engine.update(nowMs).mode;
+    if (mode == CharacterMode::Idle) {
+      sawIdle = true;
+    }
+    if (mode == CharacterMode::Sleep) {
+      sawSleep = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(sawIdle);
+  TEST_ASSERT_TRUE(sawSleep);
+}
+
 void test_engine_falls_asleep_when_left_alone() {
   IntentEngine engine;
   engine.begin();
@@ -7890,6 +7920,7 @@ int main() {
   RUN_TEST(test_breathing_produces_occasional_deeper_sigh);
   RUN_TEST(test_breathing_survives_a_stalled_frame);
   RUN_TEST(test_sleep_pressure_builds_only_when_left_alone);
+  RUN_TEST(test_lingering_attention_decays_back_to_idle);
   RUN_TEST(test_engine_falls_asleep_when_left_alone);
   RUN_TEST(test_demo_mode_keeps_him_awake);
   RUN_TEST(test_sleeping_head_returns_home_and_eyes_close);

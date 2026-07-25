@@ -226,6 +226,20 @@ constexpr uint32_t kSleepQuietMs = 45000;
 // transition cannot flicker.
 constexpr uint32_t kSleepMinDurationMs = 4000;
 
+// How long attention lingers after the thing that caused it.
+//
+// Attend and React are "something just happened" states, but nothing ever
+// brought him out of them. bridgeModeForEvent maps ResponseEnded to Attend, and
+// the only Attend->Idle path was a FaceLost event from host vision, which is not
+// running. So after his last conversation he parked in Attend indefinitely, and
+// demo mode's random IdleTimeout was the only thing that ever rescued him.
+// Attention now decays on its own, which is also what lets sleep be reached.
+//
+// Listen, Think, and Speak are deliberately excluded: those are driven by the
+// bridge conversation flow, which has its own timeout and close conditions, and
+// timing out of them here could cut a long reply short.
+constexpr uint32_t kAttentionDecayMs = 25000;
+
 // Which events are loud enough to wake him.
 bool rousesFromSleep(EventType type) {
   switch (type) {
@@ -260,6 +274,12 @@ void IntentEngine::updateSleepState(uint32_t nowMs) {
       sleepEnteredAtMs_ = 0;
     }
     return;
+  }
+
+  // Let lingering attention fade back to idle so he can settle at all.
+  if ((mode_ == CharacterMode::Attend || mode_ == CharacterMode::React) &&
+      nowMs - lastEventAtMs_ >= kAttentionDecayMs) {
+    mode_ = CharacterMode::Idle;
   }
 
   // Only drift off from a genuinely quiet idle. Any working mode keeps him up.
