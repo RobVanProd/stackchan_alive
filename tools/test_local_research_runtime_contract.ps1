@@ -6,6 +6,7 @@ $compose = Join-Path $PSScriptRoot "searxng\compose.yaml"
 $settings = Join-Path $PSScriptRoot "searxng\settings.yml"
 $packager = Join-Path $PSScriptRoot "package_release.ps1"
 $verifier = Join-Path $PSScriptRoot "verify_release_package.ps1"
+$workflow = Join-Path $PSScriptRoot "..\.github\workflows\firmware.yml"
 
 foreach ($path in @($checker, $starter, $packager, $verifier)) {
   $tokens = $null
@@ -109,6 +110,21 @@ foreach ($required in @(
   if (-not $verifierText.Contains($required)) {
     throw "Release verifier omits local research asset: $required"
   }
+}
+
+$workflowText = Get-Content -LiteralPath $workflow -Raw
+$nativeJobIndex = $workflowText.IndexOf("  native-tests:")
+$windowsBuildIndex = $workflowText.IndexOf("  build:")
+$windowsRunnerIndex = if ($windowsBuildIndex -ge 0) {
+  $workflowText.IndexOf("runs-on: windows-latest", $windowsBuildIndex)
+} else {
+  -1
+}
+$contractStepIndex = $workflowText.IndexOf("Verify Windows bridge launch contracts")
+if ($nativeJobIndex -lt 0 -or $windowsBuildIndex -lt 0 -or
+    $windowsRunnerIndex -lt $windowsBuildIndex -or
+    $contractStepIndex -lt $windowsRunnerIndex) {
+  throw "Windows bridge launch contracts must run in the windows-latest build job."
 }
 
 Write-Host "Local research runtime contract tests passed."
