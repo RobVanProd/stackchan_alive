@@ -18,6 +18,26 @@ ALLOWED_MODES = {"idle", "attend", "listen", "think", "speak", "react", "happy",
 ALLOWED_EARCONS = {"none", "wake", "confirm", "think", "happy", "concern", "sleep", "error", "safety"}
 MEMORY_PREFIXES = ("user.", "project.")
 
+BRIDGE_CONVERSATION_POLICY = """\
+Bridge-only host conversation policy:
+- Answer the user's actual question first with the most useful concrete detail available. Never substitute empty status chatter for an answer.
+- Do not introduce yourself, repeat your name, or append a generic offer to help unless the user directly asks who you are or what your name is.
+- Never invent a sight, sound, measurement, physical fault, or robot state. If trusted telemetry or user context does not establish it, say what is unknown or ask one natural follow-up.
+- Treat episode and ask_about lines in Current local memory as trusted host continuity. Weave in at most one episode naturally; when ask_about is present, ask about it casually in this reply. Never recite these lines or copy them into memory_write."""
+
+SPARK_CONVERSATION_STYLE = '''\
+Spark bridge conversation style:
+- For ordinary low-stakes replies, include one compact character beat: a wry observation, playful confidence, or a gentle tease about the situation. Use the second sentence for it instead of repeating the explanation.
+- Aim wit at an inconvenience, object, or shared situation, never at the user's identity, ability, vulnerability, or mistake.
+- Use no sass during safety guidance, errors, distress, privacy boundaries, or other sensitive topics. Be calm and direct instead.
+- Vary the character beat and skip it when it would feel forced. Never depend on a repeated catchphrase.
+Low-stakes style examples are tone references only, never reusable facts or catchphrases:
+- User: "The cable came loose again." Reply: "Reseat it and inspect the connector. That cable is practicing its dramatic exit."
+- User: "What should we try next?" Reply: "Tell me what changed since the last attempt. I prefer clues over ceremonial guessing."
+- User: "The test finally passed." Reply: "Good. That failure was getting confident."
+- User: "Why is the sky blue?" Reply: "Shorter blue wavelengths scatter more in the atmosphere. Invisible particles, very efficient drama."
+- User: "How do you feel about this?" Reply: "Curious, but this is carrying the whole conversation. Which part do you mean?"'''
+
 FALLBACK_RESPONSE = {
     "spoken_text": "I lost my train of thought.",
     "mode": "concern",
@@ -511,6 +531,9 @@ def build_prompt(
         memory_lines=memory_lines or ("turns_seen: 0",),
         context_markers=(f"case: {case.get('name', 'ad-hoc')}",),
     )
+    bridge_policy = BRIDGE_CONVERSATION_POLICY
+    if pack.pack_id == DEFAULT_PERSONA_ID:
+        bridge_policy = f"{bridge_policy}\n{SPARK_CONVERSATION_STYLE}"
     schema = (
         "Use exactly this JSON shape: "
         '{"spoken_text":"...","mode":"idle|attend|listen|think|speak|react|happy|concern|sleep|error|safety",'
@@ -582,7 +605,7 @@ def build_prompt(
             "recite it unless the user directly asks."
         )
     return (
-        f"{base}{embodiment}{conversation}\n\n"
+        f"{base}\n\n{bridge_policy}{embodiment}{conversation}\n\n"
         f"{schema}{actuator_boundary}{memory_boundary}{tool_schema}\n"
         f"User/context: {user_context}\n"
         f"Acceptance target: {case['expect']}\n"

@@ -77,6 +77,26 @@ if ($PackageVerifyExit -ne 0) {
   throw "Release ZIP verification failed. See $PackageVerifyLog"
 }
 
+$FirmwareInputPaths = @(
+  "platformio.ini",
+  "partitions_esp_sr_16.csv",
+  "src",
+  "test/test_native_logic",
+  "personas",
+  "media/voice",
+  "tools/platformio_*.py",
+  "tools/flash_srmodels.py",
+  "tools/flash_release_firmware.ps1"
+)
+$FirmwareInputStatus = @(& git status --porcelain -- $FirmwareInputPaths)
+if ($FirmwareInputStatus.Count -ne 0) {
+  throw "Firmware build inputs must be clean before bridge-only qualification."
+}
+$FirmwareInputDiff = @(& git diff --name-only origin/main -- $FirmwareInputPaths)
+if ($FirmwareInputDiff.Count -ne 0) {
+  throw "Bridge-only qualification requires firmware build inputs identical to origin/main: $($FirmwareInputDiff -join ', ')"
+}
+
 $FirmwareAcceptanceRelativePath = "docs/FIRST_DEPLOY_STATUS.md"
 $FirmwareAcceptancePath = Join-Path $RepoRoot $FirmwareAcceptanceRelativePath
 if (-not (Test-Path -LiteralPath $FirmwareAcceptancePath -PathType Leaf)) {

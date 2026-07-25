@@ -16,7 +16,7 @@
       "license": "Apache-2.0",
       "name": "Stackchan Bolt",
       "path": "personas/bolt",
-      "sha256": "3448ca2d7fc6e94e64fe5af474259535c72ba1cdd9516a59c2407e8dadb131d6",
+      "sha256": "208dc449beecaa056353ab6188359f0b555f8f5ecd4cbbe3f37867371956c2c5",
       "valid": true,
       "version": "0.1.0"
     },
@@ -34,7 +34,7 @@
       "license": "Apache-2.0",
       "name": "Stackchan Glow",
       "path": "personas/glow",
-      "sha256": "a32878138c6b49156add7166f45bb3b60eab51c487027b326f4dcf2555c7a770",
+      "sha256": "d70fa57b1906932fb137f40b32ef6677e37d70562e282f685aa03790a5556e38",
       "valid": true,
       "version": "0.1.0"
     },
@@ -52,7 +52,7 @@
       "license": "Apache-2.0",
       "name": "Stackchan Pip",
       "path": "personas/pip",
-      "sha256": "b5a9184aa69bc2d618fe2a2c330d4f336255426c9c189354f50e937911cbba49",
+      "sha256": "7da5081652bd0d0e3923accff10c7d7ff4952c2ddcf3affde84a16945596e800",
       "valid": true,
       "version": "0.1.0"
     },
@@ -70,7 +70,7 @@
       "license": "Apache-2.0",
       "name": "Stackchan Spark",
       "path": "personas/spark",
-      "sha256": "4388a4c7a38b80a42b4943b9878b409d8dfc32390c7fa91e8c59c5d57064771e",
+      "sha256": "3abd4be2ab8660d2b957caca555c20c5a1d1272848f1d697f20fd74145de9ee8",
       "valid": true,
       "version": "0.1.0"
     }
