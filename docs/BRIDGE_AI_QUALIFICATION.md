@@ -47,6 +47,7 @@ no private audio evidence, a configured dashboard, and a connected motion-off ro
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File tools\start_bridge_ai_supervised_qualification.ps1 `
+  -PackageZip "output\release\stackchan_alive_<exact-version>.zip" `
   -OperatorPresent `
   -ConfirmMotionOff `
   -MinReplyWindows 100 `
@@ -94,7 +95,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 
 The checker requires:
 
-- a stable 64-character firmware SHA-256 before and after;
+- a verified clean release ZIP whose commit equals the clean source checkout and stamped live
+  bridge runtime;
+- a stable bridge PID and runtime manifest for the full session;
+- a robot-reported firmware SHA-256 that equals the ZIP's
+  `firmware/full_online/firmware.bin` before and after, with the running app confirmed;
 - connected bridge/network state, the 50 ms display gate, and motion/rail/torque off;
 - zero uplink, writer-drop, reply-window, playback, raw-speaker, or forced-stop deltas;
 - zero host late-audio events or declared/received audio-count mismatches;
@@ -106,5 +111,6 @@ The checker requires:
 - authoritative playback drain before every reply window;
 - the required conversation, initiative, room, privacy, and operator-observation evidence.
 
-Only `bridge-ai-supervised-ready` is promotable. A different firmware SHA, dirty source tree,
-failed check, or missing operator confirmation requires a new session; evidence does not transfer.
+Only `bridge-ai-supervised-ready` is promotable. A different firmware SHA, package/source/runtime
+commit mismatch, restarted bridge, dirty source tree, failed check, or missing operator
+confirmation requires a new session; evidence does not transfer.

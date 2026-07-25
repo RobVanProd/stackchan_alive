@@ -7,6 +7,7 @@ import argparse
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 
 try:
     from .conversation_latency_report import summarize_latency_records
@@ -31,6 +32,8 @@ OPERATOR_GATES = (
     ("noFramePersisted", "operator-no-frame-persistence"),
 )
 FRAME_SUFFIXES = {".pgm", ".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _load_json(path: Path) -> dict[str, object] | None:
@@ -92,6 +95,8 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
     after_debug = _load_json(evidence_root / "after-debug.json")
     before_dashboard = _load_json(evidence_root / "before-dashboard.json")
     after_dashboard = _load_json(evidence_root / "after-dashboard.json")
+    runtime_manifest = _load_json(evidence_root / "runtime-manifest.json")
+    after_runtime = _load_json(evidence_root / "after-runtime.json")
     records = _load_jsonl(evidence_root / "turns.jsonl")
     events = [
         record
@@ -117,21 +122,52 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
     require_present("after-debug", after_debug, "after-debug.json")
     require_present("before-dashboard", before_dashboard, "before-dashboard.json")
     require_present("after-dashboard", after_dashboard, "after-dashboard.json")
+    require_present("runtime-manifest", runtime_manifest, "runtime-manifest.json")
+    require_present("after-runtime", after_runtime, "after-runtime.json")
     require_present("operator-observations", observations, "operator-observations.json")
 
     if session is not None:
+        source_commit = str(session.get("sourceCommit", "")).lower()
+        package_commit = str(session.get("packageCommit", "")).lower()
+        runtime_source_commit = str(session.get("runtimeSourceCommit", "")).lower()
+        expected_firmware = str(session.get("expectedFirmwareSha256", "")).lower()
         add(
             "session-mode",
             "pass" if session.get("mode") == "bridge-ai-supervised" else "fail",
             f"mode={session.get('mode')}",
         )
         add(
-            "source-commit",
+            "session-schema",
             "pass"
-            if len(str(session.get("sourceCommit", ""))) == 40
-            and session.get("sourceWorktreeClean") is True
+            if session.get("schema") == "stackchan.bridge-ai-supervised-session.v2"
             else "fail",
-            f"commit={session.get('sourceCommit', '')} clean={session.get('sourceWorktreeClean')}",
+            f"schema={session.get('schema')}",
+        )
+        add(
+            "source-package-runtime-binding",
+            "pass"
+            if COMMIT_RE.fullmatch(source_commit) is not None
+            and session.get("sourceWorktreeClean") is True
+            and source_commit == package_commit == runtime_source_commit
+            else "fail",
+            (
+                f"source={source_commit} package={package_commit} "
+                f"runtime={runtime_source_commit} clean={session.get('sourceWorktreeClean')}"
+            ),
+        )
+        add(
+            "package-integrity",
+            "pass"
+            if session.get("packageVerified") is True
+            and SHA256_RE.fullmatch(str(session.get("packageSha256", "")).lower())
+            is not None
+            and SHA256_RE.fullmatch(expected_firmware) is not None
+            else "fail",
+            (
+                f"verified={session.get('packageVerified')} "
+                f"packageSha={session.get('packageSha256', '')} "
+                f"firmwareSha={expected_firmware}"
+            ),
         )
         add(
             "operator-present",
@@ -142,6 +178,38 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             "motion-off-confirmed",
             "pass" if session.get("motionOffConfirmed") is True else "fail",
             f"motionOffConfirmed={session.get('motionOffConfirmed')}",
+        )
+
+    if session is not None and runtime_manifest is not None and after_runtime is not None:
+        manifest_commit = str(runtime_manifest.get("sourceCommit", "")).lower()
+        manifest_root = str(runtime_manifest.get("sourceRoot", "")).casefold()
+        after_manifest = after_runtime.get("runtimeManifest")
+        after_manifest = after_manifest if isinstance(after_manifest, dict) else {}
+        after_manifest_commit = str(after_manifest.get("sourceCommit", "")).lower()
+        after_manifest_root = str(after_manifest.get("sourceRoot", "")).casefold()
+        runtime_pid = _integer(session.get("runtimeBridgePid"))
+        runtime_stable = (
+            runtime_manifest.get("schema") == "stackchan.pc-brain-runtime.v1"
+            and runtime_manifest.get("sourceWorktreeClean") is True
+            and manifest_commit == str(session.get("sourceCommit", "")).lower()
+            and manifest_root == str(session.get("runtimeSourceRoot", "")).casefold()
+            and _integer(runtime_manifest.get("bridgePid")) == runtime_pid
+            and str(after_runtime.get("sourceCommit", "")).lower() == manifest_commit
+            and after_runtime.get("sourceWorktreeClean") is True
+            and _integer(after_runtime.get("listenerPid")) == runtime_pid
+            and _integer(after_manifest.get("bridgePid")) == runtime_pid
+            and after_manifest_commit == manifest_commit
+            and after_manifest_root == manifest_root
+            and str(after_runtime.get("packageSha256", "")).lower()
+            == str(session.get("packageSha256", "")).lower()
+        )
+        add(
+            "bridge-runtime-stable",
+            "pass" if runtime_stable else "fail",
+            (
+                f"pid={runtime_pid} listener={after_runtime.get('listenerPid')} "
+                f"manifestCommit={manifest_commit} afterCommit={after_manifest_commit}"
+            ),
         )
 
     if before_dashboard is not None:
@@ -180,12 +248,17 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
     if before_debug is not None and after_debug is not None:
         firmware_before = str(before_debug.get("ota_expected_sha256", ""))
         firmware_after = str(after_debug.get("ota_expected_sha256", ""))
+        expected_firmware = str((session or {}).get("expectedFirmwareSha256", ""))
         add(
-            "firmware-candidate-stable",
+            "firmware-candidate-exact",
             "pass"
-            if len(firmware_before) == 64 and firmware_before == firmware_after
+            if SHA256_RE.fullmatch(expected_firmware.lower()) is not None
+            and firmware_before.lower() == expected_firmware.lower()
+            and firmware_after.lower() == expected_firmware.lower()
+            and before_debug.get("ota_current_app_confirmed") is True
+            and after_debug.get("ota_current_app_confirmed") is True
             else "fail",
-            f"before={firmware_before} after={firmware_after}",
+            f"expected={expected_firmware} before={firmware_before} after={firmware_after}",
         )
         robot_ready = all(
             snapshot.get("network_state") == "connected"

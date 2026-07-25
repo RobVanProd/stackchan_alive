@@ -85,6 +85,10 @@ foreach ($required in @(
   '"--searxng-url", $SearxngUrl',
   "[string]`$SttServerUrl",
   '"--stt-server-url", $SttServerUrl'
+  "stackchan.pc-brain-runtime.v1",
+  "runtime_manifest.json",
+  "sourceWorktreeClean",
+  "bridgePid"
 )) {
   if (-not $baseText.Contains($required)) {
     throw "Base PC brain launcher missing research contract token: $required"

@@ -9,16 +9,25 @@ from bridge.bridge_ai_qualification import check_evidence
 class BridgeAiQualificationTests(unittest.TestCase):
     def _write_ready_fixture(self, root: Path) -> None:
         session = {
-            "schema": "stackchan.bridge-ai-supervised-session.v1",
+            "schema": "stackchan.bridge-ai-supervised-session.v2",
             "mode": "bridge-ai-supervised",
             "sourceCommit": "a" * 40,
             "sourceWorktreeClean": True,
+            "packageCommit": "a" * 40,
+            "packageZipPath": "C:/candidate.zip",
+            "packageSha256": "c" * 64,
+            "packageVerified": True,
+            "expectedFirmwareSha256": "b" * 64,
+            "runtimeSourceCommit": "a" * 40,
+            "runtimeSourceRoot": "C:/stackchan_alive",
+            "runtimeBridgePid": 1234,
             "operatorPresent": True,
             "motionOffConfirmed": True,
             "minReplyWindows": 100,
         }
         before_debug = {
             "ota_expected_sha256": "b" * 64,
+            "ota_current_app_confirmed": True,
             "network_state": "connected",
             "bridge_state": "ready",
             "motion_enabled": False,
@@ -110,12 +119,29 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "noFramePersisted": True,
             "echoWindowsObserved": 100,
         }
+        runtime_manifest = {
+            "schema": "stackchan.pc-brain-runtime.v1",
+            "sourceCommit": "a" * 40,
+            "sourceRoot": "C:/stackchan_alive",
+            "sourceWorktreeClean": True,
+            "bridgePid": 1234,
+        }
+        after_runtime = {
+            "schema": "stackchan.bridge-ai-runtime-after.v1",
+            "sourceCommit": "a" * 40,
+            "sourceWorktreeClean": True,
+            "listenerPid": 1234,
+            "packageSha256": "c" * 64,
+            "runtimeManifest": runtime_manifest,
+        }
         for name, payload in (
             ("session.json", session),
             ("before-debug.json", before_debug),
             ("after-debug.json", after_debug),
             ("before-dashboard.json", before_dashboard),
             ("after-dashboard.json", after_dashboard),
+            ("runtime-manifest.json", runtime_manifest),
+            ("after-runtime.json", after_runtime),
             ("operator-observations.json", observations),
         ):
             (root / name).write_text(json.dumps(payload), encoding="utf-8")
@@ -231,6 +257,43 @@ class BridgeAiQualificationTests(unittest.TestCase):
         self.assertEqual("bridge-ai-supervised-pending", report["status"])
         self.assertEqual(0, report["failed"])
         self.assertEqual(1, report["pending"])
+
+    def test_package_firmware_mismatch_fails_exact_candidate_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            session = json.loads((root / "session.json").read_text(encoding="utf-8"))
+            session["expectedFirmwareSha256"] = "d" * 64
+            (root / "session.json").write_text(json.dumps(session), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        firmware = next(
+            check for check in report["checks"] if check["id"] == "firmware-candidate-exact"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", firmware["status"])
+
+    def test_restarted_bridge_fails_runtime_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            after_runtime = json.loads(
+                (root / "after-runtime.json").read_text(encoding="utf-8")
+            )
+            after_runtime["listenerPid"] = 5678
+            (root / "after-runtime.json").write_text(
+                json.dumps(after_runtime),
+                encoding="utf-8",
+            )
+
+            report = check_evidence(root)
+
+        runtime = next(
+            check for check in report["checks"] if check["id"] == "bridge-runtime-stable"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", runtime["status"])
 
     def test_persisted_room_frame_fails_privacy_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

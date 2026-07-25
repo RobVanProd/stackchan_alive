@@ -44,6 +44,32 @@ $AfterDashboard = Invoke-RestMethod -Uri $DashboardUrl -TimeoutSec 6
 $AfterDebug | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $EvidencePath "after-debug.json") -Encoding UTF8
 $AfterDashboard | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $EvidencePath "after-dashboard.json") -Encoding UTF8
 
+$CurrentCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
+$CurrentDirty = @(& git status --porcelain).Count -gt 0
+$CurrentListener = Get-NetTCPConnection -LocalPort ([int]$Session.bridgePort) -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+$CurrentRuntimeManifest = if (Test-Path -LiteralPath ([string]$Session.runtimeManifestPath) -PathType Leaf) {
+  Get-Content -LiteralPath ([string]$Session.runtimeManifestPath) -Raw | ConvertFrom-Json
+} else {
+  $null
+}
+$CurrentPackageSha256 = if (Test-Path -LiteralPath ([string]$Session.packageZipPath) -PathType Leaf) {
+  (Get-FileHash -LiteralPath ([string]$Session.packageZipPath) -Algorithm SHA256).Hash.ToLowerInvariant()
+} else {
+  ""
+}
+$AfterRuntime = [ordered]@{
+  schema = "stackchan.bridge-ai-runtime-after.v1"
+  generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+  sourceCommit = $CurrentCommit
+  sourceWorktreeClean = -not $CurrentDirty
+  listenerPid = if ($CurrentListener) { [int]$CurrentListener.OwningProcess } else { 0 }
+  packageSha256 = $CurrentPackageSha256
+  runtimeManifest = $CurrentRuntimeManifest
+}
+$AfterRuntime | ConvertTo-Json -Depth 8 |
+  Set-Content -LiteralPath (Join-Path $EvidencePath "after-runtime.json") -Encoding UTF8
+
 $TurnLogLines = if (Test-Path -LiteralPath $Session.turnLogPath -PathType Leaf) {
   @(Get-Content -LiteralPath $Session.turnLogPath | Select-Object -Skip ([int]$Session.turnLogStartLine))
 } else {

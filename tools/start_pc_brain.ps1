@@ -55,6 +55,11 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
+$SourceCommit = (& git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-fA-F]{40}$") {
+  throw "Could not resolve the PC brain source commit."
+}
+$SourceDirty = @(& git status --porcelain).Count -gt 0
 
 $OllamaExe = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
 if (-not (Test-Path -LiteralPath $OllamaExe)) {
@@ -235,11 +240,20 @@ function ConvertTo-CommandLineArg([string]$Value) {
 $OutLog = Join-Path $LogDir "lan_service.out.log"
 $ErrLog = Join-Path $LogDir "lan_service.err.log"
 $PidFile = Join-Path $LogDir "lan_service.pid"
+$RuntimeManifestFile = Join-Path $LogDir "runtime_manifest.json"
 
 if ($Background) {
   $ProcessArgs = ($ArgsList | ForEach-Object { ConvertTo-CommandLineArg $_ }) -join " "
   $Process = Start-Process -FilePath "python" -ArgumentList $ProcessArgs -WorkingDirectory $RepoRoot -RedirectStandardOutput $OutLog -RedirectStandardError $ErrLog -WindowStyle Hidden -PassThru
   Set-Content -Path $PidFile -Value $Process.Id -Encoding ASCII
+  [ordered]@{
+    schema = "stackchan.pc-brain-runtime.v1"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    sourceRoot = $RepoRoot.Path
+    sourceCommit = $SourceCommit.ToLowerInvariant()
+    sourceWorktreeClean = -not $SourceDirty
+    bridgePid = [int]$Process.Id
+  } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $RuntimeManifestFile -Encoding UTF8
   Write-Host "Stackchan PC brain started."
   Write-Host "PID: $($Process.Id)"
   Write-Host "URL: ws://$HostName`:$Port/bridge"

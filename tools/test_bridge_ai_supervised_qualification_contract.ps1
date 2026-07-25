@@ -19,6 +19,11 @@ $StartText = Get-Content -LiteralPath $StartPath -Raw
 foreach ($Required in @(
   "-OperatorPresent",
   "-ConfirmMotionOff",
+  "[string]`$PackageZip",
+  "verify_release_package.ps1",
+  "firmware/full_online/firmware.bin",
+  "robot_firmware_package_mismatch",
+  "runtime_manifest.json",
   "--conversation-v2",
   "--enable-initiative",
   "--room-observation",
@@ -29,7 +34,7 @@ foreach ($Required in @(
   "robot_host_vision_never_advanced",
   "vision_service.pid",
   "minReplyWindows",
-  "bridge-ai-supervised-session.v1"
+  "bridge-ai-supervised-session.v2"
 )) {
   if (-not $StartText.Contains($Required)) {
     throw "Bridge AI qualification start script missing contract token: $Required"
@@ -50,6 +55,7 @@ foreach ($Required in @(
   "ConfirmInitiativeNightSuppressed",
   "ConfirmRoomOffCleared",
   "ConfirmNoFramePersisted",
+  "after-runtime.json",
   "bridge_ai_qualification.py",
   "--require-ready"
 )) {

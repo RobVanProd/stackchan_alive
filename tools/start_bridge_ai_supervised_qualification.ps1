@@ -1,8 +1,11 @@
 param(
+  [Parameter(Mandatory = $true)]
+  [string]$PackageZip,
   [string]$DeviceHost = "192.168.1.238",
   [int]$BridgePort = 8765,
   [int]$DashboardPort = 8766,
   [string]$TurnLogFile = "output\pc-brain\latest\turns.jsonl",
+  [string]$RuntimeManifestFile = "output\pc-brain\latest\runtime_manifest.json",
   [string]$EvidenceRoot = "",
   [int]$MinReplyWindows = 100,
   [switch]$OperatorPresent,
@@ -26,6 +29,57 @@ $EvidencePath = (Resolve-Path $EvidenceRoot).Path
 $DebugUrl = "http://$DeviceHost`:8789/debug"
 $DashboardUrl = "http://127.0.0.1`:$DashboardPort/api/status"
 
+$SourceCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
+if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch "^[0-9a-f]{40}$") {
+  throw "Could not resolve source commit."
+}
+$SourceDirty = @(& git status --porcelain).Count -gt 0
+$PackageZipPath = (Resolve-Path $PackageZip).Path
+$PackageSha256 = (Get-FileHash -LiteralPath $PackageZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$Archive = [IO.Compression.ZipFile]::OpenRead($PackageZipPath)
+try {
+  $ManifestEntry = $Archive.Entries | Where-Object { $_.FullName -eq "release_manifest.json" } | Select-Object -First 1
+  $FirmwareEntry = $Archive.Entries | Where-Object { $_.FullName -eq "firmware/full_online/firmware.bin" } | Select-Object -First 1
+  if (-not $ManifestEntry) { throw "Release ZIP is missing release_manifest.json." }
+  if (-not $FirmwareEntry) { throw "Release ZIP is missing firmware/full_online/firmware.bin." }
+
+  $ManifestReader = [IO.StreamReader]::new($ManifestEntry.Open(), [Text.Encoding]::UTF8, $true)
+  try {
+    $PackageManifest = $ManifestReader.ReadToEnd() | ConvertFrom-Json
+  } finally {
+    $ManifestReader.Dispose()
+  }
+
+  $FirmwareStream = $FirmwareEntry.Open()
+  $Hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $ExpectedFirmwareSha256 = ([BitConverter]::ToString($Hasher.ComputeHash($FirmwareStream))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $Hasher.Dispose()
+    $FirmwareStream.Dispose()
+  }
+} finally {
+  $Archive.Dispose()
+}
+
+$PackageVersion = [string]$PackageManifest.version
+$PackageCommit = ([string]$PackageManifest.commit).ToLowerInvariant()
+if ($PackageCommit -notmatch "^[0-9a-f]{40}$") { throw "Release ZIP manifest commit is invalid." }
+if ($PackageCommit -ne $SourceCommit) {
+  throw "Release ZIP commit $PackageCommit does not match source commit $SourceCommit."
+}
+$PackageVerifyLog = Join-Path $EvidencePath "package-verify.log"
+$PackageVerifyOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File (Join-Path $PSScriptRoot "verify_release_package.ps1") `
+  -Version $PackageVersion -ZipPath $PackageZipPath -ExpectedCommit $SourceCommit 2>&1
+$PackageVerifyExit = $LASTEXITCODE
+$PackageVerifyOutput | Set-Content -LiteralPath $PackageVerifyLog -Encoding UTF8
+if ($PackageVerifyExit -ne 0) {
+  throw "Release ZIP verification failed. See $PackageVerifyLog"
+}
+
 $Debug = Invoke-RestMethod -Uri $DebugUrl -TimeoutSec 6
 $Dashboard = Invoke-RestMethod -Uri $DashboardUrl -TimeoutSec 6
 $Debug | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $EvidencePath "before-debug.json") -Encoding UTF8
@@ -39,6 +93,20 @@ $BridgeProcess = if ($Listener) {
   $null
 }
 $CommandLine = if ($BridgeProcess) { [string]$BridgeProcess.CommandLine } else { "" }
+$RuntimeManifestPath = if ([IO.Path]::IsPathRooted($RuntimeManifestFile)) {
+  [IO.Path]::GetFullPath($RuntimeManifestFile)
+} else {
+  [IO.Path]::GetFullPath((Join-Path $RepoRoot $RuntimeManifestFile))
+}
+$RuntimeManifest = if (Test-Path -LiteralPath $RuntimeManifestPath -PathType Leaf) {
+  Get-Content -LiteralPath $RuntimeManifestPath -Raw | ConvertFrom-Json
+} else {
+  $null
+}
+if ($RuntimeManifest) {
+  $RuntimeManifest | ConvertTo-Json -Depth 8 |
+    Set-Content -LiteralPath (Join-Path $EvidencePath "runtime-manifest.json") -Encoding UTF8
+}
 $VisionPidFile = "output\pc-brain\latest\vision_service.pid"
 $VisionProcess = $null
 if (Test-Path -LiteralPath $VisionPidFile -PathType Leaf) {
@@ -61,6 +129,22 @@ $Features = [ordered]@{
 
 $Issues = @()
 if (-not $BridgeProcess -or $CommandLine -notmatch "bridge[\\/]lan_service\.py") { $Issues += "bridge_process_not_found" }
+if (-not $RuntimeManifest) {
+  $Issues += "runtime_manifest_missing"
+} else {
+  if ([string]$RuntimeManifest.schema -ne "stackchan.pc-brain-runtime.v1") { $Issues += "runtime_manifest_schema_invalid" }
+  if ([int]$RuntimeManifest.bridgePid -ne [int]$BridgeProcess.ProcessId) { $Issues += "runtime_manifest_pid_mismatch" }
+  if (([string]$RuntimeManifest.sourceCommit).ToLowerInvariant() -ne $SourceCommit) { $Issues += "runtime_manifest_commit_mismatch" }
+  if ([bool]$RuntimeManifest.sourceWorktreeClean -ne $true) { $Issues += "runtime_manifest_source_dirty" }
+  if ([IO.Path]::GetFullPath([string]$RuntimeManifest.sourceRoot) -ne [IO.Path]::GetFullPath($RepoRoot.Path)) {
+    $Issues += "runtime_manifest_source_root_mismatch"
+  }
+}
+if ($SourceDirty) { $Issues += "source_worktree_dirty" }
+if (([string]$Debug.ota_expected_sha256).ToLowerInvariant() -ne $ExpectedFirmwareSha256) {
+  $Issues += "robot_firmware_package_mismatch"
+}
+if ([bool]$Debug.ota_current_app_confirmed -ne $true) { $Issues += "robot_firmware_not_confirmed" }
 if (-not $Features.conversationV2) { $Issues += "conversation_v2_not_enabled" }
 if (-not $Features.initiative) { $Issues += "initiative_not_enabled" }
 if (-not $Features.roomObservation) { $Issues += "room_observation_not_enabled" }
@@ -85,9 +169,6 @@ if ([int64]$Debug.camera_host_frame_requests -le 0 -or
   $Issues += "robot_host_vision_never_advanced"
 }
 
-$SourceCommit = (& git rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0) { throw "Could not resolve source commit." }
-$SourceDirty = @(& git status --porcelain).Count -gt 0
 $TurnLogPath = if ([IO.Path]::IsPathRooted($TurnLogFile)) {
   [IO.Path]::GetFullPath($TurnLogFile)
 } else {
@@ -100,7 +181,7 @@ $TurnLogStartLine = if (Test-Path -LiteralPath $TurnLogPath -PathType Leaf) {
 }
 
 $Session = [ordered]@{
-  schema = "stackchan.bridge-ai-supervised-session.v1"
+  schema = "stackchan.bridge-ai-supervised-session.v2"
   mode = "bridge-ai-supervised"
   status = $(if ($Issues.Count -eq 0) { "active" } else { "preflight-failed" })
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -110,6 +191,16 @@ $Session = [ordered]@{
   dashboardPort = $DashboardPort
   sourceCommit = $SourceCommit
   sourceWorktreeClean = -not $SourceDirty
+  packageVersion = $PackageVersion
+  packageCommit = $PackageCommit
+  packageZipPath = $PackageZipPath
+  packageSha256 = $PackageSha256
+  packageVerified = $true
+  expectedFirmwareSha256 = $ExpectedFirmwareSha256
+  runtimeManifestPath = $RuntimeManifestPath
+  runtimeSourceCommit = if ($RuntimeManifest) { ([string]$RuntimeManifest.sourceCommit).ToLowerInvariant() } else { "" }
+  runtimeSourceRoot = if ($RuntimeManifest) { [string]$RuntimeManifest.sourceRoot } else { "" }
+  runtimeBridgePid = if ($RuntimeManifest) { [int]$RuntimeManifest.bridgePid } else { 0 }
   operatorPresent = [bool]$OperatorPresent
   motionOffConfirmed = [bool]$ConfirmMotionOff
   minReplyWindows = $MinReplyWindows
