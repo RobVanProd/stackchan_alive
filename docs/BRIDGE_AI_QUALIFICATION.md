@@ -102,6 +102,7 @@ The checker requires:
 - advancing authenticated host-vision frame, target, face, and camera-event counters with zero new
   frame or pairing failures;
 - three or more warm local audio turns meeting the under-3-second first-audio gate;
+- three or more streaming turns with at least 25 ms of configured downlink pacing headroom;
 - authoritative playback drain before every reply window;
 - the required conversation, initiative, room, privacy, and operator-observation evidence.
 

@@ -77,8 +77,13 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   room observation is enabled, then requires authenticated frame and target counters to advance.
   The dashboard reports Waiting for host, Scanning, or Tracking instead of treating camera power
   as proof of host vision.
+- F4 is localized to the current phrase-streaming cadence. The accepted 70 ms wire benchmark
+  predates per-chunk mouth frames; applying the general 40 ms text delay to every mouth frame left
+  only 18 ms of a 128 ms PCM chunk for scheduler and network jitter. Mouth frames no longer consume
+  that pacing budget, leaving 58 ms of nominal headroom, and qualification now rejects fewer than
+  25 ms.
 
-These are source-tested candidates, not physical closure. F1-F3 remain open until one exact clean
+These are source-tested candidates, not physical closure. F1-F4 remain open until one exact clean
 source commit and firmware binary pass the supervised qualification and soak described below.
 
 ---
@@ -154,6 +159,22 @@ which is fine for detection but means no colour reasoning.
 vision worker and refuses a vision-enabled ready result until both authenticated frame requests and
 target updates advance with no new frame/auth failures. Physical qualification additionally
 requires advancing face batches, observed faces, and camera events.
+
+## F4. Speech is subtly choppy
+
+**Observed:** the operator heard slight choppiness while the bridge used 4096-byte, 16 kHz PCM
+chunks with 70 ms binary pacing and 40 ms text pacing.
+
+The earlier passing wire benchmark emitted no per-chunk mouth frames. Current speech emits one
+mouth frame before every PCM chunk, so the two sleeps became additive: 110 ms of configured cadence
+inside a 128 ms chunk. That byte-perfect stream can still starve under ordinary Windows and Wi-Fi
+jitter.
+
+**Candidate fix:** streaming mouth frames bypass the general text delay while ordinary bridge text
+frames retain it. Every completed streaming turn records chunk duration, configured cadence,
+headroom, and a 25 ms minimum-headroom result. Supervised qualification requires three or more
+streaming turns and rejects any unsafe result; the operator must still confirm continuous audio
+with no phrase-boundary gap or clipped tail.
 
 ---
 

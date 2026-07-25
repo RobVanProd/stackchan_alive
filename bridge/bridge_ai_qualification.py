@@ -403,6 +403,28 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             f"firstAudio={json.dumps(latency.get('first_audio_ms'), sort_keys=True)}"
         ),
     )
+    paced_audio_turns = [
+        record
+        for record in records
+        if record.get("schema") == "stackchan.lan-turn-summary.v1"
+        and record.get("tts_streaming") is True
+    ]
+    unsafe_pacing_turns = [
+        record
+        for record in paced_audio_turns
+        if record.get("tts_downlink_pacing_safe") is not True
+    ]
+    add(
+        "host-audio-pacing-safe",
+        "pass"
+        if len(paced_audio_turns) >= 3 and not unsafe_pacing_turns
+        else "fail",
+        (
+            f"turns={len(paced_audio_turns)} "
+            f"unsafe={len(unsafe_pacing_turns)} "
+            "minimumHeadroomMs=25"
+        ),
+    )
 
     initiative_times = [
         timestamp

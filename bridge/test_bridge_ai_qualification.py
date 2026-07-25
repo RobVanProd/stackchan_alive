@@ -178,6 +178,9 @@ class BridgeAiQualificationTests(unittest.TestCase):
                     "latency_gate_first_audio_under_3000": True,
                     "latency_gate_render_faster_than_realtime": True,
                     "latency_gate_zero_truncation": True,
+                    "tts_streaming": True,
+                    "tts_downlink_pacing_headroom_ms": 58.0,
+                    "tts_downlink_pacing_safe": True,
                 }
             )
         records.extend(
@@ -291,6 +294,34 @@ class BridgeAiQualificationTests(unittest.TestCase):
         )
         self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
         self.assertEqual("fail", audio_order["status"])
+
+    def test_unsafe_downlink_pacing_fails_candidate_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            records = [
+                json.loads(line)
+                for line in (root / "turns.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            audio_turn = next(
+                record
+                for record in records
+                if record.get("schema") == "stackchan.lan-turn-summary.v1"
+            )
+            audio_turn["tts_downlink_pacing_headroom_ms"] = 18.0
+            audio_turn["tts_downlink_pacing_safe"] = False
+            (root / "turns.jsonl").write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n",
+                encoding="utf-8",
+            )
+
+            report = check_evidence(root)
+
+        pacing = next(
+            check for check in report["checks"] if check["id"] == "host-audio-pacing-safe"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", pacing["status"])
 
     def test_unrecovered_response_wire_event_fails_candidate_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

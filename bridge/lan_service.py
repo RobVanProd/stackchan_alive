@@ -91,6 +91,7 @@ DEFAULT_MAX_AUDIO_BYTES = 512 * 1024
 DEFAULT_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 DEFAULT_DOWNLINK_BINARY_FRAME_DELAY_MS = 180
 DEFAULT_DOWNLINK_TEXT_FRAME_DELAY_MS = 40
+MIN_DOWNLINK_PACING_HEADROOM_MS = 25.0
 DEFAULT_CLIENT_IDLE_TIMEOUT_S = 20.0
 DEFAULT_TCP_KEEPALIVE_IDLE_MS = 5_000
 DEFAULT_TCP_KEEPALIVE_INTERVAL_MS = 1_000
@@ -1466,7 +1467,7 @@ class LanBridgeSession:
         text: str,
         *,
         suppress_thinking: bool = False,
-        frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+        frame_sink: Callable[[dict[str, object] | bytes], float | None] | None = None,
         finalized_audio: FinalizedAudioUpload | None = None,
     ) -> list[dict[str, object] | bytes]:
         try:
@@ -1676,7 +1677,7 @@ class LanBridgeSession:
         self,
         decision: InitiativeDecision,
         *,
-        frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+        frame_sink: Callable[[dict[str, object] | bytes], float | None] | None = None,
     ) -> list[dict[str, object] | bytes]:
         if self.initiative_policy is None:
             return [error_frame("initiative_disabled")]
@@ -1830,18 +1831,18 @@ class LanBridgeSession:
         *,
         turn_started: float,
         validation_issues: list[str],
-        frame_sink: Callable[[dict[str, object] | bytes], None] | None,
+        frame_sink: Callable[[dict[str, object] | bytes], float | None] | None,
         cancellation: CancellationToken | None = None,
     ) -> tuple[list[dict[str, object] | bytes], dict[str, object], str]:
         cancellation = cancellation or CancellationToken()
         emitted: list[dict[str, object] | bytes] = []
 
-        def emit(frame: dict[str, object] | bytes) -> None:
+        def emit(frame: dict[str, object] | bytes) -> float | None:
             cancellation.raise_if_cancelled()
             if frame_sink is None:
                 emitted.append(frame)
-            else:
-                frame_sink(frame)
+                return None
+            return frame_sink(frame)
 
         if validation_issues:
             emit(error_frame("character_validation", ",".join(validation_issues)))
@@ -1979,6 +1980,27 @@ class LanBridgeSession:
 
         stream_complete = not tts_error and len(phrase_elapsed_ms) == len(phrases)
         stream_partial = stream_started and not stream_complete
+        stream_chunk_bytes = max(
+            1,
+            min(MAX_DOWNLINK_AUDIO_CHUNK_BYTES, int(self.config.downlink_audio_chunk_bytes)),
+        )
+        chunk_audio_ms = (
+            (stream_chunk_bytes / 2.0) / stream_rate * 1000.0
+            if stream_rate > 0
+            else 0.0
+        )
+        mouth_control_delay_ms = downlink_text_frame_delay_ms(
+            self.config,
+            {"type": "audio"},
+        )
+        configured_cadence_ms = (
+            float(self.config.downlink_binary_frame_delay_ms) + mouth_control_delay_ms
+        )
+        pacing_headroom_ms = chunk_audio_ms - configured_cadence_ms
+        pacing_safe = (
+            stream_started
+            and pacing_headroom_ms >= MIN_DOWNLINK_PACING_HEADROOM_MS
+        )
 
         if stream_started:
             emit(
@@ -2023,6 +2045,10 @@ class LanBridgeSession:
             "tts_mouth_frames": mouth_frames,
             "tts_audio_truncated": stream_partial,
             "tts_stream_complete": stream_complete,
+            "tts_downlink_chunk_audio_ms": round(chunk_audio_ms, 2),
+            "tts_downlink_configured_cadence_ms": round(configured_cadence_ms, 2),
+            "tts_downlink_pacing_headroom_ms": round(pacing_headroom_ms, 2),
+            "tts_downlink_pacing_safe": pacing_safe,
             "tts_mode": turn.intent,
             "tts_arousal": round(max(0.0, min(1.0, turn.arousal)), 3),
             "tts_valence": round(max(-1.0, min(1.0, turn.valence)), 3),
@@ -2034,7 +2060,7 @@ class LanBridgeSession:
         message: dict[str, Any],
         *,
         suppress_thinking: bool = False,
-        frame_sink: Callable[[dict[str, object] | bytes], None] | None = None,
+        frame_sink: Callable[[dict[str, object] | bytes], float | None] | None = None,
         finalized_audio: FinalizedAudioUpload | None = None,
     ) -> list[dict[str, object] | bytes]:
         cancellation = CancellationToken()
@@ -2060,7 +2086,7 @@ class LanBridgeSession:
         message: dict[str, Any],
         *,
         suppress_thinking: bool,
-        frame_sink: Callable[[dict[str, object] | bytes], None] | None,
+        frame_sink: Callable[[dict[str, object] | bytes], float | None] | None,
         cancellation: CancellationToken,
         finalized_audio: FinalizedAudioUpload | None,
     ) -> list[dict[str, object] | bytes]:
@@ -2502,9 +2528,19 @@ def send_connection_frame(
         return sent_at
     conn.sendall(encode_ws_text(frame_to_text(frame)))
     sent_at = time.perf_counter()
-    if config.downlink_text_frame_delay_ms > 0:
-        time.sleep(config.downlink_text_frame_delay_ms / 1000.0)
+    delay_ms = downlink_text_frame_delay_ms(config, frame)
+    if delay_ms > 0:
+        time.sleep(delay_ms / 1000.0)
     return sent_at
+
+
+def downlink_text_frame_delay_ms(
+    config: LanBridgeConfig,
+    frame: dict[str, object],
+) -> float:
+    if config.stream_tts_phrases and frame.get("type") == "audio":
+        return 0.0
+    return float(config.downlink_text_frame_delay_ms)
 
 
 def ends_audio_stream(frame: dict[str, object] | bytes) -> bool:

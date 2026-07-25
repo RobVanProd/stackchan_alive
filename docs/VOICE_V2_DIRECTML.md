@@ -71,7 +71,10 @@ gate because the official DirectML RMVPE path reloaded its pitch model for each 
 
 Phrase streaming applies the longer 250 ms drain only to the short PCM chunk immediately before
 `audio_stream_end`. Intermediate phrase tails use normal chunk pacing; treating each phrase tail
-as the whole-stream boundary creates an audible gap and is covered by the bridge tests.
+as the whole-stream boundary creates an audible gap and is covered by the bridge tests. Per-chunk
+mouth-control frames are sent without the general 40 ms text-frame delay, so the production 70 ms
+PCM cadence retains 58 ms of nominal headroom inside each 128 ms 16 kHz chunk. Supervised Bridge AI
+qualification rejects a turn whose configured cadence has less than 25 ms of headroom.
 
 ## Setup And Benchmark
 

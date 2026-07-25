@@ -25,6 +25,7 @@ from lan_service import (
     build_handshake_response,
     contains_stackchan_wake_phrase,
     configure_client_socket,
+    downlink_text_frame_delay_ms,
     ends_audio_stream,
     encode_ws_frame,
     encode_ws_text,
@@ -1745,6 +1746,68 @@ class LanServiceTests(unittest.TestCase):
         self.assertFalse(ends_audio_stream({"type": "audio", "seq": 1}))
         self.assertFalse(ends_audio_stream(b"next phrase"))
         self.assertTrue(ends_audio_stream({"type": "audio_stream_end", "seq": 1}))
+
+    def test_streaming_mouth_frame_does_not_consume_pcm_pacing_budget(self):
+        conn = SimpleNamespace(sendall=Mock())
+        config = LanBridgeConfig(
+            stream_tts_phrases=True,
+            downlink_text_frame_delay_ms=40,
+        )
+        mouth = {"type": "audio", "seq": 1, "env": 0.4, "viseme": "ah"}
+        thinking = {"type": "thinking", "seq": 1}
+
+        with patch("lan_service.time.sleep") as sleep:
+            send_connection_frame(conn, config, mouth)
+            sleep.assert_not_called()
+
+            send_connection_frame(conn, config, thinking)
+            sleep.assert_called_once_with(0.04)
+
+        self.assertEqual(0.0, downlink_text_frame_delay_ms(config, mouth))
+        self.assertEqual(40.0, downlink_text_frame_delay_ms(config, thinking))
+
+    def test_streaming_tts_records_production_pacing_headroom(self):
+        result = SimpleNamespace(
+            diagnostics={"audio_truncated": False},
+            audio_data=b"\x00" * 4096,
+            audio_format="pcm16",
+            sample_rate=16000,
+            command_source="test",
+            voice="directml-test",
+            elapsed_ms=10.0,
+            duration_ms=128,
+            beats=(),
+        )
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                tts_command="fake-tts",
+                stream_tts_phrases=True,
+                downlink_audio_chunk_bytes=4096,
+                downlink_binary_frame_delay_ms=70,
+                downlink_text_frame_delay_ms=40,
+            )
+        )
+        turn = SimpleNamespace(
+            seq=24,
+            intent="speak",
+            arousal=0.0,
+            valence=0.0,
+            text="One phrase.",
+        )
+
+        with patch("lan_service.synthesize_speech", return_value=result):
+            _frames, summary, error = session._stream_tts_turn(
+                turn,
+                turn_started=time.perf_counter(),
+                validation_issues=[],
+                frame_sink=None,
+            )
+
+        self.assertEqual("", error)
+        self.assertEqual(128.0, summary["tts_downlink_chunk_audio_ms"])
+        self.assertEqual(70.0, summary["tts_downlink_configured_cadence_ms"])
+        self.assertEqual(58.0, summary["tts_downlink_pacing_headroom_ms"])
+        self.assertTrue(summary["tts_downlink_pacing_safe"])
 
     def test_audio_is_finalized_before_worker_and_late_binary_is_logged(self):
         runner = SimpleNamespace(
