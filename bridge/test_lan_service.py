@@ -2768,7 +2768,7 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("playback_complete_seq_mismatch", stale[0]["code"])
         self.assertEqual("conversation_reply_window", completed[0]["type"])
         self.assertEqual(0, completed[0]["open_after_ms"])
-        self.assertEqual(8000, completed[0]["window_ms"])
+        self.assertEqual(10000, completed[0]["window_ms"])
         self.assertEqual("reply_window", completed[0]["conversation_state"])
         self.assertFalse(completed[0]["conversation_capture_open"])
         self.assertEqual("heartbeat", duplicate[0]["type"])

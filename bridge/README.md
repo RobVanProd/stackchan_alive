@@ -279,14 +279,18 @@ python bridge\lan_service.py --conversation-v2 --tts-command "python bridge\rvc_
 The opt-in session accepts one wake-gated first turn, validates matching firmware
 `playback_complete`, then sends a bounded `conversation_reply_window` command so firmware reuses
 the proven cue, RGB, microphone-pause, and wake-gated uplink path without another wake phrase.
-The first follow-up window is eight seconds and later windows shorten by one second to a
-four-second floor. The bridge rejects values outside the firmware's exact acoustic-tail and
-reply-window bounds instead of silently correcting them.
+The follow-up lease remains ten seconds throughout the session. Completed turns do not make the
+listener progressively less patient. The bridge rejects values outside the firmware's exact
+acoustic-tail and reply-window bounds instead of silently correcting them. Sessions remain bounded
+to 24 user turns by default.
 Reply-window capture uses a deterministic local endpoint with sustained-speech and trailing-silence
-hysteresis; no-speech or ambiguous input retains the 4.8-second maximum fallback. Initial v1
-capture remains fixed-length. Exit phrases, turn limits, bridge loss, cancellation, TTS failure,
-and model failure close through a typed cooldown. Host/companion cancellation is implemented;
-physical over-speaker barge-in and exact-image hardware qualification remain promotion gates.
+hysteresis. The accepted firmware currently ends a reply after 550 ms of trailing silence and
+always stops by 4.8 seconds. Those device-owned endpoint values can truncate a thoughtful pause or
+long sentence even though the host lease remains open; changing them requires a separately
+qualified firmware candidate. Initial v1 capture remains fixed-length. Exit phrases, turn limits,
+bridge loss, cancellation, TTS failure, and model failure close through a typed cooldown.
+Host/companion cancellation is implemented; physical over-speaker barge-in and exact-image
+hardware qualification remain promotion gates.
 Use [`docs/BRIDGE_AI_QUALIFICATION.md`](../docs/BRIDGE_AI_QUALIFICATION.md) for the passive,
 exact-image evidence workflow.
 

@@ -43,10 +43,10 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 
 ## Source Implementation Update (2026-07-24)
 
-- Conversation v2 now emits the exact active reply-window duration, starts at 8 seconds, and
-  shortens by 1 second per later turn to a 4-second floor. The unchanged main firmware rejects
-  out-of-range values rather than silently clamping them. The feature remains explicit and still
-  needs exact-image hardware qualification before promotion.
+- Conversation v2 now emits a constant 10-second reply lease and allows 24 user turns by default.
+  Completed turns no longer make the listener progressively less patient. The unchanged main
+  firmware rejects out-of-range values rather than silently clamping them. The feature remains
+  explicit and still needs exact-image hardware qualification before promotion.
 - `bridge/initiative_policy.py` implements the ten-minute hard floor, fresh-person requirement,
   circadian suppression, busy/safety gates, curiosity decay, and two-ignored-opener backoff.
   Initiative generation uses the normal Character Lock and TTS path but never opens a microphone
@@ -228,10 +228,16 @@ automatically; the session ends on silence, an exit phrase, a turn limit, or bri
 
 ## Tuning the "conversation is over" feel
 
-The silence timeout is the entire feel of the ending. Too short and it hangs up on someone who is
-thinking; too long and it stares at an empty room. Start around 6–8 s of trailing silence for the
-first follow-up and shorten it on later turns — a conversation that has gone quiet twice is
-usually finished. Close with a short settling cue rather than a hard cut.
+Do not shorten the listening lease merely because several turns completed. That made Stackchan
+progressively less patient during an active exchange. The host default is now a constant ten
+seconds and a 24-turn safety bound.
+
+The accepted firmware image has a separate microphone endpoint: 550 ms of trailing silence and a
+4.8-second maximum reply capture. Live telemetry on 2026-07-26 showed 199 reply captures, zero
+reply-window expirations, and 119 maximum-duration fallbacks. That proves the observed mid-thought
+cutoff is device endpointing, not expiration of the bridge lease. Any change to those endpoint
+values belongs in a separate firmware PR and must preserve wake gating, echo rejection, uplink
+accounting, and the accepted image's qualification evidence.
 
 ---
 

@@ -17,12 +17,12 @@ class ConversationPhase(str, Enum):
 
 @dataclass(frozen=True)
 class ConversationConfig:
-    reply_window_ms: int = 8_000
+    reply_window_ms: int = 10_000
     reply_window_min_ms: int = 1_000
-    reply_window_step_ms: int = 1_000
+    reply_window_step_ms: int = 0
     acoustic_tail_ms: int = 250
     cooldown_ms: int = 300
-    max_turns: int = 12
+    max_turns: int = 24
     max_context_turns: int = 4
     max_context_chars: int = 320
     barge_in_enabled: bool = True

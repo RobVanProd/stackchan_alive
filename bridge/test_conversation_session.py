@@ -9,6 +9,21 @@ class ConversationSessionTests(unittest.TestCase):
             ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=200, cooldown_ms=100, max_turns=2)
         )
 
+    def test_production_defaults_keep_a_patient_bounded_session(self) -> None:
+        session = ConversationSession()
+        self.assertEqual(10_000, session.current_reply_window_ms())
+        self.assertEqual(24, session.config.max_turns)
+
+        session.wake(0)
+        now = 0
+        for turn in range(1, 6):
+            session.utterance_committed(now + 10, f"turn {turn}")
+            self.assertEqual(10_000, session.current_reply_window_ms())
+            session.response_started(now + 20)
+            session.playback_completed(now + 30)
+            now += 300
+            self.assertEqual("reply_window_open", session.tick(now).reason)
+
     def complete_response(self, start_ms: int = 100) -> None:
         self.session.utterance_committed(start_ms, "Tell me something")
         self.session.response_started(start_ms + 10)

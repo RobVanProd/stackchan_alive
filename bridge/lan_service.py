@@ -719,12 +719,12 @@ class LanBridgeConfig:
     research_enabled: bool = False
     searxng_url: str = "http://127.0.0.1:8080"
     conversation_v2_enabled: bool = False
-    conversation_reply_window_ms: int = 8_000
-    conversation_reply_window_min_ms: int = 4_000
-    conversation_reply_window_step_ms: int = 1_000
+    conversation_reply_window_ms: int = 10_000
+    conversation_reply_window_min_ms: int = 10_000
+    conversation_reply_window_step_ms: int = 0
     conversation_acoustic_tail_ms: int = 250
     conversation_cooldown_ms: int = 300
-    conversation_max_turns: int = 12
+    conversation_max_turns: int = 24
     initiative_enabled: bool = False
     initiative_min_interval_ms: int = MIN_UNPROMPTED_INTERVAL_MS
     room_observation_enabled: bool = False
@@ -3404,12 +3404,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable-research", action="store_true")
     parser.add_argument("--searxng-url", default="http://127.0.0.1:8080")
     parser.add_argument("--conversation-v2", action="store_true")
-    parser.add_argument("--conversation-reply-window-ms", type=int, default=8000)
-    parser.add_argument("--conversation-reply-window-min-ms", type=int, default=4000)
-    parser.add_argument("--conversation-reply-window-step-ms", type=int, default=1000)
+    parser.add_argument("--conversation-reply-window-ms", type=int, default=10000)
+    parser.add_argument("--conversation-reply-window-min-ms", type=int, default=10000)
+    parser.add_argument("--conversation-reply-window-step-ms", type=int, default=0)
     parser.add_argument("--conversation-acoustic-tail-ms", type=int, default=250)
     parser.add_argument("--conversation-cooldown-ms", type=int, default=300)
-    parser.add_argument("--conversation-max-turns", type=int, default=12)
+    parser.add_argument("--conversation-max-turns", type=int, default=24)
     parser.add_argument("--enable-initiative", action="store_true")
     parser.add_argument(
         "--initiative-min-interval-seconds",
