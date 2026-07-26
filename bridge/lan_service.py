@@ -58,6 +58,7 @@ from tts_adapter import (
     split_spoken_phrases,
     synthesize_speech,
 )
+from utterance_text import normalize_user_utterance
 from research_broker import (
     ResearchBroker,
     ResearchBrokerConfig,
@@ -151,6 +152,19 @@ PRIVATE_OR_EMBODIED_RESEARCH_TEXT = re.compile(
 SENSITIVE_RESEARCH_TEXT = re.compile(
     r"\b(?:password|passcode|api key|private key|credit card|bank account|social security|"
     r"medical|diagnosis|phone number|email address|home address)\b",
+    flags=re.IGNORECASE,
+)
+CONVERSATIONAL_QUESTION = re.compile(
+    r"^(?:what|who|when|where|why|how|which|is|are|was|were|did|does|do|"
+    r"can|could|would|will|should|have|has|tell me|give me|check|find)\b",
+    flags=re.IGNORECASE,
+)
+GREETING_ONLY = re.compile(
+    r"^(?:(?:hello|hi|hey)(?: there)?|good (?:morning|afternoon|evening))[.!?]*$",
+    flags=re.IGNORECASE,
+)
+LEADING_GREETING = re.compile(
+    r"^(?:(?:hello|hi|hey)(?: there)?|good (?:morning|afternoon|evening))[,!.:; -]*",
     flags=re.IGNORECASE,
 )
 
@@ -997,16 +1011,22 @@ def audio_downlink_frames(seq: int, tts, chunk_bytes: int) -> list[dict[str, obj
 def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
     if requested:
         return requested
-    lowered = text.lower()
+    clean = normalize_user_utterance(text)
+    lowered = clean.lower()
     if "forget" in lowered:
         return "forget"
     if "picked" in lowered or "pick" in lowered:
         return "picked_up"
     if "battery" in lowered or "power" in lowered:
         return "low_battery"
-    if "confused" in lowered or "ambiguous" in lowered or not text.strip():
+    if "confused" in lowered or "ambiguous" in lowered:
         return "confused"
-    if "?" in text:
+    if not clean:
+        return "greeting" if contains_stackchan_wake_phrase(text) else "confused"
+    if GREETING_ONLY.fullmatch(clean):
+        return "greeting"
+    question_text = LEADING_GREETING.sub("", clean).strip()
+    if "?" in clean or CONVERSATIONAL_QUESTION.search(question_text):
         return "question"
     return default_case
 

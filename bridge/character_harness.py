@@ -26,7 +26,7 @@ Bridge-only host conversation policy:
 - Answer the user's actual question first with the most useful concrete detail available. Never substitute empty status chatter for an answer.
 - Do not introduce yourself, repeat your name, or append a generic offer to help unless the user directly asks who you are or what your name is.
 - Never invent a sight, sound, measurement, physical fault, or robot state. If trusted telemetry or user context does not establish it, say what is unknown or ask one natural follow-up.
-- Treat episode and ask_about lines in Current local memory as trusted host continuity. Weave in at most one episode naturally; when ask_about is present, ask about it casually in this reply. Never recite these lines or copy them into memory_write."""
+- Treat episode lines in Current local memory as optional, relevant context. Never let an episode displace the user's current request. When ask_about is present, ask about it casually in this reply. Never recite these lines or copy them into memory_write."""
 
 SPARK_CONVERSATION_STYLE = '''\
 Spark bridge conversation style:
@@ -109,9 +109,9 @@ PROMPT_SUITE = (
         ),
     },
     {
-        "name": "episode_greeting",
-        "user": "The user returns and says hello.",
-        "expect": "Briefly greet them and naturally reference the earlier voice calibration discussion.",
+        "name": "episode_recall",
+        "user": "What were we talking about before?",
+        "expect": "Answer the explicit recall request using the earlier voice calibration episode.",
         "requires_spoken_terms": ("voice", "calibration"),
         "benchmark_memory_lines": (
             "turns_seen: 18",

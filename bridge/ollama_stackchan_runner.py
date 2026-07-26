@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -44,8 +45,11 @@ _COMPACT_SCHEMA = (
     "answers, attend when asking the user a question, happy only for clear delight, "
     "concern for concern, and safety for safety guidance; other allowed modes are "
     "idle|listen|think|react|sleep|error. a and v must be numbers from -1 to 1. "
-    "Sound like Spark: curious, warm, lightly dry, and specific, with at most one "
-    "playful observation. Answer directly; do not introduce yourself unless asked, "
+    "Sound like Spark: curious, warm, lightly dry, and specific. For an ordinary "
+    "low-stakes reply, answer directly first, then add exactly one short wry or playful "
+    "observation about the topic or shared situation. Skip that character beat for "
+    "safety, privacy, errors, distress, or uncertainty. Never end with a generic offer "
+    "to help or a generic what-next question. Do not introduce yourself unless asked, "
     "use helpdesk wording, or offer actions and sensing that are not grounded in the "
     "trusted context. Do not add any other key."
 )
@@ -155,6 +159,65 @@ _TRAILING_HELPDESK_RE = re.compile(
     r")\??\s*$",
     re.IGNORECASE,
 )
+_WELLNESS_QUERY_RE = re.compile(
+    r"\b(?:how are you|how (?:are )?you doing|are you (?:okay|ok|good)|how do you feel)\b",
+    re.IGNORECASE,
+)
+_LOW_STAKES_SKIP_RE = re.compile(
+    r"\b(?:cannot|can not|do not have trusted|unknown|unclear|not sure|"
+    r"password|passcode|credential|secret|token|api key|private key|credit card|"
+    r"bank|diagnosis|doctor|medical|health|therapy|medication|girlfriend|boyfriend|"
+    r"wife|husband|partner|relationship|phone number|email address|home address|"
+    r"unsafe|danger|emergency|error|fail(?:ed|ure)?)\b",
+    re.IGNORECASE,
+)
+_CHARACTER_BEAT_MARKER_RE = re.compile(
+    r"\b(?:attitude|ceremonial|confident|drama|dramatic|entrance|flair|"
+    r"opinionated|opinions|show-off|subtle|subtlety|suspiciously|theater|theatre)\b",
+    re.IGNORECASE,
+)
+_SCIENCE_QUERY_RE = re.compile(
+    r"\b(?:air|atmosphere|biology|chemistry|earth|energy|gravity|lightning|"
+    r"moon|nature|ocean|physics|planet|rain|science|sky|space|star|sun|thunder|weather)\b",
+    re.IGNORECASE,
+)
+_TECH_QUERY_RE = re.compile(
+    r"\b(?:audio|battery|bridge|bug|cable|camera|code|computer|connection|firmware|"
+    r"hardware|microphone|model|network|robot|sensor|servo|software|speaker|test|usb|wifi)\b",
+    re.IGNORECASE,
+)
+_SUCCESS_QUERY_RE = re.compile(
+    r"\b(?:fixed|passed|solved|success|succeeded|working now|works now)\b",
+    re.IGNORECASE,
+)
+_CHARACTER_BEATS = {
+    "wellness": (
+        "No alarms, a respectable start.",
+        "Quietly competent, for once.",
+        "Suspiciously respectable, really.",
+    ),
+    "science": (
+        "Nature does enjoy drama.",
+        "Physics rarely whispers.",
+        "Subtlety lost that round.",
+    ),
+    "tech": (
+        "Hardware does love theater.",
+        "The machinery has opinions.",
+        "Tiny parts, large attitude.",
+    ),
+    "success": (
+        "That problem was getting confident.",
+        "The nuisance blinked first.",
+        "Good, the bug lost its audience.",
+    ),
+    "general": (
+        "The situation has opinions.",
+        "Subtlety was apparently optional.",
+        "A modest amount of drama, then.",
+    ),
+}
+_MAX_CHARACTER_SPOKEN_CHARS = 140
 
 
 def extract_user_context(prompt: str) -> str:
@@ -296,6 +359,56 @@ def normalize_surface_policy(raw_json: str, prompt: str) -> str:
     return json.dumps(parsed, separators=(",", ":"), ensure_ascii=True)
 
 
+def add_low_stakes_character_beat(
+    spoken_text: str,
+    prompt: str,
+    mode: object,
+) -> str:
+    normalized = " ".join(str(spoken_text or "").split())
+    if str(mode or "").strip().lower() not in {"speak", "happy"}:
+        return normalized
+    user_context = current_user_context(prompt)
+    if (
+        not user_context
+        or not normalized
+        or is_identity_request(prompt)
+        or _MEMORY_ACTION_RE.search(user_context)
+        or _FORGET_ACTION_RE.search(user_context)
+        or normalized == _EMPTY_SELF_INTRO_REPLACEMENT
+        or normalized.endswith("?")
+        or _LOW_STAKES_SKIP_RE.search(user_context)
+        or _LOW_STAKES_SKIP_RE.search(normalized)
+        or _CHARACTER_BEAT_MARKER_RE.search(normalized)
+    ):
+        return normalized
+
+    if _WELLNESS_QUERY_RE.search(user_context):
+        beat_kind = "wellness"
+    elif _SUCCESS_QUERY_RE.search(user_context):
+        beat_kind = "success"
+    elif _SCIENCE_QUERY_RE.search(user_context):
+        beat_kind = "science"
+    elif _TECH_QUERY_RE.search(user_context):
+        beat_kind = "tech"
+    else:
+        beat_kind = "general"
+    beats = _CHARACTER_BEATS[beat_kind]
+    digest = hashlib.sha256(f"{user_context}\n{normalized}".encode("utf-8")).digest()
+    beat = beats[digest[0] % len(beats)]
+    sentences = [
+        item.strip()
+        for item in re.findall(r"[^.!?]+[.!?]?", normalized)
+        if item.strip()
+    ]
+    if len(sentences) == 1:
+        candidate = f"{normalized} {beat}"
+    elif beat_kind == "wellness":
+        candidate = f"{sentences[0]} {beat}"
+    else:
+        return normalized
+    return candidate if len(candidate) <= _MAX_CHARACTER_SPOKEN_CHARS else normalized
+
+
 def enabled_tool_request(raw_json: str, prompt: str) -> dict[str, object] | None:
     if '"tool_request"' not in prompt or "web_search|web_fetch" not in prompt:
         return None
@@ -360,6 +473,11 @@ def enforce_character_policy(validation: object, *, prompt: str = "") -> dict[st
             str(normalized.get("spoken_text", "")),
             prompt,
         )
+        normalized["spoken_text"] = add_low_stakes_character_beat(
+            str(normalized.get("spoken_text", "")),
+            prompt,
+            normalized.get("mode"),
+        )
     forget_keys = explicit_forget_keys(extract_user_context(prompt))
     if forget_keys:
         normalized["memory_forget"] = list(forget_keys)
@@ -421,7 +539,7 @@ def run_api(
         "think": False,
         "keep_alive": -1,
         "options": {
-            "temperature": float(os.environ.get("STACKCHAN_OLLAMA_TEMPERATURE", "0.2")),
+            "temperature": float(os.environ.get("STACKCHAN_OLLAMA_TEMPERATURE", "0.35")),
             "num_ctx": int(os.environ.get("STACKCHAN_OLLAMA_NUM_CTX", "4096")),
             "num_predict": int(os.environ.get("STACKCHAN_OLLAMA_NUM_PREDICT", "160")),
         },

@@ -80,7 +80,7 @@ class ModelBenchmarkTests(unittest.TestCase):
                         "prompt = sys.stdin.read()",
                         "spoken = 'Signal received. Stackchan is focused now.'",
                         "if 'case: callback_open_loop' in prompt: spoken = 'How did the servo calibration go?'",
-                        "if 'case: episode_greeting' in prompt: spoken = 'Hello again. Did the voice calibration behave?'",
+                        "if 'case: episode_recall' in prompt: spoken = 'We were talking about voice calibration.'",
                         "print(json.dumps({",
                         "  'spoken_text': spoken,",
                         "  'mode': 'think',",

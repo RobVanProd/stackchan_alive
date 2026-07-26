@@ -137,7 +137,7 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertTrue(result.validation.ok, result.validation.issues)
         self.assertEqual("think", result.validation.normalized["mode"])
 
-    def test_runner_repairs_ignored_episode_continuity_without_second_model_call(self):
+    def test_runner_does_not_replace_answer_with_optional_episode(self):
         generic = json.dumps(
             {
                 "spoken_text": "Hello there.",
@@ -151,15 +151,41 @@ class LocalRunnerTests(unittest.TestCase):
         with patch("local_runner.run_command", return_value=(generic, 1200.0, 10.0)) as runner:
             result = run_runner_profile(
                 "gemma4-e2b-gguf",
-                case_name="episode_greeting",
+                case_name="greeting",
                 command="fixture",
+                user_text="Hello.",
                 memory_lines=("episode: Talked about voice calibration (3 turns)",),
             )
 
         runner.assert_called_once()
+        self.assertFalse(result.response_repaired)
+        self.assertEqual("", result.repair_reason)
+        self.assertEqual("Hello there.", result.validation.normalized["spoken_text"])
+        self.assertEqual({}, result.validation.normalized["memory_write"])
+
+    def test_runner_still_enforces_due_open_loop_without_second_model_call(self):
+        generic = json.dumps(
+            {
+                "spoken_text": "Hello there.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch("local_runner.run_command", return_value=(generic, 1200.0, 10.0)) as runner:
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="greeting",
+                command="fixture",
+                memory_lines=("ask_about: I have a servo calibration demo tomorrow",),
+            )
+
+        runner.assert_called_once()
         self.assertTrue(result.response_repaired)
-        self.assertEqual("episode_continuity", result.repair_reason)
-        self.assertIn("voice calibration", result.validation.normalized["spoken_text"].lower())
+        self.assertEqual("open_loop_continuity", result.repair_reason)
+        self.assertIn("servo calibration demo", result.validation.normalized["spoken_text"].lower())
         self.assertEqual({}, result.validation.normalized["memory_write"])
 
     def test_runner_repairs_empty_pickup_reaction_without_second_model_call(self):

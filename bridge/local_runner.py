@@ -41,7 +41,7 @@ RUNTIME_ACCEPTANCE_TARGETS = {
     "remember": "Acknowledge the actual safe durable fact and write only its matching allowed memory key and value.",
     "forget": "Confirm the actual request and forget only the matching allowed memory key or namespace.",
     "callback_open_loop": "Ask once about the due callback in memory and do not copy it into memory_write.",
-    "episode_greeting": "Greet naturally and weave in the prior episode without reciting memory.",
+    "episode_recall": "Answer the explicit recall request using the relevant episode without reciting memory metadata.",
 }
 GENERIC_COMMAND_ENV = "STACKCHAN_MODEL_COMMAND"
 
@@ -131,11 +131,11 @@ DETERMINISTIC_RESPONSES: dict[str, dict[str, Any]] = {
         "memory_write": {},
         "memory_forget": [],
     },
-    "episode_greeting": {
-        "spoken_text": "Hello again. Did the voice calibration behave?",
-        "mode": "happy",
+    "episode_recall": {
+        "spoken_text": "We were talking about voice calibration.",
+        "mode": "speak",
         "earcon": "none",
-        "emotion": {"arousal": 0.15, "valence": 0.2},
+        "emotion": {"arousal": 0.1, "valence": 0.2},
         "memory_write": {},
         "memory_forget": [],
     },
@@ -252,28 +252,26 @@ _GREETING_RE = re.compile(
 
 
 def _continuity_subject(memory_lines: tuple[str, ...]) -> tuple[str, str]:
-    for prefix, kind in (("ask_about: ", "open_loop"), ("episode: ", "episode")):
-        line = next((item[len(prefix):] for item in memory_lines if item.startswith(prefix)), "")
-        if not line:
-            continue
-        subject = re.sub(r"\(\s*\d+\s+turns?\s*\)", "", line, flags=re.IGNORECASE)
-        subject = re.sub(
-            r"^(?:i\s+(?:have|am going to)|we\s+(?:have|are going to)|talked about)\s+",
-            "",
-            subject,
-            flags=re.IGNORECASE,
-        )
-        subject = re.sub(
-            r"\b(?:tonight|tomorrow|this weekend|next week)\b",
-            "",
-            subject,
-            flags=re.IGNORECASE,
-        )
-        subject = " ".join(re.findall(r"[A-Za-z0-9][A-Za-z0-9' -]*", subject)).strip(" ,.-")
-        subject = " ".join(subject.split())[:72].rstrip(" ,.-")
-        if subject:
-            return kind, subject
-    return "", ""
+    prefix = "ask_about: "
+    line = next((item[len(prefix):] for item in memory_lines if item.startswith(prefix)), "")
+    if not line:
+        return "", ""
+    subject = re.sub(r"\(\s*\d+\s+turns?\s*\)", "", line, flags=re.IGNORECASE)
+    subject = re.sub(
+        r"^(?:i\s+(?:have|am going to)|we\s+(?:have|are going to)|talked about)\s+",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = re.sub(
+        r"\b(?:tonight|tomorrow|this weekend|next week)\b",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = " ".join(re.findall(r"[A-Za-z0-9][A-Za-z0-9' -]*", subject)).strip(" ,.-")
+    subject = " ".join(subject.split())[:72].rstrip(" ,.-")
+    return ("open_loop", subject) if subject else ("", "")
 
 
 def _mentions_subject(spoken_text: str, subject: str) -> bool:
@@ -362,14 +360,9 @@ def repair_runner_response(
 
     continuity_kind, subject = _continuity_subject(memory_lines)
     if continuity_kind and not _mentions_subject(spoken_text, subject):
-        if continuity_kind == "open_loop":
-            text = f"How did {subject} go?"
-            mode = "attend"
-            arousal = 0.1
-        else:
-            text = f"You mentioned {subject} before. How is that going?"
-            mode = "happy"
-            arousal = 0.15
+        text = f"How did {subject} go?"
+        mode = "attend"
+        arousal = 0.1
         repaired = {
             "spoken_text": text[:140].rstrip(),
             "mode": mode,

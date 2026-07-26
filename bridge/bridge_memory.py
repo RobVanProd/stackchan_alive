@@ -123,6 +123,21 @@ _QUERY_STOP_WORDS = {
     "it", "me", "my", "of", "on", "please", "remember", "tell", "that", "the", "to", "what",
     "when", "where", "which", "who", "you",
 }
+_EPISODE_BOILERPLATE_TERMS = {
+    "continued",
+    "conversation",
+    "discussed",
+    "episode",
+    "our",
+    "talked",
+    "turn",
+    "turns",
+}
+_EXPLICIT_EPISODE_RECALL_RE = re.compile(
+    r"\b(?:earlier|last time|previously|before|remember when|"
+    r"what were we talking about|pick up where we left off|continue where we left off)\b",
+    re.IGNORECASE,
+)
 _FACT_SUBJECT_STOP_WORDS = {"a", "an", "the", "that", "this"}
 _EXPLICIT_USER_FACT_RE = re.compile(
     r"\b(?:please\s+)?remember(?:\s+that)?\s+my\s+"
@@ -492,6 +507,39 @@ def _token_jaccard(left: object, right: object) -> float:
     right_terms = _query_terms(right)
     union = left_terms | right_terms
     return len(left_terms & right_terms) / len(union) if union else 0.0
+
+
+def _select_relevant_episode(
+    records: Iterable[EpisodeRecord],
+    query: str,
+) -> EpisodeRecord | None:
+    episodes = _bounded_episodes(records)
+    if not episodes:
+        return None
+    if _EXPLICIT_EPISODE_RECALL_RE.search(query):
+        return max(episodes, key=lambda item: (item.created_at, item.last_used_at, item.text))
+
+    query_terms = _query_terms(query) - _EPISODE_BOILERPLATE_TERMS
+    if not query_terms:
+        return None
+    ranked: list[tuple[int, float, float, str, str, EpisodeRecord]] = []
+    for episode in episodes:
+        episode_terms = _query_terms(episode.text) - _EPISODE_BOILERPLATE_TERMS
+        shared = query_terms & episode_terms
+        if not shared:
+            continue
+        union = query_terms | episode_terms
+        ranked.append(
+            (
+                len(shared),
+                len(shared) / len(union),
+                episode.importance,
+                episode.created_at,
+                episode.last_used_at,
+                episode,
+            )
+        )
+    return max(ranked, key=lambda item: item[:-1])[-1] if ranked else None
 
 
 def _bounded_episodes(records: Iterable[EpisodeRecord]) -> tuple[EpisodeRecord, ...]:
@@ -1302,9 +1350,8 @@ class BridgeMemory:
         ask_line = ""
         selected_loop: OpenLoopRecord | None = None
         if _nonnegative_int(session_turns) <= 2:
-            episodes = _bounded_episodes(self._episodes)
-            if episodes:
-                episode = max(episodes, key=lambda item: (item.created_at, item.last_used_at, item.text))
+            episode = _select_relevant_episode(self._episodes, query)
+            if episode is not None:
                 episode_line = f"episode: {episode.text}"
             excluded = set(excluded_open_loops)
             due = [

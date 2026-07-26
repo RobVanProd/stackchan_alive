@@ -224,6 +224,27 @@ class BridgeMemoryV4Tests(unittest.TestCase):
         )
         self.assertFalse(excluded_card.open_loop_id)
 
+    def test_relationship_card_only_injects_relevant_or_explicitly_recalled_episode(self):
+        memory = BridgeMemory().add_episode(
+            "Talked about sleep and evening routines",
+            now="2026-07-13T00:00:00Z",
+        )
+        memory = memory.add_episode(
+            "Talked about bridge connection quality",
+            now="2026-07-14T00:00:00Z",
+        )
+
+        unrelated = memory.relationship_card("How are you doing", session_turns=1, now=NOW)
+        related = memory.relationship_card("Is the bridge connection stable", session_turns=1, now=NOW)
+        recalled = memory.relationship_card("What were we talking about before", session_turns=1, now=NOW)
+
+        self.assertFalse(any(line.startswith("episode: ") for line in unrelated.lines))
+        self.assertIn("episode: Talked about bridge connection quality", related.lines)
+        self.assertIn("episode: Talked about bridge connection quality", recalled.lines)
+        episodes = {item["text"]: item for item in memory.to_dict()["episodes"]}
+        self.assertEqual(0, episodes["Talked about sleep and evening routines"]["use_count"])
+        self.assertEqual(2, episodes["Talked about bridge connection quality"]["use_count"])
+
     def test_relationship_card_truncates_episode_before_callback_and_facts(self):
         memory = BridgeMemory(preferred_name="Fixture", turns_seen=99)
         for index in range(8):

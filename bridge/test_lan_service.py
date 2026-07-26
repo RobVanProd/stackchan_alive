@@ -851,6 +851,14 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("confused", prompt_case_for_text("This is ambiguous", "", "greeting"))
         self.assertEqual("forget", prompt_case_for_text("Forget that note", "", "greeting"))
         self.assertEqual("greeting", prompt_case_for_text("Hello", "", "greeting"))
+        self.assertEqual("greeting", prompt_case_for_text("Hey Stackchan", "", "greeting"))
+        self.assertEqual("question", prompt_case_for_text("How are you doing", "", "greeting"))
+        self.assertEqual(
+            "question",
+            prompt_case_for_text("Hey Stackchan how are you doing", "", "greeting"),
+        )
+        self.assertEqual("question", prompt_case_for_text("Hello, how are you doing", "", "greeting"))
+        self.assertEqual("greeting", prompt_case_for_text("The cable is fixed now", "", "greeting"))
         self.assertEqual("picked_up", prompt_case_for_text("Hello", "picked_up", "greeting"))
 
     def test_identity_question_uses_local_name_response(self):

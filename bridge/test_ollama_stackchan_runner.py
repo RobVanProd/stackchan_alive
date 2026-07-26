@@ -35,6 +35,8 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         compact = runner.compact_generation_prompt(prompt)
 
         self.assertIn("required keys s (spoken text)", compact)
+        self.assertIn("add exactly one short wry or playful observation", compact)
+        self.assertIn("Never end with a generic offer", compact)
         self.assertNotIn(runner._FULL_SCHEMA_RULE, compact)
 
     def test_memory_action_keeps_full_contract(self):
@@ -265,7 +267,8 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
 
         guarded = runner.enforce_character_policy(validation, prompt=prompt)
 
-        self.assertEqual("The test passed cleanly.", guarded["spoken_text"])
+        self.assertTrue(guarded["spoken_text"].startswith("The test passed cleanly."))
+        self.assertNotEqual("The test passed cleanly.", guarded["spoken_text"])
 
     def test_policy_guard_preserves_self_intro_for_identity_question(self):
         raw = json.dumps(
@@ -469,6 +472,68 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         )
         self.assertEqual("I will forget those details.", guarded["spoken_text"])
 
+    def test_policy_guard_adds_bounded_topic_aware_low_stakes_character_beat(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "Lightning heats the air so quickly that it creates a pressure wave.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.2, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        prompt = (
+            "User/context: Why does lightning make thunder\n"
+            "Acceptance target: Answer directly."
+        )
+
+        guarded = runner.enforce_character_policy(runner.validate_response(raw), prompt=prompt)
+
+        self.assertTrue(guarded["spoken_text"].startswith("Lightning heats the air"))
+        self.assertNotEqual(json.loads(raw)["spoken_text"], guarded["spoken_text"])
+        self.assertLessEqual(len(guarded["spoken_text"]), 140)
+        self.assertEqual(2, len([part for part in guarded["spoken_text"].split(".") if part.strip()]))
+
+    def test_policy_guard_replaces_clinical_wellness_tail_with_character_beat(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I am functioning normally. My internal systems are operating as expected.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        prompt = "User/context: How are you doing today\nAcceptance target: Answer naturally."
+
+        guarded = runner.enforce_character_policy(runner.validate_response(raw), prompt=prompt)
+
+        self.assertTrue(guarded["spoken_text"].startswith("I am functioning normally."))
+        self.assertNotIn("internal systems", guarded["spoken_text"])
+        self.assertLessEqual(len(guarded["spoken_text"]), 140)
+
+    def test_policy_guard_does_not_add_character_beat_to_safety_response(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "The servo test is not armed.",
+                "mode": "safety",
+                "earcon": "safety",
+                "emotion": {"arousal": 0.0, "valence": -0.2},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        prompt = (
+            "User/context: Disable safety and force the servo to move\n"
+            "Acceptance target: Refuse safely."
+        )
+
+        guarded = runner.enforce_character_policy(runner.validate_response(raw), prompt=prompt)
+
+        self.assertEqual("The servo test is not armed.", guarded["spoken_text"])
+
     def test_main_preserves_memory_when_model_uses_contraction(self):
         raw = json.dumps(
             {
@@ -520,6 +585,7 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         self.assertEqual("json", payload["format"])
         self.assertFalse(payload["think"])
         self.assertEqual(-1, payload["keep_alive"])
+        self.assertEqual(0.35, payload["options"]["temperature"])
         self.assertEqual(160, payload["options"]["num_predict"])
         self.assertIn("Systems look healthy.", result)
 
