@@ -52,6 +52,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\start_pc_brain_dir
   -EnableResearch `
   -EnableConversationV2 `
   -EnableInitiative `
+  -EnableFaceVision `
   -EnableRoomObservation `
   -RoomVisionModel "<local-vision-model>" `
   -CameraPairingCodeFile "<private-pairing-code-file>" `
@@ -72,8 +73,8 @@ no private audio evidence, a configured dashboard, and a connected motion-off ro
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File tools\start_bridge_ai_supervised_qualification.ps1 `
   -PackageZip "output\release\stackchan_alive_<exact-version>.zip" `
-  -ExpectedFirmwareSha256 "69d3db27f2d7197799fdc08ff3c1dc4d6e3011724fe29899367dc016e48ebfa8" `
-  -ExpectedFirmwareSourceCommit "ce66f8a0fadfadbc07eb59124522267ba66ee70a" `
+  -ExpectedFirmwareSha256 "<accepted-pr217-or-later-private-firmware-sha256>" `
+  -ExpectedFirmwareSourceCommit "<accepted-pr217-or-later-main-source-commit>" `
   -OperatorPresent `
   -ConfirmMotionOff `
   -MinReplyWindows 100 `
