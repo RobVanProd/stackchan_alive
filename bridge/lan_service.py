@@ -2295,14 +2295,16 @@ class LanBridgeSession:
                 ]
             except SttNoTranscriptError as exc:
                 no_speech_detail = str(exc)
-                stt_log = {
-                    "stt_no_transcript": True,
-                    "stt_command_source": (
-                        "whisper.cpp-server"
-                        if self.config.stt_server_url
-                        else "configured-command"
-                    ),
-                }
+                stt_log.update(
+                    {
+                        "stt_no_transcript": True,
+                        "stt_command_source": (
+                            "whisper.cpp-server"
+                            if self.config.stt_server_url
+                            else "configured-command"
+                        ),
+                    }
+                )
             except (SttExecutionError, ValueError) as exc:
                 self._append_audio_error_log(
                     seq=seq,
@@ -2315,11 +2317,13 @@ class LanBridgeSession:
                 user_text = stt.transcript
                 audio_summary["stt_elapsed_ms"] = round(stt.elapsed_ms, 2)
                 audio_summary["stt_command_source"] = stt.command_source
-                stt_log = {
-                    "stt_transcript": stt.transcript,
-                    "stt_elapsed_ms": round(stt.elapsed_ms, 2),
-                    "stt_command_source": stt.command_source,
-                }
+                stt_log.update(
+                    {
+                        "stt_transcript": stt.transcript,
+                        "stt_elapsed_ms": round(stt.elapsed_ms, 2),
+                        "stt_command_source": stt.command_source,
+                    }
+                )
                 if stt.raw_transcript and stt.raw_transcript != stt.transcript:
                     stt_log["stt_raw_transcript"] = stt.raw_transcript
                 if stt.transcript_normalized:

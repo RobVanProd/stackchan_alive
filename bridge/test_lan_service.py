@@ -1775,6 +1775,68 @@ class LanServiceTests(unittest.TestCase):
             any(frame.get("stt_bypassed") for frame in frames if isinstance(frame, dict))
         )
 
+    def test_detected_followup_logs_reply_vad_and_stt_evidence_together(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            turn_log = Path(temp_dir) / "turns.jsonl"
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    conversation_v2_enabled=True,
+                    conversation_acoustic_tail_ms=0,
+                    tts_command="configured-for-test",
+                    turn_log_file=turn_log,
+                )
+            )
+            clock = int(time.time() * 1000)
+            session.conversation.wake(clock)
+            session.conversation.utterance_started(clock + 1)
+            session.conversation.utterance_committed(clock + 2, "Hello")
+            session.conversation.response_started(clock + 3)
+            session.conversation.playback_completed(clock + 4)
+            session.conversation.tick(clock + 4)
+            voiced_pcm = array(
+                "h",
+                (
+                    int(6000 * math.sin(2.0 * math.pi * 220.0 * index / 16000))
+                    for index in range(3200)
+                ),
+            ).tobytes()
+            stt_result = SimpleNamespace(
+                transcript="Who are you, Stackchan?",
+                raw_transcript="Who are you, Stackchan?",
+                transcript_normalized=False,
+                elapsed_ms=5.0,
+                command_source="test",
+            )
+
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 8, "sample_rate": 16000})
+            )
+            session.handle_binary(voiced_pcm)
+            with (
+                patch("lan_service.transcribe_pcm", return_value=stt_result),
+                patch(
+                    "lan_service.synthesize_speech",
+                    side_effect=TtsConfigurationError("test has no audio renderer"),
+                ),
+            ):
+                session.handle_text(json.dumps({"type": "utterance_end", "seq": 8}))
+
+            records = [
+                json.loads(line)
+                for line in turn_log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        summary = next(
+            record
+            for record in records
+            if record.get("schema") == "stackchan.lan-turn-summary.v1"
+        )
+        self.assertTrue(summary["reply_pcm_speech_gate_applied"])
+        self.assertTrue(summary["reply_pcm_speech_detected"])
+        self.assertEqual("speech", summary["reply_pcm_detection_reason"])
+        self.assertEqual("test", summary["stt_command_source"])
+        self.assertNotIn("stt_bypassed", summary)
+
     def test_conversation_v2_no_transcript_closes_without_reply_window_or_history(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "fake_tts.py"
