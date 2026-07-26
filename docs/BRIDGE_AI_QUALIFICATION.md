@@ -6,6 +6,10 @@ gate, not a source-test substitute.
 
 The bridge candidate does not alter firmware. Use the accepted working image from `main`, record
 its SHA-256 before and after, and do not flash or rebuild the robot as part of this procedure.
+The accepted image must be built from merged PR #216 (`6d39af7605aa6a4dc88d137e03c344dbfc8f53ce`)
+or a later `main` commit so the 12-second endpoint and initial-turn silence endpoint are present.
+The older `ce66f8a0` accepted image is valid historical evidence but is not eligible for this
+Conversation v2 qualification.
 The shared `personas/` packs and their `bridge/persona_pack.py` loader are firmware build inputs,
 so bridge-only conversation policies must stay in other host-only modules under `bridge/`; the
 start gate rejects any firmware-input diff from `origin/main`.
@@ -78,14 +82,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 Preserve the returned evidence-root path. During that one session:
 
 1. Hold a natural multi-turn exchange from one wake.
-2. Exercise an exit phrase, silence close, and physical over-speaker barge-in.
-3. Observe at least 100 reply windows with no accepted echo.
-4. Observe two initiative openers at least ten minutes apart, ignore both, and verify backoff.
-5. Verify initiative is suppressed during configured night hours.
-6. Collect at least two grounded room observations, disable observation, and confirm the summary
+2. Ask one current factual question that requires research and verify the spoken answer is
+   grounded in the companion's cited result rather than an internet-access denial.
+3. Ask what Stackchan sees, ask a deictic colour question, and confirm the first answer is grounded
+   while the second truthfully reports the grayscale limitation.
+4. Store one harmless memory, explicitly recall it, then change subjects and confirm that memory
+   does not hijack unrelated turns.
+5. Confirm a visible person is noticed without inventing identity, emotion, or private attributes.
+6. Exercise an exit phrase, silence close, and physical over-speaker barge-in.
+7. Observe at least 100 reply windows with no accepted echo.
+8. Observe two initiative openers at least ten minutes apart, ignore both, and verify backoff.
+9. Verify initiative is suppressed during configured night hours.
+10. Collect at least two grounded room observations, disable observation, and confirm the summary
    clears.
-7. Briefly remove and restore the bridge connection, confirming local face and wake behavior.
-8. Confirm speech is complete and continuous, with no phrase-boundary gap or clipped tail.
+11. Briefly remove and restore the bridge connection, confirming local face and wake behavior.
+12. Confirm speech is complete and continuous, with no phrase-boundary gap or clipped tail.
 
 ## Complete The Session
 
@@ -98,16 +109,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -EvidenceRoot "<evidence-root>" `
   -EchoWindowsObserved 100 `
   -ConfirmOneWakeMultiTurn `
+  -ConfirmConversationNatural `
   -ConfirmEchoFree `
   -ConfirmExitPhraseClosed `
   -ConfirmSilenceClosed `
   -ConfirmBargeInStoppedAudio `
   -ConfirmBridgeLossLocalRecovery `
   -ConfirmCleanCompleteAudio `
+  -ConfirmResearchGrounded `
+  -ConfirmVisualContextGrounded `
+  -ConfirmGrayscaleLimitationTruthful `
+  -ConfirmMemoryRecallAccurate `
+  -ConfirmNoUnrelatedMemoryHijack `
   -ConfirmInitiativeNatural `
   -ConfirmInitiativeRateFloor `
   -ConfirmInitiativeIgnoredBackoff `
   -ConfirmInitiativeNightSuppressed `
+  -ConfirmPersonNoticingGrounded `
   -ConfirmRoomContextGrounded `
   -ConfirmRoomOffCleared `
   -ConfirmNoFramePersisted `
@@ -126,15 +144,19 @@ The checker requires:
   the running app confirmed. The bridge package's bundled firmware is not the qualification
   target and is never flashed by this procedure;
 - connected bridge/network state, the 50 ms display gate, and motion/rail/torque off;
-- zero uplink, writer-drop, reply-window, playback, raw-speaker, or forced-stop deltas;
+- zero uplink, MWW-submit/drop, capture-failure, writer-drop, reply-window, playback, audio-stop,
+  raw-speaker, or forced-stop deltas, with every required counter present;
 - zero host late-audio events or declared/received audio-count mismatches;
 - no unrecovered response-wire overlap, sequence mismatch, or missing end;
+- redacted turn-log proof of one cited research route, one fresh on-demand visual observation, the
+  deterministic grayscale colour guard, and deterministic memory recall;
 - advancing authenticated host-vision frame, target, face, and camera-event counters with zero new
   frame or pairing failures;
 - three or more warm local audio turns meeting the under-3-second first-audio gate;
 - three or more streaming turns with at least 25 ms of configured downlink pacing headroom;
 - authoritative playback drain before every reply window;
-- the required conversation, initiative, room, privacy, and operator-observation evidence.
+- the required natural conversation, research, visual, memory, person-noticing, initiative, room,
+  privacy, and operator-observation evidence.
 
 Only `bridge-ai-supervised-ready` is promotable. A different accepted-main firmware SHA,
 unrecorded firmware source commit, package/source/runtime commit mismatch, restarted bridge,

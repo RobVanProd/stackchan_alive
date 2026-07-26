@@ -3,16 +3,23 @@ param(
   [string]$EvidenceRoot,
   [int]$EchoWindowsObserved = 0,
   [switch]$ConfirmOneWakeMultiTurn,
+  [switch]$ConfirmConversationNatural,
   [switch]$ConfirmEchoFree,
   [switch]$ConfirmExitPhraseClosed,
   [switch]$ConfirmSilenceClosed,
   [switch]$ConfirmBargeInStoppedAudio,
   [switch]$ConfirmBridgeLossLocalRecovery,
   [switch]$ConfirmCleanCompleteAudio,
+  [switch]$ConfirmResearchGrounded,
+  [switch]$ConfirmVisualContextGrounded,
+  [switch]$ConfirmGrayscaleLimitationTruthful,
+  [switch]$ConfirmMemoryRecallAccurate,
+  [switch]$ConfirmNoUnrelatedMemoryHijack,
   [switch]$ConfirmInitiativeNatural,
   [switch]$ConfirmInitiativeRateFloor,
   [switch]$ConfirmInitiativeIgnoredBackoff,
   [switch]$ConfirmInitiativeNightSuppressed,
+  [switch]$ConfirmPersonNoticingGrounded,
   [switch]$ConfirmRoomContextGrounded,
   [switch]$ConfirmRoomOffCleared,
   [switch]$ConfirmNoFramePersisted,
@@ -85,6 +92,7 @@ $Observations = [ordered]@{
   schema = "stackchan.bridge-ai-operator-observations.v1"
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
   oneWakeMultiTurn = [bool]$ConfirmOneWakeMultiTurn
+  conversationNatural = [bool]$ConfirmConversationNatural
   echoFree = [bool]$ConfirmEchoFree
   echoWindowsObserved = $EchoWindowsObserved
   exitPhraseClosed = [bool]$ConfirmExitPhraseClosed
@@ -92,10 +100,16 @@ $Observations = [ordered]@{
   bargeInStoppedAudio = [bool]$ConfirmBargeInStoppedAudio
   bridgeLossLocalRecovery = [bool]$ConfirmBridgeLossLocalRecovery
   cleanCompleteAudio = [bool]$ConfirmCleanCompleteAudio
+  researchGrounded = [bool]$ConfirmResearchGrounded
+  visualContextGrounded = [bool]$ConfirmVisualContextGrounded
+  grayscaleLimitationTruthful = [bool]$ConfirmGrayscaleLimitationTruthful
+  memoryRecallAccurate = [bool]$ConfirmMemoryRecallAccurate
+  noUnrelatedMemoryHijack = [bool]$ConfirmNoUnrelatedMemoryHijack
   initiativeNatural = [bool]$ConfirmInitiativeNatural
   initiativeRateFloor = [bool]$ConfirmInitiativeRateFloor
   initiativeIgnoredBackoff = [bool]$ConfirmInitiativeIgnoredBackoff
   initiativeNightSuppressed = [bool]$ConfirmInitiativeNightSuppressed
+  personNoticingGrounded = [bool]$ConfirmPersonNoticingGrounded
   roomContextGrounded = [bool]$ConfirmRoomContextGrounded
   roomOffCleared = [bool]$ConfirmRoomOffCleared
   noFramePersisted = [bool]$ConfirmNoFramePersisted

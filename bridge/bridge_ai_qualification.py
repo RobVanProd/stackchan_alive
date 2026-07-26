@@ -18,16 +18,23 @@ except ImportError:
 
 OPERATOR_GATES = (
     ("oneWakeMultiTurn", "operator-one-wake-multi-turn"),
+    ("conversationNatural", "operator-conversation-natural"),
     ("echoFree", "operator-echo-free"),
     ("exitPhraseClosed", "operator-exit-phrase"),
     ("silenceClosed", "operator-silence-close"),
     ("bargeInStoppedAudio", "operator-physical-barge-in"),
     ("bridgeLossLocalRecovery", "operator-bridge-loss-recovery"),
     ("cleanCompleteAudio", "operator-clean-complete-audio"),
+    ("researchGrounded", "operator-research-grounded"),
+    ("visualContextGrounded", "operator-visual-context-grounded"),
+    ("grayscaleLimitationTruthful", "operator-grayscale-limitation"),
+    ("memoryRecallAccurate", "operator-memory-recall"),
+    ("noUnrelatedMemoryHijack", "operator-no-unrelated-memory-hijack"),
     ("initiativeNatural", "operator-initiative-natural"),
     ("initiativeRateFloor", "operator-initiative-rate-floor"),
     ("initiativeIgnoredBackoff", "operator-initiative-backoff"),
     ("initiativeNightSuppressed", "operator-initiative-night"),
+    ("personNoticingGrounded", "operator-person-noticing"),
     ("roomContextGrounded", "operator-room-grounding"),
     ("roomOffCleared", "operator-room-off-clear"),
     ("noFramePersisted", "operator-no-frame-persistence"),
@@ -35,6 +42,7 @@ OPERATOR_GATES = (
 FRAME_SUFFIXES = {".pgm", ".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+PR216_FIRMWARE_BASELINE_COMMIT = "6d39af7605aa6a4dc88d137e03c344dbfc8f53ce"
 
 
 def _load_json(path: Path) -> dict[str, object] | None:
@@ -209,6 +217,8 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
         firmware_provenance_valid = (
             SHA256_RE.fullmatch(expected_firmware) is not None
             and COMMIT_RE.fullmatch(expected_firmware_source) is not None
+            and str(session.get("requiredFirmwareBaselineCommit", "")).lower()
+            == PR216_FIRMWARE_BASELINE_COMMIT
             and session.get("firmwareAcceptanceBase") == "origin/main"
             and SHA256_RE.fullmatch(acceptance_sha) is not None
             and acceptance_file_sha == acceptance_sha
@@ -351,11 +361,17 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
         zero_delta_fields = (
             "bridge_uplink_errors",
             "bridge_uplink_queue_failures",
+            "mww_uplink_dropped",
+            "mww_uplink_submit_failed",
+            "wake_cue_captures_failed",
             "bridge_network_writer_text_dropped",
             "bridge_network_writer_binary_dropped",
             "bridge_reply_windows_rejected",
             "conversation_reply_window_rejected",
             "bridge_downlink_playback_errors",
+            "bridge_audio_safety_stops",
+            "bridge_audio_disconnect_stops",
+            "bridge_audio_watchdog_stops",
             "speaker_stream_play_raw_failed",
             "speaker_stream_forced_stops",
         )
@@ -366,6 +382,16 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             "bridge_network_writer_text_dropped",
             "bridge_network_writer_binary_dropped",
             "bridge_network_writer_last_error",
+        )
+        missing_transport_telemetry = [
+            key
+            for key in zero_delta_fields
+            if key not in before_debug or key not in after_debug
+        ]
+        add(
+            "robot-transport-telemetry",
+            "pass" if not missing_transport_telemetry else "fail",
+            f"missing={json.dumps(missing_transport_telemetry)}",
         )
         missing_writer_telemetry = [
             key
@@ -462,6 +488,60 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             f"protocolEvents={len(audio_protocol_events)} "
             f"countMismatches={len(audio_count_mismatches)}"
         ),
+    )
+
+    completed_turns = [
+        record
+        for record in records
+        if record.get("schema") == "stackchan.lan-turn-summary.v1"
+        and record.get("rejected") is not True
+        and record.get("ignored") is not True
+    ]
+    grounded_research_turns = [
+        record
+        for record in completed_turns
+        if record.get("research_tool") in {"web_search", "web_fetch"}
+        and isinstance(record.get("research_source_urls"), list)
+        and bool(record.get("research_source_urls"))
+        and not str(record.get("research_error", "")).strip()
+    ]
+    add(
+        "host-research-route-exercised",
+        "pass" if grounded_research_turns else "fail",
+        f"groundedTurns={len(grounded_research_turns)}",
+    )
+    fresh_visual_turns = [
+        record
+        for record in completed_turns
+        if record.get("visual_routing") == "on_demand_observation"
+        and record.get("visual_observation_status") == "fresh"
+    ]
+    add(
+        "host-fresh-visual-route-exercised",
+        "pass" if fresh_visual_turns else "fail",
+        f"freshTurns={len(fresh_visual_turns)}",
+    )
+    grayscale_limit_turns = [
+        record
+        for record in completed_turns
+        if record.get("visual_routing") == "grayscale_color_limit"
+        and record.get("runner_command_source") == "local_grayscale_limit"
+    ]
+    add(
+        "host-grayscale-limit-exercised",
+        "pass" if grayscale_limit_turns else "fail",
+        f"guardedTurns={len(grayscale_limit_turns)}",
+    )
+    memory_recall_turns = [
+        record
+        for record in completed_turns
+        if record.get("local_fact_tool") == "memory_recall"
+        and record.get("runner_command_source") == "trusted_memory_recall"
+    ]
+    add(
+        "host-memory-recall-exercised",
+        "pass" if memory_recall_turns else "fail",
+        f"recallTurns={len(memory_recall_turns)}",
     )
 
     response_wire_events = [

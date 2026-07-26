@@ -22,6 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
+$RequiredFirmwareBaselineCommit = "6d39af7605aa6a4dc88d137e03c344dbfc8f53ce"
 
 if (-not $OperatorPresent -or -not $ConfirmMotionOff) {
   throw "Qualification requires -OperatorPresent -ConfirmMotionOff."
@@ -117,6 +118,10 @@ if ($LASTEXITCODE -ne 0) {
 & git merge-base --is-ancestor $ExpectedFirmwareSourceCommit origin/main
 if ($LASTEXITCODE -ne 0) {
   throw "Accepted firmware source commit $ExpectedFirmwareSourceCommit is not an ancestor of origin/main."
+}
+& git merge-base --is-ancestor $RequiredFirmwareBaselineCommit $ExpectedFirmwareSourceCommit
+if ($LASTEXITCODE -ne 0) {
+  throw "Accepted firmware source commit $ExpectedFirmwareSourceCommit does not include merged PR #216 baseline $RequiredFirmwareBaselineCommit."
 }
 $FirmwareAcceptanceText = Get-Content -LiteralPath $FirmwareAcceptancePath -Raw
 $FirmwareAcceptanceLower = $FirmwareAcceptanceText.ToLowerInvariant()
@@ -250,6 +255,7 @@ $Session = [ordered]@{
   packageVerified = $true
   expectedFirmwareSha256 = $ExpectedFirmwareSha256
   expectedFirmwareSourceCommit = $ExpectedFirmwareSourceCommit
+  requiredFirmwareBaselineCommit = $RequiredFirmwareBaselineCommit
   firmwareAcceptanceEvidence = "accepted-main-firmware-status.md"
   firmwareAcceptanceBase = "origin/main"
   firmwareAcceptanceEvidenceSha256 = $FirmwareAcceptanceEvidenceSha256

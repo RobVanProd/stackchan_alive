@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from bridge.bridge_ai_qualification import check_evidence
+from bridge.bridge_ai_qualification import (
+    PR216_FIRMWARE_BASELINE_COMMIT,
+    check_evidence,
+)
 
 
 class BridgeAiQualificationTests(unittest.TestCase):
@@ -25,6 +28,7 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "packageVerified": True,
             "expectedFirmwareSha256": "b" * 64,
             "expectedFirmwareSourceCommit": "d" * 40,
+            "requiredFirmwareBaselineCommit": PR216_FIRMWARE_BASELINE_COMMIT,
             "firmwareAcceptanceEvidence": "accepted-main-firmware-status.md",
             "firmwareAcceptanceBase": "origin/main",
             "firmwareAcceptanceEvidenceSha256": hashlib.sha256(
@@ -49,6 +53,9 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "conversation_reply_window_started": 10,
             "bridge_uplink_errors": 4,
             "bridge_uplink_queue_failures": 2,
+            "mww_uplink_dropped": 1,
+            "mww_uplink_submit_failed": 2,
+            "wake_cue_captures_failed": 0,
             "bridge_network_writer_frame_buffered": False,
             "bridge_network_writer_text_queued": 11,
             "bridge_network_writer_binary_queued": 10,
@@ -58,6 +65,9 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "bridge_reply_windows_rejected": 1,
             "conversation_reply_window_rejected": 1,
             "bridge_downlink_playback_errors": 3,
+            "bridge_audio_safety_stops": 1,
+            "bridge_audio_disconnect_stops": 1,
+            "bridge_audio_watchdog_stops": 1,
             "speaker_stream_play_raw_failed": 2,
             "speaker_stream_forced_stops": 1,
             "bridge_audio_remote_stop_requests": 2,
@@ -116,16 +126,23 @@ class BridgeAiQualificationTests(unittest.TestCase):
         }
         observations = {
             "oneWakeMultiTurn": True,
+            "conversationNatural": True,
             "echoFree": True,
             "exitPhraseClosed": True,
             "silenceClosed": True,
             "bargeInStoppedAudio": True,
             "bridgeLossLocalRecovery": True,
             "cleanCompleteAudio": True,
+            "researchGrounded": True,
+            "visualContextGrounded": True,
+            "grayscaleLimitationTruthful": True,
+            "memoryRecallAccurate": True,
+            "noUnrelatedMemoryHijack": True,
             "initiativeNatural": True,
             "initiativeRateFloor": True,
             "initiativeIgnoredBackoff": True,
             "initiativeNightSuppressed": True,
+            "personNoticingGrounded": True,
             "roomContextGrounded": True,
             "roomOffCleared": True,
             "noFramePersisted": True,
@@ -206,24 +223,52 @@ class BridgeAiQualificationTests(unittest.TestCase):
             },
         ]
         for index in range(3):
-            records.append(
-                {
-                    "schema": "stackchan.lan-turn-summary.v1",
-                    "latency_schema": "stackchan.conversation-latency.v1",
-                    "latency_first_audio_ms": 2_500 + index * 100,
-                    "latency_host_reaction_ms": 1,
-                    "latency_text_ready_ms": 1_800,
-                    "latency_turn_total_ms": 5_000,
-                    "latency_tts_render_rtf": 0.5,
-                    "latency_gate_host_reaction_under_300": True,
-                    "latency_gate_first_audio_under_3000": True,
-                    "latency_gate_render_faster_than_realtime": True,
-                    "latency_gate_zero_truncation": True,
-                    "tts_streaming": True,
-                    "tts_downlink_pacing_headroom_ms": 58.0,
-                    "tts_downlink_pacing_safe": True,
-                }
-            )
+            record = {
+                "schema": "stackchan.lan-turn-summary.v1",
+                "latency_schema": "stackchan.conversation-latency.v1",
+                "latency_first_audio_ms": 2_500 + index * 100,
+                "latency_host_reaction_ms": 1,
+                "latency_text_ready_ms": 1_800,
+                "latency_turn_total_ms": 5_000,
+                "latency_tts_render_rtf": 0.5,
+                "latency_gate_host_reaction_under_300": True,
+                "latency_gate_first_audio_under_3000": True,
+                "latency_gate_render_faster_than_realtime": True,
+                "latency_gate_zero_truncation": True,
+                "tts_streaming": True,
+                "tts_downlink_pacing_headroom_ms": 58.0,
+                "tts_downlink_pacing_safe": True,
+            }
+            if index == 0:
+                record.update(
+                    {
+                        "research_tool": "web_search",
+                        "research_source_urls": ["https://example.com/fact"],
+                        "research_error": "",
+                    }
+                )
+            elif index == 1:
+                record.update(
+                    {
+                        "visual_routing": "on_demand_observation",
+                        "visual_observation_status": "fresh",
+                    }
+                )
+            else:
+                record.update(
+                    {
+                        "visual_routing": "grayscale_color_limit",
+                        "runner_command_source": "local_grayscale_limit",
+                    }
+                )
+            records.append(record)
+        records.append(
+            {
+                "schema": "stackchan.lan-turn-summary.v1",
+                "runner_command_source": "trusted_memory_recall",
+                "local_fact_tool": "memory_recall",
+            }
+        )
         records.extend(
             [
                 {
@@ -297,6 +342,24 @@ class BridgeAiQualificationTests(unittest.TestCase):
             self._write_ready_fixture(root)
             session = json.loads((root / "session.json").read_text(encoding="utf-8"))
             session["expectedFirmwareSourceCommit"] = "e" * 40
+            (root / "session.json").write_text(json.dumps(session), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        provenance = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "accepted-main-firmware-provenance"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", provenance["status"])
+
+    def test_pre_pr216_firmware_baseline_fails_provenance_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            session = json.loads((root / "session.json").read_text(encoding="utf-8"))
+            session["requiredFirmwareBaselineCommit"] = "e" * 40
             (root / "session.json").write_text(json.dumps(session), encoding="utf-8")
 
             report = check_evidence(root)
@@ -393,6 +456,31 @@ class BridgeAiQualificationTests(unittest.TestCase):
         self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
         self.assertEqual("fail", audio_order["status"])
 
+    def test_missing_cited_research_turn_fails_route_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            records = [
+                json.loads(line)
+                for line in (root / "turns.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            for record in records:
+                record.pop("research_source_urls", None)
+            (root / "turns.jsonl").write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n",
+                encoding="utf-8",
+            )
+
+            report = check_evidence(root)
+
+        research = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "host-research-route-exercised"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", research["status"])
+
     def test_unsafe_downlink_pacing_fails_candidate_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -488,6 +576,44 @@ class BridgeAiQualificationTests(unittest.TestCase):
             check
             for check in report["checks"]
             if check["id"] == "robot-writer-telemetry"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", telemetry["status"])
+
+    def test_new_mww_submit_failure_fails_transport_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            after = json.loads((root / "after-debug.json").read_text(encoding="utf-8"))
+            after["mww_uplink_submit_failed"] += 1
+            (root / "after-debug.json").write_text(json.dumps(after), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        transport = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "robot-zero-transport-errors"
+        )
+        self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
+        self.assertEqual("fail", transport["status"])
+
+    def test_missing_transport_telemetry_fails_candidate_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_ready_fixture(root)
+            for name in ("before-debug.json", "after-debug.json"):
+                path = root / name
+                debug = json.loads(path.read_text(encoding="utf-8"))
+                del debug["mww_uplink_submit_failed"]
+                path.write_text(json.dumps(debug), encoding="utf-8")
+
+            report = check_evidence(root)
+
+        telemetry = next(
+            check
+            for check in report["checks"]
+            if check["id"] == "robot-transport-telemetry"
         )
         self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
         self.assertEqual("fail", telemetry["status"])
