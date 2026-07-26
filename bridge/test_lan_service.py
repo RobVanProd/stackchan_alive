@@ -1,6 +1,7 @@
 import json
 import os
 import base64
+import math
 import socket
 import sys
 import tempfile
@@ -8,6 +9,7 @@ import threading
 import time
 import unittest
 import wave
+from array import array
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -22,6 +24,7 @@ from lan_service import (
     LanBridgeConfig,
     LanBridgeSession,
     audio_downlink_frames,
+    analyze_reply_pcm16_speech,
     build_handshake_response,
     contains_stackchan_wake_phrase,
     configure_client_socket,
@@ -48,7 +51,7 @@ from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
 from room_context import RoomContextRuntime, RoomObservationConfig
 from stt_adapter import STT_COMMAND_ENV
-from tts_adapter import TTS_COMMAND_ENV
+from tts_adapter import TTS_COMMAND_ENV, TtsConfigurationError
 
 RUNNER_ENV = {
     "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND": "",
@@ -1662,6 +1665,115 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("I did not catch that. Try again?", parsed["spoken_text"])
         self.assertEqual({}, parsed["memory_write"])
         self.assertEqual([], parsed["memory_forget"])
+
+    def test_reply_pcm_speech_gate_rejects_ambient_and_detects_voiced_audio(self):
+        sample_rate = 16000
+        quiet_tone = array(
+            "h",
+            (
+                int(300 * math.sin(2.0 * math.pi * 220.0 * index / sample_rate))
+                for index in range(sample_rate)
+            ),
+        ).tobytes()
+        voiced_tone = array(
+            "h",
+            (
+                int(6000 * math.sin(2.0 * math.pi * 220.0 * index / sample_rate))
+                for index in range(sample_rate // 5)
+            ),
+        ).tobytes()
+
+        quiet = analyze_reply_pcm16_speech(quiet_tone, sample_rate)
+        voiced = analyze_reply_pcm16_speech(voiced_tone, sample_rate)
+
+        self.assertFalse(quiet["reply_pcm_speech_detected"])
+        self.assertEqual("no_speech", quiet["reply_pcm_detection_reason"])
+        self.assertTrue(voiced["reply_pcm_speech_detected"])
+        self.assertGreaterEqual(voiced["reply_pcm_max_consecutive_speech_ms"], 150)
+
+    def test_conversation_followup_ambient_pcm_bypasses_stt_and_closes_silently(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                conversation_acoustic_tail_ms=0,
+                tts_command="configured-for-test",
+            )
+        )
+        clock = int(time.time() * 1000)
+        session.conversation.wake(clock)
+        session.conversation.utterance_started(clock + 1)
+        session.conversation.utterance_committed(clock + 2, "Hello")
+        session.conversation.response_started(clock + 3)
+        session.conversation.playback_completed(clock + 4)
+        session.conversation.tick(clock + 4)
+        quiet_pcm = array(
+            "h",
+            (
+                int(300 * math.sin(2.0 * math.pi * 220.0 * index / 16000))
+                for index in range(16000)
+            ),
+        ).tobytes()
+
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 6, "sample_rate": 16000})
+        )
+        session.handle_binary(quiet_pcm)
+        with (
+            patch("lan_service.transcribe_pcm") as stt,
+            patch("lan_service.run_runner_profile") as runner,
+            patch("lan_service.synthesize_speech") as tts,
+        ):
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 6})
+            )
+
+        stt.assert_not_called()
+        runner.assert_not_called()
+        tts.assert_not_called()
+        self.assertEqual(["heartbeat"], [frame["type"] for frame in frames])
+        self.assertTrue(frames[0]["stt_bypassed"])
+        self.assertEqual("reply_pcm_no_speech", frames[0]["stt_bypass_reason"])
+        self.assertEqual(ConversationPhase.COOLDOWN, session.conversation.phase)
+        self.assertEqual("empty_utterance", session.conversation.last_close_reason)
+
+    def test_initial_conversation_audio_still_reaches_stt_before_reply_gate_applies(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                tts_command="configured-for-test",
+            )
+        )
+        clock = int(time.time() * 1000)
+        session.conversation.wake(clock)
+        quiet_pcm = b"\x00\x00" * 800
+        stt_result = SimpleNamespace(
+            transcript="Who are you, Stackchan?",
+            raw_transcript="Who are you, Stackchan?",
+            transcript_normalized=False,
+            elapsed_ms=5.0,
+            command_source="test",
+        )
+
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 7, "sample_rate": 16000})
+        )
+        session.handle_binary(quiet_pcm)
+        with (
+            patch("lan_service.transcribe_pcm", return_value=stt_result) as stt,
+            patch(
+                "lan_service.synthesize_speech",
+                side_effect=TtsConfigurationError("test has no audio renderer"),
+            ),
+        ):
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 7})
+            )
+
+        stt.assert_called_once()
+        self.assertTrue(any(frame.get("type") == "response_start" for frame in frames))
+        self.assertFalse(
+            any(frame.get("stt_bypassed") for frame in frames if isinstance(frame, dict))
+        )
 
     def test_conversation_v2_no_transcript_closes_without_reply_window_or_history(self):
         with tempfile.TemporaryDirectory() as temp_dir:

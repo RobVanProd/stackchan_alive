@@ -8,13 +8,16 @@ import base64
 import copy
 import hashlib
 import json
+import math
 import os
 import queue
 import re
 import socket
+import sys
 import threading
 import time
 import wave
+from array import array
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -105,6 +108,13 @@ DEFAULT_TTS_PHRASE_MAX_CHARS = 96
 DEFAULT_BRAIN_OWNER_LEASE_MS = 15_000
 MAX_DOWNLINK_AUDIO_CHUNK_BYTES = 4096
 MAX_TRUSTED_ENDPOINTS = 8
+REPLY_PCM_CHUNK_MS = 50
+REPLY_PCM_MINIMUM_SPEECH_MS = 150
+REPLY_PCM_INITIAL_NOISE_FLOOR = 0.015
+REPLY_PCM_MINIMUM_SPEECH_LEVEL = 0.040
+REPLY_PCM_SPEECH_NOISE_MULTIPLIER = 2.6
+REPLY_PCM_SPEECH_ZCR_MIN = 0.025
+REPLY_PCM_SPEECH_ZCR_MAX = 0.35
 STACKCHAN_WAKE_PHRASE = re.compile(
     r"\bstack[\s-]*(?:chan|chin|chain|can|chad|shan|shen|shed)\b",
     flags=re.IGNORECASE,
@@ -155,6 +165,87 @@ def now_ms() -> int:
 
 def utc_timestamp() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def analyze_reply_pcm16_speech(pcm: bytes, sample_rate: int) -> dict[str, object]:
+    """Mirror the device reply VAD so ambient max-duration captures do not reach STT."""
+
+    diagnostics: dict[str, object] = {
+        "reply_pcm_speech_gate_applied": True,
+        "reply_pcm_speech_detected": None,
+        "reply_pcm_detection_reason": "invalid_pcm",
+    }
+    if sample_rate <= 0 or not pcm or len(pcm) % 2:
+        return diagnostics
+
+    samples = array("h")
+    samples.frombytes(pcm)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    if not samples:
+        return diagnostics
+
+    chunk_samples = max(1, (sample_rate * REPLY_PCM_CHUNK_MS) // 1000)
+    noise_floor = REPLY_PCM_INITIAL_NOISE_FLOOR
+    consecutive_speech_ms = 0
+    maximum_consecutive_speech_ms = 0
+    speech_chunks = 0
+    chunks = 0
+    peak_level = 0.0
+    speech_seen = False
+
+    for offset in range(0, len(samples), chunk_samples):
+        chunk = samples[offset : offset + chunk_samples]
+        if not chunk:
+            continue
+        chunks += 1
+        squares = sum((float(sample) / 32768.0) ** 2 for sample in chunk)
+        level = min(1.0, math.sqrt(squares / len(chunk)))
+        peak_level = max(peak_level, level)
+
+        crossings = 0
+        previous = chunk[0]
+        for current in chunk[1:]:
+            if (previous < 0 <= current) or (previous >= 0 > current):
+                crossings += 1
+            previous = current
+        zero_crossing_rate = crossings / max(1, len(chunk) - 1)
+        speech_threshold = max(
+            noise_floor * REPLY_PCM_SPEECH_NOISE_MULTIPLIER,
+            REPLY_PCM_MINIMUM_SPEECH_LEVEL,
+        )
+        speech = (
+            REPLY_PCM_SPEECH_ZCR_MIN <= zero_crossing_rate <= REPLY_PCM_SPEECH_ZCR_MAX
+            and level >= speech_threshold
+        )
+        chunk_ms = max(1, math.ceil(len(chunk) * 1000 / sample_rate))
+        if speech:
+            speech_chunks += 1
+            consecutive_speech_ms += chunk_ms
+            maximum_consecutive_speech_ms = max(
+                maximum_consecutive_speech_ms,
+                consecutive_speech_ms,
+            )
+            if consecutive_speech_ms >= REPLY_PCM_MINIMUM_SPEECH_MS:
+                speech_seen = True
+        else:
+            consecutive_speech_ms = 0
+            if not speech_seen:
+                adapt = 0.04 if level < noise_floor else 0.01
+                noise_floor = max(0.005, noise_floor + ((level - noise_floor) * adapt))
+
+    diagnostics.update(
+        {
+            "reply_pcm_speech_detected": speech_seen,
+            "reply_pcm_detection_reason": "speech" if speech_seen else "no_speech",
+            "reply_pcm_chunks_analyzed": chunks,
+            "reply_pcm_speech_chunks": speech_chunks,
+            "reply_pcm_max_consecutive_speech_ms": maximum_consecutive_speech_ms,
+            "reply_pcm_peak_level": round(peak_level, 6),
+            "reply_pcm_final_noise_floor": round(noise_floor, 6),
+        }
+    )
+    return diagnostics
 
 
 def mouth_frame_for_audio_window(
@@ -2162,9 +2253,23 @@ class LanBridgeSession:
         audio_summary.update(audio_evidence_log)
         stt_log: dict[str, object] = {}
         no_speech_detail = ""
+        silent_reply_close = False
         if not has_audio and not user_text:
             no_speech_detail = "utterance_end had no audio or transcript"
-        if has_audio and not user_text:
+        is_conversation_followup = self.conversation is not None and self.conversation.turns > 0
+        if has_audio and not user_text and is_conversation_followup:
+            speech_diagnostics = analyze_reply_pcm16_speech(
+                pcm,
+                int(audio_summary["audio_sample_rate"]),
+            )
+            audio_summary.update(speech_diagnostics)
+            stt_log.update(speech_diagnostics)
+            if speech_diagnostics["reply_pcm_speech_detected"] is False:
+                no_speech_detail = "conversation reply PCM contained no speech"
+                silent_reply_close = True
+                stt_log["stt_bypassed"] = True
+                stt_log["stt_bypass_reason"] = "reply_pcm_no_speech"
+        if has_audio and not user_text and not no_speech_detail:
             try:
                 stt = transcribe_pcm(
                     pcm,
@@ -2254,6 +2359,28 @@ class LanBridgeSession:
         requested_forget_keys = explicit_forget_keys(user_text)
         if self.conversation is not None:
             transition = self.conversation.utterance_committed(now_ms(), user_text)
+            if silent_reply_close:
+                record: dict[str, object] = {
+                    "schema": "stackchan.lan-turn-summary.v1",
+                    "generated_at": utc_timestamp(),
+                    "seq": seq,
+                    "session": self.session,
+                    "source": "audio",
+                    "audio_bytes": int(audio_summary.get("audio_bytes", 0)),
+                    "audio_chunks": int(audio_summary.get("audio_chunks", 0)),
+                    "audio_sample_rate": int(
+                        audio_summary.get("audio_sample_rate", DEFAULT_SAMPLE_RATE)
+                    ),
+                    "ignored": True,
+                    "ignore_code": "reply_pcm_no_speech",
+                }
+                record.update(stt_log)
+                record.update(audio_evidence_log)
+                self._append_turn_log(record)
+                heartbeat = self._conversation_heartbeat(transition)
+                heartbeat.update(audio_summary)
+                heartbeat.update(stt_log)
+                return [heartbeat]
             if "begin_generation" not in transition.actions and not no_speech_detail:
                 return [self._conversation_heartbeat(transition)]
             self._observe_conversation_transition(transition)
