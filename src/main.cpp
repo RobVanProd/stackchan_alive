@@ -990,6 +990,15 @@ constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
 // uplink limit. Was 96 (9.6 s), and the endpoint's own 4.8 s cap fired first,
 // which is what truncated longer sentences.
 constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 130;
+// One chunk is STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES at the capture rate.
+constexpr uint32_t kWakeMwwDedicatedCaptureCeilingMs =
+    (static_cast<uint32_t>(kWakeMwwDedicatedCaptureChunks) *
+     STACKCHAN_MWW_WAKE_UPLINK_CHUNK_SAMPLES * 1000u) /
+    STACKCHAN_MWW_WAKE_CAPTURE_SAMPLE_RATE;
+// The wake gate's privacy guard must outlast any capture we can take, otherwise
+// it closes the turn mid-utterance and the remaining chunks are rejected.
+static_assert(kWakeMwwDedicatedCaptureCeilingMs < kBridgeWakeGateMaxTurnMs,
+              "wake gate max turn must exceed the dedicated capture ceiling");
 RobotEvent gWakeMwwPendingCaptureEvent {};
 bool gWakeMwwPendingCaptureEventReady = false;
 bool gWakeMwwPendingCaptureIsConversationReply = false;
@@ -4780,8 +4789,29 @@ void serviceDedicatedWakeCaptureChunk() {
     gWakeSrProbe.lastRecordMs = millis();
 
     if (gWakeMwwDedicatedCapture.endpoint.telemetry().enabled) {
+      const uint32_t speechAtBefore =
+          gWakeMwwDedicatedCapture.endpoint.telemetry().lastSpeechAtMs;
       endpointReason = gWakeMwwDedicatedCapture.endpoint.process(
           monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs);
+      // Tell the wake gate that speech is still happening.
+      //
+      // The gate closes gateOpenMs after the last speech it heard about, and it
+      // force-completes the active turn when it does. It normally learns this
+      // from bridge UserSpeaking events, which arrive only after host STT. During
+      // our own dedicated capture nothing told it, so the gate closed 6 s after
+      // the wake word and sent utterance_end while the microphone was still
+      // recording. Every chunk after that hit an uplink with no active turn,
+      // which is where the audio_uplink_not_active errors came from.
+      //
+      // Renewing only on real speech preserves the privacy semantics: the gate
+      // still closes gateOpenMs after the speaker actually stops.
+      if (gWakeMwwDedicatedCapture.endpoint.telemetry().lastSpeechAtMs != speechAtBefore) {
+        RobotEvent speakingEvent;
+        speakingEvent.type = EventType::UserSpeaking;
+        speakingEvent.timestampMs = gWakeSrProbe.lastRecordMs;
+        speakingEvent.strength = 1.0f;
+        gBridgeWakeGate.applyEvent(speakingEvent, gWakeSrProbe.lastRecordMs);
+      }
     }
 
     if (submitDedicatedWakeCaptureChunk(
