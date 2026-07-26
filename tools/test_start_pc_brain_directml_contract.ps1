@@ -49,6 +49,15 @@ foreach ($required in @(
   "-EnableDashboard",
   "-DashboardPort `$DashboardPort",
   "dashboardUrl =",
+  "stackchan.pc-brain-motion-default-off.v1",
+  "api/motion",
+  '"X-Stackchan-Dashboard" = "1"',
+  '''{"enabled":false}''',
+  "motion-default-off.json",
+  "MotionDefaultOffVerified",
+  "servo_torque_enabled -eq `$false",
+  "DirectML startup could not verify motion, servo rail, and torque off:",
+  "motionDefaultOffVerified =",
   "start_local_vision.ps1",
   "faceVisionReady =",
   "camera_host_frame_requests",
@@ -84,6 +93,14 @@ if ($stopIndex -lt 0 -or $repairIndex -lt 0 -or $stopIndex -gt $repairIndex) {
 $workerReadyIndex = $text.IndexOf('worker-health.json')
 if ($workerReadyIndex -lt 0 -or $stopIndex -lt $workerReadyIndex) {
   throw "DirectML must pass health before the existing bridge is stopped."
+}
+
+$bridgeReadyIndex = $text.IndexOf('DirectML bridge did not reconnect to Stackchan')
+$motionStopIndex = $text.IndexOf('$MotionStopUrl =')
+$visionReadyIndex = $text.IndexOf('$VisionReady =')
+if ($bridgeReadyIndex -lt 0 -or $motionStopIndex -lt $bridgeReadyIndex -or
+    $visionReadyIndex -lt $motionStopIndex) {
+  throw "Motion default-off verification must run after bridge reconnect and before vision readiness."
 }
 
 $researchPreflightIndex = $text.IndexOf('research-preflight.json')

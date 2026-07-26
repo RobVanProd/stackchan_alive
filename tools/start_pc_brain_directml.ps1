@@ -242,6 +242,53 @@ if (-not $SocketReady -or -not $Debug -or $Debug.bridge_state -ne "ready") {
   throw "DirectML bridge did not reconnect to Stackchan within $ReconnectTimeoutSeconds seconds."
 }
 
+$MotionStopUrl = "http://127.0.0.1`:$DashboardPort/api/motion"
+$MotionStopResult = $null
+$MotionStopError = ""
+try {
+  $MotionStopResult = Invoke-RestMethod -Method Post -Uri $MotionStopUrl `
+    -Headers @{ "X-Stackchan-Dashboard" = "1" } `
+    -ContentType "application/json" -Body '{"enabled":false}' -TimeoutSec 10
+} catch {
+  $MotionStopError = $_.Exception.Message
+}
+try {
+  $Debug = Invoke-RestMethod -Uri $DebugUrl -TimeoutSec 5
+} catch {
+  $Debug = $null
+  if ([string]::IsNullOrWhiteSpace($MotionStopError)) {
+    $MotionStopError = $_.Exception.Message
+  }
+}
+$MotionDefaultOffVerified = (
+  $null -ne $MotionStopResult -and
+  [bool]$MotionStopResult.ok -and
+  [bool]$MotionStopResult.accepted -and
+  [bool]$MotionStopResult.verified -and
+  $null -ne $Debug -and
+  $Debug.motion_enabled -eq $false -and
+  $Debug.servo_rail_enabled -eq $false -and
+  $Debug.servo_torque_enabled -eq $false
+)
+$MotionDefaultOffEvidence = [ordered]@{
+  schema = "stackchan.pc-brain-motion-default-off.v1"
+  generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+  commandUrl = $MotionStopUrl
+  commandSent = if ($MotionStopResult) { [bool]$MotionStopResult.commandSent } else { $false }
+  accepted = if ($MotionStopResult) { [bool]$MotionStopResult.accepted } else { $false }
+  dashboardVerified = if ($MotionStopResult) { [bool]$MotionStopResult.verified } else { $false }
+  firmwareVerified = $MotionDefaultOffVerified
+  motionEnabled = if ($Debug) { [bool]$Debug.motion_enabled } else { $null }
+  servoRailEnabled = if ($Debug) { [bool]$Debug.servo_rail_enabled } else { $null }
+  servoTorqueEnabled = if ($Debug) { [bool]$Debug.servo_torque_enabled } else { $null }
+  error = $MotionStopError
+}
+$MotionDefaultOffEvidence | ConvertTo-Json -Depth 5 | Set-Content `
+  -LiteralPath (Join-Path $EvidencePath "motion-default-off.json") -Encoding UTF8
+if (-not $MotionDefaultOffVerified) {
+  throw "DirectML startup could not verify motion, servo rail, and torque off: $MotionStopError"
+}
+
 $VisionReady = -not $StartFaceVision
 $VisionBefore = $null
 $VisionAfter = $null
@@ -354,6 +401,9 @@ $Result = [ordered]@{
   robotBridge = $Debug.bridge_state
   robotMotion = [bool]$Debug.motion_enabled
   robotServoRail = [bool]$Debug.servo_rail_enabled
+  robotServoTorque = [bool]$Debug.servo_torque_enabled
+  motionDefaultOffVerified = $MotionDefaultOffVerified
+  motionDefaultOffEvidence = (Join-Path $EvidencePath "motion-default-off.json")
   runtimeCheckStatus = $RuntimeCheck.status
   warmRocmWorkerStopped = [bool]$StopWarmRocmWorker
 }

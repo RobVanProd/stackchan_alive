@@ -27,7 +27,9 @@ The launcher behaves in two modes:
   Conversation v2 and bounded initiative enabled. It starts and fully checks local research
   before replacing a bridge. When the private pairing-code file exists, it also starts face
   presence detection and preconfigures the room model, while leaving semantic room observation
-  off until it is enabled in the dashboard.
+  off until it is enabled in the dashboard. After the robot reconnects, startup calls the
+  firmware-owned motion-stop endpoint through the loopback dashboard and refuses to report ready
+  until `/debug` confirms motion, servo rail, and servo torque are all off.
 
 Normal startup is fail-closed when local research is unavailable. Docker or Podman installation
 remains an owner action; the launcher never elevates or installs it. For an intentional offline
@@ -53,6 +55,9 @@ The branded shortcut is named `Stackchan Alive` and invokes the same reset-safe 
 The dashboard does not write servo state directly. It calls the firmware-owned debug endpoints
 on port `8789`:
 
+- Production DirectML startup always verifies a motion stop after bridge reconnect. Motion never
+  remains enabled when the launcher reports ready; the operator must use the guarded control
+  below to resume it.
 - **Stop motion** calls `/motion-stop`, then requires `/debug` to report motion, servo rail, and
   servo torque all off before showing a verified stop.
 - **Resume motion** stays disabled until the operator checks **Robot is upright and clear**. It
