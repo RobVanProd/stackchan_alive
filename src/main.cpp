@@ -984,7 +984,12 @@ volatile bool gWakeMwwStereoDirectionPendingReady = false;
 #endif
 #if STACKCHAN_ENABLE_BRIDGE_AUDIO_UPLINK && STACKCHAN_MWW_DEDICATED_WAKE_CAPTURE
 constexpr uint32_t kWakeMwwCueCompletionTimeoutMs = 120;
-constexpr uint8_t kWakeMwwDedicatedCaptureChunks = 96;
+// Hard ceiling on one capture, in 100 ms chunks. This is the backstop behind the
+// voice-activity endpoint, which normally ends capture as soon as the speaker
+// stops. 130 chunks is 13 s, or 416 KB of 16 kHz mono PCM, inside the 512 KB
+// uplink limit. Was 96 (9.6 s), and the endpoint's own 4.8 s cap fired first,
+// which is what truncated longer sentences.
+constexpr uint16_t kWakeMwwDedicatedCaptureChunks = 130;
 RobotEvent gWakeMwwPendingCaptureEvent {};
 bool gWakeMwwPendingCaptureEventReady = false;
 bool gWakeMwwPendingCaptureIsConversationReply = false;
@@ -1974,6 +1979,9 @@ char gBridgeEndpointResponse[kBridgeEndpointControlResponseMax] = {};
 SpeechCue gPendingBridgeSpeechCue {};
 bool gBridgeSpeechCuePending = false;
 bool gBridgeResponseHadAudioStream = false;
+// True between response_start and the first audio of that response, while the
+// thinking face is held.
+bool gBridgeAwaitingFirstSpeech = false;
 uint32_t gBridgeLocalSpeechSuppressedUntilMs = 0;
 
 enum class BridgeAudioSafetyStopReason : uint8_t {
@@ -2018,6 +2026,7 @@ bool stopBridgeAudioRuntime(uint32_t nowMs, BridgeAudioSafetyStopReason reason) 
   gSpeakerSink.stop(nowMs);
   gBridgeSpeechCuePending = false;
   gBridgeResponseHadAudioStream = false;
+  gBridgeAwaitingFirstSpeech = false;
   gBridgeLocalSpeechSuppressedUntilMs = 0;
   if (!held) {
     return false;
@@ -4699,8 +4708,10 @@ bool beginDedicatedWakeCaptureAfterCue(const RobotEvent& wakeEvent) {
   gWakeMwwDedicatedCapture.chunksAttempted = 0;
   gWakeMwwDedicatedCapture.chunksSubmitted = 0;
   VoiceActivityEndpointConfig endpointConfig;
-  endpointConfig.enabled = endpointConfig.enabled &&
-                           gWakeMwwDedicatedCapture.conversationReplyCapture;
+  // Endpoint the first wake-gated utterance too, not just conversation replies.
+  // Previously the initial capture ran a fixed length regardless of when the
+  // speaker stopped, so a two-second question still cost the full window before
+  // anything was sent. Both paths now end on trailing silence.
   if (!gWakeMwwDedicatedCapture.endpoint.begin(endpointConfig, captureStartMs)) {
     return false;
   }
@@ -4768,7 +4779,7 @@ void serviceDedicatedWakeCaptureChunk() {
     gWakeSrProbe.samplesFed += kMonoSamples;
     gWakeSrProbe.lastRecordMs = millis();
 
-    if (gWakeMwwDedicatedCapture.conversationReplyCapture) {
+    if (gWakeMwwDedicatedCapture.endpoint.telemetry().enabled) {
       endpointReason = gWakeMwwDedicatedCapture.endpoint.process(
           monoBuf, kMonoSamples, gWakeSrProbe.lastRecordMs);
     }
@@ -4788,7 +4799,7 @@ void serviceDedicatedWakeCaptureChunk() {
   }
   const bool chunkLimitReached = gWakeMwwDedicatedCapture.chunksAttempted >=
                                  kWakeMwwDedicatedCaptureChunks;
-  if (chunkLimitReached && gWakeMwwDedicatedCapture.conversationReplyCapture &&
+  if (chunkLimitReached && gWakeMwwDedicatedCapture.endpoint.telemetry().enabled &&
       endpointReason == VoiceActivityEndpointReason::None) {
     endpointReason = gWakeMwwDedicatedCapture.endpoint.forceMaximum(millis());
   }
@@ -7092,6 +7103,16 @@ void publishAudioOutSpeechFrame(uint32_t nowMs) {
   xQueueOverwrite(gSpeechQueue, &input);
 }
 
+// Move from the thinking face into speaking, on the first real audio of a
+// response rather than on the response frame itself.
+void beginBridgeSpeechIfPending(uint32_t nowMs) {
+  if (!gBridgeAwaitingFirstSpeech) {
+    return;
+  }
+  gBridgeAwaitingFirstSpeech = false;
+  gIntent.setMode(CharacterMode::Speak, nowMs);
+}
+
 void publishBridgeSpeechFrame(const BridgeAudioChunk& audio, uint32_t nowMs) {
   if (gSpeechQueue == nullptr) {
     return;
@@ -7178,7 +7199,12 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   }
 
   if (output.type == BridgeClientOutputType::ResponseStart) {
-    gIntent.applyEvent(output.event, CharacterMode::Speak);
+    // Keep the thinking face until speech actually starts. response_start only
+    // means the text is ready; TTS still has to render, and that gap used to be
+    // spent sitting in Speak with a speaking mouth and no sound. Flipping to
+    // Speak is deferred to the first audio below.
+    gIntent.applyEvent(output.event, CharacterMode::Think);
+    gBridgeAwaitingFirstSpeech = true;
     gIntent.startResponseGesture(output.response.gesture, output.response.seq, nowMs);
     gBridgeWakeGate.applyEvent(output.event, nowMs);
     gAudioOut.cancel();
@@ -7196,10 +7222,12 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
   }
 
   if (output.type == BridgeClientOutputType::AudioFrame) {
+    beginBridgeSpeechIfPending(nowMs);
     publishBridgeSpeechFrame(output.audio, nowMs);
   }
 
   if (output.type == BridgeClientOutputType::AudioStreamStart) {
+    beginBridgeSpeechIfPending(nowMs);
     gBridgeResponseHadAudioStream = true;
     gAudioOut.cancel();
     gBridgeLocalSpeechSuppressedUntilMs = nowMs + 120000u;
@@ -7228,6 +7256,7 @@ void handleBridgeOutput(const BridgeClientOutput& output, uint32_t nowMs) {
     }
     gBridgeSpeechCuePending = false;
     gBridgeResponseHadAudioStream = false;
+    gBridgeAwaitingFirstSpeech = false;
     gBridgeAudioDownlink.abort(nowMs);
   }
 }

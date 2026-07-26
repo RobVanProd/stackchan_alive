@@ -15,6 +15,13 @@ class IntentEngine {
  public:
   void begin();
   void applyEvent(const RobotEvent& event, CharacterMode mode);
+
+  // Move to a mode without applying an emotional event. Used when a state change
+  // is a continuation of something already accounted for, such as a reply
+  // finally starting to produce audio after its response frame arrived. Refreshes
+  // the event clock so the mode-decay timers do not immediately unwind it. Has no
+  // effect while asleep; waking requires a rousing event.
+  void setMode(CharacterMode mode, uint32_t nowMs);
   void queueSpeechCue(const SpeechCue& cue, uint32_t nowMs);
   void startResponseGesture(ResponseGesture gesture, uint32_t seed, uint32_t nowMs);
   void applyCircadian(uint8_t hourOfDay);
