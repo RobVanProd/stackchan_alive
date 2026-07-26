@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 from cancellation import CancellationToken, OperationCancelledError
 from bridge_memory import RelationshipCard, explicit_forget_keys, topics_for_user_text
+from character_harness import trusted_visual_context_available
 from episode_distillation import apply_distillation, request_distillation, validate_distillation
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from persona_pack import (
@@ -138,6 +139,10 @@ FRESH_RESEARCH_SIGNAL = re.compile(
     r"availability)\b",
     flags=re.IGNORECASE,
 )
+VERIFICATION_RESEARCH_SIGNAL = re.compile(
+    r"\b(?:check|verify|fact[- ]check|confirm|find out|research)\b",
+    flags=re.IGNORECASE,
+)
 INFORMATION_REQUEST = re.compile(
     r"(?:\?|\b(?:what|who|when|where|why|how|which|is|are|was|were|did|does|do|can|"
     r"tell me|give me|check|find)\b)",
@@ -152,6 +157,26 @@ PRIVATE_OR_EMBODIED_RESEARCH_TEXT = re.compile(
 SENSITIVE_RESEARCH_TEXT = re.compile(
     r"\b(?:password|passcode|api key|private key|credit card|bank account|social security|"
     r"medical|diagnosis|phone number|email address|home address)\b",
+    flags=re.IGNORECASE,
+)
+RESEARCH_ACCESS_DENIAL = re.compile(
+    r"\b(?:i (?:do not|don't|cannot|can't) (?:access|browse|search|use|check)|"
+    r"i (?:do not|don't) have access to|no access to|unable to (?:access|browse|search|use))"
+    r".{0,48}\b(?:internet|web|online|browser)\b",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+VISUAL_COLOR_REQUEST = re.compile(
+    r"\b(?:what|which) colou?r (?:is|are) (?:this|that|it|these|those|my)\b|"
+    r"\bcan you (?:tell|see|check).{0,32}\bcolou?r\b|"
+    r"\bcolou?r (?:of|on) (?:this|that|it|these|those|my)\b",
+    flags=re.IGNORECASE,
+)
+VISUAL_CONTEXT_REQUEST = re.compile(
+    r"\bwhat (?:do|can) you see\b|"
+    r"\b(?:can|do) you see (?!if\b|whether\b)|"
+    r"\blook at (?:this|that|it|me|my|the room|the desk)\b|"
+    r"\bwhat(?:'s| is) (?:in front of you|in (?:this|the) room|on my desk)\b|"
+    r"\bhow many (?:people|persons|objects) (?:do|can) you see\b",
     flags=re.IGNORECASE,
 )
 CONVERSATIONAL_QUESTION = re.compile(
@@ -1066,6 +1091,42 @@ def no_speech_character_response() -> str:
     )
 
 
+def grayscale_color_character_response() -> str:
+    return json.dumps(
+        {
+            "spoken_text": "My current camera feed is grayscale, so I cannot determine that color.",
+            "mode": "speak",
+            "earcon": "none",
+            "emotion": {"arousal": 0.0, "valence": 0.0},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def visual_observation_unavailable_response(reason: str) -> str:
+    if reason == "observation_disabled":
+        spoken_text = "Room observation is turned off right now."
+    elif reason == "observation_not_configured":
+        spoken_text = "My local camera observer is not configured right now."
+    else:
+        spoken_text = "My camera check failed just now."
+    return json.dumps(
+        {
+            "spoken_text": spoken_text,
+            "mode": "concern",
+            "earcon": "concern",
+            "emotion": {"arousal": -0.1, "valence": -0.1},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
 def forget_character_response(keys: tuple[str, ...]) -> str:
     return json.dumps(
         {
@@ -1095,14 +1156,40 @@ def natural_research_request(text: str) -> tuple[dict[str, object] | None, str]:
     query = " ".join(str(text or "").split())
     if not query or len(query) > 240 or SENSITIVE_RESEARCH_TEXT.search(query):
         return None, ""
+    if PRIVATE_OR_EMBODIED_RESEARCH_TEXT.search(query) or is_visual_context_request(query):
+        return None, ""
     explicit = explicit_research_request(query)
     if explicit is not None:
         return explicit, "explicit_user_request"
-    if PRIVATE_OR_EMBODIED_RESEARCH_TEXT.search(query):
+    if not INFORMATION_REQUEST.search(query):
         return None, ""
-    if not INFORMATION_REQUEST.search(query) or not FRESH_RESEARCH_SIGNAL.search(query):
+    if FRESH_RESEARCH_SIGNAL.search(query):
+        routing = "freshness_policy"
+    elif VERIFICATION_RESEARCH_SIGNAL.search(query):
+        routing = "verification_request"
+    else:
         return None, ""
-    return {"name": "web_search", "arguments": {"query": query, "max_results": 4}}, "freshness_policy"
+    return {"name": "web_search", "arguments": {"query": query, "max_results": 4}}, routing
+
+
+def is_visual_color_request(text: str) -> bool:
+    return bool(VISUAL_COLOR_REQUEST.search(" ".join(str(text or "").split())))
+
+
+def is_visual_context_request(text: str) -> bool:
+    query = " ".join(str(text or "").split())
+    return bool(VISUAL_COLOR_REQUEST.search(query) or VISUAL_CONTEXT_REQUEST.search(query))
+
+
+def model_denies_research_access(raw_response: str) -> bool:
+    try:
+        parsed = json.loads(raw_response)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    spoken_text = parsed.get("spoken_text", parsed.get("s", ""))
+    return bool(RESEARCH_ACCESS_DENIAL.search(str(spoken_text or "")))
 
 
 def contains_stackchan_wake_phrase(text: str) -> bool:
@@ -1217,6 +1304,21 @@ class LanBridgeSession:
     def _embodiment_context_lines(self) -> tuple[str, ...]:
         room_lines = self.room_context.prompt_lines() if self.room_context is not None else ()
         return self.robot_embodiment.prompt_lines() + room_lines
+
+    def _refresh_visual_context(self) -> str:
+        if self.room_context is None:
+            return "observation_not_configured"
+        status = self.room_context.status()
+        if not bool(status.get("enabled")):
+            return "observation_disabled"
+        if not bool(status.get("configured")):
+            return "observation_not_configured"
+        try:
+            self.room_context.observe_once(now_ms=now_ms())
+        except Exception:
+            status = self.room_context.status()
+            return str(status.get("lastError") or "observation_failed")
+        return ""
 
     def _relationship_card(self, query: str, *, suppress_session_context: bool = False) -> RelationshipCard:
         session_turns = self.conversation.turns if self.conversation is not None else 0
@@ -1852,6 +1954,7 @@ class LanBridgeSession:
             active_persona = self._active_persona()
             seq = self.next_seq
             self.next_seq += 1
+            embodiment_lines = self._embodiment_context_lines()
             runner = run_runner_profile(
                 self.config.runner_profile,
                 case_name="question",
@@ -1861,7 +1964,7 @@ class LanBridgeSession:
                 timeout_ms=self.config.runner_timeout_ms,
                 user_text=decision.prompt,
                 research_tools_enabled=False,
-                embodiment_lines=self._embodiment_context_lines(),
+                embodiment_lines=embodiment_lines,
                 memory_lines=(),
                 conversation_lines=(),
                 cancellation=cancellation,
@@ -1878,6 +1981,8 @@ class LanBridgeSession:
                 session=self.session,
                 seq=seq,
                 persona=active_persona,
+                allow_visual_claims=trusted_visual_context_available(embodiment_lines),
+                grounding_text="\n".join((decision.prompt, *embodiment_lines)),
             )
             frames, tts_summary, tts_error = self._stream_tts_turn(
                 turn,
@@ -2437,6 +2542,23 @@ class LanBridgeSession:
         research_result: dict[str, object] | None = None
         relationship_card = RelationshipCard(())
         local_fact = resolve_local_fact(user_text, self.memory) if not requested_case else None
+        visual_request = bool(
+            not requested_case
+            and local_fact is None
+            and is_visual_context_request(user_text)
+        )
+        visual_color_request = visual_request and is_visual_color_request(user_text)
+        visual_observation_error = ""
+        if visual_request:
+            runner_summary["visual_routing"] = (
+                "grayscale_color_limit" if visual_color_request else "on_demand_observation"
+            )
+        if visual_request and not visual_color_request:
+            visual_observation_error = self._refresh_visual_context()
+            runner_summary["visual_observation_status"] = (
+                visual_observation_error or "fresh"
+            )
+        embodiment_lines = self._embodiment_context_lines()
         if no_speech_detail:
             runner_case = "no_speech"
             raw_response = no_speech_character_response()
@@ -2454,6 +2576,16 @@ class LanBridgeSession:
             runner_summary["runner_command_source"] = f"trusted_{local_fact.tool}"
             runner_summary["runner_elapsed_ms"] = 0.0
             runner_summary["local_fact_tool"] = local_fact.tool
+        elif visual_color_request:
+            runner_case = "visual_color_limit"
+            raw_response = grayscale_color_character_response()
+            runner_summary["runner_command_source"] = "local_grayscale_limit"
+            runner_summary["runner_elapsed_ms"] = 0.0
+        elif visual_request and visual_observation_error:
+            runner_case = "visual_unavailable"
+            raw_response = visual_observation_unavailable_response(visual_observation_error)
+            runner_summary["runner_command_source"] = "local_visual_status"
+            runner_summary["runner_elapsed_ms"] = 0.0
         elif not requested_case and is_identity_question(user_text):
             runner_case = "identity"
             identity_name = (
@@ -2464,40 +2596,50 @@ class LanBridgeSession:
             runner_summary["runner_elapsed_ms"] = 0.0
         else:
             runner_case = prompt_case_for_text(user_text, requested_case, self.config.runner_case)
-            anticipated_research, _ = natural_research_request(user_text)
+            anticipated_research, anticipated_routing = natural_research_request(user_text)
             relationship_card = self._relationship_card(
                 user_text,
                 suppress_session_context=self.config.research_enabled and anticipated_research is not None,
             )
-            try:
-                runner = run_runner_profile(
-                    self.config.runner_profile,
-                    case_name=runner_case,
-                    command=self.config.runner_command,
-                    in_process_ollama=self.config.in_process_ollama_runner,
-                    require_runner=self.config.require_runner,
-                    timeout_ms=self.config.runner_timeout_ms,
-                    user_text=user_text,
-                    research_tools_enabled=self.config.research_enabled,
-                    embodiment_lines=self._embodiment_context_lines(),
-                    memory_lines=relationship_card.lines,
-                    conversation_lines=self._conversation_context_lines(),
-                    cancellation=cancellation,
-                    persona_id=active_persona.pack_id,
+            if self.config.research_enabled and anticipated_research is not None:
+                raw_response = json.dumps(
+                    {"tool_request": anticipated_research},
+                    separators=(",", ":"),
+                    ensure_ascii=True,
                 )
-            except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-                return [self._conversation_failure("runner_error", str(exc))]
-            raw_response = runner.raw_response
-            runner_summary["runner_command_source"] = runner.command_source
-            if getattr(runner, "response_repaired", False):
-                runner_summary["runner_response_repaired"] = True
-                runner_summary["runner_repair_reason"] = str(
-                    getattr(runner, "repair_reason", "")
-                )
-            if runner.elapsed_ms is not None:
-                runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
-            if runner.approx_tokens_per_sec is not None:
-                runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
+                runner_summary["runner_command_source"] = "deterministic_research_router"
+                runner_summary["runner_elapsed_ms"] = 0.0
+                runner_summary["research_routing"] = anticipated_routing
+            else:
+                try:
+                    runner = run_runner_profile(
+                        self.config.runner_profile,
+                        case_name=runner_case,
+                        command=self.config.runner_command,
+                        in_process_ollama=self.config.in_process_ollama_runner,
+                        require_runner=self.config.require_runner,
+                        timeout_ms=self.config.runner_timeout_ms,
+                        user_text=user_text,
+                        research_tools_enabled=self.config.research_enabled,
+                        embodiment_lines=embodiment_lines,
+                        memory_lines=relationship_card.lines,
+                        conversation_lines=self._conversation_context_lines(),
+                        cancellation=cancellation,
+                        persona_id=active_persona.pack_id,
+                    )
+                except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
+                    return [self._conversation_failure("runner_error", str(exc))]
+                raw_response = runner.raw_response
+                runner_summary["runner_command_source"] = runner.command_source
+                if getattr(runner, "response_repaired", False):
+                    runner_summary["runner_response_repaired"] = True
+                    runner_summary["runner_repair_reason"] = str(
+                        getattr(runner, "repair_reason", "")
+                    )
+                if runner.elapsed_ms is not None:
+                    runner_summary["runner_elapsed_ms"] = round(runner.elapsed_ms, 2)
+                if runner.approx_tokens_per_sec is not None:
+                    runner_summary["runner_approx_tokens_per_sec"] = round(runner.approx_tokens_per_sec, 2)
 
             if self.config.research_enabled:
                 try:
@@ -2508,15 +2650,24 @@ class LanBridgeSession:
                 if SENSITIVE_RESEARCH_TEXT.search(user_text):
                     tool_request = None
                     runner_summary["research_routing"] = "sensitive_query_blocked"
-                elif PRIVATE_OR_EMBODIED_RESEARCH_TEXT.search(user_text):
+                elif (
+                    PRIVATE_OR_EMBODIED_RESEARCH_TEXT.search(user_text)
+                    or is_visual_context_request(user_text)
+                ):
                     tool_request = None
                     runner_summary["research_routing"] = "private_or_embodied_query_blocked"
                 elif tool_request is None:
                     tool_request, routing = natural_research_request(user_text)
                     if tool_request is not None:
                         runner_summary["research_routing"] = routing
+                    elif model_denies_research_access(raw_response):
+                        tool_request = {
+                            "name": "web_search",
+                            "arguments": {"query": user_text, "max_results": 4},
+                        }
+                        runner_summary["research_routing"] = "model_access_denial_recovery"
                 else:
-                    runner_summary["research_routing"] = "model_request"
+                    runner_summary.setdefault("research_routing", "model_request")
                 if tool_request is not None:
                     if self.research_broker is None:
                         research_result = {
@@ -2535,6 +2686,38 @@ class LanBridgeSession:
                                 "error": str(exc)[:120],
                                 "results": [],
                             }
+                    research_routing = str(runner_summary.get("research_routing", ""))
+                    if (
+                        self.research_broker is not None
+                        and research_result.get("tool") == "web_search"
+                        and research_routing
+                        in {"verification_request", "model_access_denial_recovery"}
+                    ):
+                        top_urls = source_urls(research_result)
+                        if top_urls:
+                            try:
+                                top_source = self.research_broker.execute(
+                                    {
+                                        "name": "web_fetch",
+                                        "arguments": {
+                                            "url": top_urls[0],
+                                            "max_chars": 5000,
+                                        },
+                                    }
+                                )
+                            except (
+                                ResearchPolicyError,
+                                ResearchTransportError,
+                                ValueError,
+                                TypeError,
+                            ) as exc:
+                                runner_summary["research_fetch_status"] = str(exc)[:120]
+                            else:
+                                fetch_error = str(top_source.get("error", ""))
+                                runner_summary["research_fetch_status"] = fetch_error or "ok"
+                                if not fetch_error:
+                                    research_result = dict(research_result)
+                                    research_result["top_source"] = top_source
                     evidence_user_text = f"{user_text}\n\n{evidence_prompt(research_result)}"
                     try:
                         researched = run_runner_profile(
@@ -2546,7 +2729,7 @@ class LanBridgeSession:
                             timeout_ms=self.config.runner_timeout_ms,
                             user_text=evidence_user_text,
                             research_tools_enabled=False,
-                            embodiment_lines=self._embodiment_context_lines(),
+                            embodiment_lines=embodiment_lines,
                             memory_lines=relationship_card.lines,
                             conversation_lines=self._conversation_context_lines(),
                             cancellation=cancellation,
@@ -2574,6 +2757,15 @@ class LanBridgeSession:
             seq=seq,
             persona=active_persona,
             allow_identity=runner_case == "identity",
+            allow_visual_claims=trusted_visual_context_available(embodiment_lines),
+            grounding_text="\n".join(
+                (
+                    user_text,
+                    *embodiment_lines,
+                    *relationship_card.lines,
+                    *self._conversation_context_lines(),
+                )
+            ),
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))

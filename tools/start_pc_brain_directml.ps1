@@ -11,7 +11,7 @@ param(
   [switch]$EnableInitiative,
   [switch]$EnableRoomObservation,
   [int]$RoomObservationIntervalSeconds = 300,
-  [string]$RoomVisionModel = "",
+  [string]$RoomVisionModel = "gemma4:e2b-it-qat",
   [string]$CameraPairingCodeFile = "",
   [switch]$EnableFaceVision,
   [string]$VisionPython = "",

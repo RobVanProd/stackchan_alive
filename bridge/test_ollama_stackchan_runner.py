@@ -50,6 +50,22 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
 
         self.assertEqual(prompt, runner.compact_generation_prompt(prompt))
 
+    def test_research_compact_contract_allows_tool_request_instead_of_access_denial(self):
+        prompt = build_prompt(
+            {
+                "name": "question",
+                "user": "Can you check when that library was released?",
+                "expect": "Use fresh public evidence when needed.",
+            },
+            research_tools_enabled=True,
+        )
+
+        compact = runner.compact_generation_prompt(prompt)
+
+        self.assertIn('"tool_request":{"name":"web_search"', compact)
+        self.assertIn("Never claim that web access is unavailable", compact)
+        self.assertIn("required keys s (spoken text)", compact)
+
     def test_compact_response_expands_to_character_lock_shape(self):
         prompt = build_prompt(
             {

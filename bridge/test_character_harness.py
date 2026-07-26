@@ -16,6 +16,26 @@ from character_harness import (
 
 
 class CharacterHarnessTests(unittest.TestCase):
+    def test_dotted_versions_do_not_count_as_extra_sentences(self):
+        spoken_text = (
+            "Python 3.13.0 was released on October 7, 2024. "
+            "Tiny dots, useful trouble."
+        )
+        result = validate_response(
+            json.dumps(
+                {
+                    "spoken_text": spoken_text,
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.1, "valence": 0.2},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            )
+        )
+
+        self.assertEqual(spoken_text, result.normalized["spoken_text"])
+
     def test_visual_claims_require_trusted_visual_context(self):
         claims = (
             "I see some papers and a pen nearby.",

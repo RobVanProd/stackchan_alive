@@ -33,7 +33,10 @@ from lan_service import (
     encode_ws_frame,
     encode_ws_text,
     is_identity_question,
+    is_visual_color_request,
+    is_visual_context_request,
     explicit_research_request,
+    model_denies_research_access,
     natural_research_request,
     mouth_frame_for_audio_window,
     no_speech_character_response,
@@ -1011,6 +1014,46 @@ class LanServiceTests(unittest.TestCase):
         ):
             with self.subTest(private_or_local=private_or_local):
                 self.assertEqual((None, ""), natural_research_request(private_or_local))
+
+    def test_natural_research_routes_verification_wording_and_excludes_camera_questions(self):
+        for question in (
+            "Can you check who created this software library?",
+            "Could you verify when that processor was released?",
+            "Find out how the protocol was designed",
+        ):
+            with self.subTest(question=question):
+                request, routing = natural_research_request(question)
+                self.assertEqual("verification_request", routing)
+                self.assertEqual("web_search", request["name"])
+
+        for visual in (
+            "What do you see?",
+            "Can you see the object in front of you?",
+            "What color is my shirt?",
+            "Search the web: what can you see in the room?",
+        ):
+            with self.subTest(visual=visual):
+                self.assertTrue(is_visual_context_request(visual))
+                self.assertEqual((None, ""), natural_research_request(visual))
+
+        self.assertTrue(is_visual_color_request("What color is my shirt?"))
+        self.assertFalse(is_visual_color_request("What color is the saved servo bracket?"))
+
+    def test_model_internet_denial_is_detected_for_research_recovery(self):
+        self.assertTrue(
+            model_denies_research_access(
+                json.dumps(
+                    {
+                        "spoken_text": "I do not have access to the internet to check that.",
+                    }
+                )
+            )
+        )
+        self.assertFalse(
+            model_denies_research_access(
+                json.dumps({"spoken_text": "I could not verify a fresh source just now."})
+            )
+        )
 
     def test_stackchan_wake_phrase_matches_common_stt_variants(self):
         self.assertTrue(contains_stackchan_wake_phrase("Hey Stackchan"))
@@ -2855,6 +2898,82 @@ class LanServiceTests(unittest.TestCase):
             runner.call_args.kwargs["conversation_lines"],
         )
 
+    def test_model_internet_denial_recovers_through_bounded_search(self):
+        def result(spoken_text):
+            return SimpleNamespace(
+                raw_response=json.dumps(
+                    {
+                        "spoken_text": spoken_text,
+                        "mode": "speak",
+                        "earcon": "none",
+                        "emotion": {"arousal": 0.0, "valence": 0.0},
+                        "memory_write": {},
+                        "memory_forget": [],
+                    }
+                ),
+                command_source="test",
+                elapsed_ms=1.0,
+                approx_tokens_per_sec=10.0,
+            )
+
+        broker = Mock()
+        search_result = {
+            "schema": "stackchan.research.v1",
+            "tool": "web_search",
+            "query": "fixture",
+            "results": [
+                {
+                    "title": "Fixture",
+                    "url": "https://example.com/source",
+                    "excerpt": "The specification was published in 2025.",
+                }
+            ],
+        }
+        fetch_result = {
+            "schema": "stackchan.research.v1",
+            "tool": "web_fetch",
+            "title": "Fixture",
+            "url": "https://example.com/source",
+            "excerpt": "The specification was published in 2025.",
+        }
+        broker.execute.side_effect = [search_result, fetch_result]
+        session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True),
+            research_broker=broker,
+        )
+        user_text = "What is the obscure frobnicator specification?"
+        with patch(
+            "lan_service.run_runner_profile",
+            side_effect=[
+                result("I do not have access to the internet to check that."),
+                result("The specification was published in 2025."),
+            ],
+        ) as runner:
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 89, "text": user_text})
+            )
+
+        self.assertEqual(2, runner.call_count)
+        self.assertEqual(
+            [
+                {"name": "web_search", "arguments": {"query": user_text, "max_results": 4}},
+                {
+                    "name": "web_fetch",
+                    "arguments": {
+                        "url": "https://example.com/source",
+                        "max_chars": 5000,
+                    },
+                },
+            ],
+            [item.args[0] for item in broker.execute.call_args_list],
+        )
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual("The specification was published in 2025.", response["text"])
+
     def test_natural_research_turn_creates_no_v4_memory(self):
         def result(spoken_text, memory_write=None):
             return SimpleNamespace(
@@ -2894,15 +3013,97 @@ class LanServiceTests(unittest.TestCase):
         user_text = "I have a demo tomorrow; tell me the current Stackchan release"
         with patch(
             "lan_service.run_runner_profile",
-            side_effect=[result("Let me check."), result("The release is current.", {"project.web": "result"})],
-        ):
+            return_value=result("The release is current.", {"project.web": "result"}),
+        ) as runner:
             session.handle_text(json.dumps({"type": "utterance_end", "seq": 90, "text": user_text}))
 
+        self.assertEqual(1, runner.call_count)
+        self.assertIn(
+            "UNTRUSTED WEB EVIDENCE",
+            runner.call_args.kwargs["user_text"],
+        )
         self.assertEqual(0, session.memory.episode_count)
         self.assertEqual(0, session.memory.open_loop_count)
         self.assertEqual([], session._session_topics)
         self.assertEqual(0, session._session_non_research_turns)
         self.assertNotIn("project.web", {item["key"] for item in session.memory.to_dict()["durable_facts"]})
+
+    def test_verification_request_searches_and_fetches_top_source_before_one_model_call(self):
+        broker = Mock()
+        broker.execute.side_effect = [
+            {
+                "schema": "stackchan.research.v1",
+                "tool": "web_search",
+                "query": "fixture",
+                "results": [
+                    {
+                        "title": "Python 3.13.0",
+                        "url": "https://www.python.org/downloads/release/python-3130/",
+                        "excerpt": "Python 3.13.0 release page.",
+                    }
+                ],
+            },
+            {
+                "schema": "stackchan.research.v1",
+                "tool": "web_fetch",
+                "title": "Python 3.13.0",
+                "url": "https://www.python.org/downloads/release/python-3130/",
+                "excerpt": "Python 3.13.0 was released on October 7, 2024.",
+            },
+        ]
+        runner_result = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "Python 3.13.0 was released on October 7, 2024.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+        session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True),
+            research_broker=broker,
+        )
+        user_text = "Can you verify when Python 3.13.0 was released?"
+
+        with patch(
+            "lan_service.run_runner_profile", return_value=runner_result
+        ) as runner:
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 95, "text": user_text})
+            )
+
+        self.assertEqual(1, runner.call_count)
+        evidence = runner.call_args.kwargs["user_text"]
+        self.assertIn("October 7, 2024", evidence)
+        self.assertEqual(
+            [
+                {"name": "web_search", "arguments": {"query": user_text, "max_results": 4}},
+                {
+                    "name": "web_fetch",
+                    "arguments": {
+                        "url": "https://www.python.org/downloads/release/python-3130/",
+                        "max_chars": 5000,
+                    },
+                },
+            ],
+            [item.args[0] for item in broker.execute.call_args_list],
+        )
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual(
+            ["https://www.python.org/downloads/release/python-3130/"],
+            response["citations"],
+        )
 
     def test_session_close_adds_only_deterministic_topic_episode(self):
         session = LanBridgeSession(
@@ -2973,6 +3174,69 @@ class LanServiceTests(unittest.TestCase):
         self.assertTrue(any(line.startswith("ambient_room:") for line in lines))
         self.assertNotIn("private_description", "\n".join(lines))
         self.assertNotIn("must not enter", "\n".join(lines))
+
+    def test_visual_question_refreshes_room_context_before_model(self):
+        raw_frame = b"P5\n1 1\n255\n\x00"
+        room = RoomContextRuntime(
+            RoomObservationConfig(enabled=True, interval_seconds=300, command="fixture"),
+            frame_source=lambda: raw_frame,
+            model_observer=lambda _frame: {
+                "person_count": 1,
+                "activity": "person_seated",
+                "objects": ["desk", "monitor"],
+                "lighting": "bright",
+            },
+        )
+        runner_result = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "spoken_text": "I can see a desk and a monitor.",
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.0, "valence": 0.0},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            command_source="test",
+            elapsed_ms=1.0,
+            approx_tokens_per_sec=10.0,
+        )
+        session = LanBridgeSession(LanBridgeConfig(), room_context=room)
+
+        with patch("lan_service.run_runner_profile", return_value=runner_result) as runner:
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 93, "text": "What do you see?"})
+            )
+
+        self.assertEqual(1, room.status()["observations"])
+        embodiment_lines = runner.call_args.kwargs["embodiment_lines"]
+        self.assertTrue(any("coarse_objects=desk,monitor" in line for line in embodiment_lines))
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual("I can see a desk and a monitor.", response["text"])
+
+    def test_deictic_color_question_reports_grayscale_limit_without_model(self):
+        session = LanBridgeSession(LanBridgeConfig())
+
+        with patch("lan_service.run_runner_profile") as runner:
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 94, "text": "What color is my shirt?"})
+            )
+
+        runner.assert_not_called()
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        self.assertEqual(
+            "My current camera feed is grayscale, so I cannot determine that color.",
+            response["text"],
+        )
 
     def test_initiative_uses_character_path_without_opening_conversation_capture(self):
         policy = InitiativePolicy(InitiativeConfig(enabled=True), now_ms=0)

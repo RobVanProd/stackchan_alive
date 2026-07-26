@@ -60,11 +60,19 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   measured about 0.51-0.59 seconds in-process, and normal startup uses redacted turn logs with no
   microphone WAV persistence.
 - The pinned loopback-only SearXNG service now passes live JSON search, engine allowlist, broker
-  search, restricted HTTPS fetch, and audit gates. The bridge routes explicit searches and
-  ordinary freshness-sensitive questions through one bounded research round; fetched text cannot
-  write memory or gain robot authority. Natural routing, citations, caching, observability, and
-  mixed voice/research latency remain tracked refinements in
-  [LOCAL_RESEARCH_TOOLING.md](LOCAL_RESEARCH_TOOLING.md).
+  search, restricted HTTPS fetch, and audit gates. Explicit searches, freshness-sensitive
+  questions, and natural check/verify/fact-check wording route directly into one bounded research
+  round without wasting an initial model pass. A model claim that it cannot access the web also
+  recovers through the same policy-limited search path. Verification may fetch one public HTTPS
+  top result; gzip is decoded under the existing response-size cap, citations remain bounded, and
+  fetched text cannot write memory or gain robot authority. A live 2026-07-26 query returned the
+  Python 3.13.0 release date with Python.org citations in 3.9 seconds.
+- A visual question now requests one fresh privacy-filtered room observation before generation.
+  The final Character Lock pass retains only claims backed by the trusted `ambient_room` block.
+  A live 2026-07-26 robot-camera probe observed one person and produced a grounded door, shelf,
+  and bright-lighting answer in 2.6 seconds. The authenticated endpoint is grayscale, so deictic
+  colour questions receive an explicit grayscale limitation instead of a guess. Colour sensing
+  requires a separate firmware/camera endpoint candidate and is not part of this bridge PR.
 - The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
   totals, and records late binary frames as protocol failures. Phrase streaming no longer applies
   the final 250 ms drain pause between intermediate phrases.
@@ -332,7 +340,9 @@ random character behaviour turned out to be this.
 
 # Part 5: Letting the model see the room
 
-**Status: the frame path exists, the model has never been given an image.** Blocked on F3.
+**Status: implemented and source/live-probe validated; supervised conversational qualification
+remains open.** The DirectML launcher supplies the local vision model, periodic observations remain
+default-off, and a visual question can request one fresh observation without persisting the frame.
 
 `bridge/vision_service.py` already polls the authenticated camera endpoint and runs YuNet. Frames
 are **grayscale PGM** — adequate for coarse scene description, useless for colour reasoning.
@@ -350,6 +360,10 @@ are **grayscale PGM** — adequate for coarse scene description, useless for col
    interval and an off switch user-visible.
 5. Degrade cleanly. No camera, no pairing, or no vision model must leave conversation fully
    working, the same way bridge loss leaves the local face and wake behaviour intact.
+
+The shipped camera contract remains grayscale. "What colour is this?" must report that limitation;
+it must not infer colour from luminance. General scene questions may use only the allowlisted typed
+summary (`person_count`, coarse activity, coarse objects, and lighting).
 
 ---
 

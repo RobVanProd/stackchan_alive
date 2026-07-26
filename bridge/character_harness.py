@@ -212,7 +212,7 @@ SENSITIVE_MEMORY = (
 )
 CONTRACTION_RE = re.compile(r"\b\w+'(?:m|re|ve|ll|d|s)\b|\b\w+n't\b", re.IGNORECASE)
 IDENTITY_INTRO_RE = re.compile(r"^\s*i am stack[\s-]*chan(?:\s+spark)?\b", re.IGNORECASE)
-SENTENCE_RE = re.compile(r"[.!?]+")
+SENTENCE_RE = re.compile(r"(?<!\d)[.!?]+|[.!?]+(?!\d)")
 PRIVATE_VALUE_RE = re.compile(
     r"(?:\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|"
     r"(?<!\d)(?:\+?1[ .-]?)?(?:\(?\d{3}\)?[ .-]?)\d{3}[ .-]\d{4}(?!\d)|"
@@ -325,7 +325,7 @@ def truncate_spoken_text(text: str, max_chars: int = 140, max_sentences: int = 2
     clean = " ".join(text.strip().split())
     if len(clean) <= max_chars and sentence_count(clean) <= max_sentences:
         return clean, False
-    first_boundary = re.search(r"[.!?]", clean)
+    first_boundary = SENTENCE_RE.search(clean)
     if first_boundary:
         return clean[: first_boundary.end()].strip(), True
     return clean[:max_chars].rstrip(), True

@@ -165,8 +165,16 @@ def turn_from_character_response(
     seq: int = 7,
     persona: PersonaPack | None = None,
     allow_identity: bool = False,
+    allow_visual_claims: bool = False,
+    grounding_text: str = "",
 ) -> tuple[BridgeTurn, BridgeMemory, HarnessResult]:
-    result = validate_response(raw_response, persona, allow_identity=allow_identity)
+    result = validate_response(
+        raw_response,
+        persona,
+        allow_identity=allow_identity,
+        allow_visual_claims=allow_visual_claims,
+        grounding_text=grounding_text,
+    )
     normalized = result.normalized
     updated_memory = memory.apply_character_memory(normalized)
     emotion = normalized.get("emotion", {})

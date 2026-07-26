@@ -532,7 +532,7 @@ def run_runner_profile(
         allow_identity=identity_allowed,
         allow_visual_claims=visual_claims_allowed,
         grounding_text="\n".join(
-            (str(case["user"]), *memory_lines, *conversation_lines)
+            (str(case["user"]), *embodiment_lines, *memory_lines, *conversation_lines)
         ),
     )
     validation.elapsed_ms = elapsed_ms

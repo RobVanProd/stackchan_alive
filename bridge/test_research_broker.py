@@ -1,5 +1,6 @@
 import io
 import json
+import gzip
 import unittest
 import urllib.error
 from email.message import Message
@@ -27,12 +28,22 @@ def resolver(mapping):
 
 
 class FakeResponse:
-    def __init__(self, payload=b"", *, status=200, content_type="application/json", url="https://example.com/"):
+    def __init__(
+        self,
+        payload=b"",
+        *,
+        status=200,
+        content_type="application/json",
+        content_encoding="",
+        url="https://example.com/",
+    ):
         self.payload = payload
         self.status = status
         self.url = url
         self.headers = Message()
         self.headers["Content-Type"] = content_type
+        if content_encoding:
+            self.headers["Content-Encoding"] = content_encoding
 
     def read(self, amount=-1):
         return self.payload if amount < 0 else self.payload[:amount]
@@ -115,6 +126,40 @@ class ResearchBrokerTests(unittest.TestCase):
         self.assertNotIn("ignore me", result["excerpt"])
         self.assertIn("UNTRUSTED WEB EVIDENCE", evidence_prompt(result))
 
+    def test_fetch_decodes_gzip_with_bounded_output(self):
+        html = b"<html><title>Release</title><body>Released October 7, 2024.</body></html>"
+        opener = FakeOpener(
+            [
+                FakeResponse(
+                    gzip.compress(html),
+                    content_type="text/html; charset=utf-8",
+                    content_encoding="gzip",
+                )
+            ]
+        )
+        broker = ResearchBroker(resolver=resolver({}), opener=opener)
+
+        result = broker.web_fetch("https://example.com/release", max_chars=300)
+
+        self.assertEqual("Release", result["title"])
+        self.assertIn("October 7, 2024", result["excerpt"])
+        self.assertEqual("identity", opener.requests[0].get_header("Accept-encoding"))
+
+        truncated = ResearchBroker(
+            resolver=resolver({}),
+            opener=FakeOpener(
+                [
+                    FakeResponse(
+                        gzip.compress(html)[:-4],
+                        content_type="text/html; charset=utf-8",
+                        content_encoding="gzip",
+                    )
+                ]
+            ),
+        )
+        with self.assertRaisesRegex(RuntimeError, "content_decode_failed"):
+            truncated.web_fetch("https://example.com/release", max_chars=300)
+
     def test_redirect_is_revalidated_and_private_redirect_is_blocked(self):
         headers = Message()
         headers["Location"] = "https://private.test/metadata"
@@ -156,19 +201,6 @@ class ResearchBrokerTests(unittest.TestCase):
                     ],
                 }
 
-        first = SimpleNamespace(
-            raw_response=json.dumps(
-                {
-                    "tool_request": {
-                        "name": "web_search",
-                        "arguments": {"query": "Stackchan release", "max_results": 3},
-                    }
-                }
-            ),
-            command_source="test",
-            elapsed_ms=10.0,
-            approx_tokens_per_sec=20.0,
-        )
         second = SimpleNamespace(
             raw_response=json.dumps(
                 {
@@ -189,9 +221,28 @@ class ResearchBrokerTests(unittest.TestCase):
             LanBridgeConfig(research_enabled=True, disable_audio_downlink=True),
             research_broker=broker,
         )
+        first = SimpleNamespace(
+            raw_response=json.dumps(
+                {
+                    "tool_request": {
+                        "name": "web_search",
+                        "arguments": {"query": "Stackchan release", "max_results": 3},
+                    }
+                }
+            ),
+            command_source="test",
+            elapsed_ms=10.0,
+            approx_tokens_per_sec=20.0,
+        )
         with patch("lan_service.run_runner_profile", side_effect=[first, second]) as runner:
             frames = session.handle_text(
-                json.dumps({"type": "utterance_end", "seq": 9, "text": "Look up the latest release"})
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 9,
+                        "text": "Explain the frobnicator specification",
+                    }
+                )
             )
 
         self.assertEqual(2, runner.call_count)
@@ -219,21 +270,6 @@ class ResearchBrokerTests(unittest.TestCase):
                     ],
                 }
 
-        ordinary_answer = SimpleNamespace(
-            raw_response=json.dumps(
-                {
-                    "spoken_text": "I am not sure.",
-                    "mode": "concern",
-                    "earcon": "none",
-                    "emotion": {"arousal": 0.0, "valence": -0.1},
-                    "memory_write": {},
-                    "memory_forget": [],
-                }
-            ),
-            command_source="test",
-            elapsed_ms=8.0,
-            approx_tokens_per_sec=20.0,
-        )
         grounded_answer = SimpleNamespace(
             raw_response=json.dumps(
                 {
@@ -254,7 +290,7 @@ class ResearchBrokerTests(unittest.TestCase):
             LanBridgeConfig(research_enabled=True, disable_audio_downlink=True),
             research_broker=broker,
         )
-        with patch("lan_service.run_runner_profile", side_effect=[ordinary_answer, grounded_answer]) as runner:
+        with patch("lan_service.run_runner_profile", return_value=grounded_answer) as runner:
             frames = session.handle_text(
                 json.dumps(
                     {
@@ -265,7 +301,7 @@ class ResearchBrokerTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(2, runner.call_count)
+        self.assertEqual(1, runner.call_count)
         self.assertEqual("web_search", broker.request["name"])
         self.assertIn("latest Stackchan release", broker.request["arguments"]["query"])
         response = next(frame for frame in frames if isinstance(frame, dict) and frame.get("type") == "response_start")
@@ -276,7 +312,7 @@ class ResearchBrokerTests(unittest.TestCase):
             LanBridgeConfig(research_enabled=True, disable_audio_downlink=True),
             research_broker=natural_broker,
         )
-        with patch("lan_service.run_runner_profile", side_effect=[ordinary_answer, grounded_answer]) as natural_runner:
+        with patch("lan_service.run_runner_profile", return_value=grounded_answer) as natural_runner:
             natural_frames = natural_session.handle_text(
                 json.dumps(
                     {
@@ -287,7 +323,7 @@ class ResearchBrokerTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(2, natural_runner.call_count)
+        self.assertEqual(1, natural_runner.call_count)
         self.assertEqual("web_search", natural_broker.request["name"])
         self.assertEqual(
             "Who is the current CEO of Framework?",

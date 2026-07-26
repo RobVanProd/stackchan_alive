@@ -53,6 +53,22 @@ _COMPACT_SCHEMA = (
     "use helpdesk wording, or offer actions and sensing that are not grounded in the "
     "trusted context. Do not add any other key."
 )
+_COMPACT_RESEARCH_SCHEMA = (
+    "Choose exactly one JSON output. When fresh public-web evidence is needed or you are "
+    "materially unsure of a factual answer, return exactly "
+    '{"tool_request":{"name":"web_search","arguments":{"query":"concise public query",'
+    '"max_results":4}}}. Otherwise return one compact answer object with required keys '
+    "s (spoken text), m (delivery mode), a (arousal), and v (valence). Use m=speak for "
+    "ordinary answers, attend when asking the user a question, happy only for clear delight, "
+    "concern for concern, and safety for safety guidance; other allowed modes are "
+    "idle|listen|think|react|sleep|error. a and v must be numbers from -1 to 1. "
+    "Sound like Spark: curious, warm, lightly dry, and specific. For an ordinary low-stakes "
+    "reply, answer directly first, then add exactly one short wry or playful observation. "
+    "Skip that beat for safety, privacy, errors, distress, or uncertainty. Never claim that "
+    "web access is unavailable when a web tool is offered. Never end with a generic offer to "
+    "help, introduce yourself unless asked, use helpdesk wording, or claim actions and senses "
+    "that are not grounded in trusted context. Do not add any other key."
+)
 _COMPACT_RESPONSE_KEYS = {"s", "m", "a", "v"}
 _MODE_EARCONS = {
     "happy": "happy",
@@ -254,7 +270,10 @@ def compact_generation_prompt(prompt: str) -> str:
     if adjusted_start < 0 or adjusted_end < 0:
         return prompt
     adjusted_end += len(_FULL_SCHEMA_END)
-    return compact[:adjusted_start] + _COMPACT_SCHEMA + compact[adjusted_end:]
+    compact_schema = _COMPACT_SCHEMA
+    if '"tool_request"' in prompt and "web_search|web_fetch" in prompt:
+        compact_schema = _COMPACT_RESEARCH_SCHEMA
+    return compact[:adjusted_start] + compact_schema + compact[adjusted_end:]
 
 
 def expand_compact_response(raw_json: str, prompt: str) -> str:

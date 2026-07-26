@@ -24,13 +24,17 @@ type. The bridge performs at most two tool rounds per turn, then asks Gemma for 
 answer. Web text is untrusted context and cannot directly write long-term memory, alter persona,
 or invoke robot controls.
 
-The current release candidate implements one tool round per turn. The prompt asks Gemma to choose
-research without waiting for explicit search wording, and the bridge independently routes ordinary
-time-sensitive public questions when the small model does not request a tool. This deterministic
-freshness policy covers current events, weather, prices, versions, schedules, public officeholders,
-and similar changeable facts while refusing credentials, personal-account data, and live robot-state
-questions. Source URLs are attached to `response_start` as bounded citation metadata for companion
-clients and are not spoken aloud.
+The current release candidate implements one bounded research round per turn. The prompt asks Gemma
+to choose research without waiting for explicit search wording, and the bridge independently routes
+explicit searches, time-sensitive public questions, and natural check/verify/fact-check requests.
+Predictable routes skip the first model pass. If Gemma nevertheless claims that it cannot access
+the web, the bridge performs the same bounded policy check and search instead of speaking that
+denial. Verification may read one selected public HTTPS result through the guarded fetcher; gzip
+decoding remains subject to the response-size cap. This policy covers current events, weather,
+prices, versions, schedules, public officeholders, and similar changeable facts while refusing
+credentials, personal-account data, visual questions, and live robot-state questions. Source URLs
+are attached to `response_start` as bounded citation metadata for companion clients and are not
+spoken aloud.
 The bridge forcibly clears `memory_write` and `memory_forget` from a research-derived final
 response so fetched claims cannot silently become durable memory.
 
@@ -109,9 +113,10 @@ research:
 ```
 
 The bridge validates the request, executes it, appends a compact evidence block to the real user
-prompt, and reruns Gemma once. A second fetch may be permitted for one selected result. More tool
-rounds, navigation, downloads, login flows, purchases, posting, or form submission require an
-explicit future capability and owner confirmation.
+prompt, and runs Gemma once for the cited answer. A verification route may add one selected-result
+fetch inside that same bounded research round. More rounds, navigation, downloads, login flows,
+purchases, posting, or form submission require an explicit future capability and owner
+confirmation.
 
 Start the PC bridge with research enabled only after a loopback SearXNG instance is ready:
 
@@ -158,8 +163,6 @@ broker has no shell, file, form, login, posting, purchase, or arbitrary MCP-code
 
 The basic web-search path is functional. Refine it without widening the authority boundary:
 
-- tune natural research routing so changing public facts trigger search without requiring the
-  user to say "search", while stable knowledge stays local and fast;
 - add a mixed voice/research latency report that separates search, fetch, second-pass model, TTS,
   and first-audio time;
 - improve spoken source handling: state uncertainty briefly, avoid reading URLs aloud, and expose

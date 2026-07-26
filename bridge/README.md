@@ -313,6 +313,11 @@ bounded 2-30 minute interval to the loopback-only Ollama adapter, retains only a
 scene facts, and never writes a frame to disk. A missing camera, pairing file, or vision model
 leaves ordinary conversation available.
 
+Deictic visual questions such as `What do you see?` request one fresh observation before the
+answer is generated, then pass only the typed `ambient_room` summary through Character Lock.
+Deictic colour questions do not invoke the model: the current robot endpoint is grayscale, so the
+bridge reports that it cannot determine the colour instead of guessing.
+
 Run the optional local camera detector only with the isolated camera diagnostic firmware:
 
 ```powershell

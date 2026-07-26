@@ -43,6 +43,7 @@ foreach ($required in @(
   "rvc_production_tts_client.py",
   "[switch]`$EnableResearch",
   "[switch]`$EnableFaceVision",
+  '[string]$RoomVisionModel = "gemma4:e2b-it-qat"',
   "[string]`$SearxngUrl",
   "-EnableResearch -SearxngUrl",
   "-EnableDashboard",
