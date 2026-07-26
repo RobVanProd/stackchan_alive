@@ -59,6 +59,12 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 - Production startup now uses a resident loopback whisper.cpp server. A real robot utterance
   measured about 0.51-0.59 seconds in-process, and normal startup uses redacted turn logs with no
   microphone WAV persistence.
+- The pinned loopback-only SearXNG service now passes live JSON search, engine allowlist, broker
+  search, restricted HTTPS fetch, and audit gates. The bridge routes explicit searches and
+  ordinary freshness-sensitive questions through one bounded research round; fetched text cannot
+  write memory or gain robot authority. Natural routing, citations, caching, observability, and
+  mixed voice/research latency remain tracked refinements in
+  [LOCAL_RESEARCH_TOOLING.md](LOCAL_RESEARCH_TOOLING.md).
 - The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
   totals, and records late binary frames as protocol failures. Phrase streaming no longer applies
   the final 250 ms drain pause between intermediate phrases.
@@ -88,9 +94,11 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   that pacing budget, leaving 58 ms of nominal headroom, and qualification now rejects fewer than
   25 ms.
 
-Silence or an explicit no-transcript STT result is also a normal turn outcome now: the bridge
-speaks one short retry through the Character Lock and TTS path, sends no protocol `error`, writes no
-conversation history, and opens no reply window.
+Silence or an explicit no-transcript STT result is also a normal turn outcome now. An initial
+capture with no transcript speaks one short retry through the Character Lock and TTS path. A
+follow-up capture that fails the firmware-matched PCM speech gate closes silently before STT,
+preventing room noise from creating a hallucinated turn. Neither path writes conversation history
+or opens another reply window.
 
 These are source-tested candidates, not physical closure. F1-F4 remain open until one exact clean
 bridge source commit passes the supervised qualification and soak against the unchanged accepted

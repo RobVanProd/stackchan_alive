@@ -23,10 +23,10 @@ Start or repair the production host path with:
 .\tools\start_pc_brain_directml.ps1 -RepairMemory -Json
 ```
 
-Local web research remains opt-in. After a loopback-only SearXNG service has passed the gates in
-`docs\LOCAL_RESEARCH_TOOLING.md`, add `-EnableResearch -SearxngUrl
-http://127.0.0.1:8080`. The launcher otherwise keeps research disabled, which is the currently
-qualified release configuration.
+Local web research remains opt-in. The pinned loopback-only SearXNG service has passed the live
+gates in `docs\LOCAL_RESEARCH_TOOLING.md`; add `-EnableResearch -SearxngUrl
+http://127.0.0.1:8080` to include it in a supervised candidate. The launcher otherwise keeps
+research intentionally disabled for offline operation.
 
 The wrapper stops only a verified Stackchan bridge listener, backs up and sanitizes persistent
 memory, starts and health-checks DirectML and the loopback STT server, enables phrase streaming

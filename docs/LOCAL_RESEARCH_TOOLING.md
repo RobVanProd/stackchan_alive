@@ -1,10 +1,10 @@
 # Local Research Tooling
 
 Status: bounded bridge broker, one-round Gemma integration, guarded local startup, and
-production-launch gates are implemented. A live local SearXNG deployment and voice/research soak
-remain pending. As of the 2026-07-25 release audit, no service was listening on the expected
-loopback port `8080`; do not describe web research as production-ready until the acceptance gates
-below pass.
+production-launch gates are implemented. On 2026-07-25 the pinned SearXNG deployment passed the
+complete live gate on the reference host: one loopback-only listener, JSON search, the configured
+engine allowlist, broker search, restricted HTTPS fetch, and privacy-safe audit records. The
+mixed physical voice/research soak remains a promotion gate.
 
 ## Decision
 
@@ -153,6 +153,26 @@ offline.
 `research_broker.py` requires SearXNG itself to resolve exclusively to loopback. Public page
 fetches require HTTPS and reject non-global DNS answers before each request and redirect. The
 broker has no shell, file, form, login, posting, purchase, or arbitrary MCP-code capability.
+
+## Refinement Backlog
+
+The basic web-search path is functional. Refine it without widening the authority boundary:
+
+- tune natural research routing so changing public facts trigger search without requiring the
+  user to say "search", while stable knowledge stays local and fast;
+- add a mixed voice/research latency report that separates search, fetch, second-pass model, TTS,
+  and first-audio time;
+- improve spoken source handling: state uncertainty briefly, avoid reading URLs aloud, and expose
+  compact citations in companion and dashboard clients;
+- add bounded short-lived query/result caching with explicit freshness and no private transcript
+  keys;
+- expose research availability, last tool outcome, source count, and failure reason in the
+  dashboard without exposing query text or fetched page bodies;
+- tune engine selection, deduplication, and source ranking against a fixed factual evaluation set;
+- exercise cancellation, offline fallback, rate limiting, and recovery during a ten-minute mixed
+  physical voice/research run;
+- keep interactive browser automation future-only until it has a separate allowlist, isolation,
+  audit, and owner-confirmation contract.
 
 ## Acceptance Gates
 

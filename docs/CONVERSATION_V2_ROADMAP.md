@@ -135,6 +135,8 @@ firmware to its normal local face and wake behavior.
   resolved deterministically before Gemma.
 - Explicit search requests force one bounded local-first SearXNG research round even if the model
   fails to request it. Research evidence is untrusted data, cited, and cannot write memory.
+- Ordinary freshness-sensitive public questions also route deterministically to that bounded
+  research round; stable questions remain local so every turn does not pay web latency.
 - Live robot state comes only from typed, expiring heartbeat telemetry.
 - Tool syntax never enters spoken text, and a turn may not chain arbitrary tools.
 
