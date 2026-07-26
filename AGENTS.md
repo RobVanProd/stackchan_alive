@@ -79,6 +79,13 @@ Live soak JSON uses same-directory atomic replacement. A concurrent Windows read
 brief sharing violation during the swap, so monitoring code must retry read/parse failures for a
 short bounded interval. Never classify one unreadable `progress.json` or `polls.json` snapshot as a
 robot failure; use repeated endpoint, process, bridge-socket, and runtime evidence.
+Firmware images are byte-reproducible for a given source commit. Two clean builds of the same
+commit must produce the same `firmware.bin` SHA-256, so a paired firmware/source record can be
+verified by rebuilding rather than only by trusting an archived artifact. This relies on
+`tools/platformio_reproducible_build.py`, which pins `__DATE__`/`__TIME__` to the commit; the
+Arduino core prints those in its chip report and they otherwise made every build unique. If you
+add a build environment, give it that pre-script or its images stop being reproducible.
+
 `stackchan_release_full` is the secret-free public build. Per-device `stackchan_camera_probe` or
 `stackchan_release_forensics` builds require explicit private OTA/pairing configuration and must
 never be substituted into a public package or GitHub release asset.
