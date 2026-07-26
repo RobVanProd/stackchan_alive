@@ -7130,6 +7130,78 @@ void test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled() {
   TEST_ASSERT_NOT_NULL(std::strstr(decodedStart, "\"seq\":52"));
 }
 
+void test_bridge_wake_gate_survives_a_long_utterance() {
+  BridgeClient bridge;
+  FakeBridgeNetworkSocket socket;
+  BridgeNetworkSession session;
+  connectBridgeNetworkSession(bridge, socket, session, 1220);
+
+  BridgeAudioUplinkConfig uplinkConfig;
+  uplinkConfig.enabled = true;
+  BridgeAudioUplink uplink;
+  TEST_ASSERT_TRUE(uplink.begin(uplinkConfig, &session));
+
+  // Production values, not shortened ones: this is about the real relationship
+  // between the gate window and how long a capture can run.
+  BridgeWakeGateConfig gateConfig;
+  BridgeWakeGate gate;
+  TEST_ASSERT_TRUE(gate.begin(gateConfig, &uplink));
+
+  RobotEvent wake;
+  wake.type = EventType::WakeWord;
+  gate.applyEvent(wake, 1000);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  // Drain the utterance_start frame, as the real session loop does. Without this
+  // the outgoing queue fills and the closing utterance_end cannot be sent.
+  session.update(1005);
+  socket.clearOutgoing();
+
+  // Ten seconds of continuous speech. The firmware renews the gate from its own
+  // voice-activity endpoint while it hears speech; without that the gate closed
+  // gateOpenMs after the wake word and completed the turn mid-utterance, and the
+  // remaining chunks were rejected by an uplink with no active turn.
+  const uint32_t speechEndsMs = 11000;
+  for (uint32_t nowMs = 1100; nowMs <= speechEndsMs; nowMs += 100) {
+    RobotEvent speaking;
+    speaking.type = EventType::UserSpeaking;
+    speaking.timestampMs = nowMs;
+    gate.applyEvent(speaking, nowMs);
+    gate.update(nowMs);
+    session.update(nowMs);
+    socket.clearOutgoing();
+    TEST_ASSERT_TRUE(gate.telemetry().gateOpen);
+    TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  }
+
+  // The turn is still the same one; it was never cut and restarted.
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsStarted);
+  TEST_ASSERT_EQUAL_UINT32(0, gate.telemetry().turnsCompleted);
+
+  // Renewal must not make streaming unbounded. The privacy guard still caps the
+  // turn at maxTurnMs from when it started, however long the speaker keeps
+  // going, and that bound is the whole reason the guard exists.
+  const uint32_t turnStartedMs = 1000;
+  gate.update(turnStartedMs + kBridgeWakeGateMaxTurnMs - 100);
+  TEST_ASSERT_TRUE(gate.telemetry().gateOpen);
+  TEST_ASSERT_TRUE(gate.telemetry().turnActive);
+  gate.update(turnStartedMs + kBridgeWakeGateMaxTurnMs);
+  TEST_ASSERT_FALSE(gate.telemetry().gateOpen);
+  TEST_ASSERT_FALSE(gate.telemetry().turnActive);
+  TEST_ASSERT_EQUAL_UINT32(1, gate.telemetry().turnsCompleted);
+}
+
+void test_bridge_wake_gate_max_turn_outlasts_the_capture_ceiling() {
+  // The privacy guard must be the last thing to fire, after the capture has
+  // already ended on its own. When these were equal they raced, and the guard
+  // could close the turn while the microphone was still recording.
+  const uint32_t captureCeilingMs = 13000;  // 130 chunks x 100 ms in main.cpp
+  TEST_ASSERT_GREATER_THAN_UINT32(captureCeilingMs, kBridgeWakeGateMaxTurnMs);
+
+  // And the endpoint's own ceiling ends capture before the chunk ceiling does.
+  VoiceActivityEndpointConfig endpointConfig;
+  TEST_ASSERT_LESS_THAN_UINT32(captureCeilingMs, endpointConfig.maximumCaptureMs);
+}
+
 void test_bridge_wake_gate_renews_on_speech_and_expires() {
   BridgeClient bridge;
   FakeBridgeNetworkSocket socket;
@@ -8271,6 +8343,8 @@ int main() {
   RUN_TEST(test_bridge_wake_gate_starts_and_completes_uplink_turn);
   RUN_TEST(test_bridge_wake_gate_can_start_uplink_turn_from_speech_when_enabled);
   RUN_TEST(test_bridge_wake_gate_renews_on_speech_and_expires);
+  RUN_TEST(test_bridge_wake_gate_survives_a_long_utterance);
+  RUN_TEST(test_bridge_wake_gate_max_turn_outlasts_the_capture_ceiling);
   RUN_TEST(test_bridge_network_session_reconnects_after_socket_disconnect);
   RUN_TEST(test_bridge_network_session_clears_stale_error_after_reconnect_handshake);
   RUN_TEST(test_bridge_wifi_provisioner_disabled_default_is_ready_not_configured);
