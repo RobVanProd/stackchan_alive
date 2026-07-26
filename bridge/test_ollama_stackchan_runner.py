@@ -35,7 +35,8 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         compact = runner.compact_generation_prompt(prompt)
 
         self.assertIn("required keys s (spoken text)", compact)
-        self.assertIn("add exactly one short wry or playful observation", compact)
+        self.assertIn("trusted bridge adds the separate low-stakes character beat", compact)
+        self.assertIn("Do not add a second sentence", compact)
         self.assertIn("Never end with a generic offer", compact)
         self.assertNotIn(runner._FULL_SCHEMA_RULE, compact)
 
