@@ -37,6 +37,9 @@ foreach ($required in @(
   "-SttServerUrl '`$SttServerUrl'",
   "sttServerReady =",
   "stackchan.rvc-directml-worker.health.v1",
+  "synthesis_ready",
+  "-RequireVoiceWorkerSynthesis",
+  "workerSynthesisReady =",
   "rvc_production_tts_client.py",
   "[switch]`$EnableResearch",
   "[switch]`$EnableFaceVision",
@@ -53,12 +56,16 @@ foreach ($required in @(
   "researchEnabled = [bool]`$EnableResearch",
   "-StreamTtsPhrases",
   "-EnableAudioDownlink",
+  "-InProcessOllamaRunner",
+  "-InProcessDirectMlTts",
   "-DownlinkAudioChunkBytes 4096",
   "-DownlinkBinaryFrameDelayMs 70",
   "`$ErrorActionPreference = 'Stop'",
   '-ExpectedDisableAudioDownlink `$false',
   '-ExpectedAudioPlaybackEnabled `$true',
   '-ExpectedStreamTtsPhrases `$true',
+  '-ExpectedInProcessOllamaRunner `$true',
+  '-ExpectedInProcessDirectMlTts `$true',
   '-EncodedCommand $runtimeEncoded',
   "bridge_state -eq `"ready`""
 )) {
@@ -96,6 +103,10 @@ foreach ($required in @(
   '"--searxng-url", $SearxngUrl',
   "[string]`$SttServerUrl",
   '"--stt-server-url", $SttServerUrl'
+  "[switch]`$InProcessOllamaRunner",
+  "[switch]`$InProcessDirectMlTts",
+  '"--in-process-ollama-runner"',
+  '"--in-process-directml-tts"',
   '"--room-vision-command", $RoomVisionCommand'
   '"--camera-pairing-code-file", $CameraPairingCodeFile'
   "stackchan.pc-brain-runtime.v1",

@@ -586,6 +586,7 @@ class LanBridgeConfig:
     runner_profile: str = "gemma4-e2b-gguf"
     runner_case: str = "greeting"
     runner_command: str = ""
+    in_process_ollama_runner: bool = False
     require_runner: bool = False
     runner_timeout_ms: int = 60000
     persona_id: str = DEFAULT_PERSONA_ID
@@ -594,6 +595,7 @@ class LanBridgeConfig:
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
     require_audio_wake_phrase: bool = False
     tts_command: str = ""
+    in_process_directml_tts: bool = False
     tts_voice: str = DEFAULT_TTS_VOICE
     tts_timeout_ms: int = DEFAULT_TTS_TIMEOUT_MS
     stream_tts_phrases: bool = False
@@ -1734,6 +1736,7 @@ class LanBridgeSession:
                 self.config.runner_profile,
                 case_name="question",
                 command=self.config.runner_command,
+                in_process_ollama=self.config.in_process_ollama_runner,
                 require_runner=self.config.require_runner,
                 timeout_ms=self.config.runner_timeout_ms,
                 user_text=decision.prompt,
@@ -1927,6 +1930,7 @@ class LanBridgeSession:
                         mode=turn.intent,
                         arousal=turn.arousal,
                         valence=turn.valence,
+                        directml_in_process=self.config.in_process_directml_tts,
                     )
                     if bool(result.diagnostics.get("audio_truncated", False)):
                         raise TtsExecutionError("streaming TTS refused a truncated phrase")
@@ -2304,6 +2308,7 @@ class LanBridgeSession:
                     self.config.runner_profile,
                     case_name=runner_case,
                     command=self.config.runner_command,
+                    in_process_ollama=self.config.in_process_ollama_runner,
                     require_runner=self.config.require_runner,
                     timeout_ms=self.config.runner_timeout_ms,
                     user_text=user_text,
@@ -2370,6 +2375,7 @@ class LanBridgeSession:
                             self.config.runner_profile,
                             case_name=runner_case,
                             command=self.config.runner_command,
+                            in_process_ollama=self.config.in_process_ollama_runner,
                             require_runner=self.config.require_runner,
                             timeout_ms=self.config.runner_timeout_ms,
                             user_text=evidence_user_text,
@@ -2476,6 +2482,7 @@ class LanBridgeSession:
                 mode=turn.intent,
                 arousal=turn.arousal,
                 valence=turn.valence,
+                directml_in_process=self.config.in_process_directml_tts,
             )
             turn = replace(
                 turn,
@@ -3203,6 +3210,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runner-profile", choices=sorted(RUNNER_PROFILES), default="gemma4-e2b-gguf")
     parser.add_argument("--runner-case", default="greeting")
     parser.add_argument("--runner-command", default="")
+    parser.add_argument("--in-process-ollama-runner", action="store_true")
     parser.add_argument("--require-runner", action="store_true")
     parser.add_argument("--runner-timeout-ms", type=int, default=60000)
     parser.add_argument("--persona", default=DEFAULT_PERSONA_ID, help="Validated persona pack id.")
@@ -3211,6 +3219,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
     parser.add_argument("--require-audio-wake-phrase", action="store_true")
     parser.add_argument("--tts-command", default="")
+    parser.add_argument("--in-process-directml-tts", action="store_true")
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
     parser.add_argument("--tts-timeout-ms", type=int, default=DEFAULT_TTS_TIMEOUT_MS)
     parser.add_argument("--stream-tts-phrases", action="store_true")
@@ -3288,6 +3297,7 @@ def main() -> int:
         runner_profile=args.runner_profile,
         runner_case=args.runner_case,
         runner_command=args.runner_command,
+        in_process_ollama_runner=args.in_process_ollama_runner,
         require_runner=args.require_runner,
         runner_timeout_ms=args.runner_timeout_ms,
         persona_id=args.persona,
@@ -3296,6 +3306,7 @@ def main() -> int:
         stt_timeout_ms=args.stt_timeout_ms,
         require_audio_wake_phrase=args.require_audio_wake_phrase,
         tts_command=args.tts_command,
+        in_process_directml_tts=args.in_process_directml_tts,
         tts_voice=args.tts_voice,
         tts_timeout_ms=args.tts_timeout_ms,
         stream_tts_phrases=args.stream_tts_phrases,

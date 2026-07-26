@@ -1319,7 +1319,12 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("spark", snapshot[0]["settings"]["persona"]["active"])
 
     def test_active_persona_is_snapshotted_for_model_validation(self):
-        session = LanBridgeSession(LanBridgeConfig(persona_id="glow"))
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                persona_id="glow",
+                in_process_ollama_runner=True,
+            )
+        )
         model_response = json.dumps(
             {
                 "spoken_text": "A quiet signal is still a signal.",
@@ -1343,6 +1348,7 @@ class LanServiceTests(unittest.TestCase):
 
         runner.assert_called_once()
         self.assertEqual("glow", runner.call_args.kwargs["persona_id"])
+        self.assertTrue(runner.call_args.kwargs["in_process_ollama"])
         self.assertTrue(any(isinstance(frame, dict) and frame.get("type") == "response_start" for frame in frames))
 
     def test_unsafe_model_actuator_claim_is_replaced_without_protocol_error(self):
@@ -2174,6 +2180,7 @@ class LanServiceTests(unittest.TestCase):
                     "mode": kwargs["mode"],
                     "arousal": kwargs["arousal"],
                     "valence": kwargs["valence"],
+                    "directml_in_process": kwargs["directml_in_process"],
                 }
             )
             if text.startswith("Second"):
@@ -2201,6 +2208,7 @@ class LanServiceTests(unittest.TestCase):
         session = LanBridgeSession(
             LanBridgeConfig(
                 tts_command="fake-tts",
+                in_process_directml_tts=True,
                 stream_tts_phrases=True,
                 downlink_audio_chunk_bytes=4,
             )
@@ -2222,7 +2230,15 @@ class LanServiceTests(unittest.TestCase):
 
         self.assertEqual(["First phrase.", "Second phrase."], calls)
         self.assertEqual(
-            [{"mode": "speak", "arousal": 0.0, "valence": 0.0}] * 2,
+            [
+                {
+                    "mode": "speak",
+                    "arousal": 0.0,
+                    "valence": 0.0,
+                    "directml_in_process": True,
+                }
+            ]
+            * 2,
             styles,
         )
         self.assertEqual("", error)
@@ -2280,6 +2296,7 @@ class LanServiceTests(unittest.TestCase):
         session = LanBridgeSession(
             LanBridgeConfig(
                 tts_command="fake-tts",
+                in_process_directml_tts=True,
                 stream_tts_phrases=True,
                 downlink_audio_chunk_bytes=4096,
                 downlink_binary_frame_delay_ms=70,

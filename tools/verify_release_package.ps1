@@ -330,7 +330,9 @@ $requiredFiles = @(
   "bridge/rvc_tts_client.py",
   "bridge/rvc_worker_service.py",
   "bridge/rvc_directml_tts_client.py",
+  "bridge/test_rvc_directml_tts_client.py",
   "bridge/rvc_directml_worker_service.py",
+  "bridge/test_rvc_directml_worker_service.py",
   "bridge/rvc_production_tts_client.py",
   "bridge/test_rvc_production_tts_client.py",
   "bridge/voice_v2_directml_runtime.py",
@@ -2244,7 +2246,7 @@ foreach ($pattern in @("ReferenceBridgeTests", "test_frames_follow_firmware_prot
 }
 
 $localRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/local_runner.py") -Raw
-foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "approx_tokens_per_sec", "deterministic_fallback", "persona_id", "--persona")) {
+foreach ($pattern in @("RUNNER_PROFILES", "gemma4-e2b-gguf", "gemma4-e2b-litert-lm", "STACKCHAN_GEMMA4_E2B_GGUF_COMMAND", "STACKCHAN_GEMMA4_E2B_LITERT_COMMAND", "litert_lm_stackchan_wrapper.py", "run_runner_profile", "run_in_process_ollama", "in-process-ollama-api", "approx_tokens_per_sec", "deterministic_fallback", "persona_id", "--persona")) {
   if ($localRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/local_runner.py missing local runner support: $pattern"
   }
@@ -2279,7 +2281,7 @@ foreach ($pattern in @("LiteRtLmContractSmokeTests", "test_build_report_exercise
 }
 
 $localRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_local_runner.py") -Raw
-foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_runner_repairs_ignored_episode_continuity_without_second_model_call", "test_runner_repairs_empty_pickup_reaction_without_second_model_call", "test_runner_repairs_empty_actual_greeting_without_second_model_call", "test_runner_repairs_only_matching_approved_forget_key", "test_runner_does_not_guess_an_unmatched_forget_key", "test_runner_narrows_broad_forget_to_matching_approved_key", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
+foreach ($pattern in @("LocalRunnerTests", "test_profiles_keep_primary_and_mobile_targets_visible", "test_deterministic_fallback_is_valid_without_runner_command", "test_deterministic_fallback_uses_selected_persona", "test_reference_bridge_runner_fallback_uses_selected_persona", "test_command_runner_measures_speed_and_validates_json", "test_in_process_ollama_runner_is_explicit_and_validated", "test_runner_repairs_ignored_episode_continuity_without_second_model_call", "test_runner_repairs_empty_pickup_reaction_without_second_model_call", "test_runner_repairs_empty_actual_greeting_without_second_model_call", "test_runner_repairs_only_matching_approved_forget_key", "test_runner_does_not_guess_an_unmatched_forget_key", "test_runner_narrows_broad_forget_to_matching_approved_key", "test_user_text_replaces_the_canned_case_example_in_the_prompt", "gemma4-e2b-litert-lm")) {
   if ($localRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_local_runner.py missing local runner test coverage: $pattern"
   }
@@ -2314,7 +2316,7 @@ foreach ($pattern in @("ModelBenchmarkTests", "test_deterministic_benchmark_mark
 }
 
 $lanServiceText = Get-Content -LiteralPath (Join-PackagePath "bridge/lan_service.py") -Raw
-foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "WebSocketProtocolError", "SttNoTranscriptError", "no_speech_character_response", "explicit_forget_keys", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "DashboardRuntime", "--dashboard", "--dashboard-host", "--robot-host")) {
+foreach ($pattern in @("LanBridgeSession", "LanBridgeConfig", "BridgeControlState", "EndpointRecord", "endpoint_hello", "claim_brain", "release_brain", "settings_get", "settings_set", "forget_endpoint", "diagnostics_request", "capability_update", "utterance_start", "utterance_end", "early_thinking_frame", "suppress_thinking", "audio_downlink_frames", "stt_command", "tts_command", "in_process_ollama_runner", "in_process_directml_tts", "--in-process-ollama-runner", "--in-process-directml-tts", "WebSocketProtocolError", "SttNoTranscriptError", "no_speech_character_response", "explicit_forget_keys", "downlink_audio_chunk_bytes", "downlink_binary_frame_delay_ms", "downlink_text_frame_delay_ms", "auto_turn_text", "MAX_DOWNLINK_AUDIO_CHUNK_BYTES", "mouth_frame_for_audio_window", "tts_mouth_frames", "user_text=user_text", "DashboardRuntime", "--dashboard", "--dashboard-host", "--robot-host")) {
   if ($lanServiceText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/lan_service.py missing LAN bridge service support: $pattern"
   }
@@ -2348,28 +2350,28 @@ foreach ($pattern in @("robot_clear", "/api/motion", "resumeMotionButton", "setI
 }
 
 $ollamaRunnerText = Get-Content -LiteralPath (Join-PackagePath "bridge/ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "normalize_surface_policy", "explicit_forget_keys", "--format", "json", "validate_response")) {
+foreach ($pattern in @("Ollama-backed Stackchan runner", "DEFAULT_MODEL", "STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_OLLAMA_API_URL", "STACKCHAN_OLLAMA_TRANSPORT", "/api/generate", '"think": False', '"keep_alive": -1', "run_api", "run_cli", "compact_generation_prompt", "expand_compact_response", "normalize_surface_policy", "explicit_forget_keys", "--format", "json", "validate_response")) {
   if ($ollamaRunnerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/ollama_stackchan_runner.py missing PC brain runner support: $pattern"
   }
 }
 
 $ollamaRunnerTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_ollama_stackchan_runner.py") -Raw
-foreach ($pattern in @("OllamaStackchanRunnerTests", "test_surface_normalization_expands_contraction_without_losing_memory", "test_surface_normalization_allows_requested_identity_only", "test_surface_normalization_removes_helpdesk_tail_and_preserves_answer", "test_surface_normalization_narrows_explicit_forget_to_exact_keys", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
+foreach ($pattern in @("OllamaStackchanRunnerTests", "test_ordinary_turn_uses_compact_internal_contract", "test_memory_action_keeps_full_contract", "test_compact_response_expands_to_character_lock_shape", "test_compact_unsafe_motion_request_is_forced_to_safety_delivery", "test_run_character_prompt_returns_valid_full_response_from_compact_model_output", "test_policy_guard_repairs_empty_self_intro_for_tone_feedback", "test_policy_guard_restores_explicit_forget_keys_after_model_repair", "test_surface_normalization_expands_contraction_without_losing_memory", "test_surface_normalization_allows_requested_identity_only", "test_surface_normalization_removes_helpdesk_tail_and_preserves_answer", "test_surface_normalization_narrows_explicit_forget_to_exact_keys", "test_api_uses_warm_json_generation_with_bounded_output", "test_default_transport_falls_back_to_cli_when_api_is_unavailable", "keep_alive", "num_predict")) {
   if ($ollamaRunnerTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_ollama_stackchan_runner.py missing warm Ollama API coverage: $pattern"
   }
 }
 
 $directMlClientText = Get-Content -LiteralPath (Join-PackagePath "bridge/rvc_directml_tts_client.py") -Raw
-foreach ($pattern in @("STACKCHAN_RVC_DIRECTML_WORKER_URL", "STACKCHAN_RVC_DIRECTML_TIMEOUT_SECONDS", "/convert", "stackchan.tts-metadata.v1", "audio_b64")) {
+foreach ($pattern in @("STACKCHAN_RVC_DIRECTML_WORKER_URL", "STACKCHAN_RVC_DIRECTML_TIMEOUT_SECONDS", "/convert", "/synthesize", "audio_decode_backend", "persistent-system-speech", "one-shot-system-speech", "stackchan.tts-metadata.v1", "audio_b64")) {
   if ($directMlClientText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/rvc_directml_tts_client.py missing Voice V2 client support: $pattern"
   }
 }
 
 $directMlWorkerText = Get-Content -LiteralPath (Join-PackagePath "bridge/rvc_directml_worker_service.py") -Raw
-foreach ($pattern in @("DirectMlRvcRuntime", "ThreadingHTTPServer", "/health", "/convert")) {
+foreach ($pattern in @("DirectMlRvcRuntime", "PersistentWindowsSpeechSynthesizer", "ThreadingHTTPServer", "/health", "/convert", "/synthesize", "worker-numpy-fir-", "synthesis_ready")) {
   if ($directMlWorkerText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/rvc_directml_worker_service.py missing Voice V2 worker support: $pattern"
   }
@@ -2390,7 +2392,7 @@ foreach ($pattern in @("stackchan.pc-brain-probe.v1", "endpoint_hello", "claim_b
 }
 
 $startPcBrainText = Get-Content -LiteralPath (Join-PackagePath "tools/start_pc_brain.ps1") -Raw
-foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid", "EnableDashboard", "DashboardHost must be loopback-only.", "--robot-http-port")) {
+foreach ($pattern in @("STACKCHAN_OLLAMA_EXE", "STACKCHAN_OLLAMA_MODEL", "STACKCHAN_FFMPEG_EXE", "STACKCHAN_SELECTED_VOICE_MAX_AUDIO_BYTES", "ollama_stackchan_runner.py", "whisper_cpp_stt.py", "selected_voice_tts.py", "InProcessOllamaRunner", "InProcessDirectMlTts", "--in-process-ollama-runner", "--in-process-directml-tts", "StreamTtsPhrases", "--stream-tts-phrases", "--tts-phrase-max-chars", "--downlink-binary-frame-delay-ms", "--auto-turn-text", "lan_service.pid", "EnableDashboard", "DashboardHost must be loopback-only.", "--robot-http-port")) {
   if ($startPcBrainText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_pc_brain.ps1 missing PC brain launch support: $pattern"
   }
@@ -2433,7 +2435,7 @@ foreach ($pattern in @("Stackchan Alive.lnk", "WScript.Shell", "LocalApplication
 }
 
 $voiceV2StartText = Get-Content -LiteralPath (Join-PackagePath "tools/start_voice_v2_supervised_validation.ps1") -Raw
-foreach ($pattern in @("stackchan.voice-v2-supervised-session.v1", "speaker_stream_chunked", "STACKCHAN_RVC_DIRECTML_WORKER_URL", "StreamTtsPhrases", "OperatorPresent", "ConfirmSpeakerTest", "max_first_audio_ms")) {
+foreach ($pattern in @("stackchan.voice-v2-supervised-session.v1", "speaker_stream_chunked", "STACKCHAN_RVC_DIRECTML_WORKER_URL", "synthesis_ready", "StreamTtsPhrases", "OperatorPresent", "ConfirmSpeakerTest", "max_first_audio_ms")) {
   if ($voiceV2StartText -notmatch [regex]::Escape($pattern)) {
     throw "tools/start_voice_v2_supervised_validation.ps1 missing guarded Voice V2 support: $pattern"
   }
@@ -2621,7 +2623,7 @@ foreach ($pattern in @("placeholder Companion v1 evidence bundle is pending", "c
 }
 
 $lanServiceTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_lan_service.py") -Raw
-foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats", "test_unsafe_model_actuator_claim_is_replaced_without_protocol_error", "test_unsolicited_identity_intro_and_helpdesk_fallback_are_not_spoken", "test_multi_subject_forget_is_local_exact_and_preserves_other_facts", "test_stt_no_transcript_is_nonfatal_and_does_not_run_model", "test_conversation_v2_no_transcript_closes_without_reply_window_or_history")) {
+foreach ($pattern in @("LanServiceTests", "test_session_maps_device_messages_to_bridge_frames", "test_endpoint_controls_track_owner_settings_and_forget", "test_endpoint_control_state_survives_sequential_sessions", "test_settings_version_conflict_returns_current_snapshot", "test_identified_non_owner_cannot_start_speech_turn", "test_audio_downlink_clamps_chunks_to_firmware_payload_limit", "test_binary_audio_upload_tracks_telemetry_and_requires_stt_or_transcript", "test_audio_only_turn_uses_configured_stt_command", "test_configured_tts_command_replaces_response_mouth_beats", "in_process_ollama_runner=True", "in_process_directml_tts=True", "test_unsafe_model_actuator_claim_is_replaced_without_protocol_error", "test_unsolicited_identity_intro_and_helpdesk_fallback_are_not_spoken", "test_multi_subject_forget_is_local_exact_and_preserves_other_facts", "test_stt_no_transcript_is_nonfatal_and_does_not_run_model", "test_conversation_v2_no_transcript_closes_without_reply_window_or_history")) {
   if ($lanServiceTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_lan_service.py missing LAN bridge service test coverage: $pattern"
   }
@@ -2670,14 +2672,14 @@ foreach ($pattern in @("stackchan.whisper-cpp-setup.v1", "whisper-bin-x64.zip", 
 }
 
 $ttsAdapterText = Get-Content -LiteralPath (Join-PackagePath "bridge/tts_adapter.py") -Raw
-foreach ($pattern in @("STACKCHAN_TTS_TEXT_BYTES", "STACKCHAN_TTS_VOICE", "STACKCHAN_TTS_OUTPUT", "normalize_tts_output", "audio_b64", "stackchan.tts-metadata.v1")) {
+foreach ($pattern in @("STACKCHAN_TTS_TEXT_BYTES", "STACKCHAN_TTS_VOICE", "STACKCHAN_TTS_OUTPUT", "normalize_tts_output", "directml_in_process", "in-process-directml", "audio_b64", "stackchan.tts-metadata.v1")) {
   if ($ttsAdapterText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/tts_adapter.py missing TTS adapter support: $pattern"
   }
 }
 
 $ttsAdapterTestText = Get-Content -LiteralPath (Join-PackagePath "bridge/test_tts_adapter.py") -Raw
-foreach ($pattern in @("TtsAdapterTests", "test_compact_beat_output_normalizes_and_marks_final", "test_sidecar_frame_output_uses_frame_timing", "test_optional_audio_b64_is_decoded_and_counted", "test_tts_command_receives_text_and_voice_environment")) {
+foreach ($pattern in @("TtsAdapterTests", "test_compact_beat_output_normalizes_and_marks_final", "test_sidecar_frame_output_uses_frame_timing", "test_optional_audio_b64_is_decoded_and_counted", "test_tts_command_receives_text_and_voice_environment", "test_in_process_directml_tts_is_explicit_and_preserves_style", "test_in_process_directml_failure_uses_configured_command_fallback")) {
   if ($ttsAdapterTestText -notmatch [regex]::Escape($pattern)) {
     throw "bridge/test_tts_adapter.py missing TTS adapter test coverage: $pattern"
   }

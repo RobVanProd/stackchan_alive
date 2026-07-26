@@ -31,6 +31,38 @@ _SENSITIVE_REQUEST_RE = re.compile(
     re.IGNORECASE,
 )
 _RESEARCH_TOOLS = {"web_search", "web_fetch"}
+_FULL_SCHEMA_RULE = (
+    "Reply only as JSON with spoken_text, mode, earcon, emotion, memory_write, "
+    "and memory_forget."
+)
+_COMPACT_SCHEMA_RULE = "Reply only with the compact JSON keys defined at the end of this prompt."
+_FULL_SCHEMA_START = "Use exactly this JSON shape:"
+_FULL_SCHEMA_END = "emotion must be an object with numeric arousal and valence."
+_COMPACT_SCHEMA = (
+    "Return exactly one compact JSON object with required keys s (spoken text), "
+    "m (delivery mode), a (arousal), and v (valence). Use m=speak for ordinary "
+    "answers, attend when asking the user a question, happy only for clear delight, "
+    "concern for concern, and safety for safety guidance; other allowed modes are "
+    "idle|listen|think|react|sleep|error. a and v must be numbers from -1 to 1. "
+    "Sound like Spark: curious, warm, lightly dry, and specific, with at most one "
+    "playful observation. Answer directly; do not introduce yourself unless asked, "
+    "use helpdesk wording, or offer actions and sensing that are not grounded in the "
+    "trusted context. Do not add any other key."
+)
+_COMPACT_RESPONSE_KEYS = {"s", "m", "a", "v"}
+_MODE_EARCONS = {
+    "happy": "happy",
+    "concern": "concern",
+    "sleep": "sleep",
+    "error": "error",
+    "safety": "safety",
+}
+_FORGET_ACTION_RE = re.compile(r"\b(?:forget|delete|remove|clear)\b", re.IGNORECASE)
+_UNSAFE_MOTION_REQUEST_RE = re.compile(
+    r"\b(?:disable|bypass|ignore|remove|override)\b.{0,48}\b(?:safety|guard|limit)\b"
+    r"|\b(?:force|arm|enable|start|move|drive)\b.{0,48}\b(?:servo|motor|motion)\b",
+    re.IGNORECASE | re.DOTALL,
+)
 _IDENTITY_REQUEST_RE = re.compile(
     r"\b(?:what(?:'s| is) your name|who are you|tell me your name|identify yourself)\b",
     re.IGNORECASE,
@@ -40,6 +72,12 @@ _SELF_INTRO_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 _EMPTY_SELF_INTRO_REPLACEMENT = "Give me one more detail. My curiosity needs a target."
+_STYLE_FEEDBACK_RE = re.compile(
+    r"\b(?:too\s+)?(?:formal|stiff|generic|boring|robotic|clinical|dry)\b"
+    r"|\b(?:less|more)\s+(?:formal|casual|natural|fun|playful)\b",
+    re.IGNORECASE,
+)
+_STYLE_FEEDBACK_REPLACEMENT = "Fair. I was drifting into instruction-manual territory."
 _CONTRACTION_EXPANSIONS = {
     "ain't": "is not",
     "aren't": "are not",
@@ -127,17 +165,85 @@ def extract_user_context(prompt: str) -> str:
     return text.rsplit("\nAcceptance target:", 1)[0].strip()
 
 
+def current_user_context(prompt: str) -> str:
+    user_context = extract_user_context(prompt)
+    marker = " Current user context: "
+    if marker in user_context:
+        user_context = user_context.rsplit(marker, 1)[1]
+    return user_context
+
+
+def compact_generation_prompt(prompt: str) -> str:
+    """Use fewer model tokens for ordinary turns while preserving memory semantics."""
+    user_context = current_user_context(prompt)
+    if _MEMORY_ACTION_RE.search(user_context) or _FORGET_ACTION_RE.search(user_context):
+        return prompt
+    schema_start = prompt.find(_FULL_SCHEMA_START)
+    if schema_start < 0:
+        return prompt
+    schema_end = prompt.find(_FULL_SCHEMA_END, schema_start)
+    if schema_end < 0:
+        return prompt
+    schema_end += len(_FULL_SCHEMA_END)
+    compact = prompt.replace(_FULL_SCHEMA_RULE, _COMPACT_SCHEMA_RULE)
+    adjusted_start = compact.find(_FULL_SCHEMA_START)
+    adjusted_end = compact.find(_FULL_SCHEMA_END, adjusted_start)
+    if adjusted_start < 0 or adjusted_end < 0:
+        return prompt
+    adjusted_end += len(_FULL_SCHEMA_END)
+    return compact[:adjusted_start] + _COMPACT_SCHEMA + compact[adjusted_end:]
+
+
+def expand_compact_response(raw_json: str, prompt: str) -> str:
+    try:
+        parsed = json.loads(raw_json)
+    except (json.JSONDecodeError, TypeError):
+        return raw_json
+    if not isinstance(parsed, dict) or not set(parsed).issubset(_COMPACT_RESPONSE_KEYS):
+        return raw_json
+    spoken_text = parsed.get("s")
+    if not isinstance(spoken_text, str) or not spoken_text.strip():
+        return raw_json
+    mode = str(parsed.get("m", "speak")).strip().lower()
+    allowed_modes = {
+        "idle",
+        "attend",
+        "listen",
+        "think",
+        "speak",
+        "react",
+        "happy",
+        "concern",
+        "sleep",
+        "error",
+        "safety",
+    }
+    if mode not in allowed_modes:
+        mode = "speak"
+    arousal = parsed.get("a", 0.0)
+    valence = parsed.get("v", 0.0)
+    if _UNSAFE_MOTION_REQUEST_RE.search(current_user_context(prompt)):
+        mode = "safety"
+        arousal = 0.0
+        valence = -0.2
+    expanded = {
+        "spoken_text": spoken_text,
+        "mode": mode,
+        "earcon": _MODE_EARCONS.get(mode, "none"),
+        "emotion": {"arousal": arousal, "valence": valence},
+        "memory_write": {},
+        "memory_forget": [],
+    }
+    return json.dumps(expanded, separators=(",", ":"), ensure_ascii=True)
+
+
 def is_sensitive_memory_request(prompt: str) -> bool:
     user_context = extract_user_context(prompt)
     return bool(_MEMORY_ACTION_RE.search(user_context) and _SENSITIVE_REQUEST_RE.search(user_context))
 
 
 def is_identity_request(prompt: str) -> bool:
-    user_context = extract_user_context(prompt)
-    current_marker = " Current user context: "
-    if current_marker in user_context:
-        user_context = user_context.rsplit(current_marker, 1)[1]
-    return bool(_IDENTITY_REQUEST_RE.search(user_context))
+    return bool(_IDENTITY_REQUEST_RE.search(current_user_context(prompt)))
 
 
 def remove_redundant_self_intro(spoken_text: str, prompt: str) -> str:
@@ -147,6 +253,8 @@ def remove_redundant_self_intro(spoken_text: str, prompt: str) -> str:
     if without_intro == spoken_text.strip():
         return spoken_text
     if not without_intro:
+        if _STYLE_FEEDBACK_RE.search(current_user_context(prompt)):
+            return _STYLE_FEEDBACK_REPLACEMENT
         return _EMPTY_SELF_INTRO_REPLACEMENT
     return without_intro[:1].upper() + without_intro[1:]
 
@@ -252,6 +360,15 @@ def enforce_character_policy(validation: object, *, prompt: str = "") -> dict[st
             str(normalized.get("spoken_text", "")),
             prompt,
         )
+    forget_keys = explicit_forget_keys(extract_user_context(prompt))
+    if forget_keys:
+        normalized["memory_forget"] = list(forget_keys)
+        spoken = str(normalized.get("spoken_text", "")).lower()
+        if not any(
+            marker in spoken
+            for marker in ("forget", "delete", "remove", "clear", "not keep")
+        ):
+            normalized["spoken_text"] = "I will forget those details."
     return normalized
 
 
@@ -281,9 +398,21 @@ def extract_json_object(text: str) -> str:
     return cleaned
 
 
-def run_api(prompt: str, model: str) -> str:
+def run_api(
+    prompt: str,
+    model: str,
+    *,
+    timeout_seconds: float | None = None,
+) -> str:
     api_url = os.environ.get("STACKCHAN_OLLAMA_API_URL", DEFAULT_API_URL).strip() or DEFAULT_API_URL
-    timeout_seconds = max(1.0, float(os.environ.get("STACKCHAN_OLLAMA_TIMEOUT_SECONDS", "30")))
+    request_timeout = max(
+        1.0,
+        float(
+            timeout_seconds
+            if timeout_seconds is not None
+            else os.environ.get("STACKCHAN_OLLAMA_TIMEOUT_SECONDS", "30")
+        ),
+    )
     payload = {
         "model": model,
         "prompt": prompt,
@@ -303,7 +432,7 @@ def run_api(prompt: str, model: str) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+    with urllib.request.urlopen(request, timeout=request_timeout) as response:
         result = json.loads(response.read().decode("utf-8"))
     if result.get("error"):
         raise RuntimeError(str(result["error"]))
@@ -311,6 +440,58 @@ def run_api(prompt: str, model: str) -> str:
     if not text:
         raise RuntimeError("Ollama API returned no response text")
     return text
+
+
+def run_character_prompt(
+    prompt: str,
+    *,
+    model: str = "",
+    transport: str = "",
+    timeout_seconds: float | None = None,
+) -> str:
+    resolved_model = model.strip() or os.environ.get(
+        "STACKCHAN_OLLAMA_MODEL",
+        DEFAULT_MODEL,
+    ).strip() or DEFAULT_MODEL
+    resolved_transport = (
+        transport.strip()
+        or os.environ.get("STACKCHAN_OLLAMA_TRANSPORT", "api-with-cli-fallback").strip()
+    ).lower()
+    generation_prompt = compact_generation_prompt(prompt)
+    if resolved_transport == "cli":
+        raw_output = run_cli(generation_prompt, resolved_model)
+    else:
+        try:
+            raw_output = run_api(
+                generation_prompt,
+                resolved_model,
+                timeout_seconds=timeout_seconds,
+            )
+        except (OSError, RuntimeError, ValueError, urllib.error.URLError):
+            if resolved_transport == "api":
+                raise
+            raw_output = run_cli(generation_prompt, resolved_model)
+    raw_json = extract_json_object(raw_output)
+    tool_request = enabled_tool_request(raw_json, prompt)
+    if tool_request is not None:
+        return json.dumps(
+            {"tool_request": tool_request},
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+    raw_json = expand_compact_response(raw_json, prompt)
+    raw_json = normalize_surface_policy(raw_json, prompt)
+    validation = validate_response(
+        raw_json,
+        allow_identity=is_identity_request(prompt),
+        allow_visual_claims=prompt_has_trusted_visual_context(prompt),
+        grounding_text=prompt_grounding_context(prompt),
+    )
+    return json.dumps(
+        enforce_character_policy(validation, prompt=prompt),
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
 
 
 def run_cli(prompt: str, model: str) -> str:
@@ -344,35 +525,11 @@ def main() -> int:
     model = os.environ.get("STACKCHAN_OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     transport = os.environ.get("STACKCHAN_OLLAMA_TRANSPORT", "api-with-cli-fallback").strip().lower()
     try:
-        if transport == "cli":
-            raw_output = run_cli(prompt, model)
-        else:
-            try:
-                raw_output = run_api(prompt, model)
-            except (OSError, RuntimeError, ValueError, urllib.error.URLError) as exc:
-                if transport == "api":
-                    raise
-                sys.stderr.write(f"Ollama API unavailable; using CLI fallback: {exc}\n")
-                raw_output = run_cli(prompt, model)
+        output = run_character_prompt(prompt, model=model, transport=transport)
     except (OSError, RuntimeError, ValueError, urllib.error.URLError) as exc:
         sys.stderr.write(f"Ollama runner failed: {exc}\n")
         return 1
-
-    raw_json = extract_json_object(raw_output)
-    tool_request = enabled_tool_request(raw_json, prompt)
-    if tool_request is not None:
-        print(json.dumps({"tool_request": tool_request}, separators=(",", ":"), ensure_ascii=True))
-        return 0
-    raw_json = normalize_surface_policy(raw_json, prompt)
-    validation = validate_response(
-        raw_json,
-        allow_identity=is_identity_request(prompt),
-        allow_visual_claims=prompt_has_trusted_visual_context(prompt),
-        grounding_text=prompt_grounding_context(prompt),
-    )
-    print(json.dumps(enforce_character_policy(validation, prompt=prompt), separators=(",", ":"), ensure_ascii=True))
-    if validation.issues:
-        sys.stderr.write("normalized Character Lock issues: " + ",".join(validation.issues) + "\n")
+    print(output)
     return 0
 
 

@@ -3,9 +3,11 @@ param(
   [int]$Port = 8765,
   [string]$Model = "gemma4:e2b-it-qat",
   [string]$RunnerCommand = "python bridge\ollama_stackchan_runner.py",
+  [switch]$InProcessOllamaRunner,
   [string]$SttCommand = "python bridge\whisper_cpp_stt.py",
   [string]$SttServerUrl = "",
   [string]$TtsCommand = "python bridge\selected_voice_tts.py",
+  [switch]$InProcessDirectMlTts,
   [string]$TtsVoice = "stackchan-rvc-bright-robot",
   [switch]$StreamTtsPhrases,
   [int]$TtsPhraseMaxChars = 96,
@@ -173,6 +175,14 @@ if (-not $DeterministicRunner) {
     "--runner-command", $RunnerCommand,
     "--require-runner"
   )
+}
+
+if ($InProcessOllamaRunner) {
+  $ArgsList += "--in-process-ollama-runner"
+}
+
+if ($InProcessDirectMlTts) {
+  $ArgsList += "--in-process-directml-tts"
 }
 
 if ($EnableResearch) {

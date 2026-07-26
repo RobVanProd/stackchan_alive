@@ -76,6 +76,34 @@ class LocalRunnerTests(unittest.TestCase):
             with self.assertRaises(RunnerConfigurationError):
                 run_runner_profile("gemma4-e2b-gguf", case_name="greeting", require_runner=True)
 
+    def test_in_process_ollama_runner_is_explicit_and_validated(self):
+        response = json.dumps(
+            {
+                "spoken_text": "Repeated bends break tiny conductors.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": -0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        with patch(
+            "local_runner.run_in_process_ollama",
+            return_value=(response, 900.0, 20.0),
+        ) as in_process:
+            result = run_runner_profile(
+                "gemma4-e2b-gguf",
+                case_name="question",
+                user_text="Why do cables fail?",
+                in_process_ollama=True,
+                require_runner=True,
+            )
+
+        in_process.assert_called_once()
+        self.assertTrue(result.configured_runner)
+        self.assertEqual("in-process-ollama-api", result.command_source)
+        self.assertTrue(result.validation.ok, result.validation.issues)
+
     def test_command_runner_measures_speed_and_validates_json(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "fake_model.py"

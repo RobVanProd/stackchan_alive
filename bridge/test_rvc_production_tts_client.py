@@ -25,7 +25,8 @@ class ProductionTtsClientTests(unittest.TestCase):
 
     def test_worker_failure_returns_fast_clear_audio_fallback(self) -> None:
         with patch("rvc_production_tts_client.synthesize_directml", side_effect=OSError("offline")), patch(
-            "rvc_production_tts_client.synthesize_base_wav", side_effect=lambda _text, path: write_test_wav(path)
+            "rvc_production_tts_client.synthesize_base_wav",
+            side_effect=lambda _text, path, **_style: write_test_wav(path),
         ):
             result = synthesize_production("Hello.")
         self.assertEqual("clear-local-fallback", result["voice_backend"])

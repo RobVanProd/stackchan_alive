@@ -209,6 +209,66 @@ class TtsAdapterTests(unittest.TestCase):
         self.assertEqual(321.0, result.diagnostics["rvc_infer_elapsed_ms"])
         self.assertGreater(result.elapsed_ms, 0.0)
 
+    def test_in_process_directml_tts_is_explicit_and_preserves_style(self):
+        payload = {
+            "audio_format": "pcm16",
+            "sample_rate": 16000,
+            "audio_b64": base64.b64encode(b"\x00\x00" * 80).decode("ascii"),
+            "beats": [{"env": 0.4, "viseme": "ah", "duration_ms": 20}],
+            "rvc_infer_elapsed_ms": 321.0,
+        }
+        with patch(
+            "rvc_production_tts_client.synthesize_production",
+            return_value=payload,
+        ) as in_process:
+            result = synthesize_speech(
+                "That tracks.",
+                command="unused fallback command",
+                voice="stackchan-rvc-directml-v2",
+                mode="happy",
+                arousal=0.82,
+                valence=0.64,
+                directml_in_process=True,
+            )
+
+        in_process.assert_called_once_with(
+            "That tracks.",
+            mode="happy",
+            arousal=0.82,
+            valence=0.64,
+        )
+        self.assertEqual("in-process-directml", result.command_source)
+        self.assertEqual(16000, result.sample_rate)
+        self.assertGreater(result.audio_bytes, 0)
+
+    def test_in_process_directml_failure_uses_configured_command_fallback(self):
+        fallback_beats, fallback_metadata = normalize_tts_output(
+            json.dumps(
+                {
+                    "audio_format": "pcm16",
+                    "sample_rate": 16000,
+                    "audio_b64": base64.b64encode(b"\x00\x00" * 80).decode("ascii"),
+                    "beats": [{"env": 0.2, "viseme": "oh", "duration_ms": 20}],
+                }
+            ).encode()
+        )
+        with patch(
+            "rvc_production_tts_client.synthesize_production",
+            side_effect=OSError("worker offline"),
+        ), patch(
+            "tts_adapter.run_tts_command",
+            return_value=(fallback_beats, fallback_metadata, 12.5),
+        ) as command_fallback:
+            result = synthesize_speech(
+                "Fallback.",
+                command="python bridge/rvc_production_tts_client.py",
+                directml_in_process=True,
+            )
+
+        command_fallback.assert_called_once()
+        self.assertEqual("cli:fallback", result.command_source)
+        self.assertEqual(12.5, result.elapsed_ms)
+
     def test_empty_tts_output_is_an_execution_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "empty_tts.py"

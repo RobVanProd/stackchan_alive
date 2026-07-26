@@ -15,11 +15,24 @@ from rvc_directml_tts_client import synthesize_directml
 from rvc_tts import apply_gain, beats_from_pcm, decode_wav_to_pcm16, float_env, synthesize_base_wav, trim_pcm
 
 
-def synthesize_base_fallback(text: str, reason: str) -> dict[str, object]:
+def synthesize_base_fallback(
+    text: str,
+    reason: str,
+    *,
+    mode: str | None = None,
+    arousal: float | None = None,
+    valence: float | None = None,
+) -> dict[str, object]:
     started = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="stackchan_voice_fallback_") as temp_dir:
         wav_path = Path(temp_dir) / "base.wav"
-        synthesize_base_wav(text, wav_path)
+        synthesize_base_wav(
+            text,
+            wav_path,
+            mode=mode,
+            arousal=arousal,
+            valence=valence,
+        )
         sample_rate, pcm = decode_wav_to_pcm16(wav_path)
     pcm = apply_gain(pcm, float_env("STACKCHAN_RVC_GAIN", 1.0, 0.05, 4.0))
     pcm, truncated = trim_pcm(pcm)
@@ -43,16 +56,33 @@ def synthesize_base_fallback(text: str, reason: str) -> dict[str, object]:
     }
 
 
-def synthesize_production(text: str) -> dict[str, object]:
+def synthesize_production(
+    text: str,
+    *,
+    mode: str | None = None,
+    arousal: float | None = None,
+    valence: float | None = None,
+) -> dict[str, object]:
     try:
-        result = synthesize_directml(text)
+        result = synthesize_directml(
+            text,
+            mode=mode,
+            arousal=arousal,
+            valence=valence,
+        )
         result["voice_backend"] = "directml"
         result["voice_fallback"] = False
         return result
     except Exception as exc:
         if os.environ.get("STACKCHAN_VOICE_REQUIRE_DIRECTML", "").strip() == "1":
             raise
-        return synthesize_base_fallback(text, f"{type(exc).__name__}: {exc}")
+        return synthesize_base_fallback(
+            text,
+            f"{type(exc).__name__}: {exc}",
+            mode=mode,
+            arousal=arousal,
+            valence=valence,
+        )
 
 
 def main() -> int:

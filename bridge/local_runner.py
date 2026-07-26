@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -427,6 +428,32 @@ def run_command(
     return stdout, elapsed_ms, approx_tokens_per_sec
 
 
+def run_in_process_ollama(
+    prompt: str,
+    timeout_ms: int,
+    cancellation: CancellationToken | None = None,
+) -> tuple[str, float, float]:
+    if cancellation is not None:
+        cancellation.raise_if_cancelled()
+    started = time.perf_counter()
+    try:
+        from ollama_stackchan_runner import run_character_prompt
+
+        output = run_character_prompt(
+            prompt,
+            timeout_seconds=max(1, timeout_ms) / 1000.0,
+        )
+    except Exception as exc:
+        raise RunnerExecutionError(
+            f"in-process Ollama runner failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if cancellation is not None:
+        cancellation.raise_if_cancelled()
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    approx_tokens = max(1, len(output.split()))
+    return output, elapsed_ms, approx_tokens / max(elapsed_ms / 1000.0, 0.001)
+
+
 def run_runner_profile(
     profile_id: str = DEFAULT_PROFILE,
     *,
@@ -442,6 +469,7 @@ def run_runner_profile(
     conversation_lines: tuple[str, ...] = (),
     cancellation: CancellationToken | None = None,
     allow_identity: bool = False,
+    in_process_ollama: bool = False,
 ) -> RunnerResult:
     if profile_id not in RUNNER_PROFILES:
         known = ", ".join(sorted(RUNNER_PROFILES))
@@ -468,11 +496,21 @@ def run_runner_profile(
         conversation_lines=conversation_lines,
     )
     resolved_command, command_source = resolve_command(profile_id, command)
-    configured_runner = resolved_command is not None
+    use_in_process_ollama = bool(
+        in_process_ollama and profile_id == "gemma4-e2b-gguf"
+    )
+    configured_runner = resolved_command is not None or use_in_process_ollama
     elapsed_ms: float | None = None
     approx_tokens_per_sec: float | None = None
 
-    if resolved_command:
+    if use_in_process_ollama:
+        raw_response, elapsed_ms, approx_tokens_per_sec = run_in_process_ollama(
+            prompt,
+            timeout_ms,
+            cancellation,
+        )
+        command_source = "in-process-ollama-api"
+    elif resolved_command:
         raw_response, elapsed_ms, approx_tokens_per_sec = run_command(
             resolved_command, prompt, timeout_ms, cancellation
         )

@@ -116,12 +116,14 @@ $WorkerHealth = $null
 while ((Get-Date) -lt $workerDeadline) {
   try { $WorkerHealth = Invoke-RestMethod -Uri "$WorkerUrl/health" -TimeoutSec 5 } catch { $WorkerHealth = $null }
   if ($WorkerHealth -and [bool]$WorkerHealth.ready -and
+      [bool]$WorkerHealth.synthesis_ready -and
       [string]$WorkerHealth.schema -eq "stackchan.rvc-directml-worker.health.v1") {
     break
   }
   Start-Sleep -Seconds 1
 }
-if ($null -eq $WorkerHealth -or -not [bool]$WorkerHealth.ready) {
+if ($null -eq $WorkerHealth -or -not [bool]$WorkerHealth.ready -or
+    -not [bool]$WorkerHealth.synthesis_ready) {
   throw "DirectML worker did not become ready at $WorkerUrl."
 }
 $WorkerHealth | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidencePath "worker-health.json") -Encoding UTF8
@@ -184,6 +186,7 @@ $escapedMemoryFile = $MemoryFile.Replace("'", "''")
 $escapedSearxngUrl = $SearxngUrl.Replace("'", "''")
 $bridgeScript = "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue'; `$env:STACKCHAN_RVC_DIRECTML_WORKER_URL = '$WorkerUrl'; " +
   "& '$bridgeStarter' -Background -EnableAudioDownlink -StreamTtsPhrases " +
+  "-InProcessOllamaRunner -InProcessDirectMlTts " +
   "-Port $BridgePort -MemoryFile '$escapedMemoryFile' " +
   "-SttServerUrl '$SttServerUrl' " +
   "-EnableDashboard -DashboardHost '127.0.0.1' -DashboardPort $DashboardPort -RobotHost '$escapedDeviceHost' " +
@@ -287,8 +290,11 @@ $runtimeScript = "Set-Location '$escapedRepoRoot'; " +
   "-ExpectedDisableAudioDownlink `$false " +
   "-ExpectedAudioPlaybackEnabled `$true " +
   "-ExpectedStreamTtsPhrases `$true " +
+  "-ExpectedInProcessOllamaRunner `$true " +
+  "-ExpectedInProcessDirectMlTts `$true " +
   "-VoiceWorkerUrl '$escapedWorkerUrl' " +
-  "-ExpectedVoiceWorkerSchema 'stackchan.rvc-directml-worker.health.v1' -Json"
+  "-ExpectedVoiceWorkerSchema 'stackchan.rvc-directml-worker.health.v1' " +
+  "-RequireVoiceWorkerSynthesis -Json"
 $runtimeEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($runtimeScript))
 $runtimeOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand $runtimeEncoded
 $runtimeExit = $LASTEXITCODE
@@ -318,6 +324,8 @@ $Result = [ordered]@{
   workerSchema = $WorkerHealth.schema
   workerDevice = $WorkerHealth.device
   workerMethod = $WorkerHealth.method
+  workerSynthesisReady = [bool]$WorkerHealth.synthesis_ready
+  workerBaseTtsBackend = [string]$WorkerHealth.base_tts_backend
   sttServerUrl = $SttServerUrl
   sttServerReady = [string]$SttHealth.status -eq "ok"
   faceVisionEnabled = $StartFaceVision

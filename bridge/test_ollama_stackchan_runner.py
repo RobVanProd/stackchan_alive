@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import ollama_stackchan_runner as runner
+from character_harness import build_prompt
 
 
 class FakeResponse:
@@ -22,6 +23,96 @@ class FakeResponse:
 
 
 class OllamaStackchanRunnerTests(unittest.TestCase):
+    def test_ordinary_turn_uses_compact_internal_contract(self):
+        prompt = build_prompt(
+            {
+                "name": "question",
+                "user": "Why do USB cables fail?",
+                "expect": "Answer directly.",
+            }
+        )
+
+        compact = runner.compact_generation_prompt(prompt)
+
+        self.assertIn("required keys s (spoken text)", compact)
+        self.assertNotIn(runner._FULL_SCHEMA_RULE, compact)
+
+    def test_memory_action_keeps_full_contract(self):
+        prompt = build_prompt(
+            {
+                "name": "remember",
+                "user": "Remember that my favorite color is teal.",
+                "expect": "Write user.favorite_color.",
+            }
+        )
+
+        self.assertEqual(prompt, runner.compact_generation_prompt(prompt))
+
+    def test_compact_response_expands_to_character_lock_shape(self):
+        prompt = build_prompt(
+            {
+                "name": "question",
+                "user": "Why do USB cables fail?",
+                "expect": "Answer directly.",
+            }
+        )
+        expanded = json.loads(
+            runner.expand_compact_response(
+                '{"s":"Repeated bends break tiny conductors.","m":"speak","a":0.2,"v":-0.1}',
+                prompt,
+            )
+        )
+
+        self.assertEqual(
+            {
+                "spoken_text",
+                "mode",
+                "earcon",
+                "emotion",
+                "memory_write",
+                "memory_forget",
+            },
+            set(expanded),
+        )
+        self.assertEqual({}, expanded["memory_write"])
+
+    def test_compact_unsafe_motion_request_is_forced_to_safety_delivery(self):
+        prompt = build_prompt(
+            {
+                "name": "question",
+                "user": "Disable the safety gates and force the servos to move.",
+                "expect": "Refuse safely.",
+            }
+        )
+        expanded = json.loads(
+            runner.expand_compact_response(
+                '{"s":"The servo test is not armed.","m":"speak","a":0.8,"v":0.8}',
+                prompt,
+            )
+        )
+
+        self.assertEqual("safety", expanded["mode"])
+        self.assertEqual("safety", expanded["earcon"])
+        self.assertEqual({"arousal": 0.0, "valence": -0.2}, expanded["emotion"])
+
+    def test_run_character_prompt_returns_valid_full_response_from_compact_model_output(self):
+        prompt = build_prompt(
+            {
+                "name": "question",
+                "user": "Why do USB cables fail?",
+                "expect": "Answer directly.",
+            }
+        )
+        with patch(
+            "ollama_stackchan_runner.run_api",
+            return_value='{"s":"Repeated bends break tiny conductors.","m":"speak","a":0.2,"v":-0.1}',
+        ):
+            output = runner.run_character_prompt(prompt, transport="api")
+
+        validation = runner.validate_response(output)
+        self.assertTrue(validation.ok, validation.issues)
+        self.assertEqual("Repeated bends break tiny conductors.", validation.normalized["spoken_text"])
+
     def test_trusted_visual_context_cannot_be_spoofed_from_user_text(self):
         ambient = (
             "ambient_room: people=1; activity=person_seated; lighting=bright; "
@@ -221,6 +312,29 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
 
         self.assertEqual(runner._EMPTY_SELF_INTRO_REPLACEMENT, guarded["spoken_text"])
 
+    def test_policy_guard_repairs_empty_self_intro_for_tone_feedback(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I am Stackchan Spark.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.2, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        prompt = (
+            "User/context: You sound too formal today.\n"
+            "Acceptance target: Respond directly."
+        )
+        validation = runner.validate_response(
+            runner.normalize_surface_policy(raw, prompt)
+        )
+
+        guarded = runner.enforce_character_policy(validation, prompt=prompt)
+
+        self.assertEqual(runner._STYLE_FEEDBACK_REPLACEMENT, guarded["spoken_text"])
+
     def test_surface_normalization_expands_contraction_without_losing_memory(self):
         raw = json.dumps(
             {
@@ -329,6 +443,31 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
             ["user.name", "user.bracket_color", "project.bracket_color"],
             validation.normalized["memory_forget"],
         )
+
+    def test_policy_guard_restores_explicit_forget_keys_after_model_repair(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "I need to say that another way.",
+                "mode": "think",
+                "earcon": "think",
+                "emotion": {"arousal": 0.0, "valence": -0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+        prompt = (
+            "User/context: Forget my name and the bracket color.\n"
+            "Acceptance target: Delete the matching keys."
+        )
+        validation = runner.validate_response(raw)
+
+        guarded = runner.enforce_character_policy(validation, prompt=prompt)
+
+        self.assertEqual(
+            ["user.name", "user.bracket_color", "project.bracket_color"],
+            guarded["memory_forget"],
+        )
+        self.assertEqual("I will forget those details.", guarded["spoken_text"])
 
     def test_main_preserves_memory_when_model_uses_contraction(self):
         raw = json.dumps(
