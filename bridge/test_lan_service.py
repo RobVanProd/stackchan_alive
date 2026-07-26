@@ -1724,13 +1724,16 @@ class LanServiceTests(unittest.TestCase):
             patch("lan_service.synthesize_speech") as tts,
         ):
             frames = session.handle_text(
-                json.dumps({"type": "utterance_end", "seq": 6})
+                json.dumps({"type": "utterance_end", "seq": 6}),
+                suppress_thinking=True,
             )
 
         stt.assert_not_called()
         runner.assert_not_called()
         tts.assert_not_called()
-        self.assertEqual(["heartbeat"], [frame["type"] for frame in frames])
+        self.assertEqual(["hello"], [frame["type"] for frame in frames])
+        self.assertEqual(PROTOCOL, frames[0]["protocol"])
+        self.assertEqual("lan", frames[0]["session"])
         self.assertTrue(frames[0]["stt_bypassed"])
         self.assertEqual("reply_pcm_no_speech", frames[0]["stt_bypass_reason"])
         self.assertEqual(ConversationPhase.COOLDOWN, session.conversation.phase)
@@ -2742,7 +2745,8 @@ class LanServiceTests(unittest.TestCase):
             exit_frames = session.handle_text(
                 json.dumps(
                     {"type": "utterance_end", "seq": 71, "text": "Goodbye Stackchan"}
-                )
+                ),
+                suppress_thinking=True,
             )
             event_records = [
                 json.loads(line)
@@ -2773,7 +2777,9 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("listening", followup[0]["type"])
         self.assertEqual("engaged", followup[0]["conversation_state"])
         self.assertTrue(followup[0]["conversation_capture_open"])
-        self.assertEqual("heartbeat", exit_frames[0]["type"])
+        self.assertEqual("hello", exit_frames[0]["type"])
+        self.assertEqual(PROTOCOL, exit_frames[0]["protocol"])
+        self.assertEqual("lan", exit_frames[0]["session"])
         self.assertEqual("cooldown", exit_frames[0]["conversation_state"])
         self.assertEqual("exit_phrase", exit_frames[0]["conversation_reason"])
         self.assertEqual((), session.conversation.context_lines())

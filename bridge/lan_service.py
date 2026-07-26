@@ -1182,6 +1182,15 @@ class LanBridgeSession:
     def _conversation_heartbeat(self, transition=None, *, observed_ms: int | None = None) -> dict[str, object]:
         return {"type": "heartbeat", **self._conversation_payload(transition, observed_ms=observed_ms)}
 
+    def _conversation_ready_frame(self, transition=None) -> dict[str, object]:
+        # The device uses hello, not heartbeat, to leave an already-announced thinking state.
+        return {
+            "type": "hello",
+            "protocol": PROTOCOL,
+            "session": self.session,
+            **self._conversation_payload(transition),
+        }
+
     def _conversation_context_lines(self) -> tuple[str, ...]:
         return self.conversation.context_lines() if self.conversation is not None else ()
 
@@ -2381,11 +2390,17 @@ class LanBridgeSession:
                 record.update(stt_log)
                 record.update(audio_evidence_log)
                 self._append_turn_log(record)
-                heartbeat = self._conversation_heartbeat(transition)
-                heartbeat.update(audio_summary)
-                heartbeat.update(stt_log)
-                return [heartbeat]
+                terminal_frame = (
+                    self._conversation_ready_frame(transition)
+                    if suppress_thinking
+                    else self._conversation_heartbeat(transition)
+                )
+                terminal_frame.update(audio_summary)
+                terminal_frame.update(stt_log)
+                return [terminal_frame]
             if "begin_generation" not in transition.actions and not no_speech_detail:
+                if suppress_thinking:
+                    return [self._conversation_ready_frame(transition)]
                 return [self._conversation_heartbeat(transition)]
             self._observe_conversation_transition(transition)
         if user_text:
