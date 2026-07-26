@@ -22,7 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
-$RequiredFirmwareBaselineCommit = "6d39af7605aa6a4dc88d137e03c344dbfc8f53ce"
+$RequiredFirmwareBaselineCommit = "10b0cc5404e072bb5784d9cfd2fabb0babd8a02e"
 
 if (-not $OperatorPresent -or -not $ConfirmMotionOff) {
   throw "Qualification requires -OperatorPresent -ConfirmMotionOff."
@@ -121,7 +121,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 & git merge-base --is-ancestor $RequiredFirmwareBaselineCommit $ExpectedFirmwareSourceCommit
 if ($LASTEXITCODE -ne 0) {
-  throw "Accepted firmware source commit $ExpectedFirmwareSourceCommit does not include merged PR #216 baseline $RequiredFirmwareBaselineCommit."
+  throw "Accepted firmware source commit $ExpectedFirmwareSourceCommit does not include merged PR #217 baseline $RequiredFirmwareBaselineCommit."
 }
 $FirmwareAcceptanceText = Get-Content -LiteralPath $FirmwareAcceptancePath -Raw
 $FirmwareAcceptanceLower = $FirmwareAcceptanceText.ToLowerInvariant()

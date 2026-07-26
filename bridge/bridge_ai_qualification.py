@@ -42,7 +42,7 @@ OPERATOR_GATES = (
 FRAME_SUFFIXES = {".pgm", ".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-PR216_FIRMWARE_BASELINE_COMMIT = "6d39af7605aa6a4dc88d137e03c344dbfc8f53ce"
+PR217_FIRMWARE_BASELINE_COMMIT = "10b0cc5404e072bb5784d9cfd2fabb0babd8a02e"
 
 
 def _load_json(path: Path) -> dict[str, object] | None:
@@ -218,7 +218,7 @@ def check_evidence(evidence_root: Path) -> dict[str, object]:
             SHA256_RE.fullmatch(expected_firmware) is not None
             and COMMIT_RE.fullmatch(expected_firmware_source) is not None
             and str(session.get("requiredFirmwareBaselineCommit", "")).lower()
-            == PR216_FIRMWARE_BASELINE_COMMIT
+            == PR217_FIRMWARE_BASELINE_COMMIT
             and session.get("firmwareAcceptanceBase") == "origin/main"
             and SHA256_RE.fullmatch(acceptance_sha) is not None
             and acceptance_file_sha == acceptance_sha

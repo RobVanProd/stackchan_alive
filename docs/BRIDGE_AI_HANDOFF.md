@@ -41,12 +41,17 @@ The `[face]` line prints every 5 s and includes `mode=`, which is the single mos
 when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend, 3 Listen,
 4 Think, 5 Speak, 6 React, 7 Sleep, 8 Error`.
 
-## Source Implementation Update (2026-07-24)
+## Source Implementation Update (2026-07-26)
 
 - Main now includes PR #216 (`6d39af7605aa6a4dc88d137e03c344dbfc8f53ce`). The device
   voice endpoint has a 12-second maximum, the dedicated capture ceiling is 130 100 ms chunks,
   and both initial and follow-up utterances end after 550 ms of trailing silence. A live initial
   turn delivered 118 chunks, proving the longer path is active rather than the old 96-chunk path.
+- Main now also includes PR #217 (`10b0cc5404e072bb5784d9cfd2fabb0babd8a02e`). Dedicated
+  capture reports real speech to the existing wake gate, the gate privacy limit is 15 seconds,
+  and a compile-time check enforces `12 s endpoint < 13 s capture < 15 s privacy guard`.
+  Native tests cover a ten-second utterance and the retained hard privacy limit. Exact-image live
+  evidence must still show zero uplink-error delta before promotion.
 - Conversation v2 now emits a constant 10-second reply lease and allows 24 user turns by default.
   Completed turns no longer make the listener progressively less patient. The unchanged main
   firmware rejects out-of-range values rather than silently clamping them. The feature remains
@@ -97,13 +102,11 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   paths discard buffered audio, send a nonfatal `response_aborted`, and send the matching
   `response_end`. Overlap, sequence mismatch, and unrecovered closure events are privacy-safe
   qualification failures.
-- F2 is a firmware-owned capture finding, not a bridge source change. After PR #216, the 12-second
-  endpoint ceiling equals `BridgeWakeGate`'s 12-second maximum turn with no scheduling margin.
-  Two long captures delivered all 118 + 113 accepted chunks to the host, but each final rejected
-  chunk retried 40 times after the gate closed: `bridge_uplink_errors=80`,
-  `bridge_uplink_queue_failures=0`, `bridge_uplink_last_error=audio_uplink_not_active`, and
-  `mww_uplink_submit_failed=2`. The bridge still freezes each utterance, verifies declared totals,
-  and keeps privacy-safe counters. Qualification requires zero new robot uplink-error delta.
+- F2 was a firmware-owned capture finding, not a bridge source change. PR #217 now renews the gate
+  from device VAD speech and orders the 12-second endpoint and 13-second capture ceiling before the
+  15-second privacy guard. The bridge still freezes each utterance, verifies declared totals, and
+  keeps privacy-safe counters. Qualification requires zero new robot uplink-error delta from an
+  exact PR #217-or-later image.
 - F3 is localized to production startup never launching `bridge/vision_service.py`. The DirectML
   launcher now starts the pairing-file-only YuNet worker whenever face vision is requested or
   room observation is enabled, then requires authenticated frame and target counters to advance.
@@ -155,7 +158,7 @@ during TTS, so the error path is the likely culprit.
 failure, owner-loss, and long-running physical conversation cases; the qualification must report
 `host-response-wire-clean` with no unrecovered events.
 
-## F2. Long captures can race the 12-second wake-gate limit
+## F2. Long-capture wake-gate race (source fixed, physical validation pending)
 
 **Observed after PR #216:** two captures produced 118 and 113 accepted chunks. The host received
 exactly 231 chunks / 369,600 bytes and both declared counts matched. The robot recorded
@@ -168,11 +171,10 @@ endpoint service submits the last chunk, `BridgeAudioUplink` becomes inactive. T
 capture then retries that chunk exactly `STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS` (40)
 times, matching the observed 40 errors and one submit failure per affected capture.
 
-**Firmware-owner handoff:** preserve PR #216's 12-second endpoint and trailing-silence behavior,
-but make the privacy wake-gate maximum strictly longer than the 13-second chunk backstop plus a
-derived scheduler margin, or otherwise guarantee endpoint finalization before the gate expires.
-Add a native boundary test that reaches the endpoint ceiling without one inactive-uplink submit.
-Do not hide or reset the error counter.
+**Firmware resolution:** PR #217 preserves PR #216's endpoint behavior, renews the wake gate only
+while device VAD observes real speech, raises the hard privacy guard to 15 seconds, and adds a
+compile-time ordering assertion plus native long-utterance coverage. The source mechanism is
+closed. Do not hide or reset the error counter; exact-image physical evidence is still required.
 
 **Bridge-side status:** late audio is rejected and counted after the immutable utterance snapshot.
 The supervised run must show zero `bridge_uplink_errors` delta across completed turns; do not reset
@@ -260,9 +262,9 @@ seconds and a 24-turn safety bound.
 
 PR #216 replaced the former 4.8-second endpoint with a 12-second maximum and moved the dedicated
 capture ceiling to 13 seconds. Both initial and follow-up capture now end on 550 ms of trailing
-silence. The longer endpoint is source-tested and observed live, but the equal 12-second
-`BridgeWakeGate` maximum creates the F2 boundary race above. Its firmware owner must close that
-race before bridge promotion; this bridge PR must not alter or flash the accepted firmware.
+silence. PR #217 closes the equal-threshold F2 race by renewing from device VAD speech and placing
+the hard privacy guard at 15 seconds. This bridge PR must not alter or flash the accepted firmware;
+promotion still requires exact-image physical evidence with zero new uplink errors.
 
 ---
 

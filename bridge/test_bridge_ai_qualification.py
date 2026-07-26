@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from bridge.bridge_ai_qualification import (
-    PR216_FIRMWARE_BASELINE_COMMIT,
+    PR217_FIRMWARE_BASELINE_COMMIT,
     check_evidence,
 )
 
@@ -28,7 +28,7 @@ class BridgeAiQualificationTests(unittest.TestCase):
             "packageVerified": True,
             "expectedFirmwareSha256": "b" * 64,
             "expectedFirmwareSourceCommit": "d" * 40,
-            "requiredFirmwareBaselineCommit": PR216_FIRMWARE_BASELINE_COMMIT,
+            "requiredFirmwareBaselineCommit": PR217_FIRMWARE_BASELINE_COMMIT,
             "firmwareAcceptanceEvidence": "accepted-main-firmware-status.md",
             "firmwareAcceptanceBase": "origin/main",
             "firmwareAcceptanceEvidenceSha256": hashlib.sha256(
@@ -354,7 +354,7 @@ class BridgeAiQualificationTests(unittest.TestCase):
         self.assertEqual("bridge-ai-supervised-not-ready", report["status"])
         self.assertEqual("fail", provenance["status"])
 
-    def test_pre_pr216_firmware_baseline_fails_provenance_gate(self) -> None:
+    def test_pre_pr217_firmware_baseline_fails_provenance_gate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self._write_ready_fixture(root)

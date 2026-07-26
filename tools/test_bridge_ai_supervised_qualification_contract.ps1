@@ -23,7 +23,7 @@ foreach ($Required in @(
   "[string]`$ExpectedFirmwareSha256",
   "[string]`$ExpectedFirmwareSourceCommit",
   "`$RequiredFirmwareBaselineCommit",
-  "6d39af7605aa6a4dc88d137e03c344dbfc8f53ce",
+  "10b0cc5404e072bb5784d9cfd2fabb0babd8a02e",
   "verify_release_package.ps1",
   '$Archive.GetEntry("release_manifest.json")',
   '$Archive.GetEntry("./release_manifest.json")',

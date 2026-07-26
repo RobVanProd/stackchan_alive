@@ -6,8 +6,9 @@ gate, not a source-test substitute.
 
 The bridge candidate does not alter firmware. Use the accepted working image from `main`, record
 its SHA-256 before and after, and do not flash or rebuild the robot as part of this procedure.
-The accepted image must be built from merged PR #216 (`6d39af7605aa6a4dc88d137e03c344dbfc8f53ce`)
-or a later `main` commit so the 12-second endpoint and initial-turn silence endpoint are present.
+The accepted image must be built from merged PR #217 (`10b0cc5404e072bb5784d9cfd2fabb0babd8a02e`)
+or a later `main` commit. This includes PR #216's 12-second voice endpoint and PR #217's wake-gate
+renewal plus strict `12 s endpoint < 13 s capture < 15 s privacy guard` ordering.
 The older `ce66f8a0` accepted image is valid historical evidence but is not eligible for this
 Conversation v2 qualification.
 The shared `personas/` packs and their `bridge/persona_pack.py` loader are firmware build inputs,
