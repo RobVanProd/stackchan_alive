@@ -12,7 +12,13 @@ namespace stackchan {
 #endif
 
 constexpr uint32_t kBridgeWakeGateOpenMs = 6000;
-constexpr uint32_t kBridgeWakeGateMaxTurnMs = 12000;
+// Hard privacy bound on one streamed turn. This must stay strictly greater than
+// the longest capture the firmware can take, or the guard fires while the
+// microphone is still recording and the tail of the utterance is streamed into a
+// turn that has already been closed. It used to be 12000, exactly equal to the
+// voice-activity endpoint's own ceiling, so the two raced. main.cpp holds a
+// static_assert tying this to the capture ceiling so they cannot drift apart.
+constexpr uint32_t kBridgeWakeGateMaxTurnMs = 15000;
 constexpr size_t kBridgeWakeGateErrorMax = kBridgeErrorMax;
 
 struct BridgeWakeGateConfig {
