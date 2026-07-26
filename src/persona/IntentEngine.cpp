@@ -48,6 +48,14 @@ void IntentEngine::begin() {
   sleepEnteredAtMs_ = 0;
 }
 
+void IntentEngine::setMode(CharacterMode mode, uint32_t nowMs) {
+  if (mode_ == CharacterMode::Sleep) {
+    return;
+  }
+  mode_ = mode;
+  lastEventAtMs_ = nowMs;
+}
+
 void IntentEngine::applyEvent(const RobotEvent& event, CharacterMode mode) {
   // Being asleep is a state you have to be roused out of. Touch, a wake phrase,
   // being picked up, or a loud noise wakes him; his own bookkeeping does not.

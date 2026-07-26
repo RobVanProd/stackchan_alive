@@ -21,7 +21,12 @@ struct VoiceActivityEndpointConfig {
   uint32_t minimumCaptureMs = 600;
   uint32_t minimumSpeechMs = 150;
   uint32_t trailingSilenceMs = 550;
-  uint32_t maximumCaptureMs = 4800;
+  // Ceiling, not the normal path. Capture ends on trailing silence as soon as
+  // the speaker stops; this only catches the case where silence is never
+  // detected. It used to be 4800 ms, which truncated any sentence longer than
+  // about five seconds mid-word. Bounded by the 512 KB uplink limit: 12 s of
+  // 16 kHz mono PCM is 384 KB.
+  uint32_t maximumCaptureMs = 12000;
   float initialNoiseFloor = 0.015f;
   float minimumSpeechLevel = 0.040f;
   float speechNoiseMultiplier = 2.6f;
