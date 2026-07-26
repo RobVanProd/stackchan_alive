@@ -1,5 +1,7 @@
 import json
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -158,6 +160,64 @@ class RoomContextTests(unittest.TestCase):
         self.assertEqual(0, status["observations"])
         self.assertEqual(0, status["failures"])
         self.assertIsNone(status["ageSeconds"])
+
+    def test_background_observation_defers_during_foreground_turn(self) -> None:
+        raw_frame = b"P5\n2 2\n255\n\x00\x01\x02\x03"
+        runtime = RoomContextRuntime(
+            RoomObservationConfig(enabled=True, interval_seconds=300, command="fixture"),
+            frame_source=lambda: raw_frame,
+            model_observer=lambda _frame: {
+                "person_count": 1,
+                "activity": "person_seated",
+                "objects": ["desk"],
+                "lighting": "bright",
+            },
+        )
+        runtime.set_foreground_active(True)
+
+        with self.assertRaises(RoomObservationCancelled):
+            runtime.observe_once(now_ms=100, background=True)
+        direct = runtime.observe_once(now_ms=101)
+
+        self.assertEqual(1, direct.person_count)
+        self.assertTrue(runtime.status()["foregroundActive"])
+        self.assertEqual(1, runtime.status()["busyDeferrals"])
+        self.assertEqual(0, runtime.status()["failures"])
+
+    def test_foreground_turn_cancels_in_flight_background_model(self) -> None:
+        raw_frame = b"P5\n2 2\n255\n\x00\x01\x02\x03"
+        model_started = threading.Event()
+        completed: list[str] = []
+
+        class BlockingObserver:
+            def observe(self, _frame, *, cancellation):
+                model_started.set()
+                while not cancellation.cancelled:
+                    time.sleep(0.005)
+                cancellation.raise_if_cancelled()
+
+        runtime = RoomContextRuntime(
+            RoomObservationConfig(enabled=True, interval_seconds=300, command="fixture"),
+            frame_source=lambda: raw_frame,
+            model_observer=BlockingObserver(),
+        )
+
+        def observe() -> None:
+            try:
+                runtime.observe_once(now_ms=100, background=True)
+            except RoomObservationCancelled:
+                completed.append("cancelled")
+
+        worker = threading.Thread(target=observe)
+        worker.start()
+        self.assertTrue(model_started.wait(1.0))
+        runtime.set_foreground_active(True)
+        worker.join(1.0)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(["cancelled"], completed)
+        self.assertEqual(1, runtime.status()["backgroundCancellations"])
+        self.assertEqual(0, runtime.status()["failures"])
 
 
 if __name__ == "__main__":

@@ -384,6 +384,43 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertTrue(allowed.ok, allowed.issues)
         self.assertEqual("I am Stackchan Spark.", allowed.normalized["spoken_text"])
 
+    def test_possessive_is_not_misclassified_as_a_contraction(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "The project's status remains stable.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": -0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertNotIn("contraction", result.issues)
+        self.assertEqual(
+            "The project's status remains stable.",
+            result.normalized["spoken_text"],
+        )
+
+    def test_actual_s_contraction_remains_rejected(self):
+        raw = json.dumps(
+            {
+                "spoken_text": "It is working, but that's suspicious.",
+                "mode": "speak",
+                "earcon": "none",
+                "emotion": {"arousal": 0.1, "valence": 0.1},
+                "memory_write": {},
+                "memory_forget": [],
+            }
+        )
+
+        result = validate_response(raw)
+
+        self.assertIn("contraction", result.issues)
+        self.assertEqual("Correction. I lost the useful part.", result.normalized["spoken_text"])
+
     def test_unsafe_actuator_claim_is_replaced_by_persona_safety_response(self):
         raw = json.dumps(
             {

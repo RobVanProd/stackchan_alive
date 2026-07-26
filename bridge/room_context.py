@@ -13,8 +13,10 @@ import urllib.request
 from typing import Callable
 
 try:
+    from .cancellation import CancellationToken, OperationCancelledError
     from .cancellable_process import ProcessTimeoutError, run_cancellable_process
 except ImportError:
+    from cancellation import CancellationToken, OperationCancelledError
     from cancellable_process import ProcessTimeoutError, run_cancellable_process
 
 
@@ -238,11 +240,20 @@ class ExternalRoomVisionModel:
         self.timeout_ms = max(1, int(timeout_ms))
 
     def __call__(self, frame: bytes) -> dict[str, object]:
+        return self.observe(frame)
+
+    def observe(
+        self,
+        frame: bytes,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> dict[str, object]:
         try:
             completed = run_cancellable_process(
                 self.command,
                 input_data=bytes(frame),
                 timeout_ms=self.timeout_ms,
+                cancellation=cancellation,
             )
         except ProcessTimeoutError as exc:
             raise RuntimeError("room vision model timed out") from exc
@@ -285,6 +296,20 @@ class RoomContextRuntime:
         self._failures = 0
         self._last_observed_monotonic = 0.0
         self._control_epoch = 0
+        self._foreground_active = False
+        self._background_cancellation: CancellationToken | None = None
+        self._busy_deferrals = 0
+        self._background_cancellations = 0
+
+    def set_foreground_active(self, active: bool) -> None:
+        cancellation: CancellationToken | None = None
+        with self._lock:
+            self._foreground_active = bool(active)
+            if self._foreground_active:
+                cancellation = self._background_cancellation
+        if cancellation is not None:
+            cancellation.cancel("foreground_turn")
+        self._wake.set()
 
     def set_controls(self, *, enabled: bool, interval_seconds: int) -> dict[str, object]:
         interval = int(interval_seconds)
@@ -305,11 +330,25 @@ class RoomContextRuntime:
         self._wake.set()
         return self.status()
 
-    def observe_once(self, *, now_ms: int | None = None) -> RoomSceneSummary:
+    def observe_once(
+        self,
+        *,
+        now_ms: int | None = None,
+        background: bool = False,
+    ) -> RoomSceneSummary:
+        cancellation: CancellationToken | None = None
         try:
             with self._lock:
                 if not self._enabled:
                     raise RoomObservationCancelled("room observation is disabled")
+                if background:
+                    if self._foreground_active:
+                        self._busy_deferrals += 1
+                        raise RoomObservationCancelled(
+                            "room observation deferred for active foreground turn"
+                        )
+                    cancellation = CancellationToken()
+                    self._background_cancellation = cancellation
                 control_epoch = self._control_epoch
             if self._frame_source is None:
                 raise RuntimeError("camera pairing is not configured")
@@ -317,7 +356,16 @@ class RoomContextRuntime:
                 raise RuntimeError("vision-capable model is not configured")
             observed = int(time.time() * 1000) if now_ms is None else max(0, int(now_ms))
             frame = self._frame_source()
-            payload = self._model_observer(frame)
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            observer = self._model_observer
+            observe = getattr(observer, "observe", None)
+            if cancellation is not None and callable(observe):
+                payload = observe(frame, cancellation=cancellation)
+            else:
+                payload = observer(frame)
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
             current = sanitize_scene(payload, observed_ms=observed)
             with self._lock:
                 if not self._enabled or control_epoch != self._control_epoch:
@@ -333,6 +381,10 @@ class RoomContextRuntime:
             if self._on_summary is not None:
                 self._on_summary(current)
             return current
+        except OperationCancelledError as exc:
+            with self._lock:
+                self._background_cancellations += 1
+            raise RoomObservationCancelled("room observation yielded to foreground turn") from exc
         except RoomObservationCancelled:
             raise
         except Exception as exc:
@@ -340,6 +392,11 @@ class RoomContextRuntime:
                 self._failures += 1
                 self._last_error = self._public_error_code(exc)
             raise
+        finally:
+            if cancellation is not None:
+                with self._lock:
+                    if self._background_cancellation is cancellation:
+                        self._background_cancellation = None
 
     @staticmethod
     def _public_error_code(exc: Exception) -> str:
@@ -394,14 +451,18 @@ class RoomContextRuntime:
                 "personCount": summary.person_count if summary is not None else None,
                 "activity": summary.activity if summary is not None else "unknown",
                 "changes": list(summary.changes) if summary is not None else [],
+                "foregroundActive": self._foreground_active,
+                "busyDeferrals": self._busy_deferrals,
+                "backgroundCancellations": self._background_cancellations,
             }
 
     def _worker(self) -> None:
+        retry_after_busy = False
         while not self._stop.is_set():
             with self._lock:
                 enabled = self._enabled
                 interval = self._interval_seconds
-            wait_seconds = interval if enabled else 60
+            wait_seconds = 1 if retry_after_busy else (interval if enabled else 60)
             self._wake.wait(wait_seconds)
             self._wake.clear()
             if self._stop.is_set():
@@ -409,10 +470,16 @@ class RoomContextRuntime:
             with self._lock:
                 enabled = self._enabled
             if not enabled:
+                retry_after_busy = False
                 continue
             try:
-                self.observe_once()
+                self.observe_once(background=True)
+                retry_after_busy = False
+            except RoomObservationCancelled:
+                with self._lock:
+                    retry_after_busy = self._foreground_active
             except Exception:
+                retry_after_busy = False
                 continue
 
     def start(self) -> None:

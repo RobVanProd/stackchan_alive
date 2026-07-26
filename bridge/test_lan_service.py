@@ -1506,6 +1506,17 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("persona_busy", result[0]["code"])
         self.assertEqual("spark", session.control_state.active_persona_id())
 
+    def test_active_turn_yields_background_room_observation(self):
+        room = RoomContextRuntime(RoomObservationConfig(interval_seconds=300))
+        session = LanBridgeSession(LanBridgeConfig(), room_context=room)
+        token = CancellationToken()
+
+        self.assertTrue(session._register_active_turn(token))
+        self.assertTrue(room.status()["foregroundActive"])
+        session._finish_active_turn(token)
+
+        self.assertFalse(room.status()["foregroundActive"])
+
     def test_identified_non_owner_cannot_start_speech_turn(self):
         state = BridgeControlState()
         session = LanBridgeSession(LanBridgeConfig(), control_state=state)

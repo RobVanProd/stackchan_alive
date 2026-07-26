@@ -43,6 +43,10 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 
 ## Source Implementation Update (2026-07-24)
 
+- Main now includes PR #216 (`6d39af7605aa6a4dc88d137e03c344dbfc8f53ce`). The device
+  voice endpoint has a 12-second maximum, the dedicated capture ceiling is 130 100 ms chunks,
+  and both initial and follow-up utterances end after 550 ms of trailing silence. A live initial
+  turn delivered 118 chunks, proving the longer path is active rather than the old 96-chunk path.
 - Conversation v2 now emits a constant 10-second reply lease and allows 24 user turns by default.
   Completed turns no longer make the listener progressively less patient. The unchanged main
   firmware rejects out-of-range values rather than silently clamping them. The feature remains
@@ -76,6 +80,12 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 - The host freezes PCM on the socket thread at `utterance_end`, verifies declared byte/chunk
   totals, and records late binary frames as protocol failures. Phrase streaming no longer applies
   the final 250 ms drain pause between intermediate phrases.
+- Ordinary local generation now uses a compact typed prompt and an 80-token output ceiling; the
+  full 160-token memory mutation contract remains unchanged. A representative full-context prompt
+  fell from 1,011 to 448 words. Eight warm live generations had 1.13-second median model latency,
+  zero character fallbacks, and a 1.87-second maximum. Scheduled room observations defer while a
+  foreground turn is active and cancel an in-flight local vision subprocess when speech starts;
+  an explicit visual question can still request one foreground observation.
 - `bridge/bridge_ai_qualification.py` and the passive start/complete wrappers enforce the exact
   physical gates in [BRIDGE_AI_QUALIFICATION.md](BRIDGE_AI_QUALIFICATION.md).
 - All new behavior is default-off at the command line. Use the explicit launch switches during
@@ -87,10 +97,13 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
   paths discard buffered audio, send a nonfatal `response_aborted`, and send the matching
   `response_end`. Overlap, sequence mismatch, and unrecovered closure events are privacy-safe
   qualification failures.
-- F2 is a firmware-owned capture finding, not a bridge source change. The bridge freezes each
-  utterance on the socket thread, rejects late binary frames, verifies declared totals, and keeps
-  privacy-safe counters. Qualification still requires zero robot uplink-error delta; any nonzero
-  result is handed to the firmware owner with the exact main image hash and telemetry.
+- F2 is a firmware-owned capture finding, not a bridge source change. After PR #216, the 12-second
+  endpoint ceiling equals `BridgeWakeGate`'s 12-second maximum turn with no scheduling margin.
+  Two long captures delivered all 118 + 113 accepted chunks to the host, but each final rejected
+  chunk retried 40 times after the gate closed: `bridge_uplink_errors=80`,
+  `bridge_uplink_queue_failures=0`, `bridge_uplink_last_error=audio_uplink_not_active`, and
+  `mww_uplink_submit_failed=2`. The bridge still freezes each utterance, verifies declared totals,
+  and keeps privacy-safe counters. Qualification requires zero new robot uplink-error delta.
 - F3 is localized to production startup never launching `bridge/vision_service.py`. The DirectML
   launcher now starts the pairing-file-only YuNet worker whenever face vision is requested or
   room observation is enabled, then requires authenticated frame and target counters to advance.
@@ -142,19 +155,24 @@ during TTS, so the error path is the likely culprit.
 failure, owner-loss, and long-running physical conversation cases; the qualification must report
 `host-response-wire-clean` with no unrecovered events.
 
-## F2. Roughly 16 uplink errors per turn
+## F2. Long captures can race the 12-second wake-gate limit
 
-**Observed:** `bridge_uplink_errors: 80` across `bridge_uplink_turns: 5`, while
-`bridge_uplink_completed: 5`, `bridge_uplink_aborted: 0`, `bridge_uplink_gate_blocks: 0`,
-`bridge_uplink_queue_failures: 0`, and `audio_capture_drops: 0`.
+**Observed after PR #216:** two captures produced 118 and 113 accepted chunks. The host received
+exactly 231 chunks / 369,600 bytes and both declared counts matched. The robot recorded
+`bridge_uplink_errors: 80`, `bridge_uplink_queue_failures: 0`,
+`bridge_uplink_last_error: audio_uplink_not_active`, and `mww_uplink_submit_failed: 2`.
 
-Every turn completed, so this is not breaking conversations. But the counter scales with turns, and
-by elimination against `src/io/BridgeAudioUplink.cpp` the likely path is `audio_uplink_not_active`:
-microphone chunks still being pushed after `utterance_end`, each one rejected and counted.
+The source timing closes the diagnosis. `VoiceActivityEndpointConfig.maximumCaptureMs` and
+`kBridgeWakeGateMaxTurnMs` are both 12,000 ms. When the wake gate reaches its hard limit before the
+endpoint service submits the last chunk, `BridgeAudioUplink` becomes inactive. The dedicated
+capture then retries that chunk exactly `STACKCHAN_MWW_WAKE_UPLINK_SUBMIT_RETRY_ATTEMPTS` (40)
+times, matching the observed 40 errors and one submit failure per affected capture.
 
-**What to check:** stop pushing PCM once `utterance_end` has been sent, or close the capture
-window before the tail chunks arrive. Low severity, but it makes the counter useless as a health
-signal, which matters once you are relying on telemetry to tune conversation pacing.
+**Firmware-owner handoff:** preserve PR #216's 12-second endpoint and trailing-silence behavior,
+but make the privacy wake-gate maximum strictly longer than the 13-second chunk backstop plus a
+derived scheduler margin, or otherwise guarantee endpoint finalization before the gate expires.
+Add a native boundary test that reaches the endpoint ceiling without one inactive-uplink submit.
+Do not hide or reset the error counter.
 
 **Bridge-side status:** late audio is rejected and counted after the immutable utterance snapshot.
 The supervised run must show zero `bridge_uplink_errors` delta across completed turns; do not reset
@@ -240,12 +258,11 @@ Do not shorten the listening lease merely because several turns completed. That 
 progressively less patient during an active exchange. The host default is now a constant ten
 seconds and a 24-turn safety bound.
 
-The accepted firmware image has a separate microphone endpoint: 550 ms of trailing silence and a
-4.8-second maximum reply capture. Live telemetry on 2026-07-26 showed 199 reply captures, zero
-reply-window expirations, and 119 maximum-duration fallbacks. That proves the observed mid-thought
-cutoff is device endpointing, not expiration of the bridge lease. Any change to those endpoint
-values belongs in a separate firmware PR and must preserve wake gating, echo rejection, uplink
-accounting, and the accepted image's qualification evidence.
+PR #216 replaced the former 4.8-second endpoint with a 12-second maximum and moved the dedicated
+capture ceiling to 13 seconds. Both initial and follow-up capture now end on 550 ms of trailing
+silence. The longer endpoint is source-tested and observed live, but the equal 12-second
+`BridgeWakeGate` maximum creates the F2 boundary race above. Its firmware owner must close that
+race before bridge promotion; this bridge PR must not alter or flash the accepted firmware.
 
 ---
 

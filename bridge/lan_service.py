@@ -1471,12 +1471,18 @@ class LanBridgeSession:
                 if self._active_turn_token is not None:
                     return False
                 self._active_turn_token = token
-                return True
+        if self.room_context is not None:
+            self.room_context.set_foreground_active(True)
+        return True
 
     def _finish_active_turn(self, token: CancellationToken) -> None:
+        finished = False
         with self._active_turn_lock:
             if self._active_turn_token is token:
                 self._active_turn_token = None
+                finished = True
+        if finished and self.room_context is not None:
+            self.room_context.set_foreground_active(False)
 
     def _stage_conversation_turn(self, user_text: str, response_text: str, tts_error: str) -> None:
         if self.conversation is not None and not tts_error:

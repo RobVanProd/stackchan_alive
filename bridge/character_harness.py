@@ -210,7 +210,12 @@ SENSITIVE_MEMORY = (
     "husband",
     "raw audio",
 )
-CONTRACTION_RE = re.compile(r"\b\w+'(?:m|re|ve|ll|d|s)\b|\b\w+n't\b", re.IGNORECASE)
+CONTRACTION_RE = re.compile(
+    r"\b\w+['\u2019](?:m|re|ve|ll|d)\b"
+    r"|\b(?:it|that|there|here|what|who|where|when|why|how|he|she)['\u2019]s\b"
+    r"|\b\w+n['\u2019]t\b",
+    re.IGNORECASE,
+)
 IDENTITY_INTRO_RE = re.compile(r"^\s*i am stack[\s-]*chan(?:\s+spark)?\b", re.IGNORECASE)
 SENTENCE_RE = re.compile(r"(?<!\d)[.!?]+|[.!?]+(?!\d)")
 PRIVATE_VALUE_RE = re.compile(
