@@ -1308,6 +1308,36 @@ void test_sleep_pressure_builds_only_when_left_alone() {
   TEST_ASSERT_GREATER_THAN_FLOAT(busy.profile().fatigue, alone.profile().fatigue);
 }
 
+void test_set_mode_moves_without_an_event_and_respects_sleep() {
+  IntentEngine engine;
+  engine.begin();
+  engine.setDemoEnabled(false, 0);
+
+  // A reply that has produced its first audio should move from the thinking face
+  // into speaking without re-applying an emotional event for it.
+  RobotEvent started;
+  started.type = EventType::ResponseStarted;
+  started.timestampMs = 1000;
+  started.strength = 1.0f;
+  engine.applyEvent(started, CharacterMode::Think);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Think),
+                    static_cast<int>(engine.update(1050).mode));
+
+  engine.setMode(CharacterMode::Speak, 1200);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Speak),
+                    static_cast<int>(engine.update(1250).mode));
+
+  // Waking must stay an event-driven decision, so setMode cannot do it.
+  IntentEngine sleeper;
+  sleeper.begin();
+  sleeper.setDemoEnabled(false, 0);
+  uint32_t asleepAtMs = 0;
+  runUntilAsleep(sleeper, 900000u, &asleepAtMs);
+  sleeper.setMode(CharacterMode::Speak, asleepAtMs + 1000);
+  TEST_ASSERT_EQUAL(static_cast<int>(CharacterMode::Sleep),
+                    static_cast<int>(sleeper.update(asleepAtMs + 1050).mode));
+}
+
 void test_lingering_attention_decays_back_to_idle() {
   IntentEngine engine;
   engine.begin();
@@ -1641,6 +1671,68 @@ void test_voice_activity_endpoint_rejects_short_noise_and_uses_maximum_fallback(
                     static_cast<int>(endpoint.process(silence, 800, 500)));
   TEST_ASSERT_FALSE(endpoint.telemetry().speechSeen);
   TEST_ASSERT_EQUAL_UINT32(1, endpoint.telemetry().maxDurationFallbacks);
+}
+
+// Drive one capture with a given amount of speech, then silence, and report how
+// many milliseconds of audio were taken.
+uint32_t voiceEndpointCaptureMs(uint32_t speakMs, uint32_t ceilingMs,
+                                VoiceActivityEndpointReason* reasonOut) {
+  VoiceActivityEndpointConfig config;
+  config.enabled = true;
+  VoiceActivityEndpoint endpoint;
+  endpoint.begin(config, 0);
+
+  int16_t speech[1600];
+  int16_t silence[1600] = {};
+  fillVoiceEndpointSpeech(speech, 1600, 9000);
+
+  VoiceActivityEndpointReason reason = VoiceActivityEndpointReason::None;
+  uint32_t nowMs = 0;
+  while (nowMs < ceilingMs && reason == VoiceActivityEndpointReason::None) {
+    nowMs += 100;
+    const bool speaking = nowMs <= speakMs;
+    reason = endpoint.process(speaking ? speech : silence, 1600, nowMs);
+  }
+  if (reason == VoiceActivityEndpointReason::None) {
+    reason = endpoint.forceMaximum(nowMs);
+  }
+  if (reasonOut != nullptr) {
+    *reasonOut = reason;
+  }
+  return nowMs;
+}
+
+void test_voice_activity_endpoint_capture_tracks_speech_length() {
+  // Capture must follow how long the speaker actually talks. The default used to
+  // cap at 4800 ms, which truncated any sentence past about five seconds
+  // mid-word regardless of whether the speaker had finished.
+  const uint32_t ceilingMs = 13000;
+  const uint32_t speakLengths[] = {1000, 2000, 4000, 6000, 9000};
+  uint32_t previousCaptureMs = 0;
+
+  for (size_t i = 0; i < sizeof(speakLengths) / sizeof(speakLengths[0]); ++i) {
+    VoiceActivityEndpointReason reason = VoiceActivityEndpointReason::None;
+    const uint32_t captureMs = voiceEndpointCaptureMs(speakLengths[i], ceilingMs, &reason);
+
+    // Ended because the speaker stopped, not because time ran out.
+    TEST_ASSERT_EQUAL(static_cast<int>(VoiceActivityEndpointReason::TrailingSilence),
+                      static_cast<int>(reason));
+    // Kept everything that was said, and did not linger long after.
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(speakLengths[i], captureMs);
+    TEST_ASSERT_LESS_THAN_UINT32(speakLengths[i] + 1500u, captureMs);
+    // Longer utterances yield longer captures.
+    TEST_ASSERT_GREATER_THAN_UINT32(previousCaptureMs, captureMs);
+    previousCaptureMs = captureMs;
+  }
+}
+
+void test_voice_activity_endpoint_default_ceiling_fits_a_long_sentence() {
+  VoiceActivityEndpointConfig config;
+  // Generous enough that the ceiling is a backstop rather than the normal path.
+  TEST_ASSERT_GREATER_THAN_UINT32(8000u, config.maximumCaptureMs);
+  // Still inside the 512 KB uplink limit for 16 kHz mono PCM.
+  const uint32_t bytes = (config.maximumCaptureMs / 1000u) * 16000u * 2u;
+  TEST_ASSERT_LESS_THAN_UINT32(512u * 1024u, bytes);
 }
 
 void test_voice_activity_endpoint_disabled_path_preserves_fixed_capture() {
@@ -7943,6 +8035,8 @@ int main() {
   RUN_TEST(test_audio_reflex_loud_noise_preempts_speech_events);
   RUN_TEST(test_voice_activity_endpoint_ends_after_sustained_speech_and_trailing_silence);
   RUN_TEST(test_voice_activity_endpoint_rejects_short_noise_and_uses_maximum_fallback);
+  RUN_TEST(test_voice_activity_endpoint_capture_tracks_speech_length);
+  RUN_TEST(test_voice_activity_endpoint_default_ceiling_fits_a_long_sentence);
   RUN_TEST(test_voice_activity_endpoint_disabled_path_preserves_fixed_capture);
   RUN_TEST(test_audio_capture_adapter_disabled_default_is_ready_without_source);
   RUN_TEST(test_audio_capture_adapter_rejects_oversized_window);
@@ -7983,6 +8077,7 @@ int main() {
   RUN_TEST(test_breathing_produces_occasional_deeper_sigh);
   RUN_TEST(test_breathing_survives_a_stalled_frame);
   RUN_TEST(test_sleep_pressure_builds_only_when_left_alone);
+  RUN_TEST(test_set_mode_moves_without_an_event_and_respects_sleep);
   RUN_TEST(test_lingering_attention_decays_back_to_idle);
   RUN_TEST(test_stalled_conversation_mode_recovers_to_idle);
   RUN_TEST(test_engine_falls_asleep_when_left_alone);
