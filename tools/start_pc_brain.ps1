@@ -35,6 +35,9 @@ param(
   [int]$ConversationReplyWindowStepMs = 0,
   [int]$ConversationAcousticTailMs = 250,
   [int]$ConversationMaxTurns = 24,
+  [int]$ConversationMaxContextTurns = 24,
+  [int]$ConversationMaxContextChars = 160,
+  [switch]$EnableEpisodeDistillation,
   [switch]$EnableInitiative,
   [int]$InitiativeMinIntervalSeconds = 600,
   [switch]$EnableRoomObservation,
@@ -199,8 +202,14 @@ if ($EnableConversationV2) {
     "--conversation-reply-window-min-ms", "$ConversationReplyWindowMinMs",
     "--conversation-reply-window-step-ms", "$ConversationReplyWindowStepMs",
     "--conversation-acoustic-tail-ms", "$ConversationAcousticTailMs",
-    "--conversation-max-turns", "$ConversationMaxTurns"
+    "--conversation-max-turns", "$ConversationMaxTurns",
+    "--conversation-max-context-turns", "$ConversationMaxContextTurns",
+    "--conversation-max-context-chars", "$ConversationMaxContextChars"
   )
+}
+
+if ($EnableEpisodeDistillation) {
+  $ArgsList += "--enable-episode-distillation"
 }
 
 if ($EnableInitiative) {
@@ -267,6 +276,10 @@ if ($Background) {
     sourceCommit = $SourceCommit.ToLowerInvariant()
     sourceWorktreeClean = -not $SourceDirty
     bridgePid = [int]$Process.Id
+    conversationV2Enabled = [bool]$EnableConversationV2
+    conversationMaxTurns = if ($EnableConversationV2) { $ConversationMaxTurns } else { 0 }
+    conversationMaxContextTurns = if ($EnableConversationV2) { $ConversationMaxContextTurns } else { 0 }
+    episodeDistillationEnabled = [bool]$EnableEpisodeDistillation
   } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $RuntimeManifestFile -Encoding UTF8
   Write-Host "Stackchan PC brain started."
   Write-Host "PID: $($Process.Id)"

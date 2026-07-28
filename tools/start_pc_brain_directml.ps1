@@ -8,6 +8,9 @@ param(
   [switch]$EnableResearch,
   [string]$SearxngUrl = "http://127.0.0.1:8080",
   [switch]$EnableConversationV2,
+  [int]$ConversationMaxContextTurns = 24,
+  [int]$ConversationMaxContextChars = 160,
+  [switch]$DisableEpisodeDistillation,
   [switch]$EnableInitiative,
   [switch]$EnableRoomObservation,
   [int]$RoomObservationIntervalSeconds = 300,
@@ -33,6 +36,9 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $EvidencePath = (Resolve-Path $EvidenceRoot).Path
 $StartFaceVision = [bool]($EnableFaceVision -or $EnableRoomObservation)
+$EpisodeDistillationEnabled = [bool](
+  $EnableConversationV2 -and -not $DisableEpisodeDistillation
+)
 if ($StartFaceVision -and [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
   throw "Face or room vision requires CameraPairingCodeFile."
 }
@@ -198,7 +204,11 @@ if ($EnableResearch) {
   $bridgeScript += " -EnableResearch -SearxngUrl '$escapedSearxngUrl'"
 }
 if ($EnableConversationV2) {
-  $bridgeScript += " -EnableConversationV2"
+  $bridgeScript += " -EnableConversationV2 -ConversationMaxContextTurns $ConversationMaxContextTurns" +
+    " -ConversationMaxContextChars $ConversationMaxContextChars"
+}
+if ($EpisodeDistillationEnabled) {
+  $bridgeScript += " -EnableEpisodeDistillation"
 }
 if ($EnableInitiative) {
   $bridgeScript += " -EnableInitiative"
@@ -394,6 +404,8 @@ $Result = [ordered]@{
   researchEnabled = [bool]$EnableResearch
   researchGateStatus = if ($ResearchGate) { [string]$ResearchGate.status } else { $null }
   conversationV2Enabled = [bool]$EnableConversationV2
+  conversationMaxContextTurns = if ($EnableConversationV2) { $ConversationMaxContextTurns } else { 0 }
+  episodeDistillationEnabled = $EpisodeDistillationEnabled
   initiativeEnabled = [bool]$EnableInitiative
   roomObservationEnabled = [bool]$EnableRoomObservation
   searxngUrl = if ($EnableResearch) { $SearxngUrl } else { $null }

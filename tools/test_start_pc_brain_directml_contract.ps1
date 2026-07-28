@@ -43,6 +43,9 @@ foreach ($required in @(
   "workerSynthesisReady =",
   "rvc_production_tts_client.py",
   "[switch]`$EnableResearch",
+  "[int]`$ConversationMaxContextTurns = 24",
+  "[int]`$ConversationMaxContextChars = 160",
+  "[switch]`$DisableEpisodeDistillation",
   "[switch]`$EnableFaceVision",
   '[string]$RoomVisionModel = "gemma4:e2b-it-qat"',
   "[string]`$SearxngUrl",
@@ -65,6 +68,10 @@ foreach ($required in @(
   "camera_host_target_updates",
   "Local vision did not advance authenticated frame and target counters.",
   "researchEnabled = [bool]`$EnableResearch",
+  "-ConversationMaxContextTurns `$ConversationMaxContextTurns",
+  "-ConversationMaxContextChars `$ConversationMaxContextChars",
+  "-EnableEpisodeDistillation",
+  "episodeDistillationEnabled =",
   "-StreamTtsPhrases",
   "-EnableAudioDownlink",
   "-InProcessOllamaRunner",
@@ -128,8 +135,12 @@ if ($startupGuardIndex -lt 0 -or $bridgeStartIndex -lt $startupGuardIndex -or
 
 foreach ($required in @(
   "[switch]`$EnableResearch",
+  "[switch]`$EnableEpisodeDistillation",
   "[string]`$SearxngUrl",
   '"--enable-research"',
+  '"--conversation-max-context-turns", "$ConversationMaxContextTurns"',
+  '"--conversation-max-context-chars", "$ConversationMaxContextChars"',
+  '"--enable-episode-distillation"',
   '"--searxng-url", $SearxngUrl',
   "[string]`$SttServerUrl",
   '"--stt-server-url", $SttServerUrl'

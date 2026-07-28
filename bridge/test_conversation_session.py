@@ -13,6 +13,8 @@ class ConversationSessionTests(unittest.TestCase):
         session = ConversationSession()
         self.assertEqual(10_000, session.current_reply_window_ms())
         self.assertEqual(24, session.config.max_turns)
+        self.assertEqual(24, session.config.max_context_turns)
+        self.assertEqual(160, session.config.max_context_chars)
 
         session.wake(0)
         now = 0
@@ -23,6 +25,32 @@ class ConversationSessionTests(unittest.TestCase):
             session.playback_completed(now + 30)
             now += 300
             self.assertEqual("reply_window_open", session.tick(now).reason)
+
+    def test_production_session_keeps_all_played_turns_until_close(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=0, cooldown_ms=0)
+        )
+        session.wake(0)
+
+        for index in range(10):
+            now = index * 100
+            session.utterance_committed(now + 10, f"subject detail {index}")
+            session.response_started(now + 20)
+            session.stage_turn(f"subject detail {index}", f"answer detail {index}")
+            session.playback_completed(now + 30)
+            session.tick(now + 30)
+
+        lines = session.context_lines()
+        self.assertEqual(20, len(lines))
+        self.assertIn("subject detail 0", lines[0])
+        self.assertIn("answer detail 9", lines[-1])
+
+        session.cancel(1_100, "test_close")
+        self.assertEqual((), session.context_lines())
+        closed = session.take_closed_turns()
+        self.assertEqual(10, len(closed))
+        self.assertEqual(("subject detail 0", "answer detail 0"), closed[0])
+        self.assertEqual((), session.take_closed_turns())
 
     def complete_response(self, start_ms: int = 100) -> None:
         self.session.utterance_committed(start_ms, "Tell me something")
@@ -125,6 +153,19 @@ class ConversationSessionTests(unittest.TestCase):
 
         session.bridge_lost()
         self.assertEqual((), session.context_lines())
+
+    def test_unplayed_staged_turn_is_not_archived_on_close(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=0, cooldown_ms=0)
+        )
+        session.wake(0)
+        session.utterance_committed(10, "unfinished question")
+        session.response_started(20)
+        session.stage_turn("unfinished question", "response never completed")
+
+        session.bridge_lost()
+
+        self.assertEqual((), session.take_closed_turns())
 
     def test_turn_failure_and_cancel_close_through_cooldown(self) -> None:
         self.session.wake(0)

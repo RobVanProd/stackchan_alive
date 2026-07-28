@@ -23,8 +23,8 @@ class ConversationConfig:
     acoustic_tail_ms: int = 250
     cooldown_ms: int = 300
     max_turns: int = 24
-    max_context_turns: int = 4
-    max_context_chars: int = 320
+    max_context_turns: int = 24
+    max_context_chars: int = 160
     barge_in_enabled: bool = True
     exit_phrases: tuple[str, ...] = (
         "goodbye stackchan",
@@ -79,6 +79,7 @@ class ConversationSession:
         self.last_close_reason = ""
         self._recent_turns: list[tuple[str, str]] = []
         self._pending_turn: tuple[str, str] | None = None
+        self._closed_turns: tuple[tuple[str, str], ...] = ()
 
     def current_reply_window_ms(self) -> int:
         completed_followups = max(0, self.turns - 1)
@@ -105,6 +106,10 @@ class ConversationSession:
         self._recent_turns.clear()
         self._pending_turn = None
 
+    def _archive_context_for_close(self) -> None:
+        if self._recent_turns or self._pending_turn is not None:
+            self._closed_turns = tuple(self._recent_turns)
+
     def _begin_cooldown(self, now_ms: int, reason: str) -> ConversationTransition:
         self.phase = ConversationPhase.COOLDOWN
         self.capture_open = False
@@ -116,6 +121,7 @@ class ConversationSession:
         self.cooldown_until_ms = now_ms + self.config.cooldown_ms
         self.close_after_response = False
         self.last_close_reason = reason
+        self._archive_context_for_close()
         self._clear_context()
         return self._transition("close_capture", "session_closing", reason=reason)
 
@@ -132,6 +138,7 @@ class ConversationSession:
         self.cooldown_until_ms = 0
         self.close_after_response = False
         self.last_close_reason = reason
+        self._archive_context_for_close()
         self._clear_context()
         return self._transition("close_capture", "session_closed", reason=reason)
 
@@ -150,6 +157,7 @@ class ConversationSession:
         self.cooldown_until_ms = 0
         self.close_after_response = False
         self.last_close_reason = ""
+        self._closed_turns = ()
         self._clear_context()
         return self._transition("session_started", "open_capture", reason="wake")
 
@@ -177,6 +185,13 @@ class ConversationSession:
             lines.append(f"turn {index} user: {user}")
             lines.append(f"turn {index} stackchan: {response}")
         return tuple(lines)
+
+    def take_closed_turns(self) -> tuple[tuple[str, str], ...]:
+        """Return played turns from the last closed lease exactly once."""
+
+        turns = self._closed_turns
+        self._closed_turns = ()
+        return turns
 
     def utterance_started(self, now_ms: int) -> ConversationTransition:
         now = self._now(now_ms)

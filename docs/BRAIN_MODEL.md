@@ -114,12 +114,13 @@ credentials, and third-party data are rejected. A callback is injected once per 
 marked asked only when the spoken reply overlaps at least two content terms.
 
 `--enable-episode-distillation` or `STACKCHAN_ENABLE_EPISODE_DISTILLATION=1` opts into one local
-post-close model call over at most four in-memory lease turns. The flag defaults off. This is a
-deliberate privacy-policy delta: a strictly validated episode and optional callback may persist
-after the raw lease is erased. The distillation transport accepts only a loopback HTTP Ollama
-endpoint. Any malformed, oversized, wrong-typed, or denied result is dropped as a whole with no
-retry and increments `distill_dropped`. The default host-derived path makes no additional model
-call.
+post-close model call over the bounded 24-turn lease. The flag defaults off in the base launcher
+and is enabled for the production Conversation v2 launcher. This is a deliberate privacy-policy
+delta: one strictly validated episode may persist after the raw lease is erased. Open loops remain
+owned by the precision-biased deterministic rule above; the model cannot create callbacks. The
+distillation transport accepts only a loopback HTTP Ollama endpoint. Any malformed, oversized,
+wrong-typed, or denied result is dropped as a whole with no retry and increments
+`distill_dropped`. The default host-derived path makes no additional model call.
 
 ### Trusted Local Facts And Tool Routing
 

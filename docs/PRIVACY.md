@@ -76,11 +76,12 @@ evidence never creates episodes or loops. Conversation lease turns remain in mem
 erased at close. The default session-close episode is derived from eligible topic labels and a
 turn count, not raw dialogue.
 
-Optional episode distillation is default-off because it changes that lease-erasure boundary. When
-the owner explicitly enables it, at most four local lease turns are sent to the configured local
-Ollama model after session close; the transport rejects non-loopback endpoints, and only a strict,
-fully sanitized summary may persist. Any invalid field drops the whole result. No distillation data
-is sent to a cloud service by this feature.
+Episode distillation changes that lease-erasure boundary, so the base launcher keeps it opt-in;
+the production Conversation v2 launcher enables it unless the owner disables it. At most 24
+bounded local lease turns are sent to the configured local Ollama model after session close; the
+transport rejects non-loopback endpoints, and only one strict, fully sanitized episode may
+persist. The model cannot create callbacks; open loops remain deterministic. Any invalid field
+drops the whole result. No distillation data is sent to a cloud service by this feature.
 
 The bridge does not perform biometric identification or persist private audio. The LAN service may
 keep raw PCM in a bounded buffer only during one active utterance; it clears that buffer at

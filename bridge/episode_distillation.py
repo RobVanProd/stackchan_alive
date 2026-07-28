@@ -8,17 +8,28 @@ import os
 import urllib.request
 from urllib.parse import urlsplit, urlunsplit
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Iterable
 
-from bridge_memory import BridgeMemory, _future_timestamp, _safe_value, _utc_now
+from bridge_memory import BridgeMemory, _safe_value, _utc_now
+
+MAX_SESSION_TURNS = 24
+MAX_TURN_CHARS = 160
+DISTILLATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "episode": {
+            "type": "string",
+            "maxLength": 120,
+        }
+    },
+    "required": ["episode"],
+    "additionalProperties": False,
+}
 
 
 @dataclass(frozen=True)
 class DistilledMemory:
     episode: str
-    open_loop_text: str = ""
-    days_until_due: int = 0
 
 
 def _local_generate_url(value: str) -> str:
@@ -53,7 +64,7 @@ def validate_distillation(raw: object) -> DistilledMemory | None:
         data = json.loads(raw) if isinstance(raw, str) else raw
     except (json.JSONDecodeError, TypeError):
         return None
-    if not isinstance(data, dict) or set(data) != {"episode", "open_loop"}:
+    if not isinstance(data, dict) or set(data) != {"episode"}:
         return None
     episode = data.get("episode")
     if (
@@ -63,24 +74,7 @@ def validate_distillation(raw: object) -> DistilledMemory | None:
         or not _safe_value("project.episode", episode)
     ):
         return None
-    loop = data.get("open_loop")
-    if loop is None:
-        return DistilledMemory(" ".join(episode.split()))
-    if not isinstance(loop, dict) or set(loop) != {"text", "days_until_due"}:
-        return None
-    text = loop.get("text")
-    days = loop.get("days_until_due")
-    if (
-        not isinstance(text, str)
-        or not text.strip()
-        or len(text) > 96
-        or not isinstance(days, int)
-        or isinstance(days, bool)
-        or not 1 <= days <= 14
-        or not _safe_value("user.open_loop", text)
-    ):
-        return None
-    return DistilledMemory(" ".join(episode.split()), " ".join(text.split()), days)
+    return DistilledMemory(" ".join(episode.split()))
 
 
 def apply_distillation(
@@ -90,27 +84,22 @@ def apply_distillation(
     now: str | None = None,
 ) -> BridgeMemory:
     timestamp = now or _utc_now()
-    updated = memory.add_episode(result.episode, now=timestamp)
-    if result.open_loop_text:
-        updated = updated.add_open_loop(
-            result.open_loop_text,
-            due_at=_future_timestamp(timedelta(days=result.days_until_due), timestamp),
-            now=timestamp,
-        )
-    return updated
+    return memory.add_episode(result.episode, now=timestamp)
 
 
 def distillation_prompt(turns: Iterable[tuple[str, str]]) -> str:
-    bounded = list(turns)[-4:]
+    bounded = list(turns)[-MAX_SESSION_TURNS:]
     lines = [
         "Summarize this completed local conversation for bounded robot memory.",
         "Return only JSON with exactly this schema:",
-        '{"episode":"<=120 chars","open_loop":{"text":"<=96 chars","days_until_due":1}|null}',
+        '{"episode":"<=120 chars"}',
+        "Keep episode under 100 characters and describe only the main shared subject.",
         "Do not include secrets, health, medical, relationship, contact, financial, or third-party details.",
+        "Do not create reminders or callbacks; deterministic bridge rules own those.",
     ]
     for index, (user, robot) in enumerate(bounded, start=1):
-        lines.append(f"turn {index} user: {' '.join(str(user).split())[:320]}")
-        lines.append(f"turn {index} stackchan: {' '.join(str(robot).split())[:320]}")
+        lines.append(f"turn {index} user: {' '.join(str(user).split())[:MAX_TURN_CHARS]}")
+        lines.append(f"turn {index} stackchan: {' '.join(str(robot).split())[:MAX_TURN_CHARS]}")
     return "\n".join(lines)
 
 
@@ -132,7 +121,7 @@ def request_distillation(
             "model": model or os.environ.get("STACKCHAN_OLLAMA_MODEL", "gemma4:e2b-it-qat"),
             "prompt": distillation_prompt(turns),
             "stream": False,
-            "format": "json",
+            "format": DISTILLATION_SCHEMA,
             "options": {"temperature": 0, "num_predict": 128},
         },
         separators=(",", ":"),

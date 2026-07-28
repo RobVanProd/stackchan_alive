@@ -3129,7 +3129,37 @@ class LanServiceTests(unittest.TestCase):
 
         self.assertEqual(1, session.memory.episode_count)
         self.assertEqual(0, session.memory.open_loop_count)
-        self.assertEqual((), tuple(session._lease_turns))
+        self.assertEqual((), session.conversation.take_closed_turns())
+
+    def test_session_close_distills_every_played_turn_not_only_the_last_four(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                conversation_acoustic_tail_ms=0,
+                episode_distillation_enabled=True,
+                tts_command="fixture-tts",
+            )
+        )
+        session.conversation.wake(0, "fixture")
+        for index in range(6):
+            now = index * 100
+            session.conversation.utterance_committed(now + 10, f"question {index}")
+            session.conversation.response_started(now + 20)
+            session.conversation.stage_turn(f"question {index}", f"answer {index}")
+            session.conversation.playback_completed(now + 30)
+            session.conversation.tick(now + 30)
+
+        with patch("lan_service.threading.Thread") as thread:
+            transition = session.conversation.cancel(700, "fixture_close")
+            session._conversation_payload(transition, observed_ms=700)
+
+        thread.assert_called_once()
+        distilled_turns, distilled_session = thread.call_args.kwargs["args"]
+        self.assertEqual(1, distilled_session)
+        self.assertEqual(6, len(distilled_turns))
+        self.assertEqual(("question 0", "answer 0"), distilled_turns[0])
+        self.assertEqual(("question 5", "answer 5"), distilled_turns[-1])
+        thread.return_value.start.assert_called_once_with()
 
     def test_injected_open_loop_is_consumed_and_not_injected_again(self):
         memory = BridgeMemory().add_open_loop(

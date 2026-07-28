@@ -750,6 +750,8 @@ class LanBridgeConfig:
     conversation_acoustic_tail_ms: int = 250
     conversation_cooldown_ms: int = 300
     conversation_max_turns: int = 24
+    conversation_max_context_turns: int = 24
+    conversation_max_context_chars: int = 160
     initiative_enabled: bool = False
     initiative_min_interval_ms: int = MIN_UNPROMPTED_INTERVAL_MS
     room_observation_enabled: bool = False
@@ -773,6 +775,8 @@ class LanBridgeConfig:
             acoustic_tail_ms=self.conversation_acoustic_tail_ms,
             cooldown_ms=self.conversation_cooldown_ms,
             max_turns=self.conversation_max_turns,
+            max_context_turns=self.conversation_max_context_turns,
+            max_context_chars=self.conversation_max_context_chars,
         )
         InitiativeConfig(
             enabled=self.initiative_enabled,
@@ -1237,7 +1241,6 @@ class LanBridgeSession:
         self._injected_open_loops: set[str] = set()
         self._session_topics: list[str] = []
         self._session_non_research_turns = 0
-        self._lease_turns: list[tuple[str, str]] = []
         self._finalized_session_number = 0
         self._last_robot_heartbeat: dict[str, object] = {}
         self.initiative_policy = initiative_policy
@@ -1266,6 +1269,8 @@ class LanBridgeSession:
                     acoustic_tail_ms=config.conversation_acoustic_tail_ms,
                     cooldown_ms=config.conversation_cooldown_ms,
                     max_turns=config.conversation_max_turns,
+                    max_context_turns=config.conversation_max_context_turns,
+                    max_context_chars=config.conversation_max_context_chars,
                 )
             )
         self.research_broker = research_broker
@@ -1337,7 +1342,6 @@ class LanBridgeSession:
         self._injected_open_loops.clear()
         self._session_topics.clear()
         self._session_non_research_turns = 0
-        self._lease_turns.clear()
 
     def _commit_memory(self, memory: BridgeMemory) -> None:
         with self._memory_lock:
@@ -1382,7 +1386,7 @@ class LanBridgeSession:
         if session_number <= 0 or session_number == self._finalized_session_number:
             return
         self._finalized_session_number = session_number
-        turns = tuple(self._lease_turns[-4:])
+        turns = self.conversation.take_closed_turns()
         updated = self.memory.add_episode_from_topics(
             self._session_topics,
             self._session_non_research_turns,
@@ -1394,6 +1398,7 @@ class LanBridgeSession:
                 "generated_at": utc_timestamp(),
                 "session_number": session_number,
                 "event": "session_closed",
+                "session_turn_count": len(turns),
                 "session_topic_count": len(set(self._session_topics)),
                 "session_non_research_turns": self._session_non_research_turns,
                 **self.memory.diagnostics(),
@@ -1487,8 +1492,6 @@ class LanBridgeSession:
     def _stage_conversation_turn(self, user_text: str, response_text: str, tts_error: str) -> None:
         if self.conversation is not None and not tts_error:
             self.conversation.stage_turn(user_text, response_text)
-            self._lease_turns.append((user_text, response_text))
-            del self._lease_turns[:-4]
 
     def _begin_conversation_capture(self, owner_id: str) -> dict[str, object] | None:
         if self.initiative_policy is not None:
@@ -3608,6 +3611,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--conversation-acoustic-tail-ms", type=int, default=250)
     parser.add_argument("--conversation-cooldown-ms", type=int, default=300)
     parser.add_argument("--conversation-max-turns", type=int, default=24)
+    parser.add_argument("--conversation-max-context-turns", type=int, default=24)
+    parser.add_argument("--conversation-max-context-chars", type=int, default=160)
     parser.add_argument("--enable-initiative", action="store_true")
     parser.add_argument(
         "--initiative-min-interval-seconds",
@@ -3654,6 +3659,7 @@ def main() -> int:
         parser.error("--room-observation-interval-seconds must be between 120 and 1800")
     if args.reset_memory and args.memory_file and args.memory_file.exists():
         args.memory_file.unlink()
+    conversation_max_turns = max(1, min(50, args.conversation_max_turns))
     config = LanBridgeConfig(
         host=args.host,
         port=args.port,
@@ -3694,7 +3700,12 @@ def main() -> int:
         conversation_reply_window_step_ms=args.conversation_reply_window_step_ms,
         conversation_acoustic_tail_ms=args.conversation_acoustic_tail_ms,
         conversation_cooldown_ms=max(0, min(5000, args.conversation_cooldown_ms)),
-        conversation_max_turns=max(1, min(50, args.conversation_max_turns)),
+        conversation_max_turns=conversation_max_turns,
+        conversation_max_context_turns=max(
+            1,
+            min(conversation_max_turns, args.conversation_max_context_turns),
+        ),
+        conversation_max_context_chars=max(64, min(320, args.conversation_max_context_chars)),
         initiative_enabled=args.enable_initiative,
         initiative_min_interval_ms=args.initiative_min_interval_seconds * 1000,
         room_observation_enabled=args.room_observation,
