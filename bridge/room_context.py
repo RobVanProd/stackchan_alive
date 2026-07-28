@@ -309,7 +309,6 @@ class RoomContextRuntime:
                 cancellation = self._background_cancellation
         if cancellation is not None:
             cancellation.cancel("foreground_turn")
-        self._wake.set()
 
     def set_controls(self, *, enabled: bool, interval_seconds: int) -> dict[str, object]:
         interval = int(interval_seconds)

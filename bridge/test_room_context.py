@@ -219,6 +219,43 @@ class RoomContextTests(unittest.TestCase):
         self.assertEqual(1, runtime.status()["backgroundCancellations"])
         self.assertEqual(0, runtime.status()["failures"])
 
+    def test_foreground_transitions_do_not_accelerate_periodic_observation(self) -> None:
+        raw_frame = b"P5\n2 2\n255\n\x00\x01\x02\x03"
+        observed = threading.Event()
+        calls = 0
+
+        def model_observer(_frame: bytes) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            observed.set()
+            return {
+                "person_count": 0,
+                "activity": "empty",
+                "objects": ["desk"],
+                "lighting": "bright",
+            }
+
+        runtime = RoomContextRuntime(
+            RoomObservationConfig(enabled=True, interval_seconds=120, command="fixture"),
+            frame_source=lambda: raw_frame,
+            model_observer=model_observer,
+        )
+        runtime.start()
+        try:
+            self.assertTrue(observed.wait(1.0))
+            self.assertEqual(1, calls)
+
+            for _ in range(10):
+                runtime.set_foreground_active(True)
+                runtime.set_foreground_active(False)
+            time.sleep(0.1)
+
+            self.assertEqual(1, calls)
+            self.assertEqual(1, runtime.status()["observations"])
+            self.assertEqual(0, runtime.status()["busyDeferrals"])
+        finally:
+            runtime.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
