@@ -3,6 +3,10 @@ param(
   [int]$BridgePort = 8765,
   [int]$WorkerPort = 5059,
   [int]$SttServerPort = 5061,
+  [int]$SttThreads = 12,
+  [string]$SttExecutablePath = "",
+  [string]$SttModelPath = "",
+  [string]$SttInitialPrompt = "Stackchan,Gemma,Rhea,SearXNG,servo,telemetry,companion,bridge,camera,persona",
   [int]$ReconnectTimeoutSeconds = 90,
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [switch]$EnableResearch,
@@ -45,6 +49,9 @@ if ($StartFaceVision -and [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) 
 if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile) -and
     -not (Test-Path -LiteralPath $CameraPairingCodeFile -PathType Leaf)) {
   throw "CameraPairingCodeFile is missing."
+}
+if ($SttThreads -lt 1 -or $SttThreads -gt 32) {
+  throw "SttThreads must be between 1 and 32."
 }
 
 function Stop-ExistingBridge {
@@ -134,13 +141,50 @@ if ($null -eq $WorkerHealth -or -not [bool]$WorkerHealth.ready -or
 }
 $WorkerHealth | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidencePath "worker-health.json") -Encoding UTF8
 
+if ([string]::IsNullOrWhiteSpace($SttExecutablePath)) {
+  $SttExecutablePath = @(
+    (Join-Path $RepoRoot "output\local-tools\whisper.cpp-blas\Release\whisper-server.exe"),
+    (Join-Path $RepoRoot "output\local-tools\whisper.cpp\Release\whisper-server.exe")
+  ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if ([string]::IsNullOrWhiteSpace($SttModelPath)) {
+  $SttModelPath = @(
+    (Join-Path $RepoRoot "output\local-tools\whisper.cpp-blas\models\ggml-small.en.bin"),
+    (Join-Path $RepoRoot "output\local-tools\whisper.cpp\models\ggml-small.en.bin")
+  ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if (-not $SttExecutablePath -or
+    -not (Test-Path -LiteralPath $SttExecutablePath -PathType Leaf)) {
+  throw "Production STT requires whisper-server.exe. Run tools\setup_whisper_cpp.ps1 -Model small.en -PreferBlas."
+}
+if (-not $SttModelPath -or -not (Test-Path -LiteralPath $SttModelPath -PathType Leaf)) {
+  throw "Production STT requires ggml-small.en.bin. Run tools\setup_whisper_cpp.ps1 -Model small.en -PreferBlas."
+}
+$SttExecutablePath = (Resolve-Path $SttExecutablePath).Path
+$SttModelPath = (Resolve-Path $SttModelPath).Path
+$escapedSttExecutable = $SttExecutablePath.Replace("'", "''")
+$escapedSttModel = $SttModelPath.Replace("'", "''")
+$escapedSttPrompt = $SttInitialPrompt.Replace("'", "''")
 $sttStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_whisper_server.ps1")).Path.Replace("'", "''")
-$sttScript = "`$ProgressPreference = 'SilentlyContinue'; & '$sttStarter' -Port $SttServerPort -Threads 8 -Json"
+$sttScript = "`$ProgressPreference = 'SilentlyContinue'; & '$sttStarter' " +
+  "-Port $SttServerPort -Threads $SttThreads -ExecutablePath '$escapedSttExecutable' " +
+  "-ModelPath '$escapedSttModel' -InitialPrompt '$escapedSttPrompt' -StopExisting -Json"
 $sttChild = Invoke-EncodedChildPowerShell -ScriptBody $sttScript `
   -StdoutPath (Join-Path $EvidencePath "stt-server-start.json") `
   -StderrPath (Join-Path $EvidencePath "stt-server-start.err.log")
 if ($sttChild.exitCode -ne 0) {
   throw "Whisper server start failed with exit $($sttChild.exitCode): $($sttChild.stderr -join ' ')"
+}
+$SttStart = try {
+  ($sttChild.stdout -join "`n") | ConvertFrom-Json
+} catch {
+  throw "Whisper server start returned invalid structured evidence."
+}
+if ([string]$SttStart.status -ne "ready" -or
+    -not [bool]$SttStart.configVerified -or
+    [int]$SttStart.threads -ne $SttThreads -or
+    [string]$SttStart.model -ne (Split-Path -Leaf $SttModelPath)) {
+  throw "Whisper server did not prove the requested production STT configuration."
 }
 $SttServerUrl = "http://127.0.0.1`:$SttServerPort"
 $SttHealth = try { Invoke-RestMethod -Uri "$SttServerUrl/health" -TimeoutSec 5 } catch { $null }
@@ -387,6 +431,12 @@ $Result = [ordered]@{
   workerBaseTtsBackend = [string]$WorkerHealth.base_tts_backend
   sttServerUrl = $SttServerUrl
   sttServerReady = [string]$SttHealth.status -eq "ok"
+  sttExecutable = [string]$SttStart.executable
+  sttModel = [string]$SttStart.model
+  sttModelSha256 = [string]$SttStart.modelSha256
+  sttThreads = [int]$SttStart.threads
+  sttInitialPrompt = [string]$SttStart.initialPrompt
+  sttConfigVerified = [bool]$SttStart.configVerified
   faceVisionEnabled = $StartFaceVision
   faceVisionReady = $VisionReady
   faceVisionPid = if ($StartFaceVision) { $VisionPid } else { $null }

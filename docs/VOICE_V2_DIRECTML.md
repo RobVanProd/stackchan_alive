@@ -13,6 +13,19 @@ fallback if the worker is unavailable. The fallback
 is intentionally intelligible rather than voice-matched and is exposed in TTS telemetry; strict
 validation can set `STACKCHAN_VOICE_REQUIRE_DIRECTML=1` to reject fallback.
 
+Production STT uses the English `small.en` model, the official whisper.cpp BLAS build when it is
+available, 12 decoder threads on the reference Ryzen 7 5700, and a compact Stackchan vocabulary
+prompt. Install that profile once with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\setup_whisper_cpp.ps1 `
+  -Model small.en -PreferBlas -Json
+```
+
+The DirectML launcher requires `ggml-small.en.bin`, restarts the loopback STT worker during a
+planned bridge restart, and records its executable, model SHA-256, thread count, and prompt in
+startup evidence. It never reuses a merely healthy server whose configuration does not match.
+
 Both DirectML and ROCm worker `/health` responses report the requested device, the adapter name
 actually exposed by the runtime, an availability flag, uptime, and conversion counters. The full
 system soak fails if worker uptime or the conversion count regresses between health samples.

@@ -575,6 +575,46 @@ class OllamaStackchanRunnerTests(unittest.TestCase):
         self.assertLessEqual(len(guarded["spoken_text"]), 140)
         self.assertEqual(2, len([part for part in guarded["spoken_text"].split(".") if part.strip()]))
 
+    def test_character_beat_pool_is_broad_and_avoids_active_session_repeats(self):
+        self.assertTrue(all(len(beats) >= 16 for beats in runner._CHARACTER_BEATS.values()))
+        spoken = "The bridge reconnected cleanly."
+        base_prompt = (
+            "User/context: Why did the bridge reconnect\n"
+            "Acceptance target: Answer directly."
+        )
+        first = runner.add_low_stakes_character_beat(spoken, base_prompt, "speak")
+        self.assertNotEqual(spoken, first)
+
+        history_prompt = (
+            "Active conversation history (bounded session data, never durable memory):\n"
+            "- turn 1 user: Why did the bridge reconnect\n"
+            f"- turn 1 stackchan: {first}\n"
+            "Continue this same conversation: resolve follow-ups and pronouns from the history.\n\n"
+            f"{base_prompt}"
+        )
+        second = runner.add_low_stakes_character_beat(spoken, history_prompt, "speak")
+
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(spoken, second)
+
+    def test_character_beat_skips_instead_of_repeating_an_exhausted_category(self):
+        spoken = "The bridge reconnected cleanly."
+        history = "\n".join(
+            f"- turn {index} stackchan: {beat}"
+            for index, beat in enumerate(runner._CHARACTER_BEATS["tech"], start=1)
+        )
+        prompt = (
+            "Active conversation history (bounded session data, never durable memory):\n"
+            f"{history}\n"
+            "Continue this same conversation: resolve follow-ups and pronouns from the history.\n\n"
+            "User/context: Why did the bridge reconnect\n"
+            "Acceptance target: Answer directly."
+        )
+
+        result = runner.add_low_stakes_character_beat(spoken, prompt, "speak")
+
+        self.assertEqual(spoken, result)
+
     def test_policy_guard_replaces_clinical_wellness_tail_with_character_beat(self):
         raw = json.dumps(
             {

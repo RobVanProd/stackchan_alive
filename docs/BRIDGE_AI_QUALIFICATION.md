@@ -29,7 +29,11 @@ start gate rejects any firmware-input diff from `origin/main`.
 ## Start The Candidate
 
 Use a planned restart window. The DirectML launcher starts or reuses the local RVC worker and
-resident loopback whisper.cpp server, then replaces only a verified Stackchan bridge listener.
+starts a configuration-verified resident loopback whisper.cpp server, then replaces only a
+verified Stackchan bridge listener. Production STT requires the local `small.en` model and prefers
+the official BLAS binary; prepare it before the window with
+`tools\setup_whisper_cpp.ps1 -Model small.en -PreferBlas`. Startup evidence must report
+`sttConfigVerified=true`, `sttModel=ggml-small.en.bin`, its SHA-256, and the intended thread count.
 Research is fail-closed: the launcher records a full local search/fetch preflight before starting
 either worker or stopping an existing bridge. Start or verify the pinned loopback service first:
 

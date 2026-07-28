@@ -20,8 +20,14 @@ foreach ($Required in @(
   "--host", "127.0.0.1",
   "/health",
   "Refusing to use or stop non-whisper listener",
+  "does not match the requested executable, model, threads, and prompt",
   "-WindowStyle Hidden",
   "ggml-base.en.bin",
+  "[int]`$Threads = 12",
+  "[string]`$InitialPrompt",
+  "--prompt",
+  "configVerified",
+  "executable",
   "modelSha256",
   "stackchan.whisper-server-start.v1"
 )) {

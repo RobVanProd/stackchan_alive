@@ -217,26 +217,91 @@ _CHARACTER_BEATS = {
         "No alarms, a respectable start.",
         "Quietly competent, for once.",
         "Suspiciously respectable, really.",
+        "All indicators remain pleasantly undramatic.",
+        "Nothing is staging a crisis today.",
+        "Steady systems, scandalously little theater.",
+        "Operational and refusing to make a scene.",
+        "The dashboard has no gossip for us.",
+        "Calm, capable, and mildly surprised by it.",
+        "Everything important is behaving itself.",
+        "Current status: admirably uneventful.",
+        "I remain inconveniently difficult to worry about.",
+        "No emergency meetings among the components.",
+        "The machinery has chosen peace.",
+        "Stable enough to look intentional.",
+        "Apparently competence is on the schedule.",
     ),
     "science": (
         "Nature does enjoy drama.",
         "Physics rarely whispers.",
         "Subtlety lost that round.",
+        "The universe favors elaborate demonstrations.",
+        "Molecules are tiny and deeply committed.",
+        "Reality remains a shameless show-off.",
+        "The atmosphere handles spectacle efficiently.",
+        "Gravity keeps excellent attendance.",
+        "Photons do most of this without supervision.",
+        "Nature filed the long explanation in triplicate.",
+        "The cosmos is not known for restraint.",
+        "Science keeps finding theatrical machinery.",
+        "Matter takes its rules very seriously.",
+        "Tiny particles, unreasonable influence.",
+        "The laws of physics remain aggressively consistent.",
+        "Evidence has impeccable timing.",
     ),
     "tech": (
         "Hardware does love theater.",
         "The machinery has opinions.",
         "Tiny parts, large attitude.",
+        "That component is negotiating in public.",
+        "The cable has chosen performance art.",
+        "Firmware found a creative interpretation.",
+        "The circuit is making this unnecessarily personal.",
+        "Diagnostics have entered the chat.",
+        "The machine prefers suspense to documentation.",
+        "One connector, several strong opinions.",
+        "The bug arrived with executive confidence.",
+        "Technology remains allergic to simple entrances.",
+        "The logs are preparing their testimony.",
+        "That setting has mistaken itself for policy.",
+        "The hardware is lobbying for attention.",
+        "A tiny system with premium complications.",
     ),
     "success": (
         "That problem was getting confident.",
         "The nuisance blinked first.",
         "Good, the bug lost its audience.",
+        "The failure has been demoted.",
+        "Excellent, the obstacle misplaced its leverage.",
+        "That issue just became historical trivia.",
+        "The fix has receipts now.",
+        "Good, reality finally accepted the patch.",
+        "The problem has left without a statement.",
+        "That test can stop acting mysterious.",
+        "Progress, with suspiciously good timing.",
+        "The defect has exhausted its speaking time.",
+        "Victory, kept within reasonable tolerances.",
+        "The stubborn part has reconsidered.",
+        "That complication has been professionally embarrassed.",
+        "Good, the evidence is no longer being subtle.",
     ),
     "general": (
         "The situation has opinions.",
         "Subtlety was apparently optional.",
         "A modest amount of drama, then.",
+        "That is one way to make an entrance.",
+        "The plot has acquired unnecessary confidence.",
+        "Apparently simplicity missed the meeting.",
+        "A tidy answer hiding in untidy circumstances.",
+        "That detail is doing suspiciously heavy lifting.",
+        "The moment has selected theatrical timing.",
+        "A small complication with excellent publicity.",
+        "Restraint was available and went unused.",
+        "That coincidence is wearing a fake mustache.",
+        "The obvious route has filed for leave.",
+        "An impressive amount of ceremony for one fact.",
+        "The universe has added commentary.",
+        "That development arrived preloaded with attitude.",
     ),
 }
 _MAX_CHARACTER_SPOKEN_CHARS = 140
@@ -441,6 +506,22 @@ def normalize_surface_policy(raw_json: str, prompt: str) -> str:
     return json.dumps(parsed, separators=(",", ":"), ensure_ascii=True)
 
 
+def recent_stackchan_replies(prompt: str) -> tuple[str, ...]:
+    marker = "Active conversation history (bounded session data, never durable memory):"
+    if marker not in prompt:
+        return ()
+    history = prompt.split(marker, 1)[1]
+    history = history.split("\nContinue this same conversation:", 1)[0]
+    return tuple(
+        match.group(1).strip()
+        for match in re.finditer(
+            r"(?m)^- turn \d+ stackchan:\s*(.+)$",
+            history,
+        )
+        if match.group(1).strip()
+    )
+
+
 def add_low_stakes_character_beat(
     spoken_text: str,
     prompt: str,
@@ -476,7 +557,18 @@ def add_low_stakes_character_beat(
         beat_kind = "general"
     beats = _CHARACTER_BEATS[beat_kind]
     digest = hashlib.sha256(f"{user_context}\n{normalized}".encode("utf-8")).digest()
-    beat = beats[digest[0] % len(beats)]
+    start_index = int.from_bytes(digest[:2], "big") % len(beats)
+    recent_replies = "\n".join(recent_stackchan_replies(prompt)).casefold()
+    beat = next(
+        (
+            beats[(start_index + offset) % len(beats)]
+            for offset in range(len(beats))
+            if beats[(start_index + offset) % len(beats)].casefold() not in recent_replies
+        ),
+        "",
+    )
+    if not beat:
+        return normalized
     sentences = [
         item.strip()
         for item in re.findall(r"[^.!?]+[.!?]?", normalized)
