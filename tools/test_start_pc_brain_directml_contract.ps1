@@ -20,6 +20,7 @@ if ($parseErrors.Count -ne 0) {
 foreach ($required in @(
   "Stop-ExistingBridge",
   "Refusing to stop non-Stackchan listener",
+  "BridgeStartupReady",
   "Invoke-EncodedChildPowerShell",
   "RedirectStandardOutput",
   "RedirectStandardError",
@@ -112,6 +113,17 @@ if ($researchPreflightIndex -lt 0 -or $workerStartIndex -lt 0 -or
 
 if ($text -match "Get-CimInstance Win32_Process\s*\|\s*Stop-Process") {
   throw "Launcher must not broadly stop every discovered process."
+}
+
+$startupGuardIndex = $text.IndexOf('$BridgeStartupReady = $false')
+$bridgeStartIndex = $text.IndexOf('$bridgeChild = Invoke-EncodedChildPowerShell')
+$startupSuccessIndex = $text.IndexOf('$BridgeStartupReady = $true')
+$startupFinallyIndex = $text.IndexOf('} finally {', $startupSuccessIndex)
+$failureCleanupIndex = $text.IndexOf('Stop-ExistingBridge', $startupFinallyIndex)
+if ($startupGuardIndex -lt 0 -or $bridgeStartIndex -lt $startupGuardIndex -or
+    $startupSuccessIndex -lt $bridgeStartIndex -or $startupFinallyIndex -lt $startupSuccessIndex -or
+    $failureCleanupIndex -lt $startupFinallyIndex) {
+  throw "A failed production launch must stop the Stackchan bridge listener."
 }
 
 foreach ($required in @(

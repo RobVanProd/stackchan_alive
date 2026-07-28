@@ -214,6 +214,8 @@ if (-not [string]::IsNullOrWhiteSpace($CameraPairingCodeFile)) {
   $escapedPairingCodeFile = $CameraPairingCodeFile.Replace("'", "''")
   $bridgeScript += " -CameraPairingCodeFile '$escapedPairingCodeFile'"
 }
+$BridgeStartupReady = $false
+try {
 $bridgeChild = Invoke-EncodedChildPowerShell -ScriptBody $bridgeScript `
   -StdoutPath (Join-Path $EvidencePath "bridge-start.txt") `
   -StderrPath (Join-Path $EvidencePath "bridge-start.err.log")
@@ -408,4 +410,10 @@ $Result = [ordered]@{
   warmRocmWorkerStopped = [bool]$StopWarmRocmWorker
 }
 $Result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $EvidencePath "result.json") -Encoding UTF8
+$BridgeStartupReady = $true
 if ($Json) { $Result | ConvertTo-Json -Depth 8 } else { Write-Host "DirectML PC brain ready: PID $BridgePid" }
+} finally {
+  if (-not $BridgeStartupReady) {
+    Stop-ExistingBridge
+  }
+}
