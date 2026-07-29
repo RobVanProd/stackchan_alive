@@ -31,9 +31,13 @@ start gate rejects any firmware-input diff from `origin/main`.
 Use a planned restart window. The DirectML launcher starts or reuses the local RVC worker and
 starts a configuration-verified resident loopback whisper.cpp server, then replaces only a
 verified Stackchan bridge listener. Production STT requires the local `small.en` model and prefers
-the official BLAS binary; prepare it before the window with
-`tools\setup_whisper_cpp.ps1 -Model small.en -PreferBlas`. Startup evidence must report
-`sttConfigVerified=true`, `sttModel=ggml-small.en.bin`, its SHA-256, and the intended thread count.
+the pinned Vulkan binary on the reference Windows host; prepare it before the window with
+`tools\setup_whisper_cpp.ps1 -Backend vulkan -Model small.en`. The official BLAS binary is the
+rollback when Vulkan is unavailable. Startup evidence must report `sttConfigVerified=true`,
+`sttBackend=vulkan`, `sttBackendVerified=true`, `sttWarmupVerified=true`,
+`sttModel=ggml-small.en.bin`, its pinned SHA-256, the executable SHA-256, and the intended thread
+count. The tracked warmup must finish before readiness so cold shader initialization cannot be
+charged to the first physical conversation turn.
 Research is fail-closed: the launcher records a full local search/fetch preflight before starting
 either worker or stopping an existing bridge. Start or verify the pinned loopback service first:
 

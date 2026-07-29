@@ -13,18 +13,26 @@ fallback if the worker is unavailable. The fallback
 is intentionally intelligible rather than voice-matched and is exposed in TTS telemetry; strict
 validation can set `STACKCHAN_VOICE_REQUIRE_DIRECTML=1` to reject fallback.
 
-Production STT uses the English `small.en` model, the official whisper.cpp BLAS build when it is
-available, 12 decoder threads on the reference Ryzen 7 5700, and a compact Stackchan vocabulary
-prompt. Install that profile once with:
+Production STT uses the full English `small.en` model, the Radeon RX 7800 XT through a pinned
+whisper.cpp Vulkan build, 12 decoder threads, and a compact Stackchan vocabulary prompt. The
+official BLAS build remains the CPU rollback. Do not substitute a distilled model: the measured
+distilled candidates lost domain accuracy, while the warmed Vulkan path preserved the full
+model's exact output and latency. Install the preferred profile once with:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\setup_whisper_cpp.ps1 `
-  -Model small.en -PreferBlas -Json
+  -Backend vulkan -Model small.en -Json
 ```
 
-The DirectML launcher requires `ggml-small.en.bin`, restarts the loopback STT worker during a
-planned bridge restart, and records its executable, model SHA-256, thread count, and prompt in
-startup evidence. It never reuses a merely healthy server whose configuration does not match.
+The Vulkan setup pins whisper.cpp `v1.9.1` at commit
+`f049fff95a089aa9969deb009cdd4892b3e74916`, uses a short build path on the install drive to avoid
+Windows path-length failures in generated shaders, and records source, tool, executable, SDK,
+and model provenance. The DirectML launcher requires the canonical full `ggml-small.en.bin`
+SHA-256, restarts the loopback STT worker during a planned bridge restart, proves the actual
+backend from the server log, and performs a deterministic tracked-audio warmup before declaring
+STT ready. Warmup evidence records only status, timing, and the sample hash; it does not preserve
+the transcription. A merely healthy server whose executable, model, backend, thread count, or
+prompt does not match is rejected.
 
 Both DirectML and ROCm worker `/health` responses report the requested device, the adapter name
 actually exposed by the runtime, an availability flag, uptime, and conversion counters. The full
@@ -70,7 +78,7 @@ Measured on the Ryzen 7 5700 / Radeon RX 7800 XT host:
 | Complete TTS + RVC client, 15 words | `1.18 s` |
 | Two-phrase streaming rehearsal, first PCM | `1.02 s` |
 | Two-phrase streaming rehearsal, complete | `2.14 s` |
-| Resident STT, real robot WAV | `0.51-0.59 s` |
+| Resident Vulkan `small.en`, 12 robot-voice samples under loaded host | `0.674 s` p50 / `0.697 s` p95, `12/12` exact |
 | Paced WebSocket transport, first binary audio | `1.22 s` |
 | Paced WebSocket transport, complete | `4.80 s` for `5.40 s` audio (`RTF 0.889`) |
 | Physical warm-API turns, worst first audio | `3.49 s` conversation / `1.05 s` post-text |

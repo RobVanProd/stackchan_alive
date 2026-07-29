@@ -3189,10 +3189,13 @@ class LanServiceTests(unittest.TestCase):
         ) as runner:
             session.handle_text(json.dumps({"type": "utterance_end", "seq": 91, "text": "Hello there"}))
             session.handle_text(json.dumps({"type": "utterance_end", "seq": 92, "text": "Hello again"}))
-
-        self.assertTrue(any(line.startswith("ask_about:") for line in runner.call_args_list[0].kwargs["memory_lines"]))
-        self.assertFalse(any(line.startswith("ask_about:") for line in runner.call_args_list[1].kwargs["memory_lines"]))
-        self.assertEqual("asked", session.memory.to_dict()["open_loops"][0]["status"])
+            self.assertTrue(
+                any(line.startswith("ask_about:") for line in runner.call_args_list[0].kwargs["memory_lines"])
+            )
+            self.assertFalse(
+                any(line.startswith("ask_about:") for line in runner.call_args_list[1].kwargs["memory_lines"])
+            )
+            self.assertEqual("asked", session.memory.to_dict()["open_loops"][0]["status"])
 
     def test_room_context_enters_prompt_only_as_typed_ambient_line(self):
         raw_frame = b"P5\n1 1\n255\n\x00"

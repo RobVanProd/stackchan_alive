@@ -7,6 +7,9 @@ param(
   [string]$SttExecutablePath = "",
   [string]$SttModelPath = "",
   [string]$SttInitialPrompt = "Stackchan,Gemma,Rhea,SearXNG,servo,telemetry,companion,bridge,camera,persona",
+  [ValidateSet("auto", "cpu", "vulkan")]
+  [string]$SttBackend = "auto",
+  [string]$SttWarmupWavPath = "docs\media\voice\stackchan_spark_greeting.wav",
   [int]$ReconnectTimeoutSeconds = 90,
   [string]$MemoryFile = "output\pc-brain\latest\memory.json",
   [switch]$EnableResearch,
@@ -143,32 +146,58 @@ $WorkerHealth | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $E
 
 if ([string]::IsNullOrWhiteSpace($SttExecutablePath)) {
   $SttExecutablePath = @(
+    (Join-Path $RepoRoot "output\local-tools\whisper.cpp-vulkan\Release\whisper-server.exe"),
     (Join-Path $RepoRoot "output\local-tools\whisper.cpp-blas\Release\whisper-server.exe"),
     (Join-Path $RepoRoot "output\local-tools\whisper.cpp\Release\whisper-server.exe")
   ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
 if ([string]::IsNullOrWhiteSpace($SttModelPath)) {
   $SttModelPath = @(
+    (Join-Path $RepoRoot "output\local-tools\whisper.cpp-vulkan\models\ggml-small.en.bin"),
     (Join-Path $RepoRoot "output\local-tools\whisper.cpp-blas\models\ggml-small.en.bin"),
     (Join-Path $RepoRoot "output\local-tools\whisper.cpp\models\ggml-small.en.bin")
   ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
 if (-not $SttExecutablePath -or
     -not (Test-Path -LiteralPath $SttExecutablePath -PathType Leaf)) {
-  throw "Production STT requires whisper-server.exe. Run tools\setup_whisper_cpp.ps1 -Model small.en -PreferBlas."
+  throw "Production STT requires whisper-server.exe. Run tools\setup_whisper_cpp.ps1 -Backend vulkan -Model small.en."
 }
 if (-not $SttModelPath -or -not (Test-Path -LiteralPath $SttModelPath -PathType Leaf)) {
-  throw "Production STT requires ggml-small.en.bin. Run tools\setup_whisper_cpp.ps1 -Model small.en -PreferBlas."
+  throw "Production STT requires ggml-small.en.bin. Run tools\setup_whisper_cpp.ps1 -Backend vulkan -Model small.en."
 }
 $SttExecutablePath = (Resolve-Path $SttExecutablePath).Path
 $SttModelPath = (Resolve-Path $SttModelPath).Path
+$ExpectedSmallEnSha256 = "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d"
+$ActualSttModelSha256 = (Get-FileHash -LiteralPath $SttModelPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ((Split-Path -Leaf $SttModelPath) -ne "ggml-small.en.bin" -or
+    $ActualSttModelSha256 -ne $ExpectedSmallEnSha256) {
+  throw "Production STT requires the pinned full ggml-small.en.bin model."
+}
+$ResolvedSttBackend = if ($SttBackend -ne "auto") {
+  $SttBackend
+} elseif ($SttExecutablePath -match "(?i)whisper\.cpp-vulkan") {
+  "vulkan"
+} else {
+  "cpu"
+}
+$ResolvedSttWarmupWavPath = if ([IO.Path]::IsPathRooted($SttWarmupWavPath)) {
+  $SttWarmupWavPath
+} else {
+  Join-Path $RepoRoot $SttWarmupWavPath
+}
+if (-not (Test-Path -LiteralPath $ResolvedSttWarmupWavPath -PathType Leaf)) {
+  throw "Production STT warmup WAV is missing: $ResolvedSttWarmupWavPath"
+}
+$ResolvedSttWarmupWavPath = (Resolve-Path $ResolvedSttWarmupWavPath).Path
 $escapedSttExecutable = $SttExecutablePath.Replace("'", "''")
 $escapedSttModel = $SttModelPath.Replace("'", "''")
 $escapedSttPrompt = $SttInitialPrompt.Replace("'", "''")
+$escapedSttWarmupWav = $ResolvedSttWarmupWavPath.Replace("'", "''")
 $sttStarter = (Resolve-Path (Join-Path $PSScriptRoot "start_whisper_server.ps1")).Path.Replace("'", "''")
 $sttScript = "`$ProgressPreference = 'SilentlyContinue'; & '$sttStarter' " +
   "-Port $SttServerPort -Threads $SttThreads -ExecutablePath '$escapedSttExecutable' " +
-  "-ModelPath '$escapedSttModel' -InitialPrompt '$escapedSttPrompt' -StopExisting -Json"
+  "-ModelPath '$escapedSttModel' -InitialPrompt '$escapedSttPrompt' " +
+  "-Backend '$ResolvedSttBackend' -WarmupWavPath '$escapedSttWarmupWav' -StopExisting -Json"
 $sttChild = Invoke-EncodedChildPowerShell -ScriptBody $sttScript `
   -StdoutPath (Join-Path $EvidencePath "stt-server-start.json") `
   -StderrPath (Join-Path $EvidencePath "stt-server-start.err.log")
@@ -182,8 +211,12 @@ $SttStart = try {
 }
 if ([string]$SttStart.status -ne "ready" -or
     -not [bool]$SttStart.configVerified -or
+    -not [bool]$SttStart.backendVerified -or
+    -not [bool]$SttStart.warmupVerified -or
+    [string]$SttStart.backend -ne $ResolvedSttBackend -or
     [int]$SttStart.threads -ne $SttThreads -or
-    [string]$SttStart.model -ne (Split-Path -Leaf $SttModelPath)) {
+    [string]$SttStart.model -ne (Split-Path -Leaf $SttModelPath) -or
+    [string]$SttStart.modelSha256 -ne $ExpectedSmallEnSha256) {
   throw "Whisper server did not prove the requested production STT configuration."
 }
 $SttServerUrl = "http://127.0.0.1`:$SttServerPort"
@@ -432,11 +465,18 @@ $Result = [ordered]@{
   sttServerUrl = $SttServerUrl
   sttServerReady = [string]$SttHealth.status -eq "ok"
   sttExecutable = [string]$SttStart.executable
+  sttExecutableSha256 = [string]$SttStart.executableSha256
   sttModel = [string]$SttStart.model
   sttModelSha256 = [string]$SttStart.modelSha256
   sttThreads = [int]$SttStart.threads
   sttInitialPrompt = [string]$SttStart.initialPrompt
   sttConfigVerified = [bool]$SttStart.configVerified
+  sttBackend = [string]$SttStart.backend
+  sttBackendDevice = $SttStart.backendDevice
+  sttBackendVerified = [bool]$SttStart.backendVerified
+  sttWarmupVerified = [bool]$SttStart.warmupVerified
+  sttWarmupElapsedMs = $SttStart.warmupElapsedMs
+  sttWarmupWavSha256 = [string]$SttStart.warmupWavSha256
   faceVisionEnabled = $StartFaceVision
   faceVisionReady = $VisionReady
   faceVisionPid = if ($StartFaceVision) { $VisionPid } else { $null }
