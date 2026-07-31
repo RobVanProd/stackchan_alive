@@ -86,6 +86,7 @@ function render(payload) {
   const robot = payload.robot || {};
   const behavior = payload.behavior || {};
   const services = payload.services || {};
+  const pipeline = payload.conversationPipeline || {};
   const speech = services.speechRecognition || {};
   const initiative = behavior.initiative || {};
   const room = behavior.roomObservation || {};
@@ -120,6 +121,11 @@ function render(payload) {
           ? `Ready / ${speech.restarts} recovered`
           : "Ready"
         : "Unavailable";
+  const failedService = ["model", "research", "voice", "playback", "knowledge"]
+    .find((name) => services[name] && services[name].healthy === false);
+  $("pipelineState").textContent = failedService
+    ? `${failedService} / ${services[failedService].lastErrorCode || "failed"}`
+    : String(pipeline.stage || "idle").replaceAll("_", " ");
   $("voiceName").textContent = bridge.ttsVoice || "Local voice";
   $("uptime").textContent = formatDuration(bridge.uptimeSeconds);
   $("robotMode").textContent = connected ? String(robot.mode || "ONLINE").toUpperCase() : "AWAITING ROBOT";

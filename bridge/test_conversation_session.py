@@ -1,6 +1,7 @@
 import unittest
 
 from bridge.conversation_session import ConversationConfig, ConversationPhase, ConversationSession
+from conversation_harness import ConversationTurnPlan, ToolTaskState
 
 
 class ConversationSessionTests(unittest.TestCase):
@@ -166,6 +167,43 @@ class ConversationSessionTests(unittest.TestCase):
         session.bridge_lost()
 
         self.assertEqual((), session.take_closed_turns())
+
+    def test_task_state_is_owned_by_session_and_commits_only_after_playback(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(reply_window_ms=1_000, acoustic_tail_ms=0)
+        )
+        plan = ConversationTurnPlan(
+            request={
+                "name": "web_search",
+                "arguments": {"query": "current weather in West Berlin"},
+            },
+            operation="repair",
+            next_state=ToolTaskState(
+                "weather",
+                "current_conditions",
+                (("location", "West Berlin"), ("time", "current")),
+                "current weather in West Berlin",
+                2,
+            ),
+        )
+        session.wake(0)
+        session.utterance_committed(10, "No, West Berlin")
+        session.response_started(20)
+        session.stage_turn(
+            "No, West Berlin",
+            "West Berlin is clear.",
+            task_plan=plan,
+            research_succeeded=True,
+        )
+        self.assertIsNone(session.harness.active)
+        session.playback_completed(30)
+        committed, succeeded = session.take_committed_task()
+        self.assertEqual(plan, committed)
+        self.assertTrue(succeeded)
+        self.assertEqual("West Berlin", session.harness.active.slot("location"))
+
+        session.bridge_lost()
+        self.assertIsNone(session.harness.active)
 
     def test_turn_failure_and_cancel_close_through_cooldown(self) -> None:
         self.session.wake(0)

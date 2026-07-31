@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Literal
 
+from conversation_harness import explicit_weather_default_location, safe_coarse_location
 from utterance_text import normalize_user_utterance
 
 MEMORY_SCHEMA = "stackchan.bridge-memory.v4"
@@ -43,6 +44,10 @@ MEMORY_STYLE_DIRECTIVE = (
 
 _ALLOWED_PREFIXES = ("user.", "project.", "robot.")
 _NAME_KEYS = {"user.name", "user.preferred_name", "user.greeting"}
+_HOST_OWNED_MEMORY_KEYS = {
+    "user.weather_default_location",
+    "user.weather_recent_location",
+}
 _PREFERRED_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,20}$")
 _RESERVED_NAME_WORDS = {
     "angry",
@@ -167,6 +172,11 @@ _EXPLICIT_USER_FORGET_ALL_RE = re.compile(
 )
 _EXPLICIT_FORGET_ALL_RE = re.compile(
     r"^(?:please\s+)?forget (?:everything|all memories)\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_EXPLICIT_WEATHER_FORGET_RE = re.compile(
+    r"^(?:please\s+)?forget(?:\s+about)?\s+my\s+(?:default\s+)?weather\s+"
+    r"(?:place|location|default)\s*[.!?]*$",
     re.IGNORECASE,
 )
 _FUTURE_MARKER_RE = re.compile(
@@ -655,6 +665,32 @@ def memory_fact_key(namespace: str, subject: object) -> str:
     return f"{clean_namespace}.{slug}"
 
 
+def explicit_memory_writes(user_text: object) -> dict[str, str]:
+    """Return deterministic, policy-approved writes from one explicit command."""
+
+    command_text = normalize_user_utterance(
+        " ".join(str(user_text or "").strip().split())
+    )
+    fact_match = _EXPLICIT_USER_FACT_RE.search(command_text)
+    namespace = "user"
+    if fact_match is None:
+        fact_match = _EXPLICIT_PROJECT_FACT_RE.search(command_text)
+        namespace = "project"
+    if fact_match is None:
+        return {}
+    key = memory_fact_key(namespace, fact_match.group("subject"))
+    value = _memory_scalar(fact_match.group("value"))
+    if (
+        not key
+        or key in _NAME_KEYS
+        or key in _HOST_OWNED_MEMORY_KEYS
+        or not value
+        or not _safe_value(key, value)
+    ):
+        return {}
+    return {key: value}
+
+
 def explicit_forget_keys(user_text: str) -> tuple[str, ...]:
     command_text = normalize_user_utterance(" ".join(str(user_text or "").strip().split()))
     if not command_text:
@@ -663,6 +699,8 @@ def explicit_forget_keys(user_text: str) -> tuple[str, ...]:
         return ("*",)
     if _EXPLICIT_USER_FORGET_ALL_RE.fullmatch(command_text):
         return ("user.",)
+    if _EXPLICIT_WEATHER_FORGET_RE.fullmatch(command_text):
+        return ("user.weather_default_location", "user.weather_recent_location")
 
     user_match = _EXPLICIT_USER_FORGET_RE.fullmatch(command_text)
     if user_match is not None and " and " not in user_match.group("subject").lower():
@@ -835,6 +873,11 @@ class BridgeMemory:
             record
             for record in self._durable_facts
             if _safe_value(record.key, record.value)
+            and (
+                record.key != "user.weather_default_location"
+                or bool(safe_coarse_location(record.value))
+            )
+            and record.key != "user.weather_recent_location"
             and (not record.expires_at or _as_datetime(record.expires_at) > _as_datetime(now))
             and record.key not in _NAME_KEYS
         )
@@ -1124,7 +1167,11 @@ class BridgeMemory:
             for raw_key, raw_value in writes.items():
                 key = _clean_key(raw_key)
                 value = _memory_scalar(raw_value)
-                if not value or not _safe_value(key, value):
+                if (
+                    not value
+                    or key in _HOST_OWNED_MEMORY_KEYS
+                    or not _safe_value(key, value)
+                ):
                     continue
                 if key in _NAME_KEYS:
                     # Identity is transcript-owned. The model may reinforce an explicitly
@@ -1162,12 +1209,14 @@ class BridgeMemory:
                 if self._forget_namespace(forget, "user"):
                     preferred_name = ""
                     durable = tuple(record for record in durable if not record.key.startswith("user."))
+                    recent = tuple(record for record in recent if not record.key.startswith("user."))
                     open_loops = ()
                 elif normalized_forget in _NAME_KEYS:
                     preferred_name = ""
                     durable = tuple(record for record in durable if record.key not in _NAME_KEYS)
                 elif normalized_forget.startswith("user."):
                     durable = tuple(record for record in durable if record.key != normalized_forget)
+                    recent = tuple(record for record in recent if record.key != normalized_forget)
                 if self._forget_namespace(forget, "project"):
                     topics = []
                     durable = tuple(record for record in durable if not record.key.startswith("project."))
@@ -1217,6 +1266,7 @@ class BridgeMemory:
         if forget_keys == ("user.",):
             preferred_name = ""
             durable = tuple(record for record in durable if not record.key.startswith("user."))
+            recent = tuple(record for record in recent if not record.key.startswith("user."))
             open_loops: tuple[OpenLoopRecord, ...] = ()
         else:
             open_loops = _canonical_open_loops(self._open_loops, now=now)
@@ -1226,6 +1276,7 @@ class BridgeMemory:
                     durable = tuple(record for record in durable if record.key not in _NAME_KEYS)
                 elif forget_key.startswith(("user.", "project.")):
                     durable = tuple(record for record in durable if record.key != forget_key)
+                    recent = tuple(record for record in recent if record.key != forget_key)
         match = re.search(
             r"\b(?:my name is|call me|you can call me|i am called|i'm called)\s+"
             r"([A-Za-z][A-Za-z0-9_-]{1,20})",
@@ -1246,9 +1297,32 @@ class BridgeMemory:
         if fact_match is not None:
             fact_key = memory_fact_key(fact_namespace, fact_match.group("subject"))
             fact_value = _memory_scalar(fact_match.group("value"))
-            if fact_key not in _NAME_KEYS and fact_value and _safe_value(fact_key, fact_value):
+            if (
+                fact_key not in _NAME_KEYS
+                and fact_key not in _HOST_OWNED_MEMORY_KEYS
+                and fact_value
+                and _safe_value(fact_key, fact_value)
+            ):
                 evictions += int(_durable_insert_evicts(durable, fact_key))
                 durable = _upsert_durable(durable, fact_key, fact_value, 0.85, now=now)
+
+        weather_default = explicit_weather_default_location(command_text)
+        if weather_default:
+            evictions += int(
+                _durable_insert_evicts(durable, "user.weather_default_location")
+            )
+            durable = _upsert_durable(
+                durable,
+                "user.weather_default_location",
+                weather_default,
+                0.8,
+                now=now,
+            )
+            recent = tuple(
+                record
+                for record in recent
+                if record.key != "user.weather_recent_location"
+            )
 
         topics = list(self.recent_topics)
         for topic in topics_for_user_text(text):
@@ -1265,6 +1339,69 @@ class BridgeMemory:
             _open_loops=open_loops,
             durable_evictions=evictions,
         )
+
+    def remember_weather_location(
+        self,
+        location: object,
+        *,
+        durable: bool = False,
+        now: str | None = None,
+    ) -> "BridgeMemory":
+        """Store only an explicitly approved coarse weather default."""
+
+        clean = safe_coarse_location(location)
+        if not clean or not durable:
+            return self
+        timestamp = now or _utc_now()
+        durable_facts = self._canonical_durable(now=timestamp)
+        recent = self._canonical_recent(durable_facts, now=timestamp)
+        evictions = self.durable_evictions
+        evictions += int(
+            _durable_insert_evicts(
+                durable_facts,
+                "user.weather_default_location",
+            )
+        )
+        durable_facts = _upsert_durable(
+            durable_facts,
+            "user.weather_default_location",
+            clean,
+            0.8,
+            now=timestamp,
+        )
+        return replace(
+            self,
+            _durable_facts=_bounded_durable(durable_facts),
+            _recent_context=_bounded_recent(recent),
+            durable_evictions=evictions,
+        )
+
+    def weather_location(self, *, now: str | None = None) -> str:
+        """Resolve only an explicitly approved coarse weather default."""
+
+        timestamp = now or _utc_now()
+        durable = self._canonical_durable(now=timestamp)
+        approved = next(
+            (
+                record
+                for record in reversed(durable)
+                if record.key == "user.weather_default_location"
+            ),
+            None,
+        )
+        if approved is not None:
+            object.__setattr__(
+                self,
+                "_durable_facts",
+                tuple(
+                    replace(record, last_used_at=timestamp)
+                    if record.key == approved.key
+                    else record
+                    for record in durable
+                ),
+            )
+            return approved.value
+        return ""
 
     def fact_value(self, key: str) -> str:
         """Return one exact approved durable fact without exposing the whole store."""

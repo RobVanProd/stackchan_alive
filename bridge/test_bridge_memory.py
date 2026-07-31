@@ -162,6 +162,68 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         self.assertEqual("", memory.fact_value("user.thing"))
         self.assertEqual([], memory.to_dict()["durable_facts"])
 
+    def test_incidental_weather_place_is_session_only_and_not_serialized(self):
+        memory = BridgeMemory().remember_weather_location(
+            "West Berlin",
+            now="2026-08-01T00:00:00Z",
+        )
+        self.assertEqual("", memory.weather_location(now="2026-08-02T00:00:00Z"))
+        saved = memory.to_dict()
+        self.assertFalse(any("weather" in record["key"] for record in saved["durable_facts"]))
+        self.assertFalse(any("weather" in record["key"] for record in saved["recent_context"]))
+
+    def test_explicit_weather_default_supersedes_recent_place_and_is_forgettable(self):
+        memory = BridgeMemory().remember_weather_location("Boston")
+        memory = memory.remember_user_text(
+            "Always use West Berlin as my default weather place."
+        )
+        self.assertEqual("West Berlin", memory.weather_location())
+        saved = memory.to_dict()
+        self.assertTrue(
+            any(
+                record["key"] == "user.weather_default_location"
+                and record["value"] == "West Berlin"
+                for record in saved["durable_facts"]
+            )
+        )
+        self.assertFalse(
+            any(
+                record["key"] == "user.weather_recent_location"
+                for record in saved["recent_context"]
+            )
+        )
+        forgotten = memory.remember_user_text("Forget my weather location.")
+        self.assertEqual("", forgotten.weather_location())
+
+    def test_weather_default_requires_explicit_host_owned_approval(self):
+        declarative = BridgeMemory().remember_user_text("My weather location is Paris")
+        generic = BridgeMemory().remember_user_text(
+            "Remember that my weather default location is Paris"
+        )
+        model = BridgeMemory().apply_character_memory(
+            {
+                "memory_write": {
+                    "user.weather_default_location": "Paris",
+                    "user.weather_recent_location": "Boston",
+                },
+                "memory_forget": [],
+            }
+        )
+        self.assertEqual("", declarative.weather_location())
+        self.assertEqual("", generic.weather_location())
+        self.assertEqual("", model.weather_location())
+
+    def test_weather_place_rejects_precise_or_inferred_locations(self):
+        for value in (
+            "123 Main Street",
+            "52.52 13.40",
+            "my home",
+            "current location",
+        ):
+            with self.subTest(value=value):
+                memory = BridgeMemory().remember_weather_location(value)
+                self.assertEqual("", memory.weather_location())
+
     def test_explicit_forget_is_transcript_owned_and_immediate(self):
         memory = BridgeMemory().remember_user_text("My name is Rob.")
         memory = memory.remember_user_text("Remember that my favorite color is teal.")

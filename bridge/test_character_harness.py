@@ -531,6 +531,7 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn('"emotion":{"arousal":0.0,"valence":0.0}', prompt)
         self.assertIn("Do not use any other mode or earcon value", prompt)
         self.assertIn("Bridge-only host conversation policy", prompt)
+        self.assertIn("Treat a terse correction as an update", prompt)
         self.assertIn("Answer the user's actual question first", prompt)
         self.assertIn("a wry observation", prompt)
         self.assertIn("never at the user's identity", prompt)

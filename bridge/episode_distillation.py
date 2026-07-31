@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import re
 import urllib.request
 from urllib.parse import urlsplit, urlunsplit
 from dataclasses import dataclass
@@ -25,6 +26,15 @@ DISTILLATION_SCHEMA = {
     "required": ["episode"],
     "additionalProperties": False,
 }
+_PRIVATE_LOCATION_RE = re.compile(
+    r"(?:\b(?:home|address|where\s+i\s+live|my\s+location|current\s+location|"
+    r"coordinates?|latitude|longitude|street|road|avenue|boulevard|postal|zip)\b|"
+    r"(?<!\d)-?\d{1,3}\.\d{3,}\s*[, ]\s*-?\d{1,3}\.\d{3,}(?!\d)|"
+    r"\b\d{1,6}\s+[A-Za-z][A-Za-z .'-]{1,40}\s+"
+    r"(?:street|st|road|rd|avenue|ave|boulevard|blvd|lane|drive|court)\b)",
+    re.IGNORECASE,
+)
+_THIRD_PARTY_POSSESSIVE_RE = re.compile(r"\b[A-Z][A-Za-z'-]{1,30}'s\b")
 
 
 @dataclass(frozen=True)
@@ -72,9 +82,28 @@ def validate_distillation(raw: object) -> DistilledMemory | None:
         or not episode.strip()
         or len(episode) > 120
         or not _safe_value("project.episode", episode)
+        or _PRIVATE_LOCATION_RE.search(episode)
+        or _THIRD_PARTY_POSSESSIVE_RE.search(episode)
     ):
         return None
     return DistilledMemory(" ".join(episode.split()))
+
+
+def distillation_turns_safe(turns: Iterable[tuple[str, str]]) -> bool:
+    """Reject private or research-like session material before it reaches the model."""
+
+    for user, robot in turns:
+        for value in (user, robot):
+            clean = " ".join(str(value or "").split())[:MAX_TURN_CHARS]
+            if (
+                not _safe_value("project.episode", clean)
+                or _PRIVATE_LOCATION_RE.search(clean)
+                or _THIRD_PARTY_POSSESSIVE_RE.search(clean)
+                or "http://" in clean.casefold()
+                or "https://" in clean.casefold()
+            ):
+                return False
+    return True
 
 
 def apply_distillation(

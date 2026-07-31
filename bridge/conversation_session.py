@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from conversation_harness import ConversationHarness, ConversationTurnPlan
+
 
 class ConversationPhase(str, Enum):
     IDLE = "idle"
@@ -80,6 +82,11 @@ class ConversationSession:
         self._recent_turns: list[tuple[str, str]] = []
         self._pending_turn: tuple[str, str] | None = None
         self._closed_turns: tuple[tuple[str, str], ...] = ()
+        self.harness = ConversationHarness()
+        self._committed_task: tuple[ConversationTurnPlan | None, bool] = (
+            None,
+            False,
+        )
 
     def current_reply_window_ms(self) -> int:
         completed_followups = max(0, self.turns - 1)
@@ -105,6 +112,8 @@ class ConversationSession:
     def _clear_context(self) -> None:
         self._recent_turns.clear()
         self._pending_turn = None
+        self.harness.clear()
+        self._committed_task = (None, False)
 
     def _archive_context_for_close(self) -> None:
         if self._recent_turns or self._pending_turn is not None:
@@ -161,7 +170,14 @@ class ConversationSession:
         self._clear_context()
         return self._transition("session_started", "open_capture", reason="wake")
 
-    def stage_turn(self, user_text: str, response_text: str) -> None:
+    def stage_turn(
+        self,
+        user_text: str,
+        response_text: str,
+        *,
+        task_plan: ConversationTurnPlan | None = None,
+        research_succeeded: bool = False,
+    ) -> None:
         """Stage a generated turn until authoritative playback completion arrives."""
 
         if self.phase not in (ConversationPhase.SPEAKING, ConversationPhase.REPLY_WINDOW):
@@ -171,6 +187,11 @@ class ConversationSession:
         if not user or not response:
             return
         self._pending_turn = (user, response)
+        if task_plan is not None:
+            self.harness.stage(
+                task_plan,
+                research_succeeded=research_succeeded,
+            )
 
     def _commit_staged_turn(self) -> None:
         if self._pending_turn is None:
@@ -178,6 +199,12 @@ class ConversationSession:
         self._recent_turns.append(self._pending_turn)
         self._pending_turn = None
         del self._recent_turns[: -self.config.max_context_turns]
+        self._committed_task = self.harness.commit()
+
+    def take_committed_task(self) -> tuple[ConversationTurnPlan | None, bool]:
+        committed = self._committed_task
+        self._committed_task = (None, False)
+        return committed
 
     def context_lines(self) -> tuple[str, ...]:
         lines: list[str] = []
@@ -270,6 +297,7 @@ class ConversationSession:
         self.reply_window_until_ms = now + self.current_reply_window_ms()
         self.close_after_response = False
         self._pending_turn = None
+        self.harness.discard_pending()
         actions.append("open_capture")
         return self._transition(*actions, reason="barge_in")
 
@@ -331,4 +359,5 @@ class ConversationSession:
             "conversation_reply_window_remaining_ms": max(0, self.reply_window_until_ms - now),
             "conversation_acoustic_tail_remaining_ms": max(0, self.acoustic_tail_until_ms - now),
             "conversation_close_reason": self.last_close_reason,
+            **self.harness.snapshot(),
         }

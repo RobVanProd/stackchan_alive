@@ -460,6 +460,7 @@ def run_runner_profile(
     embodiment_lines: tuple[str, ...] = (),
     memory_lines: tuple[str, ...] = (),
     conversation_lines: tuple[str, ...] = (),
+    task_lines: tuple[str, ...] = (),
     cancellation: CancellationToken | None = None,
     allow_identity: bool = False,
     in_process_ollama: bool = False,
@@ -487,6 +488,7 @@ def run_runner_profile(
         embodiment_lines=embodiment_lines,
         memory_lines=memory_lines,
         conversation_lines=conversation_lines,
+        task_lines=task_lines,
     )
     resolved_command, command_source = resolve_command(profile_id, command)
     use_in_process_ollama = bool(
@@ -532,7 +534,13 @@ def run_runner_profile(
         allow_identity=identity_allowed,
         allow_visual_claims=visual_claims_allowed,
         grounding_text="\n".join(
-            (str(case["user"]), *embodiment_lines, *memory_lines, *conversation_lines)
+            (
+                str(case["user"]),
+                *embodiment_lines,
+                *memory_lines,
+                *conversation_lines,
+                *task_lines,
+            )
         ),
     )
     validation.elapsed_ms = elapsed_ms

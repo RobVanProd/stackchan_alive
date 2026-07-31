@@ -8,6 +8,7 @@ from episode_distillation import (
     _local_generate_url,
     apply_distillation,
     distillation_prompt,
+    distillation_turns_safe,
     request_distillation,
     validate_distillation,
 )
@@ -48,6 +49,9 @@ class EpisodeDistillationTests(unittest.TestCase):
             {"episode": "x" * 121},
             {"episode": 4},
             {"episode": "Talked about medical treatment"},
+            {"episode": "Talked about my home address"},
+            {"episode": "Met at 123 Main Street"},
+            {"episode": "Alice's apartment was discussed"},
             {"episode": "Talked about servos", "open_loop": None},
         )
         memory = BridgeMemory()
@@ -57,6 +61,19 @@ class EpisodeDistillationTests(unittest.TestCase):
         self.assertEqual(len(fixtures), memory.distill_dropped)
         self.assertEqual(0, memory.episode_count)
         self.assertEqual(0, memory.open_loop_count)
+
+    def test_private_or_web_tainted_turns_never_reach_distillation(self):
+        self.assertTrue(
+            distillation_turns_safe((("We tuned the servo", "It is stable"),))
+        )
+        for turns in (
+            (("My address is 123 Main Street", "Understood"),),
+            (("Alice's apartment is nearby", "Understood"),),
+            (("Check https://example.com", "I found it"),),
+            (("Remember my diagnosis", "I cannot store that"),),
+        ):
+            with self.subTest(turns=turns):
+                self.assertFalse(distillation_turns_safe(turns))
 
     def test_prompt_covers_the_full_bounded_session(self):
         turns = [(f"question {index}", f"answer {index}") for index in range(24)]

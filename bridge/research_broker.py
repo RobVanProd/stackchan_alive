@@ -193,6 +193,12 @@ class ResearchBroker:
         self.audit: list[dict[str, object]] = []
 
     def _record(self, name: str, started: float, **fields: object) -> None:
+        query = fields.pop("query", None)
+        url = fields.pop("url", None)
+        if query is not None:
+            fields["query_chars"] = len(str(query))
+        if url is not None:
+            fields["url_present"] = bool(str(url))
         self.audit.append(
             {
                 "tool": name,

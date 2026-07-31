@@ -109,6 +109,33 @@ class DashboardRuntimeTests(unittest.TestCase):
         self.assertEqual(82, status["robot"]["batteryPercent"])
         self.assertNotIn("private_text", json.dumps(status))
 
+    def test_pipeline_health_attributes_failures_without_turn_content(self) -> None:
+        self.runtime.note_pipeline_stage(
+            "researching",
+            turn_seq=12,
+            task_domain="weather",
+            task_status="repair",
+        )
+        self.runtime.note_pipeline_result(
+            "research",
+            ok=False,
+            error_code="research_result_context_mismatch",
+            elapsed_ms=42.5,
+        )
+
+        status = self.runtime.status()
+        self.assertEqual("researching", status["conversationPipeline"]["stage"])
+        self.assertEqual("weather", status["conversationPipeline"]["taskDomain"])
+        research = status["services"]["research"]
+        self.assertFalse(research["healthy"])
+        self.assertEqual(
+            "research_result_context_mismatch",
+            research["lastErrorCode"],
+        )
+        serialized = json.dumps(status)
+        self.assertNotIn("West Berlin", serialized)
+        self.assertNotIn("current weather", serialized)
+
     def test_resume_requires_explicit_robot_clear_confirmation(self) -> None:
         with patch.object(self.runtime, "_fetch_robot") as fetch:
             result = self.runtime.set_motion(True)

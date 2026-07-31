@@ -49,6 +49,7 @@ from lan_service import (
 from cancellation import CancellationToken, OperationCancelledError
 from bridge_memory import BridgeMemory
 from conversation_session import ConversationPhase
+from episode_distillation import DistilledMemory
 from initiative_policy import InitiativeConfig, InitiativePolicy
 from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
@@ -862,6 +863,15 @@ class LanServiceTests(unittest.TestCase):
         )
         self.assertEqual("question", prompt_case_for_text("Hello, how are you doing", "", "greeting"))
         self.assertEqual("greeting", prompt_case_for_text("The cable is fixed now", "", "greeting"))
+        self.assertEqual(
+            "question",
+            prompt_case_for_text(
+                "No, West Berlin",
+                "",
+                "greeting",
+                has_conversation_context=True,
+            ),
+        )
         self.assertEqual("picked_up", prompt_case_for_text("Hello", "picked_up", "greeting"))
 
     def test_identity_question_uses_local_name_response(self):
@@ -3039,6 +3049,123 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual(0, session._session_non_research_turns)
         self.assertNotIn("project.web", {item["key"] for item in session.memory.to_dict()["durable_facts"]})
 
+    def test_conversation_weather_correction_replays_typed_search_intent(self):
+        def model_result(text):
+            return SimpleNamespace(
+                raw_response=json.dumps(
+                    {
+                        "spoken_text": text,
+                        "mode": "speak",
+                        "earcon": "none",
+                        "emotion": {"arousal": 0.0, "valence": 0.0},
+                        "memory_write": {},
+                        "memory_forget": [],
+                    }
+                ),
+                command_source="test",
+                elapsed_ms=1.0,
+                approx_tokens_per_sec=10.0,
+            )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "fake_tts.py"
+            script.write_text(
+                "import base64,json,sys\n"
+                "sys.stdin.buffer.read()\n"
+                "print(json.dumps({'audio_format':'pcm16','sample_rate':16000,"
+                "'audio_b64':base64.b64encode(b'\\x00\\x00').decode('ascii'),"
+                "'audio_truncated':False,'beats':[{'env':0.4,'viseme':'ah',"
+                "'duration_ms':20,'final':True}]}))\n",
+                encoding="utf-8",
+            )
+            broker = Mock()
+            broker.execute.side_effect = [
+                {
+                    "schema": "stackchan.research.v1",
+                    "tool": "web_search",
+                    "query": "current weather in Boston",
+                    "results": [{"title": "Boston", "url": "https://example.com/a", "excerpt": "Cold."}],
+                },
+                {
+                    "schema": "stackchan.research.v1",
+                    "tool": "web_search",
+                    "query": "current weather in West Berlin",
+                    "results": [{"title": "West Berlin", "url": "https://example.com/b", "excerpt": "Clear."}],
+                },
+            ]
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    conversation_v2_enabled=True,
+                    conversation_acoustic_tail_ms=0,
+                    research_enabled=True,
+                    tts_command=f'"{sys.executable}" "{script}"',
+                ),
+                research_broker=broker,
+            )
+            with patch(
+                "lan_service.run_runner_profile",
+                side_effect=[
+                    model_result("Boston is cold."),
+                    model_result("West Berlin is clear. Geography has been corrected."),
+                ],
+            ) as runner:
+                session.handle_text(json.dumps({"type": "utterance_start", "seq": 94}))
+                session.handle_text(
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 94,
+                            "text": "What is the weather like in Boston?",
+                        }
+                    )
+                )
+                session.handle_text(json.dumps({"type": "playback_complete", "seq": 94}))
+                session.handle_text(json.dumps({"type": "utterance_start", "seq": 95}))
+                session.handle_text(
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 95,
+                            "text": "No, West Berlin",
+                        }
+                    )
+                )
+                session.handle_text(json.dumps({"type": "playback_complete", "seq": 95}))
+
+        queries = [
+            call.args[0]["arguments"]["query"]
+            for call in broker.execute.call_args_list
+        ]
+        self.assertEqual(
+            ["current weather in Boston", "current weather in West Berlin"],
+            queries,
+        )
+        self.assertEqual(2, runner.call_count)
+        self.assertEqual("question", runner.call_args.kwargs["case_name"])
+        self.assertNotIn(
+            "Resolved active request:",
+            runner.call_args.kwargs["user_text"],
+        )
+        self.assertIn(
+            "current weather in West Berlin",
+            runner.call_args.kwargs["task_lines"],
+        )
+        self.assertIn(
+            "turn 1 user: What is the weather like in Boston?",
+            runner.call_args.kwargs["conversation_lines"],
+        )
+        self.assertEqual(
+            "West Berlin",
+            session.conversation_harness.active.slot("location"),
+        )
+        self.assertEqual("", session.memory.weather_location())
+        self.assertFalse(
+            any(
+                record["key"] == "user.weather_default_location"
+                for record in session.memory.to_dict()["durable_facts"]
+            )
+        )
+
     def test_verification_request_searches_and_fetches_top_source_before_one_model_call(self):
         broker = Mock()
         broker.execute.side_effect = [
@@ -3154,12 +3281,81 @@ class LanServiceTests(unittest.TestCase):
             session._conversation_payload(transition, observed_ms=700)
 
         thread.assert_called_once()
-        distilled_turns, distilled_session = thread.call_args.kwargs["args"]
+        distilled_turns, distilled_session, expected_revision = (
+            thread.call_args.kwargs["args"]
+        )
         self.assertEqual(1, distilled_session)
+        self.assertEqual(session._memory_revision, expected_revision)
         self.assertEqual(6, len(distilled_turns))
         self.assertEqual(("question 0", "answer 0"), distilled_turns[0])
         self.assertEqual(("question 5", "answer 5"), distilled_turns[-1])
         thread.return_value.start.assert_called_once_with()
+
+    def test_session_with_research_keeps_only_coarse_episode_out_of_distillation(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                conversation_acoustic_tail_ms=0,
+                episode_distillation_enabled=True,
+                tts_command="fixture-tts",
+            )
+        )
+        session.conversation.wake(0, "fixture")
+        session.conversation.utterance_committed(10, "weather in a private place")
+        session.conversation.response_started(20)
+        session.conversation.stage_turn(
+            "weather in a private place",
+            "the researched answer",
+        )
+        session.conversation.playback_completed(30)
+        session._session_topics.append("weather")
+        session._session_research_turns = 1
+
+        with patch("lan_service.threading.Thread") as thread:
+            transition = session.conversation.cancel(40, "fixture_close")
+            session._conversation_payload(transition, observed_ms=40)
+
+        thread.assert_not_called()
+        self.assertEqual(1, session.memory.episode_count)
+        episode = session.memory.to_dict()["episodes"][0]["text"]
+        self.assertIn("weather", episode)
+        self.assertNotIn("private place", episode)
+
+    def test_stale_distillation_cannot_resurrect_superseded_knowledge(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                episode_distillation_enabled=True,
+                tts_command="fixture-tts",
+            )
+        )
+        session.conversation.wake(0, "fixture")
+        session.conversation.cancel(10, "fixture_close")
+        stale_revision = session._memory_revision
+        session._commit_memory(
+            session.memory.remember_user_text(
+                "Remember that my favorite color is teal."
+            )
+        )
+
+        with (
+            patch(
+                "lan_service.request_distillation",
+                return_value='{"episode":"Old session detail"}',
+            ),
+            patch(
+                "lan_service.validate_distillation",
+                return_value=DistilledMemory("Old session detail"),
+            ),
+        ):
+            session._run_episode_distillation(
+                (("old question", "old answer"),),
+                session.conversation.session_number,
+                stale_revision,
+            )
+
+        self.assertEqual(0, session.memory.episode_count)
+        self.assertEqual(1, session.memory.distill_dropped)
 
     def test_injected_open_loop_is_consumed_and_not_injected_again(self):
         memory = BridgeMemory().add_open_loop(

@@ -26,7 +26,12 @@ from typing import Any, Callable
 from cancellation import CancellationToken, OperationCancelledError
 from bridge_memory import RelationshipCard, explicit_forget_keys, topics_for_user_text
 from character_harness import trusted_visual_context_available
-from episode_distillation import apply_distillation, request_distillation, validate_distillation
+from episode_distillation import (
+    apply_distillation,
+    distillation_turns_safe,
+    request_distillation,
+    validate_distillation,
+)
 from local_runner import RUNNER_PROFILES, RunnerConfigurationError, RunnerExecutionError, run_runner_profile
 from persona_pack import (
     DEFAULT_PERSONA_ID,
@@ -72,6 +77,7 @@ from research_broker import (
 from local_facts import resolve_local_fact
 from robot_embodiment import RobotEmbodimentState
 from conversation_latency import build_conversation_latency_record
+from conversation_harness import ConversationTurnPlan, weather_result_matches
 from conversation_session import ConversationConfig, ConversationPhase, ConversationSession
 from initiative_policy import (
     MIN_UNPROMPTED_INTERVAL_MS,
@@ -1046,7 +1052,13 @@ def audio_downlink_frames(seq: int, tts, chunk_bytes: int) -> list[dict[str, obj
     return frames
 
 
-def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
+def prompt_case_for_text(
+    text: str,
+    requested: str,
+    default_case: str,
+    *,
+    has_conversation_context: bool = False,
+) -> str:
     if requested:
         return requested
     clean = normalize_user_utterance(text)
@@ -1065,6 +1077,8 @@ def prompt_case_for_text(text: str, requested: str, default_case: str) -> str:
         return "greeting"
     question_text = LEADING_GREETING.sub("", clean).strip()
     if "?" in clean or CONVERSATIONAL_QUESTION.search(question_text):
+        return "question"
+    if has_conversation_context:
         return "question"
     return default_case
 
@@ -1185,6 +1199,15 @@ def natural_research_request(text: str) -> tuple[dict[str, object] | None, str]:
     return {"name": "web_search", "arguments": {"query": query, "max_results": 4}}, routing
 
 
+def research_result_succeeded(result: object) -> bool:
+    if not isinstance(result, dict) or result.get("error"):
+        return False
+    rows = result.get("results")
+    if isinstance(rows, list) and rows:
+        return True
+    return bool(str(result.get("excerpt", "")).strip())
+
+
 def is_visual_color_request(text: str) -> bool:
     return bool(VISUAL_COLOR_REQUEST.search(" ".join(str(text or "").split())))
 
@@ -1230,6 +1253,7 @@ class LanBridgeSession:
         research_broker: ResearchBroker | None = None,
         initiative_policy: InitiativePolicy | None = None,
         room_context: RoomContextRuntime | None = None,
+        dashboard_runtime: DashboardRuntime | None = None,
     ):
         self.config = config
         self.memory = memory if memory is not None else BridgeMemory()
@@ -1250,10 +1274,12 @@ class LanBridgeSession:
         self._injected_open_loops: set[str] = set()
         self._session_topics: list[str] = []
         self._session_non_research_turns = 0
+        self._session_research_turns = 0
         self._finalized_session_number = 0
         self._last_robot_heartbeat: dict[str, object] = {}
         self.initiative_policy = initiative_policy
         self.room_context = room_context
+        self.dashboard_runtime = dashboard_runtime
         self.conversation: ConversationSession | None = None
         self.conversation_response_seq = 0
         self.playback_response_seq = 0
@@ -1285,6 +1311,14 @@ class LanBridgeSession:
         self.research_broker = research_broker
         if self.research_broker is None and config.research_enabled:
             self.research_broker = ResearchBroker(ResearchBrokerConfig(searxng_url=config.searxng_url))
+
+    @property
+    def conversation_harness(self):
+        """Compatibility view; the conversation lease owns all transient task state."""
+
+        if self.conversation is None:
+            raise RuntimeError("conversation_v2_disabled")
+        return self.conversation.harness
 
     def _conversation_payload(self, transition=None, *, observed_ms: int | None = None) -> dict[str, object]:
         if self.conversation is None:
@@ -1351,6 +1385,9 @@ class LanBridgeSession:
         self._injected_open_loops.clear()
         self._session_topics.clear()
         self._session_non_research_turns = 0
+        self._session_research_turns = 0
+        if self.conversation is not None:
+            self.conversation.harness.clear()
 
     def _commit_memory(self, memory: BridgeMemory) -> None:
         with self._memory_lock:
@@ -1359,16 +1396,31 @@ class LanBridgeSession:
             if self.config.memory_file:
                 save_bridge_memory(self.config.memory_file, self.memory)
 
-    def _run_episode_distillation(self, turns: tuple[tuple[str, str], ...], session_number: int) -> None:
+    def _run_episode_distillation(
+        self,
+        turns: tuple[tuple[str, str], ...],
+        session_number: int,
+        expected_memory_revision: int,
+    ) -> None:
         dropped = False
-        try:
-            result = validate_distillation(request_distillation(turns))
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        if not distillation_turns_safe(turns):
             result = None
+        else:
+            try:
+                result = validate_distillation(request_distillation(turns))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                result = None
         with self._memory_lock:
             with self._active_turn_lock:
                 active = self._active_turn_token is not None
-            if result is None or active:
+            stale = (
+                self._memory_revision != expected_memory_revision
+                or self.conversation is None
+                or self.conversation.session_number != session_number
+                or self.conversation.phase
+                not in (ConversationPhase.COOLDOWN, ConversationPhase.IDLE)
+            )
+            if result is None or active or stale:
                 self.memory = self.memory.note_distill_drop()
                 dropped = True
             else:
@@ -1398,7 +1450,7 @@ class LanBridgeSession:
         turns = self.conversation.take_closed_turns()
         updated = self.memory.add_episode_from_topics(
             self._session_topics,
-            self._session_non_research_turns,
+            len(turns),
         )
         self._commit_memory(updated)
         self._append_turn_log(
@@ -1410,13 +1462,22 @@ class LanBridgeSession:
                 "session_turn_count": len(turns),
                 "session_topic_count": len(set(self._session_topics)),
                 "session_non_research_turns": self._session_non_research_turns,
+                "session_research_turns": self._session_research_turns,
+                "distillation_skipped_research": bool(
+                    self._session_research_turns
+                ),
                 **self.memory.diagnostics(),
             }
         )
-        if self.config.episode_distillation_enabled and turns:
+        if (
+            self.config.episode_distillation_enabled
+            and turns
+            and self._session_research_turns == 0
+        ):
+            expected_memory_revision = self._memory_revision
             threading.Thread(
                 target=self._run_episode_distillation,
-                args=(turns, session_number),
+                args=(turns, session_number, expected_memory_revision),
                 name=f"stackchan-memory-distill-{session_number}",
                 daemon=True,
             ).start()
@@ -1498,9 +1559,24 @@ class LanBridgeSession:
         if finished and self.room_context is not None:
             self.room_context.set_foreground_active(False)
 
-    def _stage_conversation_turn(self, user_text: str, response_text: str, tts_error: str) -> None:
+    def _stage_conversation_turn(
+        self,
+        user_text: str,
+        response_text: str,
+        tts_error: str,
+        conversation_plan: ConversationTurnPlan,
+        *,
+        research_succeeded: bool = False,
+    ) -> None:
         if self.conversation is not None and not tts_error:
-            self.conversation.stage_turn(user_text, response_text)
+            self.conversation.stage_turn(
+                user_text,
+                response_text,
+                task_plan=conversation_plan,
+                research_succeeded=research_succeeded,
+            )
+        elif tts_error and self.conversation is not None:
+            self.conversation.harness.discard_pending()
 
     def _begin_conversation_capture(self, owner_id: str) -> dict[str, object] | None:
         if self.initiative_policy is not None:
@@ -1523,6 +1599,27 @@ class LanBridgeSession:
 
     def _conversation_failure(self, code: str, detail: str) -> dict[str, object]:
         frame = error_frame(code, detail)
+        if self.dashboard_runtime is not None:
+            service = (
+                "model"
+                if code.startswith(("runner", "model"))
+                else "research"
+                if code.startswith("research")
+                else "voice"
+                if code.startswith("tts")
+                else "knowledge"
+                if code.startswith(("memory", "distill"))
+                else ""
+            )
+            self.dashboard_runtime.note_pipeline_stage("failed")
+            if service:
+                self.dashboard_runtime.note_pipeline_result(
+                    service,
+                    ok=False,
+                    error_code=code,
+                )
+        if self.conversation is not None:
+            self.conversation.harness.discard_pending()
         if self.conversation is not None:
             if self.conversation.phase in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
                 transition = self.conversation.turn_failed(now_ms(), code)
@@ -1740,6 +1837,63 @@ class LanBridgeSession:
             )
         )
         self._append_turn_log(record)
+        if self.dashboard_runtime is not None:
+            runner_elapsed = runner_summary.get(
+                "research_runner_elapsed_ms",
+                runner_summary.get("runner_elapsed_ms"),
+            )
+            runner_source = str(
+                runner_summary.get("runner_command_source", "")
+            ).casefold()
+            model_invoked = (
+                "research_runner_elapsed_ms" in runner_summary
+                or not runner_source.startswith(
+                    ("local_", "trusted_", "deterministic_")
+                )
+            )
+            if model_invoked:
+                self.dashboard_runtime.note_pipeline_result(
+                    "model",
+                    ok=True,
+                    elapsed_ms=(
+                        float(runner_elapsed)
+                        if isinstance(runner_elapsed, (int, float))
+                        else None
+                    ),
+                )
+            if "research_status" in runner_summary:
+                research_status = str(runner_summary.get("research_status", ""))
+                self.dashboard_runtime.note_pipeline_result(
+                    "research",
+                    ok=research_status == "ok",
+                    error_code=(
+                        str(runner_summary.get("research_error", ""))
+                        or f"research_{research_status}"
+                    ),
+                )
+            self.dashboard_runtime.note_pipeline_result(
+                "voice",
+                ok=not bool(tts_error),
+                error_code=tts_error,
+                elapsed_ms=(
+                    float(tts_summary["tts_elapsed_ms"])
+                    if isinstance(tts_summary.get("tts_elapsed_ms"), (int, float))
+                    else None
+                ),
+            )
+            self.dashboard_runtime.note_pipeline_result("knowledge", ok=True)
+            self.dashboard_runtime.note_pipeline_stage(
+                "awaiting_playback"
+                if self.conversation is not None
+                else "idle",
+                turn_seq=seq,
+                task_domain=str(
+                    runner_summary.get("conversation_task_domain", "")
+                ),
+                task_status=str(
+                    runner_summary.get("conversation_task_operation", "")
+                ),
+            )
 
     def handle_text(
         self,
@@ -1859,17 +2013,46 @@ class LanBridgeSession:
             frame: dict[str, object] = {"type": "heartbeat", "playback_complete_seq": seq}
             if self.conversation is not None:
                 if seq == 0 or seq != self.playback_response_seq:
+                    if self.dashboard_runtime is not None:
+                        self.dashboard_runtime.note_pipeline_result(
+                            "playback",
+                            ok=False,
+                            error_code="playback_complete_seq_mismatch",
+                        )
                     return [error_frame("playback_complete_seq_mismatch", str(seq))]
                 if seq == self.conversation_playback_complete_seq:
                     frame["playback_complete_duplicate"] = True
                     frame.update(self._conversation_payload())
                     return [frame]
-                self.conversation_playback_complete_seq = seq
                 if (
                     seq == self.conversation_response_seq
                     and self.conversation.phase == ConversationPhase.SPEAKING
                 ):
                     transition = self.conversation.playback_completed(now_ms())
+                    committed_plan, research_succeeded = (
+                        self.conversation.take_committed_task()
+                    )
+                    committed_state = (
+                        committed_plan.next_state
+                        if committed_plan is not None
+                        else None
+                    )
+                    research_attempted = bool(
+                        committed_plan is not None
+                        and committed_plan.request is not None
+                    )
+                    if (
+                        research_attempted
+                        and committed_state is not None
+                        and committed_state.domain == "weather"
+                    ):
+                        self._session_research_turns += 1
+                        if "weather" not in self._session_topics:
+                            self._session_topics.append("weather")
+                    elif research_attempted and committed_state is not None:
+                        self._session_research_turns += 1
+                        if "web research" not in self._session_topics:
+                            self._session_topics.append("web research")
                     if "playback_complete" in transition.actions:
                         frame = {
                             "type": "conversation_reply_window",
@@ -1883,6 +2066,19 @@ class LanBridgeSession:
                 else:
                     frame["playback_complete_terminal"] = True
                     frame.update(self._conversation_payload())
+                self.conversation_playback_complete_seq = seq
+                if self.dashboard_runtime is not None:
+                    self.dashboard_runtime.note_pipeline_result(
+                        "playback",
+                        ok=True,
+                    )
+                    self.dashboard_runtime.note_pipeline_stage(
+                        "reply_window"
+                        if self.conversation.phase
+                        in (ConversationPhase.ENGAGED, ConversationPhase.REPLY_WINDOW)
+                        else "idle",
+                        turn_seq=seq,
+                    )
             return [frame]
         return [error_frame("unsupported_message", message_type)]
 
@@ -2378,6 +2574,11 @@ class LanBridgeSession:
         turn_started = time.perf_counter()
         cancellation.raise_if_cancelled()
         seq = int(message.get("seq") or self.next_seq)
+        if self.dashboard_runtime is not None:
+            self.dashboard_runtime.note_pipeline_stage(
+                "transcribing",
+                turn_seq=seq,
+            )
         try:
             host_reaction_ms = max(0.0, float(message["_bridge_host_reaction_ms"]))
         except (KeyError, TypeError, ValueError):
@@ -2512,6 +2713,8 @@ class LanBridgeSession:
                 )
                 | audio_summary
             ]
+        if self.dashboard_runtime is not None:
+            self.dashboard_runtime.note_pipeline_stage("routing", turn_seq=seq)
         requested_forget_keys = explicit_forget_keys(user_text)
         if self.conversation is not None:
             transition = self.conversation.utterance_committed(now_ms(), user_text)
@@ -2557,6 +2760,11 @@ class LanBridgeSession:
             return [self._conversation_failure("persona_error", str(exc))]
         requested_case = str(message.get("runner_case", "")).strip()
         runner_summary: dict[str, object] = {"persona_id": active_persona.pack_id}
+        conversation_plan = (
+            self.conversation.harness.plan(user_text, None, "")
+            if self.conversation is not None
+            else ConversationTurnPlan()
+        )
         research_result: dict[str, object] | None = None
         relationship_card = RelationshipCard(())
         local_fact = resolve_local_fact(user_text, self.memory) if not requested_case else None
@@ -2613,8 +2821,24 @@ class LanBridgeSession:
             runner_summary["runner_command_source"] = "local_identity"
             runner_summary["runner_elapsed_ms"] = 0.0
         else:
-            runner_case = prompt_case_for_text(user_text, requested_case, self.config.runner_case)
             anticipated_research, anticipated_routing = natural_research_request(user_text)
+            if self.conversation is not None:
+                conversation_plan = self.conversation.harness.plan(
+                    user_text,
+                    anticipated_research,
+                    anticipated_routing,
+                    default_weather_location=self.memory.weather_location(),
+                )
+                anticipated_research = conversation_plan.request
+                anticipated_routing = conversation_plan.routing
+                runner_summary.update(conversation_plan.diagnostic_fields())
+            runner_case = prompt_case_for_text(
+                user_text,
+                requested_case,
+                self.config.runner_case,
+                has_conversation_context=bool(self._conversation_context_lines())
+                or conversation_plan.turn_kind != "new",
+            )
             relationship_card = self._relationship_card(
                 user_text,
                 suppress_session_context=self.config.research_enabled and anticipated_research is not None,
@@ -2630,6 +2854,11 @@ class LanBridgeSession:
                 runner_summary["research_routing"] = anticipated_routing
             else:
                 try:
+                    if self.dashboard_runtime is not None:
+                        self.dashboard_runtime.note_pipeline_stage(
+                            "generating",
+                            turn_seq=seq,
+                        )
                     runner = run_runner_profile(
                         self.config.runner_profile,
                         case_name=runner_case,
@@ -2638,10 +2867,14 @@ class LanBridgeSession:
                         require_runner=self.config.require_runner,
                         timeout_ms=self.config.runner_timeout_ms,
                         user_text=user_text,
-                        research_tools_enabled=self.config.research_enabled,
+                        research_tools_enabled=(
+                            self.config.research_enabled
+                            and not conversation_plan.clarification
+                        ),
                         embodiment_lines=embodiment_lines,
                         memory_lines=relationship_card.lines,
                         conversation_lines=self._conversation_context_lines(),
+                        task_lines=conversation_plan.trusted_task_lines(),
                         cancellation=cancellation,
                         persona_id=active_persona.pack_id,
                     )
@@ -2674,6 +2907,9 @@ class LanBridgeSession:
                 ):
                     tool_request = None
                     runner_summary["research_routing"] = "private_or_embodied_query_blocked"
+                elif conversation_plan.clarification:
+                    tool_request = None
+                    runner_summary["research_routing"] = "conversation_clarification"
                 elif tool_request is None:
                     tool_request, routing = natural_research_request(user_text)
                     if tool_request is not None:
@@ -2687,6 +2923,17 @@ class LanBridgeSession:
                 else:
                     runner_summary.setdefault("research_routing", "model_request")
                 if tool_request is not None:
+                    if (
+                        self.conversation is not None
+                        and conversation_plan.request is None
+                        and not conversation_plan.clarification
+                    ):
+                        conversation_plan = self.conversation.harness.plan(
+                            user_text,
+                            tool_request,
+                            str(runner_summary.get("research_routing", "model_request")),
+                        )
+                        runner_summary.update(conversation_plan.diagnostic_fields())
                     if self.research_broker is None:
                         research_result = {
                             "schema": "stackchan.research.v1",
@@ -2696,6 +2943,16 @@ class LanBridgeSession:
                         }
                     else:
                         try:
+                            if self.dashboard_runtime is not None:
+                                self.dashboard_runtime.note_pipeline_stage(
+                                    "researching",
+                                    turn_seq=seq,
+                                    task_domain=(
+                                        conversation_plan.next_state.domain
+                                        if conversation_plan.next_state is not None
+                                        else "research"
+                                    ),
+                                )
                             research_result = self.research_broker.execute(tool_request)
                         except (ResearchPolicyError, ResearchTransportError, ValueError, TypeError) as exc:
                             research_result = {
@@ -2704,12 +2961,44 @@ class LanBridgeSession:
                                 "error": str(exc)[:120],
                                 "results": [],
                             }
+                    active_task = conversation_plan.next_state
+                    if (
+                        active_task is not None
+                        and active_task.domain == "weather"
+                        and research_result_succeeded(research_result)
+                        and not weather_result_matches(
+                            active_task.slot("location"),
+                            research_result,
+                        )
+                    ):
+                        research_result = {
+                            "schema": "stackchan.research.v1",
+                            "tool": str(research_result.get("tool", "")),
+                            "error": "research_result_context_mismatch",
+                            "results": [],
+                        }
                     research_routing = str(runner_summary.get("research_routing", ""))
+                    runner_summary["research_result_count"] = len(
+                        research_result.get("results", ())
+                        if isinstance(research_result.get("results"), list)
+                        else ()
+                    )
+                    runner_summary["research_status"] = (
+                        "error"
+                        if research_result.get("error")
+                        else "ok"
+                        if runner_summary["research_result_count"]
+                        else "empty"
+                    )
                     if (
                         self.research_broker is not None
                         and research_result.get("tool") == "web_search"
                         and research_routing
-                        in {"verification_request", "model_access_denial_recovery"}
+                        in {
+                            "verification_request",
+                            "model_access_denial_recovery",
+                            "contextual_verify",
+                        }
                     ):
                         top_urls = source_urls(research_result)
                         if top_urls:
@@ -2736,8 +3025,20 @@ class LanBridgeSession:
                                 if not fetch_error:
                                     research_result = dict(research_result)
                                     research_result["top_source"] = top_source
-                    evidence_user_text = f"{user_text}\n\n{evidence_prompt(research_result)}"
+                    evidence_user_text = (
+                        f"{user_text}\n\n{evidence_prompt(research_result)}"
+                    )
                     try:
+                        if self.dashboard_runtime is not None:
+                            self.dashboard_runtime.note_pipeline_stage(
+                                "generating",
+                                turn_seq=seq,
+                                task_domain=(
+                                    conversation_plan.next_state.domain
+                                    if conversation_plan.next_state is not None
+                                    else "research"
+                                ),
+                            )
                         researched = run_runner_profile(
                             self.config.runner_profile,
                             case_name=runner_case,
@@ -2750,6 +3051,7 @@ class LanBridgeSession:
                             embodiment_lines=embodiment_lines,
                             memory_lines=relationship_card.lines,
                             conversation_lines=self._conversation_context_lines(),
+                            task_lines=conversation_plan.trusted_task_lines(),
                             cancellation=cancellation,
                             persona_id=active_persona.pack_id,
                         )
@@ -2757,7 +3059,9 @@ class LanBridgeSession:
                         return [self._conversation_failure("runner_error", str(exc))]
                     raw_response = self._clear_research_memory_writes(researched.raw_response)
                     runner_summary["research_tool"] = str(research_result.get("tool", ""))
-                    runner_summary["research_source_urls"] = list(source_urls(research_result))
+                    runner_summary["research_source_count"] = len(
+                        source_urls(research_result)
+                    )
                     runner_summary["research_error"] = str(research_result.get("error", ""))
                     if researched.elapsed_ms is not None:
                         runner_summary["research_runner_elapsed_ms"] = round(researched.elapsed_ms, 2)
@@ -2782,6 +3086,7 @@ class LanBridgeSession:
                     *embodiment_lines,
                     *relationship_card.lines,
                     *self._conversation_context_lines(),
+                    *conversation_plan.trusted_task_lines(),
                 )
             ),
         )
@@ -2812,6 +3117,11 @@ class LanBridgeSession:
             and self.config.tts_command
             and not self.config.disable_audio_downlink
         ):
+            if self.dashboard_runtime is not None:
+                self.dashboard_runtime.note_pipeline_stage(
+                    "synthesizing",
+                    turn_seq=seq,
+                )
             frames, tts_summary, tts_error = self._stream_tts_turn(
                 turn,
                 turn_started=turn_started,
@@ -2826,7 +3136,13 @@ class LanBridgeSession:
             cancellation.raise_if_cancelled()
             self._commit_memory(candidate_memory)
             if not no_speech_detail:
-                self._stage_conversation_turn(user_text, turn.text, tts_error)
+                self._stage_conversation_turn(
+                    user_text,
+                    turn.text,
+                    tts_error,
+                    conversation_plan,
+                    research_succeeded=research_result_succeeded(research_result),
+                )
             self._append_completed_turn_log(
                 seq=seq,
                 has_audio=has_audio,
@@ -2849,6 +3165,11 @@ class LanBridgeSession:
         downlink_frames: list[dict[str, object] | bytes] = []
         tts_error = ""
         try:
+            if self.dashboard_runtime is not None:
+                self.dashboard_runtime.note_pipeline_stage(
+                    "synthesizing",
+                    turn_seq=seq,
+                )
             tts = synthesize_speech(
                 turn.text,
                 command=self.config.tts_command,
@@ -2905,7 +3226,13 @@ class LanBridgeSession:
         cancellation.raise_if_cancelled()
         self._commit_memory(candidate_memory)
         if not no_speech_detail:
-            self._stage_conversation_turn(user_text, turn.text, tts_error)
+            self._stage_conversation_turn(
+                user_text,
+                turn.text,
+                tts_error,
+                conversation_plan,
+                research_succeeded=research_result_succeeded(research_result),
+            )
         frames = [frame for frame in bridge_frames(turn) if frame.get("type") not in ("hello", "listening")]
         if suppress_thinking:
             frames = [frame for frame in frames if frame.get("type") != "thinking"]
@@ -3056,6 +3383,7 @@ def handle_connection(
         control_state,
         initiative_policy=initiative_policy,
         room_context=room_context,
+        dashboard_runtime=dashboard_runtime,
     )
     request = read_http_request(conn)
     print(f"[bridge-lan] handshake_bytes={len(request)}", flush=True)

@@ -84,6 +84,10 @@ class ResearchBrokerTests(unittest.TestCase):
             source_urls(result),
         )
         self.assertTrue(all(row["source_type"] == "search_result" for row in result["results"]))
+        audit = broker.audit[-1]
+        self.assertNotIn("query", audit)
+        self.assertNotIn("url", audit)
+        self.assertGreater(audit["query_chars"], 0)
 
     def test_blocks_private_and_non_https_fetch_targets(self):
         with self.assertRaisesRegex(ResearchPolicyError, "https_required"):

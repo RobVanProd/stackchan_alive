@@ -159,7 +159,117 @@ class DashboardRuntime:
         self._last_action: dict[str, object] = {}
         self._event_id = 0
         self._events: list[dict[str, object]] = []
+        self._pipeline = {
+            "stage": "idle",
+            "turnSeq": 0,
+            "taskDomain": "",
+            "taskStatus": "idle",
+            "updatedAt": "",
+        }
+        self._pipeline_services = {
+            "model": self._new_service_status(True),
+            "research": self._new_service_status(config.research_enabled),
+            "voice": self._new_service_status(bool(config.tts_voice)),
+            "playback": self._new_service_status(config.conversation_v2_enabled),
+            "knowledge": self._new_service_status(True),
+        }
         self._add_event("Dashboard ready", "system")
+
+    @staticmethod
+    def _new_service_status(configured: bool) -> dict[str, object]:
+        return {
+            "configured": bool(configured),
+            "healthy": None,
+            "recovering": False,
+            "successes": 0,
+            "failures": 0,
+            "consecutiveFailures": 0,
+            "lastSuccessAt": "",
+            "lastFailureAt": "",
+            "lastErrorCode": "",
+            "lastElapsedMs": None,
+        }
+
+    def note_pipeline_stage(
+        self,
+        stage: str,
+        *,
+        turn_seq: int = 0,
+        task_domain: str = "",
+        task_status: str = "",
+    ) -> None:
+        allowed = {
+            "idle",
+            "listening",
+            "transcribing",
+            "routing",
+            "researching",
+            "generating",
+            "synthesizing",
+            "awaiting_playback",
+            "reply_window",
+            "failed",
+        }
+        clean_stage = str(stage or "").strip().lower()
+        if clean_stage not in allowed:
+            clean_stage = "failed"
+        clean_domain = str(task_domain or "").strip().lower()
+        if clean_domain not in {"", "weather", "research", "visual", "local"}:
+            clean_domain = "other"
+        clean_status = str(task_status or "").strip().lower()
+        clean_status = "".join(
+            character
+            for character in clean_status
+            if character.isalnum() or character in {"_", "-"}
+        )[:48]
+        with self._lock:
+            self._pipeline = {
+                "stage": clean_stage,
+                "turnSeq": max(0, int(turn_seq or 0)),
+                "taskDomain": clean_domain,
+                "taskStatus": clean_status or "idle",
+                "updatedAt": _utc_now(),
+            }
+
+    def note_pipeline_result(
+        self,
+        service: str,
+        *,
+        ok: bool,
+        error_code: str = "",
+        elapsed_ms: float | None = None,
+    ) -> None:
+        clean_service = str(service or "").strip().lower()
+        if clean_service not in self._pipeline_services:
+            return
+        code = "".join(
+            character
+            for character in str(error_code or "").strip().lower()
+            if character.isalnum() or character in {"_", "-", ":"}
+        )[:80]
+        with self._lock:
+            current = dict(self._pipeline_services[clean_service])
+            current["healthy"] = bool(ok)
+            current["recovering"] = False
+            if elapsed_ms is not None:
+                current["lastElapsedMs"] = round(max(0.0, float(elapsed_ms)), 2)
+            if ok:
+                current["successes"] = int(current["successes"]) + 1
+                current["consecutiveFailures"] = 0
+                current["lastSuccessAt"] = _utc_now()
+                current["lastErrorCode"] = ""
+            else:
+                current["failures"] = int(current["failures"]) + 1
+                current["consecutiveFailures"] = (
+                    int(current["consecutiveFailures"]) + 1
+                )
+                current["lastFailureAt"] = _utc_now()
+                current["lastErrorCode"] = code or "unknown_failure"
+                self._add_event(
+                    f"{clean_service.capitalize()} failed: {current['lastErrorCode']}",
+                    "error",
+                )
+            self._pipeline_services[clean_service] = current
 
     def _add_event(self, message: str, kind: str = "info") -> None:
         self._event_id += 1
@@ -482,7 +592,12 @@ class DashboardRuntime:
                 },
                 "services": {
                     "speechRecognition": speech_recognition,
+                    **{
+                        name: dict(service)
+                        for name, service in self._pipeline_services.items()
+                    },
                 },
+                "conversationPipeline": dict(self._pipeline),
                 "lastAction": dict(self._last_action),
                 "events": list(reversed(self._events[-8:])),
             }

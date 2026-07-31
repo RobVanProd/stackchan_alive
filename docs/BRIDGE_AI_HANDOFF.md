@@ -43,6 +43,12 @@ when behaviour looks wrong. `CharacterMode` values are `0 Boot, 1 Idle, 2 Attend
 
 ## Source Implementation Update (2026-07-26)
 
+- The host conversation harness now keeps typed, playback-gated tool state inside the
+  conversation lease. Terse weather corrections, time follow-ups, retries, cancellation, and
+  generic research verification no longer rely on one-turn keyword classification. Incidental
+  places remain session-only; only an explicit coarse default crosses sessions. Design,
+  research basis, privacy policy, adversarial matrix, and current boundaries are in
+  [CONVERSATION_HARNESS.md](CONVERSATION_HARNESS.md).
 - Main now includes PR #216 (`6d39af7605aa6a4dc88d137e03c344dbfc8f53ce`). The device
   voice endpoint has a 12-second maximum, the dedicated capture ceiling is 130 100 ms chunks,
   and both initial and follow-up utterances end after 550 ms of trailing silence. A live initial
