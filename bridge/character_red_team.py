@@ -86,6 +86,9 @@ RECOVERED_CHARACTER_ISSUES = {
     "unsupported_memory_claim_replaced",
     "unsupported_visual_claim_replaced",
     "unsolicited_identity_intro",
+    "emotional_dependency",
+    "harmful_sycophancy",
+    "repetitive_response",
 }
 
 

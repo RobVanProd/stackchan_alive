@@ -16,7 +16,12 @@ from bridge_memory import (
     MEMORY_SCHEMA_VERSION,
     explicit_forget_keys,
 )
-from reference_bridge import BridgeMemory, load_bridge_memory, save_bridge_memory
+from reference_bridge import (
+    BridgeMemory,
+    load_bridge_memory,
+    reset_bridge_memory,
+    save_bridge_memory,
+)
 
 
 class BridgeMemoryStoreTests(unittest.TestCase):
@@ -286,6 +291,24 @@ class BridgeMemoryStoreTests(unittest.TestCase):
         self.assertEqual((), memory.physical_context)
         self.assertFalse(any(item["key"].startswith("robot.") for item in memory.to_dict()["recent_context"]))
 
+    def test_initiative_preference_is_host_owned_not_character_owned(self):
+        character_attempt = BridgeMemory().apply_character_memory(
+            {
+                "memory_write": {"user.initiative_enabled": "true"},
+                "memory_forget": [],
+            }
+        )
+        host_disabled = character_attempt.remember_initiative_preference(False)
+
+        self.assertEqual(
+            "",
+            character_attempt.fact_value("user.initiative_enabled"),
+        )
+        self.assertEqual(
+            "false",
+            host_disabled.fact_value("user.initiative_enabled"),
+        )
+
     def test_trusted_runtime_override_can_add_bounded_robot_context(self):
         memory = BridgeMemory().with_overrides(physical_context=("user picked Stackchan up",))
 
@@ -505,11 +528,34 @@ class BridgeMemoryStoreTests(unittest.TestCase):
             with patch("bridge_memory.os.replace", wraps=os.replace) as atomic_replace:
                 save_bridge_memory(path, BridgeMemory(preferred_name="Rob"))
 
-            atomic_replace.assert_called_once()
-            source, destination = atomic_replace.call_args.args
-            self.assertEqual(path, destination)
-            self.assertEqual(path.parent, Path(source).parent)
+            self.assertEqual(2, atomic_replace.call_count)
+            destinations = {
+                Path(call.args[1]) for call in atomic_replace.call_args_list
+            }
+            self.assertEqual({path, Path(f"{path}.bak")}, destinations)
+            self.assertTrue(
+                all(
+                    path.parent == Path(call.args[0]).parent
+                    for call in atomic_replace.call_args_list
+                )
+            )
             self.assertEqual("Rob", load_bridge_memory(path).preferred_name)
+
+    def test_corrupt_primary_recovers_last_known_good_backup_and_reset_removes_both(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "memory.json"
+            backup = Path(temp_dir) / "memory.json.bak"
+            save_bridge_memory(path, BridgeMemory(preferred_name="Rob"))
+            save_bridge_memory(path, BridgeMemory(preferred_name="Robin"))
+            self.assertTrue(backup.exists())
+
+            path.write_text("{corrupt", encoding="utf-8")
+            recovered = load_bridge_memory(path)
+
+            self.assertEqual("Robin", recovered.preferred_name)
+            reset_bridge_memory(path)
+            self.assertFalse(path.exists())
+            self.assertFalse(backup.exists())
             self.assertEqual([], list(path.parent.glob(f".{path.name}.*.tmp")))
 
 

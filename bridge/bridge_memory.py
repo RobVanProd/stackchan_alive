@@ -31,6 +31,7 @@ MEMORY_BLOCK_MAX_CHARS = 1800
 MAX_MEMORY_VALUE_CHARS = 96
 MAX_MEMORY_KEY_CHARS = 64
 MAX_TURNS_SEEN = 2_147_483_647
+DEFAULT_MEMORY_PERSONA_ID = "spark"
 RECENT_TOPIC_TTL = timedelta(days=7)
 PHYSICAL_CONTEXT_TTL = timedelta(hours=24)
 OPEN_LOOP_PENDING_GRACE = timedelta(days=7)
@@ -45,10 +46,12 @@ MEMORY_STYLE_DIRECTIVE = (
 _ALLOWED_PREFIXES = ("user.", "project.", "robot.")
 _NAME_KEYS = {"user.name", "user.preferred_name", "user.greeting"}
 _HOST_OWNED_MEMORY_KEYS = {
+    "user.initiative_enabled",
     "user.weather_default_location",
     "user.weather_recent_location",
 }
 _PREFERRED_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,20}$")
+_PERSONA_SCOPE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 _RESERVED_NAME_WORDS = {
     "angry",
     "assistant",
@@ -368,6 +371,7 @@ class EpisodeRecord:
     last_used_at: str
     use_count: int = 0
     importance: float = 0.5
+    persona_id: str = DEFAULT_MEMORY_PERSONA_ID
 
     @classmethod
     def create(
@@ -375,13 +379,26 @@ class EpisodeRecord:
         text: object,
         *,
         importance: float = 0.5,
+        persona_id: object = DEFAULT_MEMORY_PERSONA_ID,
         now: str | None = None,
     ) -> "EpisodeRecord | None":
         clean = _memory_scalar(text, 120)
-        if not clean or not _safe_value("project.episode", clean):
+        persona = str(persona_id or "").strip().lower()
+        if (
+            not clean
+            or not _safe_value("project.episode", clean)
+            or not _PERSONA_SCOPE_RE.fullmatch(persona)
+        ):
             return None
         timestamp = now or _utc_now()
-        return cls(clean, timestamp, timestamp, 0, _importance(importance, 0.5))
+        return cls(
+            clean,
+            timestamp,
+            timestamp,
+            0,
+            _importance(importance, 0.5),
+            persona,
+        )
 
     @classmethod
     def from_dict(cls, data: object, *, now: str) -> "EpisodeRecord | None":
@@ -390,6 +407,7 @@ class EpisodeRecord:
         record = cls.create(
             data.get("text", ""),
             importance=_importance(data.get("importance"), 0.5),
+            persona_id=data.get("persona_id", DEFAULT_MEMORY_PERSONA_ID),
             now=_timestamp(data.get("created_at"), now),
         )
         if record is None:
@@ -407,6 +425,7 @@ class EpisodeRecord:
             "last_used_at": self.last_used_at,
             "use_count": self.use_count,
             "importance": round(self.importance, 2),
+            "persona_id": self.persona_id,
         }
 
 
@@ -420,6 +439,7 @@ class OpenLoopRecord:
     due_at: str
     status: OpenLoopStatus = "pending"
     asked_at: str | None = None
+    persona_id: str = DEFAULT_MEMORY_PERSONA_ID
 
     @classmethod
     def create(
@@ -427,14 +447,21 @@ class OpenLoopRecord:
         text: object,
         *,
         due_at: object,
+        persona_id: object = DEFAULT_MEMORY_PERSONA_ID,
         now: str | None = None,
     ) -> "OpenLoopRecord | None":
         clean = _memory_scalar(text, 96)
         timestamp = now or _utc_now()
         due = _timestamp(due_at, "")
-        if not clean or not due or not _safe_value("user.open_loop", clean):
+        persona = str(persona_id or "").strip().lower()
+        if (
+            not clean
+            or not due
+            or not _safe_value("user.open_loop", clean)
+            or not _PERSONA_SCOPE_RE.fullmatch(persona)
+        ):
             return None
-        return cls(clean, timestamp, due)
+        return cls(clean, timestamp, due, persona_id=persona)
 
     @classmethod
     def from_dict(cls, data: object, *, now: str) -> "OpenLoopRecord | None":
@@ -443,6 +470,7 @@ class OpenLoopRecord:
         record = cls.create(
             data.get("text", ""),
             due_at=data.get("due_at", ""),
+            persona_id=data.get("persona_id", DEFAULT_MEMORY_PERSONA_ID),
             now=_timestamp(data.get("created_at"), now),
         )
         if record is None:
@@ -462,11 +490,12 @@ class OpenLoopRecord:
             "due_at": self.due_at,
             "status": self.status,
             "asked_at": self.asked_at,
+            "persona_id": self.persona_id,
         }
 
     @property
     def identity(self) -> str:
-        return f"{self.created_at}|{self.text}"
+        return f"{self.persona_id}|{self.created_at}|{self.text}"
 
 
 @dataclass(frozen=True)
@@ -522,8 +551,14 @@ def _token_jaccard(left: object, right: object) -> float:
 def _select_relevant_episode(
     records: Iterable[EpisodeRecord],
     query: str,
+    *,
+    persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
 ) -> EpisodeRecord | None:
-    episodes = _bounded_episodes(records)
+    episodes = tuple(
+        record
+        for record in _bounded_episodes(records)
+        if record.persona_id == persona_id
+    )
     if not episodes:
         return None
     if _EXPLICIT_EPISODE_RECALL_RE.search(query):
@@ -1073,10 +1108,16 @@ class BridgeMemory:
         text: object,
         *,
         importance: float = 0.5,
+        persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
         now: str | None = None,
     ) -> "BridgeMemory":
         timestamp = now or _utc_now()
-        candidate = EpisodeRecord.create(text, importance=importance, now=timestamp)
+        candidate = EpisodeRecord.create(
+            text,
+            importance=importance,
+            persona_id=persona_id,
+            now=timestamp,
+        )
         if candidate is None:
             return self
         episodes = list(_bounded_episodes(self._episodes))
@@ -1084,7 +1125,8 @@ class BridgeMemory:
             (
                 index
                 for index, record in enumerate(episodes)
-                if _token_jaccard(record.text, candidate.text) >= 0.6
+                if record.persona_id == candidate.persona_id
+                and _token_jaccard(record.text, candidate.text) >= 0.6
             ),
             None,
         )
@@ -1104,6 +1146,7 @@ class BridgeMemory:
         topics: Iterable[object],
         turn_count: int,
         *,
+        persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
         now: str | None = None,
     ) -> "BridgeMemory":
         safe_topics = self._safe_items(topics, "project.topic")
@@ -1114,25 +1157,41 @@ class BridgeMemory:
             summary = f"Talked about {', '.join(safe_topics)} ({turns} turns)"
         else:
             summary = f"Continued our conversation ({turns} turns)"
-        return self.add_episode(summary, now=now)
+        return self.add_episode(summary, persona_id=persona_id, now=now)
 
     def add_open_loop(
         self,
         text: object,
         *,
         due_at: object,
+        persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
         now: str | None = None,
     ) -> "BridgeMemory":
         timestamp = now or _utc_now()
-        candidate = OpenLoopRecord.create(text, due_at=due_at, now=timestamp)
+        candidate = OpenLoopRecord.create(
+            text,
+            due_at=due_at,
+            persona_id=persona_id,
+            now=timestamp,
+        )
         if candidate is None:
             return self
         loops = list(_canonical_open_loops(self._open_loops, now=timestamp))
-        if any(_token_jaccard(record.text, candidate.text) >= 0.8 for record in loops):
+        if any(
+            record.persona_id == candidate.persona_id
+            and _token_jaccard(record.text, candidate.text) >= 0.8
+            for record in loops
+        ):
             return self
         return replace(self, _open_loops=_canonical_open_loops((*loops, candidate), now=timestamp))
 
-    def capture_open_loop(self, user_text: str, *, now: str | None = None) -> "BridgeMemory":
+    def capture_open_loop(
+        self,
+        user_text: str,
+        *,
+        persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
+        now: str | None = None,
+    ) -> "BridgeMemory":
         timestamp = now or _utc_now()
         candidate = captured_open_loop(user_text, now=timestamp)
         if candidate is None:
@@ -1140,7 +1199,12 @@ class BridgeMemory:
                 _NEAR_TERM_RE.search(str(user_text or ""))
             )
             return replace(self, capture_rejections=self.capture_rejections + int(attempted))
-        return self.add_open_loop(candidate.text, due_at=candidate.due_at, now=timestamp)
+        return self.add_open_loop(
+            candidate.text,
+            due_at=candidate.due_at,
+            persona_id=persona_id,
+            now=timestamp,
+        )
 
     def note_distill_drop(self) -> "BridgeMemory":
         return replace(self, distill_dropped=self.distill_dropped + 1)
@@ -1403,6 +1467,30 @@ class BridgeMemory:
             return approved.value
         return ""
 
+    def remember_initiative_preference(
+        self,
+        enabled: bool,
+        *,
+        now: str | None = None,
+    ) -> "BridgeMemory":
+        timestamp = now or _utc_now()
+        durable = self._canonical_durable(now=timestamp)
+        evictions = self.durable_evictions + int(
+            _durable_insert_evicts(durable, "user.initiative_enabled")
+        )
+        durable = _upsert_durable(
+            durable,
+            "user.initiative_enabled",
+            "true" if enabled else "false",
+            0.9,
+            now=timestamp,
+        )
+        return replace(
+            self,
+            _durable_facts=_bounded_durable(durable),
+            durable_evictions=evictions,
+        )
+
     def fact_value(self, key: str) -> str:
         """Return one exact approved durable fact without exposing the whole store."""
 
@@ -1475,6 +1563,7 @@ class BridgeMemory:
         query: str = "",
         *,
         session_turns: int = 0,
+        persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
         excluded_open_loops: Iterable[str] = (),
         now: str | None = None,
     ) -> RelationshipCard:
@@ -1487,7 +1576,11 @@ class BridgeMemory:
         ask_line = ""
         selected_loop: OpenLoopRecord | None = None
         if _nonnegative_int(session_turns) <= 2:
-            episode = _select_relevant_episode(self._episodes, query)
+            episode = _select_relevant_episode(
+                self._episodes,
+                query,
+                persona_id=persona_id,
+            )
             if episode is not None:
                 episode_line = f"episode: {episode.text}"
             excluded = set(excluded_open_loops)
@@ -1495,6 +1588,7 @@ class BridgeMemory:
                 record
                 for record in _canonical_open_loops(self._open_loops, now=timestamp)
                 if record.status == "pending"
+                and record.persona_id == persona_id
                 and _as_datetime(record.due_at) <= _as_datetime(timestamp)
                 and record.identity not in excluded
             ]
@@ -1571,28 +1665,63 @@ class BridgeMemory:
         )
         return replace(self, _open_loops=updated), True
 
-    def context_lines(self, query: str = "", *, session_turns: int = 0) -> list[str]:
-        return list(self.relationship_card(query, session_turns=session_turns).lines)
+    def context_lines(
+        self,
+        query: str = "",
+        *,
+        session_turns: int = 0,
+        persona_id: str = DEFAULT_MEMORY_PERSONA_ID,
+    ) -> list[str]:
+        return list(
+            self.relationship_card(
+                query,
+                session_turns=session_turns,
+                persona_id=persona_id,
+            ).lines
+        )
 
 
-def load_bridge_memory(path: Path) -> BridgeMemory:
+def _memory_backup_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.bak")
+
+
+def _load_memory_payload(path: Path) -> dict[str, object] | None:
     if not path.exists():
-        return BridgeMemory()
+        return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return BridgeMemory()
-    return BridgeMemory.from_dict(payload)
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if "schema" not in payload:
+        return payload
+    valid_schema = (
+        (payload.get("schema"), payload.get("schema_version"))
+        in {
+            (LEGACY_MEMORY_SCHEMA, LEGACY_MEMORY_SCHEMA_VERSION),
+            (LEGACY_V3_MEMORY_SCHEMA, LEGACY_V3_MEMORY_SCHEMA_VERSION),
+            (MEMORY_SCHEMA, MEMORY_SCHEMA_VERSION),
+        }
+    )
+    return payload if valid_schema else None
 
 
-def save_bridge_memory(path: Path, memory: BridgeMemory) -> None:
+def load_bridge_memory(path: Path) -> BridgeMemory:
+    payload = _load_memory_payload(path)
+    if payload is None:
+        payload = _load_memory_payload(_memory_backup_path(path))
+    return BridgeMemory.from_dict(payload) if payload is not None else BridgeMemory()
+
+
+def _atomic_write_memory_payload(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(memory.to_dict(), indent=2, sort_keys=True) + "\n"
+    serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     temp_path = Path(temp_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(payload)
+            handle.write(serialized)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, path)
@@ -1601,9 +1730,16 @@ def save_bridge_memory(path: Path, memory: BridgeMemory) -> None:
             temp_path.unlink()
 
 
+def save_bridge_memory(path: Path, memory: BridgeMemory) -> None:
+    payload = memory.to_dict()
+    _atomic_write_memory_payload(_memory_backup_path(path), payload)
+    _atomic_write_memory_payload(path, payload)
+
+
 def reset_bridge_memory(path: Path) -> BridgeMemory:
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
+    for candidate in (path, _memory_backup_path(path)):
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            pass
     return BridgeMemory()

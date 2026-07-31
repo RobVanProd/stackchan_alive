@@ -246,6 +246,65 @@ class BridgeMemoryV4Tests(unittest.TestCase):
         self.assertEqual(0, episodes["Talked about sleep and evening routines"]["use_count"])
         self.assertEqual(2, episodes["Talked about bridge connection quality"]["use_count"])
 
+    def test_relationship_history_and_callbacks_are_persona_scoped(self):
+        memory = BridgeMemory().remember_user_text(
+            "Remember that my favorite color is teal."
+        )
+        memory = memory.add_episode(
+            "Talked about Spark bridge diagnostics",
+            persona_id="spark",
+            now="2026-07-13T00:00:00Z",
+        )
+        memory = memory.add_episode(
+            "Talked about Glow music queue",
+            persona_id="glow",
+            now="2026-07-14T00:00:00Z",
+        )
+        memory = memory.add_open_loop(
+            "I have Spark servo demo tomorrow",
+            due_at="2026-07-14T00:00:00Z",
+            persona_id="spark",
+            now="2026-07-13T00:00:00Z",
+        )
+        memory = memory.add_open_loop(
+            "I have Glow playlist demo tomorrow",
+            due_at="2026-07-14T00:00:00Z",
+            persona_id="glow",
+            now="2026-07-13T00:00:00Z",
+        )
+
+        spark = memory.relationship_card(
+            "What favorite color did I mention before?",
+            session_turns=1,
+            persona_id="spark",
+            now=NOW,
+        )
+        glow = memory.relationship_card(
+            "What favorite color did I mention before?",
+            session_turns=1,
+            persona_id="glow",
+            now=NOW,
+        )
+
+        self.assertIn("episode: Talked about Spark bridge diagnostics", spark.lines)
+        self.assertIn("ask_about: I have Spark servo demo tomorrow", spark.lines)
+        self.assertNotIn("Glow", "\n".join(spark.lines))
+        self.assertIn("episode: Talked about Glow music queue", glow.lines)
+        self.assertIn("ask_about: I have Glow playlist demo tomorrow", glow.lines)
+        self.assertNotIn("Spark", "\n".join(glow.lines))
+        self.assertTrue(
+            any(
+                line == "approved_fact user.favorite_color: teal"
+                for line in spark.lines
+            )
+        )
+        self.assertTrue(
+            any(
+                line == "approved_fact user.favorite_color: teal"
+                for line in glow.lines
+            )
+        )
+
     def test_relationship_card_truncates_episode_before_callback_and_facts(self):
         memory = BridgeMemory(preferred_name="Fixture", turns_seen=99)
         for index in range(8):

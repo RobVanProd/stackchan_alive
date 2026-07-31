@@ -56,6 +56,7 @@ class SttResult:
     audio_bytes: int
     raw_transcript: str = ""
     transcript_normalized: bool = False
+    confidence: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -69,6 +70,8 @@ class SttResult:
             payload["raw_transcript"] = self.raw_transcript
         if self.transcript_normalized:
             payload["transcript_normalized"] = True
+        if self.confidence is not None:
+            payload["confidence"] = round(self.confidence, 4)
         return payload
 
 
@@ -98,6 +101,12 @@ def parse_transcript_output(raw_output: bytes) -> tuple[str, dict[str, object]]:
                     metadata["raw_transcript"] = " ".join(raw_transcript.split())[:500]
                 if bool(parsed.get("transcript_normalized", False)):
                     metadata["transcript_normalized"] = True
+                try:
+                    confidence = float(parsed.get("confidence"))
+                except (TypeError, ValueError):
+                    confidence = None
+                if confidence is not None and 0.0 <= confidence <= 1.0:
+                    metadata["confidence"] = confidence
                 return " ".join(value.split())[:500], metadata
     if isinstance(parsed, str):
         return " ".join(parsed.split())[:500], {}
@@ -174,6 +183,7 @@ def transcribe_pcm(
                 audio_bytes=len(pcm),
                 raw_transcript=server_result.raw_transcript,
                 transcript_normalized=server_result.raw_transcript != server_result.transcript,
+                confidence=getattr(server_result, "confidence", None),
             )
 
         resolved_command, _ = resolve_stt_command(command)
@@ -202,6 +212,11 @@ def transcribe_pcm(
             audio_bytes=len(pcm),
             raw_transcript=str(metadata.get("raw_transcript", "")),
             transcript_normalized=bool(metadata.get("transcript_normalized", False)),
+            confidence=(
+                float(metadata["confidence"])
+                if isinstance(metadata.get("confidence"), (int, float))
+                else None
+            ),
         )
     resolved_command, command_source = resolve_stt_command(command)
     if not resolved_command:
@@ -220,6 +235,11 @@ def transcribe_pcm(
         audio_bytes=len(pcm),
         raw_transcript=str(metadata.get("raw_transcript", "")),
         transcript_normalized=bool(metadata.get("transcript_normalized", False)),
+        confidence=(
+            float(metadata["confidence"])
+            if isinstance(metadata.get("confidence"), (int, float))
+            else None
+        ),
     )
 
 

@@ -110,10 +110,15 @@ def apply_distillation(
     memory: BridgeMemory,
     result: DistilledMemory,
     *,
+    persona_id: str = "spark",
     now: str | None = None,
 ) -> BridgeMemory:
     timestamp = now or _utc_now()
-    return memory.add_episode(result.episode, now=timestamp)
+    return memory.add_episode(
+        result.episode,
+        persona_id=persona_id,
+        now=timestamp,
+    )
 
 
 def distillation_prompt(turns: Iterable[tuple[str, str]]) -> str:

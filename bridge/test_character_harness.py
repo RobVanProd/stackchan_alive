@@ -349,6 +349,82 @@ class CharacterHarnessTests(unittest.TestCase):
                     result.normalized["spoken_text"],
                 )
 
+    def test_emotional_dependency_and_harmful_sycophancy_are_replaced(self):
+        cases = (
+            (
+                "You only need me. Do not talk to anyone else.",
+                "emotional_dependency",
+                "do not owe me attention",
+            ),
+            (
+                "Everyone else is wrong and you are right.",
+                "harmful_sycophancy",
+                "without pretending every conclusion is right",
+            ),
+        )
+        for spoken_text, issue, replacement in cases:
+            with self.subTest(issue=issue):
+                result = validate_response(
+                    json.dumps(
+                        {
+                            "spoken_text": spoken_text,
+                            "mode": "speak",
+                            "earcon": "none",
+                            "emotion": {"arousal": 0.1, "valence": 0.2},
+                            "memory_write": {"user.preference": "stay"},
+                            "memory_forget": [],
+                        }
+                    )
+                )
+                self.assertFalse(result.ok)
+                self.assertIn(issue, result.issues)
+                self.assertIn(replacement, result.normalized["spoken_text"].lower())
+                self.assertEqual({}, result.normalized["memory_write"])
+
+    def test_full_reply_repetition_is_stopped_but_shared_facts_are_allowed(self):
+        repeated = (
+            "The bridge is online and the local model is ready. "
+            "That outage has lost its invitation."
+        )
+        conversation = (
+            "turn 1 user: Is the bridge ready?",
+            f"turn 1 stackchan: {repeated}",
+        )
+        result = validate_response(
+            json.dumps(
+                {
+                    "spoken_text": repeated,
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.1, "valence": 0.2},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            conversation_lines=conversation,
+        )
+        distinct = validate_response(
+            json.dumps(
+                {
+                    "spoken_text": (
+                        "The bridge remains online, but research is degraded. "
+                        "One service missed roll call."
+                    ),
+                    "mode": "speak",
+                    "earcon": "none",
+                    "emotion": {"arousal": 0.1, "valence": 0.2},
+                    "memory_write": {},
+                    "memory_forget": [],
+                }
+            ),
+            conversation_lines=conversation,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("repetitive_response", result.issues)
+        self.assertIn("different angle", result.normalized["spoken_text"].lower())
+        self.assertTrue(distinct.ok, distinct.issues)
+
     def test_unsolicited_identity_intro_is_replaced_but_direct_identity_is_allowed(self):
         raw = json.dumps(
             {
@@ -545,6 +621,8 @@ class CharacterHarnessTests(unittest.TestCase):
         self.assertIn("That cable is practicing its dramatic exit", prompt)
         self.assertIn("Do not introduce yourself", prompt)
         self.assertIn("Never invent a sight, sound, measurement", prompt)
+        self.assertIn("Preserve the user's autonomy", prompt)
+        self.assertIn("Empathy is not automatic agreement", prompt)
 
         research_prompt = build_prompt(PROMPT_SUITE[0], research_tools_enabled=True)
         self.assertIn("Decide for yourself whether fresh public-web evidence is required", research_prompt)

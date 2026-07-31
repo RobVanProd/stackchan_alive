@@ -34,6 +34,7 @@ class WhisperServerError(RuntimeError):
 class WhisperServerResult:
     transcript: str
     raw_transcript: str = ""
+    confidence: float | None = None
 
 
 class _RejectRedirects(urllib.request.HTTPRedirectHandler):
@@ -142,9 +143,16 @@ def transcribe_pcm_via_server(
     if not raw_transcript:
         raise WhisperServerError("local whisper.cpp server produced no transcript")
     transcript = normalize_stackchan_terms(raw_transcript)
+    try:
+        confidence = float(payload.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = None
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        confidence = None
     return WhisperServerResult(
         transcript=transcript,
         raw_transcript=raw_transcript,
+        confidence=confidence,
     )
 
 
@@ -178,6 +186,8 @@ def main() -> int:
     if result.raw_transcript != result.transcript:
         payload["raw_transcript"] = result.raw_transcript
         payload["transcript_normalized"] = True
+    if result.confidence is not None:
+        payload["confidence"] = round(result.confidence, 4)
     print(json.dumps(payload, separators=(",", ":"), ensure_ascii=True))
     return 0
 

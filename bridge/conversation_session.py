@@ -31,8 +31,12 @@ class ConversationConfig:
     exit_phrases: tuple[str, ...] = (
         "goodbye stackchan",
         "stop listening",
+        "stop talking",
         "end conversation",
         "that's all",
+        "be quiet",
+        "quiet please",
+        "not now",
     )
 
     def __post_init__(self) -> None:
@@ -70,6 +74,7 @@ class ConversationSession:
         self.owner_id = ""
         self.session_number = 0
         self.turns = 0
+        self.turn_failures = 0
         self.capture_open = False
         self.capture_in_progress = False
         self.capture_commit_until_ms = 0
@@ -138,6 +143,7 @@ class ConversationSession:
         self.phase = ConversationPhase.IDLE
         self.owner_id = ""
         self.turns = 0
+        self.turn_failures = 0
         self.capture_open = False
         self.capture_in_progress = False
         self.capture_commit_until_ms = 0
@@ -157,6 +163,7 @@ class ConversationSession:
         self.phase = ConversationPhase.ENGAGED
         self.owner_id = str(owner_id or "")[:64]
         self.turns = 0
+        self.turn_failures = 0
         self.capture_open = True
         self.capture_in_progress = False
         self.capture_commit_until_ms = 0
@@ -305,7 +312,39 @@ class ConversationSession:
         now = self._now(now_ms)
         if self.phase not in (ConversationPhase.THINKING, ConversationPhase.SPEAKING):
             return self._transition("reject_turn_failure", reason="not_busy")
-        return self._begin_cooldown(now, self._normalize_text(reason) or "turn_failed")
+        was_speaking = self.phase == ConversationPhase.SPEAKING
+        self.turns = max(0, self.turns - 1)
+        self.turn_failures += 1
+        self.capture_in_progress = False
+        self.capture_commit_until_ms = 0
+        self.close_after_response = False
+        self._pending_turn = None
+        self.harness.discard_pending()
+        failure_reason = self._normalize_text(reason) or "turn_failed"
+        if was_speaking:
+            self.phase = ConversationPhase.REPLY_WINDOW
+            self.capture_open = False
+            self.echo_guard = True
+            self.acoustic_tail_until_ms = now + self.config.acoustic_tail_ms
+            self.reply_window_until_ms = (
+                self.acoustic_tail_until_ms + self.current_reply_window_ms()
+            )
+            return self._transition(
+                "turn_failed",
+                "playback_aborted",
+                "acoustic_tail",
+                reason=failure_reason,
+            )
+        self.phase = ConversationPhase.ENGAGED
+        self.capture_open = True
+        self.echo_guard = False
+        self.acoustic_tail_until_ms = 0
+        self.reply_window_until_ms = now + self.current_reply_window_ms()
+        return self._transition(
+            "turn_failed",
+            "open_capture",
+            reason=failure_reason,
+        )
 
     def cancel(self, now_ms: int, reason: str = "cancelled") -> ConversationTransition:
         now = self._now(now_ms)
@@ -348,6 +387,7 @@ class ConversationSession:
             "conversation_session": self.session_number,
             "conversation_owner": self.owner_id,
             "conversation_turns": self.turns,
+            "conversation_turn_failures": self.turn_failures,
             "conversation_context_turns": len(self._recent_turns),
             "conversation_capture_open": self.capture_open,
             "conversation_capture_in_progress": self.capture_in_progress,
