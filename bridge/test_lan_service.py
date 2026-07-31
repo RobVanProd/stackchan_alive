@@ -53,7 +53,7 @@ from episode_distillation import DistilledMemory
 from initiative_policy import InitiativeConfig, InitiativePolicy
 from local_runner import RunnerExecutionError, run_runner_profile
 from reference_bridge import PROTOCOL, load_bridge_memory
-from room_context import RoomContextRuntime, RoomObservationConfig
+from room_context import RoomContextRuntime, RoomObservationConfig, RoomSceneSummary
 from stt_adapter import STT_COMMAND_ENV
 from tts_adapter import TTS_COMMAND_ENV, TtsConfigurationError
 
@@ -1596,6 +1596,54 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("runner_error", frames[0]["code"])
         self.assertEqual("teal", loaded.fact_value("user.favorite_color"))
 
+    def test_runner_failure_keeps_conversation_context_and_reopens_capture(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                conversation_v2_enabled=True,
+                runner_command="fixture-runner",
+                require_runner=True,
+                tts_command="fixture-tts",
+            )
+        )
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 12})
+        )
+        session.conversation._recent_turns.append(
+            ("What were we fixing?", "The bridge recovery path.")
+        )
+
+        with patch(
+            "lan_service.run_runner_profile",
+            side_effect=RunnerExecutionError("runner offline"),
+        ):
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 12,
+                        "text": "Can we continue?",
+                    }
+                )
+            )
+
+        error = frames[0]
+        self.assertEqual("runner_error", error["code"])
+        self.assertEqual("engaged", error["conversation_state"])
+        self.assertEqual(
+            ["turn_failed", "open_capture"],
+            error["conversation_actions"],
+        )
+        self.assertTrue(error["conversation_capture_open"])
+        self.assertEqual(1, error["conversation_context_turns"])
+        self.assertEqual(1, error["conversation_turn_failures"])
+        self.assertEqual(
+            (
+                "turn 1 user: What were we fixing?",
+                "turn 1 stackchan: The bridge recovery path.",
+            ),
+            session.conversation.context_lines(),
+        )
+
     def test_explicit_forget_persists_even_when_runner_fails_after_deletion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_file = Path(temp_dir) / "memory.json"
@@ -1849,6 +1897,169 @@ class LanServiceTests(unittest.TestCase):
         self.assertFalse(
             any(frame.get("stt_bypassed") for frame in frames if isinstance(frame, dict))
         )
+
+    def test_low_confidence_stt_cannot_write_memory_or_reach_tools(self):
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                stt_min_confidence=0.5,
+                tts_command="configured-for-test",
+            )
+        )
+        stt_result = SimpleNamespace(
+            transcript="Remember that my favorite color is red.",
+            raw_transcript="Remember that my favorite color is red.",
+            transcript_normalized=False,
+            confidence=0.2,
+            elapsed_ms=5.0,
+            command_source="confidence-test",
+        )
+        session.handle_text(
+            json.dumps({"type": "utterance_start", "seq": 70, "sample_rate": 16000})
+        )
+        session.handle_binary(b"\x01\x00" * 1600)
+        with (
+            patch("lan_service.transcribe_pcm", return_value=stt_result),
+            patch("lan_service.run_runner_profile") as runner,
+            patch(
+                "lan_service.synthesize_speech",
+                side_effect=TtsConfigurationError("test has no audio renderer"),
+            ),
+        ):
+            frames = session.handle_text(
+                json.dumps({"type": "utterance_end", "seq": 70})
+            )
+
+        runner.assert_not_called()
+        response = next(
+            frame for frame in frames if frame.get("type") == "response_start"
+        )
+        self.assertIn("once more", response["text"].lower())
+        self.assertEqual("", session.memory.fact_value("user.favorite_color"))
+        self.assertEqual(0, session.memory.turns_seen)
+
+    def test_observed_shared_room_suppresses_personal_memory_and_callbacks(self):
+        memory = BridgeMemory(preferred_name="Rob").capture_open_loop(
+            "I have a dentist appointment tomorrow"
+        )
+        shared_room = SimpleNamespace(
+            latest_summary=lambda: RoomSceneSummary(person_count=2),
+            prompt_lines=lambda: (),
+        )
+        private_room = SimpleNamespace(
+            latest_summary=lambda: RoomSceneSummary(person_count=1),
+            prompt_lines=lambda: (),
+        )
+        shared = LanBridgeSession(
+            LanBridgeConfig(),
+            memory=memory,
+            room_context=shared_room,
+        )._relationship_card("hello")
+        private = LanBridgeSession(
+            LanBridgeConfig(),
+            memory=memory,
+            room_context=private_room,
+        )._relationship_card("hello")
+
+        self.assertFalse(
+            any(
+                line.startswith(("preferred_name:", "ask_about:", "episode:"))
+                for line in shared.lines
+            )
+        )
+        self.assertEqual("", shared.open_loop_id)
+        self.assertTrue(any(line == "preferred_name: Rob" for line in private.lines))
+
+    def test_active_persona_selects_only_its_relationship_history(self):
+        memory = BridgeMemory().add_episode(
+            "Talked about Spark bridge tuning",
+            persona_id="spark",
+        )
+        memory = memory.add_episode(
+            "Talked about Glow voice tuning",
+            persona_id="glow",
+        )
+
+        spark = LanBridgeSession(
+            LanBridgeConfig(persona_id="spark"),
+            memory=memory,
+        )._relationship_card("What did we discuss before?")
+        glow = LanBridgeSession(
+            LanBridgeConfig(persona_id="glow"),
+            memory=memory,
+        )._relationship_card("What did we discuss before?")
+
+        self.assertIn(
+            "episode: Talked about Spark bridge tuning",
+            spark.lines,
+        )
+        self.assertNotIn("Glow", "\n".join(spark.lines))
+        self.assertIn(
+            "episode: Talked about Glow voice tuning",
+            glow.lines,
+        )
+        self.assertNotIn("Spark", "\n".join(glow.lines))
+
+    def test_spoken_initiative_preference_is_immediate_persisted_and_reversible(self):
+        policy = InitiativePolicy(InitiativeConfig(enabled=True))
+        session = LanBridgeSession(
+            LanBridgeConfig(
+                initiative_enabled=True,
+                tts_command="configured-for-test",
+            ),
+            initiative_policy=policy,
+        )
+        with (
+            patch("lan_service.run_runner_profile") as runner,
+            patch(
+                "lan_service.synthesize_speech",
+                side_effect=TtsConfigurationError("test has no audio renderer"),
+            ),
+        ):
+            disabled_frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 72,
+                        "text": "Do not start conversations.",
+                    }
+                )
+            )
+            enabled_frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 73,
+                        "text": "You can check in again.",
+                    }
+                )
+            )
+
+        runner.assert_not_called()
+        disabled = next(
+            frame for frame in disabled_frames if frame.get("type") == "response_start"
+        )
+        enabled = next(
+            frame for frame in enabled_frames if frame.get("type") == "response_start"
+        )
+        self.assertIn("wait for you", disabled["text"].lower())
+        self.assertIn("check in again", enabled["text"].lower())
+        self.assertTrue(policy.status()["enabled"])
+        self.assertEqual("true", session.memory.fact_value("user.initiative_enabled"))
+
+    def test_saved_initiative_opt_out_wins_at_session_start(self):
+        memory = BridgeMemory().remember_initiative_preference(False)
+        policy = InitiativePolicy(InitiativeConfig(enabled=True))
+
+        LanBridgeSession(
+            LanBridgeConfig(
+                initiative_enabled=True,
+                tts_command="configured-for-test",
+            ),
+            memory=memory,
+            initiative_policy=policy,
+        )
+
+        self.assertFalse(policy.status()["enabled"])
 
     def test_detected_followup_logs_reply_vad_and_stt_evidence_together(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2735,6 +2946,48 @@ class LanServiceTests(unittest.TestCase):
         self.assertEqual("thinking", frames[1]["type"])
         self.assertTrue(any(frame["type"] == "audio" and frame["final"] for frame in frames))
 
+    def test_tts_failure_keeps_conversation_alive_after_acoustic_tail(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "broken_tts.py"
+            script.write_text(
+                "import sys\n"
+                "sys.stdin.buffer.read()\n"
+                "print('tts nope', file=sys.stderr)\n"
+                "sys.exit(9)\n",
+                encoding="utf-8",
+            )
+            command = f'"{sys.executable}" "{script}"'
+            session = LanBridgeSession(
+                LanBridgeConfig(
+                    conversation_v2_enabled=True,
+                    conversation_acoustic_tail_ms=250,
+                    tts_command=command,
+                )
+            )
+            session.handle_text(
+                json.dumps({"type": "utterance_start", "seq": 13})
+            )
+            with patch.dict(os.environ, RUNNER_ENV, clear=False):
+                frames = session.handle_text(
+                    json.dumps(
+                        {
+                            "type": "utterance_end",
+                            "seq": 13,
+                            "text": "Hello",
+                        }
+                    )
+                )
+
+        error = frames[0]
+        self.assertEqual("tts_error", error["code"])
+        self.assertEqual("reply_window", error["conversation_state"])
+        self.assertEqual(
+            ["turn_failed", "playback_aborted", "acoustic_tail"],
+            error["conversation_actions"],
+        )
+        self.assertFalse(error["conversation_capture_open"])
+        self.assertEqual(1, error["conversation_turn_failures"])
+
     def test_text_audio_payload_uses_base64_for_dev_clients(self):
         session = LanBridgeSession(LanBridgeConfig())
         payload = base64.b64encode(b"\x01\x00\x02\x00").decode("ascii")
@@ -2994,6 +3247,63 @@ class LanServiceTests(unittest.TestCase):
             if isinstance(frame, dict) and frame.get("type") == "response_start"
         )
         self.assertEqual("The specification was published in 2025.", response["text"])
+
+    def test_failed_research_cannot_turn_model_guess_into_fresh_fact(self):
+        def result(spoken_text):
+            return SimpleNamespace(
+                raw_response=json.dumps(
+                    {
+                        "spoken_text": spoken_text,
+                        "mode": "speak",
+                        "earcon": "none",
+                        "emotion": {"arousal": 0.0, "valence": 0.0},
+                        "memory_write": {},
+                        "memory_forget": [],
+                    }
+                ),
+                command_source="test",
+                elapsed_ms=1.0,
+                approx_tokens_per_sec=10.0,
+            )
+
+        broker = Mock()
+        broker.execute.return_value = {
+            "schema": "stackchan.research.v1",
+            "tool": "web_search",
+            "error": "searxng_request_failed",
+            "results": [],
+        }
+        session = LanBridgeSession(
+            LanBridgeConfig(research_enabled=True),
+            research_broker=broker,
+        )
+        with patch(
+            "lan_service.run_runner_profile",
+            return_value=result("The current release is definitely 99.4."),
+        ) as runner:
+            frames = session.handle_text(
+                json.dumps(
+                    {
+                        "type": "utterance_end",
+                        "seq": 90,
+                        "text": "What is the latest Stackchan release?",
+                    }
+                )
+            )
+
+        response = next(
+            frame
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("type") == "response_start"
+        )
+        runner.assert_not_called()
+        self.assertEqual(
+            "I could not verify that just now. I can try again in a moment.",
+            response["text"],
+        )
+        self.assertNotIn("citations", response)
+        self.assertEqual(0, session.memory.episode_count)
+        self.assertEqual(0, session.memory.open_loop_count)
 
     def test_natural_research_turn_creates_no_v4_memory(self):
         def result(spoken_text, memory_write=None):
@@ -3281,11 +3591,12 @@ class LanServiceTests(unittest.TestCase):
             session._conversation_payload(transition, observed_ms=700)
 
         thread.assert_called_once()
-        distilled_turns, distilled_session, expected_revision = (
+        distilled_turns, distilled_session, expected_revision, persona_id = (
             thread.call_args.kwargs["args"]
         )
         self.assertEqual(1, distilled_session)
         self.assertEqual(session._memory_revision, expected_revision)
+        self.assertEqual("spark", persona_id)
         self.assertEqual(6, len(distilled_turns))
         self.assertEqual(("question 0", "answer 0"), distilled_turns[0])
         self.assertEqual(("question 5", "answer 5"), distilled_turns[-1])

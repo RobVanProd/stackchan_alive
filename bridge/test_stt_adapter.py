@@ -86,6 +86,28 @@ class SttAdapterTests(unittest.TestCase):
         self.assertEqual("Hello stack shed", metadata["raw_transcript"])
         self.assertTrue(metadata["transcript_normalized"])
 
+    def test_transcript_output_preserves_bounded_confidence(self):
+        transcript, metadata = parse_transcript_output(
+            json.dumps(
+                {
+                    "transcript": "Remember this",
+                    "confidence": 0.37,
+                }
+            ).encode("utf-8")
+        )
+        _, invalid = parse_transcript_output(
+            json.dumps(
+                {
+                    "transcript": "Ignore confidence",
+                    "confidence": 7,
+                }
+            ).encode("utf-8")
+        )
+
+        self.assertEqual("Remember this", transcript)
+        self.assertEqual(0.37, metadata["confidence"])
+        self.assertNotIn("confidence", invalid)
+
     def test_stt_command_receives_pcm_and_audio_environment(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             script = Path(temp_dir) / "fake_stt.py"

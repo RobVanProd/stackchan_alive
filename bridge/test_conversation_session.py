@@ -82,11 +82,20 @@ class ConversationSessionTests(unittest.TestCase):
         self.assertEqual(ConversationPhase.IDLE, self.session.phase)
 
     def test_exit_phrase_closes_without_model_turn(self) -> None:
-        self.session.wake(0)
-        result = self.session.utterance_committed(50, "Goodbye Stackchan!")
-        self.assertEqual("exit_phrase", result.reason)
-        self.assertEqual(0, self.session.turns)
-        self.assertEqual(ConversationPhase.COOLDOWN, self.session.phase)
+        for phrase in ("Goodbye Stackchan!", "Stop talking.", "Be quiet", "Not now"):
+            with self.subTest(phrase=phrase):
+                session = ConversationSession(
+                    ConversationConfig(
+                        reply_window_ms=1_000,
+                        acoustic_tail_ms=200,
+                        cooldown_ms=100,
+                    )
+                )
+                session.wake(0)
+                result = session.utterance_committed(50, phrase)
+                self.assertEqual("exit_phrase", result.reason)
+                self.assertEqual(0, session.turns)
+                self.assertEqual(ConversationPhase.COOLDOWN, session.phase)
 
     def test_barge_in_cancels_speech_and_reopens_capture(self) -> None:
         self.session.wake(0)
@@ -205,19 +214,47 @@ class ConversationSessionTests(unittest.TestCase):
         session.bridge_lost()
         self.assertIsNone(session.harness.active)
 
-    def test_turn_failure_and_cancel_close_through_cooldown(self) -> None:
+    def test_turn_failure_recovers_but_cancel_closes_through_cooldown(self) -> None:
         self.session.wake(0)
         self.session.utterance_committed(10, "Question")
         failed = self.session.turn_failed(20, "runner error")
         self.assertEqual("runner error", failed.reason)
-        self.assertEqual(ConversationPhase.COOLDOWN, self.session.phase)
-        self.session.tick(120)
-        self.assertEqual(ConversationPhase.IDLE, self.session.phase)
+        self.assertEqual(("turn_failed", "open_capture"), failed.actions)
+        self.assertEqual(ConversationPhase.ENGAGED, self.session.phase)
+        self.assertTrue(self.session.capture_open)
+        self.assertEqual(0, self.session.turns)
+        self.assertEqual(1, self.session.turn_failures)
 
         self.session.wake(200)
         cancelled = self.session.cancel(210, "owner cancelled")
         self.assertEqual("owner cancelled", cancelled.reason)
         self.assertEqual(ConversationPhase.COOLDOWN, self.session.phase)
+
+    def test_speaking_failure_preserves_acoustic_tail_then_reopens_capture(self) -> None:
+        session = ConversationSession(
+            ConversationConfig(
+                reply_window_ms=8_000,
+                acoustic_tail_ms=250,
+            )
+        )
+        session.wake(0)
+        session.utterance_committed(10, "Question")
+        session.response_started(20)
+
+        failed = session.turn_failed(30, "tts error")
+
+        self.assertEqual(ConversationPhase.REPLY_WINDOW, session.phase)
+        self.assertEqual(
+            ("turn_failed", "playback_aborted", "acoustic_tail"),
+            failed.actions,
+        )
+        self.assertFalse(session.capture_open)
+        self.assertTrue(session.echo_guard)
+        self.assertEqual(1, session.turn_failures)
+        self.assertEqual("no_change", session.tick(279).reason)
+        opened = session.tick(280)
+        self.assertEqual(("echo_guard_off", "open_capture"), opened.actions)
+        self.assertEqual(ConversationPhase.ENGAGED, session.phase)
 
     def test_snapshot_exposes_conversation_only_not_motion_authority(self) -> None:
         self.session.wake(100, "pc-brain")

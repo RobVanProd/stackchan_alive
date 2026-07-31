@@ -46,6 +46,7 @@ from reference_bridge import (
     BridgeMemory,
     bridge_frames,
     load_bridge_memory,
+    reset_bridge_memory,
     save_bridge_memory,
     turn_from_character_response,
 )
@@ -164,6 +165,24 @@ PRIVATE_OR_EMBODIED_RESEARCH_TEXT = re.compile(
 SENSITIVE_RESEARCH_TEXT = re.compile(
     r"\b(?:password|passcode|api key|private key|credit card|bank account|social security|"
     r"medical|diagnosis|phone number|email address|home address)\b",
+    flags=re.IGNORECASE,
+)
+DISABLE_INITIATIVE_REQUEST = re.compile(
+    r"^\s*(?:please\s+)?(?:"
+    r"stop checking in|"
+    r"do not (?:start conversations|speak unless i (?:ask|start)|check in)|"
+    r"turn off (?:initiative|check[- ]?ins?|proactive prompts?)|"
+    r"no (?:initiative|check[- ]?ins?|proactive prompts?)"
+    r")\s*[.!?]*$",
+    flags=re.IGNORECASE,
+)
+ENABLE_INITIATIVE_REQUEST = re.compile(
+    r"^\s*(?:please\s+)?(?:"
+    r"you (?:can|may) check in again|"
+    r"you (?:can|may) start conversations again|"
+    r"turn on (?:initiative|check[- ]?ins?|proactive prompts?)|"
+    r"resume (?:initiative|check[- ]?ins?|proactive prompts?)"
+    r")\s*[.!?]*$",
     flags=re.IGNORECASE,
 )
 RESEARCH_ACCESS_DENIAL = re.compile(
@@ -732,6 +751,7 @@ class LanBridgeConfig:
     stt_restart_command: str = ""
     stt_health_interval_s: float = 2.0
     stt_timeout_ms: int = DEFAULT_STT_TIMEOUT_MS
+    stt_min_confidence: float = 0.45
     require_audio_wake_phrase: bool = False
     tts_command: str = ""
     in_process_directml_tts: bool = False
@@ -803,6 +823,8 @@ class LanBridgeConfig:
                 restart_command=self.stt_restart_command,
                 health_interval_seconds=self.stt_health_interval_s,
             )
+        if not 0.0 <= float(self.stt_min_confidence) <= 1.0:
+            raise ValueError("stt_min_confidence must be between zero and one")
 
 
 @dataclass(frozen=True)
@@ -1118,6 +1140,70 @@ def no_speech_character_response() -> str:
     )
 
 
+def low_confidence_character_response() -> str:
+    return json.dumps(
+        {
+            "spoken_text": "I did not catch that cleanly. Say it once more?",
+            "mode": "concern",
+            "earcon": "concern",
+            "emotion": {"arousal": -0.1, "valence": -0.05},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def research_unavailable_character_response() -> str:
+    return json.dumps(
+        {
+            "spoken_text": "I could not verify that just now. I can try again in a moment.",
+            "mode": "concern",
+            "earcon": "concern",
+            "emotion": {"arousal": -0.1, "valence": -0.1},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def initiative_preference_from_text(text: object) -> bool | None:
+    clean = " ".join(str(text or "").split())
+    if DISABLE_INITIATIVE_REQUEST.fullmatch(clean):
+        return False
+    if ENABLE_INITIATIVE_REQUEST.fullmatch(clean):
+        return True
+    return None
+
+
+def initiative_preference_character_response(
+    enabled: bool,
+    *,
+    available: bool = True,
+) -> str:
+    if not available:
+        spoken_text = "Proactive check-ins are unavailable in this bridge mode."
+    elif not enabled:
+        spoken_text = "I will wait for you to start conversations."
+    else:
+        spoken_text = "I can check in again, within the quiet-hour and rate limits."
+    return json.dumps(
+        {
+            "spoken_text": spoken_text,
+            "mode": "speak",
+            "earcon": "confirm",
+            "emotion": {"arousal": 0.0, "valence": 0.1},
+            "memory_write": {},
+            "memory_forget": [],
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
 def grayscale_color_character_response() -> str:
     return json.dumps(
         {
@@ -1275,6 +1361,7 @@ class LanBridgeSession:
         self._session_topics: list[str] = []
         self._session_non_research_turns = 0
         self._session_research_turns = 0
+        self._session_persona_id = self.control_state.active_persona_id()
         self._finalized_session_number = 0
         self._last_robot_heartbeat: dict[str, object] = {}
         self.initiative_policy = initiative_policy
@@ -1285,6 +1372,9 @@ class LanBridgeSession:
         self.playback_response_seq = 0
         self.conversation_playback_complete_seq = 0
         self.audio_protocol_errors = 0
+        saved_initiative = self.memory.fact_value("user.initiative_enabled")
+        if self.initiative_policy is not None and saved_initiative == "false":
+            self.initiative_policy.set_enabled(False)
         if config.initiative_enabled and (
             not config.tts_command or config.disable_audio_downlink
         ):
@@ -1375,8 +1465,28 @@ class LanBridgeSession:
         card = self.memory.relationship_card(
             query,
             session_turns=session_turns,
+            persona_id=self.control_state.active_persona_id(),
             excluded_open_loops=self._injected_open_loops,
         )
+        summary = (
+            self.room_context.latest_summary()
+            if self.room_context is not None
+            else None
+        )
+        if summary is not None and (summary.person_count or 0) > 1:
+            personal_prefixes = (
+                "preferred_name:",
+                "episode:",
+                "ask_about:",
+                "approved_fact user.",
+            )
+            card = RelationshipCard(
+                tuple(
+                    line
+                    for line in card.lines
+                    if not line.startswith(personal_prefixes)
+                )
+            )
         if card.open_loop_id:
             self._injected_open_loops.add(card.open_loop_id)
         return card
@@ -1386,6 +1496,7 @@ class LanBridgeSession:
         self._session_topics.clear()
         self._session_non_research_turns = 0
         self._session_research_turns = 0
+        self._session_persona_id = self.control_state.active_persona_id()
         if self.conversation is not None:
             self.conversation.harness.clear()
 
@@ -1401,6 +1512,7 @@ class LanBridgeSession:
         turns: tuple[tuple[str, str], ...],
         session_number: int,
         expected_memory_revision: int,
+        persona_id: str = DEFAULT_PERSONA_ID,
     ) -> None:
         dropped = False
         if not distillation_turns_safe(turns):
@@ -1424,7 +1536,11 @@ class LanBridgeSession:
                 self.memory = self.memory.note_distill_drop()
                 dropped = True
             else:
-                self.memory = apply_distillation(self.memory, result)
+                self.memory = apply_distillation(
+                    self.memory,
+                    result,
+                    persona_id=persona_id,
+                )
             self._memory_revision += 1
             if self.config.memory_file:
                 save_bridge_memory(self.config.memory_file, self.memory)
@@ -1451,6 +1567,7 @@ class LanBridgeSession:
         updated = self.memory.add_episode_from_topics(
             self._session_topics,
             len(turns),
+            persona_id=self._session_persona_id,
         )
         self._commit_memory(updated)
         self._append_turn_log(
@@ -1477,7 +1594,12 @@ class LanBridgeSession:
             expected_memory_revision = self._memory_revision
             threading.Thread(
                 target=self._run_episode_distillation,
-                args=(turns, session_number, expected_memory_revision),
+                args=(
+                    turns,
+                    session_number,
+                    expected_memory_revision,
+                    self._session_persona_id,
+                ),
                 name=f"stackchan-memory-distill-{session_number}",
                 daemon=True,
             ).start()
@@ -2494,7 +2616,15 @@ class LanBridgeSession:
                 }
             )
         if tts_error:
-            emit(error_frame("tts_error", tts_error))
+            failure_frame = error_frame("tts_error", tts_error)
+            if (
+                self.conversation is not None
+                and self.conversation.phase
+                in (ConversationPhase.THINKING, ConversationPhase.SPEAKING)
+            ):
+                transition = self.conversation.turn_failed(now_ms(), "tts_error")
+                failure_frame.update(self._conversation_payload(transition))
+            emit(failure_frame)
         emit(
             {
                 "type": "audio",
@@ -2606,6 +2736,7 @@ class LanBridgeSession:
         audio_summary.update(audio_evidence_log)
         stt_log: dict[str, object] = {}
         no_speech_detail = ""
+        stt_low_confidence = False
         silent_reply_close = False
         if not has_audio and not user_text:
             no_speech_detail = "utterance_end had no audio or transcript"
@@ -2681,6 +2812,14 @@ class LanBridgeSession:
                     stt_log["stt_raw_transcript"] = stt.raw_transcript
                 if stt.transcript_normalized:
                     stt_log["stt_transcript_normalized"] = True
+                stt_confidence = getattr(stt, "confidence", None)
+                if stt_confidence is not None:
+                    stt_log["stt_confidence"] = round(stt_confidence, 4)
+                    stt_low_confidence = (
+                        stt_confidence < self.config.stt_min_confidence
+                    )
+                    if stt_low_confidence:
+                        stt_log["stt_low_confidence"] = True
         cancellation.raise_if_cancelled()
         require_wake_phrase = self.config.require_audio_wake_phrase and (
             self.conversation is None or self.conversation.turns == 0
@@ -2715,7 +2854,14 @@ class LanBridgeSession:
             ]
         if self.dashboard_runtime is not None:
             self.dashboard_runtime.note_pipeline_stage("routing", turn_seq=seq)
-        requested_forget_keys = explicit_forget_keys(user_text)
+        requested_initiative = (
+            None
+            if stt_low_confidence
+            else initiative_preference_from_text(user_text)
+        )
+        requested_forget_keys = (
+            () if stt_low_confidence else explicit_forget_keys(user_text)
+        )
         if self.conversation is not None:
             transition = self.conversation.utterance_committed(now_ms(), user_text)
             if silent_reply_close:
@@ -2749,7 +2895,7 @@ class LanBridgeSession:
                     return [self._conversation_ready_frame(transition)]
                 return [self._conversation_heartbeat(transition)]
             self._observe_conversation_transition(transition)
-        if user_text:
+        if user_text and not stt_low_confidence:
             self._commit_memory(self.memory.remember_user_text(user_text))
             # Persist transcript-owned facts before model/TTS work so an explicit
             # remember request survives a later runner or audio failure.
@@ -2785,7 +2931,34 @@ class LanBridgeSession:
                 visual_observation_error or "fresh"
             )
         embodiment_lines = self._embodiment_context_lines()
-        if no_speech_detail:
+        if stt_low_confidence:
+            runner_case = "low_confidence_speech"
+            raw_response = low_confidence_character_response()
+            runner_summary["runner_command_source"] = "local_stt_confidence_guard"
+            runner_summary["runner_elapsed_ms"] = 0.0
+            runner_summary["stt_low_confidence"] = True
+        elif requested_initiative is not None:
+            initiative_available = bool(
+                self.initiative_policy is not None
+                and self.config.tts_command
+                and not self.config.disable_audio_downlink
+            )
+            enabled = bool(requested_initiative and initiative_available)
+            if self.initiative_policy is not None:
+                self.initiative_policy.set_enabled(enabled)
+            self._commit_memory(
+                self.memory.remember_initiative_preference(enabled)
+            )
+            runner_case = "initiative_preference"
+            raw_response = initiative_preference_character_response(
+                enabled,
+                available=initiative_available or not requested_initiative,
+            )
+            runner_summary["runner_command_source"] = "local_initiative_preference"
+            runner_summary["runner_elapsed_ms"] = 0.0
+            runner_summary["initiative_requested"] = requested_initiative
+            runner_summary["initiative_enabled"] = enabled
+        elif no_speech_detail:
             runner_case = "no_speech"
             raw_response = no_speech_character_response()
             runner_summary["runner_command_source"] = "local_no_speech"
@@ -3025,51 +3198,76 @@ class LanBridgeSession:
                                 if not fetch_error:
                                     research_result = dict(research_result)
                                     research_result["top_source"] = top_source
-                    evidence_user_text = (
-                        f"{user_text}\n\n{evidence_prompt(research_result)}"
-                    )
-                    try:
-                        if self.dashboard_runtime is not None:
-                            self.dashboard_runtime.note_pipeline_stage(
-                                "generating",
-                                turn_seq=seq,
-                                task_domain=(
-                                    conversation_plan.next_state.domain
-                                    if conversation_plan.next_state is not None
-                                    else "research"
-                                ),
+                    if research_result_succeeded(research_result):
+                        evidence_user_text = (
+                            f"{user_text}\n\n{evidence_prompt(research_result)}"
+                        )
+                        try:
+                            if self.dashboard_runtime is not None:
+                                self.dashboard_runtime.note_pipeline_stage(
+                                    "generating",
+                                    turn_seq=seq,
+                                    task_domain=(
+                                        conversation_plan.next_state.domain
+                                        if conversation_plan.next_state is not None
+                                        else "research"
+                                    ),
+                                )
+                            researched = run_runner_profile(
+                                self.config.runner_profile,
+                                case_name=runner_case,
+                                command=self.config.runner_command,
+                                in_process_ollama=self.config.in_process_ollama_runner,
+                                require_runner=self.config.require_runner,
+                                timeout_ms=self.config.runner_timeout_ms,
+                                user_text=evidence_user_text,
+                                research_tools_enabled=False,
+                                embodiment_lines=embodiment_lines,
+                                memory_lines=relationship_card.lines,
+                                conversation_lines=self._conversation_context_lines(),
+                                task_lines=conversation_plan.trusted_task_lines(),
+                                cancellation=cancellation,
+                                persona_id=active_persona.pack_id,
                             )
-                        researched = run_runner_profile(
-                            self.config.runner_profile,
-                            case_name=runner_case,
-                            command=self.config.runner_command,
-                            in_process_ollama=self.config.in_process_ollama_runner,
-                            require_runner=self.config.require_runner,
-                            timeout_ms=self.config.runner_timeout_ms,
-                            user_text=evidence_user_text,
-                            research_tools_enabled=False,
-                            embodiment_lines=embodiment_lines,
-                            memory_lines=relationship_card.lines,
-                            conversation_lines=self._conversation_context_lines(),
-                            task_lines=conversation_plan.trusted_task_lines(),
-                            cancellation=cancellation,
-                            persona_id=active_persona.pack_id,
+                        except (
+                            RunnerConfigurationError,
+                            RunnerExecutionError,
+                            ValueError,
+                        ) as exc:
+                            return [
+                                self._conversation_failure(
+                                    "runner_error",
+                                    str(exc),
+                                )
+                            ]
+                        raw_response = self._clear_research_memory_writes(
+                            researched.raw_response
                         )
-                    except (RunnerConfigurationError, RunnerExecutionError, ValueError) as exc:
-                        return [self._conversation_failure("runner_error", str(exc))]
-                    raw_response = self._clear_research_memory_writes(researched.raw_response)
-                    runner_summary["research_tool"] = str(research_result.get("tool", ""))
-                    runner_summary["research_source_count"] = len(
-                        source_urls(research_result)
-                    )
-                    runner_summary["research_error"] = str(research_result.get("error", ""))
-                    if researched.elapsed_ms is not None:
-                        runner_summary["research_runner_elapsed_ms"] = round(researched.elapsed_ms, 2)
-                    if getattr(researched, "response_repaired", False):
-                        runner_summary["research_response_repaired"] = True
-                        runner_summary["research_repair_reason"] = str(
-                            getattr(researched, "repair_reason", "")
+                        runner_summary["research_tool"] = str(
+                            research_result.get("tool", "")
                         )
+                        runner_summary["research_source_count"] = len(
+                            source_urls(research_result)
+                        )
+                        runner_summary["research_error"] = str(
+                            research_result.get("error", "")
+                        )
+                        if researched.elapsed_ms is not None:
+                            runner_summary["research_runner_elapsed_ms"] = round(
+                                researched.elapsed_ms,
+                                2,
+                            )
+                        if getattr(researched, "response_repaired", False):
+                            runner_summary["research_response_repaired"] = True
+                            runner_summary["research_repair_reason"] = str(
+                                getattr(researched, "repair_reason", "")
+                            )
+
+        if research_result is not None and not research_result_succeeded(
+            research_result
+        ):
+            raw_response = research_unavailable_character_response()
+            runner_summary["research_fallback"] = "local_unavailable"
 
         cancellation.raise_if_cancelled()
         turn, candidate_memory, validation = turn_from_character_response(
@@ -3089,11 +3287,15 @@ class LanBridgeSession:
                     *conversation_plan.trusted_task_lines(),
                 )
             ),
+            conversation_lines=self._conversation_context_lines(),
         )
         if research_result is not None:
             turn = replace(turn, citations=source_urls(research_result))
-        elif not no_speech_detail:
-            candidate_memory = candidate_memory.capture_open_loop(user_text)
+        elif not no_speech_detail and not stt_low_confidence:
+            candidate_memory = candidate_memory.capture_open_loop(
+                user_text,
+                persona_id=active_persona.pack_id,
+            )
             for topic in topics_for_user_text(user_text):
                 if topic not in self._session_topics:
                     self._session_topics.append(topic)
@@ -3129,13 +3331,9 @@ class LanBridgeSession:
                 frame_sink=frame_sink,
                 cancellation=cancellation,
             )
-            if tts_error and self.conversation is not None and not no_speech_detail:
-                self._observe_conversation_transition(
-                    self.conversation.turn_failed(now_ms(), "tts_error")
-                )
             cancellation.raise_if_cancelled()
             self._commit_memory(candidate_memory)
-            if not no_speech_detail:
+            if not no_speech_detail and not stt_low_confidence:
                 self._stage_conversation_turn(
                     user_text,
                     turn.text,
@@ -3219,13 +3417,14 @@ class LanBridgeSession:
             pass
         except (TtsExecutionError, ValueError) as exc:
             tts_error = str(exc)
+        failure_payload: dict[str, object] = {}
         if tts_error and self.conversation is not None and not no_speech_detail:
-            self._observe_conversation_transition(
+            failure_payload = self._conversation_payload(
                 self.conversation.turn_failed(now_ms(), "tts_error")
             )
         cancellation.raise_if_cancelled()
         self._commit_memory(candidate_memory)
-        if not no_speech_detail:
+        if not no_speech_detail and not stt_low_confidence:
             self._stage_conversation_turn(
                 user_text,
                 turn.text,
@@ -3262,7 +3461,9 @@ class LanBridgeSession:
                     break
         prefix_errors: list[dict[str, object]] = []
         if tts_error:
-            prefix_errors.append(error_frame("tts_error", tts_error))
+            failure_frame = error_frame("tts_error", tts_error)
+            failure_frame.update(failure_payload)
+            prefix_errors.append(failure_frame)
         self._append_completed_turn_log(
             seq=seq,
             has_audio=has_audio,
@@ -3940,6 +4141,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stt-restart-command", default="")
     parser.add_argument("--stt-health-interval-s", type=float, default=2.0)
     parser.add_argument("--stt-timeout-ms", type=int, default=DEFAULT_STT_TIMEOUT_MS)
+    parser.add_argument("--stt-min-confidence", type=float, default=0.45)
     parser.add_argument("--require-audio-wake-phrase", action="store_true")
     parser.add_argument("--tts-command", default="")
     parser.add_argument("--in-process-directml-tts", action="store_true")
@@ -4007,14 +4209,16 @@ def main() -> int:
         )
     if args.conversation_reply_window_step_ms < 0:
         parser.error("--conversation-reply-window-step-ms cannot be negative")
+    if not 0.0 <= args.stt_min_confidence <= 1.0:
+        parser.error("--stt-min-confidence must be between 0 and 1")
     if not 0 <= args.conversation_acoustic_tail_ms <= 2_000:
         parser.error("--conversation-acoustic-tail-ms must be between 0 and 2000")
     if args.initiative_min_interval_seconds < MIN_UNPROMPTED_INTERVAL_MS // 1000:
         parser.error("--initiative-min-interval-seconds must be at least 600")
     if not 120 <= args.room_observation_interval_seconds <= 1_800:
         parser.error("--room-observation-interval-seconds must be between 120 and 1800")
-    if args.reset_memory and args.memory_file and args.memory_file.exists():
-        args.memory_file.unlink()
+    if args.reset_memory and args.memory_file:
+        reset_bridge_memory(args.memory_file)
     conversation_max_turns = max(1, min(50, args.conversation_max_turns))
     config = LanBridgeConfig(
         host=args.host,
@@ -4032,6 +4236,7 @@ def main() -> int:
         stt_restart_command=args.stt_restart_command,
         stt_health_interval_s=args.stt_health_interval_s,
         stt_timeout_ms=args.stt_timeout_ms,
+        stt_min_confidence=args.stt_min_confidence,
         require_audio_wake_phrase=args.require_audio_wake_phrase,
         tts_command=args.tts_command,
         in_process_directml_tts=args.in_process_directml_tts,
